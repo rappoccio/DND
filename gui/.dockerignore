@@ -1,0 +1,19 @@
+# Build artefacts
+build/
+*.o
+*.a
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Runtime map files (mounted as a volume instead)
+*.png
+*.jpg
+*.jpeg
+
+# Git
+.git/
+.gitignore

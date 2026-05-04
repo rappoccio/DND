@@ -1,0 +1,399 @@
+#pragma once
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  combat.hpp  –  Self-contained D&D 5e combat engine
+//
+//  Design goals:
+//   • No rendering dependencies — safe to run headlessly for RL training.
+//   • Seeded PRNG so simulations are fully reproducible.
+//   • Flat observation vector  (getBattleObservation) suitable for NN input.
+//   • Discrete action space    (availableAttacks)     suitable for RL agents.
+//   • Static helpers           (attackModifier, canAttack …) are pure functions
+//     that can be called without instantiating a CombatEngine.
+//
+//  Typical training-loop usage:
+//      rpg::CombatEngine engine{42};   // fixed seed → deterministic rollouts
+//
+//      while (not done) {
+//          auto obs     = engine.getBattleObservation(bm, agent_idx, enemies);
+//          auto actions = engine.availableAttacks(bm, agent_idx);
+//          int  choice  = agent.selectAction(obs, actions);   // your NN here
+//          auto result  = engine.executeAction(bm, actions[choice]);
+//          float reward = result.hit ? result.total_damage : 0.f;
+//          if (result.target_down) reward += 100.f;
+//          agent.update(obs, choice, reward, ...);
+//      }
+// ─────────────────────────────────────────────────────────────────────────────
+
+#include "weapon.hpp"
+#include "spell.hpp"
+#include "agent.hpp"
+
+#include <cstdint>
+#include <optional>
+#include <random>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace rpg {
+
+// Forward declarations (avoid pulling in the whole BattleMap header here).
+class BattleMap;
+struct Cell;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Attack result
+// ─────────────────────────────────────────────────────────────────────────────
+struct AttackResult {
+    // ── Validity ──────────────────────────────────────────────────────────
+    bool valid        = false;  // false → action was illegal (out of range, bad index…)
+
+    // ── Attack roll ───────────────────────────────────────────────────────
+    int  d20          = 0;      // raw die (1–20); natural 20 = crit, 1 = fumble
+    int  attack_mod   = 0;      // total modifier added to the roll
+    int  total_roll   = 0;      // d20 + attack_mod
+    int  target_ac    = 0;      // defender's AC we rolled against
+    bool critical     = false;  // natural 20 → double damage dice
+    bool fumble       = false;  // natural 1  → automatic miss
+    bool disadvantage = false;  // roll was made at disadvantage (long range etc.)
+    bool hit          = false;
+
+    // ── Damage (only meaningful when hit == true) ─────────────────────────
+    std::vector<int> dice_results;  // individual die values (doubled on crit)
+    int  damage_mod   = 0;          // ability-score modifier added to damage
+    int  total_damage = 0;          // max(0, sum(dice) + damage_mod)
+    std::vector<MagicDamage_t>    magic_damage_types;
+    std::vector<PhysicalDamage_t> physical_damage_types;
+
+    // ── Target outcome ────────────────────────────────────────────────────
+    int  hp_before    = 0;
+    int  hp_after     = 0;
+    bool target_down  = false;  // hp_after <= 0
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Discrete weapon attack (attacker / target / weapon triple)
+//  One concrete element of the RL action space; SpellAction is the other.
+// ─────────────────────────────────────────────────────────────────────────────
+struct Attack {
+    int  attacker_idx = -1;    // index into BattleMap::placedAgents()
+    int  target_idx   = -1;
+    int  weapon_idx   =  0;    // index into attacker's weapons list
+    bool is_offhand   = false; // off-hand attack: proficiency bonus not added to hit
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Spell action — used in TurnActions and as the RL spell action space
+// ─────────────────────────────────────────────────────────────────────────────
+struct SpellAction {
+    int  caster_idx  = -1;   // index into BattleMap::placedAgents()
+    int  spell_idx   =  0;   // index into caster's spells list
+    // For Single geometry, only target_indices[0] is used.
+    // For Line/Cone/Sphere, target_indices lists all cells/agents in the area.
+    std::vector<int> target_indices;
+    // Explicit target cell for area-of-effect origin (Line/Cone/Sphere).
+    // Ignored for Single geometry.
+    int  aoe_col = 0;
+    int  aoe_row = 0;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Per-target outcome for a single spell application
+// ─────────────────────────────────────────────────────────────────────────────
+struct SpellTargetResult {
+    int  target_idx   = -1;
+    bool saved        = false;  // true → target passed saving throw (half damage)
+    bool hit          = false;  // for AttackRoll spells: whether the roll succeeded
+    int  d20          = 0;
+    int  attack_mod   = 0;
+    int  total_roll   = 0;
+    int  target_ac    = 0;
+    bool critical     = false;
+    std::vector<int> dice_results;
+    int  damage_mod   = 0;
+    int  total_damage = 0;    // 0 for heals (see healing field)
+    int  total_healing = 0;   // 0 for harm spells
+    int  hp_before    = 0;
+    int  hp_after     = 0;
+    bool target_down  = false;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Full result for a spell cast
+// ─────────────────────────────────────────────────────────────────────────────
+struct SpellResult {
+    bool valid = false;
+    int  spell_idx = -1;
+    std::string spell_name;
+    Spell::SpellAttack_t attack_type{Spell::AttackRoll};
+    std::vector<SpellTargetResult> target_results;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Active persistent effect (duration > 1 turn)
+// ─────────────────────────────────────────────────────────────────────────────
+struct ActiveEffect {
+    int  caster_idx  = -1;
+    int  target_idx  = -1;
+    Spell spell;               // copy of the spell that created this effect
+    int  turns_remaining = 0;  // decremented each time tickEffects() is called
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Initiative entry — one per agent, produced by CombatEngine::rollInitiative.
+//
+//  Sorted descending by total (highest acts first).  Ties broken by:
+//    1. Higher initiative modifier (higher DEX acts first — passive tiebreaker).
+//    2. Lower agent_idx (stable, deterministic).
+// ─────────────────────────────────────────────────────────────────────────────
+struct InitiativeEntry {
+    int agent_idx = -1;
+    int d20       =  0;   // raw die result (1–20)
+    int modifier  =  0;   // DEX mod [+ prof_bonus if initiative_prof]
+    int total     =  0;   // d20 + modifier
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  One agent's choices for a single turn within a round.
+//
+//  Walk and fly are always triggered; the caller only specifies whether the
+//  action and bonus action are weapon attacks (optional).  Non-attack uses
+//  of the action or bonus action (e.g. dash, disengage) are represented by
+//  leaving the corresponding field empty — the action/bonusAction hook on
+//  the Agent still fires, signalling that the slot was consumed.
+// ─────────────────────────────────────────────────────────────────────────────
+struct TurnActions {
+    int agent_idx = -1;
+
+    // One or more weapon attacks for the Action slot (Extra Attack fills this
+    // with multiple entries).  Empty means the action slot is used for
+    // something else (dash, disengage, etc.).
+    std::vector<Attack> attacks;
+
+    // Weapon attacks for the Bonus Action slot (typically at most one,
+    // e.g. off-hand TWF attack).
+    std::vector<Attack> bonus_attacks;
+
+    // One or more spell casts for the Action slot.
+    std::vector<SpellAction> spell_actions;
+
+    // Spell casts for the Bonus Action slot.
+    std::vector<SpellAction> bonus_spells;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CombatEngine
+// ─────────────────────────────────────────────────────────────────────────────
+class CombatEngine {
+public:
+    // Pass seed = 0 to use a non-deterministic seed from std::random_device.
+    explicit CombatEngine(uint32_t seed = 0);
+
+    // ── Static / deterministic helpers (no RNG) ───────────────────────────
+
+    // Total attack-roll modifier for a weapon used by a given attacker.
+    // Respects finesse, thrown, and proficiency rules.
+    [[nodiscard]] static int attackModifier(const Weapon& w,
+                                             const Agent::Stats& s) noexcept;
+
+    // Ability modifier that applies to damage rolls for this weapon.
+    [[nodiscard]] static int damageAbilityMod(const Weapon& w,
+                                               const Agent::Stats& s) noexcept;
+
+    // True iff the weapon can reach at least one cell of the target's footprint
+    // AND that cell has line-of-sight from the attacker.
+    [[nodiscard]] static bool canAttack(const Weapon& w,
+                                         const BattleMap& bm,
+                                         Cell atk_origin, int atk_size,
+                                         Cell tgt_origin, int tgt_size) noexcept;
+
+    // True iff the attack should be made at disadvantage.
+    // Currently: ranged (non-thrown) attacks beyond normal_range_ft.
+    [[nodiscard]] static bool hasDisadvantage(const Weapon& w,
+                                               const BattleMap& bm,
+                                               Cell atk_origin, int atk_size,
+                                               Cell tgt_origin, int tgt_size) noexcept;
+
+    // HP modifiers — clamp hp_cur to [0, hp_max] and write back to the map.
+    // Return the resulting hp_cur, or 0 for an out-of-range idx.
+    static int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
+    static int healAgent  (BattleMap& bm, int idx, int amount) noexcept;
+
+    // ── Per-agent turn count ──────────────────────────────────────────────
+    //
+    // The common case is exactly 1 turn per round; only store overrides.
+    // Calling setAgentTurns(idx, 1) removes any override (restores default).
+
+    // Number of turns agent[idx] takes each round (default 1).
+    [[nodiscard]] int getAgentTurns(int idx) const noexcept;
+
+    // Override the default.  turns must be >= 1.
+    void setAgentTurns(int idx, int turns) noexcept;
+
+    // Remove all per-agent overrides (every agent reverts to 1 turn/round).
+    void clearAgentTurns() noexcept;
+
+    // ── Per-agent movement budget (current turn) ──────────────────────────
+    //
+    // Call beginTurn() when a combatant's turn starts to seed their movement
+    // budget from their stats.  The Python GUI then calls spendWalk / spendFly
+    // after each drag-and-drop move; getWalkRemaining / getFlyRemaining feed
+    // back into BattleMap::reachable_cells() so the reach overlay shrinks
+    // correctly as movement is consumed.
+    //
+    // Distances are always in feet (5 ft = 1 standard grid cell).
+
+    // Initialise the agent's walk/fly budget from their current stats.
+    void beginTurn(int agent_idx, const BattleMap& bm) noexcept;
+
+    // Remaining walk / fly movement (feet) for the given agent this turn.
+    [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
+    [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
+
+    // Deduct feet from the walk (or fly) budget.  Clamps to 0; never goes
+    // negative.  Returns the amount actually spent (≤ feet if budget ran low).
+    int spendWalk(int agent_idx, int feet) noexcept;
+    int spendFly (int agent_idx, int feet) noexcept;
+
+    // Clear all movement budgets (call at end of combat or start of new round).
+    void clearMovement() noexcept;
+
+    // ── Dice rollers ──────────────────────────────────────────────────────
+    int roll(int sides);            // 1dN  (result 1…sides)
+    int rollAdvantage(int sides);   // 2dN, keep higher
+    int rollDisadvantage(int sides); // 2dN, keep lower
+
+    // ── Core attack mechanics ─────────────────────────────────────────────
+
+    // Roll to hit: fills in the attack-roll fields of an AttackResult.
+    // Does NOT roll or apply damage.
+    [[nodiscard]] AttackResult rollToHit(const Weapon& w,
+                                          const Agent::Stats& attacker,
+                                          int target_ac,
+                                          bool disadvantage = false);
+
+    // Roll damage dice and populate the damage fields of an existing result.
+    // Call only when result.hit == true.
+    void rollDamage(const Weapon& w,
+                    const Agent::Stats& attacker,
+                    AttackResult& result);
+
+    // Resolve a complete attack (roll to hit, roll damage, apply to target).
+    // target is modified in place (hp_cur clamped to [0, hp_max]).
+    [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
+                                              const Agent::Stats& attacker,
+                                              Agent::Stats& target,
+                                              bool disadvantage = false);
+
+    // ── High-level BattleMap integration ─────────────────────────────────
+
+    // Validate an Attack (range + LoS), then call resolveAttack and
+    // write the updated target stats back into the BattleMap.
+    // Returns an invalid AttackResult (valid==false) if the action is illegal.
+    [[nodiscard]] AttackResult executeAction(BattleMap& bm,
+                                              const Attack& action);
+
+    // ── Initiative ────────────────────────────────────────────────────────
+    //
+    // Roll initiative for every living agent in the BattleMap (hp_cur > 0).
+    // Each roll is d20 + DEX modifier [+ prof_bonus if initiative_prof].
+    // Returns entries sorted descending by total; ties broken by modifier
+    // then by agent_idx.  Call once at combat start; reuse the order for
+    // all subsequent runRound() calls.
+    std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
+
+    // ── Round execution ───────────────────────────────────────────────────
+    //
+    // Execute one full combat round from a caller-supplied list of turns.
+    //
+    // For each TurnActions entry (in the order supplied):
+    //   1. Skip the turn entirely if the agent's hp_cur <= 0 (incapacitated).
+    //   2. Call agent->action().
+    //      If an Attack is attached, resolve it via executeAction().
+    //      The targeted agent's reaction() is then triggered.
+    //   3. Call agent->bonusAction().
+    //      Same: resolve the Attack if present, trigger target's reaction().
+    //   4. Call agent->walk().
+    //   5. Call agent->fly().
+    //
+    // Callers are responsible for ordering the turns (initiative) and for
+    // repeating an agent's entry when getAgentTurns(idx) > 1.
+    //
+    // Returns one AttackResult per resolved Attack (hits and misses).
+    std::vector<AttackResult> runRound(BattleMap& bm,
+                                       const std::vector<TurnActions>& turns);
+
+    // ── Spell mechanics ───────────────────────────────────────────────────
+
+    // Execute a spell cast: validates range/LoS, rolls to hit or saving throw,
+    // applies damage/healing to each target, and writes stats back into the map.
+    // For duration > 1, also pushes an ActiveEffect (apply per-turn via tickEffects).
+    // Returns an invalid SpellResult (valid==false) if the action is illegal.
+    [[nodiscard]] SpellResult executeSpell(BattleMap& bm,
+                                           const SpellAction& action);
+
+    // Decrement turns_remaining on all active effects; apply per-tick damage/heal;
+    // remove effects whose turns_remaining reaches 0.
+    void tickEffects(BattleMap& bm);
+
+    [[nodiscard]] const std::vector<ActiveEffect>& activeEffects() const noexcept;
+
+    void clearEffects() noexcept;
+
+    // ── RL action space ───────────────────────────────────────────────────
+
+    // Enumerate all legal (weapon, target) pairs for the given attacker.
+    [[nodiscard]] std::vector<Attack> availableAttacks(
+        const BattleMap& bm, int attacker_idx) const;
+
+    // ── RL observation vector ─────────────────────────────────────────────
+    //
+    // Returns a fixed-length float vector suitable as NN input.
+    //
+    // Layout:
+    //
+    //   Attacker block (12 floats):
+    //     col/cols, row/rows, hp_frac, ac/30,
+    //     (str−10)/10, (dex−10)/10, (con−10)/10,
+    //     (int−10)/10, (wis−10)/10, (cha−10)/10,
+    //     speed_walk/60, speed_fly/60
+    //
+    //   Per target (14 floats, up to max_targets slots; zero-padded):
+    //     col/cols, row/rows, hp_frac, ac/30,
+    //     (str−10)/10 … (cha−10)/10,
+    //     speed_walk/60, speed_fly/60,
+    //     chebyshev_dist / max(cols, rows),
+    //     has_line_of_sight (0 or 1)
+    //
+    // Total size: 12 + max_targets × 14
+    [[nodiscard]] std::vector<float> getBattleObservation(
+        const BattleMap& bm,
+        int attacker_idx,
+        const std::vector<int>& target_indices,
+        int max_targets = 8) const;
+
+    // ── RNG control ───────────────────────────────────────────────────────
+    void reseed(uint32_t seed);
+
+private:
+    std::mt19937 rng_;
+
+    // Per-agent turn overrides.  Empty = everyone gets exactly 1 turn/round.
+    // Only agents with turns != 1 are stored here (optimises the common case).
+    std::unordered_map<int, int> agentTurns_;
+
+    // Movement budgets for the current turn.
+    // Key = agent_idx; value = remaining feet.
+    // Absent entry ≡ 0 remaining (agent hasn't started their turn yet).
+    std::unordered_map<int, int> walkRemaining_;
+    std::unordered_map<int, int> flyRemaining_;
+
+    std::vector<ActiveEffect> activeEffects_;
+
+    // ── Spell helpers ─────────────────────────────────────────────────────
+    [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;
+    [[nodiscard]] static int spellSaveDc(const Agent::Stats& s) noexcept;
+};
+
+} // namespace rpg

@@ -1,0 +1,125 @@
+{
+  "agents": [
+    {
+      "name": "Davian Martikov",
+      "sprite_path": "/Users/rappoccio/Documents/Claude/Projects/DND/sprites/davian-martikov.png",
+      "size": 1,
+      "col": 12,
+      "row": 10,
+      "stats": {
+        "str": 10,
+        "dex": 18,
+        "con": 16,
+        "intel": 10,
+        "wis": 12,
+        "cha": 10,
+        "hp_max": 30,
+        "hp_cur": 30,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 30,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+	"num_attacks": 2,  
+        "save_prof_str": false,
+        "save_prof_dex": true,
+        "save_prof_con": true,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false
+      },
+      "weapons": [
+        {
+          "name": "Greatsword",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 5,
+          "long_range_ft": 5,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "damage_dice": "2d6",
+          "physical_damages": ["Slashing"]
+        },
+        {
+          "name": "Longbow",
+          "type": "ranged",
+          "reach_ft": 320,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "damage_dice": "1d8",
+          "physical_damages": ["Piercing"]
+	} 
+      ]
+    },
+    {
+      "name": "Baba Lysaga",
+      "sprite_path": "/Users/rappoccio/Documents/Claude/Projects/DND/sprites/baba-lysaga.png",
+      "size": 1,
+      "col": 9,
+      "row": 7,
+      "stats": {
+        "str": 18,
+        "dex": 10,
+        "con": 18,
+        "intel": 10,
+        "wis": 18,
+        "cha": 10,
+        "hp_max": 30,
+        "hp_cur": 30,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": true,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": true,
+        "save_prof_cha": false,
+	"can_cast_spell":true,
+	"spellcasting_ability":"wis"  
+      },
+      "spells": [
+	{
+	  "name": "Fire Bolt",
+	  "type": "Harm",
+	  "geometry": "Single",
+	  "attack_type": "AttackRoll",
+	  "save_ability": null,
+	  "range": 120,
+	  "radius": null,
+	  "width": null,
+	  "length": null,
+	  "duration": 1,
+	  "magic_damage_types": ["Fire"],
+	  "physical_damage_types": [],
+	  "num_dice": 2,
+	  "die_size": 10
+	},
+	{
+	  "name": "Fireball",
+	  "type": "Harm",
+	  "geometry": "Sphere",
+	  "attack_type": "Save",
+	  "save_ability": "SaveDex",
+	  "range": 150,
+	  "radius": 20,
+	  "width": null,
+	  "length": null,
+	  "duration": 1,
+	  "magic_damage_types": ["Fire"],
+	  "physical_damage_types": [],
+	  "num_dice": 8,
+	  "die_size": 6
+	} 	  
+      ]
+    }
+  ]
+}
