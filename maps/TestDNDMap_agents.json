@@ -101,7 +101,9 @@
 	  "magic_damage_types": ["Fire"],
 	  "physical_damage_types": [],
 	  "num_dice": 2,
-	  "die_size": 10
+	  "die_size": 10,
+	  "terrain_effect": null,
+	  "hatch_pattern": null
 	},
 	{
 	  "name": "Fireball",
@@ -117,8 +119,32 @@
 	  "magic_damage_types": ["Fire"],
 	  "physical_damage_types": [],
 	  "num_dice": 8,
-	  "die_size": 6
-	} 	  
+	  "die_size": 6,
+	  "terrain_effect": null,
+	  "hatch_pattern": null
+	},
+	{
+	  "name": "Grease",
+	  "type": "Control",
+	  "geometry": "Sphere",
+	  "attack_type": "AttackRoll",
+	  "save_ability": null,
+	  "range": 60,
+	  "radius": 20,
+	  "width": null,
+	  "length": null,
+	  "duration": 1,
+	  "magic_damage_types": [],
+	  "physical_damage_types": [],
+	  "num_dice": 0,
+	  "die_size": 6,
+	  "terrain_effect": {
+	    "type": "Difficult Terrain",
+	    "multiplier": 0.5,
+	    "duration": 10
+	  },
+	  "hatch_pattern": "xx"
+	}
       ]
     }
   ]

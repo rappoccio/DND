@@ -1701,6 +1701,8 @@ _DEFAULT_SPELL: dict = {
     "physical_damage_types": [],
     "num_dice":               1,
     "die_size":               6,
+    "terrain_effect":        None,   # {type, multiplier, duration} or None
+    "hatch_pattern":         None,   # matplotlib hatch pattern: '//', '\\', '||', etc.
 }
 
 
@@ -1723,6 +1725,8 @@ def _spell_to_dict(s) -> dict:
         "physical_damage_types": [v.name for v in s.physical_damage_types],
         "num_dice":              s.num_dice,
         "die_size":              s.die_size,
+        "terrain_effect":        s.terrain_effect if hasattr(s, 'terrain_effect') else None,
+        "hatch_pattern":         s.hatch_pattern if hasattr(s, 'hatch_pattern') else None,
     }
 
 
@@ -1742,6 +1746,8 @@ def _dict_to_spell(d: dict):
     s.physical_damage_types = [_parse_physical_damage(v) for v in d.get("physical_damage_types", [])]
     s.num_dice     = int(d.get("num_dice",   1))
     s.die_size     = int(d.get("die_size",   6))
+    s.terrain_effect = d.get("terrain_effect")
+    s.hatch_pattern  = d.get("hatch_pattern")
     return s
 
 
@@ -2856,6 +2862,9 @@ class App:
         self.btn_cbt_end_combat  = Button(pygame.Rect(px, dummy_y, W, B),
                                           "End Combat",
                                           COL_BTN_DANGER, (180, 70, 70), self.font_md)
+        self.btn_cbt_drop_concentration = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Drop Concentration",
+                                          (150, 100, 100), (200, 130, 130), self.font_md)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Sprite loading (cached)
@@ -3332,10 +3341,15 @@ class App:
                 stats = self.bm.get_agent_stats(idx)
                 if stats.hp_cur > 0:
                     break
+                else:
+                    # Agent is dead, drop concentration if any
+                    self._drop_concentration_for_agent(idx)
 
         # Round advancement: when turn_idx wraps to 0
         if self.turn_idx < prev_turn_idx:
             self.round_num += 1
+            # Tick concentration terrain duration
+            self._tick_concentration_terrain()
             # Tick DM-placed effects at round boundary
             expired_dm = self.bm.tick_dm_terrain_effects()
             for effect_id in expired_dm:
@@ -3367,6 +3381,60 @@ class App:
         self._reset_movement(new_idx)
         self._update_reach()
         self._update_attack_overlay()
+
+    def _drop_concentration(self):
+        """Drop concentration for current agent and remove associated terrain."""
+        cur_idx = self._current_agent_idx()
+        self._drop_concentration_for_agent(cur_idx)
+
+    def _drop_concentration_for_agent(self, agent_idx: int):
+        """Drop concentration for specified agent and remove associated terrain."""
+        if agent_idx < 0 or agent_idx >= len(self.bm.placed_agents):
+            return
+        stats = self.bm.get_agent_stats(agent_idx)
+        if not getattr(stats, 'isConcentrating', False):
+            return
+        spell_name = getattr(stats, 'concentratingOn', None)
+        agent_name = self.bm.placed_agents[agent_idx].name
+        # Remove terrain regions from this agent's concentration
+        self._terrain_regions = [r for r in self._terrain_regions
+                                  if not (r.get("source", {}).get("agent") == agent_name and
+                                          r.get("source", {}).get("requires_concentration"))]
+        # Clear concentration state
+        stats.isConcentrating = False
+        stats.concentratingOn = None
+        self.bm.set_agent_stats(agent_idx, stats)
+        self._apply_terrain_to_battle_map()
+        self._combat_log_add(f"{agent_name} drops concentration on {spell_name or 'spell'}.")
+        self._save_terrain()
+
+    def _tick_concentration_terrain(self):
+        """Decrement duration on concentration terrain and remove expired effects."""
+        expired_spells = []
+        for region in self._terrain_regions:
+            if region.get("source", {}).get("requires_concentration"):
+                duration = region["source"].get("duration_remaining", 0)
+                if duration > 0:
+                    region["source"]["duration_remaining"] = duration - 1
+                    if duration - 1 == 0:
+                        expired_spells.append((region.get("source", {}).get("agent"), region.get("source", {}).get("spell")))
+        # Remove expired terrain
+        self._terrain_regions = [r for r in self._terrain_regions
+                                  if not (r.get("source", {}).get("requires_concentration") and
+                                          r.get("source", {}).get("duration_remaining", 0) <= 0)]
+        # Clear concentration for agents with expired effects
+        for agent_name, spell_name in expired_spells:
+            for i, agent in enumerate(self.bm.placed_agents):
+                if agent.name == agent_name:
+                    s = self.bm.get_agent_stats(i)
+                    if getattr(s, 'concentratingOn', None) == spell_name:
+                        s.isConcentrating = False
+                        s.concentratingOn = None
+                        self.bm.set_agent_stats(i, s)
+                        self._combat_log_add(f"{spell_name} effect on {agent_name} has expired.")
+                    break
+        self._apply_terrain_to_battle_map()
+        self._save_terrain()
 
     def _combat_log_add(self, msg: str):
         self.combat_log.insert(0, msg)
@@ -3599,7 +3667,22 @@ class App:
         # Auto-place terrain effect if spell has one
         if 0 <= caster_idx < len(agents) and 0 <= self.pending_spell_idx < len(agents[caster_idx].spells):
             spell = agents[caster_idx].spells[self.pending_spell_idx]
-            if spell.terrain_difficulty != rpg.TerrainDifficulty.Normal:
+            if hasattr(spell, 'terrain_effect') and spell.terrain_effect:
+                aoe_cells = self._aoe_cells(cell, spell)
+                if aoe_cells:
+                    hatch = getattr(spell, 'hatch_pattern', None)
+                    terrain_region = self._cells_to_terrain_region(aoe_cells, spell.terrain_effect, spell.name, caster_idx, hatch)
+                    if terrain_region:
+                        self._terrain_regions.append(terrain_region)
+                        # Set concentration on caster
+                        if 0 <= caster_idx < len(agents):
+                            s = self.bm.get_agent_stats(caster_idx)
+                            s.isConcentrating = True
+                            s.concentratingOn = spell.name
+                            self.bm.set_agent_stats(caster_idx, s)
+                        self._apply_terrain_to_battle_map()
+                        self._combat_log_add(f"{spell.name}: {cast_name} is concentrating.")
+            elif spell.terrain_difficulty != rpg.TerrainDifficulty.Normal:
                 aoe_cells = self._aoe_cells(cell, spell)
                 if aoe_cells:
                     effect_id = self.bm.place_terrain_effect(
@@ -3691,6 +3774,36 @@ class App:
 
         return cells
 
+    def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None) -> dict:
+        """Convert list of cells to a terrain region with source metadata."""
+        if not cells:
+            return None
+        cpx = int(self.bm.cell_pixel_size)
+        min_col = min(c.col for c in cells)
+        max_col = max(c.col for c in cells)
+        min_row = min(c.row for c in cells)
+        max_row = max(c.row for c in cells)
+        x = min_col * cpx
+        y = min_row * cpx
+        width = (max_col - min_col + 1) * cpx
+        height = (max_row - min_row + 1) * cpx
+        caster_name = self.bm.placed_agents[caster_idx].name if caster_idx < len(self.bm.placed_agents) else "Unknown"
+        return {
+            "type": terrain_effect.get("type", "Difficult Terrain"),
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "multiplier": terrain_effect.get("multiplier", 0.5),
+            "source": {
+                "agent": caster_name,
+                "spell": spell_name,
+                "requires_concentration": True,
+                "duration_remaining": terrain_effect.get("duration", 10),
+            },
+            "hatch_pattern": hatch_pattern
+        }
+
     def _draw_spell_aoe_preview(self, cpx: int):
         """Translucent AoE highlight while the player is aiming a non-Single spell."""
         if not self.pending_spell_is_aoe or self.spell_hover_cell is None:
@@ -3781,6 +3894,8 @@ class App:
                     "has_offhand_attack": s.has_offhand_attack,
                     "can_cast_spell":     s.can_cast_spell,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
+                    "isConcentrating": getattr(s, 'isConcentrating', False),
+                    "concentratingOn": getattr(s, 'concentratingOn', None),
                 },
                 "weapons": [_weapon_to_dict(w)
                             for w in self.bm.get_agent_weapons(i)],
@@ -3845,6 +3960,8 @@ class App:
             s.has_offhand_attack  = sd.get("has_offhand_attack",    False)
             s.can_cast_spell      = sd.get("can_cast_spell",        False)
             s.spellcasting_ability = _ABILITY_TO_INT.get(sd.get("spellcasting_ability", "cha"), 5)
+            s.isConcentrating = sd.get("isConcentrating", False)
+            s.concentratingOn = sd.get("concentratingOn", None)
             self.bm.set_agent_stats(i, s)
 
         # Restore weapons — convert saved dicts → rpg.Weapon, push into C++.
@@ -3959,6 +4076,16 @@ class App:
         lbl = self.font_sm.render(pt.name, True, (255, 255, 255))
         self.screen.blit(lbl, (screen_x + 3, screen_y + 3))
 
+        # Concentration indicator (circle around agent if concentrating)
+        if getattr(pt, 'isConcentrating', False):
+            center_x = int(screen_x + size_px / 2)
+            center_y = int(screen_y + size_px / 2)
+            radius = int(size_px / 2 + 6)
+            pygame.draw.circle(self.screen, (255, 200, 100), (center_x, center_y), radius, 2)
+            spell_name = getattr(pt, 'concentratingOn', 'Spell')
+            spell_lbl = self.font_sm.render(spell_name, True, (255, 200, 100))
+            self.screen.blit(spell_lbl, (screen_x + size_px + 5, screen_y))
+
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
         # Get map dimensions if not provided
@@ -4059,6 +4186,71 @@ class App:
                     txt = self.font_sm.render(str(effect.turns_remaining), True, (255, 255, 255))
                     self.screen.blit(txt, (sx + 2, sy + 2))
 
+    def _draw_concentration_terrain(self, cpx: int):
+        """Draw concentration-based terrain with hatching patterns."""
+        hatch_patterns = ['//', '\\\\', '||', '--', '++', 'xx', 'oo', 'OO', '..', '**']
+        for i, region in enumerate(self._terrain_regions):
+            if not region.get("source", {}).get("requires_concentration"):
+                continue
+            x = region.get("x", 0)
+            y = region.get("y", 0)
+            w = region.get("width", 0)
+            h = region.get("height", 0)
+            hatch = region.get("hatch_pattern") or hatch_patterns[i % len(hatch_patterns)]
+            multiplier = region.get("multiplier", 0.5)
+            duration = region.get("source", {}).get("duration_remaining", 0)
+            # Color based on multiplier
+            if multiplier < 0.1:
+                color = (200, 60, 60, 80)  # Red for impassable
+            elif multiplier < 0.3:
+                color = (200, 100, 50, 80)  # Orange for very difficult
+            else:
+                color = (80, 200, 80, 80)  # Green for difficult terrain
+            # Draw filled rect
+            fill_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            fill_surf.fill(color)
+            self.screen.blit(fill_surf, (int(x + self.map_rect.x), int(y + self.map_rect.y)))
+            # Draw hatching pattern
+            self._draw_hatching(hatch, x, y, w, h, color)
+            # Draw border
+            border_rect = pygame.Rect(int(x + self.map_rect.x), int(y + self.map_rect.y), int(w), int(h))
+            border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
+            pygame.draw.rect(self.screen, border_color, border_rect, 2)
+            # Draw duration label
+            spell = region.get("source", {}).get("spell", "Effect")
+            duration_txt = self.font_sm.render(f"{spell}({duration})", True, (255, 255, 255))
+            self.screen.blit(duration_txt, (int(x + self.map_rect.x + 3), int(y + self.map_rect.y + 3)))
+
+    def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
+        """Draw a hatching pattern on the screen."""
+        screen_x = int(x + self.map_rect.x)
+        screen_y = int(y + self.map_rect.y)
+        screen_w = int(w)
+        screen_h = int(h)
+        hatch_color = tuple(min(c + 100, 255) for c in color[:3]) + (120,)
+        if pattern == '//':
+            for i in range(0, screen_w + screen_h, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i - screen_h, screen_y + screen_h), 1)
+        elif pattern == '\\\\':
+            for i in range(-screen_h, screen_w, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i + screen_h, screen_y + screen_h), 1)
+        elif pattern == '||':
+            for i in range(0, screen_w, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i, screen_y + screen_h), 1)
+        elif pattern == '--':
+            for i in range(0, screen_h, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x, screen_y + i), (screen_x + screen_w, screen_y + i), 1)
+        elif pattern == '++':
+            for i in range(0, screen_w, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i, screen_y + screen_h), 1)
+            for i in range(0, screen_h, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x, screen_y + i), (screen_x + screen_w, screen_y + i), 1)
+        elif pattern == 'xx':
+            for i in range(0, screen_w + screen_h, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i - screen_h, screen_y + screen_h), 1)
+            for i in range(-screen_h, screen_w, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i + screen_h, screen_y + screen_h), 1)
+
     def _draw_agents(self):
         bm    = self.bm
         s     = self.map_scale
@@ -4078,6 +4270,9 @@ class App:
 
         # ── Temporary terrain effects overlays (beneath all agents) ────────
         self._draw_temp_terrain_overlays(cpx)
+
+        # ── Concentration-based terrain overlays (beneath all agents) ──────
+        self._draw_concentration_terrain(cpx)
 
         # ── Draw all settled agents ───────────────────────────────────────
         for i, pt in enumerate(agents):
@@ -4354,7 +4549,20 @@ class App:
         self.btn_cbt_end_combat.rect.y = y
         self.btn_cbt_end_combat.rect.w = W
         self.btn_cbt_end_combat.draw(self.screen)
-        y += B + section_gap
+        y += B + gap
+
+        # Drop Concentration button (if current agent is concentrating)
+        cur_idx = self._current_agent_idx()
+        if 0 <= cur_idx < len(self.bm.placed_agents):
+            cur_stats = self.bm.get_agent_stats(cur_idx)
+            if getattr(cur_stats, 'isConcentrating', False):
+                self.btn_cbt_drop_concentration.rect.x = lx
+                self.btn_cbt_drop_concentration.rect.y = y
+                self.btn_cbt_drop_concentration.rect.w = W
+                self.btn_cbt_drop_concentration.draw(self.screen)
+                y += B + section_gap
+        else:
+            y += section_gap
 
         # ── Combat log ─────────────────────────────────────────────────────
         txt("Combat Log:", lx, y, COL_LABEL)
@@ -4862,6 +5070,8 @@ class App:
                     self._advance_turn()
                 if self.btn_cbt_end_combat.clicked(event):
                     self._end_combat()
+                if self.btn_cbt_drop_concentration.clicked(event):
+                    self._drop_concentration()
 
         return True
 
