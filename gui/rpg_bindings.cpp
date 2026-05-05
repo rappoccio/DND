@@ -24,6 +24,7 @@
 
 #include "battle_map.hpp"
 #include "combat.hpp"
+#include "map_configs.hpp"
 
 namespace py = pybind11;
 using namespace rpg;
@@ -124,6 +125,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
             [](const PlacedAgent& p) -> std::vector<Weapon> { return p.weapons; })
         .def_property_readonly("spells",
             [](const PlacedAgent& p) -> std::vector<Spell> { return p.spells; })
+        .def_property_readonly("stats",
+            [](PlacedAgent& p) -> Agent::Stats& { return p.stats; },
+            py::return_value_policy::reference_internal)
         .def("__repr__", [](const PlacedAgent& p){
             return "<PlacedAgent '" + std::string(p.agent->name())
                  + "' size=" + std::to_string(p.agent->getSize())
@@ -133,6 +137,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
     // ── Stats (nested inside Agent) ──────────────────────────────────────────
     py::class_<Agent::Stats>(m, "Stats")
         .def(py::init<>())
+        .def_static("from_json_string", &Agent::Stats::fromJsonString,
+                    py::arg("json_str"),
+                    "Create Stats from a JSON string (e.g., from DND2024_MonsterStats.json).")
         // Ability scores
         .def_readwrite("str",        &Agent::Stats::str)
         .def_readwrite("dex",        &Agent::Stats::dex)
@@ -191,6 +198,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("hidden",        &Agent::Conditions::hidden)
         .def_readwrite("invisible",     &Agent::Conditions::invisible)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
+        .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
+        .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -274,6 +283,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("SaveCha", Spell::SaveCha)
         .export_values();
 
+    // ── MagicDamageRoll ───────────────────────────────────────────────────────
+    py::class_<MagicDamageRoll>(m, "MagicDamageRoll")
+        .def(py::init<>())
+        .def_readwrite("type", &MagicDamageRoll::type)
+        .def_readwrite("num_dice", &MagicDamageRoll::num_dice)
+        .def_readwrite("die_size", &MagicDamageRoll::die_size);
+
+    // ── PhysicalDamageRoll ────────────────────────────────────────────────────
+    py::class_<PhysicalDamageRoll>(m, "PhysicalDamageRoll")
+        .def(py::init<>())
+        .def_readwrite("type", &PhysicalDamageRoll::type)
+        .def_readwrite("num_dice", &PhysicalDamageRoll::num_dice)
+        .def_readwrite("die_size", &PhysicalDamageRoll::die_size);
+
     // ── Spell ─────────────────────────────────────────────────────────────────
     py::class_<Spell>(m, "Spell")
         .def(py::init<>())
@@ -287,17 +310,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("width",                &Spell::width)
         .def_readwrite("length",               &Spell::length)
         .def_readwrite("duration",             &Spell::duration)
-        .def_readwrite("magic_damage_types",   &Spell::magicDamageTypes)
-        .def_readwrite("physical_damage_types",&Spell::physicalDamageTypes)
-        .def_readwrite("num_dice",             &Spell::num_dice)
-        .def_readwrite("die_size",             &Spell::die_size)
+        .def_readwrite("magic_damage_rolls",   &Spell::magic_damage_rolls)
+        .def_readwrite("physical_damage_rolls",&Spell::physical_damage_rolls)
         .def_readwrite("terrain_difficulty",   &Spell::terrain_difficulty,
              "Terrain difficulty applied by this spell (Normal = no terrain effect).\n"
              "The duration is the same as spell.duration (in rounds).")
+        .def_readwrite("requires_concentration", &Spell::requires_concentration,
+             "If true, caster must maintain concentration; breaks on damage (CON save).")
         .def("__repr__", [](const Spell& s){
-            return "<Spell '" + s.name + "' "
-                 + std::to_string(s.num_dice) + "d"
-                 + std::to_string(s.die_size) + ">"; });
+            return "<Spell '" + s.name + "'>"; });
 
     // ── SpellAction ───────────────────────────────────────────────────────────
     py::class_<SpellAction>(m, "SpellAction")
@@ -330,6 +351,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("hp_before",     &SpellTargetResult::hp_before)
         .def_readonly("hp_after",      &SpellTargetResult::hp_after)
         .def_readonly("target_down",   &SpellTargetResult::target_down)
+        .def_readonly("save_d20",      &SpellTargetResult::save_d20)
+        .def_readonly("save_dc",       &SpellTargetResult::save_dc)
         .def("__repr__", [](const SpellTargetResult& r){
             return "<SpellTargetResult tgt=" + std::to_string(r.target_idx)
                  + (r.hit ? " HIT" : " MISS")
@@ -339,11 +362,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
     // ── SpellResult ───────────────────────────────────────────────────────────
     py::class_<SpellResult>(m, "SpellResult")
         .def(py::init<>())
-        .def_readonly("valid",          &SpellResult::valid)
-        .def_readonly("spell_idx",      &SpellResult::spell_idx)
-        .def_readonly("spell_name",     &SpellResult::spell_name)
-        .def_readonly("attack_type",    &SpellResult::attack_type)
-        .def_readonly("target_results", &SpellResult::target_results)
+        .def_readonly("valid",                      &SpellResult::valid)
+        .def_readonly("spell_idx",                  &SpellResult::spell_idx)
+        .def_readonly("spell_name",                 &SpellResult::spell_name)
+        .def_readonly("attack_type",                &SpellResult::attack_type)
+        .def_readonly("target_results",             &SpellResult::target_results)
+        .def_readonly("concentration_replaced",     &SpellResult::concentration_replaced)
+        .def_readonly("prev_concentration_spell",   &SpellResult::prev_concentration_spell)
         .def("__repr__", [](const SpellResult& r){
             if (!r.valid) return std::string("<SpellResult invalid>");
             return "<SpellResult '" + r.spell_name + "' "
@@ -361,6 +386,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + "' caster=" + std::to_string(e.caster_idx)
                  + " tgt=" + std::to_string(e.target_idx)
                  + " turns=" + std::to_string(e.turns_remaining) + ">"; });
+
+    // ── ConcentrationSaveResult ───────────────────────────────────────────────
+    py::class_<ConcentrationSaveResult>(m, "ConcentrationSaveResult")
+        .def(py::init<>())
+        .def_readonly("checked",            &ConcentrationSaveResult::checked)
+        .def_readonly("save_d20",           &ConcentrationSaveResult::save_d20)
+        .def_readonly("save_dc",            &ConcentrationSaveResult::save_dc)
+        .def_readonly("con_mod",            &ConcentrationSaveResult::con_mod)
+        .def_readonly("passed",             &ConcentrationSaveResult::passed)
+        .def_readonly("concentration_lost", &ConcentrationSaveResult::concentration_lost)
+        .def_readonly("spell_name",         &ConcentrationSaveResult::spell_name);
 
     // ── AttackResult ─────────────────────────────────────────────────────────
     py::class_<AttackResult>(m, "AttackResult")
@@ -564,6 +600,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::getFlyRemaining,
              py::arg("agent_idx"),
              "Remaining fly movement in feet for agent_idx this turn.")
+        .def("get_swim_remaining",
+             &CombatEngine::getSwimRemaining,
+             py::arg("agent_idx"),
+             "Remaining swim movement in feet for agent_idx this turn.")
+        .def("get_burrow_remaining",
+             &CombatEngine::getBurrowRemaining,
+             py::arg("agent_idx"),
+             "Remaining burrow movement in feet for agent_idx this turn.")
         .def("spend_walk",
              &CombatEngine::spendWalk,
              py::arg("agent_idx"), py::arg("feet"),
@@ -572,6 +616,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::spendFly,
              py::arg("agent_idx"), py::arg("feet"),
              "Deduct feet from fly budget (clamped to 0). Returns amount spent.")
+        .def("spend_swim",
+             &CombatEngine::spendSwim,
+             py::arg("agent_idx"), py::arg("feet"),
+             "Deduct feet from swim budget (clamped to 0). Returns amount spent.")
+        .def("spend_burrow",
+             &CombatEngine::spendBurrow,
+             py::arg("agent_idx"), py::arg("feet"),
+             "Deduct feet from burrow budget (clamped to 0). Returns amount spent.")
         .def("clear_movement",
              &CombatEngine::clearMovement,
              "Clear all movement budgets (call at end of combat).")
@@ -604,6 +656,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("clear_effects",
              &CombatEngine::clearEffects,
              "Remove all persistent spell effects.")
+        .def("concentration_save",
+             &CombatEngine::concentrationSave,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("damage_taken"),
+             "Check if concentrating agent must save (on damage).\n"
+             "Rolls CON save (DC = max(10, damage/2)).\n"
+             "Clears concentration on failed save.\n"
+             "Returns ConcentrationSaveResult with details.")
 
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"));
@@ -635,6 +694,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("wall_min_px",          &BattleMap::DetectionParams::wallMinPx)
         .def_readwrite("flood_fill",           &BattleMap::DetectionParams::floodFill)
         .def_readwrite("flood_seed",           &BattleMap::DetectionParams::floodSeed);
+
+    // ── TerrainType enum ────────────────────────────────────────────────────
+    py::enum_<TerrainType>(m, "TerrainType")
+        .value("Standard", TerrainType::Standard)
+        .value("Water",    TerrainType::Water)
+        .value("Wall",     TerrainType::Wall)
+        .value("Chasm",    TerrainType::Chasm)
+        .export_values();
 
     // ── TerrainDifficulty enum ──────────────────────────────────────────────
     py::enum_<TerrainDifficulty>(m, "TerrainDifficulty")
@@ -678,7 +745,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             return cellSetToVec(bm.disallowedCells());
         })
         .def("is_blocked", &BattleMap::isBlocked,
-             py::arg("origin"), py::arg("agent_size"))
+             py::arg("origin"), py::arg("agent_size"), py::arg("movement_type") = MovementType::Walk)
 
         // Agent management
         .def("add_agent_config",   &BattleMap::addAgentConfig,   py::arg("config"))
@@ -735,6 +802,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("idx"), py::arg("spell_idx"),
              "Remove spell at spell_idx from placed agent[idx]'s list.")
 
+        // Condition accessors
+        .def("get_agent_conditions", &BattleMap::getAgentConditions,
+             py::arg("idx"),
+             "Return a copy of the Conditions for placed agent[idx].")
+        .def("set_agent_conditions", &BattleMap::setAgentConditions,
+             py::arg("idx"), py::arg("conditions"),
+             "Replace the Conditions for placed agent[idx].")
+
         // Line-of-sight
         .def("has_line_of_sight",
              &BattleMap::hasLineOfSight,
@@ -774,7 +849,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
         // Terrain multipliers (for difficult terrain, spells, etc.)
         .def("get_terrain_multiplier", &BattleMap::getTerrainMultiplier,
-             py::arg("cell"),
+             py::arg("cell"), py::arg("movement_type") = MovementType::Walk,
              "Get the movement cost multiplier for a cell (default 1.0).")
         .def("set_terrain_multiplier", &BattleMap::setTerrainMultiplier,
              py::arg("cell"), py::arg("multiplier"),
@@ -784,6 +859,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Set the movement cost multiplier for a rectangular region.")
         .def("reset_terrain_multipliers", &BattleMap::resetTerrainMultipliers,
              "Reset all terrain multipliers to 1.0 (default).")
+
+        // Terrain types (Standard, Water, Wall, Chasm)
+        .def("get_terrain_type", &BattleMap::getTerrainType,
+             py::arg("cell"),
+             "Get the terrain type for a cell (Standard, Water, Wall, or Chasm).")
+        .def("set_terrain_type", &BattleMap::setTerrainType,
+             py::arg("cell"), py::arg("terrain_type"),
+             "Set the terrain type for a cell.")
 
         // Temporary terrain effects (spells, items, etc. with duration)
         .def("place_terrain_effect", &BattleMap::placeTerrainEffect,
@@ -815,4 +898,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
         // Expose params so Python can tune detection
         .def_readwrite("params", &BattleMap::params);
+
+    // ── Map Configuration Functions ───────────────────────────────────────
+    m.def("apply_terrain_configuration", &applyTerrainConfiguration,
+         py::arg("bm"), py::arg("json_path"),
+         "Load and apply terrain configuration from a JSON file to the BattleMap.\n"
+         "JSON format: {\"terrain_features\": [{\"type\": \"rect|column|row|cell\", ...}]}");
 }

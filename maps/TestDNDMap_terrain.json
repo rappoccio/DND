@@ -2,99 +2,91 @@
   "regions": [
     {
       "type": "Wall",
-      "x": 208,
-      "y": 189,
+      "x": 858,
+      "y": 138,
+      "width": 52,
+      "height": 699,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 159,
+      "y": 438,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 209,
+      "y": 487,
+      "width": 50,
+      "height": 101,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 259,
+      "y": 537,
+      "width": 49,
+      "height": 51,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 209,
+      "y": 588,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Chasm",
+      "x": 259,
+      "y": 637,
+      "width": 149,
+      "height": 51,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Chasm",
+      "x": 358,
+      "y": 688,
       "width": 100,
       "height": 100,
       "multiplier": 0.0
     },
     {
       "type": "Chasm",
-      "x": 359,
-      "y": 339,
+      "x": 209,
+      "y": 188,
+      "width": 99,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Chasm",
+      "x": 358,
+      "y": 338,
       "width": 100,
-      "height": 103,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Chasm",
+      "x": 658,
+      "y": 438,
+      "width": 100,
+      "height": 99,
       "multiplier": 0.0
     },
     {
       "type": "Difficult Terrain",
-      "x": 511,
-      "y": 191,
-      "width": 197,
-      "height": 147,
+      "x": 508,
+      "y": 138,
+      "width": 250,
+      "height": 250,
       "multiplier": 0.5
-    },
-    {
-      "type": "Wall",
-      "x": 159,
-      "y": 438,
-      "width": 51,
-      "height": 51,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 215,
-      "y": 496,
-      "width": 44,
-      "height": 44,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 266,
-      "y": 545,
-      "width": 44,
-      "height": 45,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 214,
-      "y": 595,
-      "width": 44,
-      "height": 44,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 264,
-      "y": 646,
-      "width": 141,
-      "height": 41,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 367,
-      "y": 697,
-      "width": 90,
-      "height": 90,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Chasm",
-      "x": 665,
-      "y": 445,
-      "width": 94,
-      "height": 95,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 865,
-      "y": 146,
-      "width": 41,
-      "height": 692,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Chasm",
-      "x": 264,
-      "y": 639,
-      "width": 145,
-      "height": 48,
-      "multiplier": 0.0
     }
   ]
 }

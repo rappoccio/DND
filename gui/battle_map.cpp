@@ -101,6 +101,9 @@ void BattleMap::analyzeGrid()
     // Initialize terrain multipliers (default 1.0)
     terrainMult_.assign(static_cast<std::size_t>(rows_ * cols_), 1.0);
 
+    // Initialize terrain types (default Standard)
+    terrainType_.assign(static_cast<std::size_t>(rows_ * cols_), TerrainType::Standard);
+
     // Initialize temporary terrain difficulty overlay (default Normal)
     tempTerrainDiff_.assign(static_cast<std::size_t>(rows_ * cols_), TerrainDifficulty::Normal);
 
@@ -248,12 +251,37 @@ void BattleMap::detectWalls()
 // ─────────────────────────────────────────────────────────────────────────────
 //  Passability
 // ─────────────────────────────────────────────────────────────────────────────
-bool BattleMap::isBlocked(Cell origin, int size) const noexcept
+bool BattleMap::isBlocked(Cell origin, int size, MovementType mt) const noexcept
 {
-    for (int dc=0;dc<size;++dc)
-        for (int dr=0;dr<size;++dr)
-            if (disallowed_.contains({origin.col+dc, origin.row+dr}))
+    for (int dc=0;dc<size;++dc) {
+        for (int dr=0;dr<size;++dr) {
+            Cell c{origin.col+dc, origin.row+dr};
+
+            // Check if cell is in disallowed_ (auto-detected walls)
+            if (disallowed_.contains(c)) {
+                // Walls are passable only to burrowers
+                if (mt != MovementType::Burrow) return true;
+                continue;
+            }
+
+            // Check terrain type against passability table
+            auto isPassable = [&]() -> bool {
+                switch (terrainType_[c.row * cols_ + c.col]) {
+                    case TerrainType::Standard:
+                        return mt != MovementType::Swim;
+                    case TerrainType::Water:
+                        return mt == MovementType::Fly || mt == MovementType::Swim || mt == MovementType::Jump;
+                    case TerrainType::Wall:
+                        return mt == MovementType::Burrow;
+                    case TerrainType::Chasm:
+                        return mt == MovementType::Fly || mt == MovementType::Jump;
+                }
                 return true;
+            }();
+
+            if (!isPassable) return true;
+        }
+    }
     return false;
 }
 
@@ -329,10 +357,10 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
                 Cell next{cell.col + dc, cell.row + dr};
 
                 if (!inBounds(next, pa.agent->getSize())) continue;
-                if (isBlocked(next, pa.agent->getSize())) continue;
+                if (isBlocked(next, pa.agent->getSize(), type)) continue;
 
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
-                double terrain_mult = getTerrainMultiplier(next);
+                double terrain_mult = getTerrainMultiplier(next, type);
                 int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
 
                 if (!dist.count(next) || dist[next] > new_cost) {
@@ -425,6 +453,18 @@ void BattleMap::setAgentStats(int idx, Agent::Stats s) noexcept
     placedAgents_[idx].stats = s;
 }
 
+Agent::Conditions BattleMap::getAgentConditions(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
+    return placedAgents_[idx].agent->getConditions();
+}
+
+void BattleMap::setAgentConditions(int idx, const Agent::Conditions& c) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[idx].agent->setConditions(c);
+}
+
 void BattleMap::applyDash(int idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
@@ -446,39 +486,20 @@ bool BattleMap::inBounds(Cell origin, int size) const noexcept
         && origin.row + size <= rows_;
 }
 
-CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
-                                   int speedFt, MovementType type) const
+// Helper: Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump)
+CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
+                                     int speedFt, MovementType type) const
 {
     CellSet result;
-    if (speedFt <= 0 || !inBounds(origin, tokenSize)) return result;
+    using PQItem = std::pair<int, Cell>;
+    auto cmp = [](const PQItem& a, const PQItem& b) { return a.first > b.first; };
+    std::priority_queue<PQItem, std::vector<PQItem>, decltype(cmp)> pq(cmp);
+    std::unordered_map<Cell, int, CellHash> dist;
 
-    if (type == MovementType::Fly) {
-        // Aerial: Manhattan distance (sum of steps), map bounds only — walls are irrelevant.
-        // Each grid square = 5 ft, so range in cells = speedFt / 5.
-        const int range = speedFt / 5;
-        for (int dr = -range; dr <= range; ++dr) {
-            for (int dc = -range; dc <= range; ++dc) {
-                // Manhattan distance: |dc| + |dr| <= range
-                if (std::abs(dc) + std::abs(dr) > range) continue;
-                Cell c{origin.col + dc, origin.row + dr};
-                if (inBounds(c, tokenSize))
-                    result.insert(c);
-            }
-        }
-        return result;
-    } else if ( type == MovementType::Walk ) {
+    dist[origin] = 0;
+    pq.push({0, origin});
 
-      // Ground: Dijkstra with Manhattan distance, respecting walls.
-      // Orthogonal: 5 ft; Diagonal: 10 ft (2 Manhattan units × 5 ft).
-      using PQItem = std::pair<int, Cell>;
-      auto cmp = [](const PQItem& a, const PQItem& b) { return a.first > b.first; };
-      std::priority_queue<PQItem, std::vector<PQItem>, decltype(cmp)> pq(cmp);
-      std::unordered_map<Cell, int, CellHash> dist;
-
-      dist[origin] = 0;
-      pq.push({0, origin});
-
-      while (!pq.empty()) {
+    while (!pq.empty()) {
         auto [cost, cell] = pq.top();
         pq.pop();
 
@@ -487,30 +508,50 @@ CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
         result.insert(cell);
 
         for (int dr = -1; dr <= 1; ++dr) {
-	  for (int dc = -1; dc <= 1; ++dc) {
-	    if (dr == 0 && dc == 0) continue;
-	    Cell next{cell.col + dc, cell.row + dr};
+            for (int dc = -1; dc <= 1; ++dc) {
+                if (dr == 0 && dc == 0) continue;
+                Cell next{cell.col + dc, cell.row + dr};
 
-	    if (!inBounds(next, tokenSize))  continue;
-	    if (isBlocked(next, tokenSize))  continue;
+                if (!inBounds(next, tokenSize))  continue;
+                if (isBlocked(next, tokenSize, type))  continue;
 
-	    // Orthogonal: 5 ft; Diagonal: 10 ft (consistent with Manhattan distance)
-	    int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
-	    double terrain_mult = getTerrainMultiplier(next);
-	    int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
-	    if (new_cost > speedFt) continue;
+                // Orthogonal: 5 ft; Diagonal: 10 ft
+                int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
+                double terrain_mult = getTerrainMultiplier(next, type);
+                int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
+                if (new_cost > speedFt) continue;
 
-	    if (!dist.count(next) || dist[next] > new_cost) {
-	      dist[next] = new_cost;
-	      pq.push({new_cost, next});
-	    }
-	  }
+                if (!dist.count(next) || dist[next] > new_cost) {
+                    dist[next] = new_cost;
+                    pq.push({new_cost, next});
+                }
+            }
         }
-      }
-      return result;
+    }
+    return result;
+}
+
+CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
+                                   int speedFt, MovementType type) const
+{
+    CellSet result;
+    if (speedFt <= 0 || !inBounds(origin, tokenSize)) return result;
+
+    if (type == MovementType::Fly) {
+        // Aerial: Manhattan distance, map bounds only, walls irrelevant
+        const int range = speedFt / 5;
+        for (int dr = -range; dr <= range; ++dr) {
+            for (int dc = -range; dc <= range; ++dc) {
+                if (std::abs(dc) + std::abs(dr) > range) continue;
+                Cell c{origin.col + dc, origin.row + dr};
+                if (inBounds(c, tokenSize))
+                    result.insert(c);
+            }
+        }
+        return result;
     } else {
-      // Empty 
-      return result; 
+        // Walk, Swim, Burrow, Jump all use Dijkstra pathfinding
+        return pathfindMovement(origin, tokenSize, speedFt, type);
     }
 }
 
@@ -708,7 +749,8 @@ std::vector<Cell> BattleMap::attackTargetCells(Cell origin, int tokenSize,
 }
 
 // ── Terrain multipliers ────────────────────────────────────────────────────
-double BattleMap::getTerrainMultiplier(Cell c) const noexcept {
+double BattleMap::getTerrainMultiplier(Cell c, MovementType mt) const noexcept {
+    (void)mt;  // mt parameter included for API consistency; cost multipliers are movement-type-independent
     if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
         return 1.0;
 
@@ -745,6 +787,18 @@ void BattleMap::setTerrainMultiplierRect(Cell topLeft, int width, int height, do
 
 void BattleMap::resetTerrainMultipliers() noexcept {
     std::fill(terrainMult_.begin(), terrainMult_.end(), 1.0);
+}
+
+TerrainType BattleMap::getTerrainType(Cell c) const noexcept {
+    if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
+        return TerrainType::Standard;
+    return terrainType_[c.row * cols_ + c.col];
+}
+
+void BattleMap::setTerrainType(Cell c, TerrainType t) noexcept {
+    if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
+        return;
+    terrainType_[c.row * cols_ + c.col] = t;
 }
 
 // ── Temporary terrain effects ──────────────────────────────────────────────────

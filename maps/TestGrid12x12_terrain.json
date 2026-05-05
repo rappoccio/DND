@@ -1,0 +1,37 @@
+{
+  "terrain_features": [
+    {
+      "type": "column",
+      "col": 1,
+      "row_start": 1,
+      "row_end": 10,
+      "multiplier": 0.0,
+      "name": "Wall at column 1"
+    },
+    {
+      "type": "column",
+      "col": 3,
+      "row_start": 1,
+      "row_end": 10,
+      "multiplier": 0.0,
+      "name": "Chasm at column 3"
+    },
+    {
+      "type": "rect",
+      "col": 5,
+      "row": 1,
+      "width": 3,
+      "height": 10,
+      "multiplier": 0.5,
+      "name": "Difficult terrain at columns 5-7"
+    },
+    {
+      "type": "column",
+      "col": 9,
+      "row_start": 1,
+      "row_end": 10,
+      "multiplier": 0.0,
+      "name": "Chasm at column 9"
+    }
+  ]
+}

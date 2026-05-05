@@ -8,6 +8,7 @@
 #include <string_view>
 #include <map>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 namespace rpg {
 
@@ -129,16 +130,65 @@ namespace rpg {
       [[nodiscard]] int spellSaveDcWis()   const noexcept { return _dc(wis,   save_prof_wis);   }
       [[nodiscard]] int spellSaveDcCha()   const noexcept { return _dc(cha,   save_prof_cha);   }
 
+      // Default constructor (uses struct field defaults defined above)
+      Stats() = default;
+
+      // Factory: create Stats from a JSON string
+      [[nodiscard]] static Agent::Stats fromJsonString(const std::string& json_str) {
+        return Agent::Stats(nlohmann::json::parse(json_str));
+      }
+
+      // Constructor from JSON (e.g., from DND2024_MonsterStats.json)
+      explicit Stats(const nlohmann::json& j) {
+        // Helper: convert modifier to ability score (score = 10 + 2*mod)
+        auto modToScore = [&j](const std::string& key) -> int {
+          std::string s = j.value(key, "0");
+          return s.empty() ? 10 : 10 + 2 * std::stoi(s);
+        };
+
+        // HP
+        hp_max = hp_cur = std::stoi(j["HP"].get<std::string>());
+
+        // AC
+        ac = std::stoi(j["AC"].get<std::string>());
+
+        // Proficiency bonus
+        prof_bonus = std::stoi(j["PB"].get<std::string>());
+
+        // Movement speeds
+        speed_walk = std::stoi(j["Walk"].get<std::string>());
+        {
+          std::string fly = j.value("Fly", "");
+          speed_fly = fly.empty() ? 0 : std::stoi(fly);
+        }
+        {
+          std::string swim = j.value("Swim", "");
+          speed_swim = swim.empty() ? 0 : std::stoi(swim);
+        }
+        {
+          std::string burrow = j.value("Burrow", "");
+          speed_burrow = burrow.empty() ? 0 : std::stoi(burrow);
+        }
+
+        // Ability scores from modifiers
+        str   = modToScore("STR Mod");
+        dex   = modToScore("DEX Mod");
+        con   = modToScore("CON Mod");
+        intel = modToScore("INT Mod");
+        wis   = modToScore("WIS Mod");
+        cha   = modToScore("CHA Mod");
+      }
+
     private:
       // Ability modifier: floor((score - 10) / 2), matching D&D integer rules.
       [[nodiscard]] static int _mod(int score) noexcept {
-	int m = (score - 10) / 2;
-	if (score < 10 && (score - 10) % 2 != 0) --m; // round toward -∞
-	return m;
+        int m = (score - 10) / 2;
+        if (score < 10 && (score - 10) % 2 != 0) --m; // round toward -∞
+        return m;
       }
 
       [[nodiscard]] int _dc(int score, bool proficient) const noexcept {
-	return 8 + (proficient ? prof_bonus : 0) + _mod(score);
+        return 8 + (proficient ? prof_bonus : 0) + _mod(score);
       }
     };
 
@@ -152,6 +202,8 @@ namespace rpg {
       bool hidden{false};        // enemies cannot detect; attacks from hiding have advantage
       bool invisible{false};     // enemies cannot see this agent
       bool incapacitated{false}; // cannot act, movement speed 0
+      bool concentrating{false}; // concentrating on a spell; breaks on damage CON save failure
+      std::string concentrating_on{}; // name of the spell being concentrated on
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -264,6 +316,7 @@ namespace rpg {
     
     // -- Get conditions
     [[nodiscard]] const Conditions& getConditions() const noexcept { return conditions_; }
+    void setConditions(const Conditions& c) noexcept { conditions_ = c; }
 
     // ── Movement ──────────────────────────────────────────────────────────────
     // Seed remaining movement budgets from speed values (call at turn start).

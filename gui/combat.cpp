@@ -190,6 +190,8 @@ void CombatEngine::beginTurn(int agent_idx, const BattleMap& bm) noexcept
     const auto& stats = agents[static_cast<std::size_t>(agent_idx)].stats;
     walkRemaining_[agent_idx] = stats.speed_walk;
     flyRemaining_ [agent_idx] = stats.speed_fly;
+    swimRemaining_[agent_idx] = stats.speed_swim;
+    burrowRemaining_[agent_idx] = stats.speed_burrow;
 }
 
 int CombatEngine::getWalkRemaining(int agent_idx) const noexcept
@@ -202,6 +204,18 @@ int CombatEngine::getFlyRemaining(int agent_idx) const noexcept
 {
     auto it = flyRemaining_.find(agent_idx);
     return (it != flyRemaining_.end()) ? it->second : 0;
+}
+
+int CombatEngine::getSwimRemaining(int agent_idx) const noexcept
+{
+    auto it = swimRemaining_.find(agent_idx);
+    return (it != swimRemaining_.end()) ? it->second : 0;
+}
+
+int CombatEngine::getBurrowRemaining(int agent_idx) const noexcept
+{
+    auto it = burrowRemaining_.find(agent_idx);
+    return (it != burrowRemaining_.end()) ? it->second : 0;
 }
 
 int CombatEngine::spendWalk(int agent_idx, int feet) noexcept
@@ -220,10 +234,28 @@ int CombatEngine::spendFly(int agent_idx, int feet) noexcept
     return spent;
 }
 
+int CombatEngine::spendSwim(int agent_idx, int feet) noexcept
+{
+    auto& rem  = swimRemaining_[agent_idx];
+    int   spent = std::min(feet, rem);
+    rem -= spent;
+    return spent;
+}
+
+int CombatEngine::spendBurrow(int agent_idx, int feet) noexcept
+{
+    auto& rem  = burrowRemaining_[agent_idx];
+    int   spent = std::min(feet, rem);
+    rem -= spent;
+    return spent;
+}
+
 void CombatEngine::clearMovement() noexcept
 {
     walkRemaining_.clear();
     flyRemaining_.clear();
+    swimRemaining_.clear();
+    burrowRemaining_.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -687,6 +719,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     const Agent::Stats& caster_stats = caster_pa.stats;
 
+    // Concentration management: check if casting a concentration spell
+    if (sp.requires_concentration) {
+        Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
+        if (cond.concentrating) {
+            // Drop previous concentration
+            result.concentration_replaced    = true;
+            result.prev_concentration_spell  = cond.concentrating_on;
+            cond.concentrating    = false;
+            cond.concentrating_on = {};
+            bm.setAgentConditions(action.caster_idx, cond);
+        }
+    }
+
     const std::vector<int> targets =
         (sp.geometry == Spell::Single)
         ? action.target_indices
@@ -715,10 +760,26 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
             if (tr.hit) {
                 std::vector<int> dice;
-                int n_dice = tr.critical ? sp.num_dice * 2 : sp.num_dice;
-                dice.reserve(static_cast<std::size_t>(n_dice));
-                for (int i = 0; i < n_dice; ++i) dice.push_back(roll(sp.die_size));
-                int dmg = 0; for (int d : dice) dmg += d;
+                int dmg = 0;
+
+                // Roll per-damage-type damage
+                for (const auto& roll_info : sp.magic_damage_rolls) {
+                    int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
+                    for (int i = 0; i < n_dice; ++i) {
+                        int d = roll(roll_info.die_size);
+                        dice.push_back(d);
+                        dmg += d;
+                    }
+                }
+                for (const auto& roll_info : sp.physical_damage_rolls) {
+                    int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
+                    for (int i = 0; i < n_dice; ++i) {
+                        int d = roll(roll_info.die_size);
+                        dice.push_back(d);
+                        dmg += d;
+                    }
+                }
+
                 tr.dice_results = dice;
                 if (sp.type == Spell::Heal) {
                     tr.total_healing = std::max(0, dmg);
@@ -736,25 +797,42 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             int save_dc  = spellSaveDc(caster_stats);
             int save_d20 = roll(20);
             auto saveMod = [&](Spell::SaveAbility_t ab) -> int {
-                int score = 0;
+                int score = 0; bool prof = false;
                 switch (ab) {
-                    case Spell::SaveStr: score = tgt_stats.str;   break;
-                    case Spell::SaveDex: score = tgt_stats.dex;   break;
-                    case Spell::SaveCon: score = tgt_stats.con;   break;
-                    case Spell::SaveInt: score = tgt_stats.intel; break;
-                    case Spell::SaveWis: score = tgt_stats.wis;   break;
-                    default:             score = tgt_stats.cha;   break;
+                    case Spell::SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+                    case Spell::SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+                    case Spell::SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+                    case Spell::SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+                    case Spell::SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+                    default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
                 }
                 int m = (score - 10) / 2;
                 if (score < 10 && (score - 10) % 2 != 0) --m;
-                return m;
+                return m + (prof ? tgt_stats.prof_bonus : 0);
             };
+            tr.save_d20 = save_d20;
+            tr.save_dc  = save_dc;
             tr.saved = (save_d20 + saveMod(sp.save_ability) >= save_dc);
 
             std::vector<int> dice;
-            dice.reserve(static_cast<std::size_t>(sp.num_dice));
-            for (int i = 0; i < sp.num_dice; ++i) dice.push_back(roll(sp.die_size));
-            int dmg = 0; for (int d : dice) dmg += d;
+            int dmg = 0;
+
+            // Roll per-damage-type damage
+            for (const auto& roll_info : sp.magic_damage_rolls) {
+                for (int i = 0; i < roll_info.num_dice; ++i) {
+                    int d = roll(roll_info.die_size);
+                    dice.push_back(d);
+                    dmg += d;
+                }
+            }
+            for (const auto& roll_info : sp.physical_damage_rolls) {
+                for (int i = 0; i < roll_info.num_dice; ++i) {
+                    int d = roll(roll_info.die_size);
+                    dice.push_back(d);
+                    dmg += d;
+                }
+            }
+
             if (tr.saved) dmg /= 2;
             tr.dice_results = dice;
 
@@ -772,9 +850,24 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         case Spell::Automatic:
         default: {
             std::vector<int> dice;
-            dice.reserve(static_cast<std::size_t>(sp.num_dice));
-            for (int i = 0; i < sp.num_dice; ++i) dice.push_back(roll(sp.die_size));
-            int total = 0; for (int d : dice) total += d;
+            int total = 0;
+
+            // Roll per-damage-type damage
+            for (const auto& roll_info : sp.magic_damage_rolls) {
+                for (int i = 0; i < roll_info.num_dice; ++i) {
+                    int d = roll(roll_info.die_size);
+                    dice.push_back(d);
+                    total += d;
+                }
+            }
+            for (const auto& roll_info : sp.physical_damage_rolls) {
+                for (int i = 0; i < roll_info.num_dice; ++i) {
+                    int d = roll(roll_info.die_size);
+                    dice.push_back(d);
+                    total += d;
+                }
+            }
+
             tr.dice_results = dice;
             tr.hit = true;
 
@@ -811,6 +904,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Set concentration after successful spell cast (if required)
+    if (sp.requires_concentration && result.valid) {
+        Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
+        cond.concentrating    = true;
+        cond.concentrating_on = sp.name;
+        bm.setAgentConditions(action.caster_idx, cond);
+    }
+
     return result;
 }
 
@@ -829,10 +930,23 @@ void CombatEngine::tickEffects(BattleMap& bm)
         Agent::Stats s = bm.getAgentStats(fx.target_idx);
 
         std::vector<int> dice;
-        dice.reserve(static_cast<std::size_t>(fx.spell.num_dice));
-        for (int i = 0; i < fx.spell.num_dice; ++i)
-            dice.push_back(roll(fx.spell.die_size));
-        int total = 0; for (int d : dice) total += d;
+        int total = 0;
+
+        // Roll per-damage-type damage
+        for (const auto& roll_info : fx.spell.magic_damage_rolls) {
+            for (int i = 0; i < roll_info.num_dice; ++i) {
+                int d = roll(roll_info.die_size);
+                dice.push_back(d);
+                total += d;
+            }
+        }
+        for (const auto& roll_info : fx.spell.physical_damage_rolls) {
+            for (int i = 0; i < roll_info.num_dice; ++i) {
+                int d = roll(roll_info.die_size);
+                dice.push_back(d);
+                total += d;
+            }
+        }
 
         if (fx.spell.type == Spell::Heal)
             s.hp_cur = std::min(s.hp_max, s.hp_cur + std::max(0, total));
@@ -856,6 +970,34 @@ const std::vector<ActiveEffect>& CombatEngine::activeEffects() const noexcept
 void CombatEngine::clearEffects() noexcept
 {
     activeEffects_.clear();
+}
+
+ConcentrationSaveResult CombatEngine::concentrationSave(
+        BattleMap& bm, int agent_idx, int damage_taken)
+{
+    ConcentrationSaveResult r;
+    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+    if (!cond.concentrating) return r;
+
+    r.checked    = true;
+    r.spell_name = cond.concentrating_on;
+    r.save_dc    = std::max(10, damage_taken / 2);
+    r.save_d20   = roll(20);
+
+    Agent::Stats s = bm.getAgentStats(agent_idx);
+    int con_mod = (s.con - 10) / 2;
+    if (s.con < 10 && (s.con - 10) % 2 != 0) --con_mod;
+    con_mod += s.save_prof_con ? s.prof_bonus : 0;
+    r.con_mod = con_mod;
+    r.passed  = (r.save_d20 + con_mod >= r.save_dc);
+
+    if (!r.passed) {
+        r.concentration_lost  = true;
+        cond.concentrating    = false;
+        cond.concentrating_on = {};
+        bm.setAgentConditions(agent_idx, cond);
+    }
+    return r;
 }
 
 } // namespace rpg

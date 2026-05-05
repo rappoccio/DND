@@ -1703,6 +1703,7 @@ _DEFAULT_SPELL: dict = {
     "die_size":               6,
     "terrain_effect":        None,   # {type, multiplier, duration} or None
     "hatch_pattern":         None,   # matplotlib hatch pattern: '//', '\\', '||', etc.
+    "terrain_color":         None,   # RGB tuple (R, G, B) for terrain, None = brown default
 }
 
 
@@ -1710,6 +1711,25 @@ def _spell_to_dict(s) -> dict:
     geo = s.geometry.name
     uses_radius = geo in ("Sphere", "Cone")
     uses_line   = geo == "Line"
+
+    # Convert magic_damage_types to new format with per-type dice
+    magic_dmg = []
+    for roll in s.magic_damage_rolls:
+        magic_dmg.append({
+            "type": roll.type.name,
+            "num_dice": roll.num_dice,
+            "die_size": roll.die_size
+        })
+
+    # Convert physical_damage_types to new format with per-type dice
+    phys_dmg = []
+    for roll in s.physical_damage_rolls:
+        phys_dmg.append({
+            "type": roll.type.name,
+            "num_dice": roll.num_dice,
+            "die_size": roll.die_size
+        })
+
     return {
         "name":                  s.name,
         "type":                  s.type.name,
@@ -1721,12 +1741,12 @@ def _spell_to_dict(s) -> dict:
         "width":                 s.width  if uses_line   else None,
         "length":                s.length if uses_line   else None,
         "duration":              s.duration,
-        "magic_damage_types":    [v.name for v in s.magic_damage_types],
-        "physical_damage_types": [v.name for v in s.physical_damage_types],
-        "num_dice":              s.num_dice,
-        "die_size":              s.die_size,
+        "magic_damage_types":    magic_dmg,
+        "physical_damage_types": phys_dmg,
         "terrain_effect":        s.terrain_effect if hasattr(s, 'terrain_effect') else None,
         "hatch_pattern":         s.hatch_pattern if hasattr(s, 'hatch_pattern') else None,
+        "terrain_color":         s.terrain_color if hasattr(s, 'terrain_color') else None,
+        "requires_concentration": s.requires_concentration,
     }
 
 
@@ -1742,12 +1762,54 @@ def _dict_to_spell(d: dict):
     s.width        = int(d.get("width")  or  5)
     s.length       = int(d.get("length") or 30)
     s.duration     = int(d.get("duration",   1))
-    s.magic_damage_types    = [_parse_magic_damage(v)    for v in d.get("magic_damage_types",    [])]
-    s.physical_damage_types = [_parse_physical_damage(v) for v in d.get("physical_damage_types", [])]
-    s.num_dice     = int(d.get("num_dice",   1))
-    s.die_size     = int(d.get("die_size",   6))
-    s.terrain_effect = d.get("terrain_effect")
-    s.hatch_pattern  = d.get("hatch_pattern")
+
+    # Parse magic damage types - handle both new (object) and old (string) formats
+    magic_dmg_raw = d.get("magic_damage_types", [])
+    magic_rolls = []
+    for dmg in magic_dmg_raw:
+        if isinstance(dmg, dict):
+            # New format: {"type": "Fire", "num_dice": 2, "die_size": 6}
+            dmg_type = _parse_magic_damage(dmg.get("type", "Fire"))
+            roll = rpg.MagicDamageRoll()
+            roll.type = dmg_type
+            roll.num_dice = int(dmg.get("num_dice", 1))
+            roll.die_size = int(dmg.get("die_size", 6))
+            magic_rolls.append(roll)
+        else:
+            # Old format: just the string "Fire"
+            # Use spell-level num_dice/die_size
+            dmg_type = _parse_magic_damage(dmg)
+            roll = rpg.MagicDamageRoll()
+            roll.type = dmg_type
+            roll.num_dice = int(d.get("num_dice", 1))
+            roll.die_size = int(d.get("die_size", 6))
+            magic_rolls.append(roll)
+    s.magic_damage_rolls = magic_rolls
+
+    # Parse physical damage types - handle both new (object) and old (string) formats
+    phys_dmg_raw = d.get("physical_damage_types", [])
+    phys_rolls = []
+    for dmg in phys_dmg_raw:
+        if isinstance(dmg, dict):
+            # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8}
+            dmg_type = _parse_physical_damage(dmg.get("type", "Bludgeoning"))
+            roll = rpg.PhysicalDamageRoll()
+            roll.type = dmg_type
+            roll.num_dice = int(dmg.get("num_dice", 1))
+            roll.die_size = int(dmg.get("die_size", 6))
+            phys_rolls.append(roll)
+        else:
+            # Old format: just the string "Slashing"
+            # Use spell-level num_dice/die_size
+            dmg_type = _parse_physical_damage(dmg)
+            roll = rpg.PhysicalDamageRoll()
+            roll.type = dmg_type
+            roll.num_dice = int(d.get("num_dice", 1))
+            roll.die_size = int(d.get("die_size", 6))
+            phys_rolls.append(roll)
+    s.physical_damage_rolls = phys_rolls
+
+    s.requires_concentration = d.get("requires_concentration", False)
     return s
 
 
@@ -1842,8 +1904,7 @@ class SpellDialog:
                 elif event.unicode and event.unicode.isprintable():
                     self._f[af] = self._f.get(af, "") + event.unicode
                 return True
-            if af in ("range", "radius", "width", "length", "duration",
-                      "num_dice", "die_size"):
+            if af in ("range", "radius", "width", "length", "duration"):
                 cur = str(self._f.get(af, ""))
                 if event.key == pygame.K_BACKSPACE:
                     cur = cur[:-1]
@@ -1903,8 +1964,7 @@ class SpellDialog:
                         return True
 
             # Numeric / text fields
-            for field_key in ("name", "range", "radius", "width", "length",
-                              "duration", "num_dice", "die_size"):
+            for field_key in ("name", "range", "radius", "width", "length", "duration"):
                 if field_key in self._rects and self._rects[field_key].collidepoint(mx, my):
                     self._active_field = field_key
                     return True
@@ -2086,13 +2146,6 @@ class SpellDialog:
                 text_field("width",  lx,               cy, RW // 2 - 4)
                 text_field("length", lx + RW // 2 + 4, cy, RW // 2 - 4)
                 cy += FH + PAD
-
-            # Damage dice
-            label("Damage / Heal (NdX)", lx, cy); cy += 14
-            text_field("num_dice", lx,      cy, 40)
-            ds = self._font_md.render("d", True, (170, 150, 210))
-            screen.blit(ds, (lx + 44, cy + (FH - ds.get_height()) // 2))
-            text_field("die_size", lx + 54, cy, 50); cy += FH + 8
 
             # Magic damage types (2 rows of 5)
             label("Magic type", lx, cy); cy += 14
@@ -2408,16 +2461,62 @@ class TerrainEditorDialog:
                     self.terrain_regions.pop()
 
     def _apply_terrain_to_selection(self):
-        """Convert screen rect to grid cells and add terrain region."""
+        """Convert screen rect to grid cells and add terrain region, snapped to grid."""
         if not self.selection_rect or not self.map_surf:
             return
 
+        # Snap to grid if BattleMap is available
+        x = self.selection_rect.x
+        y = self.selection_rect.y
+        w = self.selection_rect.w
+        h = self.selection_rect.h
+
+        if self.bm and self.bm.v_line_positions and self.bm.h_line_positions:
+            # Snap to actual grid lines from BattleMap
+            v_lines = self.bm.v_line_positions
+            h_lines = self.bm.h_line_positions
+
+            # Find snapped X: grid line at or before x, and after x+w
+            snapped_x = 0
+            for vline in v_lines:
+                if vline <= x:
+                    snapped_x = vline
+                else:
+                    break
+
+            snapped_end_x = snapped_x
+            for vline in v_lines:
+                if vline >= x + w:
+                    snapped_end_x = vline
+                    break
+                snapped_end_x = vline
+
+            # Find snapped Y: grid line at or before y, and after y+h
+            snapped_y = 0
+            for hline in h_lines:
+                if hline <= y:
+                    snapped_y = hline
+                else:
+                    break
+
+            snapped_end_y = snapped_y
+            for hline in h_lines:
+                if hline >= y + h:
+                    snapped_end_y = hline
+                    break
+                snapped_end_y = hline
+
+            x = snapped_x
+            y = snapped_y
+            w = snapped_end_x - snapped_x
+            h = snapped_end_y - snapped_y
+
         region = {
             "type": self.selected_type,
-            "x": self.selection_rect.x,
-            "y": self.selection_rect.y,
-            "width": self.selection_rect.w,
-            "height": self.selection_rect.h,
+            "x": x,
+            "y": y,
+            "width": w,
+            "height": h,
             "multiplier": self.terrain_mult if self.selected_type == "Difficult Terrain" else 0.0
         }
         self.terrain_regions.append(region)
@@ -2432,6 +2531,14 @@ class TerrainEditorDialog:
 
         # Draw terrain overlays
         for region in self.terrain_regions:
+            # Handle both old structure (x,y,width,height) and new structure (cells)
+            if "cells" in region:
+                # Concentration terrain - skip in editor (only show permanent terrain)
+                continue
+
+            # Old structure for permanent terrain
+            if "x" not in region or "y" not in region:
+                continue
             rect = pygame.Rect(region["x"], region["y"], region["width"], region["height"])
             if region["type"] == "Wall":
                 color = (50, 50, 50, 200)
@@ -2627,6 +2734,8 @@ class App:
         # ── Temporary terrain effects (spells, items, etc. with duration) ───
         self.round_num              = 0     # current round number (incremented when turn_idx wraps)
         self._effect_meta: dict     = {}    # {effect_id: {"name": str, "color": tuple, "cells": [(col,row)]}}
+        self.show_terrain            = False # toggle for showing all terrain regions
+        self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str}}
 
         # ── Agent config GUI state ────────────────────────────────────────
         self._init_config_panel()
@@ -2865,6 +2974,9 @@ class App:
         self.btn_cbt_drop_concentration = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Drop Concentration",
                                           (150, 100, 100), (200, 130, 130), self.font_md)
+        self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "Show Terrain",
+                                          (100, 150, 150), (130, 180, 200), self.font_md)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Sprite loading (cached)
@@ -2902,8 +3014,6 @@ class App:
 
     def _mob_stats_to_d_d_stats(self, mob_data: dict):
         """Convert CSV mob stats to D&D 5e agent stats."""
-        stats = rpg.Stats()
-
         # Convert ability modifiers to ability scores: score = (mod * 2) + 10
         def mod_to_score(mod_str):
             try:
@@ -2912,46 +3022,29 @@ class App:
             except (ValueError, TypeError):
                 return 10
 
-        stats.str  = mod_to_score(mob_data.get('STR Mod'))
-        stats.dex  = mod_to_score(mob_data.get('DEX Mod'))
-        stats.con  = mod_to_score(mob_data.get('CON Mod'))
-        stats.intel = mod_to_score(mob_data.get('INT Mod'))
-        stats.wis  = mod_to_score(mob_data.get('WIS Mod'))
-        stats.cha  = mod_to_score(mob_data.get('CHA Mod'))
+        def safe_int(val, default=10):
+            try:
+                return int(val) if val else default
+            except (ValueError, TypeError):
+                return default
 
-        # HP, AC, and speeds
-        try:
-            stats.hp_max = int(mob_data.get('HP', '10'))
-            stats.hp_cur = stats.hp_max
-        except (ValueError, TypeError):
-            stats.hp_max = stats.hp_cur = 10
-
-        try:
-            stats.ac = int(mob_data.get('AC', '10'))
-        except (ValueError, TypeError):
-            stats.ac = 10
-
-        try:
-            stats.speed_walk = int(mob_data.get('Walk', '30'))
-        except (ValueError, TypeError):
-            stats.speed_walk = 30
-
-        try:
-            stats.speed_fly = int(mob_data.get('Fly', '0'))
-        except (ValueError, TypeError):
-            stats.speed_fly = 0
-
-        try:
-            stats.speed_swim = int(mob_data.get('Swim', '0'))
-        except (ValueError, TypeError):
-            stats.speed_swim = 0
-
-        try:
-            stats.speed_burrow = int(mob_data.get('Burrow', '0'))
-        except (ValueError, TypeError):
-            stats.speed_burrow = 0
-
-        return stats
+        # Build JSON object for the Stats constructor
+        stats_json = {
+            "str": mod_to_score(mob_data.get('STR Mod')),
+            "dex": mod_to_score(mob_data.get('DEX Mod')),
+            "con": mod_to_score(mob_data.get('CON Mod')),
+            "intel": mod_to_score(mob_data.get('INT Mod')),
+            "wis": mod_to_score(mob_data.get('WIS Mod')),
+            "cha": mod_to_score(mob_data.get('CHA Mod')),
+            "hp_max": safe_int(mob_data.get('HP', '10'), 10),
+            "hp_cur": safe_int(mob_data.get('HP', '10'), 10),
+            "ac": safe_int(mob_data.get('AC', '10'), 10),
+            "speed_walk": safe_int(mob_data.get('Walk', '30'), 30),
+            "speed_fly": safe_int(mob_data.get('Fly', '0'), 0),
+            "speed_swim": safe_int(mob_data.get('Swim', '0'), 0),
+            "speed_burrow": safe_int(mob_data.get('Burrow', '0'), 0),
+        }
+        return rpg.Stats.from_json_string(json.dumps(stats_json))
 
     # ─────────────────────────────────────────────────────────────────────
     #  Grid coordinate helpers
@@ -3323,6 +3416,8 @@ class App:
         self._reach_fly          = []
         self._reach_set          = set()
         self._effect_meta         = {}
+        self._concentration_state = {}
+        self._spell_metadata      = {}
         self.bm.clear_terrain_effects()
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
@@ -3391,19 +3486,20 @@ class App:
         """Drop concentration for specified agent and remove associated terrain."""
         if agent_idx < 0 or agent_idx >= len(self.bm.placed_agents):
             return
-        stats = self.bm.get_agent_stats(agent_idx)
-        if not getattr(stats, 'isConcentrating', False):
+        agent = self.bm.placed_agents[agent_idx]
+        if not agent.conditions.concentrating:
             return
-        spell_name = getattr(stats, 'concentratingOn', None)
-        agent_name = self.bm.placed_agents[agent_idx].name
-        # Remove terrain regions from this agent's concentration
+        spell_name = agent.conditions.concentrating_on
+        agent_name = agent.name
+        # Remove terrain regions from this agent's concentration spell
         self._terrain_regions = [r for r in self._terrain_regions
                                   if not (r.get("source", {}).get("agent") == agent_name and
-                                          r.get("source", {}).get("requires_concentration"))]
-        # Clear concentration state
-        stats.isConcentrating = False
-        stats.concentratingOn = None
-        self.bm.set_agent_stats(agent_idx, stats)
+                                          r.get("source", {}).get("spell") == spell_name)]
+        # Clear C++ concentration state
+        cond = agent.conditions
+        cond.concentrating = False
+        cond.concentrating_on = ""
+        self.bm.set_agent_conditions(agent_idx, cond)
         self._apply_terrain_to_battle_map()
         self._combat_log_add(f"{agent_name} drops concentration on {spell_name or 'spell'}.")
         self._save_terrain()
@@ -3422,15 +3518,15 @@ class App:
         self._terrain_regions = [r for r in self._terrain_regions
                                   if not (r.get("source", {}).get("requires_concentration") and
                                           r.get("source", {}).get("duration_remaining", 0) <= 0)]
-        # Clear concentration for agents with expired effects
+        # Clear concentration for agents with expired effects (C++ side)
         for agent_name, spell_name in expired_spells:
             for i, agent in enumerate(self.bm.placed_agents):
                 if agent.name == agent_name:
-                    s = self.bm.get_agent_stats(i)
-                    if getattr(s, 'concentratingOn', None) == spell_name:
-                        s.isConcentrating = False
-                        s.concentratingOn = None
-                        self.bm.set_agent_stats(i, s)
+                    if agent.conditions.concentrating and agent.conditions.concentrating_on == spell_name:
+                        cond = agent.conditions
+                        cond.concentrating = False
+                        cond.concentrating_on = ""
+                        self.bm.set_agent_conditions(i, cond)
                         self._combat_log_add(f"{spell_name} effect on {agent_name} has expired.")
                     break
         self._apply_terrain_to_battle_map()
@@ -3522,6 +3618,26 @@ class App:
                    f"miss (roll {result.total_roll} vs AC {result.target_ac})")
         self._combat_log_add(msg)
 
+        # Check concentration save if damage was dealt
+        if result.hit and result.total_damage > 0:
+            csave = self.combat.concentration_save(self.bm, target_idx, result.total_damage)
+            if csave.checked:
+                result_str = "HELD" if csave.passed else "BROKEN"
+                self._combat_log_add(
+                    f"{tgt_name}: CON concentration save — "
+                    f"rolled {csave.save_d20} + {csave.con_mod} = {csave.save_d20 + csave.con_mod} "
+                    f"vs DC {csave.save_dc} — {result_str}"
+                )
+                if csave.concentration_lost:
+                    spell_name = csave.spell_name or "spell"
+                    agent_name = tgt_name
+                    # Remove terrain for the dropped spell
+                    self._terrain_regions = [r for r in self._terrain_regions
+                                              if not (r.get("source", {}).get("agent") == agent_name and
+                                                      r.get("source", {}).get("spell") == spell_name)]
+                    self._apply_terrain_to_battle_map()
+                    self._combat_log_add(f"{agent_name} drops concentration on {spell_name}.")
+
         self.attacks_remaining -= 1
         # print(f"[DEBUG _resolve_combat_attack] decremented attacks_remaining -> {self.attacks_remaining}")
         if self.attacks_remaining > 0:
@@ -3540,7 +3656,19 @@ class App:
         self._update_attack_overlay()
 
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
-        cpp_spells = [_dict_to_spell(d) for d in spells]
+        cpp_spells = []
+        for j, d in enumerate(spells):
+            cpp_spells.append(self._dict_to_spell(agent_idx, d))
+            # Store metadata for this spell
+            terrain_effect = d.get("terrain_effect")
+            hatch_pattern = d.get("hatch_pattern")
+            terrain_color = d.get("terrain_color")
+            if terrain_effect or hatch_pattern or terrain_color:
+                self._spell_metadata[(agent_idx, j)] = {
+                    "terrain_effect": terrain_effect,
+                    "hatch_pattern": hatch_pattern,
+                    "terrain_color": terrain_color
+                }
         self.bm.set_agent_spells(agent_idx, cpp_spells)
 
     def _start_cast_spell(self, slot: str):
@@ -3581,10 +3709,16 @@ class App:
                 self.screen.get_size()
             )
 
-    def _log_spell_results(self, result, cast_name: str):
+    def _log_spell_results(self, result, cast_name: str, caster_idx: int = -1, spell_idx: int = -1):
         agents = self.bm.placed_agents
+        spell = None
+        if caster_idx >= 0 and spell_idx >= 0 and caster_idx < len(agents) and spell_idx < len(agents[caster_idx].spells):
+            spell = agents[caster_idx].spells[spell_idx]
+
         for tr in result.target_results:
             tgt_name = agents[tr.target_idx].name if 0 <= tr.target_idx < len(agents) else "?"
+            tgt_agent = agents[tr.target_idx] if 0 <= tr.target_idx < len(agents) else None
+
             if result.attack_type == rpg.SpellAttack.AttackRoll:
                 if tr.hit:
                     msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
@@ -3596,14 +3730,59 @@ class App:
                     msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
                            f"miss (roll {tr.total_roll} vs AC {tr.target_ac})")
             elif result.attack_type == rpg.SpellAttack.Save:
-                saved_str = " (saved — half)" if tr.saved else ""
-                if tr.total_healing:
-                    msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
-                           f"HEAL {tr.total_healing}{saved_str}")
-                else:
-                    msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
-                           f"{tr.total_damage} dmg{saved_str}"
+                if spell and tgt_agent:
+                    save_ability_map = {
+                        rpg.SaveAbility.SaveStr: "STR",
+                        rpg.SaveAbility.SaveDex: "DEX",
+                        rpg.SaveAbility.SaveCon: "CON",
+                        rpg.SaveAbility.SaveInt: "INT",
+                        rpg.SaveAbility.SaveWis: "WIS",
+                        rpg.SaveAbility.SaveCha: "CHA",
+                    }
+                    ability_str = save_ability_map.get(spell.save_ability, "???")
+                    ability_score_map = {
+                        rpg.SaveAbility.SaveStr: tgt_agent.stats.str,
+                        rpg.SaveAbility.SaveDex: tgt_agent.stats.dex,
+                        rpg.SaveAbility.SaveCon: tgt_agent.stats.con,
+                        rpg.SaveAbility.SaveInt: tgt_agent.stats.intel,
+                        rpg.SaveAbility.SaveWis: tgt_agent.stats.wis,
+                        rpg.SaveAbility.SaveCha: tgt_agent.stats.cha,
+                    }
+                    ability_score = ability_score_map.get(spell.save_ability, 10)
+                    save_prof_map = {
+                        rpg.SaveAbility.SaveStr: tgt_agent.stats.save_prof_str,
+                        rpg.SaveAbility.SaveDex: tgt_agent.stats.save_prof_dex,
+                        rpg.SaveAbility.SaveCon: tgt_agent.stats.save_prof_con,
+                        rpg.SaveAbility.SaveInt: tgt_agent.stats.save_prof_intel,
+                        rpg.SaveAbility.SaveWis: tgt_agent.stats.save_prof_wis,
+                        rpg.SaveAbility.SaveCha: tgt_agent.stats.save_prof_cha,
+                    }
+                    has_prof = save_prof_map.get(spell.save_ability, False)
+
+                    ability_mod = (ability_score - 10) // 2
+                    if ability_score < 10 and (ability_score - 10) % 2 != 0:
+                        ability_mod -= 1
+                    save_mod = ability_mod + (tgt_agent.stats.prof_bonus if has_prof else 0)
+                    save_total = tr.save_d20 + save_mod
+
+                    result_str = "SAVED" if tr.saved else "FAILED"
+                    dmg_str = f"{tr.total_healing} heal" if tr.total_healing else f"{tr.total_damage} dmg"
+                    if tr.saved and tr.total_damage > 0:
+                        dmg_str = f"{tr.total_damage // 2} dmg (half)"
+
+                    msg = (f"{cast_name}→{tgt_name}: {ability_str} save — "
+                           f"rolled {tr.save_d20} + {save_mod} = {save_total} vs DC {tr.save_dc} — "
+                           f"{result_str} — {dmg_str}"
                            f"{' — DOWN' if tr.target_down else ''}")
+                else:
+                    saved_str = " (saved — half)" if tr.saved else ""
+                    if tr.total_healing:
+                        msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
+                               f"HEAL {tr.total_healing}{saved_str}")
+                    else:
+                        msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
+                               f"{tr.total_damage} dmg{saved_str}"
+                               f"{' — DOWN' if tr.target_down else ''}")
             else:  # Automatic
                 if tr.total_healing:
                     msg = f"{cast_name}→{tgt_name}: {result.spell_name} HEAL {tr.total_healing}"
@@ -3632,7 +3811,7 @@ class App:
         if not result.valid:
             self._combat_log_add(f"{cast_name}: spell failed (invalid)")
             return
-        self._log_spell_results(result, cast_name)
+        self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
         if slot == "action":
             self.action_used = True
         else:
@@ -3662,26 +3841,32 @@ class App:
         if not result.target_results:
             self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
         else:
-            self._log_spell_results(result, cast_name)
+            self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
 
         # Auto-place terrain effect if spell has one
         if 0 <= caster_idx < len(agents) and 0 <= self.pending_spell_idx < len(agents[caster_idx].spells):
             spell = agents[caster_idx].spells[self.pending_spell_idx]
-            if hasattr(spell, 'terrain_effect') and spell.terrain_effect:
+            # Get terrain_effect and hatch_pattern from metadata
+            spell_meta = self._spell_metadata.get((caster_idx, self.pending_spell_idx), {})
+            terrain_effect = spell_meta.get("terrain_effect")
+            hatch_pattern = spell_meta.get("hatch_pattern")
+            if terrain_effect:
                 aoe_cells = self._aoe_cells(cell, spell)
                 if aoe_cells:
-                    hatch = getattr(spell, 'hatch_pattern', None)
-                    terrain_region = self._cells_to_terrain_region(aoe_cells, spell.terrain_effect, spell.name, caster_idx, hatch)
+                    terrain_region = self._cells_to_terrain_region(aoe_cells, terrain_effect, spell.name, caster_idx, hatch_pattern, self.pending_spell_idx)
                     if terrain_region:
+                        # Handle concentration replacement: remove old spell's terrain if one was dropped
+                        if result.concentration_replaced and result.prev_concentration_spell:
+                            agent_name = cast_name
+                            self._terrain_regions = [r for r in self._terrain_regions
+                                                      if not (r.get("source", {}).get("agent") == agent_name and
+                                                              r.get("source", {}).get("spell") == result.prev_concentration_spell)]
+                            self._combat_log_add(f"{cast_name} drops concentration on {result.prev_concentration_spell}.")
+
                         self._terrain_regions.append(terrain_region)
-                        # Set concentration on caster
-                        if 0 <= caster_idx < len(agents):
-                            s = self.bm.get_agent_stats(caster_idx)
-                            s.isConcentrating = True
-                            s.concentratingOn = spell.name
-                            self.bm.set_agent_stats(caster_idx, s)
                         self._apply_terrain_to_battle_map()
-                        self._combat_log_add(f"{spell.name}: {cast_name} is concentrating.")
+                        if spell.requires_concentration:
+                            self._combat_log_add(f"{spell.name}: {cast_name} is concentrating.")
             elif spell.terrain_difficulty != rpg.TerrainDifficulty.Normal:
                 aoe_cells = self._aoe_cells(cell, spell)
                 if aoe_cells:
@@ -3774,30 +3959,20 @@ class App:
 
         return cells
 
-    def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None) -> dict:
+    def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None, spell_idx: int = -1) -> dict:
         """Convert list of cells to a terrain region with source metadata."""
         if not cells:
             return None
-        cpx = int(self.bm.cell_pixel_size)
-        min_col = min(c.col for c in cells)
-        max_col = max(c.col for c in cells)
-        min_row = min(c.row for c in cells)
-        max_row = max(c.row for c in cells)
-        x = min_col * cpx
-        y = min_row * cpx
-        width = (max_col - min_col + 1) * cpx
-        height = (max_row - min_row + 1) * cpx
         caster_name = self.bm.placed_agents[caster_idx].name if caster_idx < len(self.bm.placed_agents) else "Unknown"
         return {
             "type": terrain_effect.get("type", "Difficult Terrain"),
-            "x": x,
-            "y": y,
-            "width": width,
-            "height": height,
+            "cells": [(c.col, c.row) for c in cells],  # Store actual affected cells
             "multiplier": terrain_effect.get("multiplier", 0.5),
             "source": {
                 "agent": caster_name,
+                "caster": caster_idx,
                 "spell": spell_name,
+                "spell_idx": spell_idx,
                 "requires_concentration": True,
                 "duration_remaining": terrain_effect.get("duration", 10),
             },
@@ -3864,6 +4039,113 @@ class App:
         # Ranged long (disadvantage): dull yellow
         _draw_zone(self._attack_cells_rlong, (180, 165, 40, 35), (220, 200, 60, 90))
 
+    def _spell_to_dict(self, agent_idx: int, spell_idx: int, s) -> dict:
+        """Convert C++ Spell object to dict, including metadata."""
+        geo = s.geometry.name
+        uses_radius = geo in ("Sphere", "Cone")
+        uses_line   = geo == "Line"
+        metadata = self._spell_metadata.get((agent_idx, spell_idx), {})
+
+        # Convert magic_damage_rolls to dict format
+        magic_dmg = []
+        for roll in s.magic_damage_rolls:
+            magic_dmg.append({
+                "type": roll.type.name,
+                "num_dice": roll.num_dice,
+                "die_size": roll.die_size
+            })
+
+        # Convert physical_damage_rolls to dict format
+        phys_dmg = []
+        for roll in s.physical_damage_rolls:
+            phys_dmg.append({
+                "type": roll.type.name,
+                "num_dice": roll.num_dice,
+                "die_size": roll.die_size
+            })
+
+        return {
+            "name":                  s.name,
+            "type":                  s.type.name,
+            "geometry":              geo,
+            "attack_type":           s.attack_type.name,
+            "save_ability":          s.save_ability.name if s.attack_type == rpg.SpellAttack.Save else None,
+            "range":                 s.range,
+            "radius":                s.radius if uses_radius else None,
+            "width":                 s.width  if uses_line   else None,
+            "length":                s.length if uses_line   else None,
+            "duration":              s.duration,
+            "magic_damage_types":    magic_dmg,
+            "physical_damage_types": phys_dmg,
+            "terrain_effect":        metadata.get("terrain_effect"),
+            "hatch_pattern":         metadata.get("hatch_pattern"),
+            "terrain_color":         metadata.get("terrain_color"),
+            "requires_concentration": s.requires_concentration,
+        }
+
+    def _dict_to_spell(self, agent_idx: int, d: dict):
+        """Convert dict to C++ Spell, storing metadata separately."""
+        s = rpg.Spell()
+        s.name         = d.get("name",         "Unnamed Spell")
+        s.type         = getattr(rpg.SpellType,     d.get("type",         "Harm"),     rpg.SpellType.Harm)
+        s.geometry     = getattr(rpg.SpellGeometry, d.get("geometry",     "Single"),   rpg.SpellGeometry.Single)
+        s.attack_type  = getattr(rpg.SpellAttack,   d.get("attack_type",  "AttackRoll"), rpg.SpellAttack.AttackRoll)
+        s.save_ability = getattr(rpg.SaveAbility,   d.get("save_ability") or "SaveDex", rpg.SaveAbility.SaveDex)
+        s.range        = int(d.get("range")  or 30)
+        s.radius       = int(d.get("radius") or 10)
+        s.width        = int(d.get("width")  or  5)
+        s.length       = int(d.get("length") or 30)
+        s.duration     = int(d.get("duration",   1))
+
+        # Parse magic damage types - handle both new (object) and old (string) formats
+        magic_dmg_raw = d.get("magic_damage_types", [])
+        magic_rolls = []
+        for dmg in magic_dmg_raw:
+            if isinstance(dmg, dict):
+                # New format: {"type": "Fire", "num_dice": 2, "die_size": 6}
+                dmg_type = _parse_magic_damage(dmg.get("type", "Fire"))
+                roll = rpg.MagicDamageRoll()
+                roll.type = dmg_type
+                roll.num_dice = int(dmg.get("num_dice", 1))
+                roll.die_size = int(dmg.get("die_size", 6))
+                magic_rolls.append(roll)
+            else:
+                # Old format: just the string "Fire"
+                dmg_type = _parse_magic_damage(dmg)
+                roll = rpg.MagicDamageRoll()
+                roll.type = dmg_type
+                roll.num_dice = int(d.get("num_dice", 1))
+                roll.die_size = int(d.get("die_size", 6))
+                magic_rolls.append(roll)
+        s.magic_damage_rolls = magic_rolls
+
+        # Parse physical damage types - handle both new (object) and old (string) formats
+        phys_dmg_raw = d.get("physical_damage_types", [])
+        phys_rolls = []
+        for dmg in phys_dmg_raw:
+            if isinstance(dmg, dict):
+                # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8}
+                dmg_type = _parse_physical_damage(dmg.get("type", "Bludgeoning"))
+                roll = rpg.PhysicalDamageRoll()
+                roll.type = dmg_type
+                roll.num_dice = int(dmg.get("num_dice", 1))
+                roll.die_size = int(dmg.get("die_size", 6))
+                phys_rolls.append(roll)
+            else:
+                # Old format: just the string "Slashing"
+                dmg_type = _parse_physical_damage(dmg)
+                roll = rpg.PhysicalDamageRoll()
+                roll.type = dmg_type
+                roll.num_dice = int(d.get("num_dice", 1))
+                roll.die_size = int(d.get("die_size", 6))
+                phys_rolls.append(roll)
+        s.physical_damage_rolls = phys_rolls
+
+        s.requires_concentration = d.get("requires_concentration", False)
+        # Store terrain_effect and hatch_pattern in metadata dict
+        # Will be assigned spell_idx after adding to agent
+        return s
+
     def _save_agents(self, path: str | None = None):
         path = path or self._save_path
         data = []
@@ -3894,13 +4176,11 @@ class App:
                     "has_offhand_attack": s.has_offhand_attack,
                     "can_cast_spell":     s.can_cast_spell,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
-                    "isConcentrating": getattr(s, 'isConcentrating', False),
-                    "concentratingOn": getattr(s, 'concentratingOn', None),
                 },
                 "weapons": [_weapon_to_dict(w)
                             for w in self.bm.get_agent_weapons(i)],
-                "spells":  [_spell_to_dict(s)
-                            for s in self.bm.get_agent_spells(i)],
+                "spells":  [self._spell_to_dict(i, j, s)
+                            for j, s in enumerate(self.bm.get_agent_spells(i))],
             })
         with open(path, "w") as f:
             json.dump({"agents": data}, f, indent=2)
@@ -3915,6 +4195,7 @@ class App:
         self.pending_configs.clear()
         self.selected_idx = -1
         self.drag_idx     = -1
+        self._spell_metadata.clear()
         agent_data = data.get("agents", [])
         for t in agent_data:
             cfg = rpg.AgentConfig()
@@ -3934,34 +4215,7 @@ class App:
             sd = t.get("stats")
             if not sd:
                 continue
-            s = rpg.Stats()
-            s.str        = sd.get("str",        10)
-            s.dex        = sd.get("dex",        10)
-            s.con        = sd.get("con",        10)
-            s.intel      = sd.get("intel",      10)
-            s.wis        = sd.get("wis",        10)
-            s.cha        = sd.get("cha",        10)
-            s.hp_max     = sd.get("hp_max",     10)
-            s.hp_cur     = sd.get("hp_cur",     10)
-            s.ac         = sd.get("ac",         10)
-            s.speed_walk   = sd.get("speed_walk",   30)
-            s.speed_swim   = sd.get("speed_swim",    0)
-            s.speed_fly    = sd.get("speed_fly",     0)
-            s.speed_burrow = sd.get("speed_burrow",  0)
-            s.prof_bonus       = sd.get("prof_bonus",      2)
-            s.save_prof_str    = sd.get("save_prof_str",   False)
-            s.save_prof_dex    = sd.get("save_prof_dex",   False)
-            s.save_prof_con    = sd.get("save_prof_con",   False)
-            s.save_prof_intel  = sd.get("save_prof_intel", False)
-            s.save_prof_wis    = sd.get("save_prof_wis",   False)
-            s.save_prof_cha       = sd.get("save_prof_cha",         False)
-            s.num_attacks         = int(sd.get("num_attacks",        1))
-            s.has_cunning_action  = sd.get("has_cunning_action",    False)
-            s.has_offhand_attack  = sd.get("has_offhand_attack",    False)
-            s.can_cast_spell      = sd.get("can_cast_spell",        False)
-            s.spellcasting_ability = _ABILITY_TO_INT.get(sd.get("spellcasting_ability", "cha"), 5)
-            s.isConcentrating = sd.get("isConcentrating", False)
-            s.concentratingOn = sd.get("concentratingOn", None)
+            s = rpg.Stats.from_json_string(json.dumps(sd))
             self.bm.set_agent_stats(i, s)
 
         # Restore weapons — convert saved dicts → rpg.Weapon, push into C++.
@@ -3975,7 +4229,20 @@ class App:
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            cpp_spells = [_dict_to_spell(d) for d in t.get("spells", [])]
+            spell_dicts = t.get("spells", [])
+            cpp_spells = []
+            for j, d in enumerate(spell_dicts):
+                cpp_spells.append(self._dict_to_spell(i, d))
+                # Store metadata for this spell
+                terrain_effect = d.get("terrain_effect")
+                hatch_pattern = d.get("hatch_pattern")
+                terrain_color = d.get("terrain_color")
+                if terrain_effect or hatch_pattern or terrain_color:
+                    self._spell_metadata[(i, j)] = {
+                        "terrain_effect": terrain_effect,
+                        "hatch_pattern": hatch_pattern,
+                        "terrain_color": terrain_color
+                    }
             self.bm.set_agent_spells(i, cpp_spells)
 
         self._attack_cells_melee = []
@@ -4077,12 +4344,12 @@ class App:
         self.screen.blit(lbl, (screen_x + 3, screen_y + 3))
 
         # Concentration indicator (circle around agent if concentrating)
-        if getattr(pt, 'isConcentrating', False):
+        if pt.conditions.concentrating:
             center_x = int(screen_x + size_px / 2)
             center_y = int(screen_y + size_px / 2)
             radius = int(size_px / 2 + 6)
             pygame.draw.circle(self.screen, (255, 200, 100), (center_x, center_y), radius, 2)
-            spell_name = getattr(pt, 'concentratingOn', 'Spell')
+            spell_name = pt.conditions.concentrating_on or 'Spell'
             spell_lbl = self.font_sm.render(spell_name, True, (255, 200, 100))
             self.screen.blit(spell_lbl, (screen_x + size_px + 5, screen_y))
 
@@ -4187,53 +4454,141 @@ class App:
                     self.screen.blit(txt, (sx + 2, sy + 2))
 
     def _draw_concentration_terrain(self, cpx: int):
-        """Draw concentration-based terrain with hatching patterns."""
+        """Draw all terrain: permanent features and concentration-based effects."""
+        if not self.show_terrain:
+            return
+
+        # Draw permanent terrain (walls, chasms, difficult terrain)
+        for region in self._terrain_regions:
+            # Skip concentration-based terrain for now (draw separately below)
+            if "cells" in region or region.get("source", {}).get("requires_concentration"):
+                continue
+
+            # Permanent terrain from JSON
+            if "x" not in region or "y" not in region:
+                continue
+
+            x = int(region.get("x", 0))
+            y = int(region.get("y", 0))
+            w = int(region.get("width", 0))
+            h = int(region.get("height", 0))
+            terrain_type = region.get("type", "Difficult Terrain")
+
+            if terrain_type == "Wall":
+                color = (50, 50, 50, 150)
+            elif terrain_type == "Chasm":
+                color = (140, 140, 140, 150)
+            else:  # Difficult Terrain
+                color = (139, 90, 43, 150)  # Brown
+
+            # Draw filled rectangle
+            fill_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            fill_surf.fill(color)
+            self.screen.blit(fill_surf, (x + self.map_rect.x, y + self.map_rect.y))
+
+            # Draw border
+            border_rect = pygame.Rect(x + self.map_rect.x, y + self.map_rect.y, w, h)
+            border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
+            pygame.draw.rect(self.screen, border_color, border_rect, 2)
+
+        # Draw concentration-based terrain with hatching patterns, cell-by-cell
         hatch_patterns = ['//', '\\\\', '||', '--', '++', 'xx', 'oo', 'OO', '..', '**']
         for i, region in enumerate(self._terrain_regions):
             if not region.get("source", {}).get("requires_concentration"):
                 continue
-            x = region.get("x", 0)
-            y = region.get("y", 0)
-            w = region.get("width", 0)
-            h = region.get("height", 0)
+
+            cells = region.get("cells", [])
+            if not cells:
+                continue
+
             hatch = region.get("hatch_pattern") or hatch_patterns[i % len(hatch_patterns)]
             multiplier = region.get("multiplier", 0.5)
             duration = region.get("source", {}).get("duration_remaining", 0)
-            # Color based on multiplier
-            if multiplier < 0.1:
-                color = (200, 60, 60, 80)  # Red for impassable
-            elif multiplier < 0.3:
-                color = (200, 100, 50, 80)  # Orange for very difficult
+            spell_name = region.get("source", {}).get("spell", "Effect")
+            caster_idx = region.get("source", {}).get("caster", -1)
+            spell_idx = region.get("source", {}).get("spell_idx", -1)
+
+            # Get color from spell metadata if available, otherwise use brown default
+            spell_meta = self._spell_metadata.get((caster_idx, spell_idx), {})
+            if "terrain_color" in spell_meta and spell_meta["terrain_color"]:
+                rgb = spell_meta["terrain_color"]
+                color = (rgb[0], rgb[1], rgb[2], 100)
             else:
-                color = (80, 200, 80, 80)  # Green for difficult terrain
-            # Draw filled rect
-            fill_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+                # Default brown color for difficult terrain
+                color = (139, 90, 43, 100)
+
+            # Create fill and border surfaces for one cell
+            fill_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
             fill_surf.fill(color)
-            self.screen.blit(fill_surf, (int(x + self.map_rect.x), int(y + self.map_rect.y)))
-            # Draw hatching pattern
-            self._draw_hatching(hatch, x, y, w, h, color)
-            # Draw border
-            border_rect = pygame.Rect(int(x + self.map_rect.x), int(y + self.map_rect.y), int(w), int(h))
             border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
-            pygame.draw.rect(self.screen, border_color, border_rect, 2)
-            # Draw duration label
-            spell = region.get("source", {}).get("spell", "Effect")
-            duration_txt = self.font_sm.render(f"{spell}({duration})", True, (255, 255, 255))
-            self.screen.blit(duration_txt, (int(x + self.map_rect.x + 3), int(y + self.map_rect.y + 3)))
+            border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
+            pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
+
+            # Draw each cell
+            for col, row in cells:
+                sx, sy = self._cell_to_screen(col, row)
+                self.screen.blit(fill_surf, (sx, sy))
+                self.screen.blit(border_surf, (sx, sy))
+                # Draw hatching for this cell
+                self._draw_cell_hatching(hatch, sx, sy, cpx, color)
+
+            # Draw duration label on first cell
+            if cells:
+                first_col, first_row = cells[0]
+                sx, sy = self._cell_to_screen(first_col, first_row)
+                spell = region.get("source", {}).get("spell", "Effect")
+                duration_txt = self.font_sm.render(f"{spell}({duration})", True, (255, 255, 255))
+                self.screen.blit(duration_txt, (sx + 3, sy + 3))
+
+    def _draw_cell_hatching(self, pattern: str, sx: int, sy: int, cpx: int, color: tuple):
+        """Draw hatching pattern for a single cell."""
+        hatch_color = tuple(min(c + 100, 255) for c in color[:3]) + (120,)
+        spacing = 4
+
+        # Clip to cell bounds
+        clip_rect = pygame.Rect(sx, sy, cpx, cpx)
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(clip_rect)
+
+        try:
+            if pattern == '//' or pattern == 'xx':
+                # Forward diagonal lines
+                for i in range(-cpx, cpx * 2, spacing):
+                    pygame.draw.line(self.screen, hatch_color, (sx + i, sy), (sx + i + cpx, sy + cpx), 1)
+            if pattern == '\\\\' or pattern == 'xx':
+                # Backward diagonal lines
+                for i in range(-cpx, cpx * 2, spacing):
+                    pygame.draw.line(self.screen, hatch_color, (sx + i + cpx, sy), (sx + i, sy + cpx), 1)
+            if pattern == '||' or pattern == '++':
+                # Vertical lines
+                for i in range(0, cpx, spacing):
+                    pygame.draw.line(self.screen, hatch_color, (sx + i, sy), (sx + i, sy + cpx), 1)
+            if pattern == '--' or pattern == '++':
+                # Horizontal lines
+                for i in range(0, cpx, spacing):
+                    pygame.draw.line(self.screen, hatch_color, (sx, sy + i), (sx + cpx, sy + i), 1)
+        finally:
+            self.screen.set_clip(old_clip)
 
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
-        """Draw a hatching pattern on the screen."""
+        """Draw a hatching pattern on the screen within bounds."""
         screen_x = int(x + self.map_rect.x)
         screen_y = int(y + self.map_rect.y)
         screen_w = int(w)
         screen_h = int(h)
         hatch_color = tuple(min(c + 100, 255) for c in color[:3]) + (120,)
+
+        # Create a clipping rectangle for the hatching
+        clip_rect = pygame.Rect(screen_x, screen_y, screen_w, screen_h)
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(clip_rect)
+
         if pattern == '//':
-            for i in range(0, screen_w + screen_h, 8):
-                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i - screen_h, screen_y + screen_h), 1)
-        elif pattern == '\\\\':
-            for i in range(-screen_h, screen_w, 8):
+            for i in range(-screen_h, screen_w + screen_h, 8):
                 pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i + screen_h, screen_y + screen_h), 1)
+        elif pattern == '\\\\':
+            for i in range(-screen_h, screen_w + screen_h, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i - screen_h, screen_y + screen_h), 1)
         elif pattern == '||':
             for i in range(0, screen_w, 8):
                 pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i, screen_y + screen_h), 1)
@@ -4246,10 +4601,13 @@ class App:
             for i in range(0, screen_h, 8):
                 pygame.draw.line(self.screen, hatch_color, (screen_x, screen_y + i), (screen_x + screen_w, screen_y + i), 1)
         elif pattern == 'xx':
-            for i in range(0, screen_w + screen_h, 8):
-                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i - screen_h, screen_y + screen_h), 1)
-            for i in range(-screen_h, screen_w, 8):
+            for i in range(-screen_h, screen_w + screen_h, 8):
                 pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i + screen_h, screen_y + screen_h), 1)
+            for i in range(-screen_h, screen_w + screen_h, 8):
+                pygame.draw.line(self.screen, hatch_color, (screen_x + i, screen_y), (screen_x + i - screen_h, screen_y + screen_h), 1)
+
+        # Restore the clip rect
+        self.screen.set_clip(old_clip)
 
     def _draw_agents(self):
         bm    = self.bm
@@ -4545,24 +4903,27 @@ class App:
         self.btn_cbt_end_turn.draw(self.screen)
         y += B + gap
 
-        self.btn_cbt_end_combat.rect.x = lx
+        self.btn_show_terrain.rect.x = lx
+        self.btn_show_terrain.rect.y = y
+        self.btn_show_terrain.rect.w = HW
+        self.btn_show_terrain.draw(self.screen)
+
+        self.btn_cbt_end_combat.rect.x = lx + HW + 4
         self.btn_cbt_end_combat.rect.y = y
-        self.btn_cbt_end_combat.rect.w = W
+        self.btn_cbt_end_combat.rect.w = HW
         self.btn_cbt_end_combat.draw(self.screen)
         y += B + gap
 
         # Drop Concentration button (if current agent is concentrating)
         cur_idx = self._current_agent_idx()
-        if 0 <= cur_idx < len(self.bm.placed_agents):
-            cur_stats = self.bm.get_agent_stats(cur_idx)
-            if getattr(cur_stats, 'isConcentrating', False):
-                self.btn_cbt_drop_concentration.rect.x = lx
-                self.btn_cbt_drop_concentration.rect.y = y
-                self.btn_cbt_drop_concentration.rect.w = W
-                self.btn_cbt_drop_concentration.draw(self.screen)
-                y += B + section_gap
-        else:
-            y += section_gap
+        is_concentrating = (0 <= cur_idx < len(self.bm.placed_agents) and
+                           self.bm.placed_agents[cur_idx].conditions.concentrating)
+        if is_concentrating:
+            self.btn_cbt_drop_concentration.rect.x = lx
+            self.btn_cbt_drop_concentration.rect.y = y
+            self.btn_cbt_drop_concentration.rect.w = W
+            self.btn_cbt_drop_concentration.draw(self.screen)
+        y += B + section_gap
 
         # ── Combat log ─────────────────────────────────────────────────────
         txt("Combat Log:", lx, y, COL_LABEL)
@@ -4782,8 +5143,8 @@ class App:
                                 self._on_weapon_done)
                         def _open_spells(h=hit):
                             pt2 = self.bm.placed_agents[h]
-                            spell_dicts = [_spell_to_dict(s)
-                                           for s in self.bm.get_agent_spells(h)]
+                            spell_dicts = [self._spell_to_dict(h, j, s)
+                                           for j, s in enumerate(self.bm.get_agent_spells(h))]
                             self.spell_dialog.open(
                                 self.screen, h, pt2.name,
                                 spell_dicts,
@@ -5066,6 +5427,8 @@ class App:
                             break
                 if self.btn_cbt_place_terrain.clicked(event):
                     self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
+                if self.btn_show_terrain.clicked(event):
+                    self.show_terrain = not self.show_terrain
                 if self.btn_cbt_end_turn.clicked(event):
                     self._advance_turn()
                 if self.btn_cbt_end_combat.clicked(event):

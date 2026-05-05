@@ -117,6 +117,8 @@ struct SpellTargetResult {
     int  hp_before    = 0;
     int  hp_after     = 0;
     bool target_down  = false;
+    int  save_d20     = 0;   // d20 rolled on a Save
+    int  save_dc      = 0;   // spell save DC the target rolled against
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,6 +130,21 @@ struct SpellResult {
     std::string spell_name;
     Spell::SpellAttack_t attack_type{Spell::AttackRoll};
     std::vector<SpellTargetResult> target_results;
+    bool        concentration_replaced     = false;   // caster dropped previous concentration
+    std::string prev_concentration_spell   = {};      // name of dropped spell
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Concentration saving throw result (triggered when a concentrating agent takes damage)
+// ─────────────────────────────────────────────────────────────────────────────
+struct ConcentrationSaveResult {
+    bool checked            = false;   // save was needed (agent was concentrating)
+    int  save_d20           = 0;
+    int  save_dc            = 0;
+    int  con_mod            = 0;
+    bool passed             = false;
+    bool concentration_lost = false;
+    std::string spell_name  = {};      // spell that was being concentrated on
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -247,14 +264,18 @@ public:
     // Initialise the agent's walk/fly budget from their current stats.
     void beginTurn(int agent_idx, const BattleMap& bm) noexcept;
 
-    // Remaining walk / fly movement (feet) for the given agent this turn.
+    // Remaining walk / fly / swim / burrow movement (feet) for the given agent this turn.
     [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
     [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
+    [[nodiscard]] int getSwimRemaining(int agent_idx) const noexcept;
+    [[nodiscard]] int getBurrowRemaining(int agent_idx) const noexcept;
 
-    // Deduct feet from the walk (or fly) budget.  Clamps to 0; never goes
+    // Deduct feet from the movement budget.  Clamps to 0; never goes
     // negative.  Returns the amount actually spent (≤ feet if budget ran low).
     int spendWalk(int agent_idx, int feet) noexcept;
     int spendFly (int agent_idx, int feet) noexcept;
+    int spendSwim(int agent_idx, int feet) noexcept;
+    int spendBurrow(int agent_idx, int feet) noexcept;
 
     // Clear all movement budgets (call at end of combat or start of new round).
     void clearMovement() noexcept;
@@ -341,6 +362,11 @@ public:
 
     void clearEffects() noexcept;
 
+    // Check if concentrating agent must save (on damage). Rolls CON save (DC = max(10, damage/2)).
+    // Clears concentration if save is failed. Returns a detailed result.
+    [[nodiscard]] ConcentrationSaveResult concentrationSave(
+        BattleMap& bm, int agent_idx, int damage_taken);
+
     // ── RL action space ───────────────────────────────────────────────────
 
     // Enumerate all legal (weapon, target) pairs for the given attacker.
@@ -388,6 +414,8 @@ private:
     // Absent entry ≡ 0 remaining (agent hasn't started their turn yet).
     std::unordered_map<int, int> walkRemaining_;
     std::unordered_map<int, int> flyRemaining_;
+    std::unordered_map<int, int> swimRemaining_;
+    std::unordered_map<int, int> burrowRemaining_;
 
     std::vector<ActiveEffect> activeEffects_;
 

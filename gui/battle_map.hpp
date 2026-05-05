@@ -54,6 +54,14 @@ enum class MovementType {
     Jump,    // Long jump: Manhattan distance, ignores terrain, deducts from walk budget
 };
 
+// ── Terrain types ──────────────────────────────────────────────────────────
+enum class TerrainType {
+    Standard = 0,  // land; impassable to swim
+    Water    = 1,  // impassable to walk/burrow
+    Wall     = 2,  // impassable to all except burrow
+    Chasm    = 3,  // impassable to walk/burrow/swim
+};
+
 // ── Terrain difficulty levels for temporary effects ─────────────────────────
 // Ordered by restrictiveness: Normal (0) < Halved (1) < Quartered (2).
 // std::max gives "most restrictive wins" for stacking.
@@ -117,7 +125,7 @@ public:
 
     [[nodiscard]] const std::vector<Wall>& walls()           const noexcept { return walls_; }
     [[nodiscard]] const CellSet&           disallowedCells() const noexcept { return disallowed_; }
-    [[nodiscard]] bool isBlocked(Cell origin, int agentSize) const noexcept;
+    [[nodiscard]] bool isBlocked(Cell origin, int agentSize, MovementType mt = MovementType::Walk) const noexcept;
 
     // ── Agent management ──────────────────────────────────────────────────
     // Called from Python after the GUI collects AgentConfig objects.
@@ -142,6 +150,10 @@ public:
     // Stats accessors (by index into placedAgents()).
     [[nodiscard]] Agent::Stats getAgentStats(int idx) const noexcept;
     void setAgentStats(int idx, Agent::Stats s) noexcept;
+
+    // Conditions accessors (by index into placedAgents()).
+    [[nodiscard]] Agent::Conditions getAgentConditions(int idx) const noexcept;
+    void setAgentConditions(int idx, const Agent::Conditions& c) noexcept;
 
     // Apply the Dash action: sets the dashing condition and adds the agent's
     // base speeds to its remaining movement budgets for this turn.
@@ -186,10 +198,14 @@ public:
     // ── Terrain multipliers ───────────────────────────────────────────────
     // Movement cost multiplier for each cell (default 1.0).
     // Used for difficult terrain, spells, etc. Stored as cols × rows.
-    [[nodiscard]] double getTerrainMultiplier(Cell c) const noexcept;
+    [[nodiscard]] double getTerrainMultiplier(Cell c, MovementType mt = MovementType::Walk) const noexcept;
     void setTerrainMultiplier(Cell c, double mult) noexcept;
     void setTerrainMultiplierRect(Cell topLeft, int width, int height, double mult) noexcept;
     void resetTerrainMultipliers() noexcept;
+
+    // ── Terrain types ──────────────────────────────────────────────────────
+    [[nodiscard]] TerrainType getTerrainType(Cell c) const noexcept;
+    void setTerrainType(Cell c, TerrainType t) noexcept;
 
     // ── Temporary terrain effects ──────────────────────────────────────────
     // Place a temporary terrain effect (from spells, items, etc.).
@@ -216,6 +232,11 @@ public:
 
     // Remove a specific effect by id. Called for manual DM removal mid-combat.
     void removeTerrainEffect(int effect_id);
+
+    // Rebuild tempTerrainDiff_ from activeTerrainEffects_.
+    // Called whenever effects are added, removed, or ticked.
+    // Uses std::max to pick the most restrictive difficulty per cell.
+    void updateTerrain();
 
     // Clear all terrain effects (end of combat).
     void clearTerrainEffects() noexcept;
@@ -257,17 +278,17 @@ private:
     // True iff an agent of `size` placed at `origin` lies entirely within the grid.
     [[nodiscard]] bool inBounds(Cell origin, int size) const noexcept;
 
-    // Rebuild tempTerrainDiff_ from activeTerrainEffects_.
-    // Called whenever effects are added, removed, or ticked.
-    // Uses std::max to pick the most restrictive difficulty per cell.
-    void updateTerrain();
+    // Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump).
+    [[nodiscard]] CellSet pathfindMovement(Cell origin, int tokenSize,
+                                           int speedFt, MovementType type) const;
 
     std::filesystem::path mapImagePath_;
     int cols_{0}, rows_{0}, cellPx_{0};
     std::vector<int>   hLines_, vLines_;
     std::vector<Wall>  walls_;
     CellSet            disallowed_;
-    std::vector<double> terrainMult_;         // cols × rows static movement multipliers (default 1.0)
+    std::vector<double>     terrainMult_;     // cols × rows static movement multipliers (default 1.0)
+    std::vector<TerrainType> terrainType_;    // cols × rows terrain types (default Standard)
     std::vector<AgentConfig>  agentConfigs_;
     std::vector<PlacedAgent>  placedAgents_;
 

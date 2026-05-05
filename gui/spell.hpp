@@ -7,6 +7,19 @@ namespace rpg {
     // Forward declare TerrainDifficulty to avoid circular includes
     enum class TerrainDifficulty;
 
+    // Damage type with dice information
+    struct MagicDamageRoll {
+        MagicDamage_t type{};
+        int num_dice{1};
+        int die_size{6};
+    };
+
+    struct PhysicalDamageRoll {
+        PhysicalDamage_t type{};
+        int num_dice{1};
+        int die_size{6};
+    };
+
     struct Spell {
       enum Geometry_t   { Single=0, Line, Cone, Sphere, NumGeometry_t };
       enum SpellType_t  { Harm=0, Heal, NumSpellType_t };
@@ -27,15 +40,14 @@ namespace rpg {
       int length{30};   // length in feet (Line)
       int duration{1};  // turns the effect persists (1 = instantaneous)
 
-      std::vector<MagicDamage_t>    magicDamageTypes;
-      std::vector<PhysicalDamage_t> physicalDamageTypes;
-
-      int num_dice{1};
-      int die_size{6};
+      std::vector<MagicDamageRoll>    magic_damage_rolls;
+      std::vector<PhysicalDamageRoll> physical_damage_rolls;
 
       // Terrain effect created by this spell (e.g., Grease, Web, Spike Growth)
       // If terrain_difficulty is Normal (0), no terrain effect is created.
       // The terrain effect duration is the same as the spell's duration (in rounds).
       TerrainDifficulty terrain_difficulty{static_cast<TerrainDifficulty>(0)};  // Normal
+
+      bool requires_concentration{false};  // Caster must maintain concentration; breaks on damage
     };
 }
