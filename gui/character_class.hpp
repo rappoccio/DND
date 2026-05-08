@@ -1,0 +1,139 @@
+#pragma once
+#include <array>
+#include <algorithm>
+
+namespace rpg {
+
+enum CharacterClass {
+    CharClassNone=0, Barbarian, Fighter, Monk, Rogue,
+    Bard, Cleric, Druid, Sorcerer, Wizard,
+    Paladin, Ranger, Warlock, NumCharacterClass
+};
+
+enum CasterType { CasterNone=0, CasterFull, CasterHalf, CasterPact };
+
+inline CasterType get_caster_type(CharacterClass cls) {
+    switch (cls) {
+        case Bard: case Cleric: case Druid:
+        case Sorcerer: case Wizard:  return CasterFull;
+        case Paladin: case Ranger:   return CasterHalf;
+        case Warlock:                return CasterPact;
+        default:                     return CasterNone;
+    }
+}
+
+inline std::array<int,9> compute_class_slots(CharacterClass cls, int lvl) {
+    if (lvl < 1 || lvl > 20) lvl = 1;
+    lvl--;  // Convert to 0-indexed
+
+    // Full caster table A (Bard, Cleric, Druid — 0 slots at level 1)
+    static constexpr std::array<std::array<int,9>,20> kFullA{{
+        {0,0,0,0,0,0,0,0,0},  // 1
+        {2,0,0,0,0,0,0,0,0},  // 2
+        {3,0,0,0,0,0,0,0,0},  // 3
+        {3,2,0,0,0,0,0,0,0},  // 4
+        {4,3,0,0,0,0,0,0,0},  // 5
+        {4,3,0,0,0,0,0,0,0},  // 6
+        {4,3,2,0,0,0,0,0,0},  // 7
+        {4,3,3,0,0,0,0,0,0},  // 8
+        {4,3,3,1,0,0,0,0,0},  // 9
+        {4,3,3,2,0,0,0,0,0},  // 10
+        {4,3,3,2,1,0,0,0,0},  // 11
+        {4,3,3,2,1,0,0,0,0},  // 12
+        {4,3,3,2,1,1,0,0,0},  // 13
+        {4,3,3,2,1,1,0,0,0},  // 14
+        {4,3,3,2,2,1,1,0,0},  // 15
+        {4,3,3,2,2,1,1,0,0},  // 16
+        {4,3,3,2,2,1,1,1,0},  // 17
+        {4,3,3,3,2,1,1,1,0},  // 18
+        {4,3,3,3,2,2,1,1,1},  // 19
+        {4,3,3,3,2,2,2,1,1}   // 20
+    }};
+
+    // Full caster table B (Sorcerer, Wizard — start with 2 slots at level 1)
+    static constexpr std::array<std::array<int,9>,20> kFullB{{
+        {2,0,0,0,0,0,0,0,0},  // 1
+        {3,0,0,0,0,0,0,0,0},  // 2
+        {4,2,0,0,0,0,0,0,0},  // 3
+        {4,3,0,0,0,0,0,0,0},  // 4
+        {4,3,2,0,0,0,0,0,0},  // 5
+        {4,3,3,0,0,0,0,0,0},  // 6
+        {4,3,3,1,0,0,0,0,0},  // 7
+        {4,3,3,2,0,0,0,0,0},  // 8
+        {4,3,3,3,1,0,0,0,0},  // 9
+        {4,3,3,3,2,0,0,0,0},  // 10
+        {4,3,3,3,2,1,0,0,0},  // 11
+        {4,3,3,3,2,1,0,0,0},  // 12
+        {4,3,3,3,2,1,1,0,0},  // 13
+        {4,3,3,3,2,1,1,0,0},  // 14
+        {4,3,3,3,2,2,1,1,0},  // 15
+        {4,3,3,3,2,2,1,1,0},  // 16
+        {4,3,3,3,2,2,1,1,1},  // 17
+        {4,3,3,3,3,2,1,1,1},  // 18
+        {4,3,3,3,3,2,2,1,1},  // 19
+        {4,3,3,3,3,2,2,2,1}   // 20
+    }};
+
+    // Half caster table (Paladin, Ranger)
+    static constexpr std::array<std::array<int,9>,20> kHalf{{
+        {0,0,0,0,0,0,0,0,0},  // 1
+        {2,0,0,0,0,0,0,0,0},  // 2
+        {3,0,0,0,0,0,0,0,0},  // 3
+        {3,0,0,0,0,0,0,0,0},  // 4
+        {4,2,0,0,0,0,0,0,0},  // 5
+        {4,2,0,0,0,0,0,0,0},  // 6
+        {4,3,0,0,0,0,0,0,0},  // 7
+        {4,3,0,0,0,0,0,0,0},  // 8
+        {4,3,2,0,0,0,0,0,0},  // 9
+        {4,3,2,0,0,0,0,0,0},  // 10
+        {4,3,3,0,0,0,0,0,0},  // 11
+        {4,3,3,0,0,0,0,0,0},  // 12
+        {4,3,3,1,0,0,0,0,0},  // 13
+        {4,3,3,1,0,0,0,0,0},  // 14
+        {4,3,3,2,0,0,0,0,0},  // 15
+        {4,3,3,2,0,0,0,0,0},  // 16
+        {4,3,3,2,1,0,0,0,0},  // 17
+        {4,3,3,2,1,0,0,0,0},  // 18
+        {4,3,3,2,1,1,0,0,0},  // 19
+        {4,3,3,2,1,1,0,0,0}   // 20
+    }};
+
+    // Pact magic table (Warlock — all slots packed into one level)
+    static constexpr std::array<std::array<int,9>,20> kPact{{
+        {1,0,0,0,0,0,0,0,0},  // 1: 1 slot at 1st level
+        {2,0,0,0,0,0,0,0,0},  // 2: 2 slots at 1st level
+        {0,2,0,0,0,0,0,0,0},  // 3: 2 slots at 2nd level
+        {0,2,0,0,0,0,0,0,0},  // 4
+        {0,0,2,0,0,0,0,0,0},  // 5: 2 slots at 3rd level
+        {0,0,2,0,0,0,0,0,0},  // 6
+        {0,0,0,2,0,0,0,0,0},  // 7: 2 slots at 4th level
+        {0,0,0,2,0,0,0,0,0},  // 8
+        {0,0,0,0,2,0,0,0,0},  // 9: 2 slots at 5th level
+        {0,0,0,0,2,0,0,0,0},  // 10
+        {0,0,0,0,3,0,0,0,0},  // 11: 3 slots at 5th level
+        {0,0,0,0,3,0,0,0,0},  // 12
+        {0,0,0,0,3,0,0,0,0},  // 13
+        {0,0,0,0,3,0,0,0,0},  // 14
+        {0,0,0,0,3,0,0,0,0},  // 15
+        {0,0,0,0,3,0,0,0,0},  // 16
+        {0,0,0,0,4,0,0,0,0},  // 17: 4 slots at 5th level
+        {0,0,0,0,4,0,0,0,0},  // 18
+        {0,0,0,0,4,0,0,0,0},  // 19
+        {0,0,0,0,4,0,0,0,0}   // 20
+    }};
+
+    switch (cls) {
+        case Bard: case Cleric: case Druid:
+            return kFullA[lvl];
+        case Sorcerer: case Wizard:
+            return kFullB[lvl];
+        case Paladin: case Ranger:
+            return kHalf[lvl];
+        case Warlock:
+            return kPact[lvl];
+        default:
+            return {};  // Non-casters: all zeros
+    }
+}
+
+} // namespace rpg

@@ -44,11 +44,4 @@ echo "[*] Press Ctrl+C to stop the container"
 echo ""
 
 docker run --rm -v "$HOME":/home/user -p 6080:6080 rpg_map \
-  bash -c "Xvfb :99 -screen 0 1280x1024x24 -ac > /dev/null 2>&1 &
-           sleep 1
-           x11vnc -display :99 -forever -nopw > /dev/null 2>&1 &
-           sleep 1
-           websockify --web=/usr/share/novnc 6080 127.0.0.1:5900 > /dev/null 2>&1 &
-           sleep 1
-           cd /home/user/Documents/Claude/Projects/DND && \
-           python gui/main.py '$CONTAINER_MAP_PATH'"
+  "$CONTAINER_MAP_PATH"

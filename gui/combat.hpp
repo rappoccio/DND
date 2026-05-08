@@ -28,8 +28,10 @@
 #include "weapon.hpp"
 #include "spell.hpp"
 #include "agent.hpp"
+#include "message_logger.hpp"
 
 #include <cstdint>
+#include <format>
 #include <optional>
 #include <random>
 #include <string>
@@ -280,6 +282,11 @@ public:
     // Clear all movement budgets (call at end of combat or start of new round).
     void clearMovement() noexcept;
 
+    // ── Message logging ────────────────────────────────────────────────────
+    // Attach a MessageLogger to receive internal narrative messages (dice rolls,
+    // reasons for conditions, etc.). Optional; null = silent.
+    void setLogger(MessageLogger* logger) noexcept { logger_ = logger; }
+
     // ── Dice rollers ──────────────────────────────────────────────────────
     int roll(int sides);            // 1dN  (result 1…sides)
     int rollAdvantage(int sides);   // 2dN, keep higher
@@ -287,11 +294,20 @@ public:
 
     // ── Core attack mechanics ─────────────────────────────────────────────
 
+    // Check if an attacker is "threatened" (within 10 feet of any other agent).
+    // Returns true if the attacker should have disadvantage on ranged attacks.
+    [[nodiscard]] bool isThreatened(const BattleMap& bm, int attacker_idx) const noexcept;
+
+    // Returns indices of non-incapacitated agents within reach_cells of target's footprint.
+    // Used for opportunity attack detection (reach_cells = 1 for 5-ft melee reach).
+    [[nodiscard]] std::vector<int> threateningAgents(const BattleMap& bm, int target_idx, int reach_cells = 1) const;
+
     // Roll to hit: fills in the attack-roll fields of an AttackResult.
     // Does NOT roll or apply damage.
     [[nodiscard]] AttackResult rollToHit(const Weapon& w,
                                           const Agent::Stats& attacker,
                                           int target_ac,
+                                          bool advantage = false,
                                           bool disadvantage = false);
 
     // Roll damage dice and populate the damage fields of an existing result.
@@ -305,6 +321,7 @@ public:
     [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
                                               const Agent::Stats& attacker,
                                               Agent::Stats& target,
+                                              bool advantage = false,
                                               bool disadvantage = false);
 
     // ── High-level BattleMap integration ─────────────────────────────────
@@ -418,6 +435,14 @@ private:
     std::unordered_map<int, int> burrowRemaining_;
 
     std::vector<ActiveEffect> activeEffects_;
+
+    MessageLogger* logger_{nullptr};
+
+    // Emit a message to the logger (if attached).
+    template<typename... Args>
+    void log_(std::format_string<Args...> fmt, Args&&... args) {
+        if (logger_) logger_->log(std::format(fmt, std::forward<Args>(args)...));
+    }
 
     // ── Spell helpers ─────────────────────────────────────────────────────
     [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;

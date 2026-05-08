@@ -2,7 +2,7 @@
   "agents": [
     {
       "name": "Davian Martikov",
-      "sprite_path": "/Users/rappoccio/Documents/Claude/Projects/DND/sprites/davian-martikov.png",
+      "sprite_path": "davian-martikov.png",
       "size": 1,
       "col": 12,
       "row": 10,
@@ -58,7 +58,7 @@
     },
     {
       "name": "Baba Lysaga",
-      "sprite_path": "/Users/rappoccio/Documents/Claude/Projects/DND/sprites/baba-lysaga.png",
+      "sprite_path": "baba-lysaga.png",
       "size": 1,
       "col": 9,
       "row": 7,
@@ -84,95 +84,16 @@
         "save_prof_wis": true,
         "save_prof_cha": false,
 	"can_cast_spell":true,
-	"spellcasting_ability":"wis"  
+	"spellcasting_ability":"wis"
       },
+      "agent_class": "Wizard",
+      "agent_char_level": 9,
+      "spell_slots_max": [4, 3, 3, 3, 1, 0, 0, 0, 0],
+      "spell_slots_cur": [4, 3, 3, 3, 1, 0, 0, 0, 0],
       "spells": [
-	{
-	  "name": "Fire Bolt",
-	  "type": "Harm",
-	  "geometry": "Single",
-	  "attack_type": "AttackRoll",
-	  "save_ability": null,
-	  "range": 120,
-	  "radius": null,
-	  "width": null,
-	  "length": null,
-	  "duration": 1,
-	  "magic_damage_types": ["Fire"],
-	  "physical_damage_types": [],
-	  "num_dice": 2,
-	  "die_size": 10,
-	  "terrain_effect": null,
-	  "hatch_pattern": null
-	},
-	{
-	  "name": "Fireball",
-	  "type": "Harm",
-	  "geometry": "Sphere",
-	  "attack_type": "Save",
-	  "save_ability": "SaveDex",
-	  "range": 150,
-	  "radius": 20,
-	  "width": null,
-	  "length": null,
-	  "duration": 1,
-	  "magic_damage_types": ["Fire"],
-	  "physical_damage_types": [],
-	  "num_dice": 8,
-	  "die_size": 6,
-	  "terrain_effect": null,
-	  "hatch_pattern": null
-	},
-	{
-	  "name": "Grease",
-	  "type": "Control",
-	  "geometry": "Sphere",
-	  "attack_type": "AttackRoll",
-	  "save_ability": null,
-	  "range": 60,
-	  "radius": 20,
-	  "width": null,
-	  "length": null,
-	  "duration": 1,
-	  "magic_damage_types": [],
-	  "physical_damage_types": [],
-	  "num_dice": 0,
-	  "die_size": 6,
-	  "terrain_effect": {
-	    "type": "Difficult Terrain",
-	    "multiplier": 0.5,
-	    "duration": 10
-	  },
-	  "hatch_pattern": "xx",
-	  "terrain_color": null,
-	  "requires_concentration": false
-	},
-	{
-	  "name": "Ice Storm",
-	  "type": "Damage,Control",
-	  "geometry": "Sphere",
-	  "attack_type": "Save",
-	  "save_ability": "SaveDex",
-	  "range": 300,
-	  "radius": 20,
-	  "width": null,
-	  "length": null,
-	  "duration": 1,
-	  "magic_damage_types": [
-	    {"type": "Cold", "num_dice": 2, "die_size": 8}
-	  ],
-	  "physical_damage_types": [
-	    {"type": "Bludgeoning", "num_dice": 4, "die_size": 6}
-	  ],
-	  "terrain_effect": {
-	    "type": "Difficult Terrain",
-	    "multiplier": 0.5,
-	    "duration": 10
-	  },
-	  "hatch_pattern": "xx",
-	  "terrain_color": [100, 200, 255],
-	  "requires_concentration": true
-	}
+	  "Fireball",
+	  "Grease",
+	  "Ice Storm"
       ]
     }
   ]

@@ -25,6 +25,7 @@
 #include "battle_map.hpp"
 #include "combat.hpp"
 #include "map_configs.hpp"
+#include "character_class.hpp"
 
 namespace py = pybind11;
 using namespace rpg;
@@ -128,6 +129,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("stats",
             [](PlacedAgent& p) -> Agent::Stats& { return p.stats; },
             py::return_value_policy::reference_internal)
+        .def("set_advantage", [](PlacedAgent& p, bool adv){ p.agent->setAdvantage(adv); },
+             py::arg("advantage"), "Set whether the agent has advantage on rolls.")
+        .def("has_advantage", [](const PlacedAgent& p){ return p.agent->hasAdvantage(); },
+             "Get whether the agent has advantage on rolls.")
+        .def("set_disadvantage", [](PlacedAgent& p, bool dis){ p.agent->setDisadvantage(dis); },
+             py::arg("disadvantage"), "Set whether the agent has disadvantage on rolls.")
+        .def("has_disadvantage", [](const PlacedAgent& p){ return p.agent->hasDisadvantage(); },
+             "Get whether the agent has disadvantage on rolls.")
         .def("__repr__", [](const PlacedAgent& p){
             return "<PlacedAgent '" + std::string(p.agent->name())
                  + "' size=" + std::to_string(p.agent->getSize())
@@ -172,6 +181,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Initiative
         .def_readwrite("initiative_prof", &Agent::Stats::initiative_prof)
         .def_property_readonly("initiative_modifier", &Agent::Stats::initiativeModifier)
+        // Character Class & Spell Slots
+        .def_readwrite("character_class",       &Agent::Stats::character_class)
+        .def_readwrite("char_level",            &Agent::Stats::char_level)
+        .def_readwrite("spell_slots_max",       &Agent::Stats::spell_slots_max)
+        .def_readwrite("spell_slots_remaining", &Agent::Stats::spell_slots_remaining)
+        .def("set_class_level", &Agent::Stats::set_class_level,
+             py::arg("cls"), py::arg("level"),
+             "Set the character class and level. Automatically computes spell_slots_max and updates can_cast_spell.")
+        .def("restore_spell_slots", &Agent::Stats::restore_spell_slots,
+             "Restore spell_slots_remaining to their maximum (Long Rest).")
         // Spell Save DCs (computed read-only: 8 + mod [+ prof_bonus if proficient])
         .def_property_readonly("spell_save_dc_str",   &Agent::Stats::spellSaveDcStr)
         .def_property_readonly("spell_save_dc_dex",   &Agent::Stats::spellSaveDcDex)
@@ -195,11 +214,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("dashing",       &Agent::Conditions::dashing)
         .def_readwrite("dodging",       &Agent::Conditions::dodging)
         .def_readwrite("disengaging",   &Agent::Conditions::disengaging)
+        .def_readwrite("reaction_used", &Agent::Conditions::reaction_used)
         .def_readwrite("hidden",        &Agent::Conditions::hidden)
         .def_readwrite("invisible",     &Agent::Conditions::invisible)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
+        .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
+        .def_readwrite("has_disadvantage", &Agent::Conditions::has_disadvantage)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -283,6 +305,38 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("SaveCha", Spell::SaveCha)
         .export_values();
 
+    // ── Character Class & Caster Type ─────────────────────────────────────────
+    py::enum_<CharacterClass>(m, "CharacterClass")
+        .value("None",      CharacterClass::CharClassNone)
+        .value("Barbarian", CharacterClass::Barbarian)
+        .value("Fighter",   CharacterClass::Fighter)
+        .value("Monk",      CharacterClass::Monk)
+        .value("Rogue",     CharacterClass::Rogue)
+        .value("Bard",      CharacterClass::Bard)
+        .value("Cleric",    CharacterClass::Cleric)
+        .value("Druid",     CharacterClass::Druid)
+        .value("Sorcerer",  CharacterClass::Sorcerer)
+        .value("Wizard",    CharacterClass::Wizard)
+        .value("Paladin",   CharacterClass::Paladin)
+        .value("Ranger",    CharacterClass::Ranger)
+        .value("Warlock",   CharacterClass::Warlock)
+        .export_values();
+
+    py::enum_<CasterType>(m, "CasterType")
+        .value("None", CasterType::CasterNone)
+        .value("Full", CasterType::CasterFull)
+        .value("Half", CasterType::CasterHalf)
+        .value("Pact", CasterType::CasterPact)
+        .export_values();
+
+    // Free functions for class/spell slot logic
+    m.def("compute_class_slots", &rpg::compute_class_slots,
+          py::arg("character_class"), py::arg("level"),
+          "Compute spell slots for a character class at a given level. Returns array of 9 ints (one per spell level).");
+    m.def("get_caster_type", &rpg::get_caster_type,
+          py::arg("character_class"),
+          "Get the caster type (None/Full/Half/Pact) for a character class.");
+
     // ── MagicDamageRoll ───────────────────────────────────────────────────────
     py::class_<MagicDamageRoll>(m, "MagicDamageRoll")
         .def(py::init<>())
@@ -317,6 +371,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "The duration is the same as spell.duration (in rounds).")
         .def_readwrite("requires_concentration", &Spell::requires_concentration,
              "If true, caster must maintain concentration; breaks on damage (CON save).")
+        .def_readwrite("level", &Spell::level,
+             "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
+        .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
+             "Extra dice added to damage when cast at a higher slot level. Calculated as upcast_dice_bonus * (slot_level - spell_level).")
         .def("__repr__", [](const Spell& s){
             return "<Spell '" + s.name + "'>"; });
 
@@ -496,6 +554,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
                 s += " bonus_spells=" + std::to_string(t.bonus_spells.size());
             return s + ">"; });
 
+    // ── MessageLogger ──────────────────────────────────────────────────────────
+    py::class_<MessageLogger>(m, "MessageLogger")
+        .def(py::init<>())
+        .def("log", &MessageLogger::log, py::arg("message"),
+             "Log a single message.")
+        .def("flush", &MessageLogger::flush,
+             "Return all buffered messages and clear the buffer.")
+        .def("set_file", &MessageLogger::setFile, py::arg("path"),
+             "Optional: open a log file for debug output.");
+
     // ── CombatEngine ──────────────────────────────────────────────────────────
     py::class_<CombatEngine>(m, "CombatEngine")
         .def(py::init<uint32_t>(), py::arg("seed") = 0,
@@ -542,12 +610,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("roll_to_hit",
              &CombatEngine::rollToHit,
              py::arg("weapon"), py::arg("attacker_stats"),
-             py::arg("target_ac"), py::arg("disadvantage") = false,
+             py::arg("target_ac"), py::arg("advantage") = false,
+             py::arg("disadvantage") = false,
              "Roll d20 + modifier vs AC.  Does not apply damage.")
         .def("resolve_attack",
              &CombatEngine::resolveAttack,
              py::arg("weapon"), py::arg("attacker_stats"),
-             py::arg("target_stats"), py::arg("disadvantage") = false,
+             py::arg("target_stats"), py::arg("advantage") = false,
+             py::arg("disadvantage") = false,
              "Roll to hit, roll damage, apply to target_stats in place.")
 
         // High-level
@@ -563,6 +633,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::executeAction,
              py::arg("battle_map"), py::arg("action"),
              "Validate + execute an Attack; writes HP change to BattleMap.")
+        .def("threatening_agents",
+             &CombatEngine::threateningAgents,
+             py::arg("battle_map"), py::arg("target_idx"), py::arg("reach_cells") = 1,
+             "Indices of non-incapacitated agents within reach_cells of target's footprint.")
         .def("available_attacks",
              &CombatEngine::availableAttacks,
              py::arg("battle_map"), py::arg("attacker_idx"),
@@ -627,6 +701,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("clear_movement",
              &CombatEngine::clearMovement,
              "Clear all movement budgets (call at end of combat).")
+
+        .def("set_logger",
+             &CombatEngine::setLogger,
+             py::arg("logger"),
+             py::keep_alive<1, 2>(),
+             "Attach a MessageLogger; flush() it after each action to read messages.")
 
         // Round execution
         .def("run_round",

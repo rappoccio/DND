@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <concepts>
 #include <filesystem>
@@ -9,6 +10,7 @@
 #include <map>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include "character_class.hpp"
 
 namespace rpg {
 
@@ -114,6 +116,12 @@ namespace rpg {
       // (e.g. the Rogue's "Expertise in Initiative" or similar features).
       bool initiative_prof{false};
 
+      // ── Character Class & Spell Slots ─────────────────────────────────
+      CharacterClass character_class{CharClassNone};
+      int char_level{1};  // Character level 1-20
+      std::array<int,9> spell_slots_max{};       // max slots per level (1-9)
+      std::array<int,9> spell_slots_remaining{}; // current remaining slots
+
       // Initiative modifier: DEX mod [+ prof_bonus if initiative_prof].
       // CombatEngine::rollInitiative() adds a d20 on top of this.
       [[nodiscard]] int initiativeModifier() const noexcept {
@@ -179,6 +187,19 @@ namespace rpg {
         cha   = modToScore("CHA Mod");
       }
 
+      // Set character class and level; computes spell_slots_max.
+      void set_class_level(CharacterClass cls, int level) {
+        character_class = cls;
+        char_level = std::max(1, std::min(20, level));
+        spell_slots_max = compute_class_slots(cls, char_level);
+        // Note: can_cast_spell is now derived from the actual spell list, not set here
+      }
+
+      // Restore remaining spell slots to their maximum (Long Rest).
+      void restore_spell_slots() {
+        spell_slots_remaining = spell_slots_max;
+      }
+
     private:
       // Ability modifier: floor((score - 10) / 2), matching D&D integer rules.
       [[nodiscard]] static int _mod(int score) noexcept {
@@ -199,11 +220,14 @@ namespace rpg {
       bool dashing{false};       // double movement speed
       bool dodging{false};       // attacks against have disadvantage, advantage on DEX saves
       bool disengaging{false};   // does not provoke opportunity attacks
+      bool reaction_used{false}; // reaction already used this turn
       bool hidden{false};        // enemies cannot detect; attacks from hiding have advantage
       bool invisible{false};     // enemies cannot see this agent
       bool incapacitated{false}; // cannot act, movement speed 0
       bool concentrating{false}; // concentrating on a spell; breaks on damage CON save failure
       std::string concentrating_on{}; // name of the spell being concentrated on
+      bool has_advantage{false};   // advantage on attack rolls, ability checks, saving throws
+      bool has_disadvantage{false}; // disadvantage on attack rolls, ability checks, saving throws
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -247,6 +271,7 @@ namespace rpg {
       conditions_.dashing     = false;
       conditions_.dodging     = false;
       conditions_.disengaging = false;
+      conditions_.reaction_used = false;
       takeTurn();
     }
 
@@ -317,6 +342,17 @@ namespace rpg {
     // -- Get conditions
     [[nodiscard]] const Conditions& getConditions() const noexcept { return conditions_; }
     void setConditions(const Conditions& c) noexcept { conditions_ = c; }
+
+    // ── Reaction tracking (one reaction per round) ────────────────────────────
+    [[nodiscard]] bool hasUsedReaction() const noexcept { return conditions_.reaction_used; }
+    void setReactionUsed(bool used) noexcept { conditions_.reaction_used = used; }
+
+    // ── Advantage / Disadvantage ──────────────────────────────────────────────
+    [[nodiscard]] bool hasAdvantage() const noexcept { return conditions_.has_advantage; }
+    void setAdvantage(bool adv) noexcept { conditions_.has_advantage = adv; }
+
+    [[nodiscard]] bool hasDisadvantage() const noexcept { return conditions_.has_disadvantage; }
+    void setDisadvantage(bool dis) noexcept { conditions_.has_disadvantage = dis; }
 
     // ── Movement ──────────────────────────────────────────────────────────────
     // Seed remaining movement budgets from speed values (call at turn start).

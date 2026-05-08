@@ -516,16 +516,22 @@ class StatsDialog:
         self.active              = False
         self._agent_idx          = -1
         self._agent_name         = ""
+        self._class_name         = "None"
+        self._char_level         = 1
         self._cb                 = None
         self.steppers: dict      = {}   # populated in open()
         self.prof_flags: dict    = {}   # save_prof_<ability> -> bool
         self._prof_rects: dict   = {}   # same keys -> pygame.Rect
+        self._class_rects: dict  = {}   # class cycle button rects
+        self._char_level_stepper = None  # IntStepper for character level
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, callback):
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback):
         self.active      = True
         self._agent_idx  = agent_idx
         self._agent_name = agent_name
+        self._class_name = class_name
+        self._char_level = char_level
         self._cb         = callback
         self._build_steppers(self._dlg(screen), stats)
 
@@ -594,6 +600,13 @@ class StatsDialog:
             self.steppers[key] = IntStepper(r, getattr(stats, key, lo), lo, hi,
                                             self.font_md)
 
+        # ── Character level stepper (Python-only, not in C++ stats) ────────
+        # Create it at the bottom-left, below the combat stats
+        last_row_idx = (len(self.COMBAT) - 1) // 2
+        char_level_y = cy + (last_row_idx + 1) * ROW + 10
+        char_level_rect = pygame.Rect(dlg.x + PAD, char_level_y, half, step_h)
+        self._char_level_stepper = IntStepper(char_level_rect, self._char_level, 1, 20, self.font_md)
+
     # ── events ───────────────────────────────────────────────────────────────
     def handle(self, event, screen) -> bool:
         if not self.active:
@@ -603,8 +616,12 @@ class StatsDialog:
         # Let steppers see every event first so a focused field can consume
         # Escape/Enter before the dialog itself acts on Escape.
         any_field_active = any(st._active for st in self.steppers.values())
+        if self._char_level_stepper:
+            any_field_active = any_field_active or self._char_level_stepper._active
         for st in self.steppers.values():
             st.handle(event)
+        if self._char_level_stepper:
+            self._char_level_stepper.handle(event)
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE and not any_field_active:
@@ -615,11 +632,28 @@ class StatsDialog:
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Class cycle buttons
+            if self._class_rects:
+                available = self._class_rects.get("available", [])
+                left_rect = self._class_rects.get("left")
+                right_rect = self._class_rects.get("right")
+                if available and left_rect and left_rect.collidepoint(event.pos):
+                    idx = available.index(self._class_name) if self._class_name in available else 0
+                    self._class_name = available[(idx - 1) % len(available)]
+                    return True
+                if available and right_rect and right_rect.collidepoint(event.pos):
+                    idx = available.index(self._class_name) if self._class_name in available else 0
+                    self._class_name = available[(idx + 1) % len(available)]
+                    return True
+
             # Proficiency checkboxes
             for flag_key, rect in self._prof_rects.items():
                 if rect.collidepoint(event.pos):
                     self.prof_flags[flag_key] = not self.prof_flags[flag_key]
             if self._ok_rect(dlg).collidepoint(event.pos):
+                # Update character level from stepper before confirming
+                if self._char_level_stepper:
+                    self._char_level = self._char_level_stepper.value
                 self._confirm()
             elif self._cancel_rect(dlg).collidepoint(event.pos):
                 self.active = False
@@ -628,7 +662,7 @@ class StatsDialog:
 
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
-            self._cb(self._agent_idx, self.steppers, self.prof_flags)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -739,6 +773,42 @@ class StatsDialog:
             pygame.draw.rect(screen, self.C_BORDER, bar_r, 1, border_radius=4)
             hp_txt = self.font_sm.render(f"HP  {cur} / {mx}", True, (210, 210, 210))
             screen.blit(hp_txt, hp_txt.get_rect(center=bar_r.center))
+
+        # ── Character Level and Class ─────────────────────────────────────
+        if self._char_level_stepper:
+            cs_y_label = self._char_level_stepper.rect.y - 14
+            t = self.font_sm.render("Character Level", True, self.C_LABEL)
+            screen.blit(t, (self._char_level_stepper.rect.x, cs_y_label))
+            self._char_level_stepper.draw(screen)
+
+            # Class cycle buttons (compact, on same row)
+            class_y = self._char_level_stepper.rect.bottom + 8
+            available_classes = ["None", "Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
+            class_lbl = self.font_sm.render("Class:", True, self.C_LABEL)
+            screen.blit(class_lbl, (dlg.x + PAD, class_y))
+
+            left_btn_r = pygame.Rect(dlg.x + PAD + 50, class_y, 20, 16)
+            right_btn_r = pygame.Rect(dlg.right - PAD - 20, class_y, 20, 16)
+            class_txt_r = pygame.Rect(left_btn_r.right + 4, class_y, right_btn_r.left - left_btn_r.right - 8, 16)
+
+            pygame.draw.rect(screen, (60, 55, 80), left_btn_r, border_radius=2)
+            pygame.draw.rect(screen, (120, 100, 150), left_btn_r, 1, border_radius=2)
+            left_txt = self.font_sm.render("<", True, (220, 210, 240))
+            screen.blit(left_txt, left_txt.get_rect(center=left_btn_r.center))
+
+            pygame.draw.rect(screen, (60, 55, 80), class_txt_r, border_radius=2)
+            pygame.draw.rect(screen, (120, 100, 150), class_txt_r, 1, border_radius=2)
+            class_txt = self.font_sm.render(self._class_name, True, (220, 210, 240))
+            screen.blit(class_txt, class_txt.get_rect(center=class_txt_r.center))
+
+            pygame.draw.rect(screen, (60, 55, 80), right_btn_r, border_radius=2)
+            pygame.draw.rect(screen, (120, 100, 150), right_btn_r, 1, border_radius=2)
+            right_txt = self.font_sm.render(">", True, (220, 210, 240))
+            screen.blit(right_txt, right_txt.get_rect(center=right_btn_r.center))
+
+            self._class_rects = {"left": left_btn_r, "right": right_btn_r, "available": available_classes}
+        else:
+            self._class_rects = {}
 
         # ── Buttons ───────────────────────────────────────────────────────
         mouse = pygame.mouse.get_pos()
@@ -911,9 +981,11 @@ class MobSelectionDialog:
     """Modal dialog for selecting a mob from a scrollable list."""
     ITEM_H = 24
     PAD = 12
+    SEARCH_H = 32
 
     def __init__(self, mobs: list[str], font_sm=None, font_md=None):
-        self.mobs = mobs
+        self.all_mobs = mobs  # All available mobs
+        self.filtered_mobs = mobs  # Filtered by search
         self.font_sm = font_sm
         self.font_md = font_md
         self.visible = False
@@ -921,12 +993,17 @@ class MobSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.selected_callback = None
+        self.search_text = ""
+        self.search_active = False
 
     def show(self, callback):
         self.visible = True
         self.selected_callback = callback
         self.scroll_y = 0
         self._hover_idx = -1
+        self.search_text = ""
+        self.search_active = True
+        self.filtered_mobs = self.all_mobs[:]
         # Center dialog on screen
         screen_w, screen_h = pygame.display.get_surface().get_size()
         dlg_w = 400
@@ -936,15 +1013,49 @@ class MobSelectionDialog:
     def dismiss(self):
         self.visible = False
 
+    def _update_filtered_mobs(self):
+        """Filter mobs based on search text."""
+        search_lower = self.search_text.lower()
+        self.filtered_mobs = [m for m in self.all_mobs if search_lower in m.lower()]
+        self.scroll_y = 0
+        self._hover_idx = -1
+
     def handle(self, event) -> bool:
         if not self.visible or not self.rect:
             return False
 
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.dismiss()
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                self.search_text = self.search_text[:-1]
+                self._update_filtered_mobs()
+                return True
+            elif event.key == pygame.K_RETURN:
+                # Select first filtered mob if only one matches
+                if len(self.filtered_mobs) == 1:
+                    if self.selected_callback:
+                        self.selected_callback(self.filtered_mobs[0])
+                    self.dismiss()
+                    return True
+            elif event.unicode.isprintable():
+                self.search_text += event.unicode
+                self._update_filtered_mobs()
+                return True
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
-                list_y = self.rect.y + 40
-                list_h = self.rect.h - 50
-                for i, mob in enumerate(self.mobs):
+                # Check if click is in search box area
+                search_y = self.rect.y + 35
+                search_box_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
+                                             self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+                if search_box_rect.collidepoint(*event.pos):
+                    self.search_active = True
+                    return True
+
+                list_y = search_y + self.SEARCH_H
+                list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+                for i, mob in enumerate(self.filtered_mobs):
                     item_y = list_y + i * self.ITEM_H - self.scroll_y
                     if list_y <= item_y < list_y + list_h:
                         item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
@@ -958,10 +1069,11 @@ class MobSelectionDialog:
                 self.dismiss()
             return True
         elif event.type == pygame.MOUSEMOTION and self.visible:
-            list_y = self.rect.y + 40
-            list_h = self.rect.h - 50
+            search_y = self.rect.y + 35
+            list_y = search_y + self.SEARCH_H
+            list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
             self._hover_idx = -1
-            for i, mob in enumerate(self.mobs):
+            for i, mob in enumerate(self.filtered_mobs):
                 item_y = list_y + i * self.ITEM_H - self.scroll_y
                 if list_y <= item_y < list_y + list_h:
                     item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
@@ -971,7 +1083,7 @@ class MobSelectionDialog:
                         break
         elif event.type == pygame.MOUSEWHEEL and self.visible and self.rect.collidepoint(*pygame.mouse.get_pos()):
             self.scroll_y = max(0, self.scroll_y - event.y * 30)
-            max_scroll = max(0, len(self.mobs) * self.ITEM_H - (self.rect.h - 50))
+            max_scroll = max(0, len(self.filtered_mobs) * self.ITEM_H - (self.rect.h - self.SEARCH_H - 20))
             self.scroll_y = min(self.scroll_y, max_scroll)
             return True
 
@@ -994,15 +1106,26 @@ class MobSelectionDialog:
         title = self.font_md.render("Select Mob", True, COL_TEXT)
         surf.blit(title, (self.rect.x + self.PAD, self.rect.y + self.PAD))
 
-        # List area
-        list_y = self.rect.y + 40
-        list_h = self.rect.h - 50
+        # Search box (positioned below title with padding)
+        search_y = self.rect.y + 35
+        search_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
+                                 self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+        search_bg = (60, 60, 80) if self.search_active else (40, 40, 60)
+        pygame.draw.rect(surf, search_bg, search_rect, border_radius=4)
+        pygame.draw.rect(surf, COL_PANEL_BORDER, search_rect, 1, border_radius=4)
+        search_txt = self.font_sm.render(self.search_text if self.search_text else "Search mobs...",
+                                        True, COL_TEXT if self.search_text else (120, 120, 120))
+        surf.blit(search_txt, (search_rect.x + 6, search_rect.centery - search_txt.get_height() // 2))
+
+        # List area (below search box)
+        list_y = search_y + self.SEARCH_H
+        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
         list_rect = pygame.Rect(self.rect.x + self.PAD, list_y,
                                self.rect.w - self.PAD * 2, list_h)
         pygame.draw.rect(surf, (30, 30, 40), list_rect)
 
-        # Draw mobs
-        for i, mob in enumerate(self.mobs):
+        # Draw filtered mobs
+        for i, mob in enumerate(self.filtered_mobs):
             item_y = list_y + i * self.ITEM_H - self.scroll_y
             if list_y <= item_y < list_y + list_h:
                 item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
@@ -1704,6 +1827,8 @@ _DEFAULT_SPELL: dict = {
     "terrain_effect":        None,   # {type, multiplier, duration} or None
     "hatch_pattern":         None,   # matplotlib hatch pattern: '//', '\\', '||', etc.
     "terrain_color":         None,   # RGB tuple (R, G, B) for terrain, None = brown default
+    "level":                 0,      # 0=cantrip/unlimited, 1-9=requires spell slot
+    "upcast_dice_bonus":     0,      # extra dice per slot level above spell.level
 }
 
 
@@ -1904,7 +2029,7 @@ class SpellDialog:
                 elif event.unicode and event.unicode.isprintable():
                     self._f[af] = self._f.get(af, "") + event.unicode
                 return True
-            if af in ("range", "radius", "width", "length", "duration"):
+            if af in ("range", "radius", "width", "length", "duration", "level", "upcast_dice_bonus"):
                 cur = str(self._f.get(af, ""))
                 if event.key == pygame.K_BACKSPACE:
                     cur = cur[:-1]
@@ -1964,7 +2089,7 @@ class SpellDialog:
                         return True
 
             # Numeric / text fields
-            for field_key in ("name", "range", "radius", "width", "length", "duration"):
+            for field_key in ("name", "range", "radius", "width", "length", "duration", "level", "upcast_dice_bonus"):
                 if field_key in self._rects and self._rects[field_key].collidepoint(mx, my):
                     self._active_field = field_key
                     return True
@@ -2108,6 +2233,14 @@ class SpellDialog:
             # Type
             label("Type", lx, cy); cy += 14
             toggle_group("type", ["Harm", "Heal"], lx, cy, btn_w=90); cy += FH + PAD
+
+            # Level and Upcast Dice Bonus (on same row)
+            label("Spell Level", lx, cy)
+            label("Upcast Dice", lx + RW // 2 + 6, cy)
+            cy += 14
+            text_field("level",    lx,               cy, RW // 2 - 4)
+            text_field("upcast_dice_bonus", lx + RW // 2 + 4, cy, RW // 2 - 4)
+            cy += FH + PAD
 
             # Geometry
             label("Geometry", lx, cy); cy += 14
@@ -2395,7 +2528,7 @@ class TemporaryTerrainPlacementDialog:
 
 
 class TerrainEditorDialog:
-    """Modal dialog for marking terrain on the map (walls, chasms, difficult terrain)."""
+    """Modal dialog for marking terrain on the map (walls, chasms, water, difficult terrain)."""
 
     def __init__(self, font_sm, font_md):
         self.font_sm = font_sm
@@ -2406,8 +2539,16 @@ class TerrainEditorDialog:
         self.selection_start = None
         self.selection_rect = None
         self.selected_type = "Difficult Terrain"
-        self.terrain_mult = 0.5
+        self.difficulty_mult = 0.5  # 0.5 for Halved, 0.25 for Quartered
         self.bm = None  # Reference to BattleMap for grid coordinate conversion
+        self.selected_region_idx = -1  # Index of selected region for editing/deletion
+        # Mapping from terrain type names to rpg.TerrainType enum values
+        self.terrain_type_map = {
+            "Standard": rpg.TerrainType.Standard,
+            "Water": rpg.TerrainType.Water,
+            "Wall": rpg.TerrainType.Wall,
+            "Chasm": rpg.TerrainType.Chasm,
+        }
 
     def open(self, map_surf, terrain_regions, bm=None):
         """Open the terrain editor with existing terrain data."""
@@ -2429,11 +2570,21 @@ class TerrainEditorDialog:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
-                self.selection_start = event.pos
-                self.selection_rect = None
+                # Check if clicking on existing region
+                clicked_idx = self._get_region_at_pos(event.pos)
+                if clicked_idx >= 0:
+                    self.selected_region_idx = clicked_idx
+                    self.selection_start = None
+                    self.selection_rect = None
+                else:
+                    # Start new terrain selection
+                    self.selection_start = event.pos
+                    self.selection_rect = None
+            elif event.button == 3:  # Right click to deselect
+                self.selected_region_idx = -1
 
         elif event.type == pygame.MOUSEMOTION:
-            if self.selection_start:
+            if self.selection_start and self.selected_region_idx < 0:
                 x0, y0 = self.selection_start
                 x1, y1 = event.pos
                 self.selection_rect = pygame.Rect(
@@ -2454,11 +2605,41 @@ class TerrainEditorDialog:
             elif event.key == pygame.K_2:
                 self.selected_type = "Chasm"
             elif event.key == pygame.K_3:
+                self.selected_type = "Water"
+            elif event.key == pygame.K_4:
                 self.selected_type = "Difficult Terrain"
+            elif event.key == pygame.K_h:
+                # Switch to Halved (0.5) difficulty
+                self.difficulty_mult = 0.5
+            elif event.key == pygame.K_q:
+                # Switch to Quartered (0.25) difficulty
+                self.difficulty_mult = 0.25
+            elif event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
+                # Delete selected region
+                if self.selected_region_idx >= 0:
+                    self.terrain_regions.pop(self.selected_region_idx)
+                    self.selected_region_idx = -1
+            elif event.key == pygame.K_c and self.selected_region_idx >= 0:
+                # Change type of selected region to current selected_type
+                self.terrain_regions[self.selected_region_idx]["type"] = self.selected_type
+                if self.selected_type == "Difficult Terrain":
+                    self.terrain_regions[self.selected_region_idx]["multiplier"] = self.difficulty_mult
             elif event.key == pygame.K_z and event.mod & pygame.KMOD_CTRL:
                 # Undo last region
                 if self.terrain_regions:
                     self.terrain_regions.pop()
+                self.selected_region_idx = -1
+
+    def _get_region_at_pos(self, pos):
+        """Return the index of the terrain region at the given position, or -1."""
+        x, y = pos
+        for i, region in enumerate(self.terrain_regions):
+            if "x" not in region or "y" not in region:
+                continue
+            rect = pygame.Rect(region["x"], region["y"], region["width"], region["height"])
+            if rect.collidepoint(x, y):
+                return i
+        return -1
 
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
@@ -2511,13 +2692,41 @@ class TerrainEditorDialog:
             w = snapped_end_x - snapped_x
             h = snapped_end_y - snapped_y
 
+        # Apply terrain type to actual grid cells in BattleMap
+        if self.bm and self.selected_type in self.terrain_type_map:
+            terrain_type = self.terrain_type_map[self.selected_type]
+            v_lines = self.bm.v_line_positions
+            h_lines = self.bm.h_line_positions
+
+            if v_lines and h_lines:
+                # Find grid cells within the selection using binary search
+                import bisect
+                # Find starting column: grid line at or before x
+                start_col = max(0, bisect.bisect_right(v_lines, x) - 1)
+                # Find ending column: grid line at or after x+w
+                end_col = min(self.bm.grid_cols, bisect.bisect_left(v_lines, x + w))
+
+                # Find starting row: grid line at or before y
+                start_row = max(0, bisect.bisect_right(h_lines, y) - 1)
+                # Find ending row: grid line at or after y+h
+                end_row = min(self.bm.grid_rows, bisect.bisect_left(h_lines, y + h))
+
+                # Set terrain type for each cell
+                print(f"[TerrainEditor] Setting {self.selected_type} terrain from ({start_col},{start_row}) to ({end_col-1},{end_row-1})")
+                for col in range(start_col, end_col):
+                    for row in range(start_row, end_row):
+                        self.bm.set_terrain_type(rpg.Cell(col, row), terrain_type)
+                        # Verify it was set
+                        check_type = self.bm.get_terrain_type(rpg.Cell(col, row))
+                        print(f"[TerrainEditor] Set terrain at ({col},{row}) to {self.selected_type} (verified: {check_type})")
+
         region = {
             "type": self.selected_type,
             "x": x,
             "y": y,
             "width": w,
             "height": h,
-            "multiplier": self.terrain_mult if self.selected_type == "Difficult Terrain" else 0.0
+            "multiplier": self.difficulty_mult if self.selected_type == "Difficult Terrain" else 0.0
         }
         self.terrain_regions.append(region)
 
@@ -2530,7 +2739,7 @@ class TerrainEditorDialog:
         screen.blit(self.map_surf, (0, 0))
 
         # Draw terrain overlays
-        for region in self.terrain_regions:
+        for i, region in enumerate(self.terrain_regions):
             # Handle both old structure (x,y,width,height) and new structure (cells)
             if "cells" in region:
                 # Concentration terrain - skip in editor (only show permanent terrain)
@@ -2544,11 +2753,17 @@ class TerrainEditorDialog:
                 color = (50, 50, 50, 200)
             elif region["type"] == "Chasm":
                 color = (140, 140, 140, 180)
+            elif region["type"] == "Water":
+                color = (100, 150, 255, 150)
             else:  # Difficult Terrain
                 color = (255, 200, 100, 128)
             s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
             s.fill(color)
             screen.blit(s, (rect.x, rect.y))
+
+            # Highlight selected region with border
+            if i == self.selected_region_idx:
+                pygame.draw.rect(screen, (255, 255, 0), rect, 3)
 
         # Draw current selection preview
         if self.selection_rect:
@@ -2561,7 +2776,8 @@ class TerrainEditorDialog:
         sel_texts = [
             f"[1] Wall (black)",
             f"[2] Chasm (grey)",
-            f"[3] Difficult Terrain (orange)"
+            f"[3] Water (blue)",
+            f"[4] Difficult Terrain (orange)"
         ]
         y = 10
         for text in sel_texts:
@@ -2570,12 +2786,29 @@ class TerrainEditorDialog:
             y += 18
 
         # Current type highlight
-        current_idx = {"Wall": 0, "Chasm": 1, "Difficult Terrain": 2}.get(self.selected_type, 2)
+        current_idx = {"Wall": 0, "Chasm": 1, "Water": 2, "Difficult Terrain": 3}.get(self.selected_type, 3)
         pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 160, 16), 2)
 
+        # Difficulty multiplier indicator
+        diff_text = f"Difficulty: {'[H]alved (0.5)' if self.difficulty_mult == 0.5 else '[Q]uartered (0.25)'}"
+        diff_surf = self.font_sm.render(diff_text, True, (200, 200, 200))
+        screen.blit(diff_surf, (10, y + 10))
+
         # Instructions
-        inst = self.font_sm.render("[ESC] Save & Close | [Ctrl+Z] Undo", True, (180, 180, 180))
-        screen.blit(inst, (10, screen.get_height() - 25))
+        if self.selected_region_idx >= 0:
+            inst_texts = [
+                "[DEL] Delete | [C] Change Type | [Right Click] Deselect",
+                "[ESC] Save & Close | [Ctrl+Z] Undo"
+            ]
+        else:
+            inst_texts = [
+                "Click terrain to select, [ESC] Save & Close, [Ctrl+Z] Undo",
+            ]
+        y_inst = screen.get_height() - 25 - len(inst_texts) * 20
+        for text in inst_texts:
+            inst = self.font_sm.render(text, True, (180, 180, 180))
+            screen.blit(inst, (10, y_inst))
+            y_inst += 20
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2612,9 +2845,40 @@ class App:
         self.all_mobs = self.mob_stats_json
         self.sprites_dir = os.path.dirname(csv_path)  # Store for later use
 
+        # ── Load spells from spells.json ──────────────────────────────────
+        self.all_spells = []  # list of spell dicts from spells.json
+        possible_spell_paths = [
+            os.path.join(script_dir, "spells.json"),
+            os.path.join(script_dir, "..", "spells.json"),
+            os.path.join(map_dir, "spells.json"),
+            "spells.json",
+        ]
+        spells_loaded_from = None
+        for spells_path in possible_spell_paths:
+            if os.path.exists(spells_path):
+                try:
+                    with open(spells_path) as f:
+                        self.all_spells = json.load(f)
+                    spells_loaded_from = spells_path
+                    break
+                except (json.JSONDecodeError, IOError):
+                    continue
+
+        if self.all_spells:
+            print(f"✓ Loaded {len(self.all_spells)} spells from {spells_loaded_from}")
+        else:
+            print("⚠ WARNING: No spells loaded. Agents with spells will not function.")
+
+        # Create spell lookup: spell_name -> index
+        self.spell_name_to_idx = {s.get("name"): i for i, s in enumerate(self.all_spells)}
+
         # Selected mob's stats (loaded when a mob is selected from dropdown)
         self.selected_mob_stats = None
+        self.current_mob_grid_size = 1  # Grid size for current mob (1-4)
 
+        # Pending PC creation (used when placing a new PC)
+        self._pending_pc_class = None
+        self._pending_pc_stats = None
 
         # ── Load C++ battle map ───────────────────────────────────────────
         self.bm = rpg.BattleMap(map_path)
@@ -2693,6 +2957,12 @@ class App:
         self.drag_cell    = None       # Cell: current snapped target
         self.drag_valid   = False      # is current drag_cell a legal drop?
 
+        # ── Placement mode state (for floating agent placement) ────────────
+        self.placement_mode_active = False  # True when placing new agent
+        self.placement_config: rpg.AgentConfig | None = None  # Config for agent being placed
+        self.placement_cell: rpg.Cell | None = None  # Current cell under mouse
+        self.placement_valid = False  # Is current placement location valid?
+
         # ── Selection state ───────────────────────────────────────────────
         self.selected_idx  = -1        # index of selected agent (-1 = none)
         self._reach_walk: list = []    # Cell list for walk range overlay
@@ -2701,6 +2971,8 @@ class App:
 
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
         self.combat = rpg.CombatEngine()
+        self.logger = rpg.MessageLogger()
+        self.combat.set_logger(self.logger)
 
         # ── Attack-range overlay ──────────────────────────────────────────
         self._attack_cells_melee:  list = []   # cells attackable by active melee weapon
@@ -2719,6 +2991,10 @@ class App:
         self.pending_spell_slot   = ""    # "" | "action" | "bonus"
         self.pending_spell_idx    = 0
         self.pending_spell_is_aoe = False
+        self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
+        self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
+        self.pending_move_cell    = None  # destination cell
+        self.pending_move_type    = None  # rpg.MovementType
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
         self.combat_log           = []    # list[str], newest first
         self.move_remaining_walk   = 0     # feet remaining this turn (walk)
@@ -2735,7 +3011,10 @@ class App:
         self.round_num              = 0     # current round number (incremented when turn_idx wraps)
         self._effect_meta: dict     = {}    # {effect_id: {"name": str, "color": tuple, "cells": [(col,row)]}}
         self.show_terrain            = False # toggle for showing all terrain regions
-        self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str}}
+        self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
+
+        # ── Spell slot economy (class-based caster tracking) ────────────────
+        self.pending_spell_slot_level: int = 0          # slot level chosen for current spell cast
 
         # ── Agent config GUI state ────────────────────────────────────────
         self._init_config_panel()
@@ -2829,44 +3108,33 @@ class App:
         # y of the INPUT/STEPPER for each row (label sits RS-_WIDGET_H-_ROW_GAP above it)
         title_y  = 10
         row0_y   = title_y + self._TITLE_H + 10           # Mob dropdown
-        row1_y   = row0_y  + RS                            # Name widget
-        row2_y   = row1_y  + RS                            # Sprite Path widget
-        row3_y   = row2_y  + RS                            # Size widget
-        row4_y   = row3_y  + RS                            # Col / Row widgets
-        btn0_y   = row4_y  + self._WIDGET_H + self._ROW_GAP + 4   # Add Agent
-        btn1_y   = btn0_y  + self._BTN_H + self._BTN_GAP  # Apply & Draw
-        btn2_y   = btn1_y  + self._BTN_H + self._BTN_GAP  # Clear All
-        btn3_y   = btn2_y  + self._BTN_H + self._BTN_GAP + 4  # Save (half-width)
-        # btn4 (Load) is at same y as btn3, right half
+        btn0_y   = row0_y  + self._WIDGET_H + self._ROW_GAP + 8   # Clear All
+        btn1_y   = btn0_y  + self._BTN_H + self._BTN_GAP + 4  # Save (half-width)
+        # btn2 (Load) is at same y as btn1, right half
 
-        return px, W, title_y, row0_y, row1_y, row2_y, row3_y, row4_y, btn0_y, btn1_y, btn2_y, btn3_y
+        return px, W, title_y, row0_y, btn0_y, btn1_y
 
     def _init_config_panel(self):
         """Initialize config panel using layout from _panel_layout()."""
-        px, W, title_y, r0, r1, r2, r3, r4, b0, b1, b2, b3 = self._panel_layout()
+        px, W, title_y, r0, b0, b1 = self._panel_layout()
         H   = self._WIDGET_H
         HW  = W // 2 - 2
-        BRW = self._BROWSE_W
-        TW  = W - BRW - 4
         B   = self._BTN_H
 
-        self.btn_select_mob = Button(pygame.Rect(px, r0, W, B), "Select Mob", font=self.font_md)
-        self.inp_name = TextInput(pygame.Rect(px, r1, W, H), "Agent name", self.font_md)
-        self.inp_sprite = TextInput(pygame.Rect(px, r2, TW, H), "Sprite path", self.font_md)
-        self.btn_browse = Button(pygame.Rect(px + TW + 4, r2, BRW, H), "...", font=self.font_md)
-        self.step_size = IntStepper(pygame.Rect(px, r3, W, H), 1, 1, 6, self.font_md)
-        self.step_col = IntStepper(pygame.Rect(px,           r4, HW, H), 0, 0, 99, self.font_md)
-        self.step_row = IntStepper(pygame.Rect(px + HW + 4,  r4, HW, H), 0, 0, 99, self.font_md)
-        self.btn_add = Button(pygame.Rect(px, b0, W, B), "Add Agent", font=self.font_md)
-        self.btn_apply = Button(pygame.Rect(px, b1, W, B), "Apply and Draw", font=self.font_md)
-        self.btn_clear = Button(pygame.Rect(px, b2, W, B), "Clear All",
+        self.btn_select_mob = Button(pygame.Rect(px, r0, HW, B), "Select Mob", font=self.font_md)
+        self.btn_select_pc = Button(pygame.Rect(px + HW + 4, r0, HW, B), "Select PC",
+                                   (80, 100, 140), (110, 130, 170), font=self.font_md)
+        self.btn_clear = Button(pygame.Rect(px, b0, W, B), "Clear All",
                                COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
         SW = HW
-        self.btn_save = Button(pygame.Rect(px,        b3, SW, B), "Save",
+        self.btn_save = Button(pygame.Rect(px,        b1, SW, B), "Save",
                               (50, 100, 60), (70, 130, 80), font=self.font_md)
-        self.btn_load = Button(pygame.Rect(px + SW+4, b3, SW, B), "Load",
+        self.btn_load = Button(pygame.Rect(px + SW+4, b1, SW, B), "Load",
                               (50, 75, 120), (70, 100, 155), font=self.font_md)
-        bc_y = b3 + B + self._BTN_GAP + 8
+        lr_y = b1 + B + self._BTN_GAP
+        self.btn_long_rest = Button(pygame.Rect(px, lr_y, W, B), "Long Rest",
+                                    (60, 100, 60), (80, 130, 80), font=self.font_md)
+        bc_y = lr_y + B + self._BTN_GAP + 8
         self.btn_begin_combat = Button(pygame.Rect(px, bc_y, W, B),
                                       "Begin Combat",
                                       COL_BTN_COMBAT, COL_BTN_COMBAT_HOV, font=self.font_md)
@@ -2874,39 +3142,32 @@ class App:
         self.btn_edit_terrain = Button(pygame.Rect(px, ter_y, W, B),
                                        "Edit Terrain",
                                        (80, 100, 120), (110, 130, 160), font=self.font_md)
+        quit_y = ter_y + B + self._BTN_GAP
+        self.btn_quit = Button(pygame.Rect(px, quit_y, W, B),
+                              "Quit",
+                              COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
 
         self.pending_configs: list[rpg.AgentConfig] = []
         self.pending_mob_stats: list[dict | None] = []  # Parallel list of mob stats for each config
 
     def _reposition_panel(self):
         """Re-anchor all widgets after a window resize."""
-        px, W, _, r0, r1, r2, r3, r4, b0, b1, b2, b3 = self._panel_layout()
-        HW  = W // 2 - 2
-        BRW = self._BROWSE_W
-        TW  = W - BRW - 4
-        SW  = HW
+        px, W, _, r0, b0, b1 = self._panel_layout()
+        SW  = W // 2 - 2
 
-        self.btn_select_mob.rect.update(px, r0, W, self._WIDGET_H)
-        self.inp_name.rect.update(px, r1, W, self._WIDGET_H)
-        self.inp_sprite.rect.update(px, r2, TW, self._WIDGET_H)
-        self.btn_browse.rect.update(px + TW + 4, r2, BRW, self._WIDGET_H)
-        self.step_size.rect.update(px, r3, W, self._WIDGET_H)
-        self.step_col.rect.update(px,           r4, HW, self._WIDGET_H)
-        self.step_row.rect.update(px + HW + 4,  r4, HW, self._WIDGET_H)
-        # Re-init stepper sub-buttons after rect change
-        for st in (self.step_size, self.step_col, self.step_row):
-            bw = 26
-            st.btn_dec = pygame.Rect(st.rect.x,           st.rect.y, bw, st.rect.h)
-            st.btn_inc = pygame.Rect(st.rect.right - bw,  st.rect.y, bw, st.rect.h)
-        self.btn_add.rect.update(px,   b0, W, self._BTN_H)
-        self.btn_apply.rect.update(px, b1, W, self._BTN_H)
-        self.btn_clear.rect.update(px, b2, W, self._BTN_H)
-        self.btn_save.rect.update(px,        b3, SW, self._BTN_H)
-        self.btn_load.rect.update(px + SW+4, b3, SW, self._BTN_H)
-        bc_y = b3 + self._BTN_H + self._BTN_GAP + 8
+        self.btn_select_mob.rect.update(px, r0, SW, self._WIDGET_H)
+        self.btn_select_pc.rect.update(px + SW + 4, r0, SW, self._WIDGET_H)
+        self.btn_clear.rect.update(px, b0, W, self._BTN_H)
+        self.btn_save.rect.update(px,        b1, SW, self._BTN_H)
+        self.btn_load.rect.update(px + SW+4, b1, SW, self._BTN_H)
+        lr_y = b1 + self._BTN_H + self._BTN_GAP
+        self.btn_long_rest.rect.update(px, lr_y, W, self._BTN_H)
+        bc_y = lr_y + self._BTN_H + self._BTN_GAP + 8
         self.btn_begin_combat.rect.update(px, bc_y, W, self._BTN_H)
         ter_y = bc_y + self._BTN_H + self._BTN_GAP
         self.btn_edit_terrain.rect.update(px, ter_y, W, self._BTN_H)
+        quit_y = ter_y + self._BTN_H + self._BTN_GAP
+        self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
         # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
         HW2 = W // 2 - 2
         TW3 = (W - 8) // 3
@@ -2987,7 +3248,7 @@ class App:
             if path and os.path.exists(path):
                 try:
                     raw = pygame.image.load(path).convert_alpha()
-                    self.sprites[key] = pygame.transform.smoothscale(
+                    self.sprites[key] = pygame.transform.scale(
                         raw, (size_px, size_px))
                 except Exception:
                     self.sprites[key] = None
@@ -3002,15 +3263,145 @@ class App:
             return specific_path
         return os.path.join(self.sprites_dir, f"{mob_name[0].upper()}.png")
 
+    def _avg_damage_to_dice(self, avg: int) -> tuple[int, int]:
+        total = avg * 2
+        for die in (6, 8, 10):
+            if total % die == 0:
+                return total // die, die
+        return max(1, total // 6), 6
+
+    def _parse_atk_range(self, range_str: str, atk_type: str) -> tuple[int, int, int]:
+        s = range_str.strip()
+        if not s:
+            return 5, 80, 320
+        if "/" in s:
+            parts = s.split("/")
+            normal, long_ = int(parts[0]), int(parts[1])
+            return 5, normal, long_
+        val = int(s)
+        if atk_type == "Melee":
+            return val, 80, 320
+        return 5, val, val * 4
+
+    def _parse_damage_types(self, dtype_str: str):
+        physical, magic = [], []
+        for part in dtype_str.split(","):
+            t = part.strip()
+            try:
+                physical.append(getattr(rpg.PhysicalDamage, t))
+                continue
+            except AttributeError:
+                pass
+            try:
+                magic.append(getattr(rpg.MagicDamage, t))
+            except AttributeError:
+                pass
+        return physical, magic
+
+    def _auto_weapons_from_mob_stats(self, mob_stats: dict) -> list:
+        weapons = []
+        for i in range(1, 5):  # slots Atk 1–4; iterate all, skip empties
+            atk_type  = mob_stats.get(f"Atk {i} Type", "").strip()
+            dam_str   = mob_stats.get(f"Atk {i} Dam.", "").strip()
+            dtype_str = mob_stats.get(f"Atk {i} Damage Type", "").strip()
+            range_str = mob_stats.get(f"Atk {i} Range", "").strip()
+            if not atk_type or not dam_str:
+                continue
+            try:
+                avg_dam = int(dam_str)
+            except ValueError:
+                avg_dam = 6
+            num_dice, die_size = self._avg_damage_to_dice(avg_dam)
+            physical, magic    = self._parse_damage_types(dtype_str)
+            reach_ft, normal_ft, long_ft = self._parse_atk_range(range_str, atk_type)
+            w = rpg.Weapon()
+            w.name             = f"Atk {i} ({atk_type})"
+            w.type             = rpg.WeaponType.Melee if atk_type == "Melee" else rpg.WeaponType.Ranged
+            w.reach_ft         = reach_ft
+            w.normal_range_ft  = normal_ft
+            w.long_range_ft    = long_ft
+            w.proficient       = True
+            w.num_dice         = num_dice
+            w.die_size         = die_size
+            w.physical_damages = physical
+            w.magic_damages    = magic
+            weapons.append(w)
+        return weapons
+
+    def _size_category_to_grid_size(self, size_category: str) -> int:
+        """Convert D&D size category to grid size (cells)."""
+        size_map = {
+            "Small": 1,
+            "Tiny": 1,
+            "Medium": 1,
+            "Large": 2,
+            "Huge": 3,
+            "Gargantuan": 4,
+        }
+        return size_map.get(size_category, 1)
+
     def _on_mob_selected(self, mob_name: str):
         """Callback when a mob is selected from the dialog."""
-        self.inp_name.text = mob_name
-        self.inp_sprite.text = self._get_mob_sprite_path(mob_name)
         # Load stats from JSON
         if mob_name in self.mob_stats_json:
             self.selected_mob_stats = self.mob_stats_json[mob_name]
+            # Set size based on mob size category
+            size_category = self.selected_mob_stats.get("Size", "Medium")
+            self.current_mob_grid_size = self._size_category_to_grid_size(size_category)
         else:
             self.selected_mob_stats = None
+            self.current_mob_grid_size = 1
+
+        # Enter placement mode immediately
+        cfg = rpg.AgentConfig()
+        cfg.name        = mob_name
+        cfg.sprite_path = self._get_mob_sprite_path(mob_name)
+        cfg.size        = self.current_mob_grid_size
+        cfg.start_col   = 0
+        cfg.start_row   = 0
+        self.placement_mode_active = True
+        self.placement_config = cfg
+        self.placement_cell = None
+        self.placement_valid = False
+
+    def _on_pc_class_selected(self, class_name: str):
+        """Callback when a PC class is selected."""
+        self.selected_mob_stats = None  # No mob stats for PCs
+        self.current_mob_grid_size = 1
+
+        # Enter placement mode with new PC
+        cfg = rpg.AgentConfig()
+        cfg.name        = f"{class_name} 1"
+        cfg.sprite_path = ""  # PCs don't have sprites initially
+        cfg.size        = 1
+        cfg.start_col   = 0
+        cfg.start_row   = 0
+
+        # Create default PC stats (standard array: 15, 14, 13, 12, 10, 8)
+        stats = rpg.Stats()
+        stats.str        = 15
+        stats.dex        = 14
+        stats.con        = 13
+        stats.intel      = 12
+        stats.wis        = 10
+        stats.cha        = 8
+        stats.hp_max     = 8  # Will be updated based on class
+        stats.hp_cur     = 8
+        stats.ac         = 10
+        stats.speed_walk = 30
+        stats.prof_bonus = 2
+        stats.num_attacks = 1
+        # Set class and level (this also sets can_cast_spell and spell slots)
+        stats.set_class_level(getattr(rpg.CharacterClass, class_name), 1)
+
+        # Store for use in placement handler
+        self._pending_pc_class = class_name
+        self._pending_pc_stats = stats
+
+        self.placement_mode_active = True
+        self.placement_config = cfg
+        self.placement_cell = None
+        self.placement_valid = False
 
     def _mob_stats_to_d_d_stats(self, mob_data: dict):
         """Convert CSV mob stats to D&D 5e agent stats."""
@@ -3028,23 +3419,34 @@ class App:
             except (ValueError, TypeError):
                 return default
 
-        # Build JSON object for the Stats constructor
-        stats_json = {
-            "str": mod_to_score(mob_data.get('STR Mod')),
-            "dex": mod_to_score(mob_data.get('DEX Mod')),
-            "con": mod_to_score(mob_data.get('CON Mod')),
-            "intel": mod_to_score(mob_data.get('INT Mod')),
-            "wis": mod_to_score(mob_data.get('WIS Mod')),
-            "cha": mod_to_score(mob_data.get('CHA Mod')),
-            "hp_max": safe_int(mob_data.get('HP', '10'), 10),
-            "hp_cur": safe_int(mob_data.get('HP', '10'), 10),
-            "ac": safe_int(mob_data.get('AC', '10'), 10),
-            "speed_walk": safe_int(mob_data.get('Walk', '30'), 30),
-            "speed_fly": safe_int(mob_data.get('Fly', '0'), 0),
-            "speed_swim": safe_int(mob_data.get('Swim', '0'), 0),
-            "speed_burrow": safe_int(mob_data.get('Burrow', '0'), 0),
-        }
-        return rpg.Stats.from_json_string(json.dumps(stats_json))
+        # Create Stats object directly
+        stats = rpg.Stats()
+        stats.str = mod_to_score(mob_data.get('STR Mod'))
+        stats.dex = mod_to_score(mob_data.get('DEX Mod'))
+        stats.con = mod_to_score(mob_data.get('CON Mod'))
+        stats.intel = mod_to_score(mob_data.get('INT Mod'))
+        stats.wis = mod_to_score(mob_data.get('WIS Mod'))
+        stats.cha = mod_to_score(mob_data.get('CHA Mod'))
+        stats.hp_max = safe_int(mob_data.get('HP', '10'), 10)
+        stats.hp_cur = stats.hp_max
+        stats.ac = safe_int(mob_data.get('AC', '10'), 10)
+        stats.speed_walk   = safe_int(mob_data.get('Walk',   '30'), 30)
+        stats.speed_fly    = safe_int(mob_data.get('Fly',    '0'),   0)
+        stats.speed_swim   = safe_int(mob_data.get('Swim',   '0'),   0)
+        stats.speed_burrow = safe_int(mob_data.get('Burrow', '0'),   0)
+        stats.prof_bonus   = safe_int(mob_data.get('PB',     '2'),   2)
+        stats.num_attacks  = safe_int(mob_data.get('# of Atk', '1'), 1)
+
+        # Saving throw proficiencies from "Saving Throw" field (comma-separated ability names)
+        save_str = mob_data.get('Saving Throw', '') or ''
+        saves = {s.strip().lower() for s in save_str.split(',')}
+        stats.save_prof_str   = 'strength'     in saves
+        stats.save_prof_dex   = 'dexterity'    in saves
+        stats.save_prof_con   = 'constitution' in saves
+        stats.save_prof_intel = 'intelligence' in saves
+        stats.save_prof_wis   = 'wisdom'       in saves
+        stats.save_prof_cha   = 'charisma'     in saves
+        return stats
 
     # ─────────────────────────────────────────────────────────────────────
     #  Grid coordinate helpers
@@ -3150,10 +3552,10 @@ class App:
                 pt.origin, pt.size, fly_ft, rpg.MovementType.Fly)
         if swim_ft > 0:
             self._reach_swim = self.bm.reachable_cells(
-                pt.origin, pt.size, swim_ft, rpg.MovementType.Walk)
+                pt.origin, pt.size, swim_ft, rpg.MovementType.Swim)
         if burrow_ft > 0:
             self._reach_burrow = self.bm.reachable_cells(
-                pt.origin, pt.size, burrow_ft, rpg.MovementType.Walk)
+                pt.origin, pt.size, burrow_ft, rpg.MovementType.Burrow)
 
         # Drag validity uses only the selected movement type's reach.
         _reach_by_type = {
@@ -3165,7 +3567,7 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.bm.get_agent_stats(agent_idx)
@@ -3191,7 +3593,14 @@ class App:
         stats.save_prof_intel = prof_flags.get("save_prof_intel", False)
         stats.save_prof_wis   = prof_flags.get("save_prof_wis",   False)
         stats.save_prof_cha   = prof_flags.get("save_prof_cha",   False)
+
+        # Set class and level; this updates spell_slots_max and can_cast_spell automatically
+        stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
+        # Restore remaining slots to max (they're newly set)
+        stats.spell_slots_remaining = list(stats.spell_slots_max)
+
         self.bm.set_agent_stats(agent_idx, stats)
+
         if agent_idx == self.selected_idx:
             self._update_reach()
 
@@ -3460,6 +3869,7 @@ class App:
         self.attacks_remaining    = 0
         self.pending_spell_slot   = ""
         self.pending_spell_is_aoe = False
+        self._opportunity_queue.clear()
         new_idx = self._current_agent_idx()
         self.selected_idx = new_idx
 
@@ -3537,6 +3947,11 @@ class App:
         if len(self.combat_log) > 10:
             self.combat_log.pop()
 
+    def _flush_combat_log(self):
+        """Flush messages from the combat engine logger into the combat log."""
+        for msg in self.logger.flush():
+            self._combat_log_add(msg)
+
     def _start_attack(self, slot: str):
         """Begin target-selection for an attack in the given slot."""
         idx = self._current_agent_idx()
@@ -3595,6 +4010,8 @@ class App:
         result = self.combat.execute_action(self.bm, action)
         # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
+        self._flush_combat_log()
+
         agents   = self.bm.placed_agents
         atk_name = agents[atk_idx].name if atk_idx < len(agents) else "?"
         tgt_name = agents[target_idx].name if target_idx < len(agents) else "?"
@@ -3621,6 +4038,7 @@ class App:
         # Check concentration save if damage was dealt
         if result.hit and result.total_damage > 0:
             csave = self.combat.concentration_save(self.bm, target_idx, result.total_damage)
+            self._flush_combat_log()
             if csave.checked:
                 result_str = "HELD" if csave.passed else "BROKEN"
                 self._combat_log_add(
@@ -3659,16 +4077,15 @@ class App:
         cpp_spells = []
         for j, d in enumerate(spells):
             cpp_spells.append(self._dict_to_spell(agent_idx, d))
-            # Store metadata for this spell
-            terrain_effect = d.get("terrain_effect")
-            hatch_pattern = d.get("hatch_pattern")
-            terrain_color = d.get("terrain_color")
-            if terrain_effect or hatch_pattern or terrain_color:
-                self._spell_metadata[(agent_idx, j)] = {
-                    "terrain_effect": terrain_effect,
-                    "hatch_pattern": hatch_pattern,
-                    "terrain_color": terrain_color
-                }
+            # Store all metadata for this spell (terrain, level, upcast)
+            meta = {
+                "terrain_effect": d.get("terrain_effect"),
+                "hatch_pattern": d.get("hatch_pattern"),
+                "terrain_color": d.get("terrain_color"),
+                "level": d.get("level", 0),
+                "upcast_dice_bonus": d.get("upcast_dice_bonus", 0),
+            }
+            self._spell_metadata[(agent_idx, j)] = meta
         self.bm.set_agent_spells(agent_idx, cpp_spells)
 
     def _start_cast_spell(self, slot: str):
@@ -3685,23 +4102,61 @@ class App:
             else:
                 self.bonus_used = True
             return
-        def _activate(s, si_):
+        def _activate(s, si_, slot_level_=0):
             sp_ = spells[si_]
             is_aoe = sp_.geometry != rpg.SpellGeometry.Single
-            self.pending_spell_slot   = s
-            self.pending_spell_idx    = si_
+            self.pending_spell_slot       = s
+            self.pending_spell_idx        = si_
+            self.pending_spell_slot_level = slot_level_
             self.pending_spell_is_aoe = is_aoe
             hint = "click a map location" if is_aoe else "click a target"
             self._combat_log_add(f"Casting {sp_.name} — {hint}.")
 
-        if len(spells) == 1:
-            _activate(slot, 0)
+        def _ordinal(n):
+            return {1:"1st",2:"2nd",3:"3rd"}.get(n, f"{n}th")
+
+        # Build spell menu with slot availability
+        options = []
+        stats = self.bm.get_agent_stats(idx)
+        max_slots = list(stats.spell_slots_max)
+        cur_slots = list(stats.spell_slots_remaining)
+
+        for si, sp in enumerate(spells):
+            sp_level = sp.level  # Read directly from spell object
+
+            if sp_level == 0:
+                # Cantrip - always available
+                def _pick_cantrip(s=slot, si_=si):
+                    _activate(s, si_, 0)
+                options.append((f"{sp.name} ∞", _pick_cantrip))
+            else:
+                # Leveled spell - check available slots
+                available_levels = []
+                for lvl in range(sp_level, 10):  # spell_level to 9
+                    if max_slots[lvl-1] > 0 and cur_slots[lvl-1] > 0:
+                        available_levels.append((lvl, cur_slots[lvl-1]))
+
+                if not available_levels:
+                    continue  # Skip exhausted spells
+
+                # Add submenu entry for each available slot level
+                for slot_lvl, remaining in available_levels:
+                    label = f"{sp.name} @ {_ordinal(slot_lvl)} ({remaining})"
+                    def _pick_slot(s=slot, si_=si, sl=slot_lvl):
+                        _activate(s, si_, sl)
+                    options.append((label, _pick_slot))
+
+        if not options:
+            self._combat_log_add("No available spells!")
+            if slot == "action":
+                self.action_used = True
+            else:
+                self.bonus_used = True
+            return
+
+        if len(options) == 1:
+            options[0][1]()  # Call the action directly
         else:
-            options = []
-            for si, sp in enumerate(spells):
-                def _pick(s=slot, si_=si):
-                    _activate(s, si_)
-                options.append((sp.name, _pick))
             px_popup = self._panel_x() + self._PANEL_PAD
             self.context_menu.show(
                 (px_popup, 290),
@@ -3792,16 +4247,173 @@ class App:
                            f"{' — DOWN' if tr.target_down else ''}")
             self._combat_log_add(msg)
 
+    def _on_long_rest(self):
+        """Reset all spell slots to their maximum values."""
+        agents = self.bm.placed_agents
+        for idx in range(len(agents)):
+            stats = self.bm.get_agent_stats(idx)
+            stats.restore_spell_slots()
+            self.bm.set_agent_stats(idx, stats)
+        if self.combat_active:
+            self._combat_log_add("Long rest — all spell slots restored.")
+
+    def _process_opportunity_queue(self):
+        """Process one opportunity attack from the queue, then chain to the next."""
+        if not self._opportunity_queue:
+            # Queue is empty - if there's a pending move, complete it now
+            if self.pending_move_idx >= 0:
+                self._complete_pending_move()
+            return
+        attacker_idx, target_idx = self._opportunity_queue[0]
+        agents = self.bm.placed_agents
+        if attacker_idx >= len(agents) or target_idx >= len(agents):
+            self._opportunity_queue.pop(0)
+            self._process_opportunity_queue()
+            return
+        atk_name = agents[attacker_idx].name
+        tgt_name = agents[target_idx].name
+        self._combat_log_add(f"{atk_name} gets opportunity attack vs {tgt_name}!")
+
+        options = []
+        # Weapon options - melee only
+        for wi, w in enumerate(agents[attacker_idx].weapons):
+            if w.type != rpg.WeaponType.Melee:
+                continue
+            def _atk(ai=attacker_idx, ti=target_idx, widx=wi):
+                action = rpg.Attack(ai, ti, widx)
+                result = self.combat.execute_action(self.bm, action)
+                self._flush_combat_log()
+                self.bm.placed_agents[ai].conditions.reaction_used = True
+                self._log_opportunity_result(ai, ti, result)
+                self._check_concentration_after_oa(ti, result)
+                self._update_attack_overlay()
+                self._opportunity_queue.pop(0)
+                self._process_opportunity_queue()
+            options.append((f"[Weapon] {w.name}", _atk))
+
+        # Spell options - single-target only
+        for si, sp in enumerate(agents[attacker_idx].spells):
+            # Only offer single-target spells
+            if sp.geometry != rpg.SpellGeometry.Single:
+                continue
+            def _spl(ai=attacker_idx, ti=target_idx, sidx=si):
+                action = rpg.SpellAction()
+                action.caster_idx = ai
+                action.spell_idx = sidx
+                action.target_indices = [ti]
+                result = self.combat.execute_spell(self.bm, action)
+                self._flush_combat_log()
+                self.bm.placed_agents[ai].conditions.reaction_used = True
+                cast_name = self.bm.placed_agents[ai].name
+                self._log_spell_results(result, cast_name, ai, sidx)
+                self._update_attack_overlay()
+                self._opportunity_queue.pop(0)
+                self._process_opportunity_queue()
+            options.append((f"[Spell] {sp.name}", _spl))
+
+        # Skip option
+        def _skip():
+            self._opportunity_queue.pop(0)
+            self._process_opportunity_queue()
+        options.append(("Skip", _skip))
+
+        px, py = self._agent_screen_pos(attacker_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _log_opportunity_result(self, atk_idx: int, tgt_idx: int, result):
+        """Log weapon-based opportunity attack result."""
+        agents = self.bm.placed_agents
+        atk_name = agents[atk_idx].name if atk_idx < len(agents) else "?"
+        tgt_name = agents[tgt_idx].name if tgt_idx < len(agents) else "?"
+        if not result.valid:
+            self._combat_log_add(f"{atk_name}: OA — out of range")
+            return
+        if result.hit:
+            dmg_parts = ([v.name for v in result.physical_damage_types] +
+                         [v.name for v in result.magic_damage_types])
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            self._combat_log_add(
+                f"{atk_name}→{tgt_name}: OA HIT {result.total_damage} {dmg_type_str}"
+                f"{' CRIT!' if result.critical else ''}"
+                f"{' — DOWN' if result.target_down else ''}")
+        else:
+            self._combat_log_add(
+                f"{atk_name}→{tgt_name}: OA miss (roll {result.total_roll} vs AC {result.target_ac})")
+
+    def _check_concentration_after_oa(self, tgt_idx: int, result):
+        """Check concentration save after OA damage (weapon only)."""
+        if result.hit and result.total_damage > 0:
+            agents = self.bm.placed_agents
+            tgt_name = agents[tgt_idx].name if tgt_idx < len(agents) else "?"
+            csave = self.combat.concentration_save(self.bm, tgt_idx, result.total_damage)
+            self._flush_combat_log()
+            if csave.checked:
+                result_str = "HELD" if csave.passed else "BROKEN"
+                self._combat_log_add(
+                    f"{tgt_name}: CON concentration save — "
+                    f"rolled {csave.save_d20} + {csave.con_mod} = {csave.save_d20 + csave.con_mod} "
+                    f"vs DC {csave.save_dc} — {result_str}")
+                if csave.concentration_lost:
+                    spell_name = csave.spell_name or "spell"
+                    self._terrain_regions = [r for r in self._terrain_regions
+                                             if not (r.get("source", {}).get("agent") == tgt_name and
+                                                     r.get("source", {}).get("spell") == spell_name)]
+                    self._apply_terrain_to_battle_map()
+                    self._combat_log_add(f"{tgt_name} drops concentration on {spell_name}.")
+
+    def _agent_screen_pos(self, agent_idx: int) -> tuple:
+        """Get screen position of agent for context menu anchor."""
+        agents = self.bm.placed_agents
+        if agent_idx >= len(agents):
+            return (100, 100)
+        ag = agents[agent_idx]
+        cpx = int(self.bm.cell_pixel_size)
+        x = ag.origin.col * cpx + cpx // 2
+        y = ag.origin.row * cpx + cpx // 2
+        return (x, y)
+
+    def _complete_pending_move(self):
+        """Complete a move that was pending while OA resolved."""
+        if self.pending_move_idx < 0:
+            return
+        move_idx = self.pending_move_idx
+        move_cell = self.pending_move_cell
+        move_type = self.pending_move_type
+        self.pending_move_idx = -1
+        self.pending_move_cell = None
+        self.pending_move_type = None
+
+        agents = self.bm.placed_agents
+        move_success = self.bm.move_agent(move_idx, move_cell, move_type)
+        if move_success:
+            ag = agents[move_idx]
+            self.move_remaining_walk = ag.walk_remaining
+            self.move_remaining_fly = ag.fly_remaining
+            self.move_remaining_swim = ag.swim_remaining
+            self.move_remaining_burrow = ag.burrow_remaining
+            self._combat_log_add(f"{ag.name} completes movement to ({ag.origin.col},{ag.origin.row}).")
+            self._update_reach()
+            self._update_attack_overlay()
+        else:
+            self._combat_log_add(f"{agents[move_idx].name if move_idx < len(agents) else '?'}: movement blocked")
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
         if caster_idx < 0 or not slot:
             return
+
+        spells_orig = self.bm.get_agent_spells(caster_idx)
+        sp = spells_orig[self.pending_spell_idx]
+
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
         action.spell_idx      = self.pending_spell_idx
         action.target_indices = [target_idx]
         result = self.combat.execute_spell(self.bm, action)
+
+        self._flush_combat_log()
+
         self.pending_spell_slot   = ""
         self.pending_spell_is_aoe = False
         self.spell_hover_cell     = None
@@ -3817,11 +4429,24 @@ class App:
         else:
             self.bonus_used = True
 
+        # Decrement spell slot if a leveled spell was cast
+        sl = self.pending_spell_slot_level
+        if sl > 0:
+            stats = self.bm.get_agent_stats(caster_idx)
+            slots = list(stats.spell_slots_remaining)
+            slots[sl - 1] = max(0, slots[sl - 1] - 1)
+            stats.spell_slots_remaining = slots
+            self.bm.set_agent_stats(caster_idx, stats)
+
     def _resolve_spell_cast_aoe(self, cell):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
         if caster_idx < 0 or not slot:
             return
+
+        spells_orig = self.bm.get_agent_spells(caster_idx)
+        sp = spells_orig[self.pending_spell_idx]
+
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
         action.spell_idx      = self.pending_spell_idx
@@ -3829,6 +4454,9 @@ class App:
         action.aoe_col        = cell.col
         action.aoe_row        = cell.row
         result = self.combat.execute_spell(self.bm, action)
+
+        self._flush_combat_log()
+
         self.pending_spell_slot   = ""
         self.pending_spell_is_aoe = False
         self.spell_hover_cell     = None
@@ -3851,7 +4479,8 @@ class App:
             terrain_effect = spell_meta.get("terrain_effect")
             hatch_pattern = spell_meta.get("hatch_pattern")
             if terrain_effect:
-                aoe_cells = self._aoe_cells(cell, spell)
+                aoe_cells_raw = self._aoe_cells(cell, spell)
+                aoe_cells = self._filter_spell_cells_by_range_and_los(aoe_cells_raw, caster_idx, spell)
                 if aoe_cells:
                     terrain_region = self._cells_to_terrain_region(aoe_cells, terrain_effect, spell.name, caster_idx, hatch_pattern, self.pending_spell_idx)
                     if terrain_region:
@@ -3891,6 +4520,16 @@ class App:
                             "cells": [(c.col, c.row) for c in aoe_cells]
                         }
                         self._combat_log_add(f"{spell.name} terrain effect placed.")
+
+        # Decrement spell slot if a leveled spell was cast
+        sl = self.pending_spell_slot_level
+        if sl > 0:
+            stats = self.bm.get_agent_stats(caster_idx)
+            slots = list(stats.spell_slots_remaining)
+            slots[sl - 1] = max(0, slots[sl - 1] - 1)
+            stats.spell_slots_remaining = slots
+            self.bm.set_agent_stats(caster_idx, stats)
+
         if slot == "action":
             self.action_used = True
         else:
@@ -3959,6 +4598,31 @@ class App:
 
         return cells
 
+    def _filter_spell_cells_by_range_and_los(self, cells: list, caster_idx: int, spell) -> list:
+        """Filter cells to only those within spell range and with line of sight from caster."""
+        if caster_idx < 0 or caster_idx >= len(self.bm.placed_agents):
+            return cells
+
+        caster = self.bm.placed_agents[caster_idx]
+        range_cells = spell.range / 5  # Convert feet to cells
+
+        # Filter by range and line of sight
+        filtered = []
+        for cell in cells:
+            # Check distance (Chebyshev distance from caster center to target cell)
+            dc = max(caster.origin.col - cell.col, cell.col - (caster.origin.col + caster.size - 1), 0)
+            dr = max(caster.origin.row - cell.row, cell.row - (caster.origin.row + caster.size - 1), 0)
+            dist = max(dc, dr)
+
+            if dist > range_cells:
+                continue  # Out of range
+
+            # Check line of sight
+            if self.bm.has_line_of_sight(caster.origin, caster.size, cell, 1):
+                filtered.append(cell)
+
+        return filtered
+
     def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None, spell_idx: int = -1) -> dict:
         """Convert list of cells to a terrain region with source metadata."""
         if not cells:
@@ -3990,16 +4654,23 @@ class App:
         if not (0 <= self.pending_spell_idx < len(spells)):
             return
         sp    = spells[self.pending_spell_idx]
-        cells = self._aoe_cells(self.spell_hover_cell, sp)
+        aoe_cells = self._aoe_cells(self.spell_hover_cell, sp)
+        # Filter by spell range and line of sight
+        cells = self._filter_spell_cells_by_range_and_los(aoe_cells, caster_idx, sp)
 
         fill_s   = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
         fill_s.fill((160, 80, 220, 60))
         border_s = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
         pygame.draw.rect(border_s, (200, 130, 255, 160), border_s.get_rect(), 1)
 
+        # Only render cells that fall within the map viewport
+        map_w, map_h = self.map_rect.width, self.map_rect.height
         cell_set = {(c.col, c.row) for c in cells}
         for c in cells:
             sx, sy = self._cell_to_screen(c.col, c.row)
+            # Skip cells whose rendered area extends beyond the map
+            if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                continue
             self.screen.blit(fill_s,   (sx, sy))
             self.screen.blit(border_s, (sx, sy))
 
@@ -4018,8 +4689,20 @@ class App:
         pygame.draw.rect(self.screen, (255, 255, 255),
                          pygame.Rect(ax, ay, cpx, cpx), 2)
 
+        # Draw spell range circle (thin line showing max range from caster)
+        caster = self.bm.placed_agents[caster_idx]
+        range_cells = sp.range / 5
+        range_px = range_cells * cpx
+        caster_sx, caster_sy = self._cell_to_screen(caster.origin.col, caster.origin.row)
+        caster_center_x = caster_sx + (caster.size * cpx) / 2
+        caster_center_y = caster_sy + (caster.size * cpx) / 2
+        pygame.draw.circle(self.screen, (100, 150, 255, 100),
+                          (int(caster_center_x), int(caster_center_y)),
+                          int(range_px), 1)
+
     def _draw_attack_overlays(self, cpx: int):
         """Draw melee / ranged-normal / ranged-long attack-range overlays."""
+        map_w, map_h = self.map_rect.width, self.map_rect.height
         def _draw_zone(cells, fill_rgba, border_rgba):
             if not cells:
                 return
@@ -4029,6 +4712,9 @@ class App:
             pygame.draw.rect(border_s, border_rgba, border_s.get_rect(), 1)
             for cell in cells:
                 sx, sy = self._cell_to_screen(cell.col, cell.row)
+                # Skip cells whose rendered area extends beyond the map
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
                 self.screen.blit(fill_s,   (sx, sy))
                 self.screen.blit(border_s, (sx, sy))
 
@@ -4080,6 +4766,8 @@ class App:
             "terrain_effect":        metadata.get("terrain_effect"),
             "hatch_pattern":         metadata.get("hatch_pattern"),
             "terrain_color":         metadata.get("terrain_color"),
+            "level":                 s.level,
+            "upcast_dice_bonus":     s.upcast_dice_bonus,
             "requires_concentration": s.requires_concentration,
         }
 
@@ -4142,8 +4830,8 @@ class App:
         s.physical_damage_rolls = phys_rolls
 
         s.requires_concentration = d.get("requires_concentration", False)
-        # Store terrain_effect and hatch_pattern in metadata dict
-        # Will be assigned spell_idx after adding to agent
+        s.level = int(d.get("level", 0))
+        s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
         return s
 
     def _save_agents(self, path: str | None = None):
@@ -4151,9 +4839,11 @@ class App:
         data = []
         for i, pt in enumerate(self.bm.placed_agents):
             s = self.bm.get_agent_stats(i)
+            # Save only the filename, not the full path, for portability
+            sprite_filename = os.path.basename(pt.sprite_path) if pt.sprite_path else ""
             data.append({
                 "name":        pt.name,
-                "sprite_path": pt.sprite_path,
+                "sprite_path": sprite_filename,
                 "size":        pt.size,
                 "col":         pt.origin.col,
                 "row":         pt.origin.row,
@@ -4174,13 +4864,16 @@ class App:
                     "num_attacks":        s.num_attacks,
                     "has_cunning_action": s.has_cunning_action,
                     "has_offhand_attack": s.has_offhand_attack,
-                    "can_cast_spell":     s.can_cast_spell,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                 },
                 "weapons": [_weapon_to_dict(w)
                             for w in self.bm.get_agent_weapons(i)],
-                "spells":  [self._spell_to_dict(i, j, s)
-                            for j, s in enumerate(self.bm.get_agent_spells(i))],
+                "spell_indices": [s.name
+                                  for s in self.bm.get_agent_spells(i)],
+                "agent_class":      s.character_class.name,
+                "agent_char_level": s.char_level,
+                "spell_slots_max":  list(s.spell_slots_max),
+                "spell_slots_cur":  list(s.spell_slots_remaining),
             })
         with open(path, "w") as f:
             json.dump({"agents": data}, f, indent=2)
@@ -4189,8 +4882,18 @@ class App:
         path = path or self._save_path
         if not os.path.exists(path):
             return
-        with open(path) as f:
-            data = json.load(f)
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"\n{'='*60}")
+            print(f"ERROR: Agents file corrupted: {path}")
+            print(f"Details: {e}")
+            print(f"\nFix: Delete the corrupted file and start fresh:")
+            print(f"  rm \"{path}\"")
+            print(f"Then reload the map.")
+            print(f"{'='*60}\n")
+            return
         self.bm.clear_agents()
         self.pending_configs.clear()
         self.selected_idx = -1
@@ -4200,7 +4903,9 @@ class App:
         for t in agent_data:
             cfg = rpg.AgentConfig()
             cfg.name        = t["name"]
-            cfg.sprite_path = t.get("sprite_path", "")
+            # Resolve sprite path relative to sprites directory
+            sprite_filename = t.get("sprite_path", "")
+            cfg.sprite_path = os.path.join(self.sprites_dir, sprite_filename) if sprite_filename else ""
             cfg.size        = t["size"]
             cfg.start_col   = t["col"]
             cfg.start_row   = t["row"]
@@ -4215,7 +4920,35 @@ class App:
             sd = t.get("stats")
             if not sd:
                 continue
-            s = rpg.Stats.from_json_string(json.dumps(sd))
+            s = rpg.Stats()
+            s.str = int(sd.get("str", 10))
+            s.dex = int(sd.get("dex", 10))
+            s.con = int(sd.get("con", 10))
+            s.intel = int(sd.get("intel", 10))
+            s.wis = int(sd.get("wis", 10))
+            s.cha = int(sd.get("cha", 10))
+            s.hp_max = int(sd.get("hp_max", 10))
+            s.hp_cur = int(sd.get("hp_cur", s.hp_max))
+            s.ac = int(sd.get("ac", 10))
+            s.speed_walk = int(sd.get("speed_walk", 30))
+            s.speed_fly = int(sd.get("speed_fly", 0))
+            s.speed_swim = int(sd.get("speed_swim", 0))
+            s.speed_burrow = int(sd.get("speed_burrow", 0))
+            s.prof_bonus = int(sd.get("prof_bonus", 2))
+            s.num_attacks = int(sd.get("num_attacks", 1))
+            s.save_prof_str = bool(sd.get("save_prof_str", False))
+            s.save_prof_dex = bool(sd.get("save_prof_dex", False))
+            s.save_prof_con = bool(sd.get("save_prof_con", False))
+            s.save_prof_intel = bool(sd.get("save_prof_intel", False))
+            s.save_prof_wis = bool(sd.get("save_prof_wis", False))
+            s.save_prof_cha = bool(sd.get("save_prof_cha", False))
+            if "spellcasting_ability" in sd:
+                ability_val = sd["spellcasting_ability"]
+                if isinstance(ability_val, str):
+                    ability_map = {"str": 0, "dex": 1, "con": 2, "intel": 3, "wis": 4, "cha": 5}
+                    s.spellcasting_ability = ability_map.get(ability_val, 5)
+                else:
+                    s.spellcasting_ability = int(ability_val) if ability_val else 5
             self.bm.set_agent_stats(i, s)
 
         # Restore weapons — convert saved dicts → rpg.Weapon, push into C++.
@@ -4225,25 +4958,55 @@ class App:
             cpp_weapons = [_dict_to_weapon(d) for d in t.get("weapons", [])]
             self.bm.set_agent_weapons(i, cpp_weapons)
 
-        # Restore spells — convert saved dicts → rpg.Spell, push into C++.
+        # Restore spells — load from spell_indices or legacy "spells" field
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            spell_dicts = t.get("spells", [])
             cpp_spells = []
-            for j, d in enumerate(spell_dicts):
-                cpp_spells.append(self._dict_to_spell(i, d))
-                # Store metadata for this spell
-                terrain_effect = d.get("terrain_effect")
-                hatch_pattern = d.get("hatch_pattern")
-                terrain_color = d.get("terrain_color")
-                if terrain_effect or hatch_pattern or terrain_color:
-                    self._spell_metadata[(i, j)] = {
-                        "terrain_effect": terrain_effect,
-                        "hatch_pattern": hatch_pattern,
-                        "terrain_color": terrain_color
-                    }
+
+            # Try new spell_indices format first (spell names as strings)
+            spell_names = t.get("spell_indices", [])
+            if spell_names:
+                for spell_name in spell_names:
+                    if spell_name in self.spell_name_to_idx:
+                        idx = self.spell_name_to_idx[spell_name]
+                        spell_dict = self.all_spells[idx]
+                        cpp_spell = self._dict_to_spell(i, spell_dict)
+                        cpp_spells.append(cpp_spell)
+                    else:
+                        available = ", ".join(sorted(list(self.spell_name_to_idx.keys())[:5])) + "..."
+                        print(f"WARNING: Spell '{spell_name}' not found for agent {t.get('name', i)}")
+                        print(f"         Available spells: {available}")
+            else:
+                # Fallback to legacy "spells" format for backward compatibility
+                spell_data = t.get("spells", [])
+                for j, item in enumerate(spell_data):
+                    # Handle both old formats: spell dicts or spell names (strings)
+                    if isinstance(item, dict):
+                        cpp_spells.append(self._dict_to_spell(i, item))
+                    elif isinstance(item, str):
+                        # Legacy format: spell stored as name string
+                        # Look up in all_spells by name
+                        if item in self.spell_name_to_idx:
+                            idx = self.spell_name_to_idx[item]
+                            spell_dict = self.all_spells[idx]
+                            cpp_spells.append(self._dict_to_spell(i, spell_dict))
+
             self.bm.set_agent_spells(i, cpp_spells)
+
+        # Restore character class, level, and spell slots to C++ Stats objects
+        for i, t in enumerate(agent_data):
+            if i >= len(self.bm.placed_agents):
+                break
+            stats = self.bm.get_agent_stats(i)
+            class_name = t.get("agent_class", "None")
+            char_level = int(t.get("agent_char_level", 1))
+            stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
+            # Restore remaining spell slots if they were saved
+            slots_cur = t.get("spell_slots_cur")
+            if slots_cur:
+                stats.spell_slots_remaining = list(slots_cur)
+            self.bm.set_agent_stats(i, stats)
 
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
@@ -4339,6 +5102,17 @@ class App:
             placeholder.fill((*fill_col[:3], alpha))
             self.screen.blit(placeholder, r)
             pygame.draw.rect(self.screen, COL_AGENT_BORDER, r, 2, border_radius=3)
+        # Down hatching (diagonal lines when HP <= 0)
+        if pt.stats.hp_cur <= 0:
+            hatch = pygame.Surface((size_px, size_px), pygame.SRCALPHA)
+            hatch.fill((0, 0, 0, 0))
+            step = max(4, size_px // 8)
+            col  = (180, 0, 0, 200)
+            for offset in range(-size_px, size_px * 2, step):
+                pygame.draw.line(hatch, col, (offset, 0), (offset + size_px, size_px), 2)
+                pygame.draw.line(hatch, col, (offset + size_px, 0), (offset, size_px), 2)
+            self.screen.blit(hatch, (screen_x, screen_y))
+
         # Name label
         lbl = self.font_sm.render(pt.name, True, (255, 255, 255))
         self.screen.blit(lbl, (screen_x + 3, screen_y + 3))
@@ -4368,8 +5142,11 @@ class App:
             border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
             pygame.draw.rect(border_surf, (80, 150, 255, 120),
                              border_surf.get_rect(), 1)
+            map_w, map_h = self.map_rect.width, self.map_rect.height
             for cell in self._reach_walk:
                 sx, sy = self._cell_to_screen(cell.col, cell.row)
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
                 self.screen.blit(walk_surf,   (sx, sy))
                 self.screen.blit(border_surf, (sx, sy))
 
@@ -4381,8 +5158,11 @@ class App:
             border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
             pygame.draw.rect(border_surf, (255, 210, 0, 110),
                              border_surf.get_rect(), 1)
+            map_w, map_h = self.map_rect.width, self.map_rect.height
             for cell in self._reach_fly:
                 sx, sy = self._cell_to_screen(cell.col, cell.row)
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
                 self.screen.blit(fly_surf,    (sx, sy))
                 self.screen.blit(border_surf, (sx, sy))
 
@@ -4432,6 +5212,7 @@ class App:
             pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
 
             # Render each cell of the effect
+            map_w, map_h = self.map_rect.width, self.map_rect.height
             for cell_idx in effect.cell_indices:
                 # Convert flat index back to (col, row)
                 col = cell_idx % self.bm.grid_cols
@@ -4439,6 +5220,8 @@ class App:
                 if col < 0 or row < 0 or col >= len(raw_v) or row >= len(raw_h):
                     continue
                 sx, sy = self._cell_to_screen(col, row)
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
                 self.screen.blit(fill_surf, (sx, sy))
                 self.screen.blit(border_surf, (sx, sy))
 
@@ -4525,8 +5308,11 @@ class App:
             pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
 
             # Draw each cell
+            map_w, map_h = self.map_rect.width, self.map_rect.height
             for col, row in cells:
                 sx, sy = self._cell_to_screen(col, row)
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
                 self.screen.blit(fill_surf, (sx, sy))
                 self.screen.blit(border_surf, (sx, sy))
                 # Draw hatching for this cell
@@ -4536,9 +5322,10 @@ class App:
             if cells:
                 first_col, first_row = cells[0]
                 sx, sy = self._cell_to_screen(first_col, first_row)
-                spell = region.get("source", {}).get("spell", "Effect")
-                duration_txt = self.font_sm.render(f"{spell}({duration})", True, (255, 255, 255))
-                self.screen.blit(duration_txt, (sx + 3, sy + 3))
+                if not (sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h):
+                    spell = region.get("source", {}).get("spell", "Effect")
+                    duration_txt = self.font_sm.render(f"{spell}({duration})", True, (255, 255, 255))
+                    self.screen.blit(duration_txt, (sx + 3, sy + 3))
 
     def _draw_cell_hatching(self, pattern: str, sx: int, sy: int, cpx: int, color: tuple):
         """Draw hatching pattern for a single cell."""
@@ -4662,6 +5449,28 @@ class App:
                              pygame.Rect(sx, sy, size_px, size_px), 3,
                              border_radius=3)
 
+        # ── Draw placement mode ghost ──────────────────────────────────────
+        if self.placement_mode_active and self.placement_cell is not None:
+            sx, sy = self._cell_to_screen(self.placement_cell.col, self.placement_cell.row)
+            size_px = cpx * self.placement_config.size
+            # Draw sprite if it exists
+            sprite = self._get_sprite(self.placement_config.sprite_path, size_px)
+            if sprite:
+                surf = sprite.copy()
+                surf.set_alpha(200)
+                self.screen.blit(surf, (sx, sy))
+            else:
+                # Draw placeholder
+                r = pygame.Rect(sx + 2, sy + 2, size_px - 4, size_px - 4)
+                placeholder = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+                placeholder.fill((150, 150, 200, 200))
+                self.screen.blit(placeholder, r)
+            # Red outline if invalid, green if valid
+            border_col = (220, 60, 60) if not self.placement_valid else (80, 220, 80)
+            pygame.draw.rect(self.screen, border_col,
+                             pygame.Rect(sx, sy, size_px, size_px), 3,
+                             border_radius=3)
+
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active."""
         sw, sh = self.screen.get_size()
@@ -4748,8 +5557,8 @@ class App:
         _cur_has_spells  = False
         if 0 <= cur_idx < len(agents):
             _cur_has_weapons = len(self.bm.get_agent_weapons(cur_idx)) > 0
-            _cur_can_spell   = self.bm.get_agent_stats(cur_idx).can_cast_spell
             _cur_has_spells  = len(self.bm.get_agent_spells(cur_idx)) > 0
+            _cur_can_spell   = _cur_has_spells  # can cast if has spells
 
         if self.action_used:
             txt("[Action used]", lx, y, (100, 100, 120))
@@ -4797,6 +5606,39 @@ class App:
                 self.btn_cbt_spell_action.rect.w = W
                 self.btn_cbt_spell_action.draw(self.screen)
                 y += B + gap
+
+        # ── Spell Slots display ────────────────────────────────────────────
+        if 0 <= cur_idx < len(agents):
+            stats = self.bm.get_agent_stats(cur_idx)
+            slots_max = list(stats.spell_slots_max)
+            if any(slots_max):
+                y += 4
+                slots_cur = list(stats.spell_slots_remaining)
+                pip_chars = []
+                for lvl in range(9):
+                    if slots_max[lvl] > 0:
+                        filled = min(slots_cur[lvl], slots_max[lvl])
+                        empty = slots_max[lvl] - filled
+                        lvl_label = {0:"C", 1:"1", 2:"2", 3:"3", 4:"4", 5:"5", 6:"6", 7:"7", 8:"8", 9:"9"}.get(lvl+1, "?")
+                        pip_str = "●" * filled + "○" * empty
+                        pip_chars.append(f"{lvl_label}:{pip_str}")
+                if pip_chars:
+                    # Wrap spell slot display to multiple lines if needed
+                    lines = []
+                    current_line = "Spells: "
+                    for i, level_str in enumerate(pip_chars):
+                        test_str = current_line + level_str + ("  " if i < len(pip_chars) - 1 else "")
+                        test_surf = self.font_sm.render(test_str, True, (160, 120, 200))
+                        if test_surf.get_width() > W and current_line != "Spells: ":
+                            lines.append(current_line.rstrip())
+                            current_line = "  " + level_str + ("  " if i < len(pip_chars) - 1 else "")
+                        else:
+                            current_line = test_str
+                    if current_line.strip():
+                        lines.append(current_line)
+                    for line in lines:
+                        txt(line, lx, y, (160, 120, 200), self.font_sm)
+                        y += 14
 
         y += section_gap
 
@@ -4977,6 +5819,16 @@ class App:
                          pygame.Rect(px, 0, PANEL_W, sh))
         pygame.draw.line(self.screen, COL_PANEL_BORDER, (px, 0), (px, sh))
 
+        # ── Placement mode ─────────────────────────────────────────────────
+        if self.placement_mode_active:
+            title = self.font_lg.render("Click to place", True, (255, 200, 100))
+            self.screen.blit(title, (lx, 20))
+            status_col = (80, 220, 80) if self.placement_valid else (220, 60, 60)
+            status_txt = "Valid placement" if self.placement_valid else "Invalid placement (ESC to cancel)"
+            status = self.font_sm.render(status_txt, True, status_col)
+            self.screen.blit(status, (lx, 50))
+            return
+
         # ── Title ─────────────────────────────────────────────────────────
         _, _, title_y, *_ = self._panel_layout()
         title = self.font_lg.render("⚔  Agent Config", True, COL_TEXT)
@@ -4987,25 +5839,18 @@ class App:
             t = self.font_sm.render(text, True, COL_LABEL)
             self.screen.blit(t, (x, widget_y - loff))
 
-        HW = (PANEL_W - self._PANEL_PAD * 2) // 2 - 2
-        label("Mob",         lx,        self.btn_select_mob.rect.y)
-        label("Name",        lx,        self.inp_name.rect.y)
-        label("Sprite Path", lx,        self.inp_sprite.rect.y)
-        label("Size (N×N)",  lx,        self.step_size.rect.y)
-        label("Col",         lx,        self.step_col.rect.y)
-        label("Row",         lx+HW+4,   self.step_row.rect.y)
-
         # ── Widgets ───────────────────────────────────────────────────────
-        for w in [self.btn_select_mob, self.inp_name, self.inp_sprite, self.btn_browse,
-                  self.step_size, self.step_col, self.step_row,
-                  self.btn_add, self.btn_apply, self.btn_clear,
-                  self.btn_save, self.btn_load]:
+        for w in [self.btn_select_mob, self.btn_select_pc, self.btn_clear, self.btn_save, self.btn_load]:
             w.draw(self.screen)
 
         # Current save-file hint (updates when user picks a different path)
         hint_txt = os.path.basename(self._save_path) if self._save_path else ""
         hint = self.font_sm.render(hint_txt, True, (100, 100, 130))
         self.screen.blit(hint, (lx, self.btn_begin_combat.rect.bottom + 4))
+
+        # ── Long Rest button (only when agents are placed) ────────────────
+        if self.bm.placed_agents:
+            self.btn_long_rest.draw(self.screen)
 
         # ── Begin Combat button (only when agents are placed) ─────────────
         if self.bm.placed_agents:
@@ -5014,25 +5859,15 @@ class App:
         # ── Edit Terrain button ────────────────────────────────────────────
         self.btn_edit_terrain.draw(self.screen)
 
-        # ── Pending config list ───────────────────────────────────────────
+        # ── Quit button ────────────────────────────────────────────────────
+        self.btn_quit.draw(self.screen)
+
+        # ── Grid / map stats (bottom of panel) ───────────────────────────
         def text(txt, x, y, color=COL_LABEL):
             """Plain text blit with no offset (unlike label() which is for widgets)."""
             t = self.font_sm.render(txt, True, color)
             self.screen.blit(t, (x, y))
 
-        list_y = self.btn_begin_combat.rect.bottom + 16
-        text(f"Pending  ({len(self.pending_configs)})", lx, list_y)
-        list_y += 18
-        for i, cfg in enumerate(self.pending_configs):
-            txt = f"{cfg.name}  {cfg.size}×{cfg.size}  @({cfg.start_col},{cfg.start_row})"
-            text(txt, lx, list_y + i * 18, COL_TEXT)
-            # ✕ remove button
-            rx = px + PANEL_W - 22
-            rb = Button(pygame.Rect(rx, list_y + i*18 - 1, 16, 16), "✕",
-                        COL_BTN_DANGER, (180, 70, 70), self.font_sm)
-            rb.draw(self.screen)
-
-        # ── Grid / map stats (bottom of panel) ───────────────────────────
         info_y = sh - 72
         text(f"Grid: {self.bm.grid_cols}×{self.bm.grid_rows}  "
              f"cell={self.bm.cell_pixel_size}px  scale={self.map_scale:.2f}",
@@ -5061,9 +5896,10 @@ class App:
                     self._save_terrain()
                     self._apply_terrain_to_battle_map()
                     self.terrain_editor.close()
-                    # Recalculate reach overlay if an agent is selected
+                    # Recalculate reach and attack overlays if an agent is selected
                     if self.selected_idx >= 0:
                         self._update_reach()
+                        self._update_attack_overlay()
                 continue
 
             # ── Terrain placement dialog gets priority when open ────────────
@@ -5084,6 +5920,64 @@ class App:
             if self.spell_dialog.active:
                 self.spell_dialog.handle(event, self.screen)
                 continue
+            # ── Placement mode (floating agent) ───────────────────────────────
+            if self.placement_mode_active:
+                if event.type == pygame.MOUSEMOTION:
+                    mx, my = event.pos
+                    # Check if mouse is on the map
+                    if self.map_rect.collidepoint(mx, my):
+                        self.placement_cell = self._screen_to_cell(mx, my)
+                        if self.placement_cell:
+                            self.placement_valid = self._can_place(self.placement_cell, self.placement_config.size)
+                        else:
+                            self.placement_valid = False
+                    else:
+                        self.placement_cell = None
+                        self.placement_valid = False
+                    continue
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Place the agent immediately on the map
+                    if self.placement_cell and self.placement_valid:
+                        cfg = self.placement_config
+                        cfg.start_col = self.placement_cell.col
+                        cfg.start_row = self.placement_cell.row
+                        # Save stats + weapons for all existing agents before
+                        # apply_agent_configs() recreates them from scratch
+                        existing = self.bm.placed_agents
+                        saved = [(self.bm.get_agent_stats(i),
+                                  self.bm.get_agent_weapons(i))
+                                 for i in range(len(existing))]
+                        self.bm.add_agent_config(cfg)
+                        self.bm.apply_agent_configs()
+                        # Restore previously saved stats + weapons (spell slots are in stats)
+                        for i, (st, wps) in enumerate(saved):
+                            self.bm.set_agent_stats(i, st)
+                            self.bm.set_agent_weapons(i, wps)
+                        # Apply mob stats and auto-weapons to the newly placed agent
+                        idx = len(self.bm.placed_agents) - 1
+                        if self.selected_mob_stats:
+                            d_d_stats = self._mob_stats_to_d_d_stats(self.selected_mob_stats)
+                            self.bm.set_agent_stats(idx, d_d_stats)
+                            if not self.bm.get_agent_weapons(idx):
+                                for w in self._auto_weapons_from_mob_stats(self.selected_mob_stats):
+                                    self.bm.add_weapon_to_agent(idx, w)
+                        elif self._pending_pc_class:
+                            # Apply PC stats (class/level and spell slots already set)
+                            self.bm.set_agent_stats(idx, self._pending_pc_stats)
+                            self._pending_pc_class = None
+                            self._pending_pc_stats = None
+                        self.sprites.clear()
+                        self.placement_mode_active = False
+                        self.placement_config = None
+                        self.placement_cell = None
+                    continue
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    # Cancel placement
+                    self.placement_mode_active = False
+                    self.placement_config = None
+                    self.placement_cell = None
+                    continue
+
             # Context menu sits above normal map events but below modals.
             if self.context_menu.visible:
                 if self.context_menu.handle(event):
@@ -5091,13 +5985,10 @@ class App:
 
             # ── Keyboard shortcuts ────────────────────────────────────────
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return False
                 # Delete / Backspace removes the selected placed agent,
-                # but ONLY when no text-input field has keyboard focus.
-                typing = self.inp_name.active or self.inp_sprite.active
+                # but ONLY when not in combat.
                 if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE) \
-                        and not typing and not self.combat_active:
+                        and not self.combat_active:
                     if self.selected_idx >= 0:
                         idx = self.selected_idx
                         self.bm.remove_agent(idx)
@@ -5130,8 +6021,11 @@ class App:
                         def _open_stats(h=hit):
                             pt2   = self.bm.placed_agents[h]
                             stats = self.bm.get_agent_stats(h)
+                            class_name = stats.character_class.name
+                            char_level = stats.char_level
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
+                                class_name, char_level,
                                 self._on_stats_ok)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
@@ -5169,7 +6063,17 @@ class App:
                             if self.pending_spell_is_aoe:
                                 self._resolve_spell_cast_aoe(cell)
                             elif hit >= 0:
-                                self._resolve_spell_cast(hit)
+                                # Check line of sight for single-target spells
+                                caster_idx = self._current_agent_idx()
+                                if caster_idx >= 0 and caster_idx < len(self.bm.placed_agents):
+                                    caster = self.bm.placed_agents[caster_idx]
+                                    target = self.bm.placed_agents[hit]
+                                    if self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
+                                        self._resolve_spell_cast(hit)
+                                    else:
+                                        self._combat_log_add("No line of sight to target!")
+                                else:
+                                    self._resolve_spell_cast(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -5241,15 +6145,64 @@ class App:
                         dist_moved *= 5  # Each cell = 5 feet
 
                         # Compute Chebyshev distance (D&D 5e diagonal = 5 ft).
-                        if self.bm.move_agent(self.drag_idx, self.drag_cell, self.move_type):
-                            # Read back the shared-pool budgets from C++.
-                            ag = self.bm.placed_agents[self.drag_idx]
-                            self.move_remaining_walk   = ag.walk_remaining
-                            self.move_remaining_fly    = ag.fly_remaining
-                            self.move_remaining_swim   = ag.swim_remaining
-                            self.move_remaining_burrow = ag.burrow_remaining
-                            self.last_movement_dist = dist_moved  # Track most recent movement for running jump
-                        # else: move failed, leave last_movement_dist unchanged
+                        print(f"[Movement] Attempting to move agent {self.drag_idx} to ({self.drag_cell.col},{self.drag_cell.row}) using {self.move_type}")
+                        # Debug: check terrain types along the path
+                        print(f"[Movement] Terrain at dest: {self.bm.get_terrain_type(self.drag_cell)}")
+
+                        # Opportunity attack: check if agent is moving away from adjacent threats
+                        agents = self.bm.placed_agents
+                        moving_agent = agents[self.drag_idx]
+                        pre_adjacent = set(self.combat.threatening_agents(self.bm, self.drag_idx)) if self.combat_active else set()
+
+                        # Check if destination would leave all threat zones
+                        move_leaves_all_threats = False
+                        if self.combat_active and pre_adjacent and not moving_agent.conditions.disengaging:
+                            move_leaves_all_threats = True
+                            for threat_idx in pre_adjacent:
+                                if threat_idx >= len(agents):
+                                    continue
+                                threat_agent = agents[threat_idx]
+                                # Calculate Chebyshev distance from threat to destination
+                                dc = max(threat_agent.origin.col - self.drag_cell.col,
+                                        self.drag_cell.col - (threat_agent.origin.col + threat_agent.size - 1),
+                                        0)
+                                dr = max(threat_agent.origin.row - self.drag_cell.row,
+                                        self.drag_cell.row - (threat_agent.origin.row + threat_agent.size - 1),
+                                        0)
+                                dist = max(dc, dr)
+                                if dist <= 1:  # Still within reach of this threat
+                                    move_leaves_all_threats = False
+                                    break
+
+                        # If move would leave all threats, trigger OA first
+                        if move_leaves_all_threats:
+                            self.pending_move_idx = self.drag_idx
+                            self.pending_move_cell = self.drag_cell
+                            self.pending_move_type = self.move_type
+                            for threat_idx in sorted(pre_adjacent):
+                                if threat_idx >= len(agents): continue
+                                t = agents[threat_idx]
+                                if (not t.conditions.reaction_used
+                                        and not t.conditions.incapacitated
+                                        and t.stats.hp_cur > 0):
+                                    self._opportunity_queue.append((threat_idx, self.drag_idx))
+                            self._combat_log_add(f"{moving_agent.name} is threatened! Opportunity attacks triggered.")
+                            self._process_opportunity_queue()
+                        else:
+                            # Normal move - no threat violation
+                            move_success = self.bm.move_agent(self.drag_idx, self.drag_cell, self.move_type)
+                            print(f"[Movement] Move result: {move_success}")
+                            if move_success:
+                                # Read back the shared-pool budgets from C++.
+                                ag = self.bm.placed_agents[self.drag_idx]
+                                self.move_remaining_walk   = ag.walk_remaining
+                                self.move_remaining_fly    = ag.fly_remaining
+                                self.move_remaining_swim   = ag.swim_remaining
+                                self.move_remaining_burrow = ag.burrow_remaining
+                                self.last_movement_dist = dist_moved  # Track most recent movement for running jump
+                                print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row})")
+                            else:
+                                print(f"[Movement] Move failed - likely blocked by terrain")
                         self.selected_idx = self.drag_idx
                         self._update_reach()
                         self._update_attack_overlay()
@@ -5278,56 +6231,15 @@ class App:
                 if self.btn_select_mob.clicked(event):
                     self.mob_dialog.show(lambda mob: self._on_mob_selected(mob))
 
-                # Text inputs / steppers (config panel only)
-                for w in [self.inp_name, self.inp_sprite]:
-                    w.handle(event)
-                for w in [self.step_size, self.step_col, self.step_row]:
-                    w.handle(event)
+                # Select PC
+                if self.btn_select_pc.clicked(event):
+                    pc_classes = ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
+                    options = [(cls, lambda c=cls: self._on_pc_class_selected(c)) for cls in pc_classes]
+                    px_popup = self._panel_x() + self._PANEL_PAD
+                    self.context_menu.show((px_popup, 100), options, self.screen.get_size())
 
-                # Browse button
-                if self.btn_browse.clicked(event):
-                    start = (os.path.dirname(self.inp_sprite.text)
-                             if self.inp_sprite.text else self._map_dir)
-                    self.file_browser.open(
-                        start,
-                        lambda p: setattr(self.inp_sprite, "text", p)
-                    )
-
-                # Add / Apply & Draw / Clear All
-                if self.btn_add.clicked(event):
-                    cfg = rpg.AgentConfig()
-                    cfg.name        = self.inp_name.text or "Agent"
-                    cfg.sprite_path = self.inp_sprite.text
-                    cfg.size        = self.step_size.value
-                    cfg.start_col   = self.step_col.value
-                    cfg.start_row   = self.step_row.value
-                    self.pending_configs.append(cfg)
-                    self.pending_mob_stats.append(self.selected_mob_stats)
-                    self.inp_name.text   = ""
-                    self.inp_sprite.text = ""
-
-                if self.btn_apply.clicked(event):
-                    self.bm.clear_agents()
-                    self.selected_idx        = -1
-                    self.drag_idx            = -1
-                    self._attack_cells_melee = []
-                    self._attack_cells_rnorm = []
-                    self._attack_cells_rlong = []
-                    for cfg in self.pending_configs:
-                        self.bm.add_agent_config(cfg)
-                    self.bm.apply_agent_configs()
-
-                    # Apply mob stats to placed agents
-                    for idx, mob_stats in enumerate(self.pending_mob_stats):
-                        if idx < len(self.bm.placed_agents) and mob_stats:
-                            d_d_stats = self._mob_stats_to_d_d_stats(mob_stats)
-                            self.bm.set_agent_stats(idx, d_d_stats)
-
-                    self.sprites.clear()
-
+                # Clear All
                 if self.btn_clear.clicked(event):
-                    self.pending_configs.clear()
-                    self.pending_mob_stats.clear()
                     self.bm.clear_agents()
                     self.selected_idx        = -1
                     self.drag_idx            = -1
@@ -5354,6 +6266,10 @@ class App:
                         extensions=JSON_EXTS
                     )
 
+                # Long Rest — reset all spell slots
+                if self.btn_long_rest.clicked(event):
+                    self._on_long_rest()
+
                 # Remove pending agent by clicking ✕
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     list_y = self.btn_clear.rect.bottom + 20 + 18
@@ -5372,6 +6288,10 @@ class App:
                 # Edit Terrain
                 if self.btn_edit_terrain.clicked(event):
                     self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm)
+
+                # Quit
+                if self.btn_quit.clicked(event):
+                    return False
 
             else:
                 # ── Combat panel buttons ───────────────────────────────────

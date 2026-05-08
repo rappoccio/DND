@@ -49,5 +49,8 @@ namespace rpg {
       TerrainDifficulty terrain_difficulty{static_cast<TerrainDifficulty>(0)};  // Normal
 
       bool requires_concentration{false};  // Caster must maintain concentration; breaks on damage
+
+      int level{0};              // 0 = cantrip (unlimited); 1-9 = slot level required
+      int upcast_dice_bonus{0};  // extra dice per slot level above spell.level
     };
 }

@@ -1,6 +1,5 @@
 #include "agent.hpp"
-#include <iostream> 
-#include <print>
+#include <iostream>
 
 namespace rpg{
 
@@ -47,17 +46,17 @@ public:
     std::string_view treasure()         const noexcept override { return treasure_; }
     std::string_view languages()        const noexcept override { return languages_; }
   
-    void takeTurn()    override { std::println("[{}] awaiting input...", name_); }
-    void action()      override { std::println("[{}] action",      name_); }
-    void attack()      override { std::println("[{}] attack",      name_); }
-    void dash()        override { conditions_.dashing = true;  std::println("[{}] dash",       name_); }
-    void disengage()   override { conditions_.disengaging = true; std::println("[{}] disengage", name_); }
-    void dodge()       override { conditions_.dodging = true;  std::println("[{}] dodge",      name_); }
-    void hide()        override { conditions_.hidden  = true;  std::println("[{}] hide",        name_); }
-    void bonusAction() override { std::println("[{}] bonusAction", name_); }
-    void walk()        override { std::println("[{}] walk",        name_); }
-    void fly()         override { std::println("[{}] fly",         name_); }
-    void reaction()    override { std::println("[{}] reaction",    name_); }
+    void takeTurn()    override { std::cout << "[" << name_ << "] awaiting input...\n"; }
+    void action()      override { std::cout << "[" << name_ << "] action\n"; }
+    void attack()      override { std::cout << "[" << name_ << "] attack\n"; }
+    void dash()        override { conditions_.dashing = true;  std::cout << "[" << name_ << "] dash\n"; }
+    void disengage()   override { conditions_.disengaging = true; std::cout << "[" << name_ << "] disengage\n"; }
+    void dodge()       override { conditions_.dodging = true;  std::cout << "[" << name_ << "] dodge\n"; }
+    void hide()        override { conditions_.hidden  = true;  std::cout << "[" << name_ << "] hide\n"; }
+    void bonusAction() override { std::cout << "[" << name_ << "] bonusAction\n"; }
+    void walk()        override { std::cout << "[" << name_ << "] walk\n"; }
+    void fly()         override { std::cout << "[" << name_ << "] fly\n"; }
+    void reaction()    override { std::cout << "[" << name_ << "] reaction\n"; }
 
 private:
     std::string name_;

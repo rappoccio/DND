@@ -10,7 +10,6 @@
 #include <cassert>
 #include <cmath>
 #include <format>
-#include <print>
 #include <queue>
 #include <ranges>
 #include <stdexcept>
@@ -69,7 +68,7 @@ static void detectGridLines(const cv::Mat& gray,
     }
     outH = clusterLines(rawH);
     outV = clusterLines(rawV);
-    std::println("[BattleMap] {} h-lines, {} v-lines detected",
+    std::cout << std::format("[BattleMap] {} h-lines, {} v-lines detected\n",
                  outH.size(), outV.size());
 }
 
@@ -107,7 +106,7 @@ void BattleMap::analyzeGrid()
     // Initialize temporary terrain difficulty overlay (default Normal)
     tempTerrainDiff_.assign(static_cast<std::size_t>(rows_ * cols_), TerrainDifficulty::Normal);
 
-    std::println("[BattleMap] Grid {}×{}, ~{}px/cell", cols_, rows_, cellPx_);
+    std::cout << std::format("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,7 +140,7 @@ static void detectDarkCells(const cv::Mat& gray,
             }
         }
     }
-    std::println("[BattleMap] {} dark (wall) cells detected (threshold={})",
+    std::cout << std::format("[BattleMap] {} dark (wall) cells detected (threshold={})\n",
                  count, darkThreshold);
 }
 
@@ -188,7 +187,7 @@ static void detectEdgeWalls(const cv::Mat& gray,
                              hLines[r], hLines[r+1], wallMinPx))
                 walls.push_back({{c,r},{c+1,r}});
 
-    std::println("[BattleMap] {} edge walls detected", walls.size());
+    std::cout << std::format("[BattleMap] {} edge walls detected\n", walls.size());
 }
 
 void BattleMap::floodFillPassable()
@@ -223,7 +222,7 @@ void BattleMap::floodFillPassable()
             Cell cell{c,r};
             if (!passable.contains(cell)) disallowed_.insert(cell);
         }
-    std::println("[BattleMap] {} disallowed cells", disallowed_.size());
+    std::cout << std::format("[BattleMap] {} disallowed cells\n", disallowed_.size());
 }
 
 void BattleMap::detectWalls()
@@ -296,14 +295,14 @@ void BattleMap::applyAgentConfigs()
     for (const auto& cfg : agentConfigs_) {
         Cell origin{cfg.startCol, cfg.startRow};
         if (isBlocked(origin, cfg.size)) {
-            std::println("[BattleMap] '{}' skipped – blocked", cfg.name);
+            std::cout << std::format("[BattleMap] '{}' skipped – blocked\n", cfg.name);
             continue;
         }
         auto tok = std::make_shared<ConfiguredAgent>(
             cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
         placedAgents_.push_back({std::move(tok), origin, {}, {}, {}});
     }
-    std::println("[BattleMap] {} agents placed", placedAgents_.size());
+    std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
 }
 
 void BattleMap::clearAgents() { placedAgents_.clear(); agentConfigs_.clear(); }
@@ -318,12 +317,35 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
     auto& pa = placedAgents_[idx];
 
-    // For fly movement, use simple Chebyshev distance (terrain doesn't matter)
+    // For fly movement, check if destination is in reachable set (respects walls)
     if (type == MovementType::Fly) {
-        int distance_ft = std::max(std::abs(newOrigin.col - pa.origin.col),
-                                   std::abs(newOrigin.row - pa.origin.row)) * 5;
-        if (distance_ft > pa.agent->getFlyRemaining())
+        int remaining = pa.agent->getFlyRemaining();
+        if (remaining <= 0)
             return false;
+
+        // Use reachableCells to validate destination (respects wall terrain)
+        CellSet reachable = reachableCells(pa.origin, pa.agent->getSize(), remaining, MovementType::Fly);
+        std::fprintf(stderr, "[C++ FLY] Origin: (%d,%d), Dest: (%d,%d), Reachable size: %zu\n",
+            pa.origin.col, pa.origin.row, newOrigin.col, newOrigin.row, reachable.size());
+
+        // Print first 20 reachable cells for debugging
+        int count = 0;
+        for (const auto& c : reachable) {
+            if (count++ < 20) {
+                std::fprintf(stderr, "  [%d,%d]", c.col, c.row);
+            } else {
+                std::fprintf(stderr, "  ...");
+                break;
+            }
+        }
+        std::fprintf(stderr, "\n");
+
+        if (reachable.find(newOrigin) == reachable.end()) {
+            std::fprintf(stderr, "[C++ FLY] Destination blocked!\n");
+            return false;
+        }
+
+        std::fprintf(stderr, "[C++ FLY] Move allowed\n");
         pa.agent->flyTo(newOrigin.col, newOrigin.row);
         pa.origin = newOrigin;
         return true;
@@ -537,22 +559,8 @@ CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
     CellSet result;
     if (speedFt <= 0 || !inBounds(origin, tokenSize)) return result;
 
-    if (type == MovementType::Fly) {
-        // Aerial: Manhattan distance, map bounds only, walls irrelevant
-        const int range = speedFt / 5;
-        for (int dr = -range; dr <= range; ++dr) {
-            for (int dc = -range; dc <= range; ++dc) {
-                if (std::abs(dc) + std::abs(dr) > range) continue;
-                Cell c{origin.col + dc, origin.row + dr};
-                if (inBounds(c, tokenSize))
-                    result.insert(c);
-            }
-        }
-        return result;
-    } else {
-        // Walk, Swim, Burrow, Jump all use Dijkstra pathfinding
-        return pathfindMovement(origin, tokenSize, speedFt, type);
-    }
+    // All movement types use Dijkstra pathfinding (respects terrain/walls)
+    return pathfindMovement(origin, tokenSize, speedFt, type);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -648,7 +656,10 @@ bool BattleMap::hasLineOfSight(Cell from, int fromSize,
                           r >= from.row && r < from.row + fromSize);
         const bool inT = (c >= to.col   && c < to.col   + toSize   &&
                           r >= to.row   && r < to.row   + toSize);
-        return !inF && !inT && disallowed_.contains({c, r});
+        if (inF || inT) return false;
+        // Check both auto-detected walls and manually-set Wall terrain
+        if (disallowed_.contains({c, r})) return true;
+        return terrainType_[r * cols_ + c] == TerrainType::Wall;
     };
 
     // Test a single 1×1 pair (fc,fr) → (tc,tr).

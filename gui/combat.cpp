@@ -304,6 +304,11 @@ std::vector<AttackResult> CombatEngine::runRound(
     std::vector<AttackResult> results;
     const int n = static_cast<int>(bm.placedAgents().size());
 
+    // Reset reaction_used for all agents at the start of the round
+    for (int i = 0; i < n; ++i) {
+        bm.placedAgents()[static_cast<std::size_t>(i)].agent->setReactionUsed(false);
+    }
+
     for (const TurnActions& t : turns) {
         if (t.agent_idx < 0 || t.agent_idx >= n) continue;
 
@@ -319,8 +324,13 @@ std::vector<AttackResult> CombatEngine::runRound(
             AttackResult r = executeAction(bm, atk);
             if (r.valid) {
                 int tgt = atk.target_idx;
-                if (tgt >= 0 && tgt < n)
-                    bm.placedAgents()[static_cast<std::size_t>(tgt)].agent->reaction();
+                if (tgt >= 0 && tgt < n) {
+                    auto& tgt_agent = bm.placedAgents()[static_cast<std::size_t>(tgt)];
+                    if (!tgt_agent.agent->hasUsedReaction()) {
+                        tgt_agent.agent->reaction();
+                        tgt_agent.agent->setReactionUsed(true);
+                    }
+                }
             }
             results.push_back(std::move(r));
         }
@@ -334,8 +344,13 @@ std::vector<AttackResult> CombatEngine::runRound(
             AttackResult r = executeAction(bm, atk);
             if (r.valid) {
                 int tgt = atk.target_idx;
-                if (tgt >= 0 && tgt < n)
-                    bm.placedAgents()[static_cast<std::size_t>(tgt)].agent->reaction();
+                if (tgt >= 0 && tgt < n) {
+                    auto& tgt_agent = bm.placedAgents()[static_cast<std::size_t>(tgt)];
+                    if (!tgt_agent.agent->hasUsedReaction()) {
+                        tgt_agent.agent->reaction();
+                        tgt_agent.agent->setReactionUsed(true);
+                    }
+                }
             }
             results.push_back(std::move(r));
         }
@@ -355,9 +370,71 @@ std::vector<AttackResult> CombatEngine::runRound(
 //  Core attack mechanics
 // ─────────────────────────────────────────────────────────────────────────────
 
+bool CombatEngine::isThreatened(const BattleMap& bm, int attacker_idx) const noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()))
+        return false;
+
+    const PlacedAgent& atk = agents[attacker_idx];
+    const int THREAT_DISTANCE = 2;  // 10 feet = 2 cells (each cell is 5 feet)
+
+    // Check if any other agent is within 10 feet
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == attacker_idx) continue;  // Skip self
+
+        const PlacedAgent& other = agents[i];
+        if (other.agent->getConditions().incapacitated) continue;  // Skip incapacitated agents
+
+        // Calculate Chebyshev distance (max of absolute differences)
+        int dc = std::max({atk.origin.col - other.origin.col,
+                           other.origin.col - (atk.origin.col + atk.agent->getSize() - 1),
+                           0});
+        int dr = std::max({atk.origin.row - other.origin.row,
+                           other.origin.row - (atk.origin.row + atk.agent->getSize() - 1),
+                           0});
+        int dist = std::max(dc, dr);
+
+        if (dist <= THREAT_DISTANCE)
+            return true;
+    }
+
+    return false;
+}
+
+std::vector<int> CombatEngine::threateningAgents(const BattleMap& bm, int target_idx, int reach_cells) const {
+    auto agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size()))
+        return {};
+
+    const PlacedAgent& tgt = agents[static_cast<std::size_t>(target_idx)];
+    std::vector<int> result;
+
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == target_idx) continue;
+        const PlacedAgent& other = agents[static_cast<std::size_t>(i)];
+        if (other.agent->getConditions().incapacitated) continue;
+        if (other.stats.hp_cur <= 0) continue;
+
+        // Chebyshev distance from target's footprint to other's origin
+        int dc = std::max({tgt.origin.col - other.origin.col,
+                           other.origin.col - (tgt.origin.col + tgt.agent->getSize() - 1),
+                           0});
+        int dr = std::max({tgt.origin.row - other.origin.row,
+                           other.origin.row - (tgt.origin.row + tgt.agent->getSize() - 1),
+                           0});
+        int dist = std::max(dc, dr);
+
+        if (dist <= reach_cells)
+            result.push_back(i);
+    }
+    return result;
+}
+
 AttackResult CombatEngine::rollToHit(const Weapon& w,
                                       const Agent::Stats& attacker,
                                       int target_ac,
+                                      bool advantage,
                                       bool disadvantage)
 {
     AttackResult r;
@@ -365,7 +442,23 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.attack_mod   = attackModifier(w, attacker);
     r.target_ac    = target_ac;
 
-    r.d20        = disadvantage ? rollDisadvantage(20) : roll(20);
+    // If both advantage and disadvantage: they cancel out (roll normally)
+    if (advantage && disadvantage) {
+        int d1 = roll(20), d2 = roll(20);
+        r.d20 = d1;
+        log_("Advantage+disadvantage cancel: rolled {} and {} → kept {}", d1, d2, r.d20);
+    } else if (advantage) {
+        int d1 = roll(20), d2 = roll(20);
+        r.d20 = std::max(d1, d2);
+        log_("Advantage: rolled {} and {} → kept {}", d1, d2, r.d20);
+    } else if (disadvantage) {
+        int d1 = roll(20), d2 = roll(20);
+        r.d20 = std::min(d1, d2);
+        log_("Disadvantage: rolled {} and {} → kept {}", d1, d2, r.d20);
+    } else {
+        r.d20 = roll(20);
+    }
+
     r.critical   = (r.d20 == 20);
     r.fumble     = (r.d20 == 1);
     r.total_roll = r.d20 + r.attack_mod;
@@ -400,9 +493,10 @@ void CombatEngine::rollDamage(const Weapon& w,
 AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           const Agent::Stats& attacker,
                                           Agent::Stats& target,
+                                          bool advantage,
                                           bool disadvantage)
 {
-    AttackResult r = rollToHit(w, attacker, target.ac, disadvantage);
+    AttackResult r = rollToHit(w, attacker, target.ac, advantage, disadvantage);
     r.hp_before = target.hp_cur;
 
     if (r.hit) {
@@ -453,10 +547,30 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                                    atk_pt.origin, atk_sz,
                                    tgt_pt.origin, tgt_sz);
 
+    // Apply engagement disadvantage: ranged attacks suffer disadvantage if engaged
+    bool is_ranged = (w.normal_range_ft > 0);
+    if (is_ranged && isThreatened(bm, action.attacker_idx)) {
+        disadv = true;
+    }
+
+    // Check agent conditions for advantage/disadvantage
+    bool adv = atk_pt.agent->hasAdvantage();
+    bool dis = disadv || atk_pt.agent->hasDisadvantage();
+
+    // Log reasons for disadvantage
+    if (is_ranged && isThreatened(bm, action.attacker_idx))
+        log_("Disadvantage: threatened (enemy within 10 ft)");
+    else if (disadv)  // long-range disadvantage
+        log_("Disadvantage: long range");
+    if (atk_pt.agent->hasDisadvantage())
+        log_("Disadvantage: condition");
+    if (atk_pt.agent->hasAdvantage())
+        log_("Advantage: condition");
+
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
 
-    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, disadv);
+    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis);
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
     return r;
 }
@@ -748,7 +862,30 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         switch (sp.attack_type) {
 
         case Spell::AttackRoll: {
-            int d20_val = roll(20);
+            // Apply advantage/disadvantage from caster conditions
+            bool caster_adv = caster_pa.agent->hasAdvantage();
+            bool caster_dis = caster_pa.agent->hasDisadvantage();
+
+            // Apply engagement disadvantage for ranged spells
+            if (sp.range > 0 && isThreatened(bm, action.caster_idx)) {
+                caster_dis = true;
+                log_("Disadvantage: threatened (enemy within 10 ft)");
+            }
+            if (caster_pa.agent->hasDisadvantage())
+                log_("Disadvantage: condition");
+            if (caster_pa.agent->hasAdvantage())
+                log_("Advantage: condition");
+
+            int d20_val;
+            if (caster_adv && caster_dis) {
+                d20_val = roll(20);  // Cancel out
+            } else if (caster_adv) {
+                d20_val = rollAdvantage(20);
+            } else if (caster_dis) {
+                d20_val = rollDisadvantage(20);
+            } else {
+                d20_val = roll(20);
+            }
             int mod     = spellAttackMod(caster_stats);
             int total   = d20_val + mod;
             tr.d20        = d20_val;
@@ -795,7 +932,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         case Spell::Save: {
             int save_dc  = spellSaveDc(caster_stats);
-            int save_d20 = roll(20);
+            // Apply advantage/disadvantage from target conditions
+            const PlacedAgent& target_pa = agents[static_cast<std::size_t>(tgt_idx)];
+            bool target_adv = target_pa.agent->hasAdvantage();
+            bool target_dis = target_pa.agent->hasDisadvantage();
+            int save_d20;
+            if (target_adv && target_dis) {
+                save_d20 = roll(20);  // Cancel out
+            } else if (target_adv) {
+                save_d20 = rollAdvantage(20);
+            } else if (target_dis) {
+                save_d20 = rollDisadvantage(20);
+            } else {
+                save_d20 = roll(20);
+            }
             auto saveMod = [&](Spell::SaveAbility_t ab) -> int {
                 int score = 0; bool prof = false;
                 switch (ab) {
@@ -982,7 +1132,21 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
     r.checked    = true;
     r.spell_name = cond.concentrating_on;
     r.save_dc    = std::max(10, damage_taken / 2);
-    r.save_d20   = roll(20);
+
+    // Apply advantage/disadvantage from agent conditions
+    bool has_adv = cond.has_advantage;
+    bool has_dis = cond.has_disadvantage;
+    int save_d20;
+    if (has_adv && has_dis) {
+        save_d20 = roll(20);  // Cancel out
+    } else if (has_adv) {
+        save_d20 = rollAdvantage(20);
+    } else if (has_dis) {
+        save_d20 = rollDisadvantage(20);
+    } else {
+        save_d20 = roll(20);
+    }
+    r.save_d20   = save_d20;
 
     Agent::Stats s = bm.getAgentStats(agent_idx);
     int con_mod = (s.con - 10) / 2;
