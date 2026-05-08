@@ -275,7 +275,7 @@
         "spell": "Ice Storm",
         "spell_idx": 3,
         "requires_concentration": true,
-        "duration_remaining": 5
+        "duration_remaining": 4
       },
       "hatch_pattern": "xx"
     }
