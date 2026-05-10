@@ -3299,9 +3299,10 @@ class App:
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
-        self.pending_attack_slot  = ""    # "" | "action" | "bonus"
-        self.pending_weapon_idx   = 0
-        self.attacks_remaining    = 0     # attacks left in current pending slot
+        self.pending_attack_slot      = ""    # "" | "action" | "bonus"
+        self.pending_weapon_idx       = 0
+        self.attacks_remaining        = 0     # attacks left in current pending slot
+        self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
         self.pending_spell_slot   = ""    # "" | "action" | "bonus"
         self.pending_spell_idx    = 0
         self.pending_spell_is_aoe = False
@@ -4181,12 +4182,13 @@ class App:
                     del self._effect_meta[effect_id]
 
         # Reset action economy and per-turn conditions for the new combatant.
-        self.action_used          = False
-        self.bonus_used           = False
-        self.pending_attack_slot  = ""
-        self.attacks_remaining    = 0
-        self.pending_spell_slot   = ""
-        self.pending_spell_is_aoe = False
+        self.action_used           = False
+        self.bonus_used            = False
+        self.pending_attack_slot   = ""
+        self.attacks_remaining     = 0
+        self._attack_sequence_slot = ""
+        self.pending_spell_slot    = ""
+        self.pending_spell_is_aoe  = False
         self._opportunity_queue.clear()
         new_idx = self._current_agent_idx()
         self.selected_idx = new_idx
@@ -4275,11 +4277,6 @@ class App:
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        # Don't re-enter while a multi-attack sequence is already in flight —
-        # that would reset attacks_remaining and grant unlimited attacks.
-        if self.pending_attack_slot:
-            # print(f"[DEBUG _start_attack] ignored: attack already pending (slot={self.pending_attack_slot}, attacks_remaining={self.attacks_remaining})")
-            return
         weapons = self.bm.get_agent_weapons(idx)
         if not weapons:
             self._combat_log_add("No weapons equipped!")
@@ -4288,9 +4285,17 @@ class App:
             else:
                 self.bonus_used = True
             return
+
         stats = self.bm.get_agent_stats(idx)
-        n_atk = stats.num_attacks if slot == "action" else 1
-        self.attacks_remaining = n_atk
+        # Only seed attacks_remaining when starting a fresh sequence (== 0).
+        # If mid-sequence and same slot, don't reset. If mid-sequence and different slot, reject.
+        if self.attacks_remaining == 0:
+            # Fresh start
+            self.attacks_remaining = stats.num_attacks if slot == "action" else 1
+            self._attack_sequence_slot = slot
+        elif slot != self._attack_sequence_slot:
+            # Can't start a different slot while attacks are pending
+            return
         # print(f"[DEBUG _start_attack] idx={idx} slot={slot} stats.num_attacks={stats.num_attacks} n_atk={n_atk} attacks_remaining={self.attacks_remaining}")
 
         def _activate(s, wi_):
@@ -4386,15 +4391,16 @@ class App:
                     self._combat_log_add(f"{agent_name} drops concentration on {spell_name}.")
 
         self.attacks_remaining -= 1
-        # print(f"[DEBUG _resolve_combat_attack] decremented attacks_remaining -> {self.attacks_remaining}")
         if self.attacks_remaining > 0:
-            rem = self.attacks_remaining
-            # print(f"[DEBUG _resolve_combat_attack] more attacks left, keeping slot pending: {self.pending_attack_slot}")
-            self._combat_log_add(
-                f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click another target.")
-        else:
-            # print(f"[DEBUG _resolve_combat_attack] attacks exhausted; clearing slot, marking {slot}_used")
+            # More attacks left — clear pending slot so user can move or pick another weapon
             self.pending_attack_slot = ""
+            rem = self.attacks_remaining
+            self._combat_log_add(
+                f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — move or click Attack to continue.")
+        else:
+            # Attacks exhausted — mark action used and clear sequence state
+            self.pending_attack_slot = ""
+            self._attack_sequence_slot = ""
             if slot == "action":
                 self.action_used = True
             else:
@@ -5916,11 +5922,20 @@ class App:
             _cur_has_spells  = len(self.bm.get_agent_spells(cur_idx)) > 0
             _cur_can_spell   = _cur_has_spells  # can cast if has spells
 
-        if self.action_used:
+        # Check if mid-sequence (attacks remaining, but action_used not yet set)
+        mid_sequence_action = (self.attacks_remaining > 0 and self._attack_sequence_slot == "action")
+
+        if self.action_used and not mid_sequence_action:
             txt("[Action used]", lx, y, (100, 100, 120))
             y += B
         else:
             # Attack and Pass buttons
+            # Update Attack button label with attack count if mid-sequence
+            if mid_sequence_action:
+                self.btn_cbt_atk_action.text = f"⚔ Attack ({self.attacks_remaining})"
+            else:
+                self.btn_cbt_atk_action.text = "⚔ Attack"
+
             self.btn_cbt_atk_action.rect.x  = lx
             self.btn_cbt_atk_action.rect.y  = y
             self.btn_cbt_atk_action.rect.w  = HW
@@ -6003,10 +6018,19 @@ class App:
         txt(bon_lbl, lx, y, COL_LABEL)
         y += 16
 
-        if self.bonus_used:
+        # Check if mid-sequence for bonus action
+        mid_sequence_bonus = (self.attacks_remaining > 0 and self._attack_sequence_slot == "bonus")
+
+        if self.bonus_used and not mid_sequence_bonus:
             txt("[Bonus used]", lx, y, (100, 100, 120))
             y += B
         else:
+            # Update bonus button label with attack count if mid-sequence
+            if mid_sequence_bonus:
+                self.btn_cbt_atk_bonus.text = f"⚔ Bonus ({self.attacks_remaining})"
+            else:
+                self.btn_cbt_atk_bonus.text = "⚔ Bonus Atk"
+
             # Layout depends on whether spells are available
             if _cur_can_spell and _cur_has_spells:
                 TW3_bonus = (W - 8) // 3
@@ -6019,7 +6043,7 @@ class App:
                 self.btn_cbt_pass_bonus.rect.x  = lx + 2 * (TW3_bonus + gap)
                 self.btn_cbt_pass_bonus.rect.y  = y
                 self.btn_cbt_pass_bonus.rect.w  = TW3_bonus
-                if _cur_has_offhand:
+                if _cur_has_offhand or mid_sequence_bonus:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_spell_bonus.draw(self.screen)
                 self.btn_cbt_pass_bonus.draw(self.screen)
@@ -6030,7 +6054,7 @@ class App:
                 self.btn_cbt_pass_bonus.rect.x = lx + HW + gap
                 self.btn_cbt_pass_bonus.rect.y = y
                 self.btn_cbt_pass_bonus.rect.w = HW
-                if _cur_has_offhand:
+                if _cur_has_offhand or mid_sequence_bonus:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_pass_bonus.draw(self.screen)
             y += B
