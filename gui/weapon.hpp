@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include "agent.hpp"
+#include "spell.hpp"
 
 namespace rpg {
 
@@ -33,12 +34,15 @@ struct Weapon {
 
     // ── General ───────────────────────────────────────────────────────────
     bool         proficient      = false;       // add proficiency bonus to hit
-    int          num_dice        = 1;           // e.g. 2d6 → num_dice = 2
-    int          die_size        = 6;           //              die_size = 6
+    bool         off_hand        = false;       // designated off-hand weapon (TWF)
 
-    std::vector<MagicDamage_t>    magicDamages;
-    std::vector<PhysicalDamage_t> physicalDamages;
-    
+    std::vector<MagicDamageRoll>    magicDamageRolls;
+    std::vector<PhysicalDamageRoll> physicalDamageRolls;
+
+    // ── Bonuses ───────────────────────────────────────────────────────────────
+    int          bonus_hit    = 0;       // flat bonus to attack rolls
+    int          bonus_damage = 0;       // flat bonus to damage total
+
 };
 
 } // namespace rpg

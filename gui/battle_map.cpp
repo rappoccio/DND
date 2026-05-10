@@ -759,6 +759,49 @@ std::vector<Cell> BattleMap::attackTargetCells(Cell origin, int tokenSize,
     return result;
 }
 
+std::vector<Cell> BattleMap::filterSpellCells(const std::vector<Cell>& cells,
+                                              Cell casterOrigin, int casterSize,
+                                              const Spell& spell, Cell centerCell) const
+{
+    std::vector<Cell> result;
+    const int rangeCells = spell.range / 5;
+
+    // Check if centerCell has LOS (if required)
+    if (spell.requires_los && spell.check_los_on_center) {
+        if (!hasLineOfSight(casterOrigin, casterSize, centerCell, 1)) {
+            return result;  // Center blocked, no cells can be affected
+        }
+    }
+
+    for (const auto& cell : cells) {
+        // Check distance (Chebyshev from caster edge to target cell)
+        int dc = std::max({casterOrigin.col - cell.col,
+                          cell.col - (casterOrigin.col + casterSize - 1),
+                          0});
+        int dr = std::max({casterOrigin.row - cell.row,
+                          cell.row - (casterOrigin.row + casterSize - 1),
+                          0});
+        int dist = std::max(dc, dr);
+
+        if (dist > rangeCells)
+            continue;  // Out of range
+
+        // If check_los_on_center, we already validated center above, so include all range cells
+        if (spell.check_los_on_center && spell.requires_los) {
+            result.push_back(cell);
+        } else if (spell.requires_los) {
+            // Check LOS for each individual cell (rare case)
+            if (hasLineOfSight(casterOrigin, casterSize, cell, 1)) {
+                result.push_back(cell);
+            }
+        } else {
+            // No LOS requirement, just add it
+            result.push_back(cell);
+        }
+    }
+    return result;
+}
+
 // ── Terrain multipliers ────────────────────────────────────────────────────
 double BattleMap::getTerrainMultiplier(Cell c, MovementType mt) const noexcept {
     (void)mt;  // mt parameter included for API consistency; cost multipliers are movement-type-independent

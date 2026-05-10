@@ -195,6 +195,14 @@ public:
     [[nodiscard]] std::vector<Cell> attackTargetCells(Cell origin, int agentSize,
                                                       int rangeFt) const;
 
+    // Filter spell cells by range and LOS requirements.
+    // If spell.requires_los is false, only filters by range.
+    // If spell.check_los_on_center is true, only the centerCell needs LOS (standard D&D 5e).
+    // If spell.check_los_on_center is false, all cells need LOS (rare case).
+    [[nodiscard]] std::vector<Cell> filterSpellCells(const std::vector<Cell>& cells,
+                                                     Cell casterOrigin, int casterSize,
+                                                     const Spell& spell, Cell centerCell) const;
+
     // ── Terrain multipliers ───────────────────────────────────────────────
     // Movement cost multiplier for each cell (default 1.0).
     // Used for difficult terrain, spells, etc. Stored as cols × rows.

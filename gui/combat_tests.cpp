@@ -137,9 +137,13 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     longsword.type = WeaponType::Melee;
     longsword.reach_ft = 5;
     longsword.proficient = true;
-    longsword.num_dice = 1;
-    longsword.die_size = 8;
-    longsword.physicalDamages = {PhysicalDamage_t::Slashing};
+    {
+        PhysicalDamageRoll dmg;
+        dmg.type = PhysicalDamage_t::Slashing;
+        dmg.num_dice = 1;
+        dmg.die_size = 8;
+        longsword.physicalDamageRolls.push_back(dmg);
+    }
     bm->addWeaponToAgent(deva_idx, longsword);
 
     Weapon longbow;
@@ -148,9 +152,13 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     longbow.normal_range_ft = 150;
     longbow.long_range_ft = 600;
     longbow.proficient = true;
-    longbow.num_dice = 1;
-    longbow.die_size = 8;
-    longbow.physicalDamages = {PhysicalDamage_t::Piercing};
+    {
+        PhysicalDamageRoll dmg;
+        dmg.type = PhysicalDamage_t::Piercing;
+        dmg.num_dice = 1;
+        dmg.die_size = 8;
+        longbow.physicalDamageRolls.push_back(dmg);
+    }
     bm->addWeaponToAgent(deva_idx, longbow);
 
     Spell ice_storm;

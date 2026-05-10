@@ -114,6 +114,58 @@ def parse_damage(spell: dict) -> tuple:
 
     return magic_damages, physical_damages
 
+def infer_los_requirement(spell: dict) -> bool:
+    """Check if spell requires line of sight. Only true if spell explicitly mentions 'you can see'."""
+    desc = (spell.get("desc", "") + " " + spell.get("higher_level", "")).lower()
+
+    # Spells that explicitly require LOS mention "you can see" or similar
+    los_patterns = [
+        r"you can see",
+        r"that you can see",
+        r"within sight",
+        r"line of sight",
+    ]
+
+    for pattern in los_patterns:
+        if re.search(pattern, desc):
+            return True
+
+    # By default, spells do NOT require LOS
+    return False
+
+def infer_terrain_effect(spell: dict) -> tuple:
+    """Infer terrain effect from spell description. Returns (terrain_effect_dict, terrain_color_rgb, hatch_pattern) or (None, None, None)."""
+    desc = (spell.get("desc", "") + " " + spell.get("higher_level", "")).lower()
+    name = spell.get("name", "").lower()
+
+    # Check for "difficult terrain" first (all such spells mention it explicitly)
+    if "difficult terrain" in desc:
+        # Pick color/hatch based on spell name or keywords
+        if re.search(r"grease|slippery|oil", desc + name):
+            color, hatch = (220, 180, 0), "\\\\"  # Gold/yellow
+        elif re.search(r"web|entangle", desc + name):
+            color, hatch = (150, 75, 0), "xx"  # Dark brown
+        elif re.search(r"snow|ice|sleet|frozen|blizzard", desc + name):
+            color, hatch = (200, 220, 255), "||"  # Cyan/white
+        elif re.search(r"thorns|spikes|caltrops", desc + name):
+            color, hatch = (100, 100, 0), "--"  # Olive/dark
+        elif re.search(r"fog|mist|obscur", desc + name):
+            color, hatch = (180, 180, 180), ".."  # Gray
+        else:
+            color, hatch = (139, 90, 43), "//"  # Default brown
+
+        return (
+            {
+                "type": "Difficult Terrain",
+                "difficulty": "Halved",  # 2x movement cost
+                "duration": 10
+            },
+            color,
+            hatch
+        )
+
+    return None, None, None
+
 def spell_to_dict(api_spell: dict) -> dict:
     """Convert Open5e v2 spell to our JSON format."""
     magic_dmg, phys_dmg = parse_damage(api_spell)
@@ -175,23 +227,50 @@ def spell_to_dict(api_spell: dict) -> dict:
         if match:
             upcast_bonus = int(match.group(1))
 
-    return {
+    # Infer terrain effect
+    terrain_effect, terrain_color, hatch_pattern = infer_terrain_effect(api_spell)
+
+    # Infer LOS requirement
+    requires_los = infer_los_requirement(api_spell)
+
+    geometry = infer_geometry(api_spell)
+
+    # Set geometry-appropriate dimensions
+    if geometry in ("Sphere", "Cone"):
+        radius, width, length = 15, 0, 0
+    elif geometry == "Line":
+        radius, width, length = 0, 5, 30
+    else:  # Single
+        radius, width, length = 0, 0, 0
+
+    result = {
         "name": api_spell.get("name", "Unknown Spell"),
+        "description": api_spell.get("desc", ""),
         "type": spell_type,
-        "geometry": infer_geometry(api_spell),
+        "geometry": geometry,
         "attack_type": attack_type,
         "save_ability": save_ability,
         "range": range_ft,
-        "radius": 15,  # Default for AOE
-        "width": 5,
-        "length": 30,
+        "radius": radius,
+        "width": width,
+        "length": length,
         "duration": 1,
         "magic_damage_types": magic_dmg,
         "physical_damage_types": phys_dmg,
         "level": level,
         "upcast_dice_bonus": upcast_bonus,
         "requires_concentration": api_spell.get("concentration", False),
+        "requires_los": requires_los,
+        "check_los_on_center": True,  # Always true by default (D&D 5e standard)
     }
+
+    # Add terrain effect if detected
+    if terrain_effect:
+        result["terrain_effect"] = terrain_effect
+        result["terrain_color"] = terrain_color
+        result["hatch_pattern"] = hatch_pattern
+
+    return result
 
 def main():
     """Main entry point."""

@@ -21,40 +21,16 @@
         "speed_fly": 30,
         "speed_burrow": 0,
         "prof_bonus": 2,
-	"num_attacks": 2,  
+        "num_attacks": 2,
         "save_prof_str": false,
         "save_prof_dex": true,
         "save_prof_con": true,
         "save_prof_intel": false,
         "save_prof_wis": false,
-        "save_prof_cha": false
+        "save_prof_cha": false,
+        "spellcasting_ability": "cha"
       },
-      "weapons": [
-        {
-          "name": "Greatsword",
-          "type": "melee",
-          "reach_ft": 5,
-          "normal_range_ft": 5,
-          "long_range_ft": 5,
-          "finesse": false,
-          "thrown": false,
-          "proficient": true,
-          "damage_dice": "2d6",
-          "physical_damages": ["Slashing"]
-        },
-        {
-          "name": "Longbow",
-          "type": "ranged",
-          "reach_ft": 320,
-          "normal_range_ft": 80,
-          "long_range_ft": 320,
-          "finesse": false,
-          "thrown": false,
-          "proficient": true,
-          "damage_dice": "1d8",
-          "physical_damages": ["Piercing"]
-	} 
-      ]
+      "weapon_indices": ["Rapier", "Dagger", "Longbow"]
     },
     {
       "name": "Baba Lysaga",
@@ -77,28 +53,26 @@
         "speed_fly": 0,
         "speed_burrow": 0,
         "prof_bonus": 2,
+        "num_attacks": 1,
         "save_prof_str": true,
         "save_prof_dex": false,
         "save_prof_con": false,
         "save_prof_intel": false,
         "save_prof_wis": true,
         "save_prof_cha": false,
-	"can_cast_spell":true,
-	"spellcasting_ability":"wis"
+        "spellcasting_ability": "wis"
       },
       "agent_class": "Wizard",
       "agent_char_level": 9,
       "spell_slots_max": [4, 3, 3, 3, 1, 0, 0, 0, 0],
       "spell_slots_cur": [4, 3, 3, 3, 1, 0, 0, 0, 0],
-      "spells": [
-	  "Fireball",
-	  "Grease",
-	  "Ice Storm"
+      "weapon_indices": [],
+      "spell_indices": [
+        "Fireball",
+        "Grease",
+        "Ice Storm",
+        "Plant Growth"
       ]
     }
   ]
 }
-
-
-
-

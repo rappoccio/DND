@@ -49,6 +49,8 @@ namespace rpg {
       TerrainDifficulty terrain_difficulty{static_cast<TerrainDifficulty>(0)};  // Normal
 
       bool requires_concentration{false};  // Caster must maintain concentration; breaks on damage
+      bool requires_los{false};            // Spell requires line of sight to target/area
+      bool check_los_on_center{true};      // If true, only the spell center needs LOS (user configurable)
 
       int level{0};              // 0 = cantrip (unlimited); 1-9 = slot level required
       int upcast_dice_bonus{0};  // extra dice per slot level above spell.level

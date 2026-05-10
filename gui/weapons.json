@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Rapier",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 0,
+    "long_range_ft": 0,
+    "finesse": true,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 8}],
+    "magic_damage_types": []
+  },
+  {
+    "name": "Dagger",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 20,
+    "long_range_ft": 60,
+    "finesse": true,
+    "thrown": true,
+    "proficient": true,
+    "off_hand": true,
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 4}],
+    "magic_damage_types": []
+  },
+  {
+    "name": "Longbow",
+    "type": "ranged",
+    "reach_ft": 5,
+    "normal_range_ft": 150,
+    "long_range_ft": 600,
+    "finesse": false,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 8}],
+    "magic_damage_types": []
+  },
+  {
+    "name": "Longsword",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 0,
+    "long_range_ft": 0,
+    "finesse": false,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Slashing", "num_dice": 1, "die_size": 8}],
+    "magic_damage_types": []
+  }
+]

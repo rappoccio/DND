@@ -439,7 +439,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 {
     AttackResult r;
     r.disadvantage = disadvantage;
-    r.attack_mod   = attackModifier(w, attacker);
+    r.attack_mod   = attackModifier(w, attacker) + w.bonus_hit;
     r.target_ac    = target_ac;
 
     // If both advantage and disadvantage: they cancel out (roll normally)
@@ -471,23 +471,33 @@ void CombatEngine::rollDamage(const Weapon& w,
                                const Agent::Stats& attacker,
                                AttackResult& result)
 {
-    // Critical hits double the number of damage dice (not the final total).
-    const int num_rolls = result.critical ? w.num_dice * 2 : w.num_dice;
-
     result.dice_results.clear();
-    result.dice_results.reserve(static_cast<std::size_t>(num_rolls));
-
     int raw = 0;
-    for (int i = 0; i < num_rolls; ++i) {
-        int d = roll(w.die_size);
-        result.dice_results.push_back(d);
-        raw += d;
+
+    // Roll physical damage types
+    for (const auto& dmg_roll : w.physicalDamageRolls) {
+        const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
+        for (int i = 0; i < num_dice; ++i) {
+            int d = roll(dmg_roll.die_size);
+            result.dice_results.push_back(d);
+            raw += d;
+        }
+        result.physical_damage_types.push_back(dmg_roll.type);
     }
 
-    result.damage_mod           = damageAbilityMod(w, attacker);
-    result.total_damage         = std::max(0, raw + result.damage_mod);
-    result.magic_damage_types    = w.magicDamages;
-    result.physical_damage_types = w.physicalDamages;
+    // Roll magic damage types
+    for (const auto& dmg_roll : w.magicDamageRolls) {
+        const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
+        for (int i = 0; i < num_dice; ++i) {
+            int d = roll(dmg_roll.die_size);
+            result.dice_results.push_back(d);
+            raw += d;
+        }
+        result.magic_damage_types.push_back(dmg_roll.type);
+    }
+
+    result.damage_mod   = damageAbilityMod(w, attacker) + w.bonus_damage;
+    result.total_damage = std::max(0, raw + result.damage_mod);
 }
 
 AttackResult CombatEngine::resolveAttack(const Weapon& w,

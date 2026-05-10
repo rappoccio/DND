@@ -1239,10 +1239,11 @@ _DEFAULT_WEAPON: dict = {
     "finesse":         False,
     "thrown":          False,
     "proficient":      True,
-    "num_dice":        1,          # e.g. 1d6 → num_dice=1, die_size=6
-    "die_size":        6,
-    "physical_damages": ["Slashing"],
-    "magic_damages":    [],
+    "off_hand":        False,      # designated off-hand weapon (TWF)
+    "bonus_hit":       0,          # flat bonus to attack rolls
+    "bonus_damage":    0,          # flat bonus to damage
+    "physical_damage_types": [{"type": "Slashing", "num_dice": 1, "die_size": 6}],
+    "magic_damage_types":    [],
 }
 
 
@@ -1257,10 +1258,13 @@ def _weapon_to_dict(w) -> dict:
         "finesse":          w.finesse,
         "thrown":           w.thrown,
         "proficient":       w.proficient,
-        "num_dice":         w.num_dice,
-        "die_size":         w.die_size,
-        "physical_damages": [v.name for v in w.physical_damages],
-        "magic_damages":    [v.name for v in w.magic_damages],
+        "off_hand":         w.off_hand,
+        "bonus_hit":        w.bonus_hit,
+        "bonus_damage":     w.bonus_damage,
+        "physical_damage_types": [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
+                                   for r in w.physical_damage_types],
+        "magic_damage_types":    [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
+                                   for r in w.magic_damage_types],
     }
 
 
@@ -1277,13 +1281,190 @@ def _dict_to_weapon(d: dict):
     w.finesse         = bool(d.get("finesse",         False))
     w.thrown          = bool(d.get("thrown",          False))
     w.proficient      = bool(d.get("proficient",      True))
-    w.num_dice        = int(d.get("num_dice",  1))
-    w.die_size        = int(d.get("die_size",  6))
-    w.physical_damages = [_parse_physical_damage(v)
-                          for v in d.get("physical_damages", ["Slashing"])]
-    w.magic_damages    = [_parse_magic_damage(v)
-                          for v in d.get("magic_damages",    [])]
+    w.off_hand        = bool(d.get("off_hand",        False))
+    w.bonus_hit       = int(d.get("bonus_hit",       0))
+    w.bonus_damage    = int(d.get("bonus_damage",    0))
+
+    # Physical damage rolls
+    w.physical_damage_types = []
+    for entry in d.get("physical_damage_types", []):
+        r = rpg.PhysicalDamageRoll()
+        r.type     = _parse_physical_damage(entry.get("type", "Slashing"))
+        r.num_dice = int(entry.get("num_dice", 1))
+        r.die_size = int(entry.get("die_size", 6))
+        w.physical_damage_types.append(r)
+
+    # Magic damage rolls
+    w.magic_damage_types = []
+    for entry in d.get("magic_damage_types", []):
+        r = rpg.MagicDamageRoll()
+        r.type     = _parse_magic_damage(entry.get("type", "Fire"))
+        r.num_dice = int(entry.get("num_dice", 1))
+        r.die_size = int(entry.get("die_size", 6))
+        w.magic_damage_types.append(r)
+
     return w
+
+
+class SpellSelectionDialog:
+    """Modal dialog for selecting a spell from spells.json."""
+    ITEM_H = 24
+    PAD = 12
+    SEARCH_H = 32
+
+    def __init__(self, spells: list, font_sm=None, font_md=None):
+        self.all_spells = spells  # All available spells (dicts with "name")
+        self.filtered_spells = spells  # Filtered by search
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.selected_callback = None
+        self.search_text = ""
+        self._frames_since_show = 0  # Prevent immediate dismissal on show click
+
+    def show(self, callback):
+        self.visible = True
+        self.selected_callback = callback
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.search_text = ""
+        self._frames_since_show = 0  # Reset counter to prevent immediate dismissal
+        self.filtered_spells = self.all_spells[:]
+        # Center dialog on screen
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 400
+        dlg_h = 500
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def dismiss(self):
+        self.visible = False
+
+    def _update_filtered_spells(self):
+        """Filter spells based on search text."""
+        search_lower = self.search_text.lower()
+        self.filtered_spells = [s for s in self.all_spells if search_lower in s.get("name", "").lower()]
+        self.scroll_y = 0
+        self._hover_idx = -1
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+
+        # Skip first click after show to prevent dismissal on the same click that showed the dialog
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.dismiss()
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                self.search_text = self.search_text[:-1]
+                self._update_filtered_spells()
+                return True
+            elif event.key == pygame.K_RETURN:
+                # Select first filtered spell if only one matches
+                if len(self.filtered_spells) == 1:
+                    if self.selected_callback:
+                        self.selected_callback(self.filtered_spells[0])
+                    self.dismiss()
+                    return True
+            elif event.unicode.isprintable():
+                self.search_text += event.unicode
+                self._update_filtered_spells()
+                return True
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(*event.pos):
+                # Check if click is in search box area
+                search_y = self.rect.y + 35
+                search_box_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
+                                             self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+                if search_box_rect.collidepoint(*event.pos):
+                    return True
+
+                list_y = search_y + self.SEARCH_H
+                list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+                for i, spell in enumerate(self.filtered_spells):
+                    item_y = list_y + i * self.ITEM_H - self.scroll_y
+                    if list_y <= item_y < list_y + list_h:
+                        item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                              self.rect.w - self.PAD * 2, self.ITEM_H)
+                        if item_rect.collidepoint(*event.pos):
+                            if self.selected_callback:
+                                self.selected_callback(spell)
+                            self.dismiss()
+                            return True
+            else:
+                self.dismiss()
+            return True
+        elif event.type == pygame.MOUSEMOTION and self.visible:
+            search_y = self.rect.y + 35
+            list_y = search_y + self.SEARCH_H
+            list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+            self._hover_idx = -1
+            for i, spell in enumerate(self.filtered_spells):
+                item_y = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= item_y < list_y + list_h:
+                    item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                          self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if item_rect.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+        elif event.type == pygame.MOUSEWHEEL and self.visible and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            self.scroll_y = max(0, self.scroll_y - event.y * 30)
+            max_scroll = max(0, len(self.filtered_spells) * self.ITEM_H - (self.rect.h - self.SEARCH_H - 20))
+            self.scroll_y = min(self.scroll_y, max_scroll)
+            return True
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.visible or not self.rect:
+            return
+
+        # Increment frame counter (allows us to ignore first click after show)
+        self._frames_since_show += 1
+
+        # Semi-transparent overlay
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))
+        surf.blit(overlay, (0, 0))
+
+        # Dialog box
+        pygame.draw.rect(surf, (50, 50, 60), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+
+        # Title
+        title = self.font_md.render("Select a Spell", True, (220, 220, 235))
+        title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 8)
+        surf.blit(title, title_rect)
+
+        # Search box
+        search_y = self.rect.y + 35
+        search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+        pygame.draw.rect(surf, (30, 30, 40), search_box)
+        pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
+        search_label = self.font_sm.render(f"Search: {self.search_text}_" if self.visible else f"Search: {self.search_text}", True, (200, 200, 200))
+        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+
+        # Spell list
+        list_y = search_y + self.SEARCH_H
+        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+        pygame.draw.rect(surf, (30, 30, 40), pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h))
+
+        for i, spell in enumerate(self.filtered_spells):
+            item_y = list_y + i * self.ITEM_H - self.scroll_y
+            if list_y <= item_y < list_y + list_h:
+                item_rect = pygame.Rect(self.rect.x + self.PAD, item_y, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if i == self._hover_idx:
+                    pygame.draw.rect(surf, (70, 70, 90), item_rect)
+                spell_name = spell.get("name", "Unknown")
+                text = self.font_sm.render(spell_name, True, (200, 200, 220))
+                surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
 
 
 class WeaponDialog:
@@ -1400,16 +1581,37 @@ class WeaponDialog:
                 elif event.unicode and event.unicode.isprintable():
                     self._f[af] = self._f.get(af, "") + event.unicode
                 return True
-            if af in ("normal_range_ft", "long_range_ft", "num_dice", "die_size"):
-                cur = str(self._f.get(af, ""))
+            if af and (af in ("normal_range_ft", "long_range_ft", "bonus_hit", "bonus_damage") or
+                      af.startswith("phys_") or af.startswith("mag_")):
+                # Handle per-type dice fields (phys_num_dice_X, phys_die_size_X, mag_num_dice_X, mag_die_size_X)
+                if af.startswith("phys_") or af.startswith("mag_"):
+                    prefix, field_type, type_name = af.split("_", 2)
+                    key = f"{prefix}_damage_types"
+                    rolls = self._f.get(key, [])
+                    entry = next((r for r in rolls if r.get("type") == type_name), None)
+                    if entry:
+                        field_name = "num_dice" if field_type == "num" else "die_size"
+                        cur = str(entry.get(field_name, ""))
+                else:
+                    cur = str(self._f.get(af, ""))
+                    field_name = af
+
                 if event.key == pygame.K_BACKSPACE:
                     cur = cur[:-1]
-                    self._f[af] = int(cur) if cur.isdigit() else 0
+                    val = int(cur) if cur.isdigit() else 0
                 elif event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
                     self._active_field = None
+                    return True
                 elif event.unicode.isdigit():
                     cur += event.unicode
-                    self._f[af] = int(cur)
+                    val = int(cur)
+                else:
+                    return True
+
+                if af.startswith("phys_") or af.startswith("mag_"):
+                    entry[field_name] = val
+                else:
+                    self._f[af] = val
                 return True
             if event.key == pygame.K_ESCAPE:
                 self._confirm()     # treat Escape as Done (saves)
@@ -1466,39 +1668,60 @@ class WeaponDialog:
                     return True
 
             # Checkbox flags
-            for flag in ("finesse", "thrown", "proficient"):
+            for flag in ("finesse", "thrown", "proficient", "off_hand"):
                 if flag in self._rects and self._rects[flag].collidepoint(mx, my):
                     self._f[flag] = not self._f.get(flag, False)
                     return True
 
-            # Text / numeric input fields
-            for field_key in ("name", "normal_range_ft", "long_range_ft",
-                               "num_dice", "die_size"):
+            # Text / numeric input fields (includes per-type dice)
+            numeric_keys = ["name", "normal_range_ft", "long_range_ft"]
+            numeric_keys += [k for k in self._rects.keys() if k.startswith("phys_") or k.startswith("mag_")]
+            for field_key in numeric_keys:
                 if field_key in self._rects and \
                         self._rects[field_key].collidepoint(mx, my):
                     self._active_field = field_key
                     return True
 
-            # Damage type multi-toggles (physical and magic)
-            for key, enum_cls, attr in (
-                    ("physical_damages", rpg.PhysicalDamage,
-                     [rpg.PhysicalDamage.Bludgeoning, rpg.PhysicalDamage.Piercing, rpg.PhysicalDamage.Slashing]),
-                    ("magic_damages", rpg.MagicDamage,
-                     [rpg.MagicDamage.Acid, rpg.MagicDamage.Cold, rpg.MagicDamage.Fire,
-                      rpg.MagicDamage.Force, rpg.MagicDamage.Lightning, rpg.MagicDamage.Necrotic,
-                      rpg.MagicDamage.Poison, rpg.MagicDamage.Psychic, rpg.MagicDamage.Radiant,
-                      rpg.MagicDamage.Thunder]),
-            ):
-                for val in attr:
-                    rkey = f"{key}_{val.name}"
-                    if rkey in self._rects and self._rects[rkey].collidepoint(mx, my):
-                        cur = list(self._f.get(key, []))
-                        if val.name in cur:
-                            cur.remove(val.name)
-                        else:
-                            cur.append(val.name)
-                        self._f[key] = cur
-                        return True
+            # Physical damage type toggles
+            phys_types = [
+                (rpg.PhysicalDamage.Bludgeoning, "Bludg.", "Bludgeoning"),
+                (rpg.PhysicalDamage.Piercing,    "Pierc.", "Piercing"),
+                (rpg.PhysicalDamage.Slashing,    "Slash", "Slashing"),
+            ]
+            for val, lbl, type_name in phys_types:
+                if f"phys_toggle_{val.name}" in self._rects and \
+                        self._rects[f"phys_toggle_{val.name}"].collidepoint(mx, my):
+                    rolls = self._f.get("physical_damage_types", [])
+                    if any(r.get("type") == val.name for r in rolls):
+                        self._f["physical_damage_types"] = [r for r in rolls if r.get("type") != val.name]
+                    else:
+                        new_roll = {"type": val.name, "num_dice": 1, "die_size": 6}
+                        self._f["physical_damage_types"].append(new_roll)
+                    return True
+
+            # Magic damage type toggles
+            mag_types = [
+                (rpg.MagicDamage.Acid,      "Acid"),
+                (rpg.MagicDamage.Cold,      "Cold"),
+                (rpg.MagicDamage.Fire,      "Fire"),
+                (rpg.MagicDamage.Force,     "Force"),
+                (rpg.MagicDamage.Lightning, "Ltng."),
+                (rpg.MagicDamage.Necrotic,  "Necr."),
+                (rpg.MagicDamage.Poison,    "Psn."),
+                (rpg.MagicDamage.Psychic,   "Psyc."),
+                (rpg.MagicDamage.Radiant,   "Rad."),
+                (rpg.MagicDamage.Thunder,   "Thnd."),
+            ]
+            for val, lbl in mag_types:
+                if f"mag_toggle_{val.name}" in self._rects and \
+                        self._rects[f"mag_toggle_{val.name}"].collidepoint(mx, my):
+                    rolls = self._f.get("magic_damage_types", [])
+                    if any(r.get("type") == val.name for r in rolls):
+                        self._f["magic_damage_types"] = [r for r in rolls if r.get("type") != val.name]
+                    else:
+                        new_roll = {"type": val.name, "num_dice": 1, "die_size": 6}
+                        self._f["magic_damage_types"].append(new_roll)
+                    return True
 
         # REMOVE button
         if "remove" in self._rects and self._rects["remove"].collidepoint(mx, my):
@@ -1700,42 +1923,58 @@ class WeaponDialog:
             checkbox("finesse",   lx,                cy, "Finesse")
             checkbox("thrown",    lx + CB_STRIDE,    cy, "Thrown")
             checkbox("proficient",lx + CB_STRIDE * 2,cy, "Proficient")
+            checkbox("off_hand",  lx + CB_STRIDE * 3,cy, "Off-hand")
             cy += 24 + PAD
 
-            # ── Damage ─────────────────────────────────────────────────────
-            label("Damage (NdX)", lx, cy)
+            # ── Bonuses ────────────────────────────────────────────────────
+            label("Bonuses", lx, cy)
+            label("+Dmg", lx + RW // 2, cy)
             cy += 14
-            text_field("num_dice", lx,      cy, 40)
-            ds = self._font_md.render("d", True, (170, 170, 200))
-            screen.blit(ds, (lx + 44, cy + (FH - ds.get_height()) // 2))
-            text_field("die_size", lx + 54, cy, 50)
-            cy += FH + 8
+            text_field("bonus_hit",    lx,              cy, RW // 2 - 4)
+            text_field("bonus_damage", lx + RW // 2 + 4, cy, RW // 2 - 4)
+            cy += FH + PAD
 
-            # ── Physical damage types ───────────────────────────────────────
-            label("Physical type", lx, cy)
+            # ── Physical Damage ────────────────────────────────────────────
+            label("Physical Damage", lx, cy)
             cy += 14
-            phys_entries = [
+            phys_types = [
                 (rpg.PhysicalDamage.Bludgeoning, "Bludg."),
                 (rpg.PhysicalDamage.Piercing,    "Pierc."),
                 (rpg.PhysicalDamage.Slashing,    "Slash"),
             ]
             pbw = (RW - 2 * 4) // 3
-            for i, (val, lbl_text) in enumerate(phys_entries):
-                bx   = lx + i * (pbw + 4)
+            active_phys = self._f.get("physical_damage_types", [])
+            for entry in active_phys:
+                type_name = entry.get("type", "Slashing")
+                btn_rect = pygame.Rect(lx, cy, pbw, FH)
+                pygame.draw.rect(screen, (80, 55, 120), btn_rect, border_radius=4)
+                pygame.draw.rect(screen, (140, 100, 200), btn_rect, 1, border_radius=4)
+                ts = self._font_sm.render(type_name[:8], True, (230, 210, 255))
+                screen.blit(ts, (btn_rect.x + 4, btn_rect.centery - ts.get_height() // 2))
+                self._rects[f"phys_type_{type_name}"] = btn_rect
+                nd_key = f"phys_num_dice_{type_name}"
+                ds_key = f"phys_die_size_{type_name}"
+                text_field(nd_key, lx + pbw + 4, cy, 35)
+                ds_label = self._font_md.render("d", True, (170, 170, 200))
+                screen.blit(ds_label, (lx + pbw + 40, cy + (FH - ds_label.get_height()) // 2))
+                text_field(ds_key, lx + pbw + 48, cy, 40)
+                cy += FH + 4
+            for i, (val, lbl_text) in enumerate(phys_types):
+                bx = lx + i * (pbw + 4)
                 rect = pygame.Rect(bx, cy, pbw, FH)
-                active = val.name in self._f.get("physical_damages", [])
-                pygame.draw.rect(screen, (80, 55, 120) if active else (48, 48, 64), rect, border_radius=4)
-                pygame.draw.rect(screen, (140, 100, 200) if active else (75, 75, 100), rect, 1, border_radius=4)
-                ts = self._font_md.render(lbl_text, True, (230, 210, 255) if active else (150, 150, 180))
+                is_active = any(e.get("type") == val.name for e in active_phys)
+                pygame.draw.rect(screen, (80, 55, 120) if is_active else (48, 48, 64), rect, border_radius=4)
+                pygame.draw.rect(screen, (140, 100, 200) if is_active else (75, 75, 100), rect, 1, border_radius=4)
+                ts = self._font_md.render(lbl_text, True, (230, 210, 255) if is_active else (150, 150, 180))
                 screen.blit(ts, (rect.x + (pbw - ts.get_width()) // 2,
                                  rect.centery - ts.get_height() // 2))
-                self._rects[f"physical_damages_{val.name}"] = rect
+                self._rects[f"phys_toggle_{val.name}"] = rect
             cy += FH + 8
 
-            # ── Magic damage types ──────────────────────────────────────────
-            label("Magic type", lx, cy)
+            # ── Magic Damage ───────────────────────────────────────────────
+            label("Magic Damage", lx, cy)
             cy += 14
-            mag_entries = [
+            mag_types = [
                 (rpg.MagicDamage.Acid,      "Acid"),
                 (rpg.MagicDamage.Cold,      "Cold"),
                 (rpg.MagicDamage.Fire,      "Fire"),
@@ -1747,20 +1986,37 @@ class WeaponDialog:
                 (rpg.MagicDamage.Radiant,   "Rad."),
                 (rpg.MagicDamage.Thunder,   "Thnd."),
             ]
+            active_mag = self._f.get("magic_damage_types", [])
+            mbw = (RW - 2 * 4) // 3
+            for entry in active_mag:
+                type_name = entry.get("type", "Fire")
+                btn_rect = pygame.Rect(lx, cy, mbw, FH)
+                pygame.draw.rect(screen, (55, 100, 80), btn_rect, border_radius=4)
+                pygame.draw.rect(screen, (90, 160, 130), btn_rect, 1, border_radius=4)
+                ts = self._font_sm.render(type_name[:8], True, (180, 240, 210))
+                screen.blit(ts, (btn_rect.x + 4, btn_rect.centery - ts.get_height() // 2))
+                self._rects[f"mag_type_{type_name}"] = btn_rect
+                nd_key = f"mag_num_dice_{type_name}"
+                ds_key = f"mag_die_size_{type_name}"
+                text_field(nd_key, lx + mbw + 4, cy, 35)
+                ds_label = self._font_md.render("d", True, (170, 170, 200))
+                screen.blit(ds_label, (lx + mbw + 40, cy + (FH - ds_label.get_height()) // 2))
+                text_field(ds_key, lx + mbw + 48, cy, 40)
+                cy += FH + 4
             mbw = (RW - 4 * 4) // 5
-            for i, (val, lbl_text) in enumerate(mag_entries):
+            for i, (val, lbl_text) in enumerate(mag_types):
                 row = i // 5
                 col = i % 5
                 bx   = lx + col * (mbw + 4)
                 by   = cy + row * (FH + 4)
                 rect = pygame.Rect(bx, by, mbw, FH)
-                active = val.name in self._f.get("magic_damages", [])
-                pygame.draw.rect(screen, (55, 100, 80) if active else (48, 48, 64), rect, border_radius=4)
-                pygame.draw.rect(screen, (90, 160, 130) if active else (75, 75, 100), rect, 1, border_radius=4)
-                ts = self._font_md.render(lbl_text, True, (180, 240, 210) if active else (150, 150, 180))
+                is_active = any(e.get("type") == val.name for e in active_mag)
+                pygame.draw.rect(screen, (55, 100, 80) if is_active else (48, 48, 64), rect, border_radius=4)
+                pygame.draw.rect(screen, (90, 160, 130) if is_active else (75, 75, 100), rect, 1, border_radius=4)
+                ts = self._font_md.render(lbl_text, True, (180, 240, 210) if is_active else (150, 150, 180))
                 screen.blit(ts, (rect.x + (mbw - ts.get_width()) // 2,
                                  rect.centery - ts.get_height() // 2))
-                self._rects[f"magic_damages_{val.name}"] = rect
+                self._rects[f"mag_toggle_{val.name}"] = rect
             cy += 2 * (FH + 4) + PAD
 
         else:
@@ -1941,8 +2197,8 @@ def _dict_to_spell(d: dict):
 class SpellDialog:
     """Modal dialog for editing an agent's spell list."""
 
-    DLG_W  = 510
-    DLG_H  = 620
+    DLG_W  = 580
+    DLG_H  = 750
     HDR_H  = 36
     BTN_H  = 28
     PAD    = 14
@@ -1966,13 +2222,14 @@ class SpellDialog:
         self._rects: dict = {}
 
     def open(self, screen, agent_idx: int, agent_name: str,
-             spells: list[dict], callback):
+             spells: list[dict], callback, add_spell_callback=None):
         import copy
         self.active      = True
         self._agent_idx  = agent_idx
         self._agent_name = agent_name
         self._spells     = copy.deepcopy(spells)
         self._cb         = callback
+        self._add_spell_cb = add_spell_callback
         self._active_field = None
         self._rects      = {}
         sw, sh = screen.get_size()
@@ -1995,9 +2252,15 @@ class SpellDialog:
             self._spells[self._sel] = dict(self._f)
 
     def _add_spell(self):
+        # Handled by callback from spell selection dialog
+        pass
+
+    def _on_spell_selected(self, spell_dict: dict):
+        """Called when user selects a spell from the selection dialog."""
         import copy
         self._save_form()
-        self._spells.append(copy.deepcopy(_DEFAULT_SPELL))
+        # Add a copy of the selected spell dict
+        self._spells.append(copy.deepcopy(spell_dict))
         self._sel = len(self._spells) - 1
         self._load_form()
 
@@ -2013,9 +2276,25 @@ class SpellDialog:
             self._cb(self._agent_idx, self._spells)
         self.active = False
 
+    def _update_rects(self, screen):
+        """Recalculate button and field rects based on current dialog position."""
+        if not self._rect:
+            return
+        # Update the "add" button rect
+        r = self._rect
+        PAD = self.PAD
+        cy = r.y + self.HDR_H + PAD
+        # Button position: right side of the dialog, fully inside the border
+        # Button width is 48, positioned PAD pixels from the right edge
+        add_r = pygame.Rect(r.right - PAD - 48, cy, 48, self.TAB_H)
+        self._rects["add"] = add_r
+
     def handle(self, event, screen) -> bool:
         if not self.active:
             return False
+
+        # Ensure rects are up to date for collision detection
+        self._update_rects(screen)
 
         if event.type == pygame.KEYDOWN:
             af = self._active_field
@@ -2055,6 +2334,14 @@ class SpellDialog:
         if not r:
             return True
 
+        # Check Add button first
+        if "add" in self._rects and self._rects["add"].collidepoint(mx, my):
+            if self._add_spell_cb:
+                self._add_spell_cb()  # Open spell selection dialog
+            else:
+                self._add_spell()     # Fallback (shouldn't happen)
+            return True
+
         if not r.collidepoint(mx, my):
             self._confirm()
             return True
@@ -2069,10 +2356,6 @@ class SpellDialog:
                     self._sel = i
                     self._load_form()
                     return True
-
-        if "add" in self._rects and self._rects["add"].collidepoint(mx, my):
-            self._add_spell()
-            return True
 
         if self._f:
             # Toggle buttons (single choice)
@@ -2130,6 +2413,9 @@ class SpellDialog:
         if not self.active or not self._rect:
             return
 
+        # Ensure rects are up to date
+        self._update_rects(screen)
+
         r   = self._rect
         PAD = self.PAD
         W   = self.DLG_W
@@ -2171,7 +2457,7 @@ class SpellDialog:
             screen.blit(label, (tr.x + 4, tr.centery - label.get_height() // 2))
         self._rects["tab"] = tab_rects
 
-        add_r = pygame.Rect(r.right - PAD - 52, cy, 52, self.TAB_H)
+        add_r = pygame.Rect(r.right - PAD - 48, cy, 48, self.TAB_H)
         pygame.draw.rect(screen, (55, 85, 55), add_r, border_radius=4)
         pygame.draw.rect(screen, (80, 130, 80), add_r, 1, border_radius=4)
         screen.blit(self._font_md.render("+ Add", True, (180, 240, 180)),
@@ -2872,6 +3158,33 @@ class App:
         # Create spell lookup: spell_name -> index
         self.spell_name_to_idx = {s.get("name"): i for i, s in enumerate(self.all_spells)}
 
+        # ── Load weapons from weapons.json ──────────────────────────────────
+        self.all_weapons = []  # list of weapon dicts from weapons.json
+        possible_weapon_paths = [
+            os.path.join(script_dir, "weapons.json"),
+            os.path.join(script_dir, "..", "weapons.json"),
+            os.path.join(map_dir, "weapons.json"),
+            "weapons.json",
+        ]
+        weapons_loaded_from = None
+        for weapons_path in possible_weapon_paths:
+            if os.path.exists(weapons_path):
+                try:
+                    with open(weapons_path) as f:
+                        self.all_weapons = json.load(f)
+                    weapons_loaded_from = weapons_path
+                    break
+                except (json.JSONDecodeError, IOError):
+                    continue
+
+        if self.all_weapons:
+            print(f"✓ Loaded {len(self.all_weapons)} weapons from {weapons_loaded_from}")
+        else:
+            print("⚠ WARNING: No weapons loaded. Agents with weapons will not function.")
+
+        # Create weapon lookup: weapon_name -> weapon_dict
+        self.weapon_name_to_dict = {w.get("name"): w for w in self.all_weapons}
+
         # Selected mob's stats (loaded when a mob is selected from dropdown)
         self.selected_mob_stats = None
         self.current_mob_grid_size = 1  # Grid size for current mob (1-4)
@@ -2930,6 +3243,7 @@ class App:
         self.stats_dialog   = StatsDialog(self.font_sm, self.font_md, self.font_lg)
         self.weapon_dialog  = WeaponDialog(self.font_sm, self.font_md, self.font_lg)
         self.spell_dialog   = SpellDialog(self.font_sm, self.font_md, self.font_lg)
+        self.spell_selection_dialog = SpellSelectionDialog(self.all_spells, self.font_sm, self.font_md)
         mob_names = sorted(self.all_mobs.keys())
         self.mob_dialog = MobSelectionDialog(mob_names, self.font_sm, self.font_md)
         self.terrain_editor = TerrainEditorDialog(self.font_sm, self.font_md)
@@ -3614,6 +3928,10 @@ class App:
         """
         cpp_weapons = [_dict_to_weapon(d) for d in weapons]
         self.bm.set_agent_weapons(agent_idx, cpp_weapons)
+        # Update has_offhand_attack based on whether any weapon is off-hand
+        stats = self.bm.get_agent_stats(agent_idx)
+        stats.has_offhand_attack = any(d.get("off_hand", False) for d in weapons)
+        self.bm.set_agent_stats(agent_idx, stats)
         # Refresh attack overlay if this is the currently selected agent.
         if agent_idx == self.selected_idx:
             self._update_attack_overlay()
@@ -3983,11 +4301,21 @@ class App:
             suffix = f" ({rem} attack{'s' if rem != 1 else ''} remaining)"
             self._combat_log_add(f"Click a target on the map.{suffix}")
 
-        if len(weapons) == 1:
-            _activate(slot, 0)
+        # Filter weapons for bonus attacks: only show off-hand weapons
+        weapons_to_use = weapons
+        if slot == "bonus":
+            offhand_weapons = [w for w in weapons if w.off_hand]
+            if offhand_weapons:
+                weapons_to_use = offhand_weapons
+
+        if len(weapons_to_use) == 1:
+            # Auto-select if only one weapon (or one off-hand weapon for bonus)
+            wi = next((i for i, w in enumerate(weapons) if w == weapons_to_use[0]), 0)
+            _activate(slot, wi)
         else:
             options = []
-            for wi, w in enumerate(weapons):
+            for w in weapons_to_use:
+                wi = next((i for i, weapon in enumerate(weapons) if weapon == w), 0)
                 def _pick(s=slot, wi_=wi):
                     _activate(s, wi_)
                 options.append((w.name, _pick))
@@ -4007,6 +4335,7 @@ class App:
             # print(f"[DEBUG _resolve_combat_attack] early return (atk_idx<0 or no slot)")
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
+        action.is_offhand = (slot == "bonus")
         result = self.combat.execute_action(self.bm, action)
         # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
@@ -4480,7 +4809,7 @@ class App:
             hatch_pattern = spell_meta.get("hatch_pattern")
             if terrain_effect:
                 aoe_cells_raw = self._aoe_cells(cell, spell)
-                aoe_cells = self._filter_spell_cells_by_range_and_los(aoe_cells_raw, caster_idx, spell)
+                aoe_cells = self._filter_spell_cells_by_range_and_los(aoe_cells_raw, caster_idx, spell, center_cell=cell)
                 if aoe_cells:
                     terrain_region = self._cells_to_terrain_region(aoe_cells, terrain_effect, spell.name, caster_idx, hatch_pattern, self.pending_spell_idx)
                     if terrain_region:
@@ -4598,30 +4927,15 @@ class App:
 
         return cells
 
-    def _filter_spell_cells_by_range_and_los(self, cells: list, caster_idx: int, spell) -> list:
-        """Filter cells to only those within spell range and with line of sight from caster."""
+    def _filter_spell_cells_by_range_and_los(self, cells: list, caster_idx: int, spell, center_cell=None) -> list:
+        """Filter cells using C++ method that respects spell's requires_los and check_los_on_center flags."""
         if caster_idx < 0 or caster_idx >= len(self.bm.placed_agents):
+            return cells
+        if not center_cell:
             return cells
 
         caster = self.bm.placed_agents[caster_idx]
-        range_cells = spell.range / 5  # Convert feet to cells
-
-        # Filter by range and line of sight
-        filtered = []
-        for cell in cells:
-            # Check distance (Chebyshev distance from caster center to target cell)
-            dc = max(caster.origin.col - cell.col, cell.col - (caster.origin.col + caster.size - 1), 0)
-            dr = max(caster.origin.row - cell.row, cell.row - (caster.origin.row + caster.size - 1), 0)
-            dist = max(dc, dr)
-
-            if dist > range_cells:
-                continue  # Out of range
-
-            # Check line of sight
-            if self.bm.has_line_of_sight(caster.origin, caster.size, cell, 1):
-                filtered.append(cell)
-
-        return filtered
+        return self.bm.filter_spell_cells(cells, caster.origin, caster.size, spell, center_cell)
 
     def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None, spell_idx: int = -1) -> dict:
         """Convert list of cells to a terrain region with source metadata."""
@@ -4656,7 +4970,7 @@ class App:
         sp    = spells[self.pending_spell_idx]
         aoe_cells = self._aoe_cells(self.spell_hover_cell, sp)
         # Filter by spell range and line of sight
-        cells = self._filter_spell_cells_by_range_and_los(aoe_cells, caster_idx, sp)
+        cells = self._filter_spell_cells_by_range_and_los(aoe_cells, caster_idx, sp, center_cell=self.spell_hover_cell)
 
         fill_s   = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
         fill_s.fill((160, 80, 220, 60))
@@ -4830,6 +5144,8 @@ class App:
         s.physical_damage_rolls = phys_rolls
 
         s.requires_concentration = d.get("requires_concentration", False)
+        s.requires_los = d.get("requires_los", False)
+        s.check_los_on_center = d.get("check_los_on_center", True)
         s.level = int(d.get("level", 0))
         s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
         return s
@@ -4866,8 +5182,8 @@ class App:
                     "has_offhand_attack": s.has_offhand_attack,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                 },
-                "weapons": [_weapon_to_dict(w)
-                            for w in self.bm.get_agent_weapons(i)],
+                "weapon_indices": [w.name
+                                  for w in self.bm.get_agent_weapons(i)],
                 "spell_indices": [s.name
                                   for s in self.bm.get_agent_spells(i)],
                 "agent_class":      s.character_class.name,
@@ -4951,11 +5267,24 @@ class App:
                     s.spellcasting_ability = int(ability_val) if ability_val else 5
             self.bm.set_agent_stats(i, s)
 
-        # Restore weapons — convert saved dicts → rpg.Weapon, push into C++.
+        # Restore weapons — load from weapon_indices or legacy "weapons" field
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            cpp_weapons = [_dict_to_weapon(d) for d in t.get("weapons", [])]
+            cpp_weapons = []
+
+            # Try new weapon_indices format first (weapon names as strings)
+            weapon_names = t.get("weapon_indices", [])
+            if weapon_names:
+                for weapon_name in weapon_names:
+                    if weapon_name in self.weapon_name_to_dict:
+                        weapon_dict = self.weapon_name_to_dict[weapon_name]
+                        cpp_weapon = _dict_to_weapon(weapon_dict)
+                        cpp_weapons.append(cpp_weapon)
+            else:
+                # Fallback to legacy "weapons" field with full weapon dicts
+                cpp_weapons = [_dict_to_weapon(d) for d in t.get("weapons", [])]
+
             self.bm.set_agent_weapons(i, cpp_weapons)
 
         # Restore spells — load from spell_indices or legacy "spells" field
@@ -4967,12 +5296,19 @@ class App:
             # Try new spell_indices format first (spell names as strings)
             spell_names = t.get("spell_indices", [])
             if spell_names:
-                for spell_name in spell_names:
+                for j, spell_name in enumerate(spell_names):
                     if spell_name in self.spell_name_to_idx:
                         idx = self.spell_name_to_idx[spell_name]
                         spell_dict = self.all_spells[idx]
                         cpp_spell = self._dict_to_spell(i, spell_dict)
                         cpp_spells.append(cpp_spell)
+                        # Store metadata (terrain, hatch, color)
+                        meta = {
+                            "terrain_effect": spell_dict.get("terrain_effect"),
+                            "hatch_pattern": spell_dict.get("hatch_pattern"),
+                            "terrain_color": spell_dict.get("terrain_color"),
+                        }
+                        self._spell_metadata[(i, j)] = meta
                     else:
                         available = ", ".join(sorted(list(self.spell_name_to_idx.keys())[:5])) + "..."
                         print(f"WARNING: Spell '{spell_name}' not found for agent {t.get('name', i)}")
@@ -4984,6 +5320,13 @@ class App:
                     # Handle both old formats: spell dicts or spell names (strings)
                     if isinstance(item, dict):
                         cpp_spells.append(self._dict_to_spell(i, item))
+                        # Store metadata from dict
+                        meta = {
+                            "terrain_effect": item.get("terrain_effect"),
+                            "hatch_pattern": item.get("hatch_pattern"),
+                            "terrain_color": item.get("terrain_color"),
+                        }
+                        self._spell_metadata[(i, j)] = meta
                     elif isinstance(item, str):
                         # Legacy format: spell stored as name string
                         # Look up in all_spells by name
@@ -4991,6 +5334,13 @@ class App:
                             idx = self.spell_name_to_idx[item]
                             spell_dict = self.all_spells[idx]
                             cpp_spells.append(self._dict_to_spell(i, spell_dict))
+                            # Store metadata
+                            meta = {
+                                "terrain_effect": spell_dict.get("terrain_effect"),
+                                "hatch_pattern": spell_dict.get("hatch_pattern"),
+                                "terrain_color": spell_dict.get("terrain_color"),
+                            }
+                            self._spell_metadata[(i, j)] = meta
 
             self.bm.set_agent_spells(i, cpp_spells)
 
@@ -5036,6 +5386,10 @@ class App:
         data = {"regions": self._terrain_regions}
         with open(self._terrain_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def _clear_temporary_terrain(self):
+        """Remove spell-created temporary terrain (regions with 'source' field)."""
+        self._terrain_regions = [r for r in self._terrain_regions if "source" not in r]
 
     def _apply_terrain_to_battle_map(self):
         """Apply terrain regions to the C++ battle map multiplier system."""
@@ -5553,10 +5907,12 @@ class App:
 
         # Check weapon/spell capability for current agent.
         _cur_has_weapons = False
+        _cur_has_offhand = False
         _cur_can_spell   = False
         _cur_has_spells  = False
         if 0 <= cur_idx < len(agents):
             _cur_has_weapons = len(self.bm.get_agent_weapons(cur_idx)) > 0
+            _cur_has_offhand = any(w.off_hand for w in self.bm.get_agent_weapons(cur_idx))
             _cur_has_spells  = len(self.bm.get_agent_spells(cur_idx)) > 0
             _cur_can_spell   = _cur_has_spells  # can cast if has spells
 
@@ -5663,7 +6019,7 @@ class App:
                 self.btn_cbt_pass_bonus.rect.x  = lx + 2 * (TW3_bonus + gap)
                 self.btn_cbt_pass_bonus.rect.y  = y
                 self.btn_cbt_pass_bonus.rect.w  = TW3_bonus
-                if _cur_has_weapons:
+                if _cur_has_offhand:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_spell_bonus.draw(self.screen)
                 self.btn_cbt_pass_bonus.draw(self.screen)
@@ -5674,7 +6030,7 @@ class App:
                 self.btn_cbt_pass_bonus.rect.x = lx + HW + gap
                 self.btn_cbt_pass_bonus.rect.y = y
                 self.btn_cbt_pass_bonus.rect.w = HW
-                if _cur_has_weapons:
+                if _cur_has_offhand:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_pass_bonus.draw(self.screen)
             y += B
@@ -5919,6 +6275,8 @@ class App:
                 continue
             if self.spell_dialog.active:
                 self.spell_dialog.handle(event, self.screen)
+                if self.spell_selection_dialog.visible:
+                    self.spell_selection_dialog.handle(event)
                 continue
             # ── Placement mode (floating agent) ───────────────────────────────
             if self.placement_mode_active:
@@ -6039,10 +6397,13 @@ class App:
                             pt2 = self.bm.placed_agents[h]
                             spell_dicts = [self._spell_to_dict(h, j, s)
                                            for j, s in enumerate(self.bm.get_agent_spells(h))]
+                            def _open_spell_selector():
+                                self.spell_selection_dialog.show(self.spell_dialog._on_spell_selected)
                             self.spell_dialog.open(
                                 self.screen, h, pt2.name,
                                 spell_dicts,
-                                self._on_spell_done)
+                                self._on_spell_done,
+                                add_spell_callback=_open_spell_selector)
                         self.context_menu.show(
                             event.pos,
                             [("Edit Stats",   _open_stats),
@@ -6241,6 +6602,7 @@ class App:
                 # Clear All
                 if self.btn_clear.clicked(event):
                     self.bm.clear_agents()
+                    self.bm.clear_terrain_effects()
                     self.selected_idx        = -1
                     self.drag_idx            = -1
                     self._attack_cells_melee = []
@@ -6298,6 +6660,8 @@ class App:
                 _ev_idx = self._current_agent_idx()
                 _has_wpn = (0 <= _ev_idx < len(self.bm.placed_agents) and
                             len(self.bm.get_agent_weapons(_ev_idx)) > 0)
+                _has_offhand = (0 <= _ev_idx < len(self.bm.placed_agents) and
+                                any(w.off_hand for w in self.bm.get_agent_weapons(_ev_idx)))
                 if not self.action_used:
                     if _has_wpn and self.btn_cbt_atk_action.clicked(event):
                         self._start_attack("action")
@@ -6333,7 +6697,7 @@ class App:
                     if self.btn_cbt_spell_action.clicked(event):
                         self._start_cast_spell("action")
                 if not self.bonus_used:
-                    if _has_wpn and self.btn_cbt_atk_bonus.clicked(event):
+                    if _has_offhand and self.btn_cbt_atk_bonus.clicked(event):
                         self._start_attack("bonus")
                     if self.btn_cbt_spell_bonus.clicked(event):
                         self._start_cast_spell("bonus")
@@ -6375,10 +6739,15 @@ class App:
             self.stats_dialog.draw(self.screen)    # modal — always on top
             self.weapon_dialog.draw(self.screen)   # modal — always on top
             self.spell_dialog.draw(self.screen)    # modal — always on top
+            self.spell_selection_dialog.draw(self.screen)  # modal — always on top
             self.mob_dialog.draw(self.screen)      # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
             pygame.display.flip()
             self.clock.tick(60)
+        # Clean up temporary terrain effects before quitting
+        self.bm.clear_terrain_effects()
+        self._clear_temporary_terrain()
+        self._save_terrain()
         pygame.quit()
 
 

@@ -267,15 +267,25 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("finesse",          &Weapon::finesse)
         .def_readwrite("thrown",           &Weapon::thrown)
         .def_readwrite("proficient",       &Weapon::proficient)
-        .def_readwrite("num_dice",          &Weapon::num_dice)
-        .def_readwrite("die_size",          &Weapon::die_size)
-        .def_readwrite("physical_damages",  &Weapon::physicalDamages)
-        .def_readwrite("magic_damages",     &Weapon::magicDamages)
+        .def_readwrite("off_hand",         &Weapon::off_hand)
+        .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
+        .def_readwrite("magic_damage_types",    &Weapon::magicDamageRolls)
+        .def_readwrite("bonus_hit",        &Weapon::bonus_hit)
+        .def_readwrite("bonus_damage",     &Weapon::bonus_damage)
         .def("__repr__", [](const Weapon& w){
+            std::string dmg_str;
+            if (!w.physicalDamageRolls.empty()) {
+                dmg_str = std::to_string(w.physicalDamageRolls[0].num_dice) +
+                         "d" + std::to_string(w.physicalDamageRolls[0].die_size);
+            } else if (!w.magicDamageRolls.empty()) {
+                dmg_str = std::to_string(w.magicDamageRolls[0].num_dice) +
+                         "d" + std::to_string(w.magicDamageRolls[0].die_size);
+            } else {
+                dmg_str = "0d0";
+            }
             return "<Weapon '" + w.name + "' "
                  + (w.type == WeaponType::Melee ? "Melee" : "Ranged")
-                 + " " + std::to_string(w.num_dice)
-                 + "d" + std::to_string(w.die_size) + ">"; });
+                 + " " + dmg_str + ">"; });
 
     // ── Spell enums ──────────────────────────────────────────────────────────
     py::enum_<Spell::Geometry_t>(m, "SpellGeometry")
@@ -371,6 +381,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "The duration is the same as spell.duration (in rounds).")
         .def_readwrite("requires_concentration", &Spell::requires_concentration,
              "If true, caster must maintain concentration; breaks on damage (CON save).")
+        .def_readwrite("requires_los", &Spell::requires_los,
+             "If true, spell requires line of sight to the target or area origin.")
+        .def_readwrite("check_los_on_center", &Spell::check_los_on_center,
+             "If true, only the spell center needs line of sight (not all affected cells). User configurable.")
         .def_readwrite("level", &Spell::level,
              "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
         .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
@@ -897,6 +911,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("to_origin"),   py::arg("to_size"),
              "Bresenham ray from centre of 'from' agent to centre of 'to' agent.\n"
              "Returns False if any intermediate cell is a wall/obstacle.")
+
+        .def("filter_spell_cells",
+             &BattleMap::filterSpellCells,
+             py::arg("cells"), py::arg("caster_origin"), py::arg("caster_size"),
+             py::arg("spell"), py::arg("center_cell"),
+             "Filter spell cells by range and line-of-sight requirements.\n"
+             "Respects spell.requires_los and spell.check_los_on_center flags.\n"
+             "If check_los_on_center, only the center cell needs LOS (D&D 5e standard).")
 
         // Attack target cells (melee reach or ranged range, with LoS filter)
         .def("attack_target_cells",
