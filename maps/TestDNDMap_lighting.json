@@ -28,6 +28,13 @@
       "y": 212,
       "bright_radius": 20,
       "dim_radius": 40
+    },
+    {
+      "name": "Light 5",
+      "x": 1032,
+      "y": 862,
+      "bright_radius": 20,
+      "dim_radius": 40
     }
   ]
 }

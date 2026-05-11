@@ -243,6 +243,9 @@ class App:
         self._reach_fly:  list = []    # Cell list for fly range overlay
         self._reach_set:  set  = set() # union of walk+fly as (col,row) tuples for O(1) lookup
 
+        # ── Visualization toggles ─────────────────────────────────────────
+        self.show_lighting_overlay = False  # Toggle for lighting visualization
+
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
         self.combat = rpg.CombatEngine()
         self.logger = rpg.MessageLogger()
@@ -423,7 +426,11 @@ class App:
         self.btn_edit_lighting = Button(pygame.Rect(px, light_y, W, B),
                                         "Edit Lighting",
                                         (120, 100, 80), (160, 130, 110), font=self.font_md)
-        quit_y = light_y + B + self._BTN_GAP
+        toggle_light_y = light_y + B + self._BTN_GAP
+        self.btn_toggle_lighting = Button(pygame.Rect(px, toggle_light_y, W, B),
+                                          "Lighting: OFF",
+                                          (80, 80, 120), (110, 110, 160), font=self.font_md)
+        quit_y = toggle_light_y + B + self._BTN_GAP
         self.btn_quit = Button(pygame.Rect(px, quit_y, W, B),
                               "Quit",
                               COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
@@ -449,7 +456,9 @@ class App:
         self.btn_edit_terrain.rect.update(px, ter_y, W, self._BTN_H)
         light_y = ter_y + self._BTN_H + self._BTN_GAP
         self.btn_edit_lighting.rect.update(px, light_y, W, self._BTN_H)
-        quit_y = light_y + self._BTN_H + self._BTN_GAP
+        toggle_light_y = light_y + self._BTN_H + self._BTN_GAP
+        self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
+        quit_y = toggle_light_y + self._BTN_H + self._BTN_GAP
         self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
         # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
         HW2 = W // 2 - 2
@@ -2534,7 +2543,103 @@ class App:
     # ─────────────────────────────────────────────────────────────────────
     def _draw_map(self):
         self.screen.blit(self.map_surf, self.map_rect)
-        self.screen.blit(self.overlay, self.map_rect)
+        # Draw regular overlay unless lighting editor is active
+        if not self.lighting_editor.active:
+            self.screen.blit(self.overlay, self.map_rect)
+            # Draw lighting overlay if persistent toggle is on
+            if self.show_lighting_overlay:
+                self._draw_lighting_overlay()
+        elif self.lighting_editor.show_overlay:
+            # Draw lighting overlay if editor dialog toggle is on
+            self._draw_lighting_overlay()
+
+    def _draw_lighting_overlay(self):
+        """Draw the lighting visualization overlay on the map."""
+        if not self.bm or not self.map_rect:
+            return
+
+        cpx = self.bm.cell_pixel_size
+        cols = self.bm.grid_cols
+        rows = self.bm.grid_rows
+        h_lines = self.bm.h_line_positions
+        v_lines = self.bm.v_line_positions
+
+        # Create a surface for the lighting overlay
+        lighting_surf = pygame.Surface((self.map_rect.width, self.map_rect.height), pygame.SRCALPHA)
+
+        # Draw each cell with its light level
+        for r in range(rows):
+            for c in range(cols):
+                if c >= len(v_lines) - 1 or r >= len(h_lines) - 1:
+                    continue
+
+                # Get the light level at this cell
+                light_level = self.bm.get_light_level(rpg.Cell(c, r))
+
+                # Calculate opacity based on light level
+                # BrightLight: 0% opacity (transparent)
+                # DimLight: 50% opacity
+                # Darkness: 90% opacity
+                # MagicalDarkness: 100% opacity
+                opacity = {
+                    rpg.LightLevel.BrightLight: 0,
+                    rpg.LightLevel.DimLight: 128,      # 50% of 255
+                    rpg.LightLevel.Darkness: 230,      # 90% of 255
+                    rpg.LightLevel.MagicalDarkness: 255,
+                }.get(light_level, 0)
+
+                if opacity > 0:
+                    # Draw semi-transparent overlay for this cell
+                    cell_x = v_lines[c]
+                    cell_y = h_lines[r]
+                    cell_w = v_lines[c + 1] - v_lines[c]
+                    cell_h = h_lines[r + 1] - h_lines[r]
+
+                    # Color depends on light level
+                    if light_level == rpg.LightLevel.MagicalDarkness:
+                        color = (0, 0, 0, opacity)  # Black for magical darkness
+                    else:
+                        color = (50, 50, 50, opacity)  # Dark grey for other darkness
+
+                    pygame.draw.rect(lighting_surf, color, (cell_x, cell_y, cell_w, cell_h))
+
+        # Blit the lighting overlay onto the screen
+        self.screen.blit(lighting_surf, self.map_rect)
+
+        # Draw markers for light sources (golden circles)
+        h_lines = self.bm.h_line_positions
+        v_lines = self.bm.v_line_positions
+
+        for light_src in self.lighting_editor.light_sources:
+            px = light_src["x"]
+            py = light_src["y"]
+
+            # Find grid cell containing this pixel
+            grid_c = -1
+            grid_r = -1
+            for c in range(len(v_lines) - 1):
+                if px >= v_lines[c] and px < v_lines[c + 1]:
+                    grid_c = c
+                    break
+            for r in range(len(h_lines) - 1):
+                if py >= h_lines[r] and py < h_lines[r + 1]:
+                    grid_r = r
+                    break
+
+            if grid_c >= 0 and grid_r >= 0:
+                # Draw a circle marker at the light source center
+                cell_x = v_lines[grid_c]
+                cell_y = h_lines[grid_r]
+                cell_w = v_lines[grid_c + 1] - v_lines[grid_c]
+                cell_h = h_lines[grid_r + 1] - h_lines[grid_r]
+                center_x = cell_x + cell_w // 2
+                center_y = cell_y + cell_h // 2
+                radius = max(6, cell_w // 6)
+
+                # Draw outer circle (golden yellow)
+                pygame.draw.circle(self.screen, (255, 200, 0), (center_x, center_y), radius, 3)
+                # Draw inner circle (bright yellow)
+                pygame.draw.circle(self.screen, (255, 255, 100), (center_x, center_y), radius - 2, 1)
 
     def _draw_one_agent(self, pt, screen_x, screen_y, cpx, alpha=255, tint=None):
         """Draw a single agent (sprite or placeholder) at the given screen coords."""
@@ -3350,6 +3455,9 @@ class App:
         # ── Edit Lighting button ───────────────────────────────────────────
         self.btn_edit_lighting.draw(self.screen)
 
+        # ── Toggle Lighting Overlay button ─────────────────────────────────
+        self.btn_toggle_lighting.draw(self.screen)
+
         # ── Quit button ────────────────────────────────────────────────────
         self.btn_quit.draw(self.screen)
 
@@ -3806,6 +3914,11 @@ class App:
                         except:
                             light_sources = []
                     self.lighting_editor.open(self.map_surf, self.bm, self, light_sources)
+
+                # Toggle Lighting Overlay
+                if self.btn_toggle_lighting.clicked(event):
+                    self.show_lighting_overlay = not self.show_lighting_overlay
+                    self.btn_toggle_lighting.text = "Lighting: ON" if self.show_lighting_overlay else "Lighting: OFF"
 
                 # Quit
                 if self.btn_quit.clicked(event):

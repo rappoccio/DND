@@ -24,6 +24,7 @@ class LightingEditorDialog:
         self.selected_source_idx = -1
         self.placing_light = False
         self.pending_light_pos = None
+        self.show_overlay = True  # Toggle for lighting visualization
 
         # UI elements
         self.buttons = {}
@@ -85,6 +86,9 @@ class LightingEditorDialog:
             if event.key == pygame.K_ESCAPE:
                 self.close()
                 return True
+            elif event.key == pygame.K_t:  # 'T' to toggle overlay visibility
+                self.show_overlay = not self.show_overlay
+                return True
 
         return False
 
@@ -131,6 +135,12 @@ class LightingEditorDialog:
         else:
             text = self.font_md.render("Lighting Editor", True, (255, 255, 255))
             screen.blit(text, (200, 50))
+
+            # Show toggle status
+            toggle_color = (100, 255, 100) if self.show_overlay else (255, 100, 100)
+            toggle_text = "ON" if self.show_overlay else "OFF"
+            text = self.font_sm.render(f"Lighting Overlay: {toggle_text} (Press T to toggle)", True, toggle_color)
+            screen.blit(text, (200, 85))
 
             # Draw list of light sources
             y = 100
