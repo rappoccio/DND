@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "agent.hpp"
 
 namespace rpg {
@@ -12,21 +13,26 @@ namespace rpg {
         MagicDamage_t type{};
         int num_dice{1};
         int die_size{6};
+        int bonus{0};  // Fixed damage bonus (e.g., 1d4+1 has bonus=1)
     };
 
     struct PhysicalDamageRoll {
         PhysicalDamage_t type{};
         int num_dice{1};
         int die_size{6};
+        int bonus{0};  // Fixed damage bonus
     };
 
     struct Spell {
-      enum Geometry_t   { Single=0, Line, Cone, Sphere, NumGeometry_t };
+      enum Geometry_t   { Single=0, Line, Cone, Sphere, Multiple, NumGeometry_t };
       enum SpellType_t  { Harm=0, Heal, NumSpellType_t };
       enum SpellAttack_t{ AttackRoll=0, Save, Automatic, NumSpellAttack_t };
       // Which ability the *target* uses for saving throws against this spell.
       enum SaveAbility_t{ SaveStr=0, SaveDex, SaveCon, SaveInt, SaveWis, SaveCha,
                           NumSaveAbility_t };
+
+      // String -> enum map for JSON input (e.g., "Multiple" -> Multiple)
+      static const std::unordered_map<std::string, Geometry_t> geometryNameMap;
 
       std::string    name{"Unnamed Spell"};
       SpellType_t    type{Harm};
@@ -39,6 +45,10 @@ namespace rpg {
       int width{5};     // width in feet (Line)
       int length{30};   // length in feet (Line)
       int duration{1};  // turns the effect persists (1 = instantaneous)
+
+      // For Multiple geometry: number of independent targets/projectiles
+      int  num_targets{1};              // base number of targets at spell level
+      int  targets_per_upcast_level{0}; // +1 target per upcast level (0 if doesn't scale)
 
       std::vector<MagicDamageRoll>    magic_damage_rolls;
       std::vector<PhysicalDamageRoll> physical_damage_rolls;
@@ -54,5 +64,10 @@ namespace rpg {
 
       int level{0};              // 0 = cantrip (unlimited); 1-9 = slot level required
       int upcast_dice_bonus{0};  // extra dice per slot level above spell.level
+
+      // N/day usage tracking (for NPCs)
+      // uses_max = 0 means unlimited (use slot system); uses_max > 0 means N/day
+      int uses_max{0};           // maximum uses per day (0 = use slot system)
+      int uses_remaining{0};     // current remaining uses
     };
 }

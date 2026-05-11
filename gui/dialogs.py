@@ -396,7 +396,7 @@ class StatsDialog:
     Callback: callback(agent_idx, new_stats_obj) called on OK.
     """
     DLG_W = 610
-    DLG_H = 560
+    DLG_H = 700
     HDR_H = 36
     BTN_H = 32
     PAD   = 14
@@ -435,10 +435,11 @@ class StatsDialog:
         ("# Attacks",     "num_attacks",  1,  10),
     ]
 
-    def __init__(self, font_sm, font_md, font_lg):
+    def __init__(self, font_sm, font_md, font_lg, spells=None):
         self.font_sm = font_sm
         self.font_md = font_md
         self.font_lg = font_lg
+        self.spells = spells or []
         self.active              = False
         self._agent_idx          = -1
         self._agent_name         = ""
@@ -450,15 +451,22 @@ class StatsDialog:
         self._prof_rects: dict   = {}   # same keys -> pygame.Rect
         self._class_rects: dict  = {}   # class cycle button rects
         self._char_level_stepper = None  # IntStepper for character level
+        self._is_npc             = False
+        self._npc_spell_groups   = {}    # {N: [spell_names]}
+        self._npc_add_group_rect = None
+        self._spell_selection_dialog = None
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback):
-        self.active      = True
-        self._agent_idx  = agent_idx
-        self._agent_name = agent_name
-        self._class_name = class_name
-        self._char_level = char_level
-        self._cb         = callback
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None):
+        self.active             = True
+        self._agent_idx         = agent_idx
+        self._agent_name        = agent_name
+        self._class_name        = class_name
+        self._char_level        = char_level
+        self._cb                = callback
+        self._is_npc            = is_npc
+        self._npc_spell_groups  = dict(npc_spell_groups) if npc_spell_groups else {}
+        self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._build_steppers(self._dlg(screen), stats)
 
     # ── geometry ─────────────────────────────────────────────────────────────
@@ -558,6 +566,35 @@ class StatsDialog:
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # NPC checkbox and spell group interactions
+            if hasattr(self, '_npc_checkbox_rect') and self._npc_checkbox_rect:
+                if self._npc_checkbox_rect.collidepoint(event.pos):
+                    self._is_npc = not self._is_npc
+                    if not self._is_npc:
+                        self._npc_spell_groups = {}
+                    return True
+
+            # NPC spell add/remove buttons
+            if self._is_npc and hasattr(self, '_npc_spell_rects'):
+                for (group_n, spell_name), btn_rect in self._npc_spell_rects.get('remove', {}).items():
+                    if btn_rect.collidepoint(event.pos):
+                        if str(group_n) in self._npc_spell_groups:
+                            self._npc_spell_groups[str(group_n)].remove(spell_name)
+                        return True
+
+                for group_n, btn_rect in self._npc_spell_rects.get('add', {}).items():
+                    if btn_rect.collidepoint(event.pos):
+                        if self._spell_selection_dialog:
+                            self._spell_selection_dialog.show(lambda spell: self._add_npc_spell(group_n, spell))
+                        return True
+
+            # Add Group button
+            if self._is_npc and self._npc_add_group_rect and self._npc_add_group_rect.collidepoint(event.pos):
+                # For simplicity, just add perDay3 with next available N
+                max_n = max([int(k) for k in self._npc_spell_groups.keys()], default=0)
+                self._npc_spell_groups[str(max_n + 1)] = []
+                return True
+
             # Class cycle buttons
             if self._class_rects:
                 available = self._class_rects.get("available", [])
@@ -584,11 +621,26 @@ class StatsDialog:
             elif self._cancel_rect(dlg).collidepoint(event.pos):
                 self.active = False
             return True
+
+        # Handle spell selection dialog events
+        if self._is_npc and self._spell_selection_dialog:
+            if self._spell_selection_dialog.handle(event):
+                return True
+
         return event.type in (pygame.MOUSEMOTION, pygame.MOUSEWHEEL)
+
+    def _add_npc_spell(self, group_n, spell):
+        """Add a spell to an NPC spell group."""
+        spell_name = spell.get("name", "Unknown")
+        if str(group_n) not in self._npc_spell_groups:
+            self._npc_spell_groups[str(group_n)] = []
+        if spell_name not in self._npc_spell_groups[str(group_n)]:
+            self._npc_spell_groups[str(group_n)].append(spell_name)
 
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level)
+            npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -735,6 +787,75 @@ class StatsDialog:
             self._class_rects = {"left": left_btn_r, "right": right_btn_r, "available": available_classes}
         else:
             self._class_rects = {}
+
+        # ── NPC Spells Section ────────────────────────────────────────────
+        npc_checkbox_y = class_y + 24 if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
+        npc_checkbox_h = 16
+        self._npc_checkbox_rect = pygame.Rect(dlg.x + self.PAD, npc_checkbox_y, npc_checkbox_h, npc_checkbox_h)
+
+        # Draw NPC checkbox
+        box_col = (45, 110, 55) if self._is_npc else (60, 60, 80)
+        bdr_col = (80, 200, 90) if self._is_npc else self.C_BORDER
+        pygame.draw.rect(screen, box_col, self._npc_checkbox_rect, border_radius=3)
+        pygame.draw.rect(screen, bdr_col, self._npc_checkbox_rect, 1, border_radius=3)
+        if self._is_npc:
+            pts = [(self._npc_checkbox_rect.x + 3, self._npc_checkbox_rect.centery),
+                   (self._npc_checkbox_rect.centerx - 1, self._npc_checkbox_rect.bottom - 3),
+                   (self._npc_checkbox_rect.right - 3, self._npc_checkbox_rect.y + 3)]
+            pygame.draw.lines(screen, (110, 240, 110), False, pts, 2)
+
+        # NPC label
+        npc_txt = self.font_sm.render("NPC (N/day spells)", True, self.C_LABEL)
+        screen.blit(npc_txt, (self._npc_checkbox_rect.right + 8, npc_checkbox_y))
+
+        # Draw NPC spell groups if enabled
+        if self._is_npc:
+            self._npc_spell_rects = {'remove': {}, 'add': {}}
+            spell_y = npc_checkbox_y + 28
+            half = (self.DLG_W - self.PAD * 3) // 2
+
+            for group_n_str in sorted(self._npc_spell_groups.keys(), key=lambda x: int(x)):
+                group_n = int(group_n_str)
+                spells = self._npc_spell_groups[group_n_str]
+                label = self.font_sm.render(f"{group_n}/day:", True, self.C_LABEL)
+                screen.blit(label, (dlg.x + self.PAD, spell_y))
+
+                spell_x = dlg.x + self.PAD + 80
+                for spell_name in spells:
+                    spell_txt = self.font_sm.render(spell_name, True, (200, 200, 220))
+                    spell_txt_rect = spell_txt.get_rect()
+                    spell_txt_rect.topleft = (spell_x, spell_y)
+                    screen.blit(spell_txt, spell_txt_rect)
+
+                    # Remove button
+                    remove_btn_rect = pygame.Rect(spell_txt_rect.right + 4, spell_y, 16, 16)
+                    pygame.draw.rect(screen, (130, 50, 50), remove_btn_rect, border_radius=2)
+                    pygame.draw.rect(screen, (180, 100, 100), remove_btn_rect, 1, border_radius=2)
+                    rm_txt = self.font_sm.render("−", True, (220, 100, 100))
+                    screen.blit(rm_txt, rm_txt.get_rect(center=remove_btn_rect.center))
+                    self._npc_spell_rects['remove'][(group_n, spell_name)] = remove_btn_rect
+                    spell_x = remove_btn_rect.right + 8
+
+                # Add button for this group
+                add_btn_rect = pygame.Rect(spell_x, spell_y, 20, 16)
+                pygame.draw.rect(screen, (60, 130, 80), add_btn_rect, border_radius=2)
+                pygame.draw.rect(screen, (100, 180, 120), add_btn_rect, 1, border_radius=2)
+                add_txt = self.font_sm.render("+", True, (150, 240, 150))
+                screen.blit(add_txt, add_txt.get_rect(center=add_btn_rect.center))
+                self._npc_spell_rects['add'][group_n] = add_btn_rect
+
+                spell_y += 24
+
+            # Add Group button
+            self._npc_add_group_rect = pygame.Rect(dlg.x + self.PAD, spell_y + 4, 120, 20)
+            pygame.draw.rect(screen, (70, 90, 130), self._npc_add_group_rect, border_radius=3)
+            pygame.draw.rect(screen, (120, 150, 180), self._npc_add_group_rect, 1, border_radius=3)
+            ag_txt = self.font_sm.render("[Add Group]", True, (200, 220, 240))
+            screen.blit(ag_txt, ag_txt.get_rect(center=self._npc_add_group_rect.center))
+
+            # Draw spell selection dialog if open
+            if self._spell_selection_dialog:
+                self._spell_selection_dialog.draw(screen)
 
         # ── Buttons ───────────────────────────────────────────────────────
         mouse = pygame.mouse.get_pos()

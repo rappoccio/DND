@@ -1,0 +1,33 @@
+{
+  "default_light": "Darkness",
+  "light_sources": [
+    {
+      "name": "Torch - Entrance",
+      "x": 200,
+      "y": 150,
+      "bright_radius": 20,
+      "dim_radius": 40
+    },
+    {
+      "name": "Torch - Main Hall",
+      "x": 400,
+      "y": 300,
+      "bright_radius": 20,
+      "dim_radius": 40
+    },
+    {
+      "name": "Torch - North Corridor",
+      "x": 300,
+      "y": 100,
+      "bright_radius": 20,
+      "dim_radius": 40
+    },
+    {
+      "name": "Light 4",
+      "x": 934,
+      "y": 212,
+      "bright_radius": 20,
+      "dim_radius": 40
+    }
+  ]
+}

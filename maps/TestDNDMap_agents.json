@@ -62,17 +62,65 @@
         "save_prof_cha": false,
         "spellcasting_ability": "wis"
       },
-      "agent_class": "Wizard",
-      "agent_char_level": 9,
-      "spell_slots_max": [4, 3, 3, 3, 1, 0, 0, 0, 0],
-      "spell_slots_cur": [4, 3, 3, 3, 1, 0, 0, 0, 0],
       "weapon_indices": [],
-      "spell_indices": [
+      "spells": [
         "Fireball",
         "Grease",
         "Ice Storm",
-        "Plant Growth"
-      ]
+        "Plant Growth",
+	"Ray of Sickness"
+      ],
+      "agent_class": "Wizard",
+      "agent_char_level": 9,
+      "spell_slots_max": [4, 3, 3, 3, 1, 0, 0, 0, 0],
+      "spell_slots_cur": [4, 3, 3, 3, 1, 0, 0, 0, 0]
+    },
+    {
+      "name": "Cult Mage",
+      "sprite_path": "generic-enemy.png",
+      "size": 1,
+      "col": 15,
+      "row": 12,
+      "stats": {
+        "str": 10,
+        "dex": 14,
+        "con": 12,
+        "intel": 16,
+        "wis": 13,
+        "cha": 11,
+        "hp_max": 22,
+        "hp_cur": 22,
+        "ac": 12,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "num_attacks": 1,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": true,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "spellcasting_ability": "intel"
+      },
+      "weapon_indices": [],
+      "spells": [
+        "Fireball",
+        "Grease",
+        "Magic Missile"
+      ],
+      "is_npc": true,
+      "npc_spell_groups": {
+        "1": ["Fireball", "Grease"],
+        "2": ["Magic Missile"]
+      },
+      "npc_spell_uses_cur": {
+        "Fireball": 1,
+        "Grease": 1,
+        "Magic Missile": 2
+      }
     }
   ]
 }

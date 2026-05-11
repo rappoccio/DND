@@ -41,6 +41,7 @@ pybind11_add_module(rpg_battle_map
     battle_map.cpp
     combat.cpp
     map_configs.cpp
+    spell.cpp
 )
 
 target_include_directories(rpg_battle_map PRIVATE
@@ -61,6 +62,7 @@ add_executable(combat_tests
     battle_map.cpp
     combat.cpp
     map_configs.cpp
+    spell.cpp
 )
 
 target_include_directories(combat_tests PRIVATE

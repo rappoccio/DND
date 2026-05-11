@@ -91,6 +91,7 @@ struct Attack {
 struct SpellAction {
     int  caster_idx  = -1;   // index into BattleMap::placedAgents()
     int  spell_idx   =  0;   // index into caster's spells list
+    int  slot_level  =  0;   // for player upcasting: slot level (1-9); 0 = base level / NPC mode
     // For Single geometry, only target_indices[0] is used.
     // For Line/Cone/Sphere, target_indices lists all cells/agents in the area.
     std::vector<int> target_indices;
@@ -121,6 +122,7 @@ struct SpellTargetResult {
     bool target_down  = false;
     int  save_d20     = 0;   // d20 rolled on a Save
     int  save_dc      = 0;   // spell save DC the target rolled against
+    std::string log_message;   // formatted log message for this target
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +391,12 @@ public:
     // Enumerate all legal (weapon, target) pairs for the given attacker.
     [[nodiscard]] std::vector<Attack> availableAttacks(
         const BattleMap& bm, int attacker_idx) const;
+
+    // Enumerate castable spell indices for the given agent this turn.
+    // For NPCs: spells where uses_remaining > 0 (leveled spells also need canCastLeveledSpell)
+    // For players: spells where slot exists at >= spell.level (leveled spells also need canCastLeveledSpell)
+    [[nodiscard]] std::vector<int> availableCastableSpells(
+        const BattleMap& bm, int agent_idx) const;
 
     // ── RL observation vector ─────────────────────────────────────────────
     //

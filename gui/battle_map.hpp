@@ -71,6 +71,16 @@ enum class TerrainDifficulty {
     Quartered = 2,   // 0.25x movement cost (Plant Growth, etc.)
 };
 
+// ── Light levels for visibility (D&D 5e lighting conditions) ──────────────────
+// Ordered by restrictiveness: BrightLight (0) < DimLight (1) < Darkness (2) < MagicalDarkness (3).
+// Used for darkvision and visibility calculations.
+enum class LightLevel {
+    BrightLight = 0,    // Full visibility
+    DimLight = 1,       // Lightly obscured; visible to all with LOS
+    Darkness = 2,       // Heavily obscured; visible only with darkvision within range
+    MagicalDarkness = 3 // Impenetrable; even darkvision cannot see through it
+};
+
 // ── Active temporary terrain effect ────────────────────────────────────────
 struct ActiveTerrainEffect {
     int                 id;               // unique, returned to Python on add
@@ -79,6 +89,16 @@ struct ActiveTerrainEffect {
     TerrainDifficulty   difficulty;       // Halved or Quartered
     int                 turns_remaining;  // -1 = permanent, 0+ = expires after N turns
     int                 source_agent_idx; // -1 = DM-placed or no concentration requirement
+};
+
+// ── Active temporary light effect ──────────────────────────────────────────
+struct ActiveLightEffect {
+    int              id;               // unique, returned to Python on add
+    std::string      name;             // "Torch", "Darkness", "Faerie Fire", etc.
+    std::vector<int> cell_indices;     // flat: row*cols_ + col
+    LightLevel       light_level;      // BrightLight, DimLight, Darkness, or MagicalDarkness
+    int              turns_remaining;  // -1 = permanent, 0+ = expires after N turns
+    int              source_agent_idx; // -1 = DM-placed or map-defined
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────
@@ -253,6 +273,57 @@ public:
     [[nodiscard]] std::vector<ActiveTerrainEffect> activeTerrainEffects() const;
     [[nodiscard]] bool hasActiveTerrainEffects() const noexcept;
 
+    // ── Light levels (visibility & darkvision) ────────────────────────────
+    // Get/set the light level at a cell (default BrightLight).
+    [[nodiscard]] LightLevel getLightLevel(Cell c) const noexcept;
+    void setLightLevel(Cell c, LightLevel lvl) noexcept;
+    void resetLightLevels() noexcept;  // fills entire map with BrightLight
+
+    // Check if an observer can see a target, considering LOS, light, and vision types.
+    // obs_origin/tgt_origin: top-left cell of each agent's footprint
+    // obs_size/tgt_size: agent sizes (1-6)
+    // darkvision_ft, truesight_ft, devilssight_ft: observer's vision ranges in feet (0 = none)
+    // Returns true iff LOS is clear AND light conditions permit visibility with given vision.
+    [[nodiscard]] bool canSee(Cell obs_origin, int obs_size,
+                              int darkvision_ft, int truesight_ft, int devilssight_ft,
+                              Cell tgt_origin, int tgt_size) const noexcept;
+
+    // Check if observer has disadvantage on perception vs target (due to lighting).
+    // Returns true for DimLight (normal/devil's sight) and Darkness (darkvision only).
+    [[nodiscard]] bool perceptionDisadvantage(Cell obs_origin, int obs_size,
+                                              int darkvision_ft, int truesight_ft, int devilssight_ft,
+                                              Cell tgt_origin, int tgt_size) const noexcept;
+
+    // Apply base lighting from JSON: set default light level, then apply spherical sources.
+    // sources: list of (pixel_x, pixel_y, bright_radius_ft, dim_radius_ft)
+    void applyBaseLighting(LightLevel default_light,
+                           const std::vector<std::tuple<int, int, int, int>>& sources) noexcept;
+
+    // Recompute lightLevel_ from baseLightLevel_ + activeLightEffects_.
+    void updateLighting() noexcept;
+
+    // Dynamic light effects (analogous to terrain effects):
+    [[nodiscard]] int  placeLightEffect(std::string name, std::vector<Cell> cells,
+                                        LightLevel level, int turns_remaining,
+                                        int source_agent_idx) noexcept;
+    [[nodiscard]] std::vector<int> tickLightEffects(int source_agent_idx) noexcept;
+    [[nodiscard]] std::vector<int> tickDmLightEffects() noexcept;
+    [[nodiscard]] std::vector<int> removeLightEffectsBySource(int source_agent_idx) noexcept;
+    void removeLightEffect(int id) noexcept;
+    void clearLightEffects() noexcept;
+    [[nodiscard]] bool hasActiveLightEffects() const noexcept;
+    [[nodiscard]] const std::vector<ActiveLightEffect>& activeLightEffects() const noexcept;
+
+    // ── NPC Spell Initialization ────────────────────────────────────────
+    // Set is_npc=true and initialize uses_max/uses_remaining from spell groups.
+    // groups: maps N (uses/day) -> list of spell names in that group.
+    // Called once after setAgentSpells().
+    void initNpcSpellGroups(int agent_idx,
+                            const std::map<int, std::vector<std::string>>& groups) noexcept;
+
+    // Mutable access to a placed agent for in-place modification.
+    [[nodiscard]] PlacedAgent& placedAgentMut(int idx) noexcept;
+
     // ── Tuning parameters ─────────────────────────────────────────────────
     struct DetectionParams {
         // Grid-line detection (Hough)
@@ -297,13 +368,19 @@ private:
     CellSet            disallowed_;
     std::vector<double>     terrainMult_;     // cols × rows static movement multipliers (default 1.0)
     std::vector<TerrainType> terrainType_;    // cols × rows terrain types (default Standard)
+    std::vector<LightLevel>  baseLightLevel_; // cols × rows base light levels (from JSON; default BrightLight)
+    std::vector<LightLevel>  lightLevel_;     // cols × rows computed light levels (base + effects; default BrightLight)
     std::vector<AgentConfig>  agentConfigs_;
     std::vector<PlacedAgent>  placedAgents_;
 
     // Temporary terrain effects (spells, items, etc. with duration)
     std::vector<ActiveTerrainEffect> activeTerrainEffects_;
     std::vector<TerrainDifficulty>   tempTerrainDiff_;  // pre-computed overlay per cell (default Normal)
-    int nextEffectId_{0};  // monotonically increasing effect id generator
+    int nextEffectId_{0};  // monotonically increasing terrain effect id generator
+
+    // Dynamic light effects (spells, DM-placed lights, etc.)
+    std::vector<ActiveLightEffect> activeLightEffects_;
+    int nextLightEffectId_{0};  // monotonically increasing light effect id generator
 };
 
 } // namespace rpg

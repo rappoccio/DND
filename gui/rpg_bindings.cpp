@@ -186,11 +186,29 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("char_level",            &Agent::Stats::char_level)
         .def_readwrite("spell_slots_max",       &Agent::Stats::spell_slots_max)
         .def_readwrite("spell_slots_remaining", &Agent::Stats::spell_slots_remaining)
+        .def_readwrite("darkvision_range",     &Agent::Stats::darkvision_range,
+             "Darkvision range in feet (0 = no darkvision). See normally in Darkness within range.")
+        .def_readwrite("truesight_range",      &Agent::Stats::truesight_range,
+             "Truesight range in feet (0 = no truesight). See normally in all light including magical darkness.")
+        .def_readwrite("devilssight_range",    &Agent::Stats::devilssight_range,
+             "Devil's Sight range in feet (0 = no devil's sight). See in Darkness and MagicalDarkness within range.")
+        .def_readwrite("is_npc", &Agent::Stats::is_npc,
+             "True if this agent uses N/day spell system (NPC); false if using spell slots (player).")
+        .def_readwrite("leveled_spell_cast_this_turn", &Agent::Stats::leveled_spell_cast_this_turn,
+             "D&D 5e rule: only one leveled spell (level >= 1) per turn. Reset at turn start.")
         .def("set_class_level", &Agent::Stats::set_class_level,
              py::arg("cls"), py::arg("level"),
              "Set the character class and level. Automatically computes spell_slots_max and updates can_cast_spell.")
         .def("restore_spell_slots", &Agent::Stats::restore_spell_slots,
              "Restore spell_slots_remaining to their maximum (Long Rest).")
+        // D&D 5e leveled spell per-turn rule
+        .def("can_cast_leveled_spell", &Agent::Stats::canCastLeveledSpell,
+             "Check if a leveled spell (level >= 1) can be cast this turn.")
+        .def("mark_leveled_spell_cast", &Agent::Stats::markLeveledSpellCast,
+             py::arg("spell_level"),
+             "Mark that a leveled spell has been cast this turn (if spell_level >= 1).")
+        .def("reset_leveled_spell_cast_flag", &Agent::Stats::resetLeveledSpellCastFlag,
+             "Reset the leveled spell flag at the start of a new turn.")
         // Spell Save DCs (computed read-only: 8 + mod [+ prof_bonus if proficient])
         .def_property_readonly("spell_save_dc_str",   &Agent::Stats::spellSaveDcStr)
         .def_property_readonly("spell_save_dc_dex",   &Agent::Stats::spellSaveDcDex)
@@ -289,10 +307,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
     // ── Spell enums ──────────────────────────────────────────────────────────
     py::enum_<Spell::Geometry_t>(m, "SpellGeometry")
-        .value("Single", Spell::Single)
-        .value("Line",   Spell::Line)
-        .value("Cone",   Spell::Cone)
-        .value("Sphere", Spell::Sphere)
+        .value("Single",   Spell::Single)
+        .value("Line",     Spell::Line)
+        .value("Cone",     Spell::Cone)
+        .value("Sphere",   Spell::Sphere)
+        .value("Multiple", Spell::Multiple)
         .export_values();
 
     py::enum_<Spell::SpellType_t>(m, "SpellType")
@@ -352,14 +371,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def(py::init<>())
         .def_readwrite("type", &MagicDamageRoll::type)
         .def_readwrite("num_dice", &MagicDamageRoll::num_dice)
-        .def_readwrite("die_size", &MagicDamageRoll::die_size);
+        .def_readwrite("die_size", &MagicDamageRoll::die_size)
+        .def_readwrite("bonus", &MagicDamageRoll::bonus,
+             "Fixed damage bonus added after rolling dice (e.g., 1d4+1 has bonus=1)");
 
     // ── PhysicalDamageRoll ────────────────────────────────────────────────────
     py::class_<PhysicalDamageRoll>(m, "PhysicalDamageRoll")
         .def(py::init<>())
         .def_readwrite("type", &PhysicalDamageRoll::type)
         .def_readwrite("num_dice", &PhysicalDamageRoll::num_dice)
-        .def_readwrite("die_size", &PhysicalDamageRoll::die_size);
+        .def_readwrite("die_size", &PhysicalDamageRoll::die_size)
+        .def_readwrite("bonus", &PhysicalDamageRoll::bonus,
+             "Fixed damage bonus added after rolling dice");
 
     // ── Spell ─────────────────────────────────────────────────────────────────
     py::class_<Spell>(m, "Spell")
@@ -389,6 +412,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
         .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
              "Extra dice added to damage when cast at a higher slot level. Calculated as upcast_dice_bonus * (slot_level - spell_level).")
+        .def_readwrite("uses_max", &Spell::uses_max,
+             "Maximum uses per day for NPCs. 0 = unlimited (use slot system); > 0 = N/day uses.")
+        .def_readwrite("uses_remaining", &Spell::uses_remaining,
+             "Current remaining uses for the day (for N/day spells).")
+        .def_readwrite("num_targets", &Spell::num_targets,
+             "For Multiple geometry: base number of targets/projectiles at spell level.")
+        .def_readwrite("targets_per_upcast_level", &Spell::targets_per_upcast_level,
+             "For Multiple geometry: additional targets per upcast level above base.")
         .def("__repr__", [](const Spell& s){
             return "<Spell '" + s.name + "'>"; });
 
@@ -397,6 +428,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def(py::init<>())
         .def_readwrite("caster_idx",     &SpellAction::caster_idx)
         .def_readwrite("spell_idx",      &SpellAction::spell_idx)
+        .def_readwrite("slot_level",     &SpellAction::slot_level,
+             "For player upcasting: spell slot level used (1-9); 0 = base level / NPC mode")
         .def_readwrite("target_indices", &SpellAction::target_indices)
         .def_readwrite("aoe_col",        &SpellAction::aoe_col)
         .def_readwrite("aoe_row",        &SpellAction::aoe_row)
@@ -425,6 +458,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("target_down",   &SpellTargetResult::target_down)
         .def_readonly("save_d20",      &SpellTargetResult::save_d20)
         .def_readonly("save_dc",       &SpellTargetResult::save_dc)
+        .def_readonly("log_message",   &SpellTargetResult::log_message)
         .def("__repr__", [](const SpellTargetResult& r){
             return "<SpellTargetResult tgt=" + std::to_string(r.target_idx)
                  + (r.hit ? " HIT" : " MISS")
@@ -757,6 +791,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Rolls CON save (DC = max(10, damage/2)).\n"
              "Clears concentration on failed save.\n"
              "Returns ConcentrationSaveResult with details.")
+        .def("available_castable_spells",
+             &CombatEngine::availableCastableSpells,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Returns indices of spells agent_idx can cast this turn.\n"
+             "For NPCs: spells with uses_remaining > 0 (and leveled spell check).\n"
+             "For players: spells with available slots at spell.level or higher (and leveled spell check).\n"
+             "Cantrips (level 0) always included.")
 
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"));
@@ -804,6 +845,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Quartered", TerrainDifficulty::Quartered)
         .export_values();
 
+    // ── LightLevel enum ──────────────────────────────────────────────────────
+    py::enum_<LightLevel>(m, "LightLevel")
+        .value("BrightLight",     LightLevel::BrightLight)
+        .value("DimLight",        LightLevel::DimLight)
+        .value("Darkness",        LightLevel::Darkness)
+        .value("MagicalDarkness", LightLevel::MagicalDarkness)
+        .export_values();
+
     // ── ActiveTerrainEffect struct ───────────────────────────────────────────
     py::class_<ActiveTerrainEffect>(m, "ActiveTerrainEffect")
         .def_readonly("id",                &ActiveTerrainEffect::id)
@@ -812,6 +861,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("difficulty",        &ActiveTerrainEffect::difficulty)
         .def_readonly("turns_remaining",   &ActiveTerrainEffect::turns_remaining)
         .def_readonly("source_agent_idx",  &ActiveTerrainEffect::source_agent_idx);
+
+    // ── ActiveLightEffect struct ────────────────────────────────────────────
+    py::class_<ActiveLightEffect>(m, "ActiveLightEffect")
+        .def_readonly("id",                &ActiveLightEffect::id)
+        .def_readonly("name",              &ActiveLightEffect::name)
+        .def_readonly("cell_indices",      &ActiveLightEffect::cell_indices)
+        .def_readonly("light_level",       &ActiveLightEffect::light_level)
+        .def_readonly("turns_remaining",   &ActiveLightEffect::turns_remaining)
+        .def_readonly("source_agent_idx",  &ActiveLightEffect::source_agent_idx);
 
     // ── BattleMap ───────────────────────────────────────────────────────────
     py::class_<BattleMap>(m, "BattleMap")
@@ -895,6 +953,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("remove_spell_from_agent", &BattleMap::removeSpellFromAgent,
              py::arg("idx"), py::arg("spell_idx"),
              "Remove spell at spell_idx from placed agent[idx]'s list.")
+        .def("init_npc_spell_groups", &BattleMap::initNpcSpellGroups,
+             py::arg("agent_idx"), py::arg("groups"),
+             "Set is_npc=true on agent and initialize uses_max/uses_remaining from spell groups.\n"
+             "groups: dict mapping N (uses/day) -> list of spell names in that group.\n"
+             "Call once after set_agent_spells().")
 
         // Condition accessors
         .def("get_agent_conditions", &BattleMap::getAgentConditions,
@@ -970,6 +1033,32 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("cell"), py::arg("terrain_type"),
              "Set the terrain type for a cell.")
 
+        // Light levels (BrightLight, DimLight, Darkness, MagicalDarkness)
+        .def("get_light_level", &BattleMap::getLightLevel,
+             py::arg("cell"),
+             "Get the light level for a cell (BrightLight, DimLight, Darkness, or MagicalDarkness).")
+        .def("set_light_level", &BattleMap::setLightLevel,
+             py::arg("cell"), py::arg("light_level"),
+             "Set the light level for a cell.")
+        .def("reset_light_levels", &BattleMap::resetLightLevels,
+             "Reset all light levels to BrightLight (default).")
+
+        // Visibility & Darkvision
+        .def("can_see", &BattleMap::canSee,
+             py::arg("obs_origin"), py::arg("obs_size"),
+             py::arg("darkvision_ft"), py::arg("truesight_ft"), py::arg("devilssight_ft"),
+             py::arg("tgt_origin"), py::arg("tgt_size"),
+             "Check if observer can see target (D&D 5e vision rules).\n"
+             "Returns false = observer is blinded and cannot target.\n"
+             "Implements: Truesight (all conditions), Devil's Sight (darkness/magical darkness),\n"
+             "Darkvision (disadvantage in pure darkness), Normal vision (blinded in darkness).")
+        .def("perception_disadvantage", &BattleMap::perceptionDisadvantage,
+             py::arg("obs_origin"), py::arg("obs_size"),
+             py::arg("darkvision_ft"), py::arg("truesight_ft"), py::arg("devilssight_ft"),
+             py::arg("tgt_origin"), py::arg("tgt_size"),
+             "Check if observer has disadvantage on perception vs target.\n"
+             "Returns true for: DimLight (normal/devil's sight), Darkness (darkvision only).")
+
         // Temporary terrain effects (spells, items, etc. with duration)
         .def("place_terrain_effect", &BattleMap::placeTerrainEffect,
              py::arg("name"), py::arg("cells"), py::arg("difficulty"),
@@ -997,6 +1086,39 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Get a copy of all active terrain effects (for rendering).")
         .def("has_active_terrain_effects", &BattleMap::hasActiveTerrainEffects,
              "Check if there are any active terrain effects.")
+
+        // Dynamic light effects (spells, DM-placed lights, etc. with duration)
+        .def("apply_base_lighting", &BattleMap::applyBaseLighting,
+             py::arg("default_light"), py::arg("sources"),
+             "Apply base lighting from map JSON. sources: list[(pixel_x, pixel_y, bright_radius_ft, dim_radius_ft)]")
+        .def("update_lighting", &BattleMap::updateLighting,
+             "Recompute lightLevel_ from baseLightLevel_ + activeLightEffects_.")
+        .def("place_light_effect", &BattleMap::placeLightEffect,
+             py::arg("name"), py::arg("cells"), py::arg("light_level"),
+             py::arg("turns_remaining"), py::arg("source_agent_idx"),
+             "Place a dynamic light effect covering the given cells.\n"
+             "Returns unique effect id (for later removal).")
+        .def("tick_light_effects", &BattleMap::tickLightEffects,
+             py::arg("source_agent_idx"),
+             "Decrement turns_remaining for light effects from this source.\n"
+             "Removes expired effects (turns_remaining <= 0).\n"
+             "Returns list of removed effect ids.")
+        .def("tick_dm_light_effects", &BattleMap::tickDmLightEffects,
+             "Decrement turns_remaining for DM-placed light effects (source_agent_idx == -1).\n"
+             "Returns list of removed effect ids.")
+        .def("remove_light_effects_by_source", &BattleMap::removeLightEffectsBySource,
+             py::arg("source_agent_idx"),
+             "Remove all light effects sourced from the given agent.\n"
+             "Returns list of removed effect ids.")
+        .def("remove_light_effect", &BattleMap::removeLightEffect,
+             py::arg("effect_id"),
+             "Remove a specific light effect by id.")
+        .def("clear_light_effects", &BattleMap::clearLightEffects,
+             "Clear all dynamic light effects.")
+        .def_property_readonly("active_light_effects", &BattleMap::activeLightEffects,
+             "Get a copy of all active light effects.")
+        .def("has_active_light_effects", &BattleMap::hasActiveLightEffects,
+             "Check if there are any active light effects.")
 
         // Expose params so Python can tune detection
         .def_readwrite("params", &BattleMap::params);

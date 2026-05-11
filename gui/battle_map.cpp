@@ -106,6 +106,10 @@ void BattleMap::analyzeGrid()
     // Initialize temporary terrain difficulty overlay (default Normal)
     tempTerrainDiff_.assign(static_cast<std::size_t>(rows_ * cols_), TerrainDifficulty::Normal);
 
+    // Initialize base and computed light levels (default BrightLight)
+    baseLightLevel_.assign(static_cast<std::size_t>(rows_ * cols_), LightLevel::BrightLight);
+    lightLevel_.assign(static_cast<std::size_t>(rows_ * cols_), LightLevel::BrightLight);
+
     std::cout << std::format("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
 
@@ -855,6 +859,160 @@ void BattleMap::setTerrainType(Cell c, TerrainType t) noexcept {
     terrainType_[c.row * cols_ + c.col] = t;
 }
 
+// ── Light levels (visibility & darkvision) ────────────────────────────────────
+LightLevel BattleMap::getLightLevel(Cell c) const noexcept {
+    if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
+        return LightLevel::BrightLight;  // out-of-bounds is bright
+    return lightLevel_[c.row * cols_ + c.col];
+}
+
+void BattleMap::setLightLevel(Cell c, LightLevel lvl) noexcept {
+    if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
+        return;
+    lightLevel_[c.row * cols_ + c.col] = lvl;
+}
+
+void BattleMap::resetLightLevels() noexcept {
+    std::fill(lightLevel_.begin(), lightLevel_.end(), LightLevel::BrightLight);
+}
+
+bool BattleMap::canSee(Cell obs_origin, int obs_size,
+                       int darkvision_ft, int truesight_ft, int devilssight_ft,
+                       Cell tgt_origin, int tgt_size) const noexcept {
+    // LOS check first
+    if (!hasLineOfSight(obs_origin, obs_size, tgt_origin, tgt_size))
+        return false;
+
+    // Find minimum Chebyshev distance between observer and target footprints
+    int min_dist = INT_MAX;
+    for (int dr = 0; dr < obs_size; ++dr) {
+        for (int dc = 0; dc < obs_size; ++dc) {
+            for (int tr = 0; tr < tgt_size; ++tr) {
+                for (int tc = 0; tc < tgt_size; ++tc) {
+                    int obs_r = obs_origin.row + dr;
+                    int obs_c = obs_origin.col + dc;
+                    int tgt_r = tgt_origin.row + tr;
+                    int tgt_c = tgt_origin.col + tc;
+                    int dist = std::max(std::abs(obs_r - tgt_r), std::abs(obs_c - tgt_c));
+                    min_dist = std::min(min_dist, dist);
+                }
+            }
+        }
+    }
+    int dist_ft = min_dist * 5;  // 1 cell = 5 feet
+
+    // Find darkest (most restrictive) light level at target's footprint
+    LightLevel effective_light = LightLevel::BrightLight;
+    for (int tr = 0; tr < tgt_size; ++tr) {
+        for (int tc = 0; tc < tgt_size; ++tc) {
+            Cell c{tgt_origin.col + tc, tgt_origin.row + tr};
+            LightLevel cell_light = getLightLevel(c);
+            if (static_cast<int>(cell_light) > static_cast<int>(effective_light)) {
+                effective_light = cell_light;
+            }
+        }
+    }
+
+    // Apply D&D 5e visibility rules
+    // Truesight: sees through all conditions
+    if (truesight_ft > 0 && dist_ft <= truesight_ft)
+        return true;
+
+    // Devil's Sight: sees in darkness and magical darkness (120ft max normally, but respecting range)
+    if (devilssight_ft > 0 && dist_ft <= devilssight_ft &&
+        effective_light != LightLevel::BrightLight && effective_light != LightLevel::DimLight)
+        return true;
+
+    // Normal visibility by light condition
+    switch (effective_light) {
+        case LightLevel::BrightLight:
+            return true;  // always visible
+        case LightLevel::DimLight:
+            return true;  // lightly obscured but visible (disadvantage handled separately)
+        case LightLevel::Darkness:
+            // visible only with darkvision within range
+            return darkvision_ft > 0 && dist_ft <= darkvision_ft;
+        case LightLevel::MagicalDarkness:
+            return false;  // magical darkness blocks darkvision
+    }
+    return false;
+}
+
+bool BattleMap::perceptionDisadvantage(Cell obs_origin, int obs_size,
+                                       int darkvision_ft, int truesight_ft, int devilssight_ft,
+                                       Cell tgt_origin, int tgt_size) const noexcept {
+    // Truesight never has disadvantage
+    if (truesight_ft > 0) {
+        int min_dist = INT_MAX;
+        for (int dr = 0; dr < obs_size; ++dr) {
+            for (int dc = 0; dc < obs_size; ++dc) {
+                for (int tr = 0; tr < tgt_size; ++tr) {
+                    for (int tc = 0; tc < tgt_size; ++tc) {
+                        int dist = std::max(std::abs((obs_origin.row + dr) - (tgt_origin.row + tr)),
+                                          std::abs((obs_origin.col + dc) - (tgt_origin.col + tc)));
+                        min_dist = std::min(min_dist, dist);
+                    }
+                }
+            }
+        }
+        if (min_dist * 5 <= truesight_ft)
+            return false;
+    }
+
+    // Find effective light at target
+    LightLevel effective_light = LightLevel::BrightLight;
+    for (int tr = 0; tr < tgt_size; ++tr) {
+        for (int tc = 0; tc < tgt_size; ++tc) {
+            Cell c{tgt_origin.col + tc, tgt_origin.row + tr};
+            LightLevel cell_light = getLightLevel(c);
+            if (static_cast<int>(cell_light) > static_cast<int>(effective_light)) {
+                effective_light = cell_light;
+            }
+        }
+    }
+
+    // DimLight: disadvantage with normal or devil's sight
+    if (effective_light == LightLevel::DimLight) {
+        return darkvision_ft == 0 && devilssight_ft == 0;  // no advantage from dark-only senses
+    }
+
+    // Darkness: disadvantage with darkvision
+    if (effective_light == LightLevel::Darkness) {
+        return darkvision_ft > 0 && truesight_ft == 0;  // darkvision has disadvantage
+    }
+
+    // All other cases: no disadvantage
+    return false;
+}
+
+PlacedAgent& BattleMap::placedAgentMut(int idx) noexcept {
+    static PlacedAgent dummy;
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size()))
+        return dummy;
+    return placedAgents_[static_cast<std::size_t>(idx)];
+}
+
+void BattleMap::initNpcSpellGroups(int agent_idx,
+                                    const std::map<int, std::vector<std::string>>& groups) noexcept {
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(placedAgents_.size()))
+        return;
+
+    PlacedAgent& pa = placedAgents_[static_cast<std::size_t>(agent_idx)];
+    pa.stats.is_npc = true;
+
+    // Initialize uses_max and uses_remaining for each spell based on its group
+    for (auto& spell : pa.spells) {
+        for (const auto& [uses_per_day, spell_names] : groups) {
+            // Check if this spell is in this group
+            if (std::find(spell_names.begin(), spell_names.end(), spell.name) != spell_names.end()) {
+                spell.uses_max = uses_per_day;
+                spell.uses_remaining = uses_per_day;
+                break;
+            }
+        }
+    }
+}
+
 // ── Temporary terrain effects ──────────────────────────────────────────────────
 void BattleMap::updateTerrain() {
     // Reset to Normal (no effect)
@@ -986,6 +1144,183 @@ std::vector<ActiveTerrainEffect> BattleMap::activeTerrainEffects() const {
 
 bool BattleMap::hasActiveTerrainEffects() const noexcept {
     return !activeTerrainEffects_.empty();
+}
+
+// ── Lighting system ────────────────────────────────────────────────────────
+void BattleMap::applyBaseLighting(LightLevel default_light,
+                                   const std::vector<std::tuple<int, int, int, int>>& sources) noexcept {
+    // Initialize base lighting to default
+    baseLightLevel_.assign(static_cast<std::size_t>(rows_) * cols_, default_light);
+
+    if (vLines_.empty() || hLines_.empty())
+        return;  // Grid not yet analyzed
+
+    // Apply each light source
+    for (const auto& [px, py, bright_radius_ft, dim_radius_ft] : sources) {
+        // Find grid cell containing pixel (px, py)
+        // Grid lines define cell boundaries: cells are between consecutive grid lines
+        int grid_c = -1, grid_r = -1;
+
+        // Find column (between vertical grid lines)
+        for (int c = 0; c < static_cast<int>(vLines_.size()) - 1; ++c) {
+            if (px >= vLines_[c] && px < vLines_[c + 1]) {
+                grid_c = c;
+                break;
+            }
+        }
+
+        // Find row (between horizontal grid lines)
+        for (int r = 0; r < static_cast<int>(hLines_.size()) - 1; ++r) {
+            if (py >= hLines_[r] && py < hLines_[r + 1]) {
+                grid_r = r;
+                break;
+            }
+        }
+
+        if (grid_c < 0 || grid_r < 0)
+            continue;  // Source outside grid
+
+        // Convert feet to cell units (5 ft per cell)
+        int bright_cells = bright_radius_ft / 5;
+        int dim_cells = dim_radius_ft / 5;
+
+        // Apply bright light (Chebyshev distance)
+        for (int r = 0; r < rows_; ++r) {
+            for (int c = 0; c < cols_; ++c) {
+                int dist = std::max(std::abs(r - grid_r), std::abs(c - grid_c));
+                if (dist <= bright_cells) {
+                    int idx = r * cols_ + c;
+                    baseLightLevel_[static_cast<std::size_t>(idx)] =
+                        std::min(baseLightLevel_[static_cast<std::size_t>(idx)], LightLevel::BrightLight);
+                } else if (dist <= dim_cells) {
+                    int idx = r * cols_ + c;
+                    baseLightLevel_[static_cast<std::size_t>(idx)] =
+                        std::min(baseLightLevel_[static_cast<std::size_t>(idx)], LightLevel::DimLight);
+                }
+            }
+        }
+    }
+
+    updateLighting();
+}
+
+void BattleMap::updateLighting() noexcept {
+    // Step 1: reset computed lighting to base
+    lightLevel_ = baseLightLevel_;
+
+    // Step 2: apply normal light effects (brightest wins = std::min)
+    for (const auto& eff : activeLightEffects_) {
+        if (eff.light_level == LightLevel::MagicalDarkness)
+            continue;  // Handle magical darkness in step 3
+        for (int idx : eff.cell_indices) {
+            if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
+                lightLevel_[static_cast<std::size_t>(idx)] =
+                    std::min(lightLevel_[static_cast<std::size_t>(idx)], eff.light_level);
+            }
+        }
+    }
+
+    // Step 3: apply magical darkness (always wins = override)
+    for (const auto& eff : activeLightEffects_) {
+        if (eff.light_level != LightLevel::MagicalDarkness)
+            continue;
+        for (int idx : eff.cell_indices) {
+            if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
+                lightLevel_[static_cast<std::size_t>(idx)] = LightLevel::MagicalDarkness;
+            }
+        }
+    }
+}
+
+int BattleMap::placeLightEffect(std::string name, std::vector<Cell> cells,
+                                 LightLevel level, int turns_remaining,
+                                 int source_agent_idx) noexcept {
+    // Convert Cell list to flat indices
+    std::vector<int> indices;
+    for (const auto& cell : cells) {
+        if (cell.col >= 0 && cell.col < cols_ && cell.row >= 0 && cell.row < rows_) {
+            indices.push_back(cell.row * cols_ + cell.col);
+        }
+    }
+
+    if (indices.empty())
+        return -1;  // No valid cells
+
+    // Create the effect with a unique id
+    int id = nextLightEffectId_++;
+    activeLightEffects_.push_back({
+        id,
+        std::move(name),
+        std::move(indices),
+        level,
+        turns_remaining,
+        source_agent_idx
+    });
+
+    updateLighting();
+    return id;
+}
+
+std::vector<int> BattleMap::tickLightEffects(int source_agent_idx) noexcept {
+    std::vector<int> expired;
+
+    // Decrement turns_remaining for effects from this source
+    std::erase_if(activeLightEffects_, [&](ActiveLightEffect& effect) {
+        if (effect.source_agent_idx != source_agent_idx)
+            return false;
+
+        if (effect.turns_remaining < 0)  // -1 = permanent
+            return false;
+
+        --effect.turns_remaining;
+        if (effect.turns_remaining == 0) {
+            expired.push_back(effect.id);
+            return true;  // erase this effect
+        }
+        return false;
+    });
+
+    if (!expired.empty())
+        updateLighting();
+    return expired;
+}
+
+std::vector<int> BattleMap::tickDmLightEffects() noexcept {
+    return tickLightEffects(-1);  // -1 = DM-placed effects
+}
+
+std::vector<int> BattleMap::removeLightEffectsBySource(int source_agent_idx) noexcept {
+    std::vector<int> removed;
+    std::erase_if(activeLightEffects_, [&](const ActiveLightEffect& effect) {
+        if (effect.source_agent_idx == source_agent_idx) {
+            removed.push_back(effect.id);
+            return true;
+        }
+        return false;
+    });
+    if (!removed.empty())
+        updateLighting();
+    return removed;
+}
+
+void BattleMap::removeLightEffect(int id) noexcept {
+    std::erase_if(activeLightEffects_, [id](const ActiveLightEffect& effect) {
+        return effect.id == id;
+    });
+    updateLighting();
+}
+
+void BattleMap::clearLightEffects() noexcept {
+    activeLightEffects_.clear();
+    updateLighting();
+}
+
+bool BattleMap::hasActiveLightEffects() const noexcept {
+    return !activeLightEffects_.empty();
+}
+
+const std::vector<ActiveLightEffect>& BattleMap::activeLightEffects() const noexcept {
+    return activeLightEffects_;
 }
 
 } // namespace rpg

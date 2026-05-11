@@ -122,6 +122,20 @@ namespace rpg {
       std::array<int,9> spell_slots_max{};       // max slots per level (1-9)
       std::array<int,9> spell_slots_remaining{}; // current remaining slots
 
+      // ── Vision ─────────────────────────────────────────────────────────
+      int darkvision_range{0};   // feet; 0 = no darkvision. See normally in Darkness within range.
+      int truesight_range{0};    // feet; 0 = no truesight. See normally in all light including magical darkness.
+      int devilssight_range{0};  // feet; 0 = no devil's sight. See in Darkness and MagicalDarkness within range.
+
+      // ── NPC Spell System ────────────────────────────────────────────────
+      // When true: use N/day system (Spell::uses_remaining); when false: use spell slots
+      bool is_npc{false};
+
+      // ── D&D 5e Turn-Based Spell Limits ─────────────────────────────────
+      // D&D 5e rule: only one leveled spell (level >= 1) can be cast per turn
+      // (cantrips and action-economy actions don't count).
+      bool leveled_spell_cast_this_turn{false};  // reset at start of agent's turn
+
       // Initiative modifier: DEX mod [+ prof_bonus if initiative_prof].
       // CombatEngine::rollInitiative() adds a d20 on top of this.
       [[nodiscard]] int initiativeModifier() const noexcept {
@@ -198,6 +212,24 @@ namespace rpg {
       // Restore remaining spell slots to their maximum (Long Rest).
       void restore_spell_slots() {
         spell_slots_remaining = spell_slots_max;
+      }
+
+      // D&D 5e rule: only one leveled spell (level >= 1) per turn.
+      // Check if a leveled spell can be cast this turn.
+      [[nodiscard]] bool canCastLeveledSpell() const noexcept {
+        return !leveled_spell_cast_this_turn;
+      }
+
+      // Mark that a leveled spell has been cast this turn (if spell level >= 1).
+      void markLeveledSpellCast(int spell_level) noexcept {
+        if (spell_level >= 1) {
+          leveled_spell_cast_this_turn = true;
+        }
+      }
+
+      // Reset the leveled spell flag at the start of a new turn.
+      void resetLeveledSpellCastFlag() noexcept {
+        leveled_spell_cast_this_turn = false;
       }
 
     private:

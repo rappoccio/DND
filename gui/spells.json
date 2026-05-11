@@ -2235,7 +2235,7 @@
     "name": "Eldritch Blast",
     "description": "You hurl a beam of crackling energy. Make a ranged spell attack against one creature or object in range. On a hit, the target takes 1d10 Force damage.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "AttackRoll",
     "save_ability": "SaveDex",
     "range": 120,
@@ -2253,6 +2253,8 @@
     "physical_damage_types": [],
     "level": 0,
     "upcast_dice_bonus": 0,
+    "num_targets": 1,
+    "targets_per_upcast_level": 0,
     "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true
@@ -4404,7 +4406,7 @@
     "name": "Magic Missile",
     "description": "You create three glowing darts of magical force. Each dart strikes a creature of your choice that you can see within range. A dart deals 1d4 + 1 Force damage to its target. The darts all strike simultaneously, and you can direct them to hit one creature or several.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 120,
@@ -4416,12 +4418,15 @@
       {
         "type": "Force",
         "num_dice": 1,
-        "die_size": 4
+        "die_size": 4,
+        "bonus": 1
       }
     ],
     "physical_damage_types": [],
     "level": 1,
     "upcast_dice_bonus": 0,
+    "num_targets": 3,
+    "targets_per_upcast_level": 1,
     "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true
@@ -5825,7 +5830,7 @@
     "name": "Scorching Ray",
     "description": "You hurl three fiery rays. You can hurl them at one target within range or at several. Make a ranged spell attack for each ray. On a hit, the target takes 2d6 Fire damage.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "AttackRoll",
     "save_ability": "SaveDex",
     "range": 120,
@@ -5843,6 +5848,8 @@
     "physical_damage_types": [],
     "level": 2,
     "upcast_dice_bonus": 0,
+    "num_targets": 3,
+    "targets_per_upcast_level": 1,
     "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true

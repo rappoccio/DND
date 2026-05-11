@@ -48,6 +48,7 @@ from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, S
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
+from lighting_dialogs import LightingEditorDialog
 
 class App:
     def __init__(self, map_path: str):
@@ -189,7 +190,7 @@ class App:
 
         # ── File browser (shared modal) ───────────────────────────────────
         self.file_browser   = FileBrowser(self.font_sm, self.font_md, self.font_lg)
-        self.stats_dialog   = StatsDialog(self.font_sm, self.font_md, self.font_lg)
+        self.stats_dialog   = StatsDialog(self.font_sm, self.font_md, self.font_lg, spells=self.all_spells)
         self.weapon_dialog  = WeaponDialog(self.font_sm, self.font_md, self.font_lg)
         self.spell_dialog   = SpellDialog(self.font_sm, self.font_md, self.font_lg)
         self.spell_selection_dialog = SpellSelectionDialog(self.all_spells, self.font_sm, self.font_md)
@@ -197,7 +198,11 @@ class App:
         self.mob_dialog = MobSelectionDialog(mob_names, self.font_sm, self.font_md)
         self.terrain_editor = TerrainEditorDialog(self.font_sm, self.font_md)
         self.terrain_placement_dialog = TemporaryTerrainPlacementDialog(self.font_sm, self.font_md)
+        self.lighting_editor = LightingEditorDialog(self.font_sm, self.font_md)
         self.context_menu   = ContextMenu()
+
+        # ── NPC spell mechanics ──────────────────────────────────────────────
+        self._agent_meta: dict[int, dict] = {}  # {agent_idx: {"npc_spell_groups": {...}}} — for stats dialog
 
         self._map_dir  = os.path.dirname(os.path.abspath(map_path)) or "/"
         self._save_path = os.path.join(
@@ -210,8 +215,14 @@ class App:
         )
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
 
-        # Load terrain data if it exists
+        self._lighting_path = os.path.join(
+            self._map_dir,
+            os.path.splitext(os.path.basename(map_path))[0] + "_lighting.json"
+        )
+
+        # Load terrain and lighting data if it exists
         self._load_terrain()
+        self._load_lighting()
 
         # ── Drag-and-drop state ───────────────────────────────────────────
         self.drag_idx     = -1         # index of agent being dragged
@@ -252,9 +263,11 @@ class App:
         self.pending_weapon_idx       = 0
         self.attacks_remaining        = 0     # attacks left in current pending slot
         self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
-        self.pending_spell_slot   = ""    # "" | "action" | "bonus"
-        self.pending_spell_idx    = 0
-        self.pending_spell_is_aoe = False
+        self.pending_spell_slot        = ""    # "" | "action" | "bonus"
+        self.pending_spell_idx         = 0
+        self.pending_spell_is_aoe      = False
+        self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
+        self.pending_spell_targets     = []    # For Multiple geometry: collected targets
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
         self.pending_move_cell    = None  # destination cell
@@ -406,7 +419,11 @@ class App:
         self.btn_edit_terrain = Button(pygame.Rect(px, ter_y, W, B),
                                        "Edit Terrain",
                                        (80, 100, 120), (110, 130, 160), font=self.font_md)
-        quit_y = ter_y + B + self._BTN_GAP
+        light_y = ter_y + B + self._BTN_GAP
+        self.btn_edit_lighting = Button(pygame.Rect(px, light_y, W, B),
+                                        "Edit Lighting",
+                                        (120, 100, 80), (160, 130, 110), font=self.font_md)
+        quit_y = light_y + B + self._BTN_GAP
         self.btn_quit = Button(pygame.Rect(px, quit_y, W, B),
                               "Quit",
                               COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
@@ -430,7 +447,9 @@ class App:
         self.btn_begin_combat.rect.update(px, bc_y, W, self._BTN_H)
         ter_y = bc_y + self._BTN_H + self._BTN_GAP
         self.btn_edit_terrain.rect.update(px, ter_y, W, self._BTN_H)
-        quit_y = ter_y + self._BTN_H + self._BTN_GAP
+        light_y = ter_y + self._BTN_H + self._BTN_GAP
+        self.btn_edit_lighting.rect.update(px, light_y, W, self._BTN_H)
+        quit_y = light_y + self._BTN_H + self._BTN_GAP
         self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
         # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
         HW2 = W // 2 - 2
@@ -831,7 +850,7 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.bm.get_agent_stats(agent_idx)
@@ -864,6 +883,17 @@ class App:
         stats.spell_slots_remaining = list(stats.spell_slots_max)
 
         self.bm.set_agent_stats(agent_idx, stats)
+
+        # Store NPC metadata if provided, and initialize spell uses via C++
+        if npc_data:
+            self._agent_meta[agent_idx] = npc_data
+            # Initialize spell uses_max/uses_remaining in C++ from npc_spell_groups
+            npc_spell_groups = npc_data.get("npc_spell_groups", {})
+            if npc_spell_groups:
+                groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
+                self.bm.init_npc_spell_groups(agent_idx, groups_dict)
+        elif agent_idx in self._agent_meta:
+            del self._agent_meta[agent_idx]
 
         if agent_idx == self.selected_idx:
             self._update_reach()
@@ -1056,11 +1086,13 @@ class App:
         self.round_num           = 0
         self.action_used          = False
         self.bonus_used           = False
-        self.pending_attack_slot  = ""
-        self.attacks_remaining    = 0
-        self.pending_spell_slot   = ""
-        self.pending_spell_is_aoe = False
-        self.combat_log           = []
+        self.pending_attack_slot       = ""
+        self.attacks_remaining         = 0
+        self.pending_spell_slot        = ""
+        self.pending_spell_is_aoe      = False
+        self.pending_spell_num_targets = 0
+        self.pending_spell_targets     = []
+        self.combat_log                = []
         self._effect_meta         = {}
         self.bm.clear_terrain_effects()
         first = self._current_agent_idx()
@@ -1084,11 +1116,13 @@ class App:
         self.round_num           = 0
         self.action_used          = False
         self.bonus_used           = False
-        self.pending_attack_slot  = ""
-        self.attacks_remaining    = 0
-        self.pending_spell_slot   = ""
-        self.pending_spell_is_aoe = False
-        self.selected_idx         = -1
+        self.pending_attack_slot       = ""
+        self.attacks_remaining         = 0
+        self.pending_spell_slot        = ""
+        self.pending_spell_is_aoe      = False
+        self.pending_spell_num_targets = 0
+        self.pending_spell_targets     = []
+        self.selected_idx              = -1
         self._reach_walk         = []
         self._reach_fly          = []
         self._reach_set          = set()
@@ -1133,11 +1167,19 @@ class App:
         # Reset action economy and per-turn conditions for the new combatant.
         self.action_used           = False
         self.bonus_used            = False
-        self.pending_attack_slot   = ""
-        self.attacks_remaining     = 0
-        self._attack_sequence_slot = ""
-        self.pending_spell_slot    = ""
-        self.pending_spell_is_aoe  = False
+        self.pending_attack_slot       = ""
+        self.attacks_remaining         = 0
+        self._attack_sequence_slot     = ""
+        self.pending_spell_slot        = ""
+        self.pending_spell_is_aoe      = False
+        self.pending_spell_num_targets = 0
+        self.pending_spell_targets     = []
+        # Reset D&D 5e leveled spell limit (stored in C++ Agent::Stats)
+        idx = self._current_agent_idx()
+        if 0 <= idx < len(self.bm.placed_agents):
+            stats = self.bm.get_agent_stats(idx)
+            stats.reset_leveled_spell_cast_flag()
+            self.bm.set_agent_stats(idx, stats)
         self._opportunity_queue.clear()
         new_idx = self._current_agent_idx()
         self.selected_idx = new_idx
@@ -1378,35 +1420,51 @@ class App:
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        spells = self.bm.get_agent_spells(idx)
-        if not spells:
-            self._combat_log_add("No spells known!")
+
+        # Get castable spells from C++ layer (respects both NPC and player rules)
+        available_indices = self.combat.available_castable_spells(self.bm, idx)
+        if not available_indices:
+            self._combat_log_add("No available spells!")
             if slot == "action":
                 self.action_used = True
             else:
                 self.bonus_used = True
             return
+
+        spells = self.bm.get_agent_spells(idx)
+        stats = self.bm.get_agent_stats(idx)
+
         def _activate(s, si_, slot_level_=0):
             sp_ = spells[si_]
-            is_aoe = sp_.geometry != rpg.SpellGeometry.Single
+            if sp_.geometry == rpg.SpellGeometry.Single:
+                self.pending_spell_is_aoe = False
+                self.pending_spell_targets = []
+                hint = "click a target"
+            elif sp_.geometry == rpg.SpellGeometry.Multiple:
+                # Multiple geometry: collect N independent targets
+                num_targets = sp_.num_targets + max(0, (slot_level_ - sp_.level)) * sp_.targets_per_upcast_level
+                self.pending_spell_is_aoe = False
+                self.pending_spell_targets = []  # Will collect targets sequentially
+                self.pending_spell_num_targets = num_targets
+                hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
+            else:
+                # AoE (Line, Cone, Sphere)
+                self.pending_spell_is_aoe = True
+                hint = "click a map location"
+
             self.pending_spell_slot       = s
             self.pending_spell_idx        = si_
             self.pending_spell_slot_level = slot_level_
-            self.pending_spell_is_aoe = is_aoe
-            hint = "click a map location" if is_aoe else "click a target"
             self._combat_log_add(f"Casting {sp_.name} — {hint}.")
 
         def _ordinal(n):
             return {1:"1st",2:"2nd",3:"3rd"}.get(n, f"{n}th")
 
-        # Build spell menu with slot availability
+        # Build spell menu from available spells
         options = []
-        stats = self.bm.get_agent_stats(idx)
-        max_slots = list(stats.spell_slots_max)
-        cur_slots = list(stats.spell_slots_remaining)
-
-        for si, sp in enumerate(spells):
-            sp_level = sp.level  # Read directly from spell object
+        for si in available_indices:
+            sp = spells[si]
+            sp_level = sp.level
 
             if sp_level == 0:
                 # Cantrip - always available
@@ -1414,21 +1472,27 @@ class App:
                     _activate(s, si_, 0)
                 options.append((f"{sp.name} ∞", _pick_cantrip))
             else:
-                # Leveled spell - check available slots
-                available_levels = []
-                for lvl in range(sp_level, 10):  # spell_level to 9
-                    if max_slots[lvl-1] > 0 and cur_slots[lvl-1] > 0:
-                        available_levels.append((lvl, cur_slots[lvl-1]))
+                # Leveled spell - check available slots for players
+                if not stats.is_npc:
+                    available_levels = []
+                    for lvl in range(sp_level, 10):
+                        if stats.spell_slots_remaining[lvl - 1] > 0:
+                            available_levels.append((lvl, stats.spell_slots_remaining[lvl - 1]))
 
-                if not available_levels:
-                    continue  # Skip exhausted spells
+                    if not available_levels:
+                        continue
 
-                # Add submenu entry for each available slot level
-                for slot_lvl, remaining in available_levels:
-                    label = f"{sp.name} @ {_ordinal(slot_lvl)} ({remaining})"
-                    def _pick_slot(s=slot, si_=si, sl=slot_lvl):
-                        _activate(s, si_, sl)
-                    options.append((label, _pick_slot))
+                    # Add submenu for each available slot level
+                    for slot_lvl, remaining in available_levels:
+                        label = f"{sp.name} @ {_ordinal(slot_lvl)} ({remaining})"
+                        def _pick_slot(s=slot, si_=si, sl=slot_lvl):
+                            _activate(s, si_, sl)
+                        options.append((label, _pick_slot))
+                else:
+                    # NPC: just add the spell (availability already checked by available_castable_spells)
+                    def _pick_npc(s=slot, si_=si):
+                        _activate(s, si_, 0)
+                    options.append((sp.name, _pick_npc))
 
         if not options:
             self._combat_log_add("No available spells!")
@@ -1459,15 +1523,7 @@ class App:
             tgt_agent = agents[tr.target_idx] if 0 <= tr.target_idx < len(agents) else None
 
             if result.attack_type == rpg.SpellAttack.AttackRoll:
-                if tr.hit:
-                    msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
-                           f"{'CRIT! ' if tr.critical else ''}"
-                           f"{'HEAL' if tr.total_healing else 'HIT'} "
-                           f"{tr.total_healing or tr.total_damage}"
-                           f"{' — DOWN' if tr.target_down else ''}")
-                else:
-                    msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
-                           f"miss (roll {tr.total_roll} vs AC {tr.target_ac})")
+                msg = f"{cast_name}→{tgt_name}: {result.spell_name} {tr.log_message}"
             elif result.attack_type == rpg.SpellAttack.Save:
                 if spell and tgt_agent:
                     save_ability_map = {
@@ -1532,14 +1588,20 @@ class App:
             self._combat_log_add(msg)
 
     def _on_long_rest(self):
-        """Reset all spell slots to their maximum values."""
+        """Reset all spell slots and NPC spell uses to their maximum values."""
         agents = self.bm.placed_agents
         for idx in range(len(agents)):
             stats = self.bm.get_agent_stats(idx)
             stats.restore_spell_slots()
             self.bm.set_agent_stats(idx, stats)
+            # Reset NPC spell uses: copy uses_max back to uses_remaining
+            if idx in self._agent_meta:
+                spells = self.bm.get_agent_spells(idx)
+                for spell in spells:
+                    if spell.uses_max > 0:
+                        spell.uses_remaining = spell.uses_max
         if self.combat_active:
-            self._combat_log_add("Long rest — all spell slots restored.")
+            self._combat_log_add("Long rest — all spell slots and daily spells restored.")
 
     def _process_opportunity_queue(self):
         """Process one opportunity attack from the queue, then chain to the next."""
@@ -1690,17 +1752,34 @@ class App:
         spells_orig = self.bm.get_agent_spells(caster_idx)
         sp = spells_orig[self.pending_spell_idx]
 
+        # For Multiple geometry spells, collect targets until we have enough
+        if sp.geometry == rpg.SpellGeometry.Multiple:
+            self.pending_spell_targets.append(target_idx)
+
+            targets_collected = len(self.pending_spell_targets)
+            targets_needed = self.pending_spell_num_targets
+
+            if targets_collected < targets_needed:
+                # Still collecting targets
+                self._combat_log_add(f"Target selected ({targets_collected}/{targets_needed})")
+                return
+            # else: we have all targets, fall through to execute
+
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
         action.spell_idx      = self.pending_spell_idx
-        action.target_indices = [target_idx]
+        action.slot_level     = self.pending_spell_slot_level
+        action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
         result = self.combat.execute_spell(self.bm, action)
 
         self._flush_combat_log()
 
-        self.pending_spell_slot   = ""
-        self.pending_spell_is_aoe = False
-        self.spell_hover_cell     = None
+        self.pending_spell_slot        = ""
+        self.pending_spell_is_aoe      = False
+        self.pending_spell_num_targets = 0
+        self.pending_spell_targets     = []
+        self.pending_spell_targets     = []
+        self.spell_hover_cell          = None
 
         agents    = self.bm.placed_agents
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
@@ -1712,15 +1791,6 @@ class App:
             self.action_used = True
         else:
             self.bonus_used = True
-
-        # Decrement spell slot if a leveled spell was cast
-        sl = self.pending_spell_slot_level
-        if sl > 0:
-            stats = self.bm.get_agent_stats(caster_idx)
-            slots = list(stats.spell_slots_remaining)
-            slots[sl - 1] = max(0, slots[sl - 1] - 1)
-            stats.spell_slots_remaining = slots
-            self.bm.set_agent_stats(caster_idx, stats)
 
     def _resolve_spell_cast_aoe(self, cell):
         caster_idx = self._current_agent_idx()
@@ -1734,6 +1804,7 @@ class App:
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
         action.spell_idx      = self.pending_spell_idx
+        action.slot_level     = self.pending_spell_slot_level
         action.target_indices = []
         action.aoe_col        = cell.col
         action.aoe_row        = cell.row
@@ -1741,9 +1812,10 @@ class App:
 
         self._flush_combat_log()
 
-        self.pending_spell_slot   = ""
-        self.pending_spell_is_aoe = False
-        self.spell_hover_cell     = None
+        self.pending_spell_slot       = ""
+        self.pending_spell_is_aoe     = False
+        self.pending_spell_num_targets = 0
+        self.spell_hover_cell         = None
 
         agents    = self.bm.placed_agents
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
@@ -1804,15 +1876,6 @@ class App:
                             "cells": [(c.col, c.row) for c in aoe_cells]
                         }
                         self._combat_log_add(f"{spell.name} terrain effect placed.")
-
-        # Decrement spell slot if a leveled spell was cast
-        sl = self.pending_spell_slot_level
-        if sl > 0:
-            stats = self.bm.get_agent_stats(caster_idx)
-            slots = list(stats.spell_slots_remaining)
-            slots[sl - 1] = max(0, slots[sl - 1] - 1)
-            stats.spell_slots_remaining = slots
-            self.bm.set_agent_stats(caster_idx, stats)
 
         if slot == "action":
             self.action_used = True
@@ -2059,12 +2122,13 @@ class App:
         magic_rolls = []
         for dmg in magic_dmg_raw:
             if isinstance(dmg, dict):
-                # New format: {"type": "Fire", "num_dice": 2, "die_size": 6}
+                # New format: {"type": "Fire", "num_dice": 2, "die_size": 6, "bonus": 1}
                 dmg_type = _parse_magic_damage(dmg.get("type", "Fire"))
                 roll = rpg.MagicDamageRoll()
                 roll.type = dmg_type
                 roll.num_dice = int(dmg.get("num_dice", 1))
                 roll.die_size = int(dmg.get("die_size", 6))
+                roll.bonus = int(dmg.get("bonus", 0))
                 magic_rolls.append(roll)
             else:
                 # Old format: just the string "Fire"
@@ -2073,6 +2137,7 @@ class App:
                 roll.type = dmg_type
                 roll.num_dice = int(d.get("num_dice", 1))
                 roll.die_size = int(d.get("die_size", 6))
+                roll.bonus = int(d.get("bonus", 0))
                 magic_rolls.append(roll)
         s.magic_damage_rolls = magic_rolls
 
@@ -2081,12 +2146,13 @@ class App:
         phys_rolls = []
         for dmg in phys_dmg_raw:
             if isinstance(dmg, dict):
-                # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8}
+                # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8, "bonus": 0}
                 dmg_type = _parse_physical_damage(dmg.get("type", "Bludgeoning"))
                 roll = rpg.PhysicalDamageRoll()
                 roll.type = dmg_type
                 roll.num_dice = int(dmg.get("num_dice", 1))
                 roll.die_size = int(dmg.get("die_size", 6))
+                roll.bonus = int(dmg.get("bonus", 0))
                 phys_rolls.append(roll)
             else:
                 # Old format: just the string "Slashing"
@@ -2095,6 +2161,7 @@ class App:
                 roll.type = dmg_type
                 roll.num_dice = int(d.get("num_dice", 1))
                 roll.die_size = int(d.get("die_size", 6))
+                roll.bonus = int(d.get("bonus", 0))
                 phys_rolls.append(roll)
         s.physical_damage_rolls = phys_rolls
 
@@ -2103,6 +2170,8 @@ class App:
         s.check_los_on_center = d.get("check_los_on_center", True)
         s.level = int(d.get("level", 0))
         s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
+        s.num_targets = int(d.get("num_targets", 1))
+        s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
         return s
 
     def _save_agents(self, path: str | None = None):
@@ -2146,6 +2215,18 @@ class App:
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
             })
+            # Add NPC data if this agent is an NPC
+            if i in self._agent_meta:
+                meta = self._agent_meta[i]
+                data[-1]["is_npc"] = meta.get("is_npc", False)
+                data[-1]["npc_spell_groups"] = meta.get("npc_spell_groups", {})
+                # Save current uses_remaining from each spell
+                npc_uses = {}
+                spells = self.bm.get_agent_spells(i)
+                for spell in spells:
+                    if spell.uses_max > 0:  # Only save if this is an N/day spell
+                        npc_uses[spell.name] = spell.uses_remaining
+                data[-1]["npc_spell_uses_cur"] = npc_uses
         with open(path, "w") as f:
             json.dump({"agents": data}, f, indent=2)
 
@@ -2313,6 +2394,20 @@ class App:
                 stats.spell_slots_remaining = list(slots_cur)
             self.bm.set_agent_stats(i, stats)
 
+        # Restore NPC spell mechanics if present
+        for i, t in enumerate(agent_data):
+            if i >= len(self.bm.placed_agents):
+                break
+            is_npc = t.get("is_npc", False)
+            if is_npc:
+                npc_spell_groups = t.get("npc_spell_groups", {})
+                # Initialize NPC spell groups in C++ (converts string keys to ints)
+                if npc_spell_groups:
+                    groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
+                    self.bm.init_npc_spell_groups(i, groups_dict)
+                # Keep in _agent_meta for stats dialog to access
+                self._agent_meta[i] = {"npc_spell_groups": npc_spell_groups}
+
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
@@ -2341,6 +2436,56 @@ class App:
         data = {"regions": self._terrain_regions}
         with open(self._terrain_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def _load_lighting(self):
+        """Load lighting data from JSON file if it exists."""
+        if os.path.exists(self._lighting_path):
+            try:
+                with open(self._lighting_path, 'r') as f:
+                    data = json.load(f)
+                default_str = data.get("default_light", "BrightLight")
+                default_lvl = self._parse_light_level(default_str)
+                sources = []
+                for src in data.get("light_sources", []):
+                    lvl = self._parse_light_level(src.get("light_level", "BrightLight"))
+                    sources.append((int(src["x"]), int(src["y"]),
+                                   int(src.get("bright_radius", 20)),
+                                   int(src.get("dim_radius", 40))))
+                self.bm.apply_base_lighting(default_lvl, sources)
+            except Exception as e:
+                print(f"[App] Error loading lighting: {e}")
+
+    def _save_lighting(self, light_sources, default_light):
+        """Save lighting data to JSON file."""
+        # Convert enum to string
+        light_str_map = {
+            rpg.LightLevel.BrightLight: "BrightLight",
+            rpg.LightLevel.DimLight: "DimLight",
+            rpg.LightLevel.Darkness: "Darkness",
+            rpg.LightLevel.MagicalDarkness: "MagicalDarkness",
+        }
+        default_str = light_str_map.get(default_light, "Darkness")
+
+        data = {
+            "default_light": default_str,
+            "light_sources": light_sources
+        }
+        with open(self._lighting_path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+        # Reload lighting into battle map
+        self._load_lighting()
+
+    @staticmethod
+    def _parse_light_level(s: str) -> 'rpg.LightLevel':
+        """Convert string to LightLevel enum."""
+        mapping = {
+            "BrightLight": rpg.LightLevel.BrightLight,
+            "DimLight": rpg.LightLevel.DimLight,
+            "Darkness": rpg.LightLevel.Darkness,
+            "MagicalDarkness": rpg.LightLevel.MagicalDarkness,
+        }
+        return mapping.get(s, rpg.LightLevel.BrightLight)
 
     def _clear_temporary_terrain(self):
         """Remove spell-created temporary terrain (regions with 'source' field)."""
@@ -2927,38 +3072,52 @@ class App:
                 self.btn_cbt_spell_action.draw(self.screen)
                 y += B + gap
 
-        # ── Spell Slots display ────────────────────────────────────────────
+        # ── Spell Slots / N/day display ────────────────────────────────────
         if 0 <= cur_idx < len(agents):
             stats = self.bm.get_agent_stats(cur_idx)
-            slots_max = list(stats.spell_slots_max)
-            if any(slots_max):
-                y += 4
-                slots_cur = list(stats.spell_slots_remaining)
-                pip_chars = []
-                for lvl in range(9):
-                    if slots_max[lvl] > 0:
-                        filled = min(slots_cur[lvl], slots_max[lvl])
-                        empty = slots_max[lvl] - filled
-                        lvl_label = {0:"C", 1:"1", 2:"2", 3:"3", 4:"4", 5:"5", 6:"6", 7:"7", 8:"8", 9:"9"}.get(lvl+1, "?")
-                        pip_str = "●" * filled + "○" * empty
-                        pip_chars.append(f"{lvl_label}:{pip_str}")
-                if pip_chars:
-                    # Wrap spell slot display to multiple lines if needed
-                    lines = []
-                    current_line = "Spells: "
-                    for i, level_str in enumerate(pip_chars):
-                        test_str = current_line + level_str + ("  " if i < len(pip_chars) - 1 else "")
-                        test_surf = self.font_sm.render(test_str, True, (160, 120, 200))
-                        if test_surf.get_width() > W and current_line != "Spells: ":
-                            lines.append(current_line.rstrip())
-                            current_line = "  " + level_str + ("  " if i < len(pip_chars) - 1 else "")
-                        else:
-                            current_line = test_str
-                    if current_line.strip():
-                        lines.append(current_line)
-                    for line in lines:
-                        txt(line, lx, y, (160, 120, 200), self.font_sm)
+
+            if stats.is_npc:
+                # NPC N/day spell display
+                spells = self.bm.get_agent_spells(cur_idx)
+                npc_spells = [sp for sp in spells if sp.uses_max > 0]
+                if npc_spells:
+                    y += 4
+                    txt("Spells (N/day):", lx, y, (160, 120, 200), self.font_sm)
+                    y += 14
+                    for spell in npc_spells:
+                        txt(f"{spell.name:20} {spell.uses_remaining}/{spell.uses_max}", lx, y, (200, 200, 220), self.font_sm)
                         y += 14
+            else:
+                # Player spell slot display (existing logic)
+                slots_max = list(stats.spell_slots_max)
+                if any(slots_max):
+                    y += 4
+                    slots_cur = list(stats.spell_slots_remaining)
+                    pip_chars = []
+                    for lvl in range(9):
+                        if slots_max[lvl] > 0:
+                            filled = min(slots_cur[lvl], slots_max[lvl])
+                            empty = slots_max[lvl] - filled
+                            lvl_label = {0:"C", 1:"1", 2:"2", 3:"3", 4:"4", 5:"5", 6:"6", 7:"7", 8:"8", 9:"9"}.get(lvl+1, "?")
+                            pip_str = "●" * filled + "○" * empty
+                            pip_chars.append(f"{lvl_label}:{pip_str}")
+                    if pip_chars:
+                        # Wrap spell slot display to multiple lines if needed
+                        lines = []
+                        current_line = "Spells: "
+                        for i, level_str in enumerate(pip_chars):
+                            test_str = current_line + level_str + ("  " if i < len(pip_chars) - 1 else "")
+                            test_surf = self.font_sm.render(test_str, True, (160, 120, 200))
+                            if test_surf.get_width() > W and current_line != "Spells: ":
+                                lines.append(current_line.rstrip())
+                                current_line = "  " + level_str + ("  " if i < len(pip_chars) - 1 else "")
+                            else:
+                                current_line = test_str
+                        if current_line.strip():
+                            lines.append(current_line)
+                        for line in lines:
+                            txt(line, lx, y, (160, 120, 200), self.font_sm)
+                            y += 14
 
         y += section_gap
 
@@ -3188,6 +3347,9 @@ class App:
         # ── Edit Terrain button ────────────────────────────────────────────
         self.btn_edit_terrain.draw(self.screen)
 
+        # ── Edit Lighting button ───────────────────────────────────────────
+        self.btn_edit_lighting.draw(self.screen)
+
         # ── Quit button ────────────────────────────────────────────────────
         self.btn_quit.draw(self.screen)
 
@@ -3229,6 +3391,11 @@ class App:
                     if self.selected_idx >= 0:
                         self._update_reach()
                         self._update_attack_overlay()
+                continue
+
+            # ── Lighting editor gets priority when open ──────────────────
+            if self.lighting_editor.active:
+                self.lighting_editor.handle(event)
                 continue
 
             # ── Terrain placement dialog gets priority when open ────────────
@@ -3354,10 +3521,14 @@ class App:
                             stats = self.bm.get_agent_stats(h)
                             class_name = stats.character_class.name
                             char_level = stats.char_level
+                            is_npc = stats.is_npc
+                            npc_spell_groups = self._agent_meta.get(h, {}).get("npc_spell_groups", {})
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
-                                self._on_stats_ok)
+                                self._on_stats_ok,
+                                is_npc=is_npc,
+                                npc_spell_groups=npc_spell_groups)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             weapon_dicts = [_weapon_to_dict(w)
@@ -3624,6 +3795,18 @@ class App:
                 if self.btn_edit_terrain.clicked(event):
                     self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm)
 
+                # Edit Lighting
+                if self.btn_edit_lighting.clicked(event):
+                    light_sources = []
+                    if os.path.exists(self._lighting_path):
+                        try:
+                            with open(self._lighting_path, 'r') as f:
+                                data = json.load(f)
+                                light_sources = data.get("light_sources", [])
+                        except:
+                            light_sources = []
+                    self.lighting_editor.open(self.map_surf, self.bm, self, light_sources)
+
                 # Quit
                 if self.btn_quit.clicked(event):
                     return False
@@ -3707,6 +3890,7 @@ class App:
             self._draw_agents()
             self._draw_panel()
             self.terrain_editor.draw(self.screen)          # modal — always on top
+            self.lighting_editor.draw(self.screen)         # modal — always on top
             self.terrain_placement_dialog.draw(self.screen)  # modal — always on top
             self.file_browser.draw(self.screen)     # modal — always on top
             self.stats_dialog.draw(self.screen)    # modal — always on top

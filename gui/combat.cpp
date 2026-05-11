@@ -857,7 +857,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
     const std::vector<int> targets =
-        (sp.geometry == Spell::Single)
+        (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple)
         ? action.target_indices
         : resolveAoeTargets(agents, sp, action.caster_idx, action.aoe_col, action.aoe_row);
 
@@ -937,6 +937,21 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - tr.total_damage);
                 }
             }
+
+            // Generate log message
+            std::string crit_str = tr.critical ? " CRIT!" : "";
+            std::string result_str = tr.total_healing ? "HEAL" : (tr.total_damage > 0 ? "HIT" : "HIT");
+            std::string damage_str = std::to_string(tr.total_healing ? tr.total_healing : tr.total_damage);
+            std::string down_str = tr.target_down ? " — DOWN" : "";
+
+            if (tr.hit) {
+                tr.log_message = "HIT (roll " + std::to_string(tr.d20) + " + " + std::to_string(tr.attack_mod)
+                    + " = " + std::to_string(tr.total_roll) + " vs AC " + std::to_string(tr.target_ac) + ")"
+                    + crit_str + " " + damage_str + down_str;
+            } else {
+                tr.log_message = "miss (roll " + std::to_string(tr.d20) + " + " + std::to_string(tr.attack_mod)
+                    + " = " + std::to_string(tr.total_roll) + " vs AC " + std::to_string(tr.target_ac) + ")";
+            }
             break;
         }
 
@@ -984,6 +999,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     dice.push_back(d);
                     dmg += d;
                 }
+                dmg += roll_info.bonus;
             }
             for (const auto& roll_info : sp.physical_damage_rolls) {
                 for (int i = 0; i < roll_info.num_dice; ++i) {
@@ -991,6 +1007,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     dice.push_back(d);
                     dmg += d;
                 }
+                dmg += roll_info.bonus;
             }
 
             if (tr.saved) dmg /= 2;
@@ -1019,6 +1036,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     dice.push_back(d);
                     total += d;
                 }
+                total += roll_info.bonus;
             }
             for (const auto& roll_info : sp.physical_damage_rolls) {
                 for (int i = 0; i < roll_info.num_dice; ++i) {
@@ -1026,6 +1044,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     dice.push_back(d);
                     total += d;
                 }
+                total += roll_info.bonus;
             }
 
             tr.dice_results = dice;
@@ -1070,6 +1089,33 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         cond.concentrating    = true;
         cond.concentrating_on = sp.name;
         bm.setAgentConditions(action.caster_idx, cond);
+    }
+
+    // Decrement resources (uses or spell slots) after successful cast
+    if (result.valid) {
+        PlacedAgent& pa = bm.placedAgentMut(action.caster_idx);
+        Spell& spell_mut = pa.spells[static_cast<std::size_t>(action.spell_idx)];
+        Agent::Stats& stats = pa.stats;
+
+        // Mark leveled spell cast (once per turn, even if upcasted)
+        if (sp.level > 0) {
+            stats.markLeveledSpellCast(sp.level);
+        }
+
+        if (stats.is_npc) {
+            // NPC: decrement N/day uses
+            if (spell_mut.uses_max > 0) {
+                spell_mut.uses_remaining = std::max(0, spell_mut.uses_remaining - 1);
+            }
+        } else {
+            // Player: decrement spell slot (if not a cantrip)
+            int slot_level = action.slot_level > 0 ? action.slot_level : sp.level;
+            if (slot_level > 0 && slot_level <= 9) {
+                auto& slots = stats.spell_slots_remaining;
+                slots[static_cast<std::size_t>(slot_level - 1)] =
+                    std::max(0, slots[static_cast<std::size_t>(slot_level - 1)] - 1);
+            }
+        }
     }
 
     return result;
@@ -1172,6 +1218,60 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
         bm.setAgentConditions(agent_idx, cond);
     }
     return r;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  availableCastableSpells – filter spells by resource availability
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::vector<int> CombatEngine::availableCastableSpells(
+        const BattleMap& bm, int agent_idx) const
+{
+    std::vector<int> result;
+    const auto& agents = bm.placedAgents();
+
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size()))
+        return result;
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
+    const Agent::Stats& stats = pa.stats;
+    const auto& spells = pa.spells;
+
+    for (size_t i = 0; i < spells.size(); ++i) {
+        const Spell& spell = spells[i];
+
+        // Cantrips (level 0) are always available
+        if (spell.level == 0) {
+            result.push_back(static_cast<int>(i));
+            continue;
+        }
+
+        // Check leveled spell per-turn rule
+        if (!stats.canCastLeveledSpell()) {
+            continue;  // Already cast a leveled spell this turn
+        }
+
+        if (stats.is_npc) {
+            // NPC: need remaining uses
+            if (spell.uses_max > 0 && spell.uses_remaining > 0) {
+                result.push_back(static_cast<int>(i));
+            }
+        } else {
+            // Player: need a spell slot at spell.level or higher
+            bool hasSlot = false;
+            for (int lvl = spell.level; lvl <= 9; ++lvl) {
+                if (stats.spell_slots_remaining[static_cast<size_t>(lvl - 1)] > 0) {
+                    hasSlot = true;
+                    break;
+                }
+            }
+            if (hasSlot) {
+                result.push_back(static_cast<int>(i));
+            }
+        }
+    }
+
+    return result;
 }
 
 } // namespace rpg
