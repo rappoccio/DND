@@ -826,6 +826,15 @@ static std::vector<int> resolveAoeTargets(
             break;
         }
 
+        case Spell::Square: {
+            // Rectangle centered on aimed point, using width and length
+            float dx_ft = std::abs(tx - ax) * 5.0f;
+            float dy_ft = std::abs(ty - ay) * 5.0f;
+            in_area = dx_ft <= static_cast<float>(sp.width) / 2.0f
+                   && dy_ft <= static_cast<float>(sp.length) / 2.0f;
+            break;
+        }
+
         default:
             break;
         }
