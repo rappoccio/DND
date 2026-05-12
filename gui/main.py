@@ -1655,7 +1655,20 @@ class App:
             tgt_agent = agents[tr.target_idx] if 0 <= tr.target_idx < len(agents) else None
 
             if result.attack_type == rpg.SpellAttack.AttackRoll:
-                msg = f"{cast_name}→{tgt_name}: {result.spell_name} {tr.log_message}"
+                # Check for damage modifiers in AttackRoll spells
+                immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
+                vuln_msg = self._get_vulnerability_message(spell, tgt_agent, tr)
+                resist_msg = self._get_resistance_message(spell, tgt_agent, tr)
+
+                modifier_suffix = ""
+                if immunity_msg:
+                    modifier_suffix = f" ({immunity_msg})"
+                elif vuln_msg:
+                    modifier_suffix = f" (Vulnerable to {', '.join(self._get_damage_modifier_names(spell, tgt_agent)['vulnerable'])})"
+                elif resist_msg:
+                    modifier_suffix = f" (Resistant to {', '.join(self._get_damage_modifier_names(spell, tgt_agent)['resistant'])})"
+
+                msg = f"{cast_name}→{tgt_name}: {result.spell_name} {tr.log_message}{modifier_suffix}"
             elif result.attack_type == rpg.SpellAttack.Save:
                 if spell and tgt_agent:
                     save_ability_map = {
