@@ -2582,10 +2582,6 @@ class App:
                     if weapon_name in self.weapon_name_to_dict:
                         weapon_dict = self.weapon_name_to_dict[weapon_name]
                         cpp_weapon = _dict_to_weapon(weapon_dict)
-                        # Debug: check if damage rolls are present
-                        phys_count = len(cpp_weapon.physical_damage_types) if hasattr(cpp_weapon, 'physical_damage_types') else 0
-                        mag_count = len(cpp_weapon.magic_damage_types) if hasattr(cpp_weapon, 'magic_damage_types') else 0
-                        print(f"[WEAPON] {weapon_name}: {phys_count} physical, {mag_count} magic damage rolls")
                         cpp_weapons.append(cpp_weapon)
             else:
                 # Fallback to legacy "weapons" field with full weapon dicts
