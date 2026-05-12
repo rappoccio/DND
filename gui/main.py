@@ -613,10 +613,23 @@ class App:
             w.normal_range_ft  = normal_ft
             w.long_range_ft    = long_ft
             w.proficient       = True
-            w.num_dice         = num_dice
-            w.die_size         = die_size
-            w.physical_damages = physical
-            w.magic_damages    = magic
+            # Create damage roll objects for each damage type
+            w.physical_damage_types = []
+            for phys_type in physical:
+                roll = rpg.PhysicalDamageRoll()
+                roll.type = phys_type
+                roll.num_dice = num_dice
+                roll.die_size = die_size
+                roll.bonus = 0
+                w.physical_damage_types.append(roll)
+            w.magic_damage_types = []
+            for mag_type in magic:
+                roll = rpg.MagicDamageRoll()
+                roll.type = mag_type
+                roll.num_dice = num_dice
+                roll.die_size = die_size
+                roll.bonus = 0
+                w.magic_damage_types.append(roll)
             weapons.append(w)
         return weapons
 
