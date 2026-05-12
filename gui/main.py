@@ -1102,6 +1102,10 @@ class App:
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
         self.combat_log                = []
+        # Initialize combat log file
+        self._combat_log_file = "combat_log.txt"
+        with open(self._combat_log_file, "w") as f:
+            f.write("=== COMBAT LOG ===\n")
         self._effect_meta         = {}
         self.bm.clear_terrain_effects()
         first = self._current_agent_idx()
@@ -1266,6 +1270,16 @@ class App:
         self.combat_log.insert(0, msg)
         if len(self.combat_log) > 10:
             self.combat_log.pop()
+        # Print to console
+        print(msg)
+        # Write to combat log file
+        try:
+            if not hasattr(self, '_combat_log_file'):
+                self._combat_log_file = "combat_log.txt"
+            with open(self._combat_log_file, "a") as f:
+                f.write(msg + "\n")
+        except Exception:
+            pass  # Silently fail on file write errors
 
     def _flush_combat_log(self):
         """Flush messages from the combat engine logger into the combat log."""
@@ -1521,6 +1535,64 @@ class App:
                 self.screen.get_size()
             )
 
+    def _get_immunity_message(self, spell, tgt_agent, tr) -> str:
+        """Check if target is immune to spell damage and return immunity message, or empty string."""
+        if tr.total_damage > 0 or not spell or not tgt_agent:
+            return ""
+
+        # Magic damage type names
+        magic_damage_names = {
+            rpg.MagicDamage.Acid: "Acid",
+            rpg.MagicDamage.Cold: "Cold",
+            rpg.MagicDamage.Fire: "Fire",
+            rpg.MagicDamage.Force: "Force",
+            rpg.MagicDamage.Lightning: "Lightning",
+            rpg.MagicDamage.Necrotic: "Necrotic",
+            rpg.MagicDamage.Poison: "Poison",
+            rpg.MagicDamage.Psychic: "Psychic",
+            rpg.MagicDamage.Radiant: "Radiant",
+            rpg.MagicDamage.Thunder: "Thunder",
+        }
+
+        # Physical damage type names
+        physical_damage_names = {
+            rpg.PhysicalDamage.Bludgeoning: "Bludgeoning",
+            rpg.PhysicalDamage.Piercing: "Piercing",
+            rpg.PhysicalDamage.Slashing: "Slashing",
+        }
+
+        # Collect damage types from spell
+        spell_damage_types = []
+        for dmg_roll in spell.magic_damage_rolls:
+            dmg_type = magic_damage_names.get(dmg_roll.type, "Unknown")
+            spell_damage_types.append((dmg_type, dmg_roll.type, "magic"))
+        for dmg_roll in spell.physical_damage_rolls:
+            dmg_type = physical_damage_names.get(dmg_roll.type, "Unknown")
+            spell_damage_types.append((dmg_type, dmg_roll.type, "physical"))
+
+        if not spell_damage_types:
+            return ""
+
+        # Check if target is immune to all damage types
+        all_immune = True
+        immune_types = []
+        for dmg_name, dmg_type, dmg_category in spell_damage_types:
+            if dmg_category == "magic":
+                mult = tgt_agent.stats.get_magic_damage_multiplier(int(dmg_type))
+            else:
+                mult = tgt_agent.stats.get_physical_damage_multiplier(int(dmg_type))
+
+            if mult == 0.0:
+                immune_types.append(dmg_name)
+            else:
+                all_immune = False
+
+        if all_immune and immune_types:
+            immune_str = ", ".join(immune_types)
+            return f"Immune to {immune_str}"
+
+        return ""
+
     def _log_spell_results(self, result, cast_name: str, caster_idx: int = -1, spell_idx: int = -1):
         agents = self.bm.placed_agents
         spell = None
@@ -1574,6 +1646,11 @@ class App:
                     if tr.saved and tr.total_damage > 0:
                         dmg_str = f"{tr.total_damage // 2} dmg (half)"
 
+                    # Check for immunity
+                    immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
+                    if immunity_msg:
+                        dmg_str = immunity_msg
+
                     msg = (f"{cast_name}→{tgt_name}: {ability_str} save — "
                            f"rolled {tr.save_d20} + {save_mod} = {save_total} vs DC {tr.save_dc} — "
                            f"{result_str} — {dmg_str}"
@@ -1584,15 +1661,27 @@ class App:
                         msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
                                f"HEAL {tr.total_healing}{saved_str}")
                     else:
+                        # Check for immunity
+                        immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
+                        if immunity_msg:
+                            dmg_text = immunity_msg
+                        else:
+                            dmg_text = f"{tr.total_damage} dmg{saved_str}"
                         msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
-                               f"{tr.total_damage} dmg{saved_str}"
+                               f"{dmg_text}"
                                f"{' — DOWN' if tr.target_down else ''}")
             else:  # Automatic
                 if tr.total_healing:
                     msg = f"{cast_name}→{tgt_name}: {result.spell_name} HEAL {tr.total_healing}"
                 else:
+                    # Check for immunity
+                    immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
+                    if immunity_msg:
+                        dmg_text = immunity_msg
+                    else:
+                        dmg_text = f"{tr.total_damage} dmg"
                     msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
-                           f"{tr.total_damage} dmg"
+                           f"{dmg_text}"
                            f"{' — DOWN' if tr.target_down else ''}")
             self._combat_log_add(msg)
 
@@ -2310,6 +2399,46 @@ class App:
                     s.spellcasting_ability = ability_map.get(ability_val, 5)
                 else:
                     s.spellcasting_ability = int(ability_val) if ability_val else 5
+
+            # Load temporary HP and damage multipliers
+            s.temp_hp = int(sd.get("temp_hp", 0))
+
+            # Load magic damage multipliers (resistances/immunities/vulnerabilities)
+            magic_damage_names = ["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"]
+            for idx in range(len(magic_damage_names)):
+                s.set_magic_damage_multiplier(idx, 1.0)  # default: normal damage
+
+            for res in sd.get("magic_resistances", []):
+                if res in magic_damage_names:
+                    idx = magic_damage_names.index(res)
+                    s.set_magic_damage_multiplier(idx, 0.5)
+            for imm in sd.get("magic_immunities", []):
+                if imm in magic_damage_names:
+                    idx = magic_damage_names.index(imm)
+                    s.set_magic_damage_multiplier(idx, 0.0)
+            for vuln in sd.get("magic_vulnerabilities", []):
+                if vuln in magic_damage_names:
+                    idx = magic_damage_names.index(vuln)
+                    s.set_magic_damage_multiplier(idx, 2.0)
+
+            # Load physical damage multipliers
+            physical_damage_names = ["Bludgeoning", "Piercing", "Slashing"]
+            for idx in range(len(physical_damage_names)):
+                s.set_physical_damage_multiplier(idx, 1.0)  # default: normal damage
+
+            for res in sd.get("physical_resistances", []):
+                if res in physical_damage_names:
+                    idx = physical_damage_names.index(res)
+                    s.set_physical_damage_multiplier(idx, 0.5)
+            for imm in sd.get("physical_immunities", []):
+                if imm in physical_damage_names:
+                    idx = physical_damage_names.index(imm)
+                    s.set_physical_damage_multiplier(idx, 0.0)
+            for vuln in sd.get("physical_vulnerabilities", []):
+                if vuln in physical_damage_names:
+                    idx = physical_damage_names.index(vuln)
+                    s.set_physical_damage_multiplier(idx, 2.0)
+
             self.bm.set_agent_stats(i, s)
 
         # Restore weapons — load from weapon_indices or legacy "weapons" field
