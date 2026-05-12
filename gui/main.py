@@ -1483,7 +1483,7 @@ class App:
                 self.pending_spell_num_targets = num_targets
                 hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
             else:
-                # AoE (Line, Cone, Sphere)
+                # AoE (Line, Cone, Sphere, Square)
                 self.pending_spell_is_aoe = True
                 hint = "click a map location"
 
