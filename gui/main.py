@@ -1483,7 +1483,7 @@ class App:
                 self.pending_spell_num_targets = num_targets
                 hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
             else:
-                # AoE (Line, Cone, Sphere, Square)
+                # AoE (Line, Cone, Sphere, Square, Rectangle)
                 self.pending_spell_is_aoe = True
                 hint = "click a map location"
 
@@ -2169,7 +2169,7 @@ class App:
                     if 0.0 <= along <= l_cells and perp <= w_cells / 2.0:
                         cells.append(rpg.Cell(c, r))
 
-        elif geo == rpg.SpellGeometry.Square:
+        elif geo == rpg.SpellGeometry.Square or geo == rpg.SpellGeometry.Rectangle:
             w_cells = spell.width  / 5.0
             l_cells = spell.length / 5.0
             for c in range(cols):

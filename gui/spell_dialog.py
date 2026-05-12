@@ -176,7 +176,7 @@ class SpellDialog:
             # Toggle buttons (single choice)
             for group_key, options in [
                 ("type",        ["Harm", "Heal"]),
-                ("geometry",    ["Single", "Line", "Cone", "Sphere", "Square"]),
+                ("geometry",    ["Single", "Line", "Cone", "Sphere", "Square", "Rectangle"]),
                 ("attack_type", ["AttackRoll", "Save", "Automatic"]),
                 ("save_ability",["SaveStr","SaveDex","SaveCon","SaveInt","SaveWis","SaveCha"]),
             ]:

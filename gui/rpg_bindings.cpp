@@ -325,12 +325,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
     // ── Spell enums ──────────────────────────────────────────────────────────
     py::enum_<Spell::Geometry_t>(m, "SpellGeometry")
-        .value("Single",   Spell::Single)
-        .value("Line",     Spell::Line)
-        .value("Cone",     Spell::Cone)
-        .value("Sphere",   Spell::Sphere)
-        .value("Square",   Spell::Square)
-        .value("Multiple", Spell::Multiple)
+        .value("Single",    Spell::Single)
+        .value("Line",      Spell::Line)
+        .value("Cone",      Spell::Cone)
+        .value("Sphere",    Spell::Sphere)
+        .value("Square",    Spell::Square)
+        .value("Rectangle", Spell::Rectangle)
+        .value("Multiple",  Spell::Multiple)
         .export_values();
 
     py::enum_<Spell::SpellType_t>(m, "SpellType")

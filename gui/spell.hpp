@@ -24,7 +24,7 @@ namespace rpg {
     };
 
     struct Spell {
-      enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Multiple, NumGeometry_t };
+      enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Rectangle, Multiple, NumGeometry_t };
       enum SpellType_t  { Harm=0, Heal, NumSpellType_t };
       enum SpellAttack_t{ AttackRoll=0, Save, Automatic, NumSpellAttack_t };
       // Which ability the *target* uses for saving throws against this spell.
