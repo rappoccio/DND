@@ -68,7 +68,8 @@
         "Grease",
         "Ice Storm",
         "Plant Growth",
-	"Ray of Sickness"
+	"Ray of Sickness",
+	"Black Tentacles"
       ],
       "agent_class": "Wizard",
       "agent_char_level": 9,
