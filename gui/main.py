@@ -2170,11 +2170,12 @@ class App:
                         cells.append(rpg.Cell(c, r))
 
         elif geo == rpg.SpellGeometry.Square:
-            r_cells = spell.radius / 5.0
+            w_cells = spell.width  / 5.0
+            l_cells = spell.length / 5.0
             for c in range(cols):
                 for r in range(rows):
                     dx, dy = abs(c - ax), abs(r - ay)
-                    if dx <= r_cells and dy <= r_cells:
+                    if dx <= w_cells / 2.0 and dy <= l_cells / 2.0:
                         cells.append(rpg.Cell(c, r))
 
         return cells
