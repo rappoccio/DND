@@ -729,11 +729,22 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::clearAgentTurns,
              "Reset every agent to the default of 1 turn per round.")
 
-        // ── Movement budget ───────────────────────────────────────────────
+        // ── Turn lifecycle ────────────────────────────────────────────────
         .def("begin_turn",
              &CombatEngine::beginTurn,
-             py::arg("agent_idx"), py::arg("battle_map"),
-             "Seed walk/fly movement budgets from agent stats. Call at turn start.")
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Begin agent's turn: seed movement budgets, reset conditions,\n"
+             "reset leveled spell flag, and apply persistent spell effects.")
+        .def("end_turn",
+             &CombatEngine::endTurn,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "End agent's turn: apply end-of-turn spell effects.")
+        .def("execute_turn",
+             &CombatEngine::executeTurn,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Execute agent's turn (placeholder for future movement effects).")
+
+        // ── Movement budget ───────────────────────────────────────────────
         .def("get_walk_remaining",
              &CombatEngine::getWalkRemaining,
              py::arg("agent_idx"),
@@ -818,6 +829,70 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "For NPCs: spells with uses_remaining > 0 (and leveled spell check).\n"
              "For players: spells with available slots at spell.level or higher (and leveled spell check).\n"
              "Cantrips (level 0) always included.")
+
+        // ── Agent stat and equipment management ─────────────────────────────
+        .def("add_agent_config",
+             &CombatEngine::addAgentConfig,
+             py::arg("battle_map"), py::arg("config"),
+             "Queue an agent configuration for later application.")
+        .def("apply_agent_configs",
+             &CombatEngine::applyAgentConfigs,
+             py::arg("battle_map"),
+             "Apply all queued agent configs, creating agents on the map.")
+        .def("get_agent_stats",
+             &CombatEngine::getAgentStats,
+             py::arg("battle_map"), py::arg("idx"),
+             "Return a copy of the Stats for agent[idx].")
+        .def("set_agent_stats",
+             &CombatEngine::setAgentStats,
+             py::arg("battle_map"), py::arg("idx"), py::arg("stats"),
+             "Replace the Stats for agent[idx].")
+        .def("get_agent_conditions",
+             &CombatEngine::getAgentConditions,
+             py::arg("battle_map"), py::arg("idx"),
+             "Return a copy of the Conditions for agent[idx].")
+        .def("set_agent_conditions",
+             &CombatEngine::setAgentConditions,
+             py::arg("battle_map"), py::arg("idx"), py::arg("conditions"),
+             "Replace the Conditions for agent[idx].")
+        .def("get_agent_weapons",
+             &CombatEngine::getAgentWeapons,
+             py::arg("battle_map"), py::arg("idx"),
+             "Return a copy of the weapon list for agent[idx].")
+        .def("set_agent_weapons",
+             &CombatEngine::setAgentWeapons,
+             py::arg("battle_map"), py::arg("idx"), py::arg("weapons"),
+             "Replace the weapon list for agent[idx].")
+        .def("add_weapon_to_agent",
+             &CombatEngine::addWeaponToAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("weapon"),
+             "Append a weapon to agent[idx]'s weapon list.")
+        .def("remove_weapon_from_agent",
+             &CombatEngine::removeWeaponFromAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("weapon_idx"),
+             "Remove weapon at weapon_idx from agent[idx]'s list.")
+        .def("get_agent_spells",
+             &CombatEngine::getAgentSpells,
+             py::arg("battle_map"), py::arg("idx"),
+             "Return a copy of the spell list for agent[idx].")
+        .def("set_agent_spells",
+             &CombatEngine::setAgentSpells,
+             py::arg("battle_map"), py::arg("idx"), py::arg("spells"),
+             "Replace the spell list for agent[idx].")
+        .def("add_spell_to_agent",
+             &CombatEngine::addSpellToAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("spell"),
+             "Append a spell to agent[idx]'s spell list.")
+        .def("remove_spell_from_agent",
+             &CombatEngine::removeSpellFromAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("spell_idx"),
+             "Remove spell at spell_idx from agent[idx]'s list.")
+        .def("init_npc_spell_groups",
+             &CombatEngine::initNpcSpellGroups,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("groups"),
+             "Set is_npc=true on agent and initialize uses_max/uses_remaining from spell groups.\n"
+             "groups: dict mapping N (uses/day) -> list of spell names in that group.\n"
+             "Call once after set_agent_spells().")
 
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"));
@@ -919,9 +994,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("is_blocked", &BattleMap::isBlocked,
              py::arg("origin"), py::arg("agent_size"), py::arg("movement_type") = MovementType::Walk)
 
-        // Agent management
-        .def("add_agent_config",   &BattleMap::addAgentConfig,   py::arg("config"))
-        .def("apply_agent_configs",&BattleMap::applyAgentConfigs)
+        // Agent management (core spatial operations only; stat/equipment management moved to CombatEngine)
         .def("clear_agents",       &BattleMap::clearAgents)
         .def("move_agent",         &BattleMap::moveAgent,
              py::arg("idx"), py::arg("new_origin"),
@@ -936,56 +1009,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("remove_agent",       &BattleMap::removeAgent,
              py::arg("idx"),
              "Remove placed agent[idx] from the map.")
-        .def("get_agent_stats",    &BattleMap::getAgentStats,
-             py::arg("idx"),
-             "Return a copy of the Stats for placed agent[idx].")
-        .def("set_agent_stats",    &BattleMap::setAgentStats,
-             py::arg("idx"), py::arg("stats"),
-             "Replace the Stats for placed agent[idx].")
         .def("apply_dash",         &BattleMap::applyDash,
              py::arg("idx"),
              "Set dashing condition and add base speeds to remaining movement for agent[idx].")
-
-        // Weapon accessors
-        .def("get_agent_weapons",  &BattleMap::getAgentWeapons,
-             py::arg("idx"),
-             "Return a copy of the weapon list for placed agent[idx].")
-        .def("set_agent_weapons",  &BattleMap::setAgentWeapons,
-             py::arg("idx"), py::arg("weapons"),
-             "Replace the weapon list for placed agent[idx].")
-        .def("add_weapon_to_agent",&BattleMap::addWeaponToAgent,
-             py::arg("idx"), py::arg("weapon"),
-             "Append a weapon to placed agent[idx]'s weapon list.")
-        .def("remove_weapon_from_agent", &BattleMap::removeWeaponFromAgent,
-             py::arg("idx"), py::arg("weapon_idx"),
-             "Remove weapon at weapon_idx from placed agent[idx]'s list.")
-
-        // Spell accessors
-        .def("get_agent_spells",   &BattleMap::getAgentSpells,
-             py::arg("idx"),
-             "Return a copy of the spell list for placed agent[idx].")
-        .def("set_agent_spells",   &BattleMap::setAgentSpells,
-             py::arg("idx"), py::arg("spells"),
-             "Replace the spell list for placed agent[idx].")
-        .def("add_spell_to_agent", &BattleMap::addSpellToAgent,
-             py::arg("idx"), py::arg("spell"),
-             "Append a spell to placed agent[idx]'s spell list.")
-        .def("remove_spell_from_agent", &BattleMap::removeSpellFromAgent,
-             py::arg("idx"), py::arg("spell_idx"),
-             "Remove spell at spell_idx from placed agent[idx]'s list.")
-        .def("init_npc_spell_groups", &BattleMap::initNpcSpellGroups,
-             py::arg("agent_idx"), py::arg("groups"),
-             "Set is_npc=true on agent and initialize uses_max/uses_remaining from spell groups.\n"
-             "groups: dict mapping N (uses/day) -> list of spell names in that group.\n"
-             "Call once after set_agent_spells().")
-
-        // Condition accessors
-        .def("get_agent_conditions", &BattleMap::getAgentConditions,
-             py::arg("idx"),
-             "Return a copy of the Conditions for placed agent[idx].")
-        .def("set_agent_conditions", &BattleMap::setAgentConditions,
-             py::arg("idx"), py::arg("conditions"),
-             "Replace the Conditions for placed agent[idx].")
 
         // Line-of-sight
         .def("has_line_of_sight",

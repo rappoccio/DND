@@ -1323,4 +1323,46 @@ const std::vector<ActiveLightEffect>& BattleMap::activeLightEffects() const noex
     return activeLightEffects_;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Persistent AoE Spell Effects
+// ─────────────────────────────────────────────────────────────────────────────
+
+int BattleMap::addSpellEffect(ActiveSpellEffect effect) noexcept {
+    effect.effect_id = nextSpellEffectId_++;
+    activeSpellEffects_.push_back(effect);
+    return effect.effect_id;
+}
+
+void BattleMap::removeSpellEffect(int effect_id) noexcept {
+    auto it = std::find_if(activeSpellEffects_.begin(), activeSpellEffects_.end(),
+        [effect_id](const ActiveSpellEffect& e) { return e.effect_id == effect_id; });
+    if (it != activeSpellEffects_.end()) {
+        activeSpellEffects_.erase(it);
+    }
+}
+
+const std::vector<ActiveSpellEffect>& BattleMap::activeSpellEffects() const noexcept {
+    return activeSpellEffects_;
+}
+
+std::vector<int> BattleMap::tickSpellEffects(int source_agent_idx) noexcept {
+    std::vector<int> removed_ids;
+    std::vector<ActiveSpellEffect> remaining;
+    for (auto& effect : activeSpellEffects_) {
+        if (effect.caster_idx != source_agent_idx)
+            remaining.push_back(effect);
+        else if (--effect.turns_remaining <= 0)
+            removed_ids.push_back(effect.effect_id);
+        else
+            remaining.push_back(effect);
+    }
+    activeSpellEffects_ = remaining;
+    return removed_ids;
+}
+
+void BattleMap::clearSpellEffects() noexcept {
+    activeSpellEffects_.clear();
+    nextSpellEffectId_ = 0;
+}
+
 } // namespace rpg

@@ -836,7 +836,7 @@ class App:
         if idx < 0 or idx >= len(self.bm.placed_agents):
             return
         pt    = self.bm.placed_agents[idx]
-        stats = self.bm.get_agent_stats(idx)
+        stats = self.combat.get_agent_stats(self.bm, idx)
 
         if self.combat_active:
             walk_ft   = self.move_remaining_walk
@@ -875,7 +875,7 @@ class App:
     def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
-        stats = self.bm.get_agent_stats(agent_idx)
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
         stats.str        = steppers["str"].value
         stats.dex        = steppers["dex"].value
         stats.con        = steppers["con"].value
@@ -904,7 +904,7 @@ class App:
         # Restore remaining slots to max (they're newly set)
         stats.spell_slots_remaining = list(stats.spell_slots_max)
 
-        self.bm.set_agent_stats(agent_idx, stats)
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
         # Store NPC metadata if provided, and initialize spell uses via C++
         if npc_data:
@@ -913,7 +913,7 @@ class App:
             npc_spell_groups = npc_data.get("npc_spell_groups", {})
             if npc_spell_groups:
                 groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
-                self.bm.init_npc_spell_groups(agent_idx, groups_dict)
+                self.combat.init_npc_spell_groups(self.bm, agent_idx, groups_dict)
         elif agent_idx in self._agent_meta:
             del self._agent_meta[agent_idx]
 
@@ -929,11 +929,11 @@ class App:
         Convert each to an rpg.Weapon and push the list into the C++ layer.
         """
         cpp_weapons = [_dict_to_weapon(d) for d in weapons]
-        self.bm.set_agent_weapons(agent_idx, cpp_weapons)
+        self.combat.set_agent_weapons(self.bm, agent_idx, cpp_weapons)
         # Update has_offhand_attack based on whether any weapon is off-hand
-        stats = self.bm.get_agent_stats(agent_idx)
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
         stats.has_offhand_attack = any(d.get("off_hand", False) for d in weapons)
-        self.bm.set_agent_stats(agent_idx, stats)
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
         # Refresh attack overlay if this is the currently selected agent.
         if agent_idx == self.selected_idx:
             self._update_attack_overlay()
@@ -946,7 +946,7 @@ class App:
         idx = self.selected_idx
         if idx < 0 or idx >= len(self.bm.placed_agents):
             return
-        weapons = self.bm.get_agent_weapons(idx)   # list[rpg.Weapon] from C++
+        weapons = self.combat.get_agent_weapons(self.bm, idx)   # list[rpg.Weapon] from C++
         if not weapons:
             return
         pt = self.bm.placed_agents[idx]
@@ -990,7 +990,7 @@ class App:
     def _reset_movement(self, agent_idx: int):
         """Seed this turn's movement budgets from the agent's stats."""
         if 0 <= agent_idx < len(self.bm.placed_agents):
-            stats  = self.bm.get_agent_stats(agent_idx)
+            stats  = self.combat.get_agent_stats(self.bm, agent_idx)
             agent  = self.bm.placed_agents[agent_idx]
             walk   = stats.speed_walk
             fly    = stats.speed_fly
@@ -1036,7 +1036,7 @@ class App:
             return
 
         agent = self.bm.placed_agents[idx]
-        stats = self.bm.get_agent_stats(idx)
+        stats = self.combat.get_agent_stats(self.bm, idx)
         strength = stats.str
 
         if strength <= 0:
@@ -1067,7 +1067,7 @@ class App:
 
         # Refresh agent reference to ensure we have current position
         agent = self.bm.placed_agents[agent_idx]
-        stats = self.bm.get_agent_stats(agent_idx)
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
 
         # Calculate jump distance for logging (from current position to target)
         jump_dist = (abs(target_cell.col - agent.origin.col) +
@@ -1166,11 +1166,14 @@ class App:
             return
         n = len(self.initiative_order)
         prev_turn_idx = self.turn_idx
+        prev_idx = self._current_agent_idx()
+
+        # Find next living agent (skip dead)
         for _ in range(n):
             self.turn_idx = (self.turn_idx + 1) % n
             idx = self._current_agent_idx()
             if 0 <= idx < len(self.bm.placed_agents):
-                stats = self.bm.get_agent_stats(idx)
+                stats = self.combat.get_agent_stats(self.bm, idx)
                 if stats.hp_cur > 0:
                     break
                 else:
@@ -1190,6 +1193,10 @@ class App:
                     self._combat_log_add(f"{effect_name} fades.")
                     del self._effect_meta[effect_id]
 
+        # End previous agent's turn
+        if prev_idx >= 0:
+            self.combat.end_turn(self.bm, prev_idx)
+
         # Reset action economy and per-turn conditions for the new combatant.
         self.action_used           = False
         self.bonus_used            = False
@@ -1200,27 +1207,30 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
-        # Reset D&D 5e leveled spell limit (stored in C++ Agent::Stats)
-        idx = self._current_agent_idx()
-        if 0 <= idx < len(self.bm.placed_agents):
-            stats = self.bm.get_agent_stats(idx)
-            stats.reset_leveled_spell_cast_flag()
-            self.bm.set_agent_stats(idx, stats)
         self._opportunity_queue.clear()
+
+        # Begin new agent's turn (conditions reset + movement seed now happen in C++)
         new_idx = self._current_agent_idx()
         self.selected_idx = new_idx
+        if new_idx >= 0:
+            self.combat.begin_turn(self.bm, new_idx)
+            # Initialize Python-side movement tracking (C++ also seeds in beginTurn)
+            self._reset_movement(new_idx)
+            # TODO: Move to C++ beginTurn() once implemented
+            # Reset D&D 5e leveled spell limit (stored in C++ Agent::Stats)
+            stats = self.combat.get_agent_stats(self.bm, new_idx)
+            stats.reset_leveled_spell_cast_flag()
+            self.combat.set_agent_stats(self.bm, new_idx, stats)
 
-        # Tick terrain effects for this agent's source
-        if 0 <= new_idx < len(self.bm.placed_agents):
-            self.bm.placed_agents[new_idx].turn()
-            expired_agent = self.bm.tick_terrain_effects(new_idx)
-            for effect_id in expired_agent:
+        # Tick terrain effects (stays in Python for now — terrain is BattleMap concern)
+        if new_idx >= 0:
+            expired = self.bm.tick_terrain_effects(new_idx)
+            for effect_id in expired:
                 if effect_id in self._effect_meta:
                     effect_name = self._effect_meta[effect_id].get("name", "Effect")
                     self._combat_log_add(f"{effect_name} fades.")
                     del self._effect_meta[effect_id]
 
-        self._reset_movement(new_idx)
         self._update_reach()
         self._update_attack_overlay()
 
@@ -1246,7 +1256,7 @@ class App:
         cond = agent.conditions
         cond.concentrating = False
         cond.concentrating_on = ""
-        self.bm.set_agent_conditions(agent_idx, cond)
+        self.combat.set_agent_conditions(self.bm, agent_idx, cond)
         self._apply_terrain_to_battle_map()
         self._combat_log_add(f"{agent_name} drops concentration on {spell_name or 'spell'}.")
         self._save_terrain()
@@ -1273,7 +1283,7 @@ class App:
                         cond = agent.conditions
                         cond.concentrating = False
                         cond.concentrating_on = ""
-                        self.bm.set_agent_conditions(i, cond)
+                        self.combat.set_agent_conditions(self.bm, i, cond)
                         self._combat_log_add(f"{spell_name} effect on {agent_name} has expired.")
                     break
         self._apply_terrain_to_battle_map()
@@ -1304,7 +1314,7 @@ class App:
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        weapons = self.bm.get_agent_weapons(idx)
+        weapons = self.combat.get_agent_weapons(self.bm, idx)
         if not weapons:
             self._combat_log_add("No weapons equipped!")
             if slot == "action":
@@ -1313,7 +1323,7 @@ class App:
                 self.bonus_used = True
             return
 
-        stats = self.bm.get_agent_stats(idx)
+        stats = self.combat.get_agent_stats(self.bm, idx)
         # Only seed attacks_remaining when starting a fresh sequence (== 0).
         # If mid-sequence and same slot, don't reset. If mid-sequence and different slot, reject.
         if self.attacks_remaining == 0:
@@ -1447,7 +1457,7 @@ class App:
                 "upcast_dice_bonus": d.get("upcast_dice_bonus", 0),
             }
             self._spell_metadata[(agent_idx, j)] = meta
-        self.bm.set_agent_spells(agent_idx, cpp_spells)
+        self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
 
     def _start_cast_spell(self, slot: str):
         self.jump_overlay_active = False  # Close jump overlay when casting spell
@@ -1466,8 +1476,8 @@ class App:
                 self.bonus_used = True
             return
 
-        spells = self.bm.get_agent_spells(idx)
-        stats = self.bm.get_agent_stats(idx)
+        spells = self.combat.get_agent_spells(self.bm, idx)
+        stats = self.combat.get_agent_stats(self.bm, idx)
 
         def _activate(s, si_, slot_level_=0):
             sp_ = spells[si_]
@@ -1818,12 +1828,12 @@ class App:
         """Reset all spell slots and NPC spell uses to their maximum values."""
         agents = self.bm.placed_agents
         for idx in range(len(agents)):
-            stats = self.bm.get_agent_stats(idx)
+            stats = self.combat.get_agent_stats(self.bm, idx)
             stats.restore_spell_slots()
-            self.bm.set_agent_stats(idx, stats)
+            self.combat.set_agent_stats(self.bm, idx, stats)
             # Reset NPC spell uses: copy uses_max back to uses_remaining
             if idx in self._agent_meta:
-                spells = self.bm.get_agent_spells(idx)
+                spells = self.combat.get_agent_spells(self.bm, idx)
                 for spell in spells:
                     if spell.uses_max > 0:
                         spell.uses_remaining = spell.uses_max
@@ -1975,7 +1985,7 @@ class App:
         if caster_idx < 0 or not slot:
             return
 
-        spells_orig = self.bm.get_agent_spells(caster_idx)
+        spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells_orig[self.pending_spell_idx]
 
         # For Multiple geometry spells, collect targets until we have enough
@@ -2024,7 +2034,7 @@ class App:
         if caster_idx < 0 or not slot:
             return
 
-        spells_orig = self.bm.get_agent_spells(caster_idx)
+        spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells_orig[self.pending_spell_idx]
 
         action = rpg.SpellAction()
@@ -2217,7 +2227,7 @@ class App:
         caster_idx = self._current_agent_idx()
         if caster_idx < 0:
             return
-        spells = self.bm.get_agent_spells(caster_idx)
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
         if not (0 <= self.pending_spell_idx < len(spells)):
             return
         sp    = spells[self.pending_spell_idx]
@@ -2413,7 +2423,7 @@ class App:
         path = path or self._save_path
         data = []
         for i, pt in enumerate(self.bm.placed_agents):
-            s = self.bm.get_agent_stats(i)
+            s = self.combat.get_agent_stats(self.bm, i)
             # Save only the filename, not the full path, for portability
             sprite_filename = os.path.basename(pt.sprite_path) if pt.sprite_path else ""
             data.append({
@@ -2442,9 +2452,9 @@ class App:
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                 },
                 "weapon_indices": [w.name
-                                  for w in self.bm.get_agent_weapons(i)],
+                                  for w in self.combat.get_agent_weapons(self.bm, i)],
                 "spell_indices": [s.name
-                                  for s in self.bm.get_agent_spells(i)],
+                                  for s in self.combat.get_agent_spells(self.bm, i)],
                 "agent_class":      s.character_class.name,
                 "agent_char_level": s.char_level,
                 "spell_slots_max":  list(s.spell_slots_max),
@@ -2457,7 +2467,7 @@ class App:
                 data[-1]["npc_spell_groups"] = meta.get("npc_spell_groups", {})
                 # Save current uses_remaining from each spell
                 npc_uses = {}
-                spells = self.bm.get_agent_spells(i)
+                spells = self.combat.get_agent_spells(self.bm, i)
                 for spell in spells:
                     if spell.uses_max > 0:  # Only save if this is an N/day spell
                         npc_uses[spell.name] = spell.uses_remaining
@@ -2496,9 +2506,9 @@ class App:
             cfg.size        = t["size"]
             cfg.start_col   = t["col"]
             cfg.start_row   = t["row"]
-            self.bm.add_agent_config(cfg)
+            self.combat.add_agent_config(self.bm, cfg)
             self.pending_configs.append(cfg)
-        self.bm.apply_agent_configs()
+        self.combat.apply_agent_configs(self.bm)
         self.sprites.clear()
         # Restore stats for each placed agent
         for i, t in enumerate(agent_data):
@@ -2576,7 +2586,7 @@ class App:
                     idx = physical_damage_names.index(vuln)
                     s.set_physical_damage_multiplier(idx, 2.0)
 
-            self.bm.set_agent_stats(i, s)
+            self.combat.set_agent_stats(self.bm, i, s)
 
         # Restore weapons — load from weapon_indices or legacy "weapons" field
         for i, t in enumerate(agent_data):
@@ -2596,7 +2606,7 @@ class App:
                 # Fallback to legacy "weapons" field with full weapon dicts
                 cpp_weapons = [_dict_to_weapon(d) for d in t.get("weapons", [])]
 
-            self.bm.set_agent_weapons(i, cpp_weapons)
+            self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
 
         # Restore spells — load from spell_indices or legacy "spells" field
         for i, t in enumerate(agent_data):
@@ -2653,13 +2663,13 @@ class App:
                             }
                             self._spell_metadata[(i, j)] = meta
 
-            self.bm.set_agent_spells(i, cpp_spells)
+            self.combat.set_agent_spells(self.bm, i, cpp_spells)
 
         # Restore character class, level, and spell slots to C++ Stats objects
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            stats = self.bm.get_agent_stats(i)
+            stats = self.combat.get_agent_stats(self.bm, i)
             class_name = t.get("agent_class", "None")
             char_level = int(t.get("agent_char_level", 1))
             stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
@@ -2667,7 +2677,7 @@ class App:
             slots_cur = t.get("spell_slots_cur")
             if slots_cur:
                 stats.spell_slots_remaining = list(slots_cur)
-            self.bm.set_agent_stats(i, stats)
+            self.combat.set_agent_stats(self.bm, i, stats)
 
         # Restore NPC spell mechanics if present
         for i, t in enumerate(agent_data):
@@ -2679,7 +2689,7 @@ class App:
                 # Initialize NPC spell groups in C++ (converts string keys to ints)
                 if npc_spell_groups:
                     groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
-                    self.bm.init_npc_spell_groups(i, groups_dict)
+                    self.combat.init_npc_spell_groups(self.bm, i, groups_dict)
                 # Keep in _agent_meta for stats dialog to access
                 self._agent_meta[i] = {"npc_spell_groups": npc_spell_groups}
 
@@ -3332,7 +3342,7 @@ class App:
             name   = agents[aidx].name if aidx < len(agents) else "?"
             alive  = True
             if aidx < len(agents):
-                s = self.bm.get_agent_stats(aidx)
+                s = self.combat.get_agent_stats(self.bm, aidx)
                 alive = s.hp_cur > 0
             if not alive:
                 col = (90, 90, 90)
@@ -3355,7 +3365,7 @@ class App:
         cur_idx = self._current_agent_idx()
         if 0 <= cur_idx < len(agents):
             pt    = agents[cur_idx]
-            stats = self.bm.get_agent_stats(cur_idx)
+            stats = self.combat.get_agent_stats(self.bm, cur_idx)
             frac  = stats.hp_cur / max(stats.hp_max, 1)
             hp_col = (COL_HP_HIGH if frac > 0.66 else
                       COL_HP_MID  if frac > 0.33 else
@@ -3382,9 +3392,9 @@ class App:
         _cur_can_spell   = False
         _cur_has_spells  = False
         if 0 <= cur_idx < len(agents):
-            _cur_has_weapons = len(self.bm.get_agent_weapons(cur_idx)) > 0
-            _cur_has_offhand = any(w.off_hand for w in self.bm.get_agent_weapons(cur_idx))
-            _cur_has_spells  = len(self.bm.get_agent_spells(cur_idx)) > 0
+            _cur_has_weapons = len(self.combat.get_agent_weapons(self.bm, cur_idx)) > 0
+            _cur_has_offhand = any(w.off_hand for w in self.combat.get_agent_weapons(self.bm, cur_idx))
+            _cur_has_spells  = len(self.combat.get_agent_spells(self.bm, cur_idx)) > 0
             _cur_can_spell   = _cur_has_spells  # can cast if has spells
 
         # Check if mid-sequence (attacks remaining, but action_used not yet set)
@@ -3445,11 +3455,11 @@ class App:
 
         # ── Spell Slots / N/day display ────────────────────────────────────
         if 0 <= cur_idx < len(agents):
-            stats = self.bm.get_agent_stats(cur_idx)
+            stats = self.combat.get_agent_stats(self.bm, cur_idx)
 
             if stats.is_npc:
                 # NPC N/day spell display
-                spells = self.bm.get_agent_spells(cur_idx)
+                spells = self.combat.get_agent_spells(self.bm, cur_idx)
                 npc_spells = [sp for sp in spells if sp.uses_max > 0]
                 if npc_spells:
                     y += 4
@@ -3544,7 +3554,7 @@ class App:
         txt("Movement", lx, y, COL_LABEL)
         y += 16
 
-        mv_stats = self.bm.get_agent_stats(cur_idx) if 0 <= cur_idx < len(self.bm.placed_agents) else None
+        mv_stats = self.combat.get_agent_stats(self.bm, cur_idx) if 0 <= cur_idx < len(self.bm.placed_agents) else None
         mv_entries = [
             (rpg.MovementType.Walk,   "Walk",   self.move_remaining_walk,
              mv_stats.speed_walk   if mv_stats else 0),
@@ -3816,26 +3826,26 @@ class App:
                         # Save stats + weapons for all existing agents before
                         # apply_agent_configs() recreates them from scratch
                         existing = self.bm.placed_agents
-                        saved = [(self.bm.get_agent_stats(i),
-                                  self.bm.get_agent_weapons(i))
+                        saved = [(self.combat.get_agent_stats(self.bm, i),
+                                  self.combat.get_agent_weapons(self.bm, i))
                                  for i in range(len(existing))]
-                        self.bm.add_agent_config(cfg)
-                        self.bm.apply_agent_configs()
+                        self.combat.add_agent_config(self.bm, cfg)
+                        self.combat.apply_agent_configs(self.bm)
                         # Restore previously saved stats + weapons (spell slots are in stats)
                         for i, (st, wps) in enumerate(saved):
-                            self.bm.set_agent_stats(i, st)
-                            self.bm.set_agent_weapons(i, wps)
+                            self.combat.set_agent_stats(self.bm, i, st)
+                            self.combat.set_agent_weapons(self.bm, i, wps)
                         # Apply mob stats and auto-weapons to the newly placed agent
                         idx = len(self.bm.placed_agents) - 1
                         if self.selected_mob_stats:
                             d_d_stats = self._mob_stats_to_d_d_stats(self.selected_mob_stats)
-                            self.bm.set_agent_stats(idx, d_d_stats)
-                            if not self.bm.get_agent_weapons(idx):
+                            self.combat.set_agent_stats(self.bm, idx, d_d_stats)
+                            if not self.combat.get_agent_weapons(self.bm, idx):
                                 for w in self._auto_weapons_from_mob_stats(self.selected_mob_stats):
-                                    self.bm.add_weapon_to_agent(idx, w)
+                                    self.combat.add_weapon_to_agent(self.bm, idx, w)
                         elif self._pending_pc_class:
                             # Apply PC stats (class/level and spell slots already set)
-                            self.bm.set_agent_stats(idx, self._pending_pc_stats)
+                            self.combat.set_agent_stats(self.bm, idx, self._pending_pc_stats)
                             self._pending_pc_class = None
                             self._pending_pc_stats = None
                         self.sprites.clear()
@@ -3892,7 +3902,7 @@ class App:
                         # Capture hit by value for the lambdas.
                         def _open_stats(h=hit):
                             pt2   = self.bm.placed_agents[h]
-                            stats = self.bm.get_agent_stats(h)
+                            stats = self.combat.get_agent_stats(self.bm, h)
                             class_name = stats.character_class.name
                             char_level = stats.char_level
                             is_npc = stats.is_npc
@@ -3906,7 +3916,7 @@ class App:
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             weapon_dicts = [_weapon_to_dict(w)
-                                            for w in self.bm.get_agent_weapons(h)]
+                                            for w in self.combat.get_agent_weapons(self.bm, h)]
                             self.weapon_dialog.open(
                                 self.screen, h, pt2.name,
                                 weapon_dicts,
@@ -3914,7 +3924,7 @@ class App:
                         def _open_spells(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             spell_dicts = [self._spell_to_dict(h, j, s)
-                                           for j, s in enumerate(self.bm.get_agent_spells(h))]
+                                           for j, s in enumerate(self.combat.get_agent_spells(self.bm, h))]
                             def _open_spell_selector():
                                 self.spell_selection_dialog.show(self.spell_dialog._on_spell_selected)
                             self.spell_dialog.open(
@@ -4194,9 +4204,9 @@ class App:
                 # ── Combat panel buttons ───────────────────────────────────
                 _ev_idx = self._current_agent_idx()
                 _has_wpn = (0 <= _ev_idx < len(self.bm.placed_agents) and
-                            len(self.bm.get_agent_weapons(_ev_idx)) > 0)
+                            len(self.combat.get_agent_weapons(self.bm, _ev_idx)) > 0)
                 _has_offhand = (0 <= _ev_idx < len(self.bm.placed_agents) and
-                                any(w.off_hand for w in self.bm.get_agent_weapons(_ev_idx)))
+                                any(w.off_hand for w in self.combat.get_agent_weapons(self.bm, _ev_idx)))
                 if not self.action_used:
                     if _has_wpn and self.btn_cbt_atk_action.clicked(event):
                         self._start_attack("action")
@@ -4211,7 +4221,7 @@ class App:
                             self.move_remaining_fly    = agent.fly_remaining
                             self.move_remaining_swim   = agent.swim_remaining
                             self.move_remaining_burrow = agent.burrow_remaining
-                            self._combat_log_add(f"{agent.name}: Dashing (+{self.bm.get_agent_stats(idx).speed_walk}ft)")
+                            self._combat_log_add(f"{agent.name}: Dashing (+{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
                             self._update_reach()
                         self.action_used = True
                     if self.btn_cbt_dodge.clicked(event):

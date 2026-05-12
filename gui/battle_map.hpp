@@ -101,6 +101,16 @@ struct ActiveLightEffect {
     int              source_agent_idx; // -1 = DM-placed or map-defined
 };
 
+// ── Active persistent spell effect (AoE affecting agents over time) ─────────
+struct ActiveSpellEffect {
+    int          caster_idx     = -1;      // index into BattleMap::placedAgents()
+    int          spell_idx      = -1;      // index into caster's spell list
+    Spell        spell;                    // copy of the spell (damage, duration, etc.)
+    std::vector<Cell> cells;               // cells occupied by this effect
+    int          turns_remaining = 0;      // decremented per turn; effect expires when 0
+    int          effect_id      = -1;      // unique ID for removal
+};
+
 // ── A placed agent on the map ──────────────────────────────────────────────
 struct PlacedAgent {
     std::shared_ptr<Agent> agent;
@@ -314,6 +324,19 @@ public:
     [[nodiscard]] bool hasActiveLightEffects() const noexcept;
     [[nodiscard]] const std::vector<ActiveLightEffect>& activeLightEffects() const noexcept;
 
+    // ── Persistent AoE Spell Effects (damage/conditions over multiple turns) ──
+    // Add a new persistent spell effect to the map. Returns a unique effect_id.
+    [[nodiscard]] int addSpellEffect(ActiveSpellEffect effect) noexcept;
+    // Remove a spell effect by id.
+    void removeSpellEffect(int effect_id) noexcept;
+    // Get all active spell effects (for Python to render overlay).
+    [[nodiscard]] const std::vector<ActiveSpellEffect>& activeSpellEffects() const noexcept;
+    // Decrement turns_remaining for effects sourced from the given agent.
+    // Removes expired effects. Returns list of removed effect ids.
+    [[nodiscard]] std::vector<int> tickSpellEffects(int source_agent_idx) noexcept;
+    // Clear all spell effects (end of combat).
+    void clearSpellEffects() noexcept;
+
     // ── NPC Spell Initialization ────────────────────────────────────────
     // Set is_npc=true and initialize uses_max/uses_remaining from spell groups.
     // groups: maps N (uses/day) -> list of spell names in that group.
@@ -381,6 +404,10 @@ private:
     // Dynamic light effects (spells, DM-placed lights, etc.)
     std::vector<ActiveLightEffect> activeLightEffects_;
     int nextLightEffectId_{0};  // monotonically increasing light effect id generator
+
+    // Persistent AoE spell effects (Wall of Fire, Spike Growth, etc.)
+    std::vector<ActiveSpellEffect> activeSpellEffects_;
+    int nextSpellEffectId_{0};  // monotonically increasing spell effect id generator
 };
 
 } // namespace rpg

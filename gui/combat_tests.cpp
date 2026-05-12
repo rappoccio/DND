@@ -190,7 +190,7 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     EXPECT_EQ(bm->placedAgents()[hag_idx].spells[0].name, "Ice Storm");
 
     // Turn 1, Step 6a: Green Hag dashes to (2,4)
-    engine->beginTurn(hag_idx, *bm);
+    engine->beginTurn(*bm, hag_idx);
     bm->applyDash(hag_idx);
     EXPECT_TRUE(bm->getAgentConditions(hag_idx).dashing);
     EXPECT_TRUE(bm->moveAgent(hag_idx, Cell{2, 4}));
@@ -199,10 +199,10 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
 
     // Turn 1, Step 6b: Deva begins their turn (movement skipped, remains at start)
     // The Deva will cast spell or attack from (10,6) position instead
-    engine->beginTurn(deva_idx, *bm);
+    engine->beginTurn(*bm, hag_idx);
 
     // Turn 2, Step 7a: Deva shoots Longbow at Green Hag
-    engine->beginTurn(deva_idx, *bm);
+    engine->beginTurn(*bm, hag_idx);
     int hag_hp_before = bm->getAgentStats(hag_idx).hp_cur;
 
     Attack bow_attack;
@@ -221,7 +221,7 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     }
 
     // Turn 2, Step 7b: Green Hag casts Ice Storm at Deva's cell
-    engine->beginTurn(hag_idx, *bm);
+    engine->beginTurn(*bm, hag_idx);
     int deva_hp_before = bm->getAgentStats(deva_idx).hp_cur;
 
     // Deva is at starting position (10,6)
@@ -262,7 +262,7 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     EXPECT_EQ(hag_cond.concentrating_on, "Ice Storm");
 
     // Turn 3, Step 8: Green Hag drops concentration
-    engine->beginTurn(hag_idx, *bm);
+    engine->beginTurn(*bm, hag_idx);
 
     auto cond = bm->getAgentConditions(hag_idx);
     cond.concentrating    = false;

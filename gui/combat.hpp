@@ -43,6 +43,7 @@ namespace rpg {
 // Forward declarations (avoid pulling in the whole BattleMap header here).
 class BattleMap;
 struct Cell;
+struct AgentConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Attack result
@@ -265,9 +266,6 @@ public:
     //
     // Distances are always in feet (5 ft = 1 standard grid cell).
 
-    // Initialise the agent's walk/fly budget from their current stats.
-    void beginTurn(int agent_idx, const BattleMap& bm) noexcept;
-
     // Remaining walk / fly / swim / burrow movement (feet) for the given agent this turn.
     [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
     [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
@@ -283,6 +281,52 @@ public:
 
     // Clear all movement budgets (call at end of combat or start of new round).
     void clearMovement() noexcept;
+
+    // ── Turn lifecycle (begin/execute/end) ─────────────────────────────────
+    //
+    // beginTurn() and endTurn() check which persistent spell effects an agent
+    // is standing in, and apply appropriate damage/conditions based on the spell's
+    // effects_on_begin_turn / effects_on_end_turn flags.
+
+    // Initialize the agent's turn: seed movement budgets, reset conditions,
+    // reset leveled spell cast flag, and apply persistent spell effects.
+    void beginTurn(BattleMap& bm, int agent_idx) noexcept;
+
+    // Called when agent's turn ends: apply persistent spell effects marked
+    // for end-of-turn (effects_on_end_turn == true).
+    void endTurn(BattleMap& bm, int agent_idx) noexcept;
+
+    // Called during movement (placeholder for future use): check if agent enters
+    // a cell with an active spell effect and apply it.
+    void executeTurn(BattleMap& bm, int agent_idx) noexcept;
+
+    // ── Agent stat and equipment management ────────────────────────────────
+    //
+    // These methods delegate to BattleMap but are logically owned by CombatEngine
+    // since they concern agent combat configuration.
+
+    void addAgentConfig(BattleMap& bm, AgentConfig cfg) noexcept;
+    void applyAgentConfigs(BattleMap& bm) noexcept;
+
+    [[nodiscard]] Agent::Stats getAgentStats(const BattleMap& bm, int idx) const noexcept;
+    void setAgentStats(BattleMap& bm, int idx, Agent::Stats s) noexcept;
+
+    [[nodiscard]] Agent::Conditions getAgentConditions(const BattleMap& bm, int idx) const noexcept;
+    void setAgentConditions(BattleMap& bm, int idx, const Agent::Conditions& c) noexcept;
+
+    [[nodiscard]] std::vector<Weapon> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
+    void setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept;
+    void addWeaponToAgent(BattleMap& bm, int idx, Weapon w) noexcept;
+    void removeWeaponFromAgent(BattleMap& bm, int idx, int weapon_idx) noexcept;
+
+    [[nodiscard]] std::vector<Spell> getAgentSpells(const BattleMap& bm, int idx) const noexcept;
+    void setAgentSpells(BattleMap& bm, int idx, std::vector<Spell> spells) noexcept;
+    void addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept;
+    void removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept;
+
+    // NPC spell initialization: set is_npc=true and init uses_max/uses_remaining from spell groups.
+    void initNpcSpellGroups(BattleMap& bm, int agent_idx,
+                           const std::map<int, std::vector<std::string>>& groups) noexcept;
 
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,

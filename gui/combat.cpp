@@ -186,7 +186,7 @@ void CombatEngine::clearAgentTurns() noexcept
 //  Per-agent movement budget
 // ─────────────────────────────────────────────────────────────────────────────
 
-void CombatEngine::beginTurn(int agent_idx, const BattleMap& bm) noexcept
+void CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 {
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
@@ -196,6 +196,22 @@ void CombatEngine::beginTurn(int agent_idx, const BattleMap& bm) noexcept
     flyRemaining_ [agent_idx] = stats.speed_fly;
     swimRemaining_[agent_idx] = stats.speed_swim;
     burrowRemaining_[agent_idx] = stats.speed_burrow;
+
+    // TODO: Reset per-turn conditions (absorbed from Python)
+    // TODO: Reset leveled spell cast flag (absorbed from Python)
+    // TODO: Apply begin-of-turn spell effects (once ActiveSpellEffect exists)
+}
+
+void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
+{
+    // TODO: Apply end-of-turn spell effects (once ActiveSpellEffect exists)
+    (void)bm; (void)agent_idx;  // suppress unused param warnings
+}
+
+void CombatEngine::executeTurn(BattleMap& bm, int agent_idx) noexcept
+{
+    // Placeholder: called during movement to apply effects when entering cells
+    (void)bm; (void)agent_idx;  // suppress unused param warnings
 }
 
 int CombatEngine::getWalkRemaining(int agent_idx) const noexcept
@@ -1307,6 +1323,86 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
         bm.setAgentConditions(agent_idx, cond);
     }
     return r;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Agent stat and equipment management – delegates to BattleMap
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::addAgentConfig(BattleMap& bm, AgentConfig cfg) noexcept
+{
+    bm.addAgentConfig(cfg);
+}
+
+void CombatEngine::applyAgentConfigs(BattleMap& bm) noexcept
+{
+    bm.applyAgentConfigs();
+}
+
+Agent::Stats CombatEngine::getAgentStats(const BattleMap& bm, int idx) const noexcept
+{
+    return bm.getAgentStats(idx);
+}
+
+void CombatEngine::setAgentStats(BattleMap& bm, int idx, Agent::Stats s) noexcept
+{
+    bm.setAgentStats(idx, s);
+}
+
+Agent::Conditions CombatEngine::getAgentConditions(const BattleMap& bm, int idx) const noexcept
+{
+    return bm.getAgentConditions(idx);
+}
+
+void CombatEngine::setAgentConditions(BattleMap& bm, int idx, const Agent::Conditions& c) noexcept
+{
+    bm.setAgentConditions(idx, c);
+}
+
+std::vector<Weapon> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept
+{
+    return bm.getAgentWeapons(idx);
+}
+
+void CombatEngine::setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept
+{
+    bm.setAgentWeapons(idx, weapons);
+}
+
+void CombatEngine::addWeaponToAgent(BattleMap& bm, int idx, Weapon w) noexcept
+{
+    bm.addWeaponToAgent(idx, w);
+}
+
+void CombatEngine::removeWeaponFromAgent(BattleMap& bm, int idx, int weapon_idx) noexcept
+{
+    bm.removeWeaponFromAgent(idx, weapon_idx);
+}
+
+std::vector<Spell> CombatEngine::getAgentSpells(const BattleMap& bm, int idx) const noexcept
+{
+    return bm.getAgentSpells(idx);
+}
+
+void CombatEngine::setAgentSpells(BattleMap& bm, int idx, std::vector<Spell> spells) noexcept
+{
+    bm.setAgentSpells(idx, spells);
+}
+
+void CombatEngine::addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept
+{
+    bm.addSpellToAgent(idx, s);
+}
+
+void CombatEngine::removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept
+{
+    bm.removeSpellFromAgent(idx, spell_idx);
+}
+
+void CombatEngine::initNpcSpellGroups(BattleMap& bm, int agent_idx,
+                                      const std::map<int, std::vector<std::string>>& groups) noexcept
+{
+    bm.initNpcSpellGroups(agent_idx, groups);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

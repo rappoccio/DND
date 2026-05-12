@@ -69,5 +69,11 @@ namespace rpg {
       // uses_max = 0 means unlimited (use slot system); uses_max > 0 means N/day
       int uses_max{0};           // maximum uses per day (0 = use slot system)
       int uses_remaining{0};     // current remaining uses
+
+      // Persistent AoE spell effect timing
+      // Apply effects to agents in this spell's area at the START of their turn
+      bool effects_on_begin_turn{true};
+      // Apply effects to agents in this spell's area at the END of their turn
+      bool effects_on_end_turn{false};
     };
 }
