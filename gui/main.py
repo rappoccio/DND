@@ -1371,8 +1371,7 @@ class App:
             return
 
         if result.hit:
-            dmg_parts = ([v.name for v in result.physical_damage_types] +
-                         [v.name for v in result.magic_damage_types])
+            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
             dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
             msg = (f"{atk_name}→{tgt_name}: "
                    f"HIT {result.total_damage} {dmg_type_str}"
@@ -1534,6 +1533,35 @@ class App:
                 options,
                 self.screen.get_size()
             )
+
+    def _get_damage_type_names(self, magic_damage_types, physical_damage_types):
+        """Convert damage type enums to their string names."""
+        magic_damage_names = {
+            rpg.MagicDamage.Acid: "Acid",
+            rpg.MagicDamage.Cold: "Cold",
+            rpg.MagicDamage.Fire: "Fire",
+            rpg.MagicDamage.Force: "Force",
+            rpg.MagicDamage.Lightning: "Lightning",
+            rpg.MagicDamage.Necrotic: "Necrotic",
+            rpg.MagicDamage.Poison: "Poison",
+            rpg.MagicDamage.Psychic: "Psychic",
+            rpg.MagicDamage.Radiant: "Radiant",
+            rpg.MagicDamage.Thunder: "Thunder",
+        }
+
+        physical_damage_names = {
+            rpg.PhysicalDamage.Bludgeoning: "Bludgeoning",
+            rpg.PhysicalDamage.Piercing: "Piercing",
+            rpg.PhysicalDamage.Slashing: "Slashing",
+        }
+
+        names = []
+        for dmg_type in physical_damage_types:
+            names.append(physical_damage_names.get(dmg_type, "Unknown"))
+        for dmg_type in magic_damage_types:
+            names.append(magic_damage_names.get(dmg_type, "Unknown"))
+
+        return names
 
     def _get_damage_modifier_names(self, spell, tgt_agent):
         """Extract damage type names from spell and target multipliers. Returns dict with modifier info."""
@@ -1861,8 +1889,7 @@ class App:
             self._combat_log_add(f"{atk_name}: OA — out of range")
             return
         if result.hit:
-            dmg_parts = ([v.name for v in result.physical_damage_types] +
-                         [v.name for v in result.magic_damage_types])
+            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
             dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
             self._combat_log_add(
                 f"{atk_name}→{tgt_name}: OA HIT {result.total_damage} {dmg_type_str}"
