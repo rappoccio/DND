@@ -739,10 +739,6 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::endTurn,
              py::arg("battle_map"), py::arg("agent_idx"),
              "End agent's turn: apply end-of-turn spell effects.")
-        .def("execute_turn",
-             &CombatEngine::executeTurn,
-             py::arg("battle_map"), py::arg("agent_idx"),
-             "Execute agent's turn (placeholder for future movement effects).")
 
         // ── Movement budget ───────────────────────────────────────────────
         .def("get_walk_remaining",

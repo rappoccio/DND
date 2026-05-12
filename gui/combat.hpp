@@ -296,10 +296,6 @@ public:
     // for end-of-turn (effects_on_end_turn == true).
     void endTurn(BattleMap& bm, int agent_idx) noexcept;
 
-    // Called during movement (placeholder for future use): check if agent enters
-    // a cell with an active spell effect and apply it.
-    void executeTurn(BattleMap& bm, int agent_idx) noexcept;
-
     // ── Agent stat and equipment management ────────────────────────────────
     //
     // These methods delegate to BattleMap but are logically owned by CombatEngine

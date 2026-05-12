@@ -191,26 +191,28 @@ void CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return;
+
+    // Seed movement budgets from current stats
     const auto& stats = agents[static_cast<std::size_t>(agent_idx)].stats;
     walkRemaining_[agent_idx] = stats.speed_walk;
     flyRemaining_ [agent_idx] = stats.speed_fly;
     swimRemaining_[agent_idx] = stats.speed_swim;
     burrowRemaining_[agent_idx] = stats.speed_burrow;
 
-    // TODO: Reset per-turn conditions (absorbed from Python)
-    // TODO: Reset leveled spell cast flag (absorbed from Python)
+    // Reset per-turn conditions
+    agents[static_cast<std::size_t>(agent_idx)].agent->turn();
+
+    // Reset leveled spell cast flag
+    auto new_stats = stats;
+    new_stats.resetLeveledSpellCastFlag();
+    bm.setAgentStats(agent_idx, new_stats);
+
     // TODO: Apply begin-of-turn spell effects (once ActiveSpellEffect exists)
 }
 
 void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
 {
     // TODO: Apply end-of-turn spell effects (once ActiveSpellEffect exists)
-    (void)bm; (void)agent_idx;  // suppress unused param warnings
-}
-
-void CombatEngine::executeTurn(BattleMap& bm, int agent_idx) noexcept
-{
-    // Placeholder: called during movement to apply effects when entering cells
     (void)bm; (void)agent_idx;  // suppress unused param warnings
 }
 

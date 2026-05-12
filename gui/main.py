@@ -1216,11 +1216,6 @@ class App:
             self.combat.begin_turn(self.bm, new_idx)
             # Initialize Python-side movement tracking (C++ also seeds in beginTurn)
             self._reset_movement(new_idx)
-            # TODO: Move to C++ beginTurn() once implemented
-            # Reset D&D 5e leveled spell limit (stored in C++ Agent::Stats)
-            stats = self.combat.get_agent_stats(self.bm, new_idx)
-            stats.reset_leveled_spell_cast_flag()
-            self.combat.set_agent_stats(self.bm, new_idx, stats)
 
         # Tick terrain effects (stays in Python for now — terrain is BattleMap concern)
         if new_idx >= 0:
