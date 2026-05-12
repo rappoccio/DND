@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <iostream>
 #include <limits>
 
 namespace rpg {
@@ -140,7 +141,10 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
 {
     Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_max == 0 && s.hp_cur == 0) return 0;   // default-constructed → invalid idx
-    s.hp_cur = std::max(0, s.hp_cur - amount);
+    // Temporary HP absorbs damage first, then overflow damages hp_cur
+    int overflow = std::max(0, amount - s.temp_hp);
+    s.temp_hp = std::max(0, s.temp_hp - amount);
+    s.hp_cur = std::max(0, s.hp_cur - overflow);
     bm.setAgentStats(idx, s);
     return s.hp_cur;
 }
@@ -469,30 +473,41 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 
 void CombatEngine::rollDamage(const Weapon& w,
                                const Agent::Stats& attacker,
+                               const Agent::Stats& target,
                                AttackResult& result)
 {
     result.dice_results.clear();
     int raw = 0;
 
-    // Roll physical damage types
+    // Roll physical damage types and apply target's multipliers
     for (const auto& dmg_roll : w.physicalDamageRolls) {
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
+        int type_damage = 0;
         for (int i = 0; i < num_dice; ++i) {
             int d = roll(dmg_roll.die_size);
             result.dice_results.push_back(d);
-            raw += d;
+            type_damage += d;
         }
+        // Apply target's resistance/vulnerability/immunity multiplier
+        float multiplier = target.physical_damage_multipliers[dmg_roll.type];
+        int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        raw += modified_damage;
         result.physical_damage_types.push_back(dmg_roll.type);
     }
 
-    // Roll magic damage types
+    // Roll magic damage types and apply target's multipliers
     for (const auto& dmg_roll : w.magicDamageRolls) {
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
+        int type_damage = 0;
         for (int i = 0; i < num_dice; ++i) {
             int d = roll(dmg_roll.die_size);
             result.dice_results.push_back(d);
-            raw += d;
+            type_damage += d;
         }
+        // Apply target's resistance/vulnerability/immunity multiplier
+        float multiplier = target.magic_damage_multipliers[dmg_roll.type];
+        int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        raw += modified_damage;
         result.magic_damage_types.push_back(dmg_roll.type);
     }
 
@@ -510,8 +525,11 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     r.hp_before = target.hp_cur;
 
     if (r.hit) {
-        rollDamage(w, attacker, r);
-        target.hp_cur = std::clamp(target.hp_cur - r.total_damage,
+        rollDamage(w, attacker, target, r);
+        // Temporary HP absorbs damage first, then overflow damages hp_cur
+        int overflow = std::max(0, r.total_damage - target.temp_hp);
+        target.temp_hp = std::max(0, target.temp_hp - r.total_damage);
+        target.hp_cur = std::clamp(target.hp_cur - overflow,
                                     0, target.hp_max);
     }
 
@@ -909,22 +927,35 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 std::vector<int> dice;
                 int dmg = 0;
 
-                // Roll per-damage-type damage
+                // Roll per-damage-type damage and apply target's multipliers
                 for (const auto& roll_info : sp.magic_damage_rolls) {
                     int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
+                    int type_damage = 0;
                     for (int i = 0; i < n_dice; ++i) {
                         int d = roll(roll_info.die_size);
                         dice.push_back(d);
-                        dmg += d;
+                        type_damage += d;
                     }
+                    // Apply target's resistance/vulnerability/immunity multiplier
+                    float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                    std::cerr << "[DAMAGE] Spell attack: type=" << static_cast<int>(roll_info.type)
+                              << " base=" << type_damage << " mult=" << multiplier
+                              << " result=" << modified_damage << std::endl;
+                    dmg += modified_damage;
                 }
                 for (const auto& roll_info : sp.physical_damage_rolls) {
                     int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
+                    int type_damage = 0;
                     for (int i = 0; i < n_dice; ++i) {
                         int d = roll(roll_info.die_size);
                         dice.push_back(d);
-                        dmg += d;
+                        type_damage += d;
                     }
+                    // Apply target's resistance/vulnerability/immunity multiplier
+                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                    dmg += modified_damage;
                 }
 
                 tr.dice_results = dice;
@@ -934,7 +965,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                                 tgt_stats.hp_cur + tr.total_healing);
                 } else {
                     tr.total_damage  = std::max(0, dmg);
-                    tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - tr.total_damage);
+                    // Temporary HP absorbs damage first, then overflow damages hp_cur
+                    int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
+                    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
+                    tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
                 }
             }
 
@@ -992,25 +1026,38 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             std::vector<int> dice;
             int dmg = 0;
 
-            // Roll per-damage-type damage
+            // Roll per-damage-type damage and apply target's multipliers
             for (const auto& roll_info : sp.magic_damage_rolls) {
+                int type_damage = 0;
                 for (int i = 0; i < roll_info.num_dice; ++i) {
                     int d = roll(roll_info.die_size);
                     dice.push_back(d);
-                    dmg += d;
+                    type_damage += d;
                 }
-                dmg += roll_info.bonus;
+                type_damage += roll_info.bonus;
+                // Apply target's resistance/vulnerability/immunity multiplier first
+                float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                // Then apply half damage on successful save
+                if (tr.saved) modified_damage /= 2;
+                dmg += modified_damage;
             }
             for (const auto& roll_info : sp.physical_damage_rolls) {
+                int type_damage = 0;
                 for (int i = 0; i < roll_info.num_dice; ++i) {
                     int d = roll(roll_info.die_size);
                     dice.push_back(d);
-                    dmg += d;
+                    type_damage += d;
                 }
-                dmg += roll_info.bonus;
+                type_damage += roll_info.bonus;
+                // Apply target's resistance/vulnerability/immunity multiplier first
+                float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                // Then apply half damage on successful save
+                if (tr.saved) modified_damage /= 2;
+                dmg += modified_damage;
             }
 
-            if (tr.saved) dmg /= 2;
             tr.dice_results = dice;
 
             if (sp.type == Spell::Heal) {
@@ -1019,7 +1066,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                             tgt_stats.hp_cur + tr.total_healing);
             } else {
                 tr.total_damage  = std::max(0, dmg);
-                tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - tr.total_damage);
+                // Temporary HP absorbs damage first, then overflow damages hp_cur
+                int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
+                tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
             }
             break;
         }
@@ -1029,22 +1079,32 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             std::vector<int> dice;
             int total = 0;
 
-            // Roll per-damage-type damage
+            // Roll per-damage-type damage and apply target's multipliers
             for (const auto& roll_info : sp.magic_damage_rolls) {
+                int type_damage = 0;
                 for (int i = 0; i < roll_info.num_dice; ++i) {
                     int d = roll(roll_info.die_size);
                     dice.push_back(d);
-                    total += d;
+                    type_damage += d;
                 }
-                total += roll_info.bonus;
+                type_damage += roll_info.bonus;
+                // Apply target's resistance/vulnerability/immunity multiplier
+                float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                total += modified_damage;
             }
             for (const auto& roll_info : sp.physical_damage_rolls) {
+                int type_damage = 0;
                 for (int i = 0; i < roll_info.num_dice; ++i) {
                     int d = roll(roll_info.die_size);
                     dice.push_back(d);
-                    total += d;
+                    type_damage += d;
                 }
-                total += roll_info.bonus;
+                type_damage += roll_info.bonus;
+                // Apply target's resistance/vulnerability/immunity multiplier
+                float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                total += modified_damage;
             }
 
             tr.dice_results = dice;
@@ -1056,7 +1116,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                             tgt_stats.hp_cur + tr.total_healing);
             } else {
                 tr.total_damage  = std::max(0, total);
-                tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - tr.total_damage);
+                // Temporary HP absorbs damage first, then overflow damages hp_cur
+                int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
+                tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
             }
             break;
         }
@@ -1139,25 +1202,41 @@ void CombatEngine::tickEffects(BattleMap& bm)
         int total = 0;
 
         // Roll per-damage-type damage
+        // Roll per-damage-type damage and apply target's multipliers
         for (const auto& roll_info : fx.spell.magic_damage_rolls) {
+            int type_damage = 0;
             for (int i = 0; i < roll_info.num_dice; ++i) {
                 int d = roll(roll_info.die_size);
                 dice.push_back(d);
-                total += d;
+                type_damage += d;
             }
+            // Apply target's resistance/vulnerability/immunity multiplier
+            float multiplier = s.magic_damage_multipliers[roll_info.type];
+            int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+            total += modified_damage;
         }
         for (const auto& roll_info : fx.spell.physical_damage_rolls) {
+            int type_damage = 0;
             for (int i = 0; i < roll_info.num_dice; ++i) {
                 int d = roll(roll_info.die_size);
                 dice.push_back(d);
-                total += d;
+                type_damage += d;
             }
+            // Apply target's resistance/vulnerability/immunity multiplier
+            float multiplier = s.physical_damage_multipliers[roll_info.type];
+            int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+            total += modified_damage;
         }
 
         if (fx.spell.type == Spell::Heal)
             s.hp_cur = std::min(s.hp_max, s.hp_cur + std::max(0, total));
-        else
-            s.hp_cur = std::max(0, s.hp_cur - std::max(0, total));
+        else {
+            int damage = std::max(0, total);
+            // Temporary HP absorbs damage first, then overflow damages hp_cur
+            int overflow = std::max(0, damage - s.temp_hp);
+            s.temp_hp = std::max(0, s.temp_hp - damage);
+            s.hp_cur = std::max(0, s.hp_cur - overflow);
+        }
 
         bm.setAgentStats(fx.target_idx, s);
     }

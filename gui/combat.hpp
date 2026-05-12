@@ -313,9 +313,11 @@ public:
                                           bool disadvantage = false);
 
     // Roll damage dice and populate the damage fields of an existing result.
+    // Applies target's damage multipliers (resistance/vulnerability/immunity).
     // Call only when result.hit == true.
     void rollDamage(const Weapon& w,
                     const Agent::Stats& attacker,
+                    const Agent::Stats& target,
                     AttackResult& result);
 
     // Resolve a complete attack (roll to hit, roll damage, apply to target).

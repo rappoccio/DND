@@ -5,6 +5,7 @@
 #include <cmath>
 #include <concepts>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <map>
@@ -136,6 +137,12 @@ namespace rpg {
       // (cantrips and action-economy actions don't count).
       bool leveled_spell_cast_this_turn{false};  // reset at start of agent's turn
 
+      // ── Temporary Hit Points & Damage Multipliers ──────────────────────
+      int temp_hp{0};  // absorbs damage before hp_cur
+      // 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vuln; initialized in constructor
+      std::array<float, NumMagicDamage_t> magic_damage_multipliers;
+      std::array<float, NumPhysicalDamage_t> physical_damage_multipliers;
+
       // Initiative modifier: DEX mod [+ prof_bonus if initiative_prof].
       // CombatEngine::rollInitiative() adds a d20 on top of this.
       [[nodiscard]] int initiativeModifier() const noexcept {
@@ -152,8 +159,11 @@ namespace rpg {
       [[nodiscard]] int spellSaveDcWis()   const noexcept { return _dc(wis,   save_prof_wis);   }
       [[nodiscard]] int spellSaveDcCha()   const noexcept { return _dc(cha,   save_prof_cha);   }
 
-      // Default constructor (uses struct field defaults defined above)
-      Stats() = default;
+      // Default constructor (initializes damage multiplier arrays to 1.0)
+      Stats() {
+        magic_damage_multipliers.fill(1.0f);
+        physical_damage_multipliers.fill(1.0f);
+      }
 
       // Factory: create Stats from a JSON string
       [[nodiscard]] static Agent::Stats fromJsonString(const std::string& json_str) {
@@ -199,6 +209,70 @@ namespace rpg {
         intel = modToScore("INT Mod");
         wis   = modToScore("WIS Mod");
         cha   = modToScore("CHA Mod");
+
+        // Initialize multiplier arrays to 1.0 (normal damage)
+        magic_damage_multipliers.fill(1.0f);
+        physical_damage_multipliers.fill(1.0f);
+
+        // Helper: normalize type name to title case (e.g., "FIRE" -> "Fire")
+        auto normalize_type = [](std::string s) -> std::string {
+          if (s.empty()) return s;
+          s[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(s[0])));
+          for (size_t i = 1; i < s.length(); ++i)
+            s[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[i])));
+          return s;
+        };
+
+        // Load damage multipliers from JSON if present (case-insensitive)
+        if (j.contains("magic_resistances")) {
+          for (const auto& res : j["magic_resistances"]) {
+            std::string type_name = normalize_type(res.get<std::string>());
+            if (magicDamageMap.count(type_name)) {
+              magic_damage_multipliers[magicDamageMap.at(type_name)] = 0.5f;
+            }
+          }
+        }
+        if (j.contains("magic_immunities")) {
+          for (const auto& imm : j["magic_immunities"]) {
+            std::string type_name = normalize_type(imm.get<std::string>());
+            if (magicDamageMap.count(type_name)) {
+              int type_idx = magicDamageMap.at(type_name);
+              magic_damage_multipliers[type_idx] = 0.0f;
+            }
+          }
+        }
+        if (j.contains("magic_vulnerabilities")) {
+          for (const auto& vuln : j["magic_vulnerabilities"]) {
+            std::string type_name = normalize_type(vuln.get<std::string>());
+            if (magicDamageMap.count(type_name)) {
+              magic_damage_multipliers[magicDamageMap.at(type_name)] = 2.0f;
+            }
+          }
+        }
+        if (j.contains("physical_resistances")) {
+          for (const auto& res : j["physical_resistances"]) {
+            std::string type_name = normalize_type(res.get<std::string>());
+            if (physicalDamageMap.count(type_name)) {
+              physical_damage_multipliers[physicalDamageMap.at(type_name)] = 0.5f;
+            }
+          }
+        }
+        if (j.contains("physical_immunities")) {
+          for (const auto& imm : j["physical_immunities"]) {
+            std::string type_name = normalize_type(imm.get<std::string>());
+            if (physicalDamageMap.count(type_name)) {
+              physical_damage_multipliers[physicalDamageMap.at(type_name)] = 0.0f;
+            }
+          }
+        }
+        if (j.contains("physical_vulnerabilities")) {
+          for (const auto& vuln : j["physical_vulnerabilities"]) {
+            std::string type_name = normalize_type(vuln.get<std::string>());
+            if (physicalDamageMap.count(type_name)) {
+              physical_damage_multipliers[physicalDamageMap.at(type_name)] = 2.0f;
+            }
+          }
+        }
       }
 
       // Set character class and level; computes spell_slots_max.
@@ -230,6 +304,33 @@ namespace rpg {
       // Reset the leveled spell flag at the start of a new turn.
       void resetLeveledSpellCastFlag() noexcept {
         leveled_spell_cast_this_turn = false;
+      }
+
+      // Damage multiplier setters (for Python/pybind11 compatibility)
+      void set_magic_damage_multiplier(int type_idx, float multiplier) noexcept {
+        if (type_idx >= 0 && type_idx < static_cast<int>(magic_damage_multipliers.size())) {
+          magic_damage_multipliers[type_idx] = multiplier;
+        }
+      }
+
+      void set_physical_damage_multiplier(int type_idx, float multiplier) noexcept {
+        if (type_idx >= 0 && type_idx < static_cast<int>(physical_damage_multipliers.size())) {
+          physical_damage_multipliers[type_idx] = multiplier;
+        }
+      }
+
+      float get_magic_damage_multiplier(int type_idx) const noexcept {
+        if (type_idx >= 0 && type_idx < static_cast<int>(magic_damage_multipliers.size())) {
+          return magic_damage_multipliers[type_idx];
+        }
+        return 1.0f;
+      }
+
+      float get_physical_damage_multiplier(int type_idx) const noexcept {
+        if (type_idx >= 0 && type_idx < static_cast<int>(physical_damage_multipliers.size())) {
+          return physical_damage_multipliers[type_idx];
+        }
+        return 1.0f;
       }
 
     private:

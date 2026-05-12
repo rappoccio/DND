@@ -196,6 +196,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "True if this agent uses N/day spell system (NPC); false if using spell slots (player).")
         .def_readwrite("leveled_spell_cast_this_turn", &Agent::Stats::leveled_spell_cast_this_turn,
              "D&D 5e rule: only one leveled spell (level >= 1) per turn. Reset at turn start.")
+        .def_readwrite("temp_hp", &Agent::Stats::temp_hp,
+             "Temporary hit points (absorbs damage before hp_cur).")
+        .def_readwrite("magic_damage_multipliers", &Agent::Stats::magic_damage_multipliers,
+             "Per-type magic damage multipliers: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable.")
+        .def_readwrite("physical_damage_multipliers", &Agent::Stats::physical_damage_multipliers,
+             "Per-type physical damage multipliers: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable.")
         .def("set_class_level", &Agent::Stats::set_class_level,
              py::arg("cls"), py::arg("level"),
              "Set the character class and level. Automatically computes spell_slots_max and updates can_cast_spell.")
@@ -209,6 +215,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Mark that a leveled spell has been cast this turn (if spell_level >= 1).")
         .def("reset_leveled_spell_cast_flag", &Agent::Stats::resetLeveledSpellCastFlag,
              "Reset the leveled spell flag at the start of a new turn.")
+        .def("set_magic_damage_multiplier", &Agent::Stats::set_magic_damage_multiplier,
+             py::arg("type_idx"), py::arg("multiplier"),
+             "Set magic damage multiplier: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable")
+        .def("set_physical_damage_multiplier", &Agent::Stats::set_physical_damage_multiplier,
+             py::arg("type_idx"), py::arg("multiplier"),
+             "Set physical damage multiplier: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable")
+        .def("get_magic_damage_multiplier", &Agent::Stats::get_magic_damage_multiplier,
+             py::arg("type_idx"),
+             "Get magic damage multiplier for a type")
+        .def("get_physical_damage_multiplier", &Agent::Stats::get_physical_damage_multiplier,
+             py::arg("type_idx"),
+             "Get physical damage multiplier for a type")
         // Spell Save DCs (computed read-only: 8 + mod [+ prof_bonus if proficient])
         .def_property_readonly("spell_save_dc_str",   &Agent::Stats::spellSaveDcStr)
         .def_property_readonly("spell_save_dc_dex",   &Agent::Stats::spellSaveDcDex)

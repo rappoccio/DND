@@ -121,6 +121,87 @@
         "Grease": 1,
         "Magic Missile": 2
       }
+    },
+    {
+      "name": "Fire Elemental",
+      "sprite_path": "generic-enemy.png",
+      "size": 1,
+      "col": 15,
+      "row": 10,
+      "stats": {
+        "str": 8,
+        "dex": 16,
+        "con": 14,
+        "intel": 6,
+        "wis": 10,
+        "cha": 8,
+        "hp_max": 39,
+        "hp_cur": 39,
+	"temp_hp": 40,
+        "ac": 15,
+        "speed_walk": 0,
+        "speed_swim": 0,
+        "speed_fly": 60,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "num_attacks": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_immunities": ["Fire"],
+        "physical_resistances": ["Bludgeoning", "Piercing", "Slashing"],
+        "magic_vulnerabilities": ["Cold"]
+      },
+      "weapon_indices": []
+    },
+    {
+      "name": "Frost Mage",
+      "sprite_path": "generic-enemy.png",
+      "size": 1,
+      "col": 15,
+      "row": 8,
+      "stats": {
+        "str": 9,
+        "dex": 15,
+        "con": 13,
+        "intel": 16,
+        "wis": 11,
+        "cha": 10,
+        "hp_max": 27,
+        "hp_cur": 27,
+        "ac": 12,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "num_attacks": 1,
+        "save_prof_str": false,
+        "save_prof_dex": true,
+        "save_prof_con": false,
+        "save_prof_intel": true,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "spellcasting_ability": "intel",
+        "temp_hp": 0,
+        "magic_resistances": ["Cold"]
+      },
+      "weapon_indices": [],
+      "spells": ["Ice Storm", "Cone of Cold", "Magic Missile"],
+      "is_npc": true,
+      "npc_spell_groups": {
+        "1": ["Cone of Cold"],
+        "2": ["Magic Missile"]
+      },
+      "npc_spell_uses_cur": {
+        "Cone of Cold": 1,
+        "Magic Missile": 3
+      }
     }
   ]
 }
