@@ -94,23 +94,27 @@ def _dict_to_weapon(d: dict):
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
 
-    # Physical damage rolls
-    w.physical_damage_types = []
+    # Physical damage rolls - build list then assign
+    physical_rolls = []
     for entry in d.get("physical_damage_types", []):
         r = rpg.PhysicalDamageRoll()
         r.type     = _parse_physical_damage(entry.get("type", "Slashing"))
         r.num_dice = int(entry.get("num_dice", 1))
         r.die_size = int(entry.get("die_size", 6))
-        w.physical_damage_types.append(r)
+        r.bonus    = 0
+        physical_rolls.append(r)
+    w.physical_damage_types = physical_rolls
 
-    # Magic damage rolls
-    w.magic_damage_types = []
+    # Magic damage rolls - build list then assign
+    magic_rolls = []
     for entry in d.get("magic_damage_types", []):
         r = rpg.MagicDamageRoll()
         r.type     = _parse_magic_damage(entry.get("type", "Fire"))
         r.num_dice = int(entry.get("num_dice", 1))
         r.die_size = int(entry.get("die_size", 6))
-        w.magic_damage_types.append(r)
+        r.bonus    = 0
+        magic_rolls.append(r)
+    w.magic_damage_types = magic_rolls
 
     return w
 
