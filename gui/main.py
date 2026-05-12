@@ -2169,6 +2169,14 @@ class App:
                     if 0.0 <= along <= l_cells and perp <= w_cells / 2.0:
                         cells.append(rpg.Cell(c, r))
 
+        elif geo == rpg.SpellGeometry.Square:
+            r_cells = spell.radius / 5.0
+            for c in range(cols):
+                for r in range(rows):
+                    dx, dy = abs(c - ax), abs(r - ay)
+                    if dx <= r_cells and dy <= r_cells:
+                        cells.append(rpg.Cell(c, r))
+
         return cells
 
     def _filter_spell_cells_by_range_and_los(self, cells: list, caster_idx: int, spell, center_cell=None) -> list:

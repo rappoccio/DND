@@ -176,7 +176,7 @@ class SpellDialog:
             # Toggle buttons (single choice)
             for group_key, options in [
                 ("type",        ["Harm", "Heal"]),
-                ("geometry",    ["Single", "Line", "Cone", "Sphere"]),
+                ("geometry",    ["Single", "Line", "Cone", "Sphere", "Square"]),
                 ("attack_type", ["AttackRoll", "Save", "Automatic"]),
                 ("save_ability",["SaveStr","SaveDex","SaveCon","SaveInt","SaveWis","SaveCha"]),
             ]:
@@ -345,7 +345,7 @@ class SpellDialog:
 
             # Geometry
             label("Geometry", lx, cy); cy += 14
-            toggle_group("geometry", ["Single", "Line", "Cone", "Sphere"], lx, cy); cy += FH + PAD
+            toggle_group("geometry", ["Single", "Line", "Cone", "Sphere", "Square"], lx, cy); cy += FH + PAD
 
             # Attack type
             label("Attack Type", lx, cy); cy += 14

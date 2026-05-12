@@ -329,6 +329,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Line",     Spell::Line)
         .value("Cone",     Spell::Cone)
         .value("Sphere",   Spell::Sphere)
+        .value("Square",   Spell::Square)
         .value("Multiple", Spell::Multiple)
         .export_values();
 
