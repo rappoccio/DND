@@ -1535,11 +1535,8 @@ class App:
                 self.screen.get_size()
             )
 
-    def _get_immunity_message(self, spell, tgt_agent, tr) -> str:
-        """Check if target is immune to spell damage and return immunity message, or empty string."""
-        if tr.total_damage > 0 or not spell or not tgt_agent:
-            return ""
-
+    def _get_damage_modifier_names(self, spell, tgt_agent):
+        """Extract damage type names from spell and target multipliers. Returns dict with modifier info."""
         # Magic damage type names
         magic_damage_names = {
             rpg.MagicDamage.Acid: "Acid",
@@ -1561,35 +1558,89 @@ class App:
             rpg.PhysicalDamage.Slashing: "Slashing",
         }
 
-        # Collect damage types from spell
-        spell_damage_types = []
-        for dmg_roll in spell.magic_damage_rolls:
-            dmg_type = magic_damage_names.get(dmg_roll.type, "Unknown")
-            spell_damage_types.append((dmg_type, dmg_roll.type, "magic"))
-        for dmg_roll in spell.physical_damage_rolls:
-            dmg_type = physical_damage_names.get(dmg_roll.type, "Unknown")
-            spell_damage_types.append((dmg_type, dmg_roll.type, "physical"))
+        result = {
+            "immune": [],
+            "vulnerable": [],
+            "resistant": [],
+            "damage_types": []
+        }
 
-        if not spell_damage_types:
+        if not spell or not tgt_agent:
+            return result
+
+        # Collect damage types from spell with their multipliers
+        for dmg_roll in spell.magic_damage_rolls:
+            dmg_type_name = magic_damage_names.get(dmg_roll.type, "Unknown")
+            mult = tgt_agent.stats.get_magic_damage_multiplier(int(dmg_roll.type))
+
+            result["damage_types"].append((dmg_type_name, mult))
+            if mult == 0.0:
+                result["immune"].append(dmg_type_name)
+            elif mult == 2.0:
+                result["vulnerable"].append(dmg_type_name)
+            elif mult == 0.5:
+                result["resistant"].append(dmg_type_name)
+
+        for dmg_roll in spell.physical_damage_rolls:
+            dmg_type_name = physical_damage_names.get(dmg_roll.type, "Unknown")
+            mult = tgt_agent.stats.get_physical_damage_multiplier(int(dmg_roll.type))
+
+            result["damage_types"].append((dmg_type_name, mult))
+            if mult == 0.0:
+                result["immune"].append(dmg_type_name)
+            elif mult == 2.0:
+                result["vulnerable"].append(dmg_type_name)
+            elif mult == 0.5:
+                result["resistant"].append(dmg_type_name)
+
+        return result
+
+    def _get_immunity_message(self, spell, tgt_agent, tr) -> str:
+        """Check if target is immune to spell damage and return immunity message, or empty string."""
+        if tr.total_damage > 0 or not spell or not tgt_agent:
+            return ""
+
+        mods = self._get_damage_modifier_names(spell, tgt_agent)
+        if not mods["damage_types"]:
             return ""
 
         # Check if target is immune to all damage types
-        all_immune = True
-        immune_types = []
-        for dmg_name, dmg_type, dmg_category in spell_damage_types:
-            if dmg_category == "magic":
-                mult = tgt_agent.stats.get_magic_damage_multiplier(int(dmg_type))
-            else:
-                mult = tgt_agent.stats.get_physical_damage_multiplier(int(dmg_type))
-
-            if mult == 0.0:
-                immune_types.append(dmg_name)
-            else:
-                all_immune = False
-
-        if all_immune and immune_types:
-            immune_str = ", ".join(immune_types)
+        all_immune = len(mods["immune"]) == len(mods["damage_types"])
+        if all_immune and mods["immune"]:
+            immune_str = ", ".join(mods["immune"])
             return f"Immune to {immune_str}"
+
+        return ""
+
+    def _get_vulnerability_message(self, spell, tgt_agent, tr) -> str:
+        """Check if target is vulnerable to spell damage and return message with vulnerability indicator."""
+        if not spell or not tgt_agent or tr.total_damage == 0:
+            return ""
+
+        mods = self._get_damage_modifier_names(spell, tgt_agent)
+        if not mods["vulnerable"]:
+            return ""
+
+        # Check if all damage types are vulnerable
+        if len(mods["vulnerable"]) == len(mods["damage_types"]):
+            vuln_str = ", ".join(mods["vulnerable"])
+            return f"{tr.total_damage} dmg (Vulnerable to {vuln_str})"
+
+        return ""
+
+    def _get_resistance_message(self, spell, tgt_agent, tr) -> str:
+        """Check if target is resistant to spell damage and return message with resistance indicator."""
+        if not spell or not tgt_agent or tr.total_damage == 0:
+            return ""
+
+        mods = self._get_damage_modifier_names(spell, tgt_agent)
+        if not mods["resistant"]:
+            return ""
+
+        # Check if all damage types are resistant
+        if len(mods["resistant"]) == len(mods["damage_types"]):
+            resist_str = ", ".join(mods["resistant"])
+            return f"{tr.total_damage} dmg (Resistant to {resist_str})"
 
         return ""
 
@@ -1646,10 +1697,18 @@ class App:
                     if tr.saved and tr.total_damage > 0:
                         dmg_str = f"{tr.total_damage // 2} dmg (half)"
 
-                    # Check for immunity
+                    # Check for damage modifiers (immunity > vulnerability > resistance > normal)
                     immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
                     if immunity_msg:
                         dmg_str = immunity_msg
+                    else:
+                        vuln_msg = self._get_vulnerability_message(spell, tgt_agent, tr)
+                        if vuln_msg:
+                            dmg_str = vuln_msg
+                        else:
+                            resist_msg = self._get_resistance_message(spell, tgt_agent, tr)
+                            if resist_msg:
+                                dmg_str = resist_msg
 
                     msg = (f"{cast_name}→{tgt_name}: {ability_str} save — "
                            f"rolled {tr.save_d20} + {save_mod} = {save_total} vs DC {tr.save_dc} — "
@@ -1661,12 +1720,20 @@ class App:
                         msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
                                f"HEAL {tr.total_healing}{saved_str}")
                     else:
-                        # Check for immunity
+                        # Check for damage modifiers (immunity > vulnerability > resistance > normal)
                         immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
                         if immunity_msg:
                             dmg_text = immunity_msg
                         else:
-                            dmg_text = f"{tr.total_damage} dmg{saved_str}"
+                            vuln_msg = self._get_vulnerability_message(spell, tgt_agent, tr)
+                            if vuln_msg:
+                                dmg_text = f"{vuln_msg}{saved_str}"
+                            else:
+                                resist_msg = self._get_resistance_message(spell, tgt_agent, tr)
+                                if resist_msg:
+                                    dmg_text = f"{resist_msg}{saved_str}"
+                                else:
+                                    dmg_text = f"{tr.total_damage} dmg{saved_str}"
                         msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
                                f"{dmg_text}"
                                f"{' — DOWN' if tr.target_down else ''}")
@@ -1674,12 +1741,20 @@ class App:
                 if tr.total_healing:
                     msg = f"{cast_name}→{tgt_name}: {result.spell_name} HEAL {tr.total_healing}"
                 else:
-                    # Check for immunity
+                    # Check for damage modifiers (immunity > vulnerability > resistance > normal)
                     immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
                     if immunity_msg:
                         dmg_text = immunity_msg
                     else:
-                        dmg_text = f"{tr.total_damage} dmg"
+                        vuln_msg = self._get_vulnerability_message(spell, tgt_agent, tr)
+                        if vuln_msg:
+                            dmg_text = vuln_msg
+                        else:
+                            resist_msg = self._get_resistance_message(spell, tgt_agent, tr)
+                            if resist_msg:
+                                dmg_text = resist_msg
+                            else:
+                                dmg_text = f"{tr.total_damage} dmg"
                     msg = (f"{cast_name}→{tgt_name}: {result.spell_name} "
                            f"{dmg_text}"
                            f"{' — DOWN' if tr.target_down else ''}")
