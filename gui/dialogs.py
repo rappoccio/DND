@@ -1429,3 +1429,431 @@ class SpellSelectionDialog:
                 spell_name = spell.get("name", "Unknown")
                 text = self.font_sm.render(spell_name, True, (200, 200, 220))
                 surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
+
+
+class ArmorSelectionDialog:
+    """Modal dialog for selecting armor pieces from armor.json."""
+    ITEM_H = 24
+    PAD = 12
+    SEARCH_H = 32
+
+    def __init__(self, armors: list, font_sm=None, font_md=None):
+        self.all_armors = armors
+        self.filtered_armors = armors
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.selected_callback = None
+        self.search_text = ""
+        self._frames_since_show = 0
+
+    def show(self, callback):
+        self.visible = True
+        self.selected_callback = callback
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.search_text = ""
+        self._frames_since_show = 0
+        self.filtered_armors = self.all_armors[:]
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 400
+        dlg_h = 500
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def dismiss(self):
+        self.visible = False
+
+    def _update_filtered_armors(self):
+        search_lower = self.search_text.lower()
+        self.filtered_armors = [a for a in self.all_armors if search_lower in a.get("name", "").lower()]
+        self.scroll_y = 0
+        self._hover_idx = -1
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.dismiss()
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                self.search_text = self.search_text[:-1]
+                self._update_filtered_armors()
+                return True
+            elif event.key == pygame.K_RETURN:
+                if len(self.filtered_armors) == 1:
+                    if self.selected_callback:
+                        self.selected_callback(self.filtered_armors[0])
+                    self.dismiss()
+                    return True
+            elif event.unicode.isprintable():
+                self.search_text += event.unicode
+                self._update_filtered_armors()
+                return True
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(*event.pos):
+                search_y = self.rect.y + 35
+                search_box_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
+                                             self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+                if search_box_rect.collidepoint(*event.pos):
+                    return True
+
+                list_y = search_y + self.SEARCH_H
+                list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+                for i, armor in enumerate(self.filtered_armors):
+                    item_y = list_y + i * self.ITEM_H - self.scroll_y
+                    if list_y <= item_y < list_y + list_h:
+                        item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                              self.rect.w - self.PAD * 2, self.ITEM_H)
+                        if item_rect.collidepoint(*event.pos):
+                            if self.selected_callback:
+                                self.selected_callback(armor)
+                            self.dismiss()
+                            return True
+            else:
+                self.dismiss()
+            return True
+        elif event.type == pygame.MOUSEMOTION and self.visible:
+            search_y = self.rect.y + 35
+            list_y = search_y + self.SEARCH_H
+            list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+            self._hover_idx = -1
+            for i, armor in enumerate(self.filtered_armors):
+                item_y = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= item_y < list_y + list_h:
+                    item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                          self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if item_rect.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+        elif event.type == pygame.MOUSEWHEEL and self.visible and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            self.scroll_y = max(0, self.scroll_y - event.y * 30)
+            max_scroll = max(0, len(self.filtered_armors) * self.ITEM_H - (self.rect.h - self.SEARCH_H - 20))
+            self.scroll_y = min(self.scroll_y, max_scroll)
+            return True
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.visible or not self.rect:
+            return
+
+        self._frames_since_show += 1
+
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))
+        surf.blit(overlay, (0, 0))
+
+        pygame.draw.rect(surf, (50, 50, 60), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+
+        title = self.font_md.render("Select Armor", True, (220, 220, 235))
+        title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 8)
+        surf.blit(title, title_rect)
+
+        search_y = self.rect.y + 35
+        search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+        pygame.draw.rect(surf, (30, 30, 40), search_box)
+        pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
+        search_label = self.font_sm.render(f"Search: {self.search_text}_" if self.visible else f"Search: {self.search_text}", True, (200, 200, 200))
+        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+
+        list_y = search_y + self.SEARCH_H
+        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+        pygame.draw.rect(surf, (30, 30, 40), pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h))
+
+        for i, armor in enumerate(self.filtered_armors):
+            item_y = list_y + i * self.ITEM_H - self.scroll_y
+            if list_y <= item_y < list_y + list_h:
+                item_rect = pygame.Rect(self.rect.x + self.PAD, item_y, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if i == self._hover_idx:
+                    pygame.draw.rect(surf, (70, 70, 90), item_rect)
+                armor_name = armor.get("name", "Unknown")
+                text = self.font_sm.render(armor_name, True, (200, 200, 220))
+                surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
+
+
+class WeaponSelectionDialog:
+    """Modal dialog for selecting weapons from weapons.json."""
+    ITEM_H = 24
+    PAD = 12
+    SEARCH_H = 32
+
+    def __init__(self, weapons: list, font_sm=None, font_md=None):
+        self.all_weapons = weapons
+        self.filtered_weapons = weapons
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.selected_callback = None
+        self.search_text = ""
+        self._frames_since_show = 0
+
+    def show(self, callback):
+        self.visible = True
+        self.selected_callback = callback
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.search_text = ""
+        self._frames_since_show = 0
+        self.filtered_weapons = self.all_weapons[:]
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 400
+        dlg_h = 500
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def dismiss(self):
+        self.visible = False
+
+    def _update_filtered_weapons(self):
+        search_lower = self.search_text.lower()
+        self.filtered_weapons = [w for w in self.all_weapons if search_lower in w.get("name", "").lower()]
+        self.scroll_y = 0
+        self._hover_idx = -1
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.dismiss()
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                self.search_text = self.search_text[:-1]
+                self._update_filtered_weapons()
+                return True
+            elif event.key == pygame.K_RETURN:
+                if len(self.filtered_weapons) == 1:
+                    if self.selected_callback:
+                        self.selected_callback(self.filtered_weapons[0])
+                    self.dismiss()
+                    return True
+            elif event.unicode.isprintable():
+                self.search_text += event.unicode
+                self._update_filtered_weapons()
+                return True
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(*event.pos):
+                search_y = self.rect.y + 35
+                search_box_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
+                                             self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+                if search_box_rect.collidepoint(*event.pos):
+                    return True
+
+                list_y = search_y + self.SEARCH_H
+                list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+                for i, weapon in enumerate(self.filtered_weapons):
+                    item_y = list_y + i * self.ITEM_H - self.scroll_y
+                    if list_y <= item_y < list_y + list_h:
+                        item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                              self.rect.w - self.PAD * 2, self.ITEM_H)
+                        if item_rect.collidepoint(*event.pos):
+                            if self.selected_callback:
+                                self.selected_callback(weapon)
+                            self.dismiss()
+                            return True
+            else:
+                self.dismiss()
+            return True
+        elif event.type == pygame.MOUSEMOTION and self.visible:
+            search_y = self.rect.y + 35
+            list_y = search_y + self.SEARCH_H
+            list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+            self._hover_idx = -1
+            for i, weapon in enumerate(self.filtered_weapons):
+                item_y = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= item_y < list_y + list_h:
+                    item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                          self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if item_rect.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+        elif event.type == pygame.MOUSEWHEEL and self.visible and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            self.scroll_y = max(0, self.scroll_y - event.y * 30)
+            max_scroll = max(0, len(self.filtered_weapons) * self.ITEM_H - (self.rect.h - self.SEARCH_H - 20))
+            self.scroll_y = min(self.scroll_y, max_scroll)
+            return True
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.visible or not self.rect:
+            return
+
+        self._frames_since_show += 1
+
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))
+        surf.blit(overlay, (0, 0))
+
+        pygame.draw.rect(surf, (50, 50, 60), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+
+        title = self.font_md.render("Select Weapon", True, (220, 220, 235))
+        title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 8)
+        surf.blit(title, title_rect)
+
+        search_y = self.rect.y + 35
+        search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+        pygame.draw.rect(surf, (30, 30, 40), search_box)
+        pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
+        search_label = self.font_sm.render(f"Search: {self.search_text}_" if self.visible else f"Search: {self.search_text}", True, (200, 200, 200))
+        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+
+        list_y = search_y + self.SEARCH_H
+        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+        pygame.draw.rect(surf, (30, 30, 40), pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h))
+
+        for i, weapon in enumerate(self.filtered_weapons):
+            item_y = list_y + i * self.ITEM_H - self.scroll_y
+            if list_y <= item_y < list_y + list_h:
+                item_rect = pygame.Rect(self.rect.x + self.PAD, item_y, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if i == self._hover_idx:
+                    pygame.draw.rect(surf, (70, 70, 90), item_rect)
+                weapon_name = weapon.get("name", "Unknown")
+                text = self.font_sm.render(weapon_name, True, (200, 200, 220))
+                surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
+
+
+class ArmorDialog:
+    """Dialog for managing armor equipment across all 6 slots."""
+    DLG_W = 500
+    DLG_H = 450
+    PAD = 15
+    ITEM_H = 32
+    BTN_W = 100
+    BTN_H = 28
+
+    C_BG = (35, 35, 50)
+    C_BORDER = (120, 120, 160)
+    C_LABEL = (180, 180, 200)
+    C_SLOT_BG = (25, 25, 40)
+    C_SLOT_BORDER = (80, 80, 120)
+    C_BUTTON = (70, 70, 100)
+    C_BUTTON_H = (90, 90, 130)
+
+    SLOT_NAMES = ["Helmet", "Chest", "Leggings", "Boots", "Gloves", "Cloak"]
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.active = False
+        self.rect = None
+        self.agent_idx = -1
+        self.agent_name = ""
+        self.current_armor = [{"name": ""} for _ in range(6)]
+        self.callback = None
+        self._hover_slot = -1
+        self.armor_selection_dialog = None
+
+    def open(self, screen, agent_idx: int, agent_name: str, armor_array, armor_selection_dialog, callback):
+        self.active = True
+        self.agent_idx = agent_idx
+        self.agent_name = agent_name
+        self.callback = callback
+        self.armor_selection_dialog = armor_selection_dialog
+        # Convert armor objects to dicts for display
+        self.current_armor = [{"name": a.name, "description": a.description} if a.name else {"name": "", "description": ""} 
+                              for a in armor_array]
+        sw, sh = screen.get_size()
+        self.rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2, self.DLG_W, self.DLG_H)
+
+    def dismiss(self):
+        self.active = False
+        if self.callback:
+            self.callback()
+
+    def _slot_rect(self, slot_idx: int) -> pygame.Rect:
+        y = self.rect.y + 45 + slot_idx * (self.ITEM_H + 5)
+        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2, self.ITEM_H)
+
+    def handle(self, event, screen) -> bool:
+        if not self.active or not self.rect:
+            return False
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.dismiss()
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # If armor selection dialog is open, let it handle the event
+            if self.armor_selection_dialog.visible:
+                return False
+
+            if self.rect.collidepoint(*event.pos):
+                # Check close button
+                close_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+                if close_rect.collidepoint(*event.pos):
+                    self.dismiss()
+                    return True
+
+                # Check slot clicks
+                for i in range(6):
+                    slot_rect = self._slot_rect(i)
+                    if slot_rect.collidepoint(*event.pos):
+                        def _on_armor_selected(armor_dict, slot_idx=i):
+                            self.current_armor[slot_idx] = armor_dict
+                        self.armor_selection_dialog.show(_on_armor_selected)
+                        return True
+            else:
+                self.dismiss()
+            return True
+
+        if event.type == pygame.MOUSEMOTION and self.active:
+            self._hover_slot = -1
+            for i in range(6):
+                if self._slot_rect(i).collidepoint(*event.pos):
+                    self._hover_slot = i
+                    break
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.active or not self.rect:
+            return
+
+        pygame.draw.rect(surf, self.C_BG, self.rect, border_radius=8)
+        pygame.draw.rect(surf, self.C_BORDER, self.rect, 2, border_radius=8)
+
+        # Title
+        title = self.font_md.render(f"Armor - {self.agent_name}", True, self.C_LABEL)
+        title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 10)
+        surf.blit(title, title_rect)
+
+        # Close button
+        close_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+        pygame.draw.rect(surf, self.C_BUTTON, close_rect)
+        close_text = self.font_sm.render("✕", True, (220, 220, 220))
+        surf.blit(close_text, close_text.get_rect(center=close_rect.center))
+
+        # Slots
+        for i, slot_name in enumerate(self.SLOT_NAMES):
+            slot_rect = self._slot_rect(i)
+            color = self.C_BUTTON_H if i == self._hover_slot else self.C_SLOT_BG
+            pygame.draw.rect(surf, color, slot_rect, border_radius=4)
+            pygame.draw.rect(surf, self.C_SLOT_BORDER, slot_rect, 1, border_radius=4)
+
+            # Slot label
+            label = self.font_sm.render(f"{slot_name}:", True, self.C_LABEL)
+            surf.blit(label, (slot_rect.x + 8, slot_rect.y + 4))
+
+            # Current armor name
+            armor_name = self.current_armor[i].get("name", "—")
+            armor_text = self.font_sm.render(armor_name if armor_name else "—", True, (200, 200, 220))
+            surf.blit(armor_text, (slot_rect.x + 120, slot_rect.y + 4))

@@ -51,13 +51,14 @@ class WeaponDialog:
 
     # ── Public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str,
-             weapons: list[dict], callback):
+             weapons: list[dict], callback, add_weapon_callback=None):
         import copy
         self.active      = True
         self._agent_idx  = agent_idx
         self._agent_name = agent_name
         self._weapons    = copy.deepcopy(weapons)
         self._cb         = callback
+        self._add_cb     = add_weapon_callback
         self._active_field = None
         self._rects      = {}
 
@@ -88,11 +89,14 @@ class WeaponDialog:
             self._weapons[self._sel] = dict(self._f)
 
     def _add_weapon(self):
-        import copy
-        self._save_form()
-        self._weapons.append(copy.deepcopy(_DEFAULT_WEAPON))
-        self._sel = len(self._weapons) - 1
-        self._load_form()
+        if self._add_cb:
+            self._add_cb()
+        else:
+            import copy
+            self._save_form()
+            self._weapons.append(copy.deepcopy(_DEFAULT_WEAPON))
+            self._sel = len(self._weapons) - 1
+            self._load_form()
 
     def _remove_weapon(self):
         if 0 <= self._sel < len(self._weapons):

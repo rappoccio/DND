@@ -45,7 +45,7 @@ from helpers import (
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
@@ -222,6 +222,9 @@ class App:
         self.weapon_dialog  = WeaponDialog(self.font_sm, self.font_md, self.font_lg)
         self.spell_dialog   = SpellDialog(self.font_sm, self.font_md, self.font_lg)
         self.spell_selection_dialog = SpellSelectionDialog(self.all_spells, self.font_sm, self.font_md)
+        self.armor_selection_dialog = ArmorSelectionDialog(list(self.armor_name_to_dict.values()), self.font_sm, self.font_md)
+        self.weapon_selection_dialog = WeaponSelectionDialog(list(self.weapon_name_to_dict.values()), self.font_sm, self.font_md)
+        self.armor_dialog = ArmorDialog(self.font_sm, self.font_md)
         mob_names = sorted(self.all_mobs.keys())
         self.mob_dialog = MobSelectionDialog(mob_names, self.font_sm, self.font_md)
         self.terrain_editor = TerrainEditorDialog(self.font_sm, self.font_md)
@@ -4010,13 +4013,26 @@ class App:
             if self.stats_dialog.active:
                 self.stats_dialog.handle(event, self.screen)
                 continue
+            # Selection dialogs get priority (handle before parent dialogs)
+            if self.weapon_selection_dialog.visible:
+                if self.weapon_selection_dialog.handle(event):
+                    continue
+            if self.armor_selection_dialog.visible:
+                if self.armor_selection_dialog.handle(event):
+                    continue
+            if self.spell_selection_dialog.visible:
+                if self.spell_selection_dialog.handle(event):
+                    continue
+
+            # Parent dialogs
             if self.weapon_dialog.active:
                 self.weapon_dialog.handle(event, self.screen)
                 continue
+            if self.armor_dialog.active:
+                self.armor_dialog.handle(event, self.screen)
+                continue
             if self.spell_dialog.active:
                 self.spell_dialog.handle(event, self.screen)
-                if self.spell_selection_dialog.visible:
-                    self.spell_selection_dialog.handle(event)
                 continue
             # ── Placement mode (floating agent) ───────────────────────────────
             if self.placement_mode_active:
@@ -4135,10 +4151,22 @@ class App:
                             pt2 = self.bm.placed_agents[h]
                             weapon_dicts = [_weapon_to_dict(w)
                                             for w in self.combat.get_agent_weapons(self.bm, h)]
+                            def _open_weapon_selector():
+                                def _on_weapon_selected(weapon_dict):
+                                    # Don't add to C++ yet - just append to the dialog's list
+                                    # The weapon_dialog will save everything when it closes
+                                    weapon_dicts.append(weapon_dict)
+                                    # Refresh the weapon_dialog display
+                                    self.weapon_dialog._weapons.append(weapon_dict)
+                                    self.weapon_dialog._sel = len(self.weapon_dialog._weapons) - 1
+                                    self.weapon_dialog._load_form()
+                                    print(f"Added {weapon_dict['name']} to {pt2.name}")
+                                self.weapon_selection_dialog.show(_on_weapon_selected)
                             self.weapon_dialog.open(
                                 self.screen, h, pt2.name,
                                 weapon_dicts,
-                                self._on_weapon_done)
+                                self._on_weapon_done,
+                                add_weapon_callback=_open_weapon_selector)
                         def _open_spells(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             spell_dicts = [self._spell_to_dict(h, j, s)
@@ -4150,10 +4178,25 @@ class App:
                                 spell_dicts,
                                 self._on_spell_done,
                                 add_spell_callback=_open_spell_selector)
+                        def _open_armor(h=hit):
+                            pt2 = self.bm.placed_agents[h]
+                            armor_array = self.combat.get_agent_armor(self.bm, h)
+                            def _on_armor_done():
+                                # Collect armor from dialog and save back to combat engine
+                                cpp_armor = []
+                                for armor_dict in self.armor_dialog.current_armor:
+                                    if armor_dict.get("name"):
+                                        cpp_armor.append(_dict_to_armor(armor_dict))
+                                    else:
+                                        cpp_armor.append(rpg.Armor())
+                                self.combat.set_agent_armor(self.bm, h, cpp_armor)
+                            self.armor_dialog.open(self.screen, h, pt2.name, armor_array,
+                                                  self.armor_selection_dialog, _on_armor_done)
                         self.context_menu.show(
                             event.pos,
                             [("Edit Stats",   _open_stats),
                              ("Edit Weapons", _open_weapons),
+                             ("Edit Armor",   _open_armor),
                              ("Edit Spells",  _open_spells)],
                             self.screen.get_size()
                         )
@@ -4506,8 +4549,11 @@ class App:
             self.file_browser.draw(self.screen)     # modal — always on top
             self.stats_dialog.draw(self.screen)    # modal — always on top
             self.weapon_dialog.draw(self.screen)   # modal — always on top
+            self.armor_dialog.draw(self.screen)    # modal — always on top
             self.spell_dialog.draw(self.screen)    # modal — always on top
             self.spell_selection_dialog.draw(self.screen)  # modal — always on top
+            self.armor_selection_dialog.draw(self.screen)  # modal — always on top
+            self.weapon_selection_dialog.draw(self.screen)  # modal — always on top
             self.mob_dialog.draw(self.screen)      # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
             pygame.display.flip()
