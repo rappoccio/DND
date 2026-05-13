@@ -1521,10 +1521,18 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 }
             }
         } else if (sp.geometry == Spell::Square) {
-            int size_cells = (sp.radius + 2) / 5;  // Approximate
-            for (int c = action.aoe_col; c < action.aoe_col + size_cells; ++c) {
-                for (int r = action.aoe_row; r < action.aoe_row + size_cells; ++r) {
-                    effect_cells.push_back(Cell{c, r});
+            double w_cells = sp.width / 5.0;
+            double l_cells = sp.length / 5.0;
+            int cols = bm.gridCols();
+            int rows = bm.gridRows();
+            // Center the square on the clicked point
+            for (int c = 0; c < cols; ++c) {
+                for (int r = 0; r < rows; ++r) {
+                    double dx = std::abs(c - action.aoe_col);
+                    double dy = std::abs(r - action.aoe_row);
+                    if (dx <= w_cells / 2.0 && dy <= l_cells / 2.0) {
+                        effect_cells.push_back(Cell{c, r});
+                    }
                 }
             }
         } else if (sp.geometry == Spell::Line) {
