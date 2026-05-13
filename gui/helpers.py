@@ -102,6 +102,7 @@ _DEFAULT_WEAPON: dict = {
     "thrown":          False,
     "proficient":      True,
     "off_hand":        False,      # designated off-hand weapon (TWF)
+    "two_handed":      False,      # prevents off-hand weapon when in main hand
     "bonus_hit":       0,          # flat bonus to attack rolls
     "bonus_damage":    0,          # flat bonus to damage
     "physical_damage_types": [{"type": "Slashing", "num_dice": 1, "die_size": 6}],
@@ -121,6 +122,7 @@ def _weapon_to_dict(w) -> dict:
         "thrown":           w.thrown,
         "proficient":       w.proficient,
         "off_hand":         w.off_hand,
+        "two_handed":       w.two_handed,
         "bonus_hit":        w.bonus_hit,
         "bonus_damage":     w.bonus_damage,
         "physical_damage_types": [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
@@ -144,6 +146,7 @@ def _dict_to_weapon(d: dict):
     w.thrown          = bool(d.get("thrown",          False))
     w.proficient      = bool(d.get("proficient",      True))
     w.off_hand        = bool(d.get("off_hand",        False))
+    w.two_handed      = bool(d.get("two_handed",      False))
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
 

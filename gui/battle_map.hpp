@@ -117,7 +117,7 @@ struct PlacedAgent {
     std::shared_ptr<Agent> agent;
     Cell                   origin;        // top-left cell of the NxN footprint
     Agent::Stats           stats;         // D&D 5.5e character stats
-    std::vector<Weapon>    weapons;       // equipped weapons (may be empty)
+    std::array<Weapon, 3>  weapons;       // [Main Hand, Off Hand, Ranged]
     std::vector<Spell>     spells;        // known spells (may be empty)
     std::array<Armor, 6>   armor;         // [Helmet, Chest, Leggings, Boots, Gloves, Cloak]
 };
@@ -192,10 +192,8 @@ public:
     void applyDash(int idx) noexcept;
 
     // Weapon accessors (by index into placedAgents()).
-    [[nodiscard]] std::vector<Weapon> getAgentWeapons(int idx) const noexcept;
-    void setAgentWeapons(int idx, std::vector<Weapon> weapons) noexcept;
-    void addWeaponToAgent(int idx, Weapon w) noexcept;
-    void removeWeaponFromAgent(int idx, int weapon_idx) noexcept;
+    [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(int idx) const noexcept;
+    void setAgentWeapons(int idx, std::array<Weapon, 3> weapons) noexcept;
 
     // Armor accessors (by index into placedAgents()): 6 slots [helmet, chest, leggings, boots, gloves, cloak].
     [[nodiscard]] std::array<Armor, 6> getAgentArmor(int idx) const noexcept;

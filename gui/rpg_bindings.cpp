@@ -123,7 +123,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("burrow_to", [](PlacedAgent& p, int x, int y, int z){ return p.agent->burrowTo(x, y, z); },
             py::arg("x"), py::arg("y"), py::arg("z") = 0)
         .def_property_readonly("weapons",
-            [](const PlacedAgent& p) -> std::vector<Weapon> { return p.weapons; })
+            [](const PlacedAgent& p) { return std::vector<Weapon>(p.weapons.begin(), p.weapons.end()); })
         .def_property_readonly("spells",
             [](const PlacedAgent& p) -> std::vector<Spell> { return p.spells; })
         .def_property_readonly("stats",
@@ -305,6 +305,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("thrown",           &Weapon::thrown)
         .def_readwrite("proficient",       &Weapon::proficient)
         .def_readwrite("off_hand",         &Weapon::off_hand)
+        .def_readwrite("two_handed",       &Weapon::two_handed)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
         .def_readwrite("magic_damage_types",    &Weapon::magicDamageRolls)
@@ -916,19 +917,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("get_agent_weapons",
              &CombatEngine::getAgentWeapons,
              py::arg("battle_map"), py::arg("idx"),
-             "Return a copy of the weapon list for agent[idx].")
+             "Return a copy of the weapon array [main_hand, off_hand, ranged] for agent[idx].")
         .def("set_agent_weapons",
              &CombatEngine::setAgentWeapons,
              py::arg("battle_map"), py::arg("idx"), py::arg("weapons"),
-             "Replace the weapon list for agent[idx].")
-        .def("add_weapon_to_agent",
-             &CombatEngine::addWeaponToAgent,
-             py::arg("battle_map"), py::arg("idx"), py::arg("weapon"),
-             "Append a weapon to agent[idx]'s weapon list.")
-        .def("remove_weapon_from_agent",
-             &CombatEngine::removeWeaponFromAgent,
-             py::arg("battle_map"), py::arg("idx"), py::arg("weapon_idx"),
-             "Remove weapon at weapon_idx from agent[idx]'s list.")
+             "Replace the weapon array [main_hand, off_hand, ranged] for agent[idx].")
         .def("get_agent_armor",
              &CombatEngine::getAgentArmor,
              py::arg("battle_map"), py::arg("idx"),

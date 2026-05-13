@@ -332,10 +332,8 @@ public:
     [[nodiscard]] Agent::Conditions getAgentConditions(const BattleMap& bm, int idx) const noexcept;
     void setAgentConditions(BattleMap& bm, int idx, const Agent::Conditions& c) noexcept;
 
-    [[nodiscard]] std::vector<Weapon> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
-    void setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept;
-    void addWeaponToAgent(BattleMap& bm, int idx, Weapon w) noexcept;
-    void removeWeaponFromAgent(BattleMap& bm, int idx, int weapon_idx) noexcept;
+    [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
+    void setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept;
 
     [[nodiscard]] std::array<Armor, 6> getAgentArmor(const BattleMap& bm, int idx) const noexcept;
     void setAgentArmor(BattleMap& bm, int idx, std::array<Armor, 6> armor) noexcept;

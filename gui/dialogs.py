@@ -1857,3 +1857,151 @@ class ArmorDialog:
             armor_name = self.current_armor[i].get("name", "—")
             armor_text = self.font_sm.render(armor_name if armor_name else "—", True, (200, 200, 220))
             surf.blit(armor_text, (slot_rect.x + 120, slot_rect.y + 4))
+
+
+class WeaponsDialog:
+    """Dialog for managing weapon equipment across 3 slots: main hand, off hand, ranged."""
+    DLG_W = 500
+    DLG_H = 300
+    PAD = 15
+    ITEM_H = 32
+    BTN_W = 100
+    BTN_H = 28
+
+    C_BG = (35, 35, 50)
+    C_BORDER = (120, 120, 160)
+    C_LABEL = (180, 180, 200)
+    C_SLOT_BG = (25, 25, 40)
+    C_SLOT_BORDER = (80, 80, 120)
+    C_BUTTON = (70, 70, 100)
+    C_BUTTON_H = (90, 90, 130)
+
+    SLOT_NAMES = ["Main Hand", "Off Hand", "Ranged"]
+    SLOT_KEYS = ["main_hand", "off_hand", "ranged"]
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.active = False
+        self.rect = None
+        self.agent_idx = -1
+        self.agent_name = ""
+        self.current_weapons = [{"name": ""}, {"name": ""}, {"name": ""}]  # 3 slots
+        self.callback = None
+        self._hover_slot = -1
+        self.weapon_selection_dialog = None
+
+    def open(self, screen, agent_idx: int, agent_name: str, weapon_array, weapon_selection_dialog, callback, combat_engine=None, battle_map=None):
+        self.active = True
+        self.agent_idx = agent_idx
+        self.agent_name = agent_name
+        self.callback = callback
+        self.weapon_selection_dialog = weapon_selection_dialog
+        # Convert weapon objects to dicts for display
+        self.current_weapons = [{"name": w.name if w.name else "", "two_handed": w.two_handed} for w in weapon_array]
+        sw, sh = screen.get_size()
+        self.rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2, self.DLG_W, self.DLG_H)
+
+    def dismiss(self):
+        self.active = False
+        if self.callback:
+            self.callback()
+
+    def _slot_rect(self, slot_idx: int) -> pygame.Rect:
+        y = self.rect.y + 45 + slot_idx * (self.ITEM_H + 5)
+        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2, self.ITEM_H)
+
+    def handle(self, event, screen) -> bool:
+        if not self.active or not self.rect:
+            return False
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.dismiss()
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # If weapon selection dialog is open, let it handle the event
+            if self.weapon_selection_dialog.visible:
+                return False
+
+            if self.rect.collidepoint(*event.pos):
+                # Check close button
+                close_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+                if close_rect.collidepoint(*event.pos):
+                    self.dismiss()
+                    return True
+
+                # Check slot clicks
+                for i in range(3):
+                    slot_rect = self._slot_rect(i)
+                    if slot_rect.collidepoint(*event.pos):
+                        # Check if off-hand slot and main hand has two_handed weapon
+                        if i == 1 and self.current_weapons[0].get("two_handed", False):
+                            # Off-hand disabled when main hand is two-handed
+                            return True
+
+                        def _on_weapon_selected(weapon_dict, slot_idx=i):
+                            self.current_weapons[slot_idx] = weapon_dict
+
+                        self.weapon_selection_dialog.show(_on_weapon_selected)
+                        return True
+            else:
+                self.dismiss()
+            return True
+
+        if event.type == pygame.MOUSEMOTION and self.active:
+            self._hover_slot = -1
+            for i in range(3):
+                slot_rect = self._slot_rect(i)
+                if slot_rect.collidepoint(*event.pos):
+                    # Don't highlight off-hand if main hand has two_handed
+                    if i == 1 and self.current_weapons[0].get("two_handed", False):
+                        continue
+                    self._hover_slot = i
+                    break
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.active or not self.rect:
+            return
+
+        pygame.draw.rect(surf, self.C_BG, self.rect, border_radius=8)
+        pygame.draw.rect(surf, self.C_BORDER, self.rect, 2, border_radius=8)
+
+        # Title
+        title = self.font_md.render(f"Weapons - {self.agent_name}", True, self.C_LABEL)
+        title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 10)
+        surf.blit(title, title_rect)
+
+        # Close button
+        close_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+        pygame.draw.rect(surf, self.C_BUTTON, close_rect)
+        close_text = self.font_sm.render("✕", True, (220, 220, 220))
+        surf.blit(close_text, close_text.get_rect(center=close_rect.center))
+
+        # Slots
+        for i, slot_name in enumerate(self.SLOT_NAMES):
+            slot_rect = self._slot_rect(i)
+
+            # If off-hand and main hand is two-handed, disable it
+            disabled = (i == 1 and self.current_weapons[0].get("two_handed", False))
+
+            if disabled:
+                color = (45, 45, 60)  # Dimmed
+                border_color = (60, 60, 80)
+            else:
+                color = self.C_BUTTON_H if i == self._hover_slot else self.C_SLOT_BG
+                border_color = self.C_SLOT_BORDER
+
+            pygame.draw.rect(surf, color, slot_rect, border_radius=4)
+            pygame.draw.rect(surf, border_color, slot_rect, 1, border_radius=4)
+
+            # Slot label
+            label = self.font_sm.render(f"{slot_name}:", True, self.C_LABEL)
+            surf.blit(label, (slot_rect.x + 8, slot_rect.y + 4))
+
+            # Current weapon name
+            weapon_name = self.current_weapons[i].get("name", "—")
+            weapon_text = self.font_sm.render(weapon_name if weapon_name else "—", True, (200, 200, 220))
+            surf.blit(weapon_text, (slot_rect.x + 120, slot_rect.y + 4))

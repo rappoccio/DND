@@ -571,30 +571,16 @@ CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
 //  Weapon accessors
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::vector<Weapon> BattleMap::getAgentWeapons(int idx) const noexcept
+std::array<Weapon, 3> BattleMap::getAgentWeapons(int idx) const noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
     return placedAgents_[static_cast<std::size_t>(idx)].weapons;
 }
 
-void BattleMap::setAgentWeapons(int idx, std::vector<Weapon> weapons) noexcept
+void BattleMap::setAgentWeapons(int idx, std::array<Weapon, 3> weapons) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].weapons = std::move(weapons);
-}
-
-void BattleMap::addWeaponToAgent(int idx, Weapon w) noexcept
-{
-    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
-    placedAgents_[static_cast<std::size_t>(idx)].weapons.push_back(std::move(w));
-}
-
-void BattleMap::removeWeaponFromAgent(int idx, int weapon_idx) noexcept
-{
-    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
-    auto& wv = placedAgents_[static_cast<std::size_t>(idx)].weapons;
-    if (weapon_idx < 0 || weapon_idx >= static_cast<int>(wv.size())) return;
-    wv.erase(wv.begin() + weapon_idx);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

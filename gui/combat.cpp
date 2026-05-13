@@ -1743,24 +1743,14 @@ void CombatEngine::setAgentConditions(BattleMap& bm, int idx, const Agent::Condi
     bm.setAgentConditions(idx, c);
 }
 
-std::vector<Weapon> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept
+std::array<Weapon, 3> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept
 {
     return bm.getAgentWeapons(idx);
 }
 
-void CombatEngine::setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept
+void CombatEngine::setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept
 {
     bm.setAgentWeapons(idx, weapons);
-}
-
-void CombatEngine::addWeaponToAgent(BattleMap& bm, int idx, Weapon w) noexcept
-{
-    bm.addWeaponToAgent(idx, w);
-}
-
-void CombatEngine::removeWeaponFromAgent(BattleMap& bm, int idx, int weapon_idx) noexcept
-{
-    bm.removeWeaponFromAgent(idx, weapon_idx);
 }
 
 std::array<Armor, 6> CombatEngine::getAgentArmor(const BattleMap& bm, int idx) const noexcept

@@ -45,7 +45,7 @@ from helpers import (
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
@@ -225,6 +225,7 @@ class App:
         self.armor_selection_dialog = ArmorSelectionDialog(list(self.armor_name_to_dict.values()), self.font_sm, self.font_md)
         self.weapon_selection_dialog = WeaponSelectionDialog(list(self.weapon_name_to_dict.values()), self.font_sm, self.font_md)
         self.armor_dialog = ArmorDialog(self.font_sm, self.font_md)
+        self.weapons_dialog = WeaponsDialog(self.font_sm, self.font_md)
         mob_names = sorted(self.all_mobs.keys())
         self.mob_dialog = MobSelectionDialog(mob_names, self.font_sm, self.font_md)
         self.terrain_editor = TerrainEditorDialog(self.font_sm, self.font_md)
@@ -2517,8 +2518,11 @@ class App:
                     "has_offhand_attack": s.has_offhand_attack,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                 },
-                "weapon_indices": [w.name
-                                  for w in self.combat.get_agent_weapons(self.bm, i)],
+                "weapons": {
+                    "main_hand": self.combat.get_agent_weapons(self.bm, i)[0].name or "",
+                    "off_hand": self.combat.get_agent_weapons(self.bm, i)[1].name or "",
+                    "ranged": self.combat.get_agent_weapons(self.bm, i)[2].name or "",
+                },
                 "armor": {
                     "helmet": self.combat.get_agent_armor(self.bm, i)[0].name or "",
                     "chest": self.combat.get_agent_armor(self.bm, i)[1].name or "",
@@ -2662,23 +2666,39 @@ class App:
 
             self.combat.set_agent_stats(self.bm, i, s)
 
-        # Restore weapons — load from weapon_indices or legacy "weapons" field
+        # Restore weapons — load from weapons dict (slot format) or legacy formats
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            cpp_weapons = []
+            cpp_weapons = [rpg.Weapon(), rpg.Weapon(), rpg.Weapon()]  # 3 slots: main, off, ranged
 
-            # Try new weapon_indices format first (weapon names as strings)
-            weapon_names = t.get("weapon_indices", [])
-            if weapon_names:
-                for weapon_name in weapon_names:
-                    if weapon_name in self.weapon_name_to_dict:
+            # Try new weapons dict format first (slot names -> weapon names)
+            weapons_dict = t.get("weapons", {})
+            if weapons_dict and isinstance(weapons_dict, dict):
+                slot_names = ["main_hand", "off_hand", "ranged"]
+                for slot_idx, slot_name in enumerate(slot_names):
+                    weapon_name = weapons_dict.get(slot_name, "")
+                    if weapon_name and weapon_name in self.weapon_name_to_dict:
                         weapon_dict = self.weapon_name_to_dict[weapon_name]
-                        cpp_weapon = _dict_to_weapon(weapon_dict)
-                        cpp_weapons.append(cpp_weapon)
+                        cpp_weapons[slot_idx] = _dict_to_weapon(weapon_dict)
             else:
-                # Fallback to legacy "weapons" field with full weapon dicts
-                cpp_weapons = [_dict_to_weapon(d) for d in t.get("weapons", [])]
+                # Fallback to legacy weapon_indices format (list of weapon names)
+                weapon_names = t.get("weapon_indices", [])
+                if weapon_names:
+                    for slot_idx, weapon_name in enumerate(weapon_names):
+                        if slot_idx >= 3:
+                            break
+                        if weapon_name and weapon_name in self.weapon_name_to_dict:
+                            weapon_dict = self.weapon_name_to_dict[weapon_name]
+                            cpp_weapons[slot_idx] = _dict_to_weapon(weapon_dict)
+                else:
+                    # Fallback to legacy "weapons" field with full weapon dicts
+                    legacy_weapons = t.get("weapons_legacy", [])
+                    if legacy_weapons:
+                        for slot_idx, w_dict in enumerate(legacy_weapons):
+                            if slot_idx >= 3:
+                                break
+                            cpp_weapons[slot_idx] = _dict_to_weapon(w_dict)
 
             self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
 
@@ -4031,6 +4051,9 @@ class App:
             if self.armor_dialog.active:
                 self.armor_dialog.handle(event, self.screen)
                 continue
+            if self.weapons_dialog.active:
+                self.weapons_dialog.handle(event, self.screen)
+                continue
             if self.spell_dialog.active:
                 self.spell_dialog.handle(event, self.screen)
                 continue
@@ -4072,9 +4095,17 @@ class App:
                         if self.selected_mob_stats:
                             d_d_stats = self._mob_stats_to_d_d_stats(self.selected_mob_stats)
                             self.combat.set_agent_stats(self.bm, idx, d_d_stats)
-                            if not self.combat.get_agent_weapons(self.bm, idx):
-                                for w in self._auto_weapons_from_mob_stats(self.selected_mob_stats):
-                                    self.combat.add_weapon_to_agent(self.bm, idx, w)
+                            # For auto-weapons, we need to update the weapons array
+                            current_weapons = list(self.combat.get_agent_weapons(self.bm, idx))
+                            # Check if all weapons are empty
+                            has_weapons = any(w.name for w in current_weapons)
+                            if not has_weapons:
+                                # Fill empty weapon slots with auto-weapons
+                                auto_weapons = self._auto_weapons_from_mob_stats(self.selected_mob_stats)
+                                for i, auto_w in enumerate(auto_weapons):
+                                    if i < 3:
+                                        current_weapons[i] = auto_w
+                                self.combat.set_agent_weapons(self.bm, idx, current_weapons)
                         elif self._pending_pc_class:
                             # Apply PC stats (class/level and spell slots already set)
                             self.combat.set_agent_stats(self.bm, idx, self._pending_pc_stats)
@@ -4149,24 +4180,19 @@ class App:
                                 armor_list=armor)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
-                            weapon_dicts = [_weapon_to_dict(w)
-                                            for w in self.combat.get_agent_weapons(self.bm, h)]
-                            def _open_weapon_selector():
-                                def _on_weapon_selected(weapon_dict):
-                                    # Don't add to C++ yet - just append to the dialog's list
-                                    # The weapon_dialog will save everything when it closes
-                                    weapon_dicts.append(weapon_dict)
-                                    # Refresh the weapon_dialog display
-                                    self.weapon_dialog._weapons.append(weapon_dict)
-                                    self.weapon_dialog._sel = len(self.weapon_dialog._weapons) - 1
-                                    self.weapon_dialog._load_form()
-                                    print(f"Added {weapon_dict['name']} to {pt2.name}")
-                                self.weapon_selection_dialog.show(_on_weapon_selected)
-                            self.weapon_dialog.open(
-                                self.screen, h, pt2.name,
-                                weapon_dicts,
-                                self._on_weapon_done,
-                                add_weapon_callback=_open_weapon_selector)
+                            weapon_array = self.combat.get_agent_weapons(self.bm, h)
+                            def _on_weapons_done():
+                                # Collect weapons from dialog and save back to combat engine
+                                cpp_weapons = []
+                                for weapon_dict in self.weapons_dialog.current_weapons:
+                                    if weapon_dict.get("name"):
+                                        cpp_weapons.append(_dict_to_weapon(weapon_dict))
+                                    else:
+                                        cpp_weapons.append(rpg.Weapon())
+                                self.combat.set_agent_weapons(self.bm, h, cpp_weapons)
+                            self.weapons_dialog.open(self.screen, h, pt2.name, weapon_array,
+                                                    self.weapon_selection_dialog, _on_weapons_done,
+                                                    self.combat, self.bm)
                         def _open_spells(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             spell_dicts = [self._spell_to_dict(h, j, s)
@@ -4550,6 +4576,7 @@ class App:
             self.stats_dialog.draw(self.screen)    # modal — always on top
             self.weapon_dialog.draw(self.screen)   # modal — always on top
             self.armor_dialog.draw(self.screen)    # modal — always on top
+            self.weapons_dialog.draw(self.screen)  # modal — always on top
             self.spell_dialog.draw(self.screen)    # modal — always on top
             self.spell_selection_dialog.draw(self.screen)  # modal — always on top
             self.armor_selection_dialog.draw(self.screen)  # modal — always on top

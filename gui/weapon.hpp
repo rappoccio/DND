@@ -35,6 +35,7 @@ struct Weapon {
     // ── General ───────────────────────────────────────────────────────────
     bool         proficient      = false;       // add proficiency bonus to hit
     bool         off_hand        = false;       // designated off-hand weapon (TWF)
+    bool         two_handed      = false;       // requires both hands (main hand only, no off-hand)
 
     std::vector<MagicDamageRoll>    magicDamageRolls;
     std::vector<PhysicalDamageRoll> physicalDamageRolls;

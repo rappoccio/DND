@@ -144,7 +144,6 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
         dmg.die_size = 8;
         longsword.physicalDamageRolls.push_back(dmg);
     }
-    bm->addWeaponToAgent(deva_idx, longsword);
 
     Weapon longbow;
     longbow.name = "Longbow";
@@ -159,7 +158,12 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
         dmg.die_size = 8;
         longbow.physicalDamageRolls.push_back(dmg);
     }
-    bm->addWeaponToAgent(deva_idx, longbow);
+
+    // Create weapon array: main_hand, off_hand, ranged
+    std::array<Weapon, 3> weapons{};
+    weapons[0] = longsword;  // main hand
+    weapons[2] = longbow;    // ranged
+    engine->setAgentWeapons(*bm, deva_idx, weapons);
 
     Spell ice_storm;
     ice_storm.name = "Ice Storm";
@@ -179,11 +183,10 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     EXPECT_GT(bm->getAgentStats(deva_idx).speed_fly, 0);
     EXPECT_EQ(bm->getAgentStats(hag_idx).speed_fly,  0);
 
-    // Step 4: Verify weapons
-    EXPECT_EQ(bm->placedAgents()[deva_idx].weapons.size(), 2u);
-    EXPECT_EQ(bm->placedAgents()[hag_idx].weapons.size(),  0u);
-    EXPECT_EQ(bm->placedAgents()[deva_idx].weapons[0].name, "Longsword");
-    EXPECT_EQ(bm->placedAgents()[deva_idx].weapons[1].name, "Longbow");
+    // Step 4: Verify weapons (array has 3 slots: main_hand, off_hand, ranged)
+    EXPECT_EQ(bm->placedAgents()[deva_idx].weapons[0].name, "Longsword");  // main hand
+    EXPECT_EQ(bm->placedAgents()[deva_idx].weapons[2].name, "Longbow");    // ranged
+    EXPECT_EQ(bm->placedAgents()[hag_idx].weapons[0].name, "");  // hag has no weapons
 
     // Step 5: Verify spells
     EXPECT_EQ(bm->placedAgents()[hag_idx].spells.size(), 1u);
@@ -208,7 +211,7 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     Attack bow_attack;
     bow_attack.attacker_idx = deva_idx;
     bow_attack.target_idx   = hag_idx;
-    bow_attack.weapon_idx   = 1;  // Longbow
+    bow_attack.weapon_idx   = 2;  // Longbow (ranged slot)
 
     AttackResult bow_result = engine->executeAction(*bm, bow_attack);
     EXPECT_TRUE(bow_result.valid);
