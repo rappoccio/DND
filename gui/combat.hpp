@@ -332,6 +332,9 @@ public:
     [[nodiscard]] Agent::Conditions getAgentConditions(const BattleMap& bm, int idx) const noexcept;
     void setAgentConditions(BattleMap& bm, int idx, const Agent::Conditions& c) noexcept;
 
+    // Apply paralyzed condition and its effects (incapacitated, speed 0).
+    void applyParalyzed(BattleMap& bm, int idx) noexcept;
+
     [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
     void setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept;
 

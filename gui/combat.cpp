@@ -887,6 +887,13 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     bool adv = atk_pt.agent->hasAdvantage();
     bool dis = disadv || atk_pt.agent->hasDisadvantage();
 
+    // Target is paralyzed: attacker gets advantage
+    const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
+    if (tgt_cond.paralyzed) {
+        adv = true;
+        log_("Advantage: target is paralyzed");
+    }
+
     // Log reasons for disadvantage
     if (is_ranged && isThreatened(bm, action.attacker_idx))
         log_("Disadvantage: threatened (enemy within 10 ft)");
@@ -904,6 +911,33 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     int target_ac = calculateAC(bm, action.target_idx);
 
     AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac);
+
+    // Automatic critical hit for melee attacks (within 5 ft) against paralyzed targets
+    if (tgt_cond.paralyzed && r.hit) {
+        int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
+                           tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
+                           0});
+        int dr = std::max({atk_pt.origin.row - tgt_pt.origin.row,
+                           tgt_pt.origin.row - (atk_pt.origin.row + atk_sz - 1),
+                           0});
+        int dist = std::max(dc, dr);
+
+        // Within 5 feet (1 cell on 5ft/cell grid)
+        if (dist <= 1) {
+            r.critical = true;
+            log_("Automatic critical hit: target is paralyzed and within 5 feet");
+            // Re-roll damage with crit flag set
+            tgt_stats.hp_cur = r.hp_before;  // revert damage
+            rollDamage(w, atk_stats, tgt_stats, r);
+            int overflow = std::max(0, r.total_damage - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - r.total_damage);
+            tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow,
+                                            0, tgt_stats.hp_max);
+            r.hp_after = tgt_stats.hp_cur;
+            r.target_down = (r.hp_after <= 0);
+        }
+    }
+
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
     return r;
 }
@@ -1308,10 +1342,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             int save_dc  = spellSaveDc(caster_stats);
             // Apply advantage/disadvantage from target conditions
             const PlacedAgent& target_pa = agents[static_cast<std::size_t>(tgt_idx)];
+            const Agent::Conditions& target_cond = target_pa.agent->getConditions();
             bool target_adv = target_pa.agent->hasAdvantage();
             bool target_dis = target_pa.agent->hasDisadvantage();
+
+            // Paralyzed targets automatically fail STR and DEX saves
+            bool auto_fail = target_cond.paralyzed &&
+                            (sp.save_ability == Spell::SaveStr || sp.save_ability == Spell::SaveDex);
+
             int save_d20;
-            if (target_adv && target_dis) {
+            if (auto_fail) {
+                save_d20 = 1;  // Automatic fail
+                log_("Target is paralyzed: automatically fails {} save",
+                     sp.save_ability == Spell::SaveStr ? "STR" : "DEX");
+            } else if (target_adv && target_dis) {
                 save_d20 = roll(20);  // Cancel out
             } else if (target_adv) {
                 save_d20 = rollAdvantage(20);
@@ -1336,7 +1380,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             };
             tr.save_d20 = save_d20;
             tr.save_dc  = save_dc;
-            tr.saved = (save_d20 + saveMod(sp.save_ability) >= save_dc);
+            tr.saved = auto_fail ? false : (save_d20 + saveMod(sp.save_ability) >= save_dc);
 
             std::vector<int> dice;
             int dmg = 0;
@@ -1741,6 +1785,28 @@ Agent::Conditions CombatEngine::getAgentConditions(const BattleMap& bm, int idx)
 void CombatEngine::setAgentConditions(BattleMap& bm, int idx, const Agent::Conditions& c) noexcept
 {
     bm.setAgentConditions(idx, c);
+}
+
+void CombatEngine::applyParalyzed(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set paralyzed condition
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.paralyzed = true;
+    cond.incapacitated = true;  // Paralyzed is incapacitated
+    bm.setAgentConditions(idx, cond);
+
+    // Set all movement speeds to 0
+    Agent::Stats stats = bm.getAgentStats(idx);
+    stats.speed_walk_remaining = 0;
+    stats.speed_fly_remaining = 0;
+    stats.speed_swim_remaining = 0;
+    stats.speed_burrow_remaining = 0;
+    bm.setAgentStats(idx, stats);
+
+    log_("Agent paralyzed: movement speed set to 0, incapacitated");
 }
 
 std::array<Weapon, 3> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept

@@ -362,6 +362,7 @@ namespace rpg {
       std::string concentrating_on{}; // name of the spell being concentrated on
       bool has_advantage{false};   // advantage on attack rolls, ability checks, saving throws
       bool has_disadvantage{false}; // disadvantage on attack rolls, ability checks, saving throws
+      bool paralyzed{false};     // cannot move, speed 0, auto-fail STR/DEX saves, attacks have advantage and auto-crit within 5ft
     };
 
     // ── Construction ───────────────────────────────────────────────────────
