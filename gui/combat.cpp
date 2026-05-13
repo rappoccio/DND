@@ -146,6 +146,32 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
     s.temp_hp = std::max(0, s.temp_hp - amount);
     s.hp_cur = std::max(0, s.hp_cur - overflow);
     bm.setAgentStats(idx, s);
+
+    // If agent is now dead, drop concentration
+    if (s.hp_cur <= 0) {
+        const auto& agents = bm.placedAgents();
+        if (idx >= 0 && static_cast<std::size_t>(idx) < agents.size()) {
+            Agent::Conditions cond = bm.getAgentConditions(idx);
+            if (cond.concentrating) {
+                std::string spell_name = cond.concentrating_on;
+                cond.concentrating = false;
+                cond.concentrating_on = "";
+                bm.setAgentConditions(idx, cond);
+                // Remove spell effects from this agent's concentration spell
+                const auto& effects = bm.activeSpellEffects();
+                std::vector<int> to_remove;
+                for (const auto& effect : effects) {
+                    if (effect.caster_idx == idx && effect.spell.name == spell_name) {
+                        to_remove.push_back(effect.effect_id);
+                    }
+                }
+                for (int effect_id : to_remove) {
+                    bm.removeSpellEffect(effect_id);
+                }
+            }
+        }
+    }
+
     return s.hp_cur;
 }
 
@@ -182,6 +208,121 @@ void CombatEngine::clearAgentTurns() noexcept
     agentTurns_.clear();
 }
 
+int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return 10;  // default AC
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
+    int ac = pa.stats.base_ac;
+
+    // Calculate DEX modifier and determine cap from equipped armor
+    int dex_mod = (pa.stats.dex - 10) / 2;
+    int dex_mod_cap = 30;  // Default: no cap (light armor/unarmored)
+
+    // Find the most restrictive DEX modifier cap from equipped armor
+    for (const auto& piece : pa.armor) {
+        if (!piece.name.empty()) {
+            // Most restrictive cap wins (e.g., heavy armor overrides light)
+            dex_mod_cap = std::min(dex_mod_cap, piece.dex_mod_cap);
+        }
+    }
+
+    // Apply capped DEX modifier
+    int capped_dex_mod = std::min(dex_mod, dex_mod_cap);
+    ac += capped_dex_mod;
+
+    // Add armor piece bonuses
+    for (const auto& piece : pa.armor) {
+        if (!piece.name.empty()) {
+            ac += piece.ac_bonus;
+        }
+    }
+
+    // Add shield bonus (off-hand weapon with ac_bonus)
+    if (!pa.weapons.empty() && pa.weapons.size() > 1) {
+        const Weapon& shield = pa.weapons.back();
+        if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+            ac += shield.ac_bonus;
+        }
+    }
+
+    // Add temporary modifications
+    ac += pa.stats.ac_temporary_modifications;
+
+    // TODO: Apply condition modifiers (prone, etc.)
+
+    return ac;
+}
+
+void CombatEngine::applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return;
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
+    Agent::Stats s = bm.getAgentStats(agent_idx);
+
+    // Start with base multipliers (1.0 = normal, 0.5 = resist, 2.0 = vuln, 0 = immune)
+    // Loop through armor pieces and merge multipliers (most restrictive wins)
+
+    for (const auto& piece : pa.armor) {
+        if (piece.name.empty()) continue;
+
+        // Merge magic damage multipliers
+        for (int damage_type = 0; damage_type < NumMagicDamage_t; ++damage_type) {
+            float armor_mult = piece.magic_damage_multipliers[damage_type];
+            if (armor_mult == 1.0f) continue;  // No effect, skip
+
+            float& current = s.magic_damage_multipliers[damage_type];
+
+            // Most restrictive wins: 0 (immune) > 2.0 (vuln) > 0.5 (resist) > 1.0 (normal)
+            if (armor_mult == 0.f) {
+                current = 0.f;  // Immunity
+            } else if (armor_mult > 1.f && current < 2.f) {
+                current = armor_mult;  // Vulnerability (if not already immune)
+            } else if (armor_mult < 1.f && current > 0.5f && current != 2.f) {
+                current = armor_mult;  // Resistance (if not vulnerable/immune)
+            }
+        }
+
+        // Merge physical damage multipliers
+        for (int damage_type = 0; damage_type < NumPhysicalDamage_t; ++damage_type) {
+            float armor_mult = piece.physical_damage_multipliers[damage_type];
+            if (armor_mult == 1.0f) continue;  // No effect, skip
+
+            float& current = s.physical_damage_multipliers[damage_type];
+
+            // Most restrictive wins: 0 (immune) > 2.0 (vuln) > 0.5 (resist) > 1.0 (normal)
+            if (armor_mult == 0.f) {
+                current = 0.f;  // Immunity
+            } else if (armor_mult > 1.f && current < 2.f) {
+                current = armor_mult;  // Vulnerability (if not already immune)
+            } else if (armor_mult < 1.f && current > 0.5f && current != 2.f) {
+                current = armor_mult;  // Resistance (if not vulnerable/immune)
+            }
+        }
+    }
+
+    bm.setAgentStats(agent_idx, s);
+}
+
+bool CombatEngine::canEquipArmor(const BattleMap& bm, int agent_idx, const Armor& armor) const noexcept
+{
+    // If armor has no STR requirement, it can always be equipped
+    if (!armor.requires_strength)
+        return true;
+
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return false;
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
+    return pa.stats.str >= armor.str_requirement;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Per-agent movement budget
 // ─────────────────────────────────────────────────────────────────────────────
@@ -207,13 +348,154 @@ void CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     new_stats.resetLeveledSpellCastFlag();
     bm.setAgentStats(agent_idx, new_stats);
 
-    // TODO: Apply begin-of-turn spell effects (once ActiveSpellEffect exists)
+    // Apply begin-of-turn spell effects
+    const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
+    for (const auto& effect : bm.activeSpellEffects()) {
+        if (!effect.spell.effects_on_begin_turn) continue;
+        if (effect.caster_idx == agent_idx) continue;  // don't damage self
+
+        // Check if agent occupies any cell in the effect (only apply once per effect)
+        bool in_effect = false;
+        for (int c = agent.origin.col; c < agent.origin.col + agent.agent->getSize() && !in_effect; ++c) {
+            for (int r = agent.origin.row; r < agent.origin.row + agent.agent->getSize() && !in_effect; ++r) {
+                auto it = std::find(effect.cells.begin(), effect.cells.end(), Cell{c, r});
+                if (it != effect.cells.end()) {
+                    applySpellEffect(bm, effect, agent_idx);
+                    in_effect = true;
+                }
+            }
+        }
+    }
 }
 
 void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
 {
-    // TODO: Apply end-of-turn spell effects (once ActiveSpellEffect exists)
-    (void)bm; (void)agent_idx;  // suppress unused param warnings
+    // Apply end-of-turn spell effects
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return;
+
+    const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
+    for (const auto& effect : bm.activeSpellEffects()) {
+        if (!effect.spell.effects_on_end_turn) continue;
+        if (effect.caster_idx == agent_idx) continue;  // don't damage self
+
+        // Check if agent occupies any cell in the effect (only apply once per effect)
+        bool in_effect = false;
+        for (int c = agent.origin.col; c < agent.origin.col + agent.agent->getSize() && !in_effect; ++c) {
+            for (int r = agent.origin.row; r < agent.origin.row + agent.agent->getSize() && !in_effect; ++r) {
+                auto it = std::find(effect.cells.begin(), effect.cells.end(), Cell{c, r});
+                if (it != effect.cells.end()) {
+                    applySpellEffect(bm, effect, agent_idx);
+                    in_effect = true;
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Movement (with spell effect checking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper: get all cells along a line from start to end (Bresenham-like)
+static std::vector<Cell> getCellsAlongPath(Cell start, Cell end) noexcept
+{
+    std::vector<Cell> cells;
+    int x0 = start.col, y0 = start.row;
+    int x1 = end.col, y1 = end.row;
+
+    int dx = std::abs(x1 - x0);
+    int dy = std::abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+
+    int x = x0, y = y0;
+    while (true) {
+        cells.push_back(Cell{x, y});
+        if (x == x1 && y == y1) break;
+
+        int e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y += sy;
+        }
+    }
+    return cells;
+}
+
+bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementType type) noexcept
+{
+    // Get old position before moving
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+    Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Delegate to BattleMap for pathfinding and movement budget logic
+    if (!bm.moveAgent(idx, newOrigin, type))
+        return false;
+
+    // Check for spell effects along the path from old to new position
+    std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
+
+    // Track which effects we've already applied to avoid double-hits
+    std::unordered_set<int> appliedEffects;
+
+    for (const auto& pathCell : pathCells) {
+        for (const auto& effect : bm.activeSpellEffects()) {
+            if (appliedEffects.count(effect.effect_id)) continue;  // Already applied this effect
+            if (effect.caster_idx == idx) continue;  // Don't damage self
+
+            // Check if this path cell is in the effect
+            auto it = std::find(effect.cells.begin(), effect.cells.end(), pathCell);
+            if (it != effect.cells.end()) {
+                applySpellEffect(bm, effect, idx);
+                appliedEffects.insert(effect.effect_id);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept
+{
+    // Get old position before jumping
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+    Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Delegate to BattleMap for jump logic
+    if (!bm.jumpAgent(idx, newOrigin, is_running))
+        return false;
+
+    // Check for spell effects along the jump path
+    std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
+
+    // Track which effects we've already applied
+    std::unordered_set<int> appliedEffects;
+
+    for (const auto& pathCell : pathCells) {
+        for (const auto& effect : bm.activeSpellEffects()) {
+            if (appliedEffects.count(effect.effect_id)) continue;
+            if (effect.caster_idx == idx) continue;
+
+            auto it = std::find(effect.cells.begin(), effect.cells.end(), pathCell);
+            if (it != effect.cells.end()) {
+                applySpellEffect(bm, effect, idx);
+                appliedEffects.insert(effect.effect_id);
+            }
+        }
+    }
+
+    return true;
 }
 
 int CombatEngine::getWalkRemaining(int agent_idx) const noexcept
@@ -537,9 +819,11 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           const Agent::Stats& attacker,
                                           Agent::Stats& target,
                                           bool advantage,
-                                          bool disadvantage)
+                                          bool disadvantage,
+                                          int target_ac)
 {
-    AttackResult r = rollToHit(w, attacker, target.ac, advantage, disadvantage);
+    if (target_ac == -1) target_ac = target.base_ac;
+    AttackResult r = rollToHit(w, attacker, target_ac, advantage, disadvantage);
     r.hp_before = target.hp_cur;
 
     if (r.hit) {
@@ -616,7 +900,10 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
 
-    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis);
+    // Calculate target AC (includes base AC, armor, DEX modifier, temp modifications)
+    int target_ac = calculateAC(bm, action.target_idx);
+
+    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac);
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
     return r;
 }
@@ -667,7 +954,7 @@ static void appendAgentBlock(std::vector<float>& obs,
     obs.push_back(static_cast<float>(col) / static_cast<float>(grid_cols));
     obs.push_back(static_cast<float>(row) / static_cast<float>(grid_rows));
     obs.push_back(hp_frac);
-    obs.push_back(static_cast<float>(s.ac)    / 30.f);
+    obs.push_back(static_cast<float>(s.base_ac)    / 30.f);
     obs.push_back(static_cast<float>(s.str   - 10) / 10.f);
     obs.push_back(static_cast<float>(s.dex   - 10) / 10.f);
     obs.push_back(static_cast<float>(s.con   - 10) / 10.f);
@@ -947,9 +1234,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             tr.d20        = d20_val;
             tr.attack_mod = mod;
             tr.total_roll = total;
-            tr.target_ac  = tgt_stats.ac;
+            tr.target_ac  = calculateAC(bm, tgt_idx);
             tr.critical   = (d20_val == 20);
-            tr.hit        = tr.critical || (d20_val != 1 && total >= tgt_stats.ac);
+            tr.hit        = tr.critical || (d20_val != 1 && total >= tr.target_ac);
 
             if (tr.hit) {
                 std::vector<int> dice;
@@ -1157,6 +1444,26 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         tr.hp_after    = tgt_stats.hp_cur;
         tr.target_down = (tgt_stats.hp_cur <= 0);
         bm.setAgentStats(tgt_idx, tgt_stats);
+
+        // Check concentration saves: once per damage instance (e.g., once per Magic Missile)
+        if (tr.total_damage > 0 && !tr.dice_results.empty()) {
+            // For spells with multiple damage instances (dice rolls), check concentration for each
+            int num_instances = std::max(1, static_cast<int>(tr.dice_results.size()));
+            int damage_per_instance = tr.total_damage / num_instances;
+            if (damage_per_instance == 0 && tr.total_damage > 0) {
+                damage_per_instance = 1;  // Ensure at least 1 damage per instance
+            }
+            for (int i = 0; i < num_instances && !tr.concentration_lost; ++i) {
+                if (checkConcentrationOnDamage(bm, tgt_idx, damage_per_instance)) {
+                    tr.concentration_checked = true;
+                    tr.concentration_lost = true;
+                }
+            }
+            if (damage_per_instance > 0) {
+                tr.concentration_checked = true;
+            }
+        }
+
         result.target_results.push_back(tr);
     }
 
@@ -1180,6 +1487,73 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         cond.concentrating    = true;
         cond.concentrating_on = sp.name;
         bm.setAgentConditions(action.caster_idx, cond);
+    }
+
+    // Create persistent spell effect if spell has AoE geometry and duration > 1
+    if (result.valid && sp.duration > 1 && sp.geometry != Spell::Single) {
+        std::vector<Cell> effect_cells;
+
+        // Calculate cells based on spell geometry
+        if (sp.geometry == Spell::Sphere) {
+            int radius_cells = (sp.radius + 4) / 5;  // Convert feet to cells (5ft/cell)
+            for (int c = action.aoe_col - radius_cells; c <= action.aoe_col + radius_cells; ++c) {
+                for (int r = action.aoe_row - radius_cells; r <= action.aoe_row + radius_cells; ++r) {
+                    int dc = c - action.aoe_col;
+                    int dr = r - action.aoe_row;
+                    if (dc * dc + dr * dr <= radius_cells * radius_cells) {
+                        effect_cells.push_back(Cell{c, r});
+                    }
+                }
+            }
+        } else if (sp.geometry == Spell::Rectangle) {
+            // Treat aoe_col/aoe_row as center, like Python's _aoe_cells does
+            double w_cells = sp.width / 5.0;
+            double l_cells = sp.length / 5.0;
+            int cols = bm.gridCols();
+            int rows = bm.gridRows();
+            for (int c = 0; c < cols; ++c) {
+                for (int r = 0; r < rows; ++r) {
+                    double dx = std::abs(c - action.aoe_col);
+                    double dy = std::abs(r - action.aoe_row);
+                    if (dx <= w_cells / 2.0 && dy <= l_cells / 2.0) {
+                        effect_cells.push_back(Cell{c, r});
+                    }
+                }
+            }
+        } else if (sp.geometry == Spell::Square) {
+            int size_cells = (sp.radius + 2) / 5;  // Approximate
+            for (int c = action.aoe_col; c < action.aoe_col + size_cells; ++c) {
+                for (int r = action.aoe_row; r < action.aoe_row + size_cells; ++r) {
+                    effect_cells.push_back(Cell{c, r});
+                }
+            }
+        } else if (sp.geometry == Spell::Line) {
+            int length_cells = (sp.length + 4) / 5;
+            // Assume horizontal for now (can be enhanced)
+            for (int c = action.aoe_col; c < action.aoe_col + length_cells; ++c) {
+                effect_cells.push_back(Cell{c, action.aoe_row});
+            }
+        } else if (sp.geometry == Spell::Cone) {
+            int length_cells = (sp.length + 4) / 5;
+            // Simple cone approximation (would need direction in real implementation)
+            for (int dist = 0; dist < length_cells; ++dist) {
+                for (int width = -dist; width <= dist; ++width) {
+                    effect_cells.push_back(Cell{action.aoe_col + dist, action.aoe_row + width});
+                }
+            }
+        }
+
+        // Create ActiveSpellEffect if we have cells
+        if (!effect_cells.empty()) {
+            ActiveSpellEffect effect;
+            effect.caster_idx = action.caster_idx;
+            effect.spell_idx = action.spell_idx;
+            effect.spell = sp;
+            effect.cells = effect_cells;
+            effect.turns_remaining = sp.duration;
+            effect.effect_id = -1;  // Will be assigned by addSpellEffect
+            [[maybe_unused]] int effect_id = bm.addSpellEffect(effect);
+        }
     }
 
     // Decrement resources (uses or spell slots) after successful cast
@@ -1381,6 +1755,16 @@ void CombatEngine::removeWeaponFromAgent(BattleMap& bm, int idx, int weapon_idx)
     bm.removeWeaponFromAgent(idx, weapon_idx);
 }
 
+std::array<Armor, 6> CombatEngine::getAgentArmor(const BattleMap& bm, int idx) const noexcept
+{
+    return bm.getAgentArmor(idx);
+}
+
+void CombatEngine::setAgentArmor(BattleMap& bm, int idx, std::array<Armor, 6> armor) noexcept
+{
+    bm.setAgentArmor(idx, armor);
+}
+
 std::vector<Spell> CombatEngine::getAgentSpells(const BattleMap& bm, int idx) const noexcept
 {
     return bm.getAgentSpells(idx);
@@ -1405,6 +1789,54 @@ void CombatEngine::initNpcSpellGroups(BattleMap& bm, int agent_idx,
                                       const std::map<int, std::vector<std::string>>& groups) noexcept
 {
     bm.initNpcSpellGroups(agent_idx, groups);
+}
+
+bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || static_cast<std::size_t>(target_idx) >= agents.size())
+        return false;
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(target_idx)];
+    const Agent::Conditions& cond = pa.agent->getConditions();
+    if (!cond.concentrating)
+        return false;  // Not concentrating, no save needed
+
+    // DC is 10 or half damage, whichever is higher
+    int dc = std::max(10, damage / 2);
+    int con_mod = (pa.stats.con - 10) / 2;
+    int save_roll = roll(20);
+    int save_total = save_roll + con_mod;
+
+    if (save_total >= dc) {
+        log_("Concentration save: {} rolled {} + {} = {} vs DC {} — HELD",
+             pa.agent->name(), save_roll, con_mod, save_total, dc);
+        return false;  // Save succeeded
+    }
+
+    log_("Concentration save: {} rolled {} + {} = {} vs DC {} — BROKEN",
+         pa.agent->name(), save_roll, con_mod, save_total, dc);
+
+    // Concentration lost - clear it and remove spell effects
+    std::string spell_name = cond.concentrating_on;
+    Agent::Conditions new_cond = cond;
+    new_cond.concentrating = false;
+    new_cond.concentrating_on = "";
+    bm.setAgentConditions(target_idx, new_cond);
+
+    // Remove spell effects from this agent's concentration spell
+    const auto& effects = bm.activeSpellEffects();
+    std::vector<int> to_remove;
+    for (const auto& effect : effects) {
+        if (effect.caster_idx == target_idx && effect.spell.name == spell_name) {
+            to_remove.push_back(effect.effect_id);
+        }
+    }
+    for (int effect_id : to_remove) {
+        bm.removeSpellEffect(effect_id);
+    }
+
+    return true;  // Concentration was lost
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1459,6 +1891,53 @@ std::vector<int> CombatEngine::availableCastableSpells(
     }
 
     return result;
+}
+
+void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || static_cast<std::size_t>(target_idx) >= agents.size())
+        return;
+
+    Agent::Stats target_stats = bm.getAgentStats(target_idx);
+
+    // Calculate total damage by rolling all damage types and applying multipliers
+    int total_damage = 0;
+
+    // Magic damage
+    for (const auto& roll_info : effect.spell.magic_damage_rolls) {
+        int type_damage = 0;
+        for (int i = 0; i < roll_info.num_dice; ++i) {
+            type_damage += roll(roll_info.die_size);
+        }
+        type_damage += roll_info.bonus;
+        float multiplier = target_stats.magic_damage_multipliers[roll_info.type];
+        int modified = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        total_damage += modified;
+    }
+
+    // Physical damage
+    for (const auto& roll_info : effect.spell.physical_damage_rolls) {
+        int type_damage = 0;
+        for (int i = 0; i < roll_info.num_dice; ++i) {
+            type_damage += roll(roll_info.die_size);
+        }
+        type_damage += roll_info.bonus;
+        float multiplier = target_stats.physical_damage_multipliers[roll_info.type];
+        int modified = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        total_damage += modified;
+    }
+
+    // Log the effect
+    std::string action = (effect.spell.type == Spell::Heal) ? "healed" : "took";
+    log_("{} {} {} from {}", agents[static_cast<std::size_t>(target_idx)].agent->name(), action, total_damage, effect.spell.name);
+
+    // Apply damage or healing
+    if (effect.spell.type == Spell::Heal) {
+        healAgent(bm, target_idx, total_damage);
+    } else {
+        damageAgent(bm, target_idx, total_damage);
+    }
 }
 
 } // namespace rpg

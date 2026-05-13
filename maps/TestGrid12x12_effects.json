@@ -1,0 +1,13 @@
+{
+  "spell_effects": [
+    {
+      "type": "rect",
+      "col": 0,
+      "row": 2,
+      "width": 3,
+      "height": 5,
+      "spell_name": "Wall of Fire",
+      "remaining_turns": 8
+    }
+  ]
+}

@@ -30,7 +30,15 @@
         "save_prof_cha": false,
         "spellcasting_ability": "cha"
       },
-      "weapon_indices": ["Rapier", "Dagger", "Longbow"]
+      "weapon_indices": ["Rapier", "Dagger", "Longbow"],
+      "armor_indices": [
+        "",
+        "Leather",
+        "",
+        "",
+        "",
+        "Fire Resistant Cloak"
+      ]	
     },
     {
       "name": "Baba Lysaga",
@@ -79,7 +87,7 @@
     },
     {
       "name": "Cult Mage",
-      "sprite_path": "generic-enemy.png",
+      "sprite_path": "cult-mage.png",
       "size": 1,
       "col": 15,
       "row": 12,
@@ -126,7 +134,7 @@
     },
     {
       "name": "Fire Elemental",
-      "sprite_path": "generic-enemy.png",
+      "sprite_path": "fire-elemental.png",
       "size": 1,
       "col": 15,
       "row": 10,
@@ -159,11 +167,11 @@
         "physical_resistances": ["Bludgeoning", "Piercing", "Slashing"],
         "magic_vulnerabilities": ["Cold"]
       },
-      "weapon_indices": []
+      "weapon_indices": ["UnarmedFire"]
     },
     {
       "name": "Frost Mage",
-      "sprite_path": "generic-enemy.png",
+      "sprite_path": "frost-mage.png",
       "size": 1,
       "col": 15,
       "row": 8,

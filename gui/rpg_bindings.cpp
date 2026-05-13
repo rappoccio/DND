@@ -159,7 +159,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Combat
         .def_readwrite("hp_max",          &Agent::Stats::hp_max)
         .def_readwrite("hp_cur",          &Agent::Stats::hp_cur)
-        .def_readwrite("ac",              &Agent::Stats::ac)
+        .def_readwrite("base_ac",         &Agent::Stats::base_ac)
+        .def_readwrite("ac_temporary_modifications", &Agent::Stats::ac_temporary_modifications)
         .def_readwrite("speed_walk",   &Agent::Stats::speed_walk)
         .def_readwrite("speed_swim",   &Agent::Stats::speed_swim)
         .def_readwrite("speed_fly",    &Agent::Stats::speed_fly)
@@ -242,7 +243,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + " WIS=" + std::to_string(s.wis)
                  + " CHA=" + std::to_string(s.cha)
                  + " HP=" + std::to_string(s.hp_cur) + "/" + std::to_string(s.hp_max)
-                 + " AC=" + std::to_string(s.ac) + ">"; });
+                 + " AC=" + std::to_string(s.base_ac) + ">"; });
 
     // ── Conditions (nested inside Agent) ────────────────────────────────────
     py::class_<Agent::Conditions>(m, "Conditions")
@@ -304,6 +305,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("thrown",           &Weapon::thrown)
         .def_readwrite("proficient",       &Weapon::proficient)
         .def_readwrite("off_hand",         &Weapon::off_hand)
+        .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
         .def_readwrite("magic_damage_types",    &Weapon::magicDamageRolls)
         .def_readwrite("bonus_hit",        &Weapon::bonus_hit)
@@ -322,6 +324,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
             return "<Weapon '" + w.name + "' "
                  + (w.type == WeaponType::Melee ? "Melee" : "Ranged")
                  + " " + dmg_str + ">"; });
+
+    // ── Armor ─────────────────────────────────────────────────────────────
+    py::class_<Armor>(m, "Armor")
+        .def(py::init<>())
+        .def_readwrite("name",                      &Armor::name)
+        .def_readwrite("description",               &Armor::description)
+        .def_readwrite("ac_bonus",                  &Armor::ac_bonus)
+        .def_readwrite("magic_damage_multipliers",  &Armor::magic_damage_multipliers)
+        .def_readwrite("physical_damage_multipliers", &Armor::physical_damage_multipliers)
+        .def_readwrite("damage_reduction",          &Armor::damage_reduction)
+        .def_readwrite("requires_strength",         &Armor::requires_strength)
+        .def_readwrite("str_requirement",           &Armor::str_requirement)
+        .def("__repr__", [](const Armor& a){
+            return "<Armor '" + a.name + "' AC+" + std::to_string(a.ac_bonus) + " DR" + std::to_string(a.damage_reduction) + ">"; });
 
     // ── Spell enums ──────────────────────────────────────────────────────────
     py::enum_<Spell::Geometry_t>(m, "SpellGeometry")
@@ -440,6 +456,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "For Multiple geometry: base number of targets/projectiles at spell level.")
         .def_readwrite("targets_per_upcast_level", &Spell::targets_per_upcast_level,
              "For Multiple geometry: additional targets per upcast level above base.")
+        .def_readwrite("effects_on_begin_turn", &Spell::effects_on_begin_turn,
+             "If true, apply spell effects to agents in area at the start of their turn.")
+        .def_readwrite("effects_on_end_turn", &Spell::effects_on_end_turn,
+             "If true, apply spell effects to agents in area at the end of their turn.")
         .def("__repr__", [](const Spell& s){
             return "<Spell '" + s.name + "'>"; });
 
@@ -479,6 +499,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("save_d20",      &SpellTargetResult::save_d20)
         .def_readonly("save_dc",       &SpellTargetResult::save_dc)
         .def_readonly("log_message",   &SpellTargetResult::log_message)
+        .def_readonly("concentration_checked", &SpellTargetResult::concentration_checked)
+        .def_readonly("concentration_lost",    &SpellTargetResult::concentration_lost)
         .def("__repr__", [](const SpellTargetResult& r){
             return "<SpellTargetResult tgt=" + std::to_string(r.target_idx)
                  + (r.hit ? " HIT" : " MISS")
@@ -511,6 +533,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
             return "<ActiveEffect '" + e.spell.name
                  + "' caster=" + std::to_string(e.caster_idx)
                  + " tgt=" + std::to_string(e.target_idx)
+                 + " turns=" + std::to_string(e.turns_remaining) + ">"; });
+
+    // ── ActiveSpellEffect ────────────────────────────────────────────────────
+    py::class_<ActiveSpellEffect>(m, "ActiveSpellEffect")
+        .def(py::init<>())
+        .def_readwrite("caster_idx",      &ActiveSpellEffect::caster_idx)
+        .def_readwrite("spell_idx",       &ActiveSpellEffect::spell_idx)
+        .def_readwrite("spell",           &ActiveSpellEffect::spell)
+        .def_readwrite("cells",           &ActiveSpellEffect::cells)
+        .def_readwrite("turns_remaining", &ActiveSpellEffect::turns_remaining)
+        .def_readwrite("effect_id",       &ActiveSpellEffect::effect_id)
+        .def("__repr__", [](const ActiveSpellEffect& e){
+            return "<ActiveSpellEffect '" + e.spell.name
+                 + "' caster=" + std::to_string(e.caster_idx)
+                 + " cells=" + std::to_string(e.cells.size())
                  + " turns=" + std::to_string(e.turns_remaining) + ">"; });
 
     // ── ConcentrationSaveResult ───────────────────────────────────────────────
@@ -685,8 +722,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::resolveAttack,
              py::arg("weapon"), py::arg("attacker_stats"),
              py::arg("target_stats"), py::arg("advantage") = false,
-             py::arg("disadvantage") = false,
-             "Roll to hit, roll damage, apply to target_stats in place.")
+             py::arg("disadvantage") = false, py::arg("target_ac") = -1,
+             "Roll to hit, roll damage, apply to target_stats in place. "
+             "target_ac: pre-calculated AC (-1 uses target_stats.base_ac).")
 
         // High-level
         // Initiative
@@ -740,6 +778,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "End agent's turn: apply end-of-turn spell effects.")
 
+        // ── Armor & AC calculations ──────────────────────────────────────
+        .def("calculate_ac",
+             &CombatEngine::calculateAC,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Calculate total AC for agent (base AC + armor + DEX + shield + temp mods).")
+        .def("apply_armor_multipliers",
+             &CombatEngine::applyArmorMultipliers,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Merge equipped armor damage multipliers into agent stats.\n"
+             "Call once at combat start and when armor changes mid-combat.")
+
         // ── Movement budget ───────────────────────────────────────────────
         .def("get_walk_remaining",
              &CombatEngine::getWalkRemaining,
@@ -776,6 +825,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("clear_movement",
              &CombatEngine::clearMovement,
              "Clear all movement budgets (call at end of combat).")
+
+        // ── Agent movement (with spell effect checking) ────────────────────
+        .def("move_agent",
+             &CombatEngine::moveAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("new_origin"), py::arg("movement_type"),
+             "Move agent to a new origin. Returns false if blocked or budget insufficient.\n"
+             "On successful move, checks for spell effects at destination and applies them.")
+        .def("jump_agent",
+             &CombatEngine::jumpAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("new_origin"), py::arg("is_running"),
+             "Jump agent to a location (ignores walls, deducts from walk budget).\n"
+             "Returns false if distance exceeds jump range.\n"
+             "On successful move, checks for spell effects at destination and applies them.")
 
         .def("set_logger",
              &CombatEngine::setLogger,
@@ -867,6 +929,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::removeWeaponFromAgent,
              py::arg("battle_map"), py::arg("idx"), py::arg("weapon_idx"),
              "Remove weapon at weapon_idx from agent[idx]'s list.")
+        .def("get_agent_armor",
+             &CombatEngine::getAgentArmor,
+             py::arg("battle_map"), py::arg("idx"),
+             "Return a copy of the armor array [helmet, chest, leggings, boots, gloves, cloak] for agent[idx].")
+        .def("set_agent_armor",
+             &CombatEngine::setAgentArmor,
+             py::arg("battle_map"), py::arg("idx"), py::arg("armor"),
+             "Replace the armor array for agent[idx].")
+        .def("can_equip_armor",
+             &CombatEngine::canEquipArmor,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("armor"),
+             "Check if agent[agent_idx] meets STR requirement for the given armor piece. "
+             "Returns true if armor has no STR requirement or agent meets it.")
         .def("get_agent_spells",
              &CombatEngine::getAgentSpells,
              py::arg("battle_map"), py::arg("idx"),
@@ -1129,6 +1204,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("has_active_terrain_effects", &BattleMap::hasActiveTerrainEffects,
              "Check if there are any active terrain effects.")
 
+        // Persistent spell effects (AoE from spells)
+        .def_property_readonly("active_spell_effects", &BattleMap::activeSpellEffects,
+             "Get all active spell effects from spells cast during combat.")
+        .def("add_spell_effect", &BattleMap::addSpellEffect,
+             py::arg("effect"),
+             "Add a spell effect to the map. Returns effect_id.")
+        .def("remove_spell_effect", &BattleMap::removeSpellEffect,
+             py::arg("effect_id"),
+             "Remove a spell effect by id.")
+
         // Dynamic light effects (spells, DM-placed lights, etc. with duration)
         .def("apply_base_lighting", &BattleMap::applyBaseLighting,
              py::arg("default_light"), py::arg("sources"),
@@ -1170,4 +1255,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
          py::arg("bm"), py::arg("json_path"),
          "Load and apply terrain configuration from a JSON file to the BattleMap.\n"
          "JSON format: {\"terrain_features\": [{\"type\": \"rect|column|row|cell\", ...}]}");
+
+    m.def("apply_spell_effect_configuration", &applySpellEffectConfiguration,
+         py::arg("bm"), py::arg("json_path"),
+         "Load and apply spell effect configuration from a JSON file to the BattleMap.\n"
+         "Loads spells from spells.json in the same directory and creates ActiveSpellEffect instances.\n"
+         "JSON format: {\"spell_effects\": [{\"type\": \"rect|sphere|column|row|cell\", \"spell_name\": \"...\", \"remaining_turns\": N, ...}]}");
 }

@@ -17,6 +17,59 @@ def _mod_str(score: int) -> str:
     m = _dnd_mod(score)
     return f"+{m}" if m >= 0 else str(m)
 
+def _calculate_total_ac(base_ac: int, dex: int, armor_list: list) -> int:
+    """Calculate total AC from base AC, DEX score, and armor pieces.
+
+    armor_list: list of rpg.Armor objects (or dicts with 'ac_bonus' key).
+    Returns the total AC including (capped) DEX modifier and armor bonuses.
+    """
+    total = base_ac
+
+    # Calculate DEX modifier (will be capped based on armor)
+    dex_mod = _dnd_mod(dex)
+
+    # Find the most restrictive DEX modifier cap from equipped armor
+    dex_mod_cap = None  # Default: no cap (light armor/unarmored)
+    if armor_list:
+        for piece in armor_list:
+            # Only consider equipped pieces
+            piece_name = None
+            piece_cap = None
+
+            if hasattr(piece, 'name'):
+                piece_name = piece.name
+                piece_cap = getattr(piece, 'dex_mod_cap', None)
+            elif isinstance(piece, dict):
+                piece_name = piece.get('name')
+                piece_cap = piece.get('dex_mod_cap', None)
+
+            # If this piece is equipped and has a cap, use it (most restrictive wins)
+            if piece_name and piece_cap is not None:
+                dex_mod_cap = piece_cap if dex_mod_cap is None else min(dex_mod_cap, piece_cap)
+
+    # Apply capped DEX modifier (None = no cap)
+    if dex_mod_cap is None:
+        total += dex_mod  # No cap, apply full DEX modifier
+    else:
+        total += min(dex_mod, dex_mod_cap)  # Apply cap
+
+    # Add armor bonuses
+    if armor_list:
+        for piece in armor_list:
+            if hasattr(piece, 'ac_bonus'):
+                bonus = piece.ac_bonus
+            elif isinstance(piece, dict) and 'ac_bonus' in piece:
+                bonus = piece.get('ac_bonus', 0)
+            else:
+                bonus = 0
+            # Only add if armor piece is equipped (non-empty name)
+            if hasattr(piece, 'name') and piece.name:
+                total += bonus
+            elif isinstance(piece, dict) and piece.get('name'):
+                total += bonus
+
+    return total
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Damage type parsing
@@ -117,6 +170,72 @@ def _dict_to_weapon(d: dict):
     w.magic_damage_types = magic_rolls
 
     return w
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Armor serialization helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DEFAULT_ARMOR: dict = {
+    "name":            "New Armor",
+    "description":     "",
+    "ac_bonus":        0,
+    "magic_damage_multipliers": [1.0] * 10,  # 10 magic damage types
+    "physical_damage_multipliers": [1.0] * 3,  # 3 physical damage types
+    "damage_reduction": 0,  # flat damage reduction in HP
+    "requires_strength": False,
+    "str_requirement": 0,
+}
+
+
+def _dict_to_armor(d: dict):
+    """Convert a plain dict to an rpg.Armor object.
+
+    Computes ac_bonus from the 'ac' field (handbook AC value),
+    or uses explicit ac_bonus if provided (for shields/items that add to AC).
+    """
+    a = rpg.Armor()
+    a.name = d.get("name", "Unnamed")
+    a.description = d.get("description", "")
+
+    # Compute ac_bonus: if "ac" is given, it's the base AC (subtract 10 for bonus)
+    # Otherwise use explicit ac_bonus (for shields, magical items)
+    if "ac" in d:
+        a.ac_bonus = int(d["ac"]) - 10
+    else:
+        a.ac_bonus = int(d.get("ac_bonus", 0))
+
+    a.damage_reduction = int(d.get("damage_reduction", 0))
+    a.requires_strength = bool(d.get("requires_strength", False))
+    a.str_requirement = int(d.get("str_requirement", 0))
+
+    # Magic damage multipliers (10 types)
+    magic_mults = d.get("magic_damage_multipliers", [1.0] * 10)
+    # Ensure it's the right length
+    magic_mults = list(magic_mults) + [1.0] * 10
+    a.magic_damage_multipliers = magic_mults[:10]
+
+    # Physical damage multipliers (3 types)
+    phys_mults = d.get("physical_damage_multipliers", [1.0] * 3)
+    # Ensure it's the right length
+    phys_mults = list(phys_mults) + [1.0] * 3
+    a.physical_damage_multipliers = phys_mults[:3]
+
+    return a
+
+
+def _armor_to_dict(a) -> dict:
+    """Convert an rpg.Armor object to a plain dict."""
+    return {
+        "name": a.name,
+        "description": a.description,
+        "ac_bonus": a.ac_bonus,
+        "magic_damage_multipliers": list(a.magic_damage_multipliers),
+        "physical_damage_multipliers": list(a.physical_damage_multipliers),
+        "damage_reduction": a.damage_reduction,
+        "requires_strength": a.requires_strength,
+        "str_requirement": a.str_requirement,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

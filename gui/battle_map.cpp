@@ -304,7 +304,7 @@ void BattleMap::applyAgentConfigs()
         }
         auto tok = std::make_shared<ConfiguredAgent>(
             cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}});
+        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}, {}});
     }
     std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
 }
@@ -595,6 +595,24 @@ void BattleMap::removeWeaponFromAgent(int idx, int weapon_idx) noexcept
     auto& wv = placedAgents_[static_cast<std::size_t>(idx)].weapons;
     if (weapon_idx < 0 || weapon_idx >= static_cast<int>(wv.size())) return;
     wv.erase(wv.begin() + weapon_idx);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Armor accessors
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::array<Armor, 6> BattleMap::getAgentArmor(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) {
+        return std::array<Armor, 6>{};
+    }
+    return placedAgents_[static_cast<std::size_t>(idx)].armor;
+}
+
+void BattleMap::setAgentArmor(int idx, std::array<Armor, 6> armor) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].armor = std::move(armor);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

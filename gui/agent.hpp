@@ -80,7 +80,8 @@ namespace rpg {
 
       // Combat
       int hp_max{10}, hp_cur{10};
-      int ac{10};
+      int base_ac{10};  // Base AC before armor/shield (10 = unarmored, modified by class)
+      int ac_temporary_modifications{0};  // Temporary AC changes (acid damage, etc.)
       int speed_walk{30};  // total walking speed in feet
       int speed_swim{0};   // total swimming speed in feet (0 = cannot swim)
       int speed_fly{0};    // total flying speed in feet   (0 = cannot fly)
@@ -182,7 +183,7 @@ namespace rpg {
         hp_max = hp_cur = std::stoi(j["HP"].get<std::string>());
 
         // AC
-        ac = std::stoi(j["AC"].get<std::string>());
+        base_ac = std::stoi(j["AC"].get<std::string>());
 
         // Proficiency bonus
         prof_bonus = std::stoi(j["PB"].get<std::string>());

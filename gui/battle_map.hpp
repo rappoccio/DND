@@ -12,6 +12,7 @@
 #include "agent.hpp"
 #include "weapon.hpp"
 #include "spell.hpp"
+#include "armor.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -118,6 +119,7 @@ struct PlacedAgent {
     Agent::Stats           stats;         // D&D 5.5e character stats
     std::vector<Weapon>    weapons;       // equipped weapons (may be empty)
     std::vector<Spell>     spells;        // known spells (may be empty)
+    std::array<Armor, 6>   armor;         // [Helmet, Chest, Leggings, Boots, Gloves, Cloak]
 };
 
 // ── Agent configuration (supplied from Python GUI) ─────────────────────────
@@ -194,6 +196,10 @@ public:
     void setAgentWeapons(int idx, std::vector<Weapon> weapons) noexcept;
     void addWeaponToAgent(int idx, Weapon w) noexcept;
     void removeWeaponFromAgent(int idx, int weapon_idx) noexcept;
+
+    // Armor accessors (by index into placedAgents()): 6 slots [helmet, chest, leggings, boots, gloves, cloak].
+    [[nodiscard]] std::array<Armor, 6> getAgentArmor(int idx) const noexcept;
+    void setAgentArmor(int idx, std::array<Armor, 6> armor) noexcept;
 
     // Spell accessors (by index into placedAgents()).
     [[nodiscard]] std::vector<Spell> getAgentSpells(int idx) const noexcept;

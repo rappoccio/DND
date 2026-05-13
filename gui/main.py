@@ -41,6 +41,7 @@ from helpers import (
     _dnd_mod, _mod_str,
     _parse_physical_damage, _parse_magic_damage,
     _DEFAULT_WEAPON, _weapon_to_dict, _dict_to_weapon,
+    _DEFAULT_ARMOR, _armor_to_dict, _dict_to_armor,
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
 )
@@ -135,6 +136,33 @@ class App:
         # Create weapon lookup: weapon_name -> weapon_dict
         self.weapon_name_to_dict = {w.get("name"): w for w in self.all_weapons}
 
+        # ── Load armor from armor.json ──────────────────────────────────────
+        self.all_armor = []  # list of armor dicts from armor.json
+        possible_armor_paths = [
+            os.path.join(script_dir, "armor.json"),
+            os.path.join(script_dir, "..", "armor.json"),
+            os.path.join(map_dir, "armor.json"),
+            "armor.json",
+        ]
+        armor_loaded_from = None
+        for armor_path in possible_armor_paths:
+            if os.path.exists(armor_path):
+                try:
+                    with open(armor_path) as f:
+                        self.all_armor = json.load(f)
+                    armor_loaded_from = armor_path
+                    break
+                except (json.JSONDecodeError, IOError):
+                    continue
+
+        if self.all_armor:
+            print(f"✓ Loaded {len(self.all_armor)} armor pieces from {armor_loaded_from}")
+        else:
+            print("⚠ WARNING: No armor loaded.")
+
+        # Create armor lookup: armor_name -> armor_dict
+        self.armor_name_to_dict = {a.get("name"): a for a in self.all_armor}
+
         # Selected mob's stats (loaded when a mob is selected from dropdown)
         self.selected_mob_stats = None
         self.current_mob_grid_size = 1  # Grid size for current mob (1-4)
@@ -215,13 +243,19 @@ class App:
         )
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
 
+        self._effects_path = os.path.join(
+            self._map_dir,
+            os.path.splitext(os.path.basename(map_path))[0] + "_effects.json"
+        )
+
         self._lighting_path = os.path.join(
             self._map_dir,
             os.path.splitext(os.path.basename(map_path))[0] + "_lighting.json"
         )
 
-        # Load terrain and lighting data if it exists
+        # Load terrain, spell effects, and lighting data if they exist
         self._load_terrain()
+        self._load_spell_effects()
         self._load_lighting()
 
         # ── Drag-and-drop state ───────────────────────────────────────────
@@ -291,6 +325,7 @@ class App:
         self.round_num              = 0     # current round number (incremented when turn_idx wraps)
         self._effect_meta: dict     = {}    # {effect_id: {"name": str, "color": tuple, "cells": [(col,row)]}}
         self.show_terrain            = False # toggle for showing all terrain regions
+        self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
 
         # ── Spell slot economy (class-based caster tracking) ────────────────
@@ -530,6 +565,10 @@ class App:
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
+        dummy_y += B + 5
+        self.btn_show_spell_effects = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "Show Spell Effects",
+                                          (150, 120, 180), (180, 150, 210), self.font_md)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Sprite loading (cached)
@@ -692,7 +731,7 @@ class App:
         stats.cha        = 8
         stats.hp_max     = 8  # Will be updated based on class
         stats.hp_cur     = 8
-        stats.ac         = 10
+        stats.base_ac    = 10
         stats.speed_walk = 30
         stats.prof_bonus = 2
         stats.num_attacks = 1
@@ -734,7 +773,7 @@ class App:
         stats.cha = mod_to_score(mob_data.get('CHA Mod'))
         stats.hp_max = safe_int(mob_data.get('HP', '10'), 10)
         stats.hp_cur = stats.hp_max
-        stats.ac = safe_int(mob_data.get('AC', '10'), 10)
+        stats.base_ac = safe_int(mob_data.get('AC', '10'), 10)
         stats.speed_walk   = safe_int(mob_data.get('Walk',   '30'), 30)
         stats.speed_fly    = safe_int(mob_data.get('Fly',    '0'),   0)
         stats.speed_swim   = safe_int(mob_data.get('Swim',   '0'),   0)
@@ -884,7 +923,7 @@ class App:
         stats.cha        = steppers["cha"].value
         stats.hp_cur     = steppers["hp_cur"].value
         stats.hp_max     = steppers["hp_max"].value
-        stats.ac         = steppers["ac"].value
+        stats.base_ac    = steppers["base_ac"].value
         stats.speed_walk   = steppers["speed_walk"].value
         stats.speed_swim   = steppers["speed_swim"].value
         stats.speed_fly    = steppers["speed_fly"].value
@@ -1077,7 +1116,8 @@ class App:
         is_running = self.last_movement_dist >= 10
 
         # Execute jump (C++ handles all budget deductions)
-        if self.bm.jump_agent(agent_idx, target_cell, is_running):
+        if self.combat.jump_agent(self.bm, agent_idx, target_cell, is_running):
+            self._flush_combat_log()  # Flush any spell effect damage messages
             # Update remaining movement values
             ag = self.bm.placed_agents[agent_idx]
             self.move_remaining_walk = ag.walk_remaining
@@ -1121,6 +1161,9 @@ class App:
             f.write("=== COMBAT LOG ===\n")
         self._effect_meta         = {}
         self.bm.clear_terrain_effects()
+        # Apply armor multipliers for all agents at combat start
+        for i in range(len(self.bm.placed_agents)):
+            self.combat.apply_armor_multipliers(self.bm, i)
         first = self._current_agent_idx()
         self.selected_idx = first
         self._reset_movement(first)
@@ -1247,6 +1290,13 @@ class App:
         self._terrain_regions = [r for r in self._terrain_regions
                                   if not (r.get("source", {}).get("agent") == agent_name and
                                           r.get("source", {}).get("spell") == spell_name)]
+        # Remove spell effects from this agent's concentration spell
+        effects_to_remove = []
+        for effect in self.bm.active_spell_effects:
+            if effect.caster_idx == agent_idx and effect.spell.name == spell_name:
+                effects_to_remove.append(effect.effect_id)
+        for effect_id in effects_to_remove:
+            self.bm.remove_spell_effect(effect_id)
         # Clear C++ concentration state
         cond = agent.conditions
         cond.concentrating = False
@@ -1420,6 +1470,10 @@ class App:
                                                       r.get("source", {}).get("spell") == spell_name)]
                     self._apply_terrain_to_battle_map()
                     self._combat_log_add(f"{agent_name} drops concentration on {spell_name}.")
+
+        # If target is down, drop their concentration
+        if result.target_down:
+            self._drop_concentration_for_agent(target_idx)
 
         self.attacks_remaining -= 1
         if self.attacks_remaining > 0:
@@ -1938,6 +1992,13 @@ class App:
                     self._apply_terrain_to_battle_map()
                     self._combat_log_add(f"{tgt_name} drops concentration on {spell_name}.")
 
+    def _sync_spell_effect_cache(self):
+        """Remove cache entries for spell effects that have been removed in C++."""
+        active_effect_ids = {effect.effect_id for effect in self.bm.active_spell_effects}
+        to_remove = [eid for eid in self._effect_meta if eid not in active_effect_ids]
+        for eid in to_remove:
+            del self._effect_meta[eid]
+
     def _agent_screen_pos(self, agent_idx: int) -> tuple:
         """Get screen position of agent for context menu anchor."""
         agents = self.bm.placed_agents
@@ -1961,7 +2022,8 @@ class App:
         self.pending_move_type = None
 
         agents = self.bm.placed_agents
-        move_success = self.bm.move_agent(move_idx, move_cell, move_type)
+        move_success = self.combat.move_agent(self.bm, move_idx, move_cell, move_type)
+        self._flush_combat_log()  # Flush any spell effect damage messages
         if move_success:
             ag = agents[move_idx]
             self.move_remaining_walk = ag.walk_remaining
@@ -2018,6 +2080,8 @@ class App:
             self._combat_log_add(f"{cast_name}: spell failed (invalid)")
             return
         self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
+        # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
+        self._sync_spell_effect_cache()
         if slot == "action":
             self.action_used = True
         else:
@@ -2057,6 +2121,8 @@ class App:
             self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
         else:
             self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
+            # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
+            self._sync_spell_effect_cache()
 
         # Auto-place terrain effect if spell has one
         if 0 <= caster_idx < len(agents) and 0 <= self.pending_spell_idx < len(agents[caster_idx].spells):
@@ -2412,6 +2478,8 @@ class App:
         s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
         s.num_targets = int(d.get("num_targets", 1))
         s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
+        s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
+        s.effects_on_end_turn = d.get("effects_on_end_turn", False)
         return s
 
     def _save_agents(self, path: str | None = None):
@@ -2431,7 +2499,7 @@ class App:
                     "str": s.str, "dex": s.dex, "con": s.con,
                     "intel": s.intel, "wis": s.wis, "cha": s.cha,
                     "hp_max": s.hp_max, "hp_cur": s.hp_cur,
-                    "ac": s.ac,
+                    "ac": s.base_ac,
                     "speed_walk": s.speed_walk, "speed_swim": s.speed_swim,
                     "speed_fly":  s.speed_fly,  "speed_burrow": s.speed_burrow,
                     "prof_bonus": s.prof_bonus,
@@ -2448,6 +2516,14 @@ class App:
                 },
                 "weapon_indices": [w.name
                                   for w in self.combat.get_agent_weapons(self.bm, i)],
+                "armor": {
+                    "helmet": self.combat.get_agent_armor(self.bm, i)[0].name or "",
+                    "chest": self.combat.get_agent_armor(self.bm, i)[1].name or "",
+                    "leggings": self.combat.get_agent_armor(self.bm, i)[2].name or "",
+                    "boots": self.combat.get_agent_armor(self.bm, i)[3].name or "",
+                    "gloves": self.combat.get_agent_armor(self.bm, i)[4].name or "",
+                    "cloak": self.combat.get_agent_armor(self.bm, i)[5].name or "",
+                },
                 "spell_indices": [s.name
                                   for s in self.combat.get_agent_spells(self.bm, i)],
                 "agent_class":      s.character_class.name,
@@ -2521,7 +2597,7 @@ class App:
             s.cha = int(sd.get("cha", 10))
             s.hp_max = int(sd.get("hp_max", 10))
             s.hp_cur = int(sd.get("hp_cur", s.hp_max))
-            s.ac = int(sd.get("ac", 10))
+            s.base_ac = int(sd.get("ac", 10))
             s.speed_walk = int(sd.get("speed_walk", 30))
             s.speed_fly = int(sd.get("speed_fly", 0))
             s.speed_swim = int(sd.get("speed_swim", 0))
@@ -2660,6 +2736,43 @@ class App:
 
             self.combat.set_agent_spells(self.bm, i, cpp_spells)
 
+        # Restore armor — load from armor dict (new format) or legacy armor_indices (old format)
+        for i, t in enumerate(agent_data):
+            if i >= len(self.bm.placed_agents):
+                break
+            cpp_armor = [rpg.Armor() for _ in range(6)]  # 6 slots: [helmet, chest, leggings, boots, gloves, cloak]
+
+            # Slot order: helmet, chest, leggings, boots, gloves, cloak
+            SLOT_NAMES = ["helmet", "chest", "leggings", "boots", "gloves", "cloak"]
+
+            # Try new armor dict format first (slot name -> armor name)
+            armor_dict_new = t.get("armor", {})
+            if armor_dict_new and isinstance(armor_dict_new, dict):
+                for slot_idx, slot_name in enumerate(SLOT_NAMES):
+                    armor_name = armor_dict_new.get(slot_name, "")
+                    if armor_name and armor_name in self.armor_name_to_dict:
+                        armor_def = self.armor_name_to_dict[armor_name]
+                        cpp_armor[slot_idx] = _dict_to_armor(armor_def)
+            else:
+                # Fallback to legacy armor_indices format (list of names)
+                armor_names = t.get("armor_indices", [])
+                if armor_names:
+                    for slot_idx, armor_name in enumerate(armor_names):
+                        if slot_idx >= 6:
+                            break
+                        if armor_name and armor_name in self.armor_name_to_dict:
+                            armor_dict = self.armor_name_to_dict[armor_name]
+                            cpp_armor[slot_idx] = _dict_to_armor(armor_dict)
+
+            # Store armor in the C++ layer (as array of 6 pieces)
+            self.combat.set_agent_armor(self.bm, i, cpp_armor)
+
+            # Check STR requirements and warn if insufficient
+            agent_stats = self.combat.get_agent_stats(self.bm, i)
+            for piece in cpp_armor:
+                if piece.name and not self.combat.can_equip_armor(self.bm, i, piece):
+                    print(f"⚠ {self.bm.placed_agents[i].name} wearing {piece.name} (requires STR {piece.str_requirement}, has {agent_stats.str})")
+
         # Restore character class, level, and spell slots to C++ Stats objects
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
@@ -2716,6 +2829,39 @@ class App:
         data = {"regions": self._terrain_regions}
         with open(self._terrain_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def _load_spell_effects(self):
+        """Load spell effect data from JSON file if it exists."""
+        if os.path.exists(self._effects_path):
+            try:
+                rpg.apply_spell_effect_configuration(self.bm, self._effects_path)
+                self._build_spell_effect_metadata()
+            except Exception as e:
+                print(f"Warning: Failed to load spell effects: {e}")
+
+    def _build_spell_effect_metadata(self):
+        """Build metadata for spell effects to use in rendering."""
+        for effect in self.bm.active_spell_effects:
+            # Find the spell in all_spells to get its visual properties
+            spell_color = None
+            for spell_dict in self.all_spells:
+                if spell_dict.get("name") == effect.spell.name:
+                    # Look for terrain_color property (RGB array)
+                    if "terrain_color" in spell_dict:
+                        rgb = spell_dict["terrain_color"]
+                        # Add alpha for semi-transparency
+                        spell_color = tuple(rgb + [120])
+                    break
+
+            # Default color if not found
+            if not spell_color:
+                spell_color = (100, 180, 220, 120)  # Cyan
+
+            self._effect_meta[effect.effect_id] = {
+                "name": effect.spell.name,
+                "color": spell_color,
+                "cells": [(c.col, c.row) for c in effect.cells]
+            }
 
     def _load_lighting(self):
         """Load lighting data from JSON file if it exists."""
@@ -3066,6 +3212,72 @@ class App:
                     txt = self.font_sm.render(str(effect.turns_remaining), True, (255, 255, 255))
                     self.screen.blit(txt, (sx + 2, sy + 2))
 
+    def _draw_spell_effects(self, cpx: int):
+        """Draw persistent spell effect overlays."""
+        if not self.show_spell_effects:
+            return
+
+        active_effects = self.bm.active_spell_effects
+        if not active_effects:
+            return
+
+        s = self.map_scale
+        raw_h = self.bm.h_line_positions
+        raw_v = self.bm.v_line_positions
+        if not raw_h or not raw_v:
+            return
+
+        for effect in active_effects:
+            # Build metadata for this effect if not already present
+            if effect.effect_id not in self._effect_meta:
+                spell_color = None
+                for spell_dict in self.all_spells:
+                    if spell_dict.get("name") == effect.spell.name:
+                        if "terrain_color" in spell_dict:
+                            rgb = spell_dict["terrain_color"]
+                            spell_color = tuple(rgb + [120])
+                        break
+                if not spell_color:
+                    spell_color = (100, 180, 220, 120)  # Cyan default
+                self._effect_meta[effect.effect_id] = {
+                    "name": effect.spell.name,
+                    "color": spell_color,
+                    "cells": [(c.col, c.row) for c in effect.cells]
+                }
+
+            # Get color from metadata
+            if effect.effect_id in self._effect_meta:
+                color = self._effect_meta[effect.effect_id].get("color", (100, 180, 220, 120))
+            else:
+                color = (100, 180, 220, 120)  # Cyan default
+
+            # Create surfaces for fill and border
+            fill_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
+            fill_surf.fill(color)
+            border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
+            border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
+            pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
+
+            # Render each cell of the effect
+            map_w, map_h = self.map_rect.width, self.map_rect.height
+            for cell in effect.cells:
+                col = cell.col
+                row = cell.row
+                if col < 0 or row < 0 or col >= len(raw_v) or row >= len(raw_h):
+                    continue
+                sx, sy = self._cell_to_screen(col, row)
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
+                self.screen.blit(fill_surf, (sx, sy))
+                self.screen.blit(border_surf, (sx, sy))
+
+            # Draw turns_remaining as a small label in the first cell
+            if effect.cells and effect.turns_remaining >= 0:
+                first_cell = effect.cells[0]
+                sx, sy = self._cell_to_screen(first_cell.col, first_cell.row)
+                txt = self.font_sm.render(str(effect.turns_remaining), True, (255, 255, 255))
+                self.screen.blit(txt, (sx + 2, sy + 2))
+
     def _draw_concentration_terrain(self, cpx: int):
         """Draw all terrain: permanent features and concentration-based effects."""
         if not self.show_terrain:
@@ -3245,6 +3457,9 @@ class App:
 
         # ── Temporary terrain effects overlays (beneath all agents) ────────
         self._draw_temp_terrain_overlays(cpx)
+
+        # ── Spell effect overlays (beneath all agents) ─────────────────────
+        self._draw_spell_effects(cpx)
 
         # ── Concentration-based terrain overlays (beneath all agents) ──────
         self._draw_concentration_terrain(cpx)
@@ -3613,6 +3828,12 @@ class App:
         self.btn_show_terrain.rect.y = y
         self.btn_show_terrain.rect.w = HW
         self.btn_show_terrain.draw(self.screen)
+        y += B + gap
+
+        self.btn_show_spell_effects.rect.x = lx
+        self.btn_show_spell_effects.rect.y = y
+        self.btn_show_spell_effects.rect.w = HW
+        self.btn_show_spell_effects.draw(self.screen)
 
         self.btn_cbt_end_combat.rect.x = lx + HW + 4
         self.btn_cbt_end_combat.rect.y = y
@@ -3902,12 +4123,14 @@ class App:
                             char_level = stats.char_level
                             is_npc = stats.is_npc
                             npc_spell_groups = self._agent_meta.get(h, {}).get("npc_spell_groups", {})
+                            armor = self.combat.get_agent_armor(self.bm, h)
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
                                 self._on_stats_ok,
                                 is_npc=is_npc,
-                                npc_spell_groups=npc_spell_groups)
+                                npc_spell_groups=npc_spell_groups,
+                                armor_list=armor)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             weapon_dicts = [_weapon_to_dict(w)
@@ -4074,8 +4297,9 @@ class App:
                             self._process_opportunity_queue()
                         else:
                             # Normal move - no threat violation
-                            move_success = self.bm.move_agent(self.drag_idx, self.drag_cell, self.move_type)
+                            move_success = self.combat.move_agent(self.bm, self.drag_idx, self.drag_cell, self.move_type)
                             print(f"[Movement] Move result: {move_success}")
+                            self._flush_combat_log()  # Flush any spell effect damage messages
                             if move_success:
                                 # Read back the shared-pool budgets from C++.
                                 ag = self.bm.placed_agents[self.drag_idx]
@@ -4253,8 +4477,11 @@ class App:
                     self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
                 if self.btn_show_terrain.clicked(event):
                     self.show_terrain = not self.show_terrain
+                if self.btn_show_spell_effects.clicked(event):
+                    self.show_spell_effects = not self.show_spell_effects
                 if self.btn_cbt_end_turn.clicked(event):
                     self._advance_turn()
+                    self._flush_combat_log()
                 if self.btn_cbt_end_combat.clicked(event):
                     self._end_combat()
                 if self.btn_cbt_drop_concentration.clicked(event):

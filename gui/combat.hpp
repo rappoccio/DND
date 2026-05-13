@@ -27,6 +27,7 @@
 
 #include "weapon.hpp"
 #include "spell.hpp"
+#include "armor.hpp"
 #include "agent.hpp"
 #include "message_logger.hpp"
 
@@ -44,6 +45,8 @@ namespace rpg {
 class BattleMap;
 struct Cell;
 struct AgentConfig;
+struct ActiveSpellEffect;
+enum class MovementType;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Attack result
@@ -124,6 +127,8 @@ struct SpellTargetResult {
     int  save_d20     = 0;   // d20 rolled on a Save
     int  save_dc      = 0;   // spell save DC the target rolled against
     std::string log_message;   // formatted log message for this target
+    bool concentration_checked = false;  // whether concentration save was checked
+    bool concentration_lost = false;     // whether target lost concentration
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -256,6 +261,13 @@ public:
     // Remove all per-agent overrides (every agent reverts to 1 turn/round).
     void clearAgentTurns() noexcept;
 
+    // Calculate AC for an agent based on base AC, armor, shield, DEX, and conditions.
+    [[nodiscard]] int calculateAC(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // Merge equipped armor damage multipliers into agent stats (most restrictive wins).
+    // Call this once at combat start and whenever armor is equipped/removed mid-combat.
+    void applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept;
+
     // ── Per-agent movement budget (current turn) ──────────────────────────
     //
     // Call beginTurn() when a combatant's turn starts to seed their movement
@@ -281,6 +293,16 @@ public:
 
     // Clear all movement budgets (call at end of combat or start of new round).
     void clearMovement() noexcept;
+
+    // ── Agent movement (checks spell effects on entry) ────────────────────────
+    // Move an already-placed agent to a new grid origin using the specified movement type.
+    // Returns false if the agent lacks sufficient budget or destination is blocked.
+    // On successful move, checks for spell effects at destination and applies them.
+    bool moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementType type) noexcept;
+
+    // Jump an agent to a new location (ignores walls, deducts from walk budget).
+    // is_running: true for running jump (full strength), false for standing jump (half strength).
+    bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
 
     // ── Turn lifecycle (begin/execute/end) ─────────────────────────────────
     //
@@ -315,6 +337,13 @@ public:
     void addWeaponToAgent(BattleMap& bm, int idx, Weapon w) noexcept;
     void removeWeaponFromAgent(BattleMap& bm, int idx, int weapon_idx) noexcept;
 
+    [[nodiscard]] std::array<Armor, 6> getAgentArmor(const BattleMap& bm, int idx) const noexcept;
+    void setAgentArmor(BattleMap& bm, int idx, std::array<Armor, 6> armor) noexcept;
+
+    // Check if armor piece meets STR requirement for the agent.
+    // Returns true if armor has no STR requirement or agent meets it.
+    [[nodiscard]] bool canEquipArmor(const BattleMap& bm, int agent_idx, const Armor& armor) const noexcept;
+
     [[nodiscard]] std::vector<Spell> getAgentSpells(const BattleMap& bm, int idx) const noexcept;
     void setAgentSpells(BattleMap& bm, int idx, std::vector<Spell> spells) noexcept;
     void addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept;
@@ -323,6 +352,10 @@ public:
     // NPC spell initialization: set is_npc=true and init uses_max/uses_remaining from spell groups.
     void initNpcSpellGroups(BattleMap& bm, int agent_idx,
                            const std::map<int, std::vector<std::string>>& groups) noexcept;
+
+    // Helper: Check concentration save when target takes damage from a spell.
+    // Returns true if concentration was lost, false otherwise.
+    bool checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage) noexcept;
 
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
@@ -362,11 +395,13 @@ public:
 
     // Resolve a complete attack (roll to hit, roll damage, apply to target).
     // target is modified in place (hp_cur clamped to [0, hp_max]).
+    // target_ac: pre-calculated AC (if -1, uses target.base_ac; otherwise uses provided value).
     [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
                                               const Agent::Stats& attacker,
                                               Agent::Stats& target,
                                               bool advantage = false,
-                                              bool disadvantage = false);
+                                              bool disadvantage = false,
+                                              int target_ac = -1);
 
     // ── High-level BattleMap integration ─────────────────────────────────
 
@@ -497,6 +532,9 @@ private:
     // ── Spell helpers ─────────────────────────────────────────────────────
     [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;
     [[nodiscard]] static int spellSaveDc(const Agent::Stats& s) noexcept;
+
+    // Apply a persistent spell effect (damage) to a target agent.
+    void applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;
 };
 
 } // namespace rpg

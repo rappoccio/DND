@@ -1,0 +1,114 @@
+[
+  {
+    "name": "Plate",
+    "description": "Heavy full plate armor (AC 18, no DEX)",
+    "ac": 18,
+    "dex_mod_cap": 0,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": true,
+    "str_requirement": 15
+  },
+  {
+    "name": "Chain Mail",
+    "description": "Heavy interlocked metal rings (AC 16, no DEX)",
+    "ac": 16,
+    "dex_mod_cap": 0,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": true,
+    "str_requirement": 13
+  },
+  {
+    "name": "Leather",
+    "description": "Light supple leather armor (AC 11 + DEX)",
+    "ac": 11,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Shield",
+    "description": "Standard wooden shield with metal trim (+2 AC)",
+    "ac_bonus": 2,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Shield +1",
+    "description": "Enchanted shield granting extra protection and durability (+3 AC, -1 dmg)",
+    "ac_bonus": 3,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 1,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Acid Resistant Robes",
+    "description": "Magical robes imbued with acid resistance (AC 10 + DEX, resist Acid)",
+    "ac": 10,
+    "magic_damage_multipliers": [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Fire Resistant Cloak",
+    "description": "Cloak woven from flame-resistant material (resist Fire)",
+    "magic_damage_multipliers": [1.0, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Cold Iron Breastplate",
+    "description": "Breastplate made from cold iron (AC 14, DEX +2 max, resist magic)",
+    "ac": 14,
+    "dex_mod_cap": 2,
+    "magic_damage_multipliers": [1.0, 0.5, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 0.5, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Mithral Plate",
+    "description": "Legendary silvery metal armor (AC 18, no DEX, -1 dmg)",
+    "ac": 18,
+    "dex_mod_cap": 0,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [0.75, 1.0, 1.0],
+    "damage_reduction": 1,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Leather Boots of Levitation",
+    "description": "Boots inscribed with levitation runes",
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Robe of Protection",
+    "description": "Enchanted robe that reduces all incoming damage (AC 10 + DEX, -2 dmg)",
+    "ac": 10,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 2,
+    "requires_strength": false,
+    "str_requirement": 0
+  }
+]

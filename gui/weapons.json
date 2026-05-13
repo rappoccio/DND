@@ -58,5 +58,20 @@
     "bonus_damage": 0,
     "physical_damage_types": [{"type": "Slashing", "num_dice": 1, "die_size": 8}],
     "magic_damage_types": []
-  }
+  },
+  {
+    "name": "UnarmedFire",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 0,
+    "long_range_ft": 0,
+    "finesse": false,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "bonus_hit": 0,
+    "bonus_damage": 3,
+    "physical_damage_types": [],
+    "magic_damage_types": [{"type": "Fire", "num_dice": 2, "die_size": 6}]
+  }    
 ]

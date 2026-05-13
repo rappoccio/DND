@@ -7,7 +7,7 @@ import pygame
 import rpg_battle_map as rpg
 from constants import *
 from widgets import Button, TextInput, IntStepper
-from helpers import _dnd_mod, _mod_str
+from helpers import _dnd_mod, _mod_str, _calculate_total_ac
 
 class FileBrowser:
     """
@@ -426,7 +426,7 @@ class StatsDialog:
     COMBAT = [
         ("Current HP",    "hp_cur",       0, 999),
         ("Max HP",        "hp_max",       1, 999),
-        ("Armor Class",   "ac",           1,  30),
+        ("Armor Class",   "base_ac",      1,  30),
         ("Walk (ft)",     "speed_walk",   0, 120),
         ("Swim (ft)",     "speed_swim",   0, 120),
         ("Fly (ft)",      "speed_fly",    0, 120),
@@ -457,7 +457,7 @@ class StatsDialog:
         self._spell_selection_dialog = None
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None):
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None):
         self.active             = True
         self._agent_idx         = agent_idx
         self._agent_name        = agent_name
@@ -466,6 +466,7 @@ class StatsDialog:
         self._cb                = callback
         self._is_npc            = is_npc
         self._npc_spell_groups  = dict(npc_spell_groups) if npc_spell_groups else {}
+        self._armor_list        = armor_list or []
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._build_steppers(self._dlg(screen), stats)
 
@@ -722,7 +723,15 @@ class StatsDialog:
         for lbl, key, _, _ in self.COMBAT:
             st = self.steppers.get(key)
             if st:
-                lt = self.font_sm.render(lbl, True, self.C_LABEL)
+                # For AC, show total calculated AC including armor bonuses
+                if key == "base_ac" and hasattr(self, '_armor_list'):
+                    dex = self.steppers.get("dex", None)
+                    dex_val = dex.value if dex else 10
+                    total_ac = _calculate_total_ac(st.value, dex_val, self._armor_list)
+                    display_lbl = f"{lbl} ({total_ac})"  # Show total AC in label
+                    lt = self.font_sm.render(display_lbl, True, (100, 200, 100))
+                else:
+                    lt = self.font_sm.render(lbl, True, self.C_LABEL)
                 screen.blit(lt, (st.rect.x, st.rect.y - 14))
                 st.draw(screen)
 

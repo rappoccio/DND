@@ -42,6 +42,7 @@ struct Weapon {
     // ── Bonuses ───────────────────────────────────────────────────────────────
     int          bonus_hit    = 0;       // flat bonus to attack rolls
     int          bonus_damage = 0;       // flat bonus to damage total
+    int          ac_bonus     = 0;       // for shields: +2 to AC (or other bonuses)
 
 };
 
