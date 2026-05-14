@@ -2437,6 +2437,17 @@ class App:
                 "die_size": roll.die_size
             })
 
+        # Convert conditions to dict format
+        conditions = []
+        for cond in s.conditions:
+            conditions.append({
+                "condition_name": cond.condition_name,
+                "condition_duration": cond.condition_duration,
+                "save_repeat_turns": cond.save_repeat_turns,
+                "save_ability": cond.save_ability.name,
+                "save_dc_ability": cond.save_dc_ability.name,
+            })
+
         return {
             "name":                  s.name,
             "type":                  s.type.name,
@@ -2456,9 +2467,7 @@ class App:
             "level":                 s.level,
             "upcast_dice_bonus":     s.upcast_dice_bonus,
             "requires_concentration": s.requires_concentration,
-            "conditions":            list(s.conditions) if s.conditions else [],
-            "condition_duration":    s.condition_duration,
-            "save_repeat_turns":     s.save_repeat_turns,
+            "conditions":            conditions,
         }
 
     def _dict_to_spell(self, agent_idx: int, d: dict):
@@ -2534,9 +2543,37 @@ class App:
         s.effects_on_end_turn = d.get("effects_on_end_turn", False)
 
         # Parse conditions applied by this spell (e.g., Hold Person applies Paralyzed)
-        s.conditions = d.get("conditions", [])
-        s.condition_duration = int(d.get("condition_duration", 0))  # 0 = use spell duration
-        s.save_repeat_turns = int(d.get("save_repeat_turns", 1))    # repeat save check every N turns
+        conditions = []
+        for cond_entry in d.get("conditions", []):
+            if isinstance(cond_entry, dict):
+                # Full condition spec: {"condition_name": "Paralyzed", "condition_duration": 10, ...}
+                c = rpg.AttackCondition()
+                c.condition_name = cond_entry.get("condition_name", "")
+                c.condition_duration = int(cond_entry.get("condition_duration", 0))
+                c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
+                # Parse save_ability string (target's save)
+                save_ability_str = cond_entry.get("save_ability", "SaveDex")
+                try:
+                    c.save_ability = getattr(rpg.SaveAbility, save_ability_str)
+                except AttributeError:
+                    c.save_ability = rpg.SaveAbility.SaveDex
+                # Parse save_dc_ability string (caster's ability for DC)
+                save_dc_ability_str = cond_entry.get("save_dc_ability", "SaveSpellcasterMod")
+                try:
+                    c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
+                except AttributeError:
+                    c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
+                conditions.append(c)
+            else:
+                # Simple string: just the condition name (legacy support)
+                c = rpg.AttackCondition()
+                c.condition_name = str(cond_entry)
+                c.condition_duration = 0  # will use spell duration
+                c.save_repeat_turns = 1
+                c.save_ability = rpg.SaveAbility.SaveDex
+                c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
+                conditions.append(c)
+        s.conditions = conditions
 
         return s
 
