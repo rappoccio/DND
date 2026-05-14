@@ -3390,6 +3390,9 @@ class App:
         if not self.show_spell_effects:
             return
 
+        # Sync cache with C++ engine state before rendering
+        self._sync_spell_effect_cache()
+
         active_effects = self.bm.active_spell_effects
         if not active_effects:
             return
