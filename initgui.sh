@@ -30,8 +30,6 @@ x11vnc \
 # noVNC: bridge VNC → WebSocket for browser access on port 6080
 websockify --web=/usr/share/novnc 6080 localhost:5900 \
     2>/dev/null &
-sleep 1
 
-EXIT_CODE=$?
-kill "$XVFB_PID" 2>/dev/null || true
-exit $EXIT_CODE
+# Keep services running
+wait $XVFB_PID

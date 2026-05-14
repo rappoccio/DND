@@ -344,6 +344,10 @@ class App:
         self._init_combat_panel()
         self.scroll_y = 0         # scroll offset for agent list
 
+        # ── Map panning (mouse scroll) ────────────────────────────────────
+        self.pan_x = 0            # horizontal pan offset in pixels
+        self.pan_y = 0            # vertical pan offset in pixels
+
         self.clock = pygame.time.Clock()
 
     # ─────────────────────────────────────────────────────────────────────
@@ -835,9 +839,9 @@ class App:
         raw_h = self.bm.h_line_positions
         if not raw_v or not raw_h:
             return None
-        # Unscale back to original image space
-        ix = sx / s
-        iy = sy / s
+        # Remove pan offset, then unscale back to original image space
+        ix = (sx - self.pan_x) / s
+        iy = (sy - self.pan_y) / s
         # Binary-search which column/row we're in
         import bisect
         c = bisect.bisect_right(raw_v, ix) - 1
@@ -851,7 +855,7 @@ class App:
         s     = self.map_scale
         raw_v = self.bm.v_line_positions
         raw_h = self.bm.h_line_positions
-        return int(raw_v[col] * s), int(raw_h[row] * s)
+        return int(raw_v[col] * s + self.pan_x), int(raw_h[row] * s + self.pan_y)
 
     def _agent_at(self, cell):
         """Return index of the placed agent whose footprint contains cell, or -1."""
@@ -1428,7 +1432,7 @@ class App:
         self.combat.compute_visibility(self.bm, idx)
 
         # Build popup text
-        selected_agent = agents[idx].agent.name()
+        selected_agent = agents[idx].name
         visibility_info = f"Visible targets for {selected_agent}:\n"
 
         visible_count = 0
@@ -1444,7 +1448,7 @@ class App:
                     rpg.VisibilityLevel.PartiallyObscured: "Partially Obscured",
                     rpg.VisibilityLevel.Blocked: "Blocked"
                 }.get(vis_level, "Unknown")
-                visibility_info += f"  • {agent.agent.name()} ({vis_name})\n"
+                visibility_info += f"  • {agent.name} ({vis_name})\n"
 
         if visible_count == 0:
             visibility_info += "  (no visible targets)"
@@ -3130,10 +3134,14 @@ class App:
     #  Drawing
     # ─────────────────────────────────────────────────────────────────────
     def _draw_map(self):
-        self.screen.blit(self.map_surf, self.map_rect)
+        # Apply pan offset to map drawing
+        panned_rect = self.map_rect.copy()
+        panned_rect.x += self.pan_x
+        panned_rect.y += self.pan_y
+        self.screen.blit(self.map_surf, panned_rect)
         # Draw regular overlay unless lighting editor is active
         if not self.lighting_editor.active:
-            self.screen.blit(self.overlay, self.map_rect)
+            self.screen.blit(self.overlay, panned_rect)
             # Draw lighting overlay if persistent toggle is on
             if self.show_lighting_overlay:
                 self._draw_lighting_overlay()
@@ -3191,8 +3199,11 @@ class App:
 
                     pygame.draw.rect(lighting_surf, color, (cell_x, cell_y, cell_w, cell_h))
 
-        # Blit the lighting overlay onto the screen
-        self.screen.blit(lighting_surf, self.map_rect)
+        # Blit the lighting overlay onto the screen with pan offset
+        panned_rect = self.map_rect.copy()
+        panned_rect.x += self.pan_x
+        panned_rect.y += self.pan_y
+        self.screen.blit(lighting_surf, panned_rect)
 
         # Draw markers for light sources (golden circles)
         h_lines = self.bm.h_line_positions
@@ -4230,6 +4241,36 @@ class App:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
+
+            # ── Mouse wheel for map panning ───────────────────────────────
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 4:  # Scroll up
+                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                        self.pan_x += 30
+                    else:
+                        self.pan_y += 30
+                elif event.button == 5:  # Scroll down
+                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                        self.pan_x -= 30
+                    else:
+                        self.pan_y -= 30
+            # Newer pygame versions use MOUSEWHEEL event
+            elif hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+                if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                    self.pan_x += event.x * 30
+                else:
+                    self.pan_y += event.y * 30
+
+            # ── Keyboard panning (arrow keys) ─────────────────────────────
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    self.pan_y += 30
+                elif event.key == pygame.K_DOWN:
+                    self.pan_y -= 30
+                elif event.key == pygame.K_LEFT:
+                    self.pan_x += 30
+                elif event.key == pygame.K_RIGHT:
+                    self.pan_x -= 30
 
             # ── Terrain editor gets first pick when open ──────────────────
             if self.terrain_editor.active:
