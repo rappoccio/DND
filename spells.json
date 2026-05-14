@@ -606,7 +606,16 @@
     "physical_damage_types": [],
     "level": 2,
     "upcast_dice_bonus": 0,
-    "requires_concentration": false
+    "requires_concentration": false,
+    "conditions": [
+      {
+        "condition_name": "Blinded",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "Blink",
@@ -897,7 +906,16 @@
     "physical_damage_types": [],
     "level": 1,
     "upcast_dice_bonus": 0,
-    "requires_concentration": false
+    "requires_concentration": false,
+    "conditions": [
+      {
+        "condition_name": "Blinded",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "Command",
@@ -3167,9 +3185,15 @@
     "num_targets": 1,
     "targets_per_upcast_level": 1,
     "requires_concentration": true,
-    "conditions": ["Paralyzed"],
-    "condition_duration": 0,
-    "save_repeat_turns": 1
+    "conditions": [
+      {
+        "condition_name": "Paralyzed",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "Holy Aura",
@@ -3226,7 +3250,16 @@
     "physical_damage_types": [],
     "level": 3,
     "upcast_dice_bonus": 0,
-    "requires_concentration": true
+    "requires_concentration": true,
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "Ice Knife",
