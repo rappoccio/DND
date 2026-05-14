@@ -333,6 +333,7 @@ class App:
         self._effect_meta: dict     = {}    # {effect_id: {"name": str, "color": tuple, "cells": [(col,row)]}}
         self.show_terrain            = False # toggle for showing all terrain regions
         self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
+        self.show_visible_targets    = False # toggle for showing visible target debug info
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
 
         # ── Spell slot economy (class-based caster tracking) ────────────────
@@ -582,6 +583,10 @@ class App:
         self.btn_show_spell_effects = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Spell Effects",
                                           (150, 120, 180), (180, 150, 210), self.font_md)
+        dummy_y += B + 5
+        self.btn_show_visible_targets = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "Show Visible",
+                                          (100, 180, 150), (130, 210, 180), self.font_md)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Sprite loading (cached)
@@ -1407,6 +1412,44 @@ class App:
         """Flush messages from the combat engine logger into the combat log."""
         for msg in self.logger.flush():
             self._combat_log_add(msg)
+
+    def _show_visible_targets_popup(self):
+        """Debug popup showing visible targets for the selected agent."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self._combat_log_add("No agent selected!")
+            return
+
+        agents = self.bm.placed_agents
+        if idx >= len(agents):
+            return
+
+        # Compute visibility for this agent
+        self.combat.compute_visibility(self.bm, idx)
+
+        # Build popup text
+        selected_agent = agents[idx].agent.name()
+        visibility_info = f"Visible targets for {selected_agent}:\n"
+
+        visible_count = 0
+        for target_idx, agent in enumerate(agents):
+            if target_idx == idx:
+                continue  # Skip self
+
+            vis_level = self.combat.get_visibility(idx, target_idx)
+            if vis_level != rpg.VisibilityLevel.Blocked:
+                visible_count += 1
+                vis_name = {
+                    rpg.VisibilityLevel.Clear: "Clear",
+                    rpg.VisibilityLevel.PartiallyObscured: "Partially Obscured",
+                    rpg.VisibilityLevel.Blocked: "Blocked"
+                }.get(vis_level, "Unknown")
+                visibility_info += f"  • {agent.agent.name()} ({vis_name})\n"
+
+        if visible_count == 0:
+            visibility_info += "  (no visible targets)"
+
+        self._combat_log_add(visibility_info)
 
     def _start_attack(self, slot: str):
         """Begin target-selection for an attack in the given slot."""
@@ -4038,6 +4081,12 @@ class App:
         self.btn_show_spell_effects.rect.y = y
         self.btn_show_spell_effects.rect.w = HW
         self.btn_show_spell_effects.draw(self.screen)
+        y += B + gap
+
+        self.btn_show_visible_targets.rect.x = lx
+        self.btn_show_visible_targets.rect.y = y
+        self.btn_show_visible_targets.rect.w = HW
+        self.btn_show_visible_targets.draw(self.screen)
 
         self.btn_cbt_end_combat.rect.x = lx + HW + 4
         self.btn_cbt_end_combat.rect.y = y
@@ -4763,6 +4812,8 @@ class App:
                     self.show_terrain = not self.show_terrain
                 if self.btn_show_spell_effects.clicked(event):
                     self.show_spell_effects = not self.show_spell_effects
+                if self.btn_show_visible_targets.clicked(event):
+                    self._show_visible_targets_popup()
                 if self.btn_cbt_end_turn.clicked(event):
                     self._advance_turn()
                     self._flush_combat_log()

@@ -6,6 +6,7 @@
       "size": 1,
       "col": 12,
       "row": 10,
+      "darkvision_range": 60,
       "stats": {
         "str": 10,
         "dex": 18,
@@ -46,6 +47,7 @@
       "size": 1,
       "col": 9,
       "row": 7,
+      "devilssight_range": 60,
       "stats": {
         "str": 18,
         "dex": 10,

@@ -944,6 +944,8 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
             return true;  // always visible
         case LightLevel::DimLight:
             return true;  // lightly obscured but visible (disadvantage handled separately)
+        case LightLevel::PartiallyObscured:
+            return true;  // fog/shadows but visible (disadvantage handled separately)
         case LightLevel::Darkness:
             // visible only with darkvision within range
             return darkvision_ft > 0 && dist_ft <= darkvision_ft;
@@ -1378,6 +1380,70 @@ std::vector<int> BattleMap::tickSpellEffects(int source_agent_idx) noexcept {
 void BattleMap::clearSpellEffects() noexcept {
     activeSpellEffects_.clear();
     nextSpellEffectId_ = 0;
+}
+
+int BattleMap::addObscurationEffect(ActiveObscurationEffect effect) noexcept {
+    effect.id = nextObscurationEffectId_++;
+    activeObscurationEffects_.push_back(effect);
+    return effect.id;
+}
+
+void BattleMap::removeObscurationEffect(int effect_id) noexcept {
+    auto it = std::find_if(activeObscurationEffects_.begin(), activeObscurationEffects_.end(),
+        [effect_id](const ActiveObscurationEffect& e) { return e.id == effect_id; });
+    if (it != activeObscurationEffects_.end()) {
+        activeObscurationEffects_.erase(it);
+    }
+}
+
+const std::vector<ActiveObscurationEffect>& BattleMap::activeObscurationEffects() const noexcept {
+    return activeObscurationEffects_;
+}
+
+LightLevel BattleMap::getObscurationAtCell(const Cell& c) const noexcept {
+    // Check all obscuration effects to find the highest obscuration level at this cell
+    LightLevel highest = LightLevel::BrightLight;
+
+    for (const auto& effect : activeObscurationEffects_) {
+        // Check if this cell is in the effect
+        if (std::find(effect.cells.begin(), effect.cells.end(), c) != effect.cells.end()) {
+            // MagicalDarkness is highest priority (most obscuring)
+            if (effect.obscuration_level == LightLevel::MagicalDarkness) {
+                return LightLevel::MagicalDarkness;
+            }
+            // PartiallyObscured is next
+            if (effect.obscuration_level == LightLevel::PartiallyObscured &&
+                highest != LightLevel::MagicalDarkness) {
+                highest = LightLevel::PartiallyObscured;
+            }
+        }
+    }
+
+    return highest;
+}
+
+std::vector<int> BattleMap::tickObscurationEffects() noexcept {
+    std::vector<int> removed_ids;
+    std::vector<ActiveObscurationEffect> remaining;
+
+    for (auto& effect : activeObscurationEffects_) {
+        if (effect.turns_remaining == -1) {
+            // Permanent effect (e.g., concentration-based)
+            remaining.push_back(effect);
+        } else if (--effect.turns_remaining <= 0) {
+            removed_ids.push_back(effect.id);
+        } else {
+            remaining.push_back(effect);
+        }
+    }
+
+    activeObscurationEffects_ = remaining;
+    return removed_ids;
+}
+
+void BattleMap::clearObscurationEffects() noexcept {
+    activeObscurationEffects_.clear();
+    nextObscurationEffectId_ = 0;
 }
 
 } // namespace rpg

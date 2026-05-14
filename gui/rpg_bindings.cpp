@@ -463,6 +463,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "If true, spell requires line of sight to the target or area origin.")
         .def_readwrite("check_los_on_center", &Spell::check_los_on_center,
              "If true, only the spell center needs line of sight (not all affected cells). User configurable.")
+        .def_readwrite("requires_sight", &Spell::requires_sight,
+             "If true, spell requires target(s) to be visible (not blocked by obscuration).\n"
+             "Spells like Hypnotic Pattern, Command, etc. require this.\n"
+             "The target is blocked if in MagicalDarkness without Devil's Sight or Heavily Obscured (unless exception applies).")
         .def_readwrite("level", &Spell::level,
              "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
         .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
@@ -1049,6 +1053,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("idx"),
              "Remove prone condition from agent[idx] (costs half movement speed).")
 
+        // ── Visibility and line of sight ────────────────────────────────────
+        .def("compute_visibility",
+             &CombatEngine::computeVisibility,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Compute and cache visibility from one agent to all others.\n"
+             "Respects perception range (based on stats + lighting modifiers),\n"
+             "line-of-sight, and obscuration effects.\n"
+             "Results are cached for use by spells/attacks until next turn.")
+        .def("get_visibility",
+             &CombatEngine::getVisibility,
+             py::arg("source_idx"), py::arg("target_idx"),
+             "Get the cached visibility level between two agents.\n"
+             "Returns Blocked if visibility hasn't been computed for this pair.\n"
+             "Call compute_visibility() first to populate the cache.")
+
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"));
 
@@ -1097,10 +1116,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
     // ── LightLevel enum ──────────────────────────────────────────────────────
     py::enum_<LightLevel>(m, "LightLevel")
-        .value("BrightLight",     LightLevel::BrightLight)
-        .value("DimLight",        LightLevel::DimLight)
-        .value("Darkness",        LightLevel::Darkness)
-        .value("MagicalDarkness", LightLevel::MagicalDarkness)
+        .value("BrightLight",       LightLevel::BrightLight)
+        .value("DimLight",          LightLevel::DimLight)
+        .value("PartiallyObscured", LightLevel::PartiallyObscured)
+        .value("Darkness",          LightLevel::Darkness)
+        .value("MagicalDarkness",   LightLevel::MagicalDarkness)
+        .export_values();
+
+    py::enum_<VisibilityLevel>(m, "VisibilityLevel")
+        .value("Clear",            VisibilityLevel::Clear)
+        .value("PartiallyObscured", VisibilityLevel::PartiallyObscured)
+        .value("Blocked",          VisibilityLevel::Blocked)
         .export_values();
 
     // ── ActiveTerrainEffect struct ───────────────────────────────────────────
@@ -1120,6 +1146,25 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("light_level",       &ActiveLightEffect::light_level)
         .def_readonly("turns_remaining",   &ActiveLightEffect::turns_remaining)
         .def_readonly("source_agent_idx",  &ActiveLightEffect::source_agent_idx);
+
+    py::class_<ActiveObscurationEffect>(m, "ActiveObscurationEffect")
+        .def(py::init<>())
+        .def_readwrite("id",                   &ActiveObscurationEffect::id)
+        .def_readwrite("source_agent_idx",     &ActiveObscurationEffect::source_agent_idx)
+        .def_readwrite("cells",                &ActiveObscurationEffect::cells)
+        .def_readwrite("obscuration_level",    &ActiveObscurationEffect::obscuration_level)
+        .def_readwrite("turns_remaining",      &ActiveObscurationEffect::turns_remaining)
+        .def("__repr__", [](const ActiveObscurationEffect& e){
+            std::string level_str;
+            switch (e.obscuration_level) {
+                case LightLevel::PartiallyObscured: level_str = "PartiallyObscured"; break;
+                case LightLevel::MagicalDarkness:   level_str = "MagicalDarkness"; break;
+                default: level_str = "Unknown";
+            }
+            return "<ActiveObscurationEffect '" + level_str
+                 + "' source=" + std::to_string(e.source_agent_idx)
+                 + " cells=" + std::to_string(e.cells.size())
+                 + " turns=" + std::to_string(e.turns_remaining) + ">"; });
 
     // ── BattleMap ───────────────────────────────────────────────────────────
     py::class_<BattleMap>(m, "BattleMap")
@@ -1330,6 +1375,26 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Get a copy of all active light effects.")
         .def("has_active_light_effects", &BattleMap::hasActiveLightEffects,
              "Check if there are any active light effects.")
+
+        // Obscuration effects (fog clouds, magical darkness, etc.)
+        .def_property_readonly("active_obscuration_effects", &BattleMap::activeObscurationEffects,
+             "Get all active obscuration effects on the map.")
+        .def("add_obscuration_effect", &BattleMap::addObscurationEffect,
+             py::arg("effect"),
+             "Add an obscuration effect to the map. Returns effect_id.")
+        .def("remove_obscuration_effect", &BattleMap::removeObscurationEffect,
+             py::arg("effect_id"),
+             "Remove an obscuration effect by id.")
+        .def("get_obscuration_at_cell", &BattleMap::getObscurationAtCell,
+             py::arg("cell"),
+             "Get the obscuration level at a specific cell.\n"
+             "Returns the highest obscuration level (MagicalDarkness > PartiallyObscured > BrightLight).")
+        .def("tick_obscuration_effects", &BattleMap::tickObscurationEffects,
+             "Decrement turns_remaining for all obscuration effects.\n"
+             "Removes expired effects (turns_remaining <= 0).\n"
+             "Returns list of removed effect ids.")
+        .def("clear_obscuration_effects", &BattleMap::clearObscurationEffects,
+             "Clear all obscuration effects (end of combat).")
 
         // Expose params so Python can tune detection
         .def_readwrite("params", &BattleMap::params);

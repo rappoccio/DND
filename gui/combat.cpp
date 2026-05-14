@@ -2437,6 +2437,78 @@ void CombatEngine::initNpcSpellGroups(BattleMap& bm, int agent_idx,
     bm.initNpcSpellGroups(agent_idx, groups);
 }
 
+void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return;
+
+    const PlacedAgent& viewer = agents[static_cast<std::size_t>(agent_idx)];
+    const Agent::Stats& viewer_stats = viewer.stats;
+
+    // Base perception range (in feet): half of base wisdom score, minimum 20 feet
+    // This is a heuristic; D&D 5e uses specific rules per situation
+    int base_perception = std::max(20, (viewer_stats.wis / 2) * 5);
+
+    // TODO: Lighting modifiers would go here (darkvision range, light effects, etc.)
+    // For now, use base perception range
+
+    // Iterate through all other agents on the map
+    for (std::size_t target_idx = 0; target_idx < agents.size(); ++target_idx) {
+        if (static_cast<int>(target_idx) == agent_idx)
+            continue;  // Don't check visibility to self
+
+        const PlacedAgent& target = agents[target_idx];
+
+        // Calculate distance from viewer to target (Chebyshev distance = max of dx, dy)
+        int dx = std::abs(viewer.origin.col - target.origin.col);
+        int dy = std::abs(viewer.origin.row - target.origin.row);
+        int chebyshev_distance = std::max(dx, dy);
+
+        VisibilityLevel visibility = VisibilityLevel::Blocked;
+
+        // Check if target is within perception range
+        if (chebyshev_distance <= (base_perception / 5)) {  // convert feet to cells (5 ft per cell)
+            // Check line of sight and obscuration
+            int viewer_size = viewer.agent->getSize();
+            int target_size = target.agent->getSize();
+            bool has_los = bm.hasLineOfSight(viewer.origin, viewer_size, target.origin, target_size);
+
+            if (has_los) {
+                // Check obscuration at target's location
+                LightLevel obscuration = bm.getObscurationAtCell(target.origin);
+
+                // Check if viewer can see through magical darkness (devil's sight)
+                bool can_see_through_darkness = viewer_stats.devilssight_range > (chebyshev_distance * 5);
+
+                if (obscuration == LightLevel::MagicalDarkness && !can_see_through_darkness) {
+                    visibility = VisibilityLevel::Blocked;
+                } else if (obscuration == LightLevel::PartiallyObscured) {
+                    visibility = VisibilityLevel::PartiallyObscured;
+                } else {
+                    visibility = VisibilityLevel::Clear;
+                }
+            }
+        }
+
+        // Store in visibility map using a combined key (source_idx * large_prime + target_idx)
+        // This works for reasonable agent counts (< 1M agents per combat)
+        int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
+        visibilityMap_[key] = visibility;
+    }
+}
+
+VisibilityLevel CombatEngine::getVisibility(int source_idx, int target_idx) const noexcept
+{
+    int64_t key = (static_cast<int64_t>(source_idx) << 32) | static_cast<uint32_t>(target_idx);
+    auto it = visibilityMap_.find(key);
+    if (it != visibilityMap_.end()) {
+        return it->second;
+    }
+    // Default to Blocked if visibility hasn't been computed
+    return VisibilityLevel::Blocked;
+}
+
 bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage) noexcept
 {
     const auto& agents = bm.placedAgents();

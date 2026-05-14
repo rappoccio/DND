@@ -49,6 +49,13 @@ struct ActiveSpellEffect;
 struct ActiveAgentCondition;
 enum class MovementType;
 
+// Visibility level between two agents (determined by LOS, obscuration, etc.)
+enum class VisibilityLevel {
+    Clear = 0,           // Target is clearly visible
+    PartiallyObscured,   // Target is visible but obscured (disadvantage on attacks/perception)
+    Blocked              // Target cannot be seen at all
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Attack result
 // ─────────────────────────────────────────────────────────────────────────────
@@ -387,6 +394,17 @@ public:
     // Returns true if concentration was lost, false otherwise.
     bool checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage) noexcept;
 
+    // ── Visibility and Line of Sight ───────────────────────────────────────
+    // Compute visibility from one agent to all others on the map.
+    // Respects perception range (based on stats + lighting modifiers),
+    // line-of-sight, and obscuration effects.
+    // Caches results in visibilityMap_ for use by spells/attacks.
+    void computeVisibility(BattleMap& bm, int agent_idx) noexcept;
+
+    // Get the cached visibility level between two agents (from last computeVisibility call).
+    // Returns Blocked if visibility hasn't been computed for this pair.
+    [[nodiscard]] VisibilityLevel getVisibility(int source_idx, int target_idx) const noexcept;
+
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
     // reasons for conditions, etc.). Optional; null = silent.
@@ -559,6 +577,10 @@ private:
     int nextConditionId_{0};
 
     std::vector<ActiveEffect> activeEffects_;
+
+    // Visibility map: (source_idx, target_idx) -> VisibilityLevel
+    // Computed at turn start and cached until next turn
+    std::unordered_map<int64_t, VisibilityLevel> visibilityMap_;
 
     MessageLogger* logger_{nullptr};
 

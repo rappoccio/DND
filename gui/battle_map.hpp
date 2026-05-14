@@ -76,10 +76,11 @@ enum class TerrainDifficulty {
 // Ordered by restrictiveness: BrightLight (0) < DimLight (1) < Darkness (2) < MagicalDarkness (3).
 // Used for darkvision and visibility calculations.
 enum class LightLevel {
-    BrightLight = 0,    // Full visibility
-    DimLight = 1,       // Lightly obscured; visible to all with LOS
-    Darkness = 2,       // Heavily obscured; visible only with darkvision within range
-    MagicalDarkness = 3 // Impenetrable; even darkvision cannot see through it
+    BrightLight = 0,       // Full visibility
+    DimLight = 1,          // Lightly obscured; visible to all with LOS
+    PartiallyObscured = 2, // Fog, shadows; disadvantage on perception checks
+    Darkness = 3,          // Heavily obscured; visible only with darkvision within range
+    MagicalDarkness = 4    // Impenetrable; even darkvision cannot see through it
 };
 
 // ── Active temporary terrain effect ────────────────────────────────────────
@@ -100,6 +101,15 @@ struct ActiveLightEffect {
     LightLevel       light_level;      // BrightLight, DimLight, Darkness, or MagicalDarkness
     int              turns_remaining;  // -1 = permanent, 0+ = expires after N turns
     int              source_agent_idx; // -1 = DM-placed or map-defined
+};
+
+// ── Active obscuration effect (fog clouds, magical darkness, etc.) ──────────
+struct ActiveObscurationEffect {
+    int          id;                     // unique, returned to Python on add
+    int          source_agent_idx = -1;  // caster/source of the effect
+    std::vector<Cell> cells;             // cells occupied by this obscuration
+    LightLevel   obscuration_level;      // PartiallyObscured or MagicalDarkness
+    int          turns_remaining = 0;    // -1 = permanent, 0+ = expires after N turns
 };
 
 // ── Active persistent spell effect (AoE affecting agents over time) ─────────
@@ -355,6 +365,21 @@ public:
     // Clear all spell effects (end of combat).
     void clearSpellEffects() noexcept;
 
+    // ── Obscuration Effects (fog clouds, magical darkness, etc.) ────────────
+    // Add a new obscuration effect to the map. Returns a unique effect_id.
+    [[nodiscard]] int addObscurationEffect(ActiveObscurationEffect effect) noexcept;
+    // Remove an obscuration effect by id.
+    void removeObscurationEffect(int effect_id) noexcept;
+    // Get all active obscuration effects (for Python to render overlay).
+    [[nodiscard]] const std::vector<ActiveObscurationEffect>& activeObscurationEffects() const noexcept;
+    // Get the obscuration level at a specific cell. Returns BrightLight if no obscuration.
+    [[nodiscard]] LightLevel getObscurationAtCell(const Cell& c) const noexcept;
+    // Decrement turns_remaining for all obscuration effects.
+    // Removes expired effects. Returns list of removed effect ids.
+    [[nodiscard]] std::vector<int> tickObscurationEffects() noexcept;
+    // Clear all obscuration effects (end of combat).
+    void clearObscurationEffects() noexcept;
+
     // ── NPC Spell Initialization ────────────────────────────────────────
     // Set is_npc=true and initialize uses_max/uses_remaining from spell groups.
     // groups: maps N (uses/day) -> list of spell names in that group.
@@ -426,6 +451,10 @@ private:
     // Persistent AoE spell effects (Wall of Fire, Spike Growth, etc.)
     std::vector<ActiveSpellEffect> activeSpellEffects_;
     int nextSpellEffectId_{0};  // monotonically increasing spell effect id generator
+
+    // Active obscuration effects (fog clouds, magical darkness, etc.)
+    std::vector<ActiveObscurationEffect> activeObscurationEffects_;
+    int nextObscurationEffectId_{0};  // monotonically increasing obscuration effect id generator
 };
 
 } // namespace rpg
