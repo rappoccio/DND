@@ -500,6 +500,11 @@ public:
     [[nodiscard]] std::vector<int> availableCastableSpells(
         const BattleMap& bm, int agent_idx) const;
 
+    // Calculate the number of targets for a Multiple geometry spell when cast at a given slot level.
+    // Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level
+    // For non-Multiple geometries, returns 1 (Single geometry) or 0 (AoE spells).
+    [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept;
+
     // ── RL observation vector ─────────────────────────────────────────────
     //
     // Returns a fixed-length float vector suitable as NN input.

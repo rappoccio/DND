@@ -927,6 +927,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "For NPCs: spells with uses_remaining > 0 (and leveled spell check).\n"
              "For players: spells with available slots at spell.level or higher (and leveled spell check).\n"
              "Cantrips (level 0) always included.")
+        .def("get_num_targets_for_spell",
+             &CombatEngine::getNumTargetsForSpell,
+             py::arg("spell"), py::arg("slot_level"),
+             "Calculate the number of targets for a Multiple geometry spell when cast at given slot level.\n"
+             "Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level\n"
+             "For Single geometry: returns 1. For AoE: returns 0.")
 
         // ── Agent stat and equipment management ─────────────────────────────
         .def("add_agent_config",

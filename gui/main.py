@@ -1565,7 +1565,7 @@ class App:
                 hint = "click a target"
             elif sp_.geometry == rpg.SpellGeometry.Multiple:
                 # Multiple geometry: collect N independent targets
-                num_targets = sp_.num_targets + max(0, (slot_level_ - sp_.level)) * sp_.targets_per_upcast_level
+                num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_)
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []  # Will collect targets sequentially
                 self.pending_spell_num_targets = num_targets

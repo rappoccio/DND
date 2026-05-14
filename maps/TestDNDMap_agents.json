@@ -78,7 +78,8 @@
         "Plant Growth",
 	"Ray of Sickness",
 	"Black Tentacles",
-	"Wall of Fire"
+	"Wall of Fire",
+	"Hold Person"
       ],
       "agent_class": "Wizard",
       "agent_char_level": 9,

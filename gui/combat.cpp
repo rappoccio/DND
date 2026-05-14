@@ -1637,7 +1637,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
                 cond.next_save_turn = 0;
 
-                addAgentCondition(bm, cond);
+                [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
                 any_conditions_applied = true;
             }
         }
@@ -2176,6 +2176,25 @@ std::vector<int> CombatEngine::availableCastableSpells(
     }
 
     return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  getNumTargetsForSpell – calculate target count for Multiple geometry spells
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept
+{
+    // For Multiple geometry spells, calculate targets based on upcast level
+    if (sp.geometry != Spell::Multiple) {
+        return (sp.geometry == Spell::Single) ? 1 : 0;
+    }
+
+    // Multiple geometry: num_targets + (slot_level - spell.level) * targets_per_upcast_level
+    int num_targets = sp.num_targets;
+    if (slot_level > 0 && slot_level > sp.level) {
+        num_targets += (slot_level - sp.level) * sp.targets_per_upcast_level;
+    }
+    return std::max(1, num_targets);  // Always at least 1 target
 }
 
 void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept
