@@ -11,9 +11,6 @@ docker build -t rpg_map "$SCRIPT_DIR"
 
 echo "[*] Building C++ extension (cmake + ninja)..."
 docker run --rm -v "$HOME":/home/user rpg_map \
-  bash -c "cd /home/user/Documents/Claude/Projects/DND && \
-           cmake -S ./gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && \
-           cmake --build build --parallel && \
-           cmake --install build"
+  bash -c "cd /home/user/Documents/Claude/Projects/DND && ./compile.sh"
 
 echo "[+] Build complete! Extension installed to gui/"

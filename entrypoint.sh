@@ -39,10 +39,7 @@ if [ "$1" = "bash" ] || [ "$1" = "sh" ] || [ "$1" = "interactive" ]; then
 fi
 
 # Always build C++ code first
-cd /home/user/Documents/Claude/Projects/DND && \
-cmake -S ./gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && \
-cmake --build build --parallel && \
-cmake --install build
+cd /home/user/Documents/Claude/Projects/DND && ./compile.sh
 
 # Run the game with the provided map path or tests
 if [ $# -eq 0 ]; then
