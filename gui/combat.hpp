@@ -348,6 +348,7 @@ public:
     void applyParalyzed(BattleMap& bm, int idx) noexcept;
     void applyBlinded(BattleMap& bm, int idx) noexcept;
     void applyIncapacitated(BattleMap& bm, int idx) noexcept;
+    void applyStunned(BattleMap& bm, int idx) noexcept;
 
     // ── Spell-Applied Agent Conditions ────────────────────────────────
     // Add an active spell-applied condition (e.g., Paralyzed from Hold Person).
@@ -568,6 +569,7 @@ private:
     // ── Spell helpers ─────────────────────────────────────────────────────
     [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;
     [[nodiscard]] static int spellSaveDc(const Agent::Stats& s) noexcept;
+    [[nodiscard]] static int spellSaveDcFromAbility(const Agent::Stats& s, Spell::SaveAbility_t ability) noexcept;
 
     // Apply a persistent spell effect (damage) to a target agent.
     void applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;

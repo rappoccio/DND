@@ -1277,6 +1277,9 @@ class App:
         if new_idx >= 0:
             turn_result = self.combat.begin_turn(self.bm, new_idx)
 
+            # Tick agent conditions AFTER begin_turn so they can affect this turn
+            self.combat.tick_agent_conditions(self.bm)
+
             # Log any save rolls (e.g., paralyzed escape attempt)
             if turn_result.save_roll_message:
                 self._combat_log_add(f"{self.bm.placed_agents[new_idx].name}: {turn_result.save_roll_message}")
@@ -3210,6 +3213,19 @@ class App:
             # Find the source of the incapacitated condition from active conditions
             for cond in self.combat.active_agent_conditions:
                 if cond.agent_idx == agent_idx and cond.condition_name == "Incapacitated":
+                    # Get source's color - use a color based on caster index for visual linking
+                    source_color = self._get_caster_color(cond.caster_idx)
+                    center_x = int(screen_x + size_px / 2)
+                    center_y = int(screen_y + size_px / 2)
+                    radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
+                    pygame.draw.circle(self.screen, source_color, (center_x, center_y), radius, 3)
+                    break
+
+        # Stunned indicator (circle linking to source)
+        if pt.conditions.stunned and agent_idx >= 0:
+            # Find the source of the stunned condition from active conditions
+            for cond in self.combat.active_agent_conditions:
+                if cond.agent_idx == agent_idx and cond.condition_name == "Stunned":
                     # Get source's color - use a color based on caster index for visual linking
                     source_color = self._get_caster_color(cond.caster_idx)
                     center_x = int(screen_x + size_px / 2)

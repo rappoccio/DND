@@ -100,8 +100,8 @@
         "intel": 16,
         "wis": 13,
         "cha": 11,
-        "hp_max": 22,
-        "hp_cur": 22,
+        "hp_max": 44,
+        "hp_cur": 44,
         "ac": 12,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -172,7 +172,7 @@
         "physical_resistances": ["Bludgeoning", "Piercing", "Slashing"],
         "magic_vulnerabilities": ["Cold"]
       },
-      "weapon_indices": ["UnarmedFire"]
+      "weapon_indices": ["UnarmedStunningFire"]
     },
     {
       "name": "Frost Mage",

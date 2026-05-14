@@ -257,6 +257,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
+        .def_readwrite("stunned",       &Agent::Conditions::stunned)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
@@ -271,6 +272,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.incapacitated) s += " incapacitated";
             if (c.paralyzed)     s += " paralyzed";
             if (c.blinded)       s += " blinded";
+            if (c.stunned)       s += " stunned";
             return s + ">"; });
 
     // ── Damage type enums ─────────────────────────────────────────────────────
@@ -297,6 +299,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Ranged", WeaponType::Ranged, "Projectile weapon.")
         .export_values();
 
+    // ── Attack Condition ──────────────────────────────────────────────────────
+    py::class_<AttackCondition>(m, "AttackCondition")
+        .def(py::init<>())
+        .def_readwrite("condition_name",     &AttackCondition::condition_name)
+        .def_readwrite("condition_duration", &AttackCondition::condition_duration)
+        .def_readwrite("save_repeat_turns",  &AttackCondition::save_repeat_turns)
+        .def_readwrite("save_ability",       &AttackCondition::save_ability)
+        .def_readwrite("save_dc_ability",    &AttackCondition::save_dc_ability);
+
     // ── Weapon ────────────────────────────────────────────────────────────────
     py::class_<Weapon>(m, "Weapon")
         .def(py::init<>())
@@ -315,6 +326,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("magic_damage_types",    &Weapon::magicDamageRolls)
         .def_readwrite("bonus_hit",        &Weapon::bonus_hit)
         .def_readwrite("bonus_damage",     &Weapon::bonus_damage)
+        .def_readwrite("conditions",       &Weapon::conditions)
         .def("__repr__", [](const Weapon& w){
             std::string dmg_str;
             if (!w.physicalDamageRolls.empty()) {

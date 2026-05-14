@@ -172,6 +172,39 @@ def _dict_to_weapon(d: dict):
         magic_rolls.append(r)
     w.magic_damage_types = magic_rolls
 
+    # Attack conditions - build list then assign
+    conditions = []
+    for cond_entry in d.get("conditions", []):
+        if isinstance(cond_entry, dict):
+            # Full condition spec: {"condition_name": "Stunned", "condition_duration": 2, "save_ability": "SaveStr", "save_dc_ability": "SaveWis"}
+            c = rpg.AttackCondition()
+            c.condition_name = cond_entry.get("condition_name", "")
+            c.condition_duration = int(cond_entry.get("condition_duration", 0))
+            c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
+            # Parse save_ability string (target's save - e.g., "SaveDex" -> rpg.SaveAbility.SaveDex)
+            save_ability_str = cond_entry.get("save_ability", "SaveDex")
+            try:
+                c.save_ability = getattr(rpg.SaveAbility, save_ability_str)
+            except AttributeError:
+                c.save_ability = rpg.SaveAbility.SaveDex
+            # Parse save_dc_ability string (attacker's ability - e.g., "SaveWis" -> rpg.SaveAbility.SaveWis)
+            save_dc_ability_str = cond_entry.get("save_dc_ability", "SaveWis")
+            try:
+                c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
+            except AttributeError:
+                c.save_dc_ability = rpg.SaveAbility.SaveWis
+            conditions.append(c)
+        else:
+            # Simple string: just the condition name
+            c = rpg.AttackCondition()
+            c.condition_name = str(cond_entry)
+            c.condition_duration = 0
+            c.save_repeat_turns = 1
+            c.save_ability = rpg.SaveAbility.SaveDex
+            c.save_dc_ability = rpg.SaveAbility.SaveWis
+            conditions.append(c)
+    w.conditions = conditions
+
     return w
 
 

@@ -73,5 +73,25 @@
     "bonus_damage": 3,
     "physical_damage_types": [],
     "magic_damage_types": [{"type": "Fire", "num_dice": 2, "die_size": 6}]
+  },
+  {
+    "name": "UnarmedStunningFire",
+    "type": "melee",
+    "reach_ft": 5,
+    "proficient": true,
+    "finesse":true,
+    "bonus_hit":4,
+    "bonus_damage":3,
+    "physical_damage_types": [],
+    "magic_damage_types": [{"type": "Fire", "num_dice": 2, "die_size": 6}],
+    "conditions": [
+      {
+        "condition_name": "Stunned",
+        "condition_duration": 1,
+        "save_repeat_turns": -1,
+        "save_ability": "SaveCon",
+	"save_dc_ability":"SaveDex"
+      }
+    ]
   }    
 ]

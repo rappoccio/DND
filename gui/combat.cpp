@@ -338,11 +338,24 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     const auto& stats = agent.stats;
 
-    // Check for conditions that allow save repeats (e.g., Hold Person, Hold Monster)
-    // Find the first active condition on this agent that needs a save attempt
+    // Check for incapacitating conditions first (Paralyzed, Incapacitated, Stunned)
+    // These always cause a turn skip unless the agent succeeds on a save
     for (auto& active_cond : activeAgentConditions_) {
         if (active_cond.agent_idx != agent_idx) continue;
-        if (active_cond.next_save_turn > 0) continue;  // Not time to save yet
+        if (active_cond.condition_name != "Paralyzed" &&
+            active_cond.condition_name != "Incapacitated" &&
+            active_cond.condition_name != "Stunned") continue;
+
+        // If save_repeat_turns == -1, skip turn without attempt
+        if (active_cond.save_repeat_turns == -1) {
+            result.turn_skipped = true;
+            result.skip_reason = active_cond.condition_name;
+            log_("Turn skipped by {} (no save allowed)", active_cond.condition_name);
+            return result;
+        }
+
+        // Check if it's time for a save
+        if (active_cond.next_save_turn > 0) continue;
 
         // Helper to get ability modifier
         auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
@@ -391,6 +404,11 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 Agent::Conditions cond = bm.getAgentConditions(agent_idx);
                 cond.incapacitated = false;
                 bm.setAgentConditions(agent_idx, cond);
+            } else if (active_cond.condition_name == "Stunned") {
+                Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+                cond.stunned = false;
+                cond.incapacitated = false;
+                bm.setAgentConditions(agent_idx, cond);
             }
 
             // Drop the caster's concentration on the spell that caused this condition
@@ -427,7 +445,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                  save_d20, save_mod, save_total, save_dc);
         } else {
             // Save failed, skip this turn (only for incapacitating conditions)
-            if (active_cond.condition_name == "Paralyzed" || active_cond.condition_name == "Incapacitated") {
+            if (active_cond.condition_name == "Paralyzed" || active_cond.condition_name == "Incapacitated" || active_cond.condition_name == "Stunned") {
                 result.turn_skipped = true;
                 result.skip_reason = active_cond.condition_name + " (save failed)";
                 result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
@@ -443,6 +461,65 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                      ability_name(active_cond.save_ability), active_cond.condition_name,
                      save_d20, save_mod, save_total, save_dc);
             }
+        }
+        break;  // Only check one condition per turn
+    }
+
+    // Check for non-incapacitating conditions that allow save repeats
+    for (auto& active_cond : activeAgentConditions_) {
+        if (active_cond.agent_idx != agent_idx) continue;
+        if (active_cond.condition_name == "Paralyzed" ||
+            active_cond.condition_name == "Incapacitated" ||
+            active_cond.condition_name == "Stunned") continue;  // Skip incapacitating conditions
+
+        if (active_cond.save_repeat_turns == -1) continue;  // Never allows saves
+        if (active_cond.next_save_turn > 0) continue;  // Not time to save yet
+
+        // Helper to get ability modifier
+        auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
+            int score = 0;
+            bool prof = false;
+            switch (ability) {
+                case Spell::SaveStr: score = stats.str; prof = stats.save_prof_str; break;
+                case Spell::SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
+                case Spell::SaveCon: score = stats.con; prof = stats.save_prof_con; break;
+                case Spell::SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
+                case Spell::SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
+                default: score = stats.cha; prof = stats.save_prof_cha; break;
+            }
+            int mod = (score - 10) / 2;
+            if (score < 10 && (score - 10) % 2 != 0) --mod;
+            return mod + (prof ? stats.prof_bonus : 0);
+        };
+
+        int save_mod = getSaveMod(active_cond.save_ability);
+        int save_d20 = roll(20);
+        int save_total = save_d20 + save_mod;
+        int save_dc = active_cond.save_dc;
+
+        auto ability_name = [](Spell::SaveAbility_t ab) -> std::string {
+            switch (ab) {
+                case Spell::SaveStr: return "STR";
+                case Spell::SaveDex: return "DEX";
+                case Spell::SaveCon: return "CON";
+                case Spell::SaveInt: return "INT";
+                case Spell::SaveWis: return "WIS";
+                default: return "CHA";
+            }
+        };
+
+        if (save_total >= save_dc) {
+            // Save succeeded, remove condition
+            removeAgentCondition(active_cond.condition_id);
+            log_("{} save vs {} — rolled {} + {} = {} vs DC {} — SAVED!",
+                 ability_name(active_cond.save_ability), active_cond.condition_name,
+                 save_d20, save_mod, save_total, save_dc);
+        } else {
+            // Save failed, reset next save time
+            active_cond.next_save_turn = active_cond.save_repeat_turns;
+            log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED",
+                 ability_name(active_cond.save_ability), active_cond.condition_name,
+                 save_d20, save_mod, save_total, save_dc);
         }
         break;  // Only check one condition per turn
     }
@@ -992,7 +1069,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                                    tgt_pt.origin, tgt_sz);
 
     // Apply engagement disadvantage: ranged attacks suffer disadvantage if engaged
-    bool is_ranged = (w.normal_range_ft > 0);
+    bool is_ranged = (w.type == WeaponType::Ranged);
     if (is_ranged && isThreatened(bm, action.attacker_idx)) {
         disadv = true;
     }
@@ -1019,6 +1096,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     if (tgt_cond.blinded) {
         adv = true;
         log_("Advantage: target is blinded");
+    }
+
+    // Target is stunned: attacker gets advantage
+    if (tgt_cond.stunned) {
+        adv = true;
+        log_("Advantage: target is stunned");
     }
 
     // Log reasons for disadvantage
@@ -1066,6 +1149,60 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     }
 
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
+
+    // Apply weapon conditions on hit
+    if (r.hit && !w.conditions.empty()) {
+        for (const auto& weapon_cond : w.conditions) {
+            int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
+
+            // Target makes a save to resist the condition
+            auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
+                int score = 0;
+                bool prof = false;
+                switch (ability) {
+                    case Spell::SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+                    case Spell::SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+                    case Spell::SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+                    case Spell::SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+                    case Spell::SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+                    default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
+                }
+                int m = (score - 10) / 2;
+                if (score < 10 && (score - 10) % 2 != 0) --m;
+                return m + (prof ? tgt_stats.prof_bonus : 0);
+            };
+
+            // Check for auto-fail conditions (paralyzed, stunned auto-fail STR/DEX)
+            bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
+                            (weapon_cond.save_ability == Spell::SaveStr || weapon_cond.save_ability == Spell::SaveDex);
+
+            int save_d20 = auto_fail ? 1 : roll(20);
+            int save_mod = getSaveMod(weapon_cond.save_ability);
+            bool saved = auto_fail ? false : (save_d20 + save_mod >= save_dc);
+
+            if (!saved) {
+                // Target failed save, apply condition
+                ActiveAgentCondition cond;
+                cond.agent_idx = action.target_idx;
+                cond.caster_idx = action.attacker_idx;
+                cond.spell_idx = -1;  // weapon attack, not a spell
+                cond.condition_name = weapon_cond.condition_name;
+                cond.save_ability = weapon_cond.save_ability;
+                cond.turns_remaining = weapon_cond.condition_duration > 0 ? weapon_cond.condition_duration : 10;  // default 10 turns
+                cond.save_dc = save_dc;
+                cond.save_repeat_turns = weapon_cond.save_repeat_turns;
+                cond.next_save_turn = 0;
+
+                [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
+                log_("Weapon condition '{}' applied to target (save DC {})",
+                     weapon_cond.condition_name, save_dc);
+            } else {
+                log_("Target resisted weapon condition '{}' (save DC {})",
+                     weapon_cond.condition_name, save_dc);
+            }
+        }
+    }
+
     return r;
 }
 
@@ -1225,6 +1362,23 @@ int CombatEngine::spellAttackMod(const Agent::Stats& s) noexcept
 int CombatEngine::spellSaveDc(const Agent::Stats& s) noexcept
 {
     return 8 + spellAttackMod(s);
+}
+
+int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, Spell::SaveAbility_t ability) noexcept
+{
+    auto abilityScore = [&]() -> int {
+        switch (ability) {
+            case Spell::SaveStr:  return s.str;
+            case Spell::SaveDex:  return s.dex;
+            case Spell::SaveCon:  return s.con;
+            case Spell::SaveInt:  return s.intel;
+            case Spell::SaveWis:  return s.wis;
+            default:              return s.cha;
+        }
+    }();
+    int m = (abilityScore - 10) / 2;
+    if (abilityScore < 10 && (abilityScore - 10) % 2 != 0) --m;
+    return 8 + s.prof_bonus + m;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1395,6 +1549,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("Advantage: target is blinded");
             }
 
+            // Target stunned: attacker has advantage
+            bool target_stunned = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().stunned;
+            if (target_stunned) {
+                caster_adv = true;
+                log_("Advantage: target is stunned");
+            }
+
             int d20_val;
             if (caster_adv && caster_dis) {
                 d20_val = roll(20);  // Cancel out
@@ -1488,15 +1649,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             bool target_adv = target_pa.agent->hasAdvantage();
             bool target_dis = target_pa.agent->hasDisadvantage();
 
-            // Paralyzed targets automatically fail STR and DEX saves
-            bool auto_fail = target_cond.paralyzed &&
+            // Paralyzed and Stunned targets automatically fail STR and DEX saves
+            bool auto_fail = (target_cond.paralyzed || target_cond.stunned) &&
                             (sp.save_ability == Spell::SaveStr || sp.save_ability == Spell::SaveDex);
 
             int save_d20;
             if (auto_fail) {
                 save_d20 = 1;  // Automatic fail
-                log_("Target is paralyzed: automatically fails {} save",
-                     sp.save_ability == Spell::SaveStr ? "STR" : "DEX");
+                std::string reason = target_cond.paralyzed ? "paralyzed" : "stunned";
+                log_("Target is {}: automatically fails {} save",
+                     reason, sp.save_ability == Spell::SaveStr ? "STR" : "DEX");
             } else if (target_adv && target_dis) {
                 save_d20 = roll(20);  // Cancel out
             } else if (target_adv) {
@@ -2060,6 +2222,20 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     log_("Agent incapacitated: cannot act, movement speed set to 0");
 }
 
+void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set stunned condition
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.stunned = true;
+    cond.incapacitated = true;  // Stunned is incapacitated
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent stunned: cannot act, auto-fails STR/DEX saves, attacks have advantage");
+}
+
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
 {
     cond.condition_id = nextConditionId_++;
@@ -2074,6 +2250,8 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyBlinded(bm, cond.agent_idx);
             } else if (cond.condition_name == "Incapacitated") {
                 applyIncapacitated(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Stunned") {
+                applyStunned(bm, cond.agent_idx);
             }
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);
@@ -2109,6 +2287,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     } else if (cond.condition_name == "Blinded") {
                         agent_cond.blinded = false;
                     } else if (cond.condition_name == "Incapacitated") {
+                        agent_cond.incapacitated = false;
+                    } else if (cond.condition_name == "Stunned") {
+                        agent_cond.stunned = false;
                         agent_cond.incapacitated = false;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
