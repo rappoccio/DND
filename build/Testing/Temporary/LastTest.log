@@ -1,0 +1,168 @@
+Start testing: May 14 01:23 UTC
+----------------------------------------------------------
+1/5 Testing: BattleMapTest.LoadMapAndAddTerrain
+1/5 Test: BattleMapTest.LoadMapAndAddTerrain
+Command: "/home/user/Documents/Claude/Projects/DND/build/combat_tests" "--gtest_filter=BattleMapTest.LoadMapAndAddTerrain" "--gtest_also_run_disabled_tests"
+Directory: /home/user/Documents/Claude/Projects/DND/build
+"BattleMapTest.LoadMapAndAddTerrain" start time: May 14 01:23 UTC
+Output:
+----------------------------------------------------------
+Note: Google Test filter = BattleMapTest.LoadMapAndAddTerrain
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BattleMapTest
+[ RUN      ] BattleMapTest.LoadMapAndAddTerrain
+[BattleMap] 12 h-lines, 12 v-lines detected
+[BattleMap] Grid 11×11, ~100px/cell
+[BattleMap] 0 dark (wall) cells detected (threshold=40)
+[BattleMap] 0 disallowed cells
+[       OK ] BattleMapTest.LoadMapAndAddTerrain (90 ms)
+[----------] 1 test from BattleMapTest (90 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (90 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"BattleMapTest.LoadMapAndAddTerrain" end time: May 14 01:23 UTC
+"BattleMapTest.LoadMapAndAddTerrain" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/5 Testing: CombatScenarioTest.FullCombatScenario
+2/5 Test: CombatScenarioTest.FullCombatScenario
+Command: "/home/user/Documents/Claude/Projects/DND/build/combat_tests" "--gtest_filter=CombatScenarioTest.FullCombatScenario" "--gtest_also_run_disabled_tests"
+Directory: /home/user/Documents/Claude/Projects/DND/build
+"CombatScenarioTest.FullCombatScenario" start time: May 14 01:23 UTC
+Output:
+----------------------------------------------------------
+Note: Google Test filter = CombatScenarioTest.FullCombatScenario
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from CombatScenarioTest
+[ RUN      ] CombatScenarioTest.FullCombatScenario
+[BattleMap] 12 h-lines, 12 v-lines detected
+[BattleMap] Grid 11×11, ~100px/cell
+[BattleMap] 0 dark (wall) cells detected (threshold=40)
+[BattleMap] 0 disallowed cells
+[BattleMap] 2 agents placed
+[Green Hag] awaiting input...
+[Green Hag] dash
+[Green Hag] awaiting input...
+[Green Hag] awaiting input...
+[Green Hag] awaiting input...
+[Green Hag] awaiting input...
+[       OK ] CombatScenarioTest.FullCombatScenario (127 ms)
+[----------] 1 test from CombatScenarioTest (127 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (127 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.26 sec
+----------------------------------------------------------
+Test Passed.
+"CombatScenarioTest.FullCombatScenario" end time: May 14 01:23 UTC
+"CombatScenarioTest.FullCombatScenario" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/5 Testing: ComprehensiveScenarioTest.FullCombatWithMovementAndEffects
+3/5 Test: ComprehensiveScenarioTest.FullCombatWithMovementAndEffects
+Command: "/home/user/Documents/Claude/Projects/DND/build/combat_tests" "--gtest_filter=ComprehensiveScenarioTest.FullCombatWithMovementAndEffects" "--gtest_also_run_disabled_tests"
+Directory: /home/user/Documents/Claude/Projects/DND/build
+"ComprehensiveScenarioTest.FullCombatWithMovementAndEffects" start time: May 14 01:23 UTC
+Output:
+----------------------------------------------------------
+Note: Google Test filter = ComprehensiveScenarioTest.FullCombatWithMovementAndEffects
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from ComprehensiveScenarioTest
+[ RUN      ] ComprehensiveScenarioTest.FullCombatWithMovementAndEffects
+[BattleMap] 12 h-lines, 12 v-lines detected
+[BattleMap] Grid 11×11, ~100px/cell
+[BattleMap] 0 dark (wall) cells detected (threshold=40)
+[BattleMap] 0 disallowed cells
+[BattleMap] 2 agents placed
+[Knight] awaiting input...
+[Mage] awaiting input...
+[Knight] awaiting input...
+[       OK ] ComprehensiveScenarioTest.FullCombatWithMovementAndEffects (108 ms)
+[----------] 1 test from ComprehensiveScenarioTest (109 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (109 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.22 sec
+----------------------------------------------------------
+Test Passed.
+"ComprehensiveScenarioTest.FullCombatWithMovementAndEffects" end time: May 14 01:23 UTC
+"ComprehensiveScenarioTest.FullCombatWithMovementAndEffects" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/5 Testing: MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle
+4/5 Test: MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle
+Command: "/home/user/Documents/Claude/Projects/DND/build/combat_tests" "--gtest_filter=MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle" "--gtest_also_run_disabled_tests"
+Directory: /home/user/Documents/Claude/Projects/DND/build
+"MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle" start time: May 14 01:23 UTC
+Output:
+----------------------------------------------------------
+Note: Google Test filter = MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from MultiAgentSpellBattleTest
+[ RUN      ] MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle
+[BattleMap] 12 h-lines, 12 v-lines detected
+[BattleMap] Grid 11×11, ~100px/cell
+[BattleMap] 0 dark (wall) cells detected (threshold=40)
+[BattleMap] 0 disallowed cells
+[BattleMap] 4 agents placed
+[Fighter A] awaiting input...
+[Fighter B] awaiting input...
+[       OK ] MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle (105 ms)
+[----------] 1 test from MultiAgentSpellBattleTest (105 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (105 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle" end time: May 14 01:23 UTC
+"MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/5 Testing: ParalyzedConditionTest.ParalyzedConditionEffects
+5/5 Test: ParalyzedConditionTest.ParalyzedConditionEffects
+Command: "/home/user/Documents/Claude/Projects/DND/build/combat_tests" "--gtest_filter=ParalyzedConditionTest.ParalyzedConditionEffects" "--gtest_also_run_disabled_tests"
+Directory: /home/user/Documents/Claude/Projects/DND/build
+"ParalyzedConditionTest.ParalyzedConditionEffects" start time: May 14 01:23 UTC
+Output:
+----------------------------------------------------------
+Note: Google Test filter = ParalyzedConditionTest.ParalyzedConditionEffects
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from ParalyzedConditionTest
+[ RUN      ] ParalyzedConditionTest.ParalyzedConditionEffects
+[BattleMap] 12 h-lines, 12 v-lines detected
+[BattleMap] Grid 11×11, ~100px/cell
+[BattleMap] 0 dark (wall) cells detected (threshold=40)
+[BattleMap] 0 disallowed cells
+[BattleMap] 2 agents placed
+[       OK ] ParalyzedConditionTest.ParalyzedConditionEffects (111 ms)
+[----------] 1 test from ParalyzedConditionTest (111 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (111 ms total)
+[  PASSED  ] 1 test.
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"ParalyzedConditionTest.ParalyzedConditionEffects" end time: May 14 01:23 UTC
+"ParalyzedConditionTest.ParalyzedConditionEffects" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: May 14 01:23 UTC

@@ -103,7 +103,7 @@ namespace rpg {
 
       // ── Spellcasting ──────────────────────────────────────────────────
       // 0=STR 1=DEX 2=CON 3=INT 4=WIS 5=CHA — drives spell attack rolls and
-      // save DCs.  Matches Spell::SaveAbility_t ordinal values.
+      // save DCs.  Matches SaveAbility_t ordinal values.
       int spellcasting_ability{5};   // default CHA
 
       // ── Class-feature capability flags ───────────────────────────────

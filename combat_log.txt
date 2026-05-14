@@ -1,0 +1,15 @@
+=== COMBAT LOG ===
+Casting Hypnotic Pattern — click a map location.
+Agent incapacitated: cannot act, movement speed set to 0
+Applied condition 'Incapacitated' to agent[3] for 10 turns
+Cult Mage→Davian Martikov: WIS save — rolled 12 + 1 = 13 vs DC 13 — SAVED — 0 dmg
+Cult Mage→Baba Lysaga: WIS save — rolled 6 + 8 = 14 vs DC 13 — SAVED — 0 dmg
+Cult Mage→Fire Elemental: WIS save — rolled 3 + 0 = 3 vs DC 13 — FAILED → Incapacitated — 0 dmg
+Cult Mage→Frost Mage: WIS save — rolled 19 + 0 = 19 vs DC 13 — SAVED — 0 dmg
+Baba Lysaga took 0 from Hypnotic Pattern
+Frost Mage took 0 from Hypnotic Pattern
+Davian Martikov took 0 from Hypnotic Pattern
+Fire Elemental: WIS save vs Incapacitated — SAVED! (Incapacitated broken)
+Caster (agent[2]) drops concentration
+WIS save vs Incapacitated — rolled 18 + 0 = 18 vs DC 13 — SAVED!
+Fire Elemental took 0 from Hypnotic Pattern

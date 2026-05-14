@@ -1,0 +1,6 @@
+BattleMapTest.LoadMapAndAddTerrain 9 0.0233686
+CombatScenarioTest.FullCombatScenario 9 0.0284677
+ComprehensiveScenarioTest.FullCombatWithMovementAndEffects 5 0.0434355
+MultiAgentSpellBattleTest.WallOfFireAndBlackTentaclesBattle 5 0.0423479
+ParalyzedConditionTest.ParalyzedConditionEffects 2 0.105445
+---

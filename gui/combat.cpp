@@ -358,15 +358,15 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.next_save_turn > 0) continue;
 
         // Helper to get ability modifier
-        auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
+        auto getSaveMod = [&](SaveAbility_t ability) -> int {
             int score = 0;
             bool prof = false;
             switch (ability) {
-                case Spell::SaveStr: score = stats.str; prof = stats.save_prof_str; break;
-                case Spell::SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
-                case Spell::SaveCon: score = stats.con; prof = stats.save_prof_con; break;
-                case Spell::SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
-                case Spell::SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
+                case SaveStr: score = stats.str; prof = stats.save_prof_str; break;
+                case SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
+                case SaveCon: score = stats.con; prof = stats.save_prof_con; break;
+                case SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
+                case SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
                 default: score = stats.cha; prof = stats.save_prof_cha; break;
             }
             int mod = (score - 10) / 2;
@@ -379,13 +379,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         int save_total = save_d20 + save_mod;
         int save_dc = active_cond.save_dc;
 
-        auto ability_name = [](Spell::SaveAbility_t ab) -> std::string {
+        auto ability_name = [](SaveAbility_t ab) -> std::string {
             switch (ab) {
-                case Spell::SaveStr: return "STR";
-                case Spell::SaveDex: return "DEX";
-                case Spell::SaveCon: return "CON";
-                case Spell::SaveInt: return "INT";
-                case Spell::SaveWis: return "WIS";
+                case SaveStr: return "STR";
+                case SaveDex: return "DEX";
+                case SaveCon: return "CON";
+                case SaveInt: return "INT";
+                case SaveWis: return "WIS";
                 default: return "CHA";
             }
         };
@@ -476,15 +476,15 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.next_save_turn > 0) continue;  // Not time to save yet
 
         // Helper to get ability modifier
-        auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
+        auto getSaveMod = [&](SaveAbility_t ability) -> int {
             int score = 0;
             bool prof = false;
             switch (ability) {
-                case Spell::SaveStr: score = stats.str; prof = stats.save_prof_str; break;
-                case Spell::SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
-                case Spell::SaveCon: score = stats.con; prof = stats.save_prof_con; break;
-                case Spell::SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
-                case Spell::SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
+                case SaveStr: score = stats.str; prof = stats.save_prof_str; break;
+                case SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
+                case SaveCon: score = stats.con; prof = stats.save_prof_con; break;
+                case SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
+                case SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
                 default: score = stats.cha; prof = stats.save_prof_cha; break;
             }
             int mod = (score - 10) / 2;
@@ -497,13 +497,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         int save_total = save_d20 + save_mod;
         int save_dc = active_cond.save_dc;
 
-        auto ability_name = [](Spell::SaveAbility_t ab) -> std::string {
+        auto ability_name = [](SaveAbility_t ab) -> std::string {
             switch (ab) {
-                case Spell::SaveStr: return "STR";
-                case Spell::SaveDex: return "DEX";
-                case Spell::SaveCon: return "CON";
-                case Spell::SaveInt: return "INT";
-                case Spell::SaveWis: return "WIS";
+                case SaveStr: return "STR";
+                case SaveDex: return "DEX";
+                case SaveCon: return "CON";
+                case SaveInt: return "INT";
+                case SaveWis: return "WIS";
                 default: return "CHA";
             }
         };
@@ -1156,15 +1156,15 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
             int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
 
             // Target makes a save to resist the condition
-            auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
+            auto getSaveMod = [&](SaveAbility_t ability) -> int {
                 int score = 0;
                 bool prof = false;
                 switch (ability) {
-                    case Spell::SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-                    case Spell::SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-                    case Spell::SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-                    case Spell::SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-                    case Spell::SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+                    case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+                    case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+                    case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+                    case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+                    case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
                     default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
                 }
                 int m = (score - 10) / 2;
@@ -1174,7 +1174,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
 
             // Check for auto-fail conditions (paralyzed, stunned auto-fail STR/DEX)
             bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
-                            (weapon_cond.save_ability == Spell::SaveStr || weapon_cond.save_ability == Spell::SaveDex);
+                            (weapon_cond.save_ability == SaveStr || weapon_cond.save_ability == SaveDex);
 
             int save_d20 = auto_fail ? 1 : roll(20);
             int save_mod = getSaveMod(weapon_cond.save_ability);
@@ -1364,15 +1364,15 @@ int CombatEngine::spellSaveDc(const Agent::Stats& s) noexcept
     return 8 + spellAttackMod(s);
 }
 
-int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, Spell::SaveAbility_t ability) noexcept
+int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept
 {
     auto abilityScore = [&]() -> int {
         switch (ability) {
-            case Spell::SaveStr:  return s.str;
-            case Spell::SaveDex:  return s.dex;
-            case Spell::SaveCon:  return s.con;
-            case Spell::SaveInt:  return s.intel;
-            case Spell::SaveWis:  return s.wis;
+            case SaveStr:  return s.str;
+            case SaveDex:  return s.dex;
+            case SaveCon:  return s.con;
+            case SaveInt:  return s.intel;
+            case SaveWis:  return s.wis;
             default:              return s.cha;
         }
     }();
@@ -1651,14 +1651,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
             // Paralyzed and Stunned targets automatically fail STR and DEX saves
             bool auto_fail = (target_cond.paralyzed || target_cond.stunned) &&
-                            (sp.save_ability == Spell::SaveStr || sp.save_ability == Spell::SaveDex);
+                            (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
 
             int save_d20;
             if (auto_fail) {
                 save_d20 = 1;  // Automatic fail
                 std::string reason = target_cond.paralyzed ? "paralyzed" : "stunned";
                 log_("Target is {}: automatically fails {} save",
-                     reason, sp.save_ability == Spell::SaveStr ? "STR" : "DEX");
+                     reason, sp.save_ability == SaveStr ? "STR" : "DEX");
             } else if (target_adv && target_dis) {
                 save_d20 = roll(20);  // Cancel out
             } else if (target_adv) {
@@ -1668,14 +1668,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             } else {
                 save_d20 = roll(20);
             }
-            auto saveMod = [&](Spell::SaveAbility_t ab) -> int {
+            auto saveMod = [&](SaveAbility_t ab) -> int {
                 int score = 0; bool prof = false;
                 switch (ab) {
-                    case Spell::SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-                    case Spell::SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-                    case Spell::SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-                    case Spell::SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-                    case Spell::SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+                    case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+                    case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+                    case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+                    case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+                    case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
                     default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
                 }
                 int m = (score - 10) / 2;
@@ -1828,20 +1828,24 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         if (spell_affected_target && !sp.conditions.empty()) {
-            for (const auto& cond_name : sp.conditions) {
+            for (const auto& spell_cond : sp.conditions) {
                 ActiveAgentCondition cond;
                 cond.agent_idx   = tgt_idx;
                 cond.caster_idx  = action.caster_idx;
                 cond.spell_idx   = action.spell_idx;
-                cond.condition_name = cond_name;
-                cond.save_ability = sp.save_ability;
+                cond.condition_name = spell_cond.condition_name;
+                cond.save_ability = spell_cond.save_ability;
 
                 // Condition duration: if condition_duration is 0, use spell duration
-                cond.turns_remaining = (sp.condition_duration > 0) ? sp.condition_duration : sp.duration;
-                // Save DC from caster's spellcasting ability
-                cond.save_dc = spellSaveDc(caster_stats);
+                cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
+                // Save DC: use caster's spellcasting ability if SaveSpellcasterMod, else use specified ability
+                if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
+                    cond.save_dc = spellSaveDc(caster_stats);
+                } else {
+                    cond.save_dc = spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
+                }
                 // How often to repeat save checks
-                cond.save_repeat_turns = sp.save_repeat_turns;
+                cond.save_repeat_turns = spell_cond.save_repeat_turns;
                 // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
                 cond.next_save_turn = 0;
 

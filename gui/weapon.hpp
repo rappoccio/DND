@@ -10,23 +10,12 @@
 #include <string>
 #include <vector>
 #include "agent.hpp"
-#include "spell.hpp"
+#include "condition.hpp"
+#include "spell.hpp"  // For MagicDamageRoll and PhysicalDamageRoll
 
 namespace rpg {
 
 enum class WeaponType { Melee, Ranged };
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  AttackCondition – Conditions applied by weapon attacks or class features
-// ─────────────────────────────────────────────────────────────────────────────
-
-struct AttackCondition {
-    std::string condition_name;           // "Stunned", "Paralyzed", etc.
-    int condition_duration = 0;           // duration in turns (0 = use spell duration placeholder)
-    int save_repeat_turns = 1;            // repeat save check every N turns
-    Spell::SaveAbility_t save_ability = Spell::SaveDex;      // target's save type
-    Spell::SaveAbility_t save_dc_ability = Spell::SaveWis;   // attacker's ability for DC
-};
 
 struct Weapon {
     std::string  name            = "Unnamed";

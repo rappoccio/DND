@@ -2551,12 +2551,15 @@ class App:
                 c.condition_name = cond_entry.get("condition_name", "")
                 c.condition_duration = int(cond_entry.get("condition_duration", 0))
                 c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
-                # Parse save_ability string (target's save)
-                save_ability_str = cond_entry.get("save_ability", "SaveDex")
-                try:
-                    c.save_ability = getattr(rpg.SaveAbility, save_ability_str)
-                except AttributeError:
-                    c.save_ability = rpg.SaveAbility.SaveDex
+                # Parse save_ability string (target's save) - defaults to spell's save_ability
+                save_ability_str = cond_entry.get("save_ability")
+                if save_ability_str:
+                    try:
+                        c.save_ability = getattr(rpg.SaveAbility, save_ability_str)
+                    except AttributeError:
+                        c.save_ability = s.save_ability  # fallback to spell's ability
+                else:
+                    c.save_ability = s.save_ability  # use spell's ability as default
                 # Parse save_dc_ability string (caster's ability for DC)
                 save_dc_ability_str = cond_entry.get("save_dc_ability", "SaveSpellcasterMod")
                 try:
@@ -2570,7 +2573,7 @@ class App:
                 c.condition_name = str(cond_entry)
                 c.condition_duration = 0  # will use spell duration
                 c.save_repeat_turns = 1
-                c.save_ability = rpg.SaveAbility.SaveDex
+                c.save_ability = s.save_ability  # use spell's ability for legacy conditions
                 c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
                 conditions.append(c)
         s.conditions = conditions

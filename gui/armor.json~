@@ -1,0 +1,123 @@
+[
+  {
+    "name": "Plate",
+    "description": "Heavy full plate armor - no DEX modifier applied",
+    "ac_bonus": 2,
+    "dex_mod_cap": 0,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Chain Mail",
+    "description": "Heavy interlocked metal rings - DEX capped at +2",
+    "ac_bonus": 1,
+    "dex_mod_cap": 2,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Leather",
+    "description": "Light supple leather armor - full DEX applies",
+    "ac_bonus": 1,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Shield",
+    "description": "Standard wooden shield with metal trim",
+    "ac_bonus": 2,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Shield +1",
+    "description": "Enchanted shield granting extra protection and durability",
+    "ac_bonus": 3,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 1,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Acid Resistant Robes",
+    "description": "Magical robes imbued with acid resistance - full DEX applies",
+    "ac_bonus": 0,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Fire Resistant Cloak",
+    "description": "Cloak woven from flame-resistant material",
+    "ac_bonus": 0,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [1.0, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Cold Iron Breastplate",
+    "description": "Breastplate made from cold iron - DEX capped at +2",
+    "ac_bonus": 1,
+    "dex_mod_cap": 2,
+    "magic_damage_multipliers": [1.0, 0.5, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 0.5, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Mithral Plate",
+    "description": "Legendary silvery metal armor - no DEX modifier (heavy armor)",
+    "ac_bonus": 2,
+    "dex_mod_cap": 0,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [0.75, 1.0, 1.0],
+    "damage_reduction": 1,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Leather Boots of Levitation",
+    "description": "Boots inscribed with levitation runes",
+    "ac_bonus": 0,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0
+  },
+  {
+    "name": "Robe of Protection",
+    "description": "Enchanted robe that reduces all incoming damage - full DEX applies",
+    "ac_bonus": 1,
+    "dex_mod_cap": 30,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 2,
+    "requires_strength": false,
+    "str_requirement": 0
+  }
+]

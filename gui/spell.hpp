@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include "agent.hpp"
+#include "condition.hpp"
 
 namespace rpg {
     // Forward declare TerrainDifficulty to avoid circular includes
@@ -27,9 +28,6 @@ namespace rpg {
       enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Rectangle, Multiple, NumGeometry_t };
       enum SpellType_t  { Harm=0, Heal, NumSpellType_t };
       enum SpellAttack_t{ AttackRoll=0, Save, Automatic, NumSpellAttack_t };
-      // Which ability the *target* uses for saving throws against this spell.
-      enum SaveAbility_t{ SaveStr=0, SaveDex, SaveCon, SaveInt, SaveWis, SaveCha,
-                          NumSaveAbility_t };
 
       // String -> enum map for JSON input (e.g., "Multiple" -> Multiple)
       static const std::unordered_map<std::string, Geometry_t> geometryNameMap;
@@ -77,9 +75,7 @@ namespace rpg {
       bool effects_on_end_turn{false};
 
       // Condition application (e.g., Hold Person applies "Paralyzed")
-      // Condition names: "Paralyzed", "Stunned", "Restrained", "Grappled", "Charmed", etc.
-      std::vector<std::string> conditions;      // Conditions applied to targets
-      int condition_duration{0};                 // Turns condition persists (0 = same as spell duration)
-      int save_repeat_turns{1};                  // Repeat save check every N turns (1 = every turn)
+      // Each condition can have its own duration and save rules
+      std::vector<AttackCondition> conditions;  // Conditions applied to targets
     };
 }

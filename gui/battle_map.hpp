@@ -120,7 +120,7 @@ struct ActiveAgentCondition {
     std::string      condition_name;              // "Paralyzed", "Stunned", etc.
     int              turns_remaining      = 0;    // decremented per turn; condition expires when 0
     int              next_save_turn       = 0;    // turn number when next save is attempted
-    Spell::SaveAbility_t save_ability    = Spell::SaveDex;  // which save to repeat
+    SaveAbility_t save_ability    = SaveDex;  // which save to repeat
     int              save_dc              = 0;    // DC for saving throws (must be set when condition created)
     int              save_repeat_turns    = 1;    // repeat save check every N turns (1 = every turn)
     int              condition_id         = -1;   // unique ID for tracking/removal

@@ -92,13 +92,13 @@ static Spell spellFromJson(const json& j) noexcept {
 
     // Parse save ability
     std::string save_str = j.value("save_ability", "SaveDex");
-    if (save_str == "SaveStr") spell.save_ability = Spell::SaveStr;
-    else if (save_str == "SaveDex") spell.save_ability = Spell::SaveDex;
-    else if (save_str == "SaveCon") spell.save_ability = Spell::SaveCon;
-    else if (save_str == "SaveInt") spell.save_ability = Spell::SaveInt;
-    else if (save_str == "SaveWis") spell.save_ability = Spell::SaveWis;
-    else if (save_str == "SaveCha") spell.save_ability = Spell::SaveCha;
-    else spell.save_ability = Spell::SaveDex;
+    if (save_str == "SaveStr") spell.save_ability = SaveStr;
+    else if (save_str == "SaveDex") spell.save_ability = SaveDex;
+    else if (save_str == "SaveCon") spell.save_ability = SaveCon;
+    else if (save_str == "SaveInt") spell.save_ability = SaveInt;
+    else if (save_str == "SaveWis") spell.save_ability = SaveWis;
+    else if (save_str == "SaveCha") spell.save_ability = SaveCha;
+    else spell.save_ability = SaveDex;
 
     spell.range = j.value("range", 30);
     spell.radius = j.value("radius", 10);

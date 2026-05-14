@@ -190,7 +190,7 @@ TEST_F(CombatScenarioTest, FullCombatScenario) {
     ice_storm.type = Spell::Harm;
     ice_storm.geometry = Spell::Sphere;
     ice_storm.attack_type = Spell::Save;
-    ice_storm.save_ability = Spell::SaveDex;
+    ice_storm.save_ability = SaveDex;
     ice_storm.range = 300;
     ice_storm.radius = 20;
     ice_storm.requires_concentration = true;
@@ -696,7 +696,7 @@ TEST_F(MultiAgentSpellBattleTest, WallOfFireAndBlackTentaclesBattle) {
     wall_of_fire.type = Spell::Harm;
     wall_of_fire.geometry = Spell::Line;
     wall_of_fire.attack_type = Spell::Save;
-    wall_of_fire.save_ability = Spell::SaveDex;
+    wall_of_fire.save_ability = SaveDex;
     wall_of_fire.range = 120;
     wall_of_fire.width = 20;    // 20 feet wide
     wall_of_fire.length = 60;   // 60 feet long
@@ -714,7 +714,7 @@ TEST_F(MultiAgentSpellBattleTest, WallOfFireAndBlackTentaclesBattle) {
     black_tentacles.type = Spell::Harm;
     black_tentacles.geometry = Spell::Sphere;
     black_tentacles.attack_type = Spell::Save;
-    black_tentacles.save_ability = Spell::SaveStr;
+    black_tentacles.save_ability = SaveStr;
     black_tentacles.range = 90;
     black_tentacles.radius = 20;  // 20 feet radius
     black_tentacles.requires_concentration = true;
@@ -1108,7 +1108,7 @@ TEST_F(ParalyzedConditionTest, ParalyzedConditionEffects) {
     dex_save_spell.name = "Hold Person (simulated)";
     dex_save_spell.type = Spell::Harm;
     dex_save_spell.attack_type = Spell::Save;
-    dex_save_spell.save_ability = Spell::SaveDex;
+    dex_save_spell.save_ability = SaveDex;
     dex_save_spell.range = 60;
     dex_save_spell.magic_damage_rolls = {{MagicDamage_t::Force, 2, 6}};
 

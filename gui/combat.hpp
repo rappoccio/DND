@@ -569,7 +569,7 @@ private:
     // ── Spell helpers ─────────────────────────────────────────────────────
     [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;
     [[nodiscard]] static int spellSaveDc(const Agent::Stats& s) noexcept;
-    [[nodiscard]] static int spellSaveDcFromAbility(const Agent::Stats& s, Spell::SaveAbility_t ability) noexcept;
+    [[nodiscard]] static int spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept;
 
     // Apply a persistent spell effect (damage) to a target agent.
     void applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;

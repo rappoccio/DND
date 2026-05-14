@@ -1,0 +1,61 @@
+{
+	{
+	  "name": "Fire Bolt",
+	  "type": "Harm",
+	  "geometry": "Single",
+	  "attack_type": "AttackRoll",
+	  "save_ability": null,
+	  "range": 120,
+	  "radius": null,
+	  "width": null,
+	  "length": null,
+	  "duration": 1,
+	  "magic_damage_types": ["Fire"],
+	  "physical_damage_types": [],
+	  "num_dice": 2,
+	  "die_size": 10,
+	  "terrain_effect": null,
+	  "hatch_pattern": null
+	},
+	{
+	  "name": "Fireball",
+	  "type": "Harm",
+	  "geometry": "Sphere",
+	  "attack_type": "Save",
+	  "save_ability": "SaveDex",
+	  "range": 150,
+	  "radius": 20,
+	  "width": null,
+	  "length": null,
+	  "duration": 1,
+	  "magic_damage_types": ["Fire"],
+	  "physical_damage_types": [],
+	  "num_dice": 8,
+	  "die_size": 6,
+	  "terrain_effect": null,
+	  "hatch_pattern": null
+	},
+	{
+	  "name": "Grease",
+	  "type": "Control",
+	  "geometry": "Sphere",
+	  "attack_type": "Save",
+	  "save_ability": "SaveDex",
+	  "range": 60,
+	  "radius": 20,
+	  "width": null,
+	  "length": null,
+	  "duration": 1,
+	  "magic_damage_types": [],
+	  "physical_damage_types": [],
+	  "num_dice": 0,
+	  "die_size": 6,
+	  "terrain_effect": {
+	    "type": "Difficult Terrain",
+	    "multiplier": 0.5,
+	    "duration": 10
+	  },
+	  "hatch_pattern": "xx",
+	  "terrain_color": null
+	}    
+}

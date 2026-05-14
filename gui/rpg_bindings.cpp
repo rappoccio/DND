@@ -378,13 +378,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Automatic",  Spell::Automatic)
         .export_values();
 
-    py::enum_<Spell::SaveAbility_t>(m, "SaveAbility")
-        .value("SaveStr", Spell::SaveStr)
-        .value("SaveDex", Spell::SaveDex)
-        .value("SaveCon", Spell::SaveCon)
-        .value("SaveInt", Spell::SaveInt)
-        .value("SaveWis", Spell::SaveWis)
-        .value("SaveCha", Spell::SaveCha)
+    py::enum_<SaveAbility_t>(m, "SaveAbility")
+        .value("SaveStr", SaveStr)
+        .value("SaveDex", SaveDex)
+        .value("SaveCon", SaveCon)
+        .value("SaveInt", SaveInt)
+        .value("SaveWis", SaveWis)
+        .value("SaveCha", SaveCha)
+        .value("SaveSpellcasterMod", SaveSpellcasterMod)
         .export_values();
 
     // ── Character Class & Caster Type ─────────────────────────────────────────
@@ -478,11 +479,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("effects_on_end_turn", &Spell::effects_on_end_turn,
              "If true, apply spell effects to agents in area at the end of their turn.")
         .def_readwrite("conditions", &Spell::conditions,
-             "List of condition names applied to targets (e.g., ['Paralyzed']).")
-        .def_readwrite("condition_duration", &Spell::condition_duration,
-             "Turns the condition persists. 0 = same as spell duration.")
-        .def_readwrite("save_repeat_turns", &Spell::save_repeat_turns,
-             "Repeat save check every N turns (1 = every turn).")
+             "List of AttackCondition objects applied to targets (includes name, duration, save rules).")
         .def("__repr__", [](const Spell& s){
             return "<Spell '" + s.name + "'>"; });
 
