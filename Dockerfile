@@ -65,5 +65,5 @@ RUN chmod +x /entrypoint.sh
 # Set working directory (will be overridden by mount)
 WORKDIR /workspace
 
-# Use entrypoint for GUI
-ENTRYPOINT ["/entrypoint.sh"]
+# Use bash as entrypoint
+ENTRYPOINT ["/bin/bash"]

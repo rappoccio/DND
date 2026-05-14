@@ -32,24 +32,6 @@ websockify --web=/usr/share/novnc 6080 localhost:5900 \
     2>/dev/null &
 sleep 1
 
-# Check for interactive mode (skip build)
-if [ "$1" = "bash" ] || [ "$1" = "sh" ] || [ "$1" = "interactive" ]; then
-    shift
-    exec /bin/bash "$@"
-fi
-
-# Always build C++ code first
-cd /home/user/Documents/Claude/Projects/DND && ./compile.sh
-
-# Run the game with the provided map path or tests
-if [ $# -eq 0 ]; then
-    # No arguments: run tests
-    cd build && ctest --verbose
-else
-    # Arguments provided: assume it's the map path for main.py
-    python -u /home/user/Documents/Claude/Projects/DND/gui/main.py "$@"
-fi
-
 EXIT_CODE=$?
 kill "$XVFB_PID" 2>/dev/null || true
 exit $EXIT_CODE

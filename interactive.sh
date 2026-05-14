@@ -1,1 +1,1 @@
-docker run -it --rm -v /Users/rappoccio:/home/user -p 6080:6080 rpg_map bash 
+docker run -it --rm -v /Users/rappoccio:/home/user -p 6080:6080 rpg_map
