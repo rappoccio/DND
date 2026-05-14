@@ -346,6 +346,7 @@ public:
 
     // Apply paralyzed condition and its effects (incapacitated, speed 0).
     void applyParalyzed(BattleMap& bm, int idx) noexcept;
+    void applyBlinded(BattleMap& bm, int idx) noexcept;
 
     // ── Spell-Applied Agent Conditions ────────────────────────────────
     // Add an active spell-applied condition (e.g., Paralyzed from Hold Person).

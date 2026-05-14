@@ -981,11 +981,24 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     bool adv = atk_pt.agent->hasAdvantage();
     bool dis = disadv || atk_pt.agent->hasDisadvantage();
 
+    // Attacker blinded: attacks have disadvantage
+    const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
+    if (atk_cond.blinded) {
+        dis = true;
+        log_("Disadvantage: attacker is blinded");
+    }
+
     // Target is paralyzed: attacker gets advantage
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
     if (tgt_cond.paralyzed) {
         adv = true;
         log_("Advantage: target is paralyzed");
+    }
+
+    // Target is blinded: attacker gets advantage
+    if (tgt_cond.blinded) {
+        adv = true;
+        log_("Advantage: target is blinded");
     }
 
     // Log reasons for disadvantage
@@ -1339,6 +1352,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             bool caster_adv = caster_pa.agent->hasAdvantage();
             bool caster_dis = caster_pa.agent->hasDisadvantage();
 
+            // Blinded: caster's attacks have disadvantage
+            if (caster_pa.agent->getConditions().blinded) {
+                caster_dis = true;
+                log_("Disadvantage: caster is blinded");
+            }
+
             // Apply engagement disadvantage for ranged spells
             if (sp.range > 0 && isThreatened(bm, action.caster_idx)) {
                 caster_dis = true;
@@ -1348,6 +1367,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("Disadvantage: condition");
             if (caster_pa.agent->hasAdvantage())
                 log_("Advantage: condition");
+
+            // Target blinded: attacker has advantage
+            bool target_blinded = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().blinded;
+            if (target_blinded) {
+                caster_adv = true;
+                log_("Advantage: target is blinded");
+            }
 
             int d20_val;
             if (caster_adv && caster_dis) {
@@ -1956,6 +1982,19 @@ void CombatEngine::applyParalyzed(BattleMap& bm, int idx) noexcept
     log_("Agent paralyzed: movement speed set to 0, incapacitated");
 }
 
+void CombatEngine::applyBlinded(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set blinded condition
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.blinded = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent blinded: attack rolls have disadvantage, attacks against have advantage");
+}
+
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
 {
     cond.condition_id = nextConditionId_++;
@@ -1966,8 +2005,9 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
         if (cond.agent_idx < static_cast<int>(agents.size())) {
             if (cond.condition_name == "Paralyzed") {
                 applyParalyzed(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Blinded") {
+                applyBlinded(bm, cond.agent_idx);
             }
-            // TODO: Handle other condition names as they're added
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);
         }
@@ -1999,8 +2039,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     if (cond.condition_name == "Paralyzed") {
                         agent_cond.paralyzed = false;
                         agent_cond.incapacitated = false;
+                    } else if (cond.condition_name == "Blinded") {
+                        agent_cond.blinded = false;
                     }
-                    // TODO: Handle other conditions
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for agent[{}]",
                          cond.condition_name, cond.agent_idx);

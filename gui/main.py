@@ -3181,6 +3181,19 @@ class App:
                     pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 3)
                     break
 
+        # Blinded indicator (circle linking to caster)
+        if pt.conditions.blinded and agent_idx >= 0:
+            # Find the caster of the blinded condition from active conditions
+            for cond in self.combat.active_agent_conditions:
+                if cond.agent_idx == agent_idx and cond.condition_name == "Blinded":
+                    # Get caster's color - use a color based on caster index for visual linking
+                    caster_color = self._get_caster_color(cond.caster_idx)
+                    center_x = int(screen_x + size_px / 2)
+                    center_y = int(screen_y + size_px / 2)
+                    radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
+                    pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 3)
+                    break
+
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
         # Get map dimensions if not provided

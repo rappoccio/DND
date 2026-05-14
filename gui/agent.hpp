@@ -363,6 +363,7 @@ namespace rpg {
       bool has_advantage{false};   // advantage on attack rolls, ability checks, saving throws
       bool has_disadvantage{false}; // disadvantage on attack rolls, ability checks, saving throws
       bool paralyzed{false};     // cannot move, speed 0, auto-fail STR/DEX saves, attacks have advantage and auto-crit within 5ft
+      bool blinded{false};       // cannot see; attack rolls against have advantage, own attacks have disadvantage
     };
 
     // ── Construction ───────────────────────────────────────────────────────

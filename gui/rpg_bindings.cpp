@@ -256,6 +256,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("invisible",     &Agent::Conditions::invisible)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
+        .def_readwrite("blinded",       &Agent::Conditions::blinded)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
@@ -269,6 +270,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.invisible)     s += " invisible";
             if (c.incapacitated) s += " incapacitated";
             if (c.paralyzed)     s += " paralyzed";
+            if (c.blinded)       s += " blinded";
             return s + ">"; });
 
     // ── Damage type enums ─────────────────────────────────────────────────────
