@@ -623,7 +623,16 @@
       90,
       43
     ],
-    "hatch_pattern": "//"
+    "hatch_pattern": "//",
+    "conditions": [
+      {
+        "condition_name": "Restrained",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveStr",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "Blade Barrier",
