@@ -1329,6 +1329,8 @@ class App:
                 effects_to_remove.append(effect.effect_id)
         for effect_id in effects_to_remove:
             self.bm.remove_spell_effect(effect_id)
+        # Sync the visualization cache with removed effects
+        self._sync_spell_effect_cache()
 
         # Remove conditions caused by concentration-requiring spells from this caster
         conditions_to_remove = []
