@@ -349,6 +349,8 @@ public:
     void applyBlinded(BattleMap& bm, int idx) noexcept;
     void applyIncapacitated(BattleMap& bm, int idx) noexcept;
     void applyStunned(BattleMap& bm, int idx) noexcept;
+    void applyProne(BattleMap& bm, int idx) noexcept;
+    void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 
     // ── Spell-Applied Agent Conditions ────────────────────────────────
     // Add an active spell-applied condition (e.g., Paralyzed from Hold Person).

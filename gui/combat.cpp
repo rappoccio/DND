@@ -1104,6 +1104,27 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Advantage: target is stunned");
     }
 
+    // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
+    if (tgt_cond.prone) {
+        int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
+                           tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
+                           0});
+        int dr = std::max({atk_pt.origin.row - tgt_pt.origin.row,
+                           tgt_pt.origin.row - (atk_pt.origin.row + atk_sz - 1),
+                           0});
+        int dist = std::max(dc, dr);
+
+        // Within 5 feet (1 cell on 5ft/cell grid): attacker gets advantage (melee)
+        if (dist <= 1) {
+            adv = true;
+            log_("Advantage: target is prone and within 5 feet");
+        } else if (is_ranged) {
+            // Beyond 5 feet with ranged attack: attacker gets disadvantage
+            dis = true;
+            log_("Disadvantage: target is prone and attacker is beyond 5 feet");
+        }
+    }
+
     // Log reasons for disadvantage
     if (is_ranged && isThreatened(bm, action.attacker_idx))
         log_("Disadvantage: threatened (enemy within 10 ft)");
@@ -2238,6 +2259,51 @@ void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
     bm.setAgentConditions(idx, cond);
 
     log_("Agent stunned: cannot act, auto-fails STR/DEX saves, attacks have advantage");
+}
+
+void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set prone condition (movement restricted to crawling, disadvantage on attacks)
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.prone = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent is now prone: movement costs doubled (triple in difficult terrain), disadvantage on attack rolls");
+}
+
+void CombatEngine::standup(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Check if agent is prone
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (!cond.prone) {
+        log_("Agent is not prone");
+        return;
+    }
+
+    // Cost to stand up: half of walk speed
+    int walk_speed = agents[idx].stats.speed_walk;
+    int standup_cost = walk_speed / 2;
+
+    // Check if agent has enough movement
+    auto it = walkRemaining_.find(idx);
+    int remaining = (it != walkRemaining_.end()) ? it->second : 0;
+    if (remaining < standup_cost) {
+        log_("Agent lacks sufficient movement to stand up (needs {}, has {})", standup_cost, remaining);
+        return;
+    }
+
+    // Deduct cost and remove prone condition
+    spendWalk(idx, standup_cost);
+    cond.prone = false;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent stands up, spending {} feet of movement", standup_cost);
 }
 
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept

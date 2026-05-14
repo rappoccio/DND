@@ -386,6 +386,17 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
                 if (isBlocked(next, pa.agent->getSize(), type)) continue;
 
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
+
+                // Apply crawling penalty if prone (2x cost in normal terrain, 3x in difficult)
+                if (pa.agent->getConditions().prone) {
+                    double terrain_mult = getTerrainMultiplier(next, type);
+                    if (terrain_mult < 1.0) {  // difficult terrain (multiplier < 1)
+                        step_cost = static_cast<int>(step_cost * 3);
+                    } else {
+                        step_cost = step_cost * 2;
+                    }
+                }
+
                 double terrain_mult = getTerrainMultiplier(next, type);
                 int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
 

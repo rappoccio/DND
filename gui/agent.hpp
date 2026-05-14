@@ -365,6 +365,7 @@ namespace rpg {
       bool paralyzed{false};     // cannot move, speed 0, auto-fail STR/DEX saves, attacks have advantage and auto-crit within 5ft
       bool blinded{false};       // cannot see; attack rolls against have advantage, own attacks have disadvantage
       bool stunned{false};       // cannot act, auto-fail STR/DEX saves, attacks have advantage
+      bool prone{false};         // crawling only, disadvantage on attacks; advantage for attackers within 5ft
     };
 
     // ── Construction ───────────────────────────────────────────────────────
