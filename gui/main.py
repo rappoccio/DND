@@ -46,6 +46,7 @@ from helpers import (
     _spell_to_dict, _dict_to_spell,
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog
+from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
@@ -231,6 +232,7 @@ class App:
         self.terrain_editor = TerrainEditorDialog(self.font_sm, self.font_md)
         self.terrain_placement_dialog = TemporaryTerrainPlacementDialog(self.font_sm, self.font_md)
         self.lighting_editor = LightingEditorDialog(self.font_sm, self.font_md)
+        self.conditions_dialog = ConditionsDialog(self.font_sm, self.font_md, self.font_lg)
         self.context_menu   = ContextMenu()
 
         # ── NPC spell mechanics ──────────────────────────────────────────────
@@ -297,6 +299,7 @@ class App:
         # ── Combat widget state ───────────────────────────────────────────
         self.combat_active        = False
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
+        self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
@@ -554,6 +557,12 @@ class App:
         self.btn_cbt_long_jump   = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Long Jump",
                                           (100, 150, 200), (120, 170, 220), self.font_md)
+        self.btn_cbt_prone       = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "Go Prone",
+                                          (180, 100, 100), (220, 140, 140), self.font_md)
+        self.btn_cbt_standup     = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "Stand Up",
+                                          (150, 180, 100), (180, 220, 130), self.font_md)
         self.btn_cbt_end_turn    = Button(pygame.Rect(px, dummy_y, W, B),
                                           "End Turn",
                                           COL_BTN_ENDTURN, COL_BTN_ENDTURN_HOV, self.font_md)
@@ -3721,6 +3730,7 @@ class App:
         txt("Initiative Order", lx, y, COL_LABEL)
         y += 16
         agents = self.bm.placed_agents
+        self.initiative_item_rects = []  # Reset for this frame
         for i, entry in enumerate(self.initiative_order[:8]):
             aidx   = entry.agent_idx
             is_cur = (i == self.turn_idx)
@@ -3735,6 +3745,9 @@ class App:
             prefix = "▶ " if is_cur else "  "
             row_s  = f"{prefix}{entry.total:2d}  {name}"
             txt(row_s, lx, y, col)
+            # Track clickable area for this initiative item
+            item_rect = pygame.Rect(lx, y, W, 16)
+            self.initiative_item_rects.append((item_rect, aidx))
             y += 16
         if len(self.initiative_order) > 8:
             txt(f"  …+{len(self.initiative_order)-8} more", lx, y, COL_LABEL)
@@ -3829,6 +3842,21 @@ class App:
             self.btn_cbt_long_jump.rect.y = y
             self.btn_cbt_long_jump.rect.w = W
             self.btn_cbt_long_jump.draw(self.screen)
+            y += B + gap
+
+            # Prone / Stand Up buttons
+            cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
+            is_prone = cond.prone if cond else False
+            if is_prone:
+                self.btn_cbt_standup.rect.x = lx
+                self.btn_cbt_standup.rect.y = y
+                self.btn_cbt_standup.rect.w = W
+                self.btn_cbt_standup.draw(self.screen)
+            else:
+                self.btn_cbt_prone.rect.x = lx
+                self.btn_cbt_prone.rect.y = y
+                self.btn_cbt_prone.rect.w = W
+                self.btn_cbt_prone.draw(self.screen)
             y += B + gap
 
             # Cast Spell button (if available)
@@ -4210,6 +4238,9 @@ class App:
             if self.spell_dialog.active:
                 self.spell_dialog.handle(event, self.screen)
                 continue
+            if self.conditions_dialog.active:
+                if self.conditions_dialog.handle(event):
+                    continue
             # ── Placement mode (floating agent) ───────────────────────────────
             if self.placement_mode_active:
                 if event.type == pygame.MOUSEMOTION:
@@ -4642,6 +4673,17 @@ class App:
                     return False
 
             else:
+                # ── Initiative list click detection ────────────────────────────
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for item_rect, agent_idx in self.initiative_item_rects:
+                        if item_rect.collidepoint(event.pos):
+                            # Show conditions dialog for clicked agent
+                            if 0 <= agent_idx < len(self.bm.placed_agents):
+                                agent = self.bm.placed_agents[agent_idx]
+                                cond = self.combat.get_agent_conditions(self.bm, agent_idx)
+                                self.conditions_dialog.open(agent.name, cond)
+                            break
+
                 # ── Combat panel buttons ───────────────────────────────────
                 _ev_idx = self._current_agent_idx()
                 _has_wpn = (0 <= _ev_idx < len(self.bm.placed_agents) and
@@ -4677,9 +4719,29 @@ class App:
                             self.bm.placed_agents[idx].disengage()
                             self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging")
                         self.action_used = True
+                    if self.btn_cbt_prone.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.combat.apply_prone(self.bm, idx)
+                            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Going prone")
+                            self._update_reach()
+                            self._update_attack_overlay()
+                        self.action_used = True
                     if self.btn_cbt_long_jump.clicked(event):
                         if not self.pending_spell_slot:  # Don't allow jump while casting spell
                             self._toggle_jump_overlay()
+                    if self.btn_cbt_standup.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.combat.standup(self.bm, idx)
+                            agent = self.bm.placed_agents[idx]
+                            self.move_remaining_walk   = agent.walk_remaining
+                            self.move_remaining_fly    = agent.fly_remaining
+                            self.move_remaining_swim   = agent.swim_remaining
+                            self.move_remaining_burrow = agent.burrow_remaining
+                            self._combat_log_add(f"{agent.name}: Standing up")
+                            self._update_reach()
+                            self._update_attack_overlay()
                     if self.btn_cbt_spell_action.clicked(event):
                         self._start_cast_spell("action")
                 if not self.bonus_used:
@@ -4735,6 +4797,7 @@ class App:
             self.armor_selection_dialog.draw(self.screen)  # modal — always on top
             self.weapon_selection_dialog.draw(self.screen)  # modal — always on top
             self.mob_dialog.draw(self.screen)      # modal — always on top
+            self.conditions_dialog.draw(self.screen)  # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
             pygame.display.flip()
             self.clock.tick(60)

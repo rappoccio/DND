@@ -258,6 +258,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
         .def_readwrite("stunned",       &Agent::Conditions::stunned)
+        .def_readwrite("prone",         &Agent::Conditions::prone)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
@@ -1037,6 +1038,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::removeAgentCondition,
              py::arg("condition_id"),
              "Explicitly remove an active agent condition by its ID.")
+
+        // ── Prone mechanics ──────────────────────────────────────────────────
+        .def("apply_prone",
+             &CombatEngine::applyProne,
+             py::arg("battle_map"), py::arg("idx"),
+             "Apply prone condition to agent[idx].")
+        .def("standup",
+             &CombatEngine::standup,
+             py::arg("battle_map"), py::arg("idx"),
+             "Remove prone condition from agent[idx] (costs half movement speed).")
 
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"));
