@@ -3882,7 +3882,7 @@
     "upcast_dice_bonus": 0,
     "conditions": [
       {
-        "condition_name": "Charmed",
+        "condition_name": "Incapacitated",
         "condition_duration": 0,
         "save_repeat_turns": 1,
         "save_dc_ability": "SaveSpellcasterMod"

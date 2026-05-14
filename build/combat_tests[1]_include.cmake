@@ -1,5 +1,0 @@
-if(EXISTS "/home/user/Documents/Claude/Projects/DND/build/combat_tests[1]_tests.cmake")
-  include("/home/user/Documents/Claude/Projects/DND/build/combat_tests[1]_tests.cmake")
-else()
-  add_test(combat_tests_NOT_BUILT combat_tests_NOT_BUILT)
-endif()

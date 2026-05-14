@@ -1,15 +1,34 @@
 === COMBAT LOG ===
 Casting Hypnotic Pattern — click a map location.
 Agent incapacitated: cannot act, movement speed set to 0
-Applied condition 'Incapacitated' to agent[3] for 10 turns
-Cult Mage→Davian Martikov: WIS save — rolled 12 + 1 = 13 vs DC 13 — SAVED — 0 dmg
-Cult Mage→Baba Lysaga: WIS save — rolled 6 + 8 = 14 vs DC 13 — SAVED — 0 dmg
-Cult Mage→Fire Elemental: WIS save — rolled 3 + 0 = 3 vs DC 13 — FAILED → Incapacitated — 0 dmg
-Cult Mage→Frost Mage: WIS save — rolled 19 + 0 = 19 vs DC 13 — SAVED — 0 dmg
-Baba Lysaga took 0 from Hypnotic Pattern
+Applied condition 'Incapacitated' to agent[0] for 10 turns
+Cult Mage→Davian Martikov: WIS save — rolled 7 + 1 = 8 vs DC 13 — FAILED → Incapacitated — 0 dmg
+Cult Mage→Fire Elemental: WIS save — rolled 16 + 0 = 16 vs DC 13 — SAVED — 0 dmg
+Cult Mage→Frost Mage: WIS save — rolled 20 + 0 = 20 vs DC 13 — SAVED — 0 dmg
 Frost Mage took 0 from Hypnotic Pattern
-Davian Martikov took 0 from Hypnotic Pattern
-Fire Elemental: WIS save vs Incapacitated — SAVED! (Incapacitated broken)
-Caster (agent[2]) drops concentration
-WIS save vs Incapacitated — rolled 18 + 0 = 18 vs DC 13 — SAVED!
 Fire Elemental took 0 from Hypnotic Pattern
+Fire Elemental took 0 from Hypnotic Pattern
+Click a target on the map. (2 attacks remaining)
+Agent stunned: cannot act, auto-fails STR/DEX saves, attacks have advantage
+Applied condition 'Stunned' to agent[4] for 1 turns
+Weapon condition 'Stunned' applied to target (save DC 13)
+Fire Elemental→Frost Mage: HIT 13 Fire
+Fire Elemental: 1 attack remaining — move or click Attack to continue.
+Davian Martikov: WIS save vs Incapacitated — FAILED (turn skipped)
+WIS save vs Incapacitated — rolled 8 + 1 = 9 vs DC 13 — FAILED (turn skipped)
+Condition 'Stunned' expired for agent[4]
+Baba Lysaga took 0 from Hypnotic Pattern
+Casting Hold Person — click 1 target (0/1).
+Agent paralyzed: movement speed set to 0, incapacitated
+Applied condition 'Paralyzed' to agent[4] for 10 turns
+Baba Lysaga→Frost Mage: WIS save — rolled 2 + 0 = 2 vs DC 16 — FAILED → Paralyzed — 0 dmg
+Frost Mage: WIS save vs Paralyzed — SAVED! (Paralyzed broken)
+Caster (agent[1]) drops concentration
+WIS save vs Paralyzed — rolled 19 + 0 = 19 vs DC 16 — SAVED!
+Frost Mage took 0 from Hypnotic Pattern
+Fire Elemental took 0 from Hypnotic Pattern
+Davian Martikov: WIS save vs Incapacitated — SAVED! (Incapacitated broken)
+Caster (agent[2]) drops concentration
+WIS save vs Incapacitated — rolled 13 + 1 = 14 vs DC 13 — SAVED!
+Davian Martikov took 0 from Hypnotic Pattern
+Baba Lysaga took 0 from Hypnotic Pattern
