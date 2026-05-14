@@ -1869,7 +1869,7 @@ class App:
                     # Add condition information to result string
                     condition_suffix = ""
                     if not tr.saved and spell and spell.conditions:
-                        condition_names = ", ".join(spell.conditions)
+                        condition_names = ", ".join([c.condition_name for c in spell.conditions])
                         condition_suffix = f" → {condition_names}"
 
                     msg = (f"{cast_name}→{tgt_name}: {ability_str} save — "
