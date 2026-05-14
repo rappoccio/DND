@@ -591,6 +591,21 @@ class App:
                 self.sprites[key] = None
         return self.sprites[key]
 
+    def _get_caster_color(self, caster_idx: int) -> tuple[int, int, int]:
+        """Generate a distinctive color for a caster based on their agent index."""
+        # Use different colors for different casters to visually link them to their targets
+        colors = [
+            (255, 100, 100),  # Red
+            (100, 100, 255),  # Blue
+            (100, 255, 100),  # Green
+            (255, 255, 100),  # Yellow
+            (255, 100, 255),  # Magenta
+            (100, 255, 255),  # Cyan
+            (255, 200, 100),  # Orange
+            (200, 100, 255),  # Purple
+        ]
+        return colors[caster_idx % len(colors)]
+
     def _get_mob_sprite_path(self, mob_name: str) -> str:
         """Determine sprite path for a mob: use specific sprite if it exists, otherwise use first letter."""
         specific_path = os.path.join(self.sprites_dir, f"{mob_name}.png")
@@ -1260,7 +1275,17 @@ class App:
         new_idx = self._current_agent_idx()
         self.selected_idx = new_idx
         if new_idx >= 0:
-            self.combat.begin_turn(self.bm, new_idx)
+            turn_result = self.combat.begin_turn(self.bm, new_idx)
+
+            # Log any save rolls (e.g., paralyzed escape attempt)
+            if turn_result.save_roll_message:
+                self._combat_log_add(f"{self.bm.placed_agents[new_idx].name}: {turn_result.save_roll_message}")
+
+            # If turn was skipped (e.g., paralyzed save failed), advance to next turn
+            if turn_result.turn_skipped:
+                self._advance_turn()
+                return
+
             # Initialize Python-side movement tracking (C++ also seeds in beginTurn)
             self._reset_movement(new_idx)
 
@@ -1827,9 +1852,15 @@ class App:
                             if resist_msg:
                                 dmg_str = resist_msg
 
+                    # Add condition information to result string
+                    condition_suffix = ""
+                    if not tr.saved and spell and spell.conditions:
+                        condition_names = ", ".join(spell.conditions)
+                        condition_suffix = f" → {condition_names}"
+
                     msg = (f"{cast_name}→{tgt_name}: {ability_str} save — "
                            f"rolled {tr.save_d20} + {save_mod} = {save_total} vs DC {tr.save_dc} — "
-                           f"{result_str} — {dmg_str}"
+                           f"{result_str}{condition_suffix} — {dmg_str}"
                            f"{' — DOWN' if tr.target_down else ''}")
                 else:
                     saved_str = " (saved — half)" if tr.saved else ""
@@ -2411,6 +2442,9 @@ class App:
             "level":                 s.level,
             "upcast_dice_bonus":     s.upcast_dice_bonus,
             "requires_concentration": s.requires_concentration,
+            "conditions":            list(s.conditions) if s.conditions else [],
+            "condition_duration":    s.condition_duration,
+            "save_repeat_turns":     s.save_repeat_turns,
         }
 
     def _dict_to_spell(self, agent_idx: int, d: dict):
@@ -2484,6 +2518,12 @@ class App:
         s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
         s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
         s.effects_on_end_turn = d.get("effects_on_end_turn", False)
+
+        # Parse conditions applied by this spell (e.g., Hold Person applies Paralyzed)
+        s.conditions = d.get("conditions", [])
+        s.condition_duration = int(d.get("condition_duration", 0))  # 0 = use spell duration
+        s.save_repeat_turns = int(d.get("save_repeat_turns", 1))    # repeat save check every N turns
+
         return s
 
     def _save_agents(self, path: str | None = None):
@@ -3081,7 +3121,7 @@ class App:
                 # Draw inner circle (bright yellow)
                 pygame.draw.circle(self.screen, (255, 255, 100), (center_x, center_y), radius - 2, 1)
 
-    def _draw_one_agent(self, pt, screen_x, screen_y, cpx, alpha=255, tint=None):
+    def _draw_one_agent(self, pt, screen_x, screen_y, cpx, alpha=255, tint=None, agent_idx=-1):
         """Draw a single agent (sprite or placeholder) at the given screen coords."""
         size_px = cpx * pt.size
         sprite  = self._get_sprite(pt.sprite_path, size_px)
@@ -3121,10 +3161,25 @@ class App:
             center_x = int(screen_x + size_px / 2)
             center_y = int(screen_y + size_px / 2)
             radius = int(size_px / 2 + 6)
-            pygame.draw.circle(self.screen, (255, 200, 100), (center_x, center_y), radius, 2)
+            # Use the agent's own color if they're casting Hold Person, otherwise use orange
+            caster_color = self._get_caster_color(agent_idx) if agent_idx >= 0 else (255, 200, 100)
+            pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 2)
             spell_name = pt.conditions.concentrating_on or 'Spell'
-            spell_lbl = self.font_sm.render(spell_name, True, (255, 200, 100))
+            spell_lbl = self.font_sm.render(spell_name, True, caster_color)
             self.screen.blit(spell_lbl, (screen_x + size_px + 5, screen_y))
+
+        # Paralyzed indicator (circle linking to caster)
+        if pt.conditions.paralyzed and agent_idx >= 0:
+            # Find the caster of the paralysis from active conditions
+            for cond in self.combat.active_agent_conditions:
+                if cond.agent_idx == agent_idx and cond.condition_name == "Paralyzed":
+                    # Get caster's color - use a color based on caster index for visual linking
+                    caster_color = self._get_caster_color(cond.caster_idx)
+                    center_x = int(screen_x + size_px / 2)
+                    center_y = int(screen_y + size_px / 2)
+                    radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
+                    pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 3)
+                    break
 
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
@@ -3492,7 +3547,7 @@ class App:
             if i == self.drag_idx:
                 continue    # skip the one being dragged (draw as ghost below)
             sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
-            self._draw_one_agent(pt, sx, sy, cpx)
+            self._draw_one_agent(pt, sx, sy, cpx, agent_idx=i)
 
             # Selection highlight (yellow border)
             if i == self.selected_idx:

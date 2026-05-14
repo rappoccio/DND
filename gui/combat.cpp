@@ -327,21 +327,114 @@ bool CombatEngine::canEquipArmor(const BattleMap& bm, int agent_idx, const Armor
 //  Per-agent movement budget
 // ─────────────────────────────────────────────────────────────────────────────
 
-void CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
+TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 {
+    TurnStartResult result;
+
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
-        return;
+        return result;
+
+    const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
+    const auto& stats = agent.stats;
+
+    // Check for conditions that allow save repeats (e.g., Hold Person, Hold Monster)
+    // Find the first active condition on this agent that needs a save attempt
+    for (auto& active_cond : activeAgentConditions_) {
+        if (active_cond.agent_idx != agent_idx) continue;
+        if (active_cond.next_save_turn > 0) continue;  // Not time to save yet
+
+        // Helper to get ability modifier
+        auto getSaveMod = [&](Spell::SaveAbility_t ability) -> int {
+            int score = 0;
+            bool prof = false;
+            switch (ability) {
+                case Spell::SaveStr: score = stats.str; prof = stats.save_prof_str; break;
+                case Spell::SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
+                case Spell::SaveCon: score = stats.con; prof = stats.save_prof_con; break;
+                case Spell::SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
+                case Spell::SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
+                default: score = stats.cha; prof = stats.save_prof_cha; break;
+            }
+            int mod = (score - 10) / 2;
+            if (score < 10 && (score - 10) % 2 != 0) --mod;
+            return mod + (prof ? stats.prof_bonus : 0);
+        };
+
+        int save_mod = getSaveMod(active_cond.save_ability);
+        int save_d20 = roll(20);
+        int save_total = save_d20 + save_mod;
+        int save_dc = active_cond.save_dc;
+
+        auto ability_name = [](Spell::SaveAbility_t ab) -> std::string {
+            switch (ab) {
+                case Spell::SaveStr: return "STR";
+                case Spell::SaveDex: return "DEX";
+                case Spell::SaveCon: return "CON";
+                case Spell::SaveInt: return "INT";
+                case Spell::SaveWis: return "WIS";
+                default: return "CHA";
+            }
+        };
+
+        if (save_total >= save_dc) {
+            // Save succeeded, remove condition
+            removeAgentCondition(active_cond.condition_id);
+
+            // Handle condition-specific cleanup
+            if (active_cond.condition_name == "Paralyzed") {
+                Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+                cond.paralyzed = false;
+                cond.incapacitated = false;
+                bm.setAgentConditions(agent_idx, cond);
+            }
+
+            // Drop the caster's concentration on the spell that caused this condition
+            if (active_cond.caster_idx >= 0 && active_cond.caster_idx < static_cast<int>(agents.size())) {
+                Agent::Conditions caster_cond = bm.getAgentConditions(active_cond.caster_idx);
+                if (caster_cond.concentrating) {
+                    caster_cond.concentrating = false;
+                    caster_cond.concentrating_on = "";
+                    bm.setAgentConditions(active_cond.caster_idx, caster_cond);
+                    log_("Caster (agent[{}]) drops concentration", active_cond.caster_idx);
+                }
+            }
+
+            result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
+                                      " — SAVED! (" + active_cond.condition_name + " broken)";
+            log_("{} save vs {} — rolled {} + {} = {} vs DC {} — SAVED!",
+                 ability_name(active_cond.save_ability), active_cond.condition_name,
+                 save_d20, save_mod, save_total, save_dc);
+        } else {
+            // Save failed, skip this turn (only for incapacitating conditions)
+            if (active_cond.condition_name == "Paralyzed") {
+                result.turn_skipped = true;
+                result.skip_reason = active_cond.condition_name + " (save failed)";
+                result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
+                                          " — FAILED (turn skipped)";
+                log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED (turn skipped)",
+                     ability_name(active_cond.save_ability), active_cond.condition_name,
+                     save_d20, save_mod, save_total, save_dc);
+                return result;
+            } else {
+                // Non-incapacitating condition failed save, reset next save time
+                active_cond.next_save_turn = active_cond.save_repeat_turns;
+                log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED",
+                     ability_name(active_cond.save_ability), active_cond.condition_name,
+                     save_d20, save_mod, save_total, save_dc);
+            }
+        }
+        break;  // Only check one condition per turn
+    }
 
     // Seed movement budgets from current stats
-    const auto& stats = agents[static_cast<std::size_t>(agent_idx)].stats;
     walkRemaining_[agent_idx] = stats.speed_walk;
     flyRemaining_ [agent_idx] = stats.speed_fly;
     swimRemaining_[agent_idx] = stats.speed_swim;
     burrowRemaining_[agent_idx] = stats.speed_burrow;
 
     // Reset per-turn conditions
-    agents[static_cast<std::size_t>(agent_idx)].agent->turn();
+    agent.agent->turn();
 
     // Reset leveled spell cast flag
     auto new_stats = stats;
@@ -349,7 +442,6 @@ void CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     bm.setAgentStats(agent_idx, new_stats);
 
     // Apply begin-of-turn spell effects
-    const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     for (const auto& effect : bm.activeSpellEffects()) {
         if (!effect.spell.effects_on_begin_turn) continue;
         if (effect.caster_idx == agent_idx) continue;  // don't damage self
@@ -366,6 +458,8 @@ void CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             }
         }
     }
+
+    return result;
 }
 
 void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
@@ -1228,6 +1322,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         ? action.target_indices
         : resolveAoeTargets(agents, sp, action.caster_idx, action.aoe_col, action.aoe_row);
 
+    bool any_conditions_applied = false;
+
     for (int tgt_idx : targets) {
         if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) continue;
 
@@ -1508,6 +1604,44 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             }
         }
 
+        // Apply spell-based conditions (e.g., Hold Person applies Paralyzed)
+        bool spell_affected_target = false;
+        switch (sp.attack_type) {
+            case Spell::AttackRoll:
+                spell_affected_target = tr.hit;
+                break;
+            case Spell::Save:
+                spell_affected_target = !tr.saved;  // Condition applies on failed save
+                break;
+            case Spell::Automatic:
+            default:
+                spell_affected_target = true;  // Automatic hits always apply conditions
+                break;
+        }
+
+        if (spell_affected_target && !sp.conditions.empty()) {
+            for (const auto& cond_name : sp.conditions) {
+                ActiveAgentCondition cond;
+                cond.agent_idx   = tgt_idx;
+                cond.caster_idx  = action.caster_idx;
+                cond.spell_idx   = action.spell_idx;
+                cond.condition_name = cond_name;
+                cond.save_ability = sp.save_ability;
+
+                // Condition duration: if condition_duration is 0, use spell duration
+                cond.turns_remaining = (sp.condition_duration > 0) ? sp.condition_duration : sp.duration;
+                // Save DC from caster's spellcasting ability
+                cond.save_dc = spellSaveDc(caster_stats);
+                // How often to repeat save checks
+                cond.save_repeat_turns = sp.save_repeat_turns;
+                // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
+                cond.next_save_turn = 0;
+
+                addAgentCondition(bm, cond);
+                any_conditions_applied = true;
+            }
+        }
+
         result.target_results.push_back(tr);
     }
 
@@ -1525,8 +1659,21 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
-    // Set concentration after successful spell cast (if required)
+    // Set concentration after successful spell cast (if required and if spell affected targets)
+    // For condition-based spells, only set concentration if a condition was actually applied
+    // For damage/heal spells or AoE terrain spells, set concentration if any targets were affected
+    bool should_concentrate = false;
     if (sp.requires_concentration && result.valid) {
+        if (!sp.conditions.empty()) {
+            // Condition-based spell: only concentrate if a condition was applied
+            should_concentrate = any_conditions_applied;
+        } else {
+            // Damage/heal/terrain spell: concentrate if spell hit any targets
+            should_concentrate = true;
+        }
+    }
+
+    if (should_concentrate) {
         Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
         cond.concentrating    = true;
         cond.concentrating_on = sp.name;
@@ -1807,6 +1954,80 @@ void CombatEngine::applyParalyzed(BattleMap& bm, int idx) noexcept
     bm.setAgentStats(idx, stats);
 
     log_("Agent paralyzed: movement speed set to 0, incapacitated");
+}
+
+int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
+{
+    cond.condition_id = nextConditionId_++;
+
+    // Apply the condition to the agent
+    if (cond.agent_idx >= 0) {
+        auto agents = bm.placedAgents();
+        if (cond.agent_idx < static_cast<int>(agents.size())) {
+            if (cond.condition_name == "Paralyzed") {
+                applyParalyzed(bm, cond.agent_idx);
+            }
+            // TODO: Handle other condition names as they're added
+            log_("Applied condition '{}' to agent[{}] for {} turns",
+                 cond.condition_name, cond.agent_idx, cond.turns_remaining);
+        }
+    }
+
+    activeAgentConditions_.push_back(cond);
+    return cond.condition_id;
+}
+
+const std::vector<ActiveAgentCondition>& CombatEngine::activeAgentConditions() const noexcept
+{
+    return activeAgentConditions_;
+}
+
+std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
+{
+    std::vector<int> removed_ids;
+
+    for (auto& cond : activeAgentConditions_) {
+        --cond.turns_remaining;
+        if (cond.turns_remaining <= 0) {
+            removed_ids.push_back(cond.condition_id);
+
+            // Remove the condition from the agent
+            if (cond.agent_idx >= 0) {
+                auto agents = bm.placedAgents();
+                if (cond.agent_idx < static_cast<int>(agents.size())) {
+                    auto agent_cond = bm.getAgentConditions(cond.agent_idx);
+                    if (cond.condition_name == "Paralyzed") {
+                        agent_cond.paralyzed = false;
+                        agent_cond.incapacitated = false;
+                    }
+                    // TODO: Handle other conditions
+                    bm.setAgentConditions(cond.agent_idx, agent_cond);
+                    log_("Condition '{}' expired for agent[{}]",
+                         cond.condition_name, cond.agent_idx);
+                }
+            }
+        }
+    }
+
+    // Remove expired conditions
+    std::vector<ActiveAgentCondition> remaining;
+    for (const auto& cond : activeAgentConditions_) {
+        if (std::find(removed_ids.begin(), removed_ids.end(), cond.condition_id) == removed_ids.end()) {
+            remaining.push_back(cond);
+        }
+    }
+    activeAgentConditions_ = remaining;
+
+    return removed_ids;
+}
+
+void CombatEngine::removeAgentCondition(int condition_id) noexcept
+{
+    auto it = std::find_if(activeAgentConditions_.begin(), activeAgentConditions_.end(),
+                          [condition_id](const ActiveAgentCondition& c) { return c.condition_id == condition_id; });
+    if (it != activeAgentConditions_.end()) {
+        activeAgentConditions_.erase(it);
+    }
 }
 
 std::array<Weapon, 3> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept

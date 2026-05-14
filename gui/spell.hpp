@@ -75,5 +75,11 @@ namespace rpg {
       bool effects_on_begin_turn{true};
       // Apply effects to agents in this spell's area at the END of their turn
       bool effects_on_end_turn{false};
+
+      // Condition application (e.g., Hold Person applies "Paralyzed")
+      // Condition names: "Paralyzed", "Stunned", "Restrained", "Grappled", "Charmed", etc.
+      std::vector<std::string> conditions;      // Conditions applied to targets
+      int condition_duration{0};                 // Turns condition persists (0 = same as spell duration)
+      int save_repeat_turns{1};                  // Repeat save check every N turns (1 = every turn)
     };
 }

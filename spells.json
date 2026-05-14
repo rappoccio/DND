@@ -3159,12 +3159,15 @@
     "radius": 15,
     "width": 5,
     "length": 30,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 2,
     "upcast_dice_bonus": 0,
-    "requires_concentration": true
+    "requires_concentration": true,
+    "conditions": ["Paralyzed"],
+    "condition_duration": 0,
+    "save_repeat_turns": 1
   },
   {
     "name": "Holy Aura",

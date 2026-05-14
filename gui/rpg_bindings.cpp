@@ -463,6 +463,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "If true, apply spell effects to agents in area at the start of their turn.")
         .def_readwrite("effects_on_end_turn", &Spell::effects_on_end_turn,
              "If true, apply spell effects to agents in area at the end of their turn.")
+        .def_readwrite("conditions", &Spell::conditions,
+             "List of condition names applied to targets (e.g., ['Paralyzed']).")
+        .def_readwrite("condition_duration", &Spell::condition_duration,
+             "Turns the condition persists. 0 = same as spell duration.")
+        .def_readwrite("save_repeat_turns", &Spell::save_repeat_turns,
+             "Repeat save check every N turns (1 = every turn).")
         .def("__repr__", [](const Spell& s){
             return "<Spell '" + s.name + "'>"; });
 
@@ -563,6 +569,37 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("passed",             &ConcentrationSaveResult::passed)
         .def_readonly("concentration_lost", &ConcentrationSaveResult::concentration_lost)
         .def_readonly("spell_name",         &ConcentrationSaveResult::spell_name);
+
+    // ── TurnStartResult ────────────────────────────────────────────────────────
+    py::class_<TurnStartResult>(m, "TurnStartResult")
+        .def(py::init<>())
+        .def_readwrite("turn_skipped",       &TurnStartResult::turn_skipped)
+        .def_readwrite("skip_reason",        &TurnStartResult::skip_reason)
+        .def_readwrite("save_roll_message",  &TurnStartResult::save_roll_message)
+        .def("__repr__", [](const TurnStartResult& r){
+            if (r.turn_skipped) {
+                return std::string("<TurnStartResult SKIPPED: ") + r.skip_reason + ">";
+            }
+            return std::string("<TurnStartResult turn proceeds>");
+        });
+
+    // ── ActiveAgentCondition ──────────────────────────────────────────────────
+    py::class_<ActiveAgentCondition>(m, "ActiveAgentCondition")
+        .def(py::init<>())
+        .def_readwrite("agent_idx",      &ActiveAgentCondition::agent_idx)
+        .def_readwrite("caster_idx",     &ActiveAgentCondition::caster_idx)
+        .def_readwrite("spell_idx",      &ActiveAgentCondition::spell_idx)
+        .def_readwrite("condition_name", &ActiveAgentCondition::condition_name)
+        .def_readwrite("turns_remaining", &ActiveAgentCondition::turns_remaining)
+        .def_readwrite("next_save_turn",  &ActiveAgentCondition::next_save_turn)
+        .def_readwrite("save_ability",    &ActiveAgentCondition::save_ability)
+        .def_readwrite("save_dc",         &ActiveAgentCondition::save_dc)
+        .def_readwrite("save_repeat_turns", &ActiveAgentCondition::save_repeat_turns)
+        .def_readwrite("condition_id",    &ActiveAgentCondition::condition_id)
+        .def("__repr__", [](const ActiveAgentCondition& c){
+            return "<ActiveAgentCondition '" + c.condition_name
+                 + "' on agent[" + std::to_string(c.agent_idx)
+                 + "] turns=" + std::to_string(c.turns_remaining) + ">"; });
 
     // ── AttackResult ─────────────────────────────────────────────────────────
     py::class_<AttackResult>(m, "AttackResult")
@@ -963,6 +1000,26 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Set is_npc=true on agent and initialize uses_max/uses_remaining from spell groups.\n"
              "groups: dict mapping N (uses/day) -> list of spell names in that group.\n"
              "Call once after set_agent_spells().")
+
+        // ── Agent condition management ──────────────────────────────────────
+        .def("add_agent_condition",
+             &CombatEngine::addAgentCondition,
+             py::arg("battle_map"), py::arg("condition"),
+             "Add an active agent condition (e.g., from a spell).\n"
+             "Returns the condition_id for later removal.")
+        .def_property_readonly("active_agent_conditions",
+             [](const CombatEngine& e) { return e.activeAgentConditions(); },
+             "List of ActiveAgentCondition objects currently applied to agents.")
+        .def("tick_agent_conditions",
+             &CombatEngine::tickAgentConditions,
+             py::arg("battle_map"),
+             "Decrement all active agent condition durations by 1 turn.\n"
+             "Remove expired conditions and apply their end-of-life effects.\n"
+             "Returns list of expired condition IDs.")
+        .def("remove_agent_condition",
+             &CombatEngine::removeAgentCondition,
+             py::arg("condition_id"),
+             "Explicitly remove an active agent condition by its ID.")
 
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"));

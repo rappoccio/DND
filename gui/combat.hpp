@@ -46,6 +46,7 @@ class BattleMap;
 struct Cell;
 struct AgentConfig;
 struct ActiveSpellEffect;
+struct ActiveAgentCondition;
 enum class MovementType;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +211,15 @@ struct TurnActions {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  TurnStartResult — outcome of beginTurn (paralysis save, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+struct TurnStartResult {
+    bool turn_skipped = false;          // true if agent's turn should be skipped (e.g., paralyzed save failed)
+    std::string skip_reason;            // reason for skip (e.g., "Hold Person (save failed)")
+    std::string save_roll_message;      // log message from save roll (if any)
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine
 // ─────────────────────────────────────────────────────────────────────────────
 class CombatEngine {
@@ -312,7 +322,9 @@ public:
 
     // Initialize the agent's turn: seed movement budgets, reset conditions,
     // reset leveled spell cast flag, and apply persistent spell effects.
-    void beginTurn(BattleMap& bm, int agent_idx) noexcept;
+    // Returns TurnStartResult indicating if the turn should be skipped
+    // (e.g., due to failed paralysis save).
+    TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
 
     // Called when agent's turn ends: apply persistent spell effects marked
     // for end-of-turn (effects_on_end_turn == true).
@@ -334,6 +346,18 @@ public:
 
     // Apply paralyzed condition and its effects (incapacitated, speed 0).
     void applyParalyzed(BattleMap& bm, int idx) noexcept;
+
+    // ── Spell-Applied Agent Conditions ────────────────────────────────
+    // Add an active spell-applied condition (e.g., Paralyzed from Hold Person).
+    // Returns the condition ID for later removal.
+    [[nodiscard]] int addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept;
+    // Get all active spell-applied conditions.
+    [[nodiscard]] const std::vector<ActiveAgentCondition>& activeAgentConditions() const noexcept;
+    // Decrement turns_remaining and handle condition expiration.
+    // Returns list of removed condition ids.
+    [[nodiscard]] std::vector<int> tickAgentConditions(BattleMap& bm) noexcept;
+    // Remove a condition by id.
+    void removeAgentCondition(int condition_id) noexcept;
 
     [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
     void setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept;
@@ -519,6 +543,10 @@ private:
     std::unordered_map<int, int> flyRemaining_;
     std::unordered_map<int, int> swimRemaining_;
     std::unordered_map<int, int> burrowRemaining_;
+
+    // Active spell-applied conditions (Hold Person, Stun, etc.)
+    std::vector<ActiveAgentCondition> activeAgentConditions_;
+    int nextConditionId_{0};
 
     std::vector<ActiveEffect> activeEffects_;
 

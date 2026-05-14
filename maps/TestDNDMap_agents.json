@@ -119,11 +119,12 @@
       "spells": [
         "Fireball",
         "Grease",
-        "Magic Missile"
+        "Magic Missile",
+	"Hold Person"
       ],
       "is_npc": true,
       "npc_spell_groups": {
-        "1": ["Fireball", "Grease"],
+        "1": ["Fireball", "Grease", "Hold Person"],
         "2": ["Magic Missile"]
       },
       "npc_spell_uses_cur": {

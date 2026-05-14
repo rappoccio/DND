@@ -112,6 +112,20 @@ struct ActiveSpellEffect {
     int          effect_id      = -1;      // unique ID for removal
 };
 
+// ── Active spell-applied condition on an agent ──────────────────────────────
+struct ActiveAgentCondition {
+    int              agent_idx            = -1;   // index into BattleMap::placedAgents()
+    int              caster_idx           = -1;   // who cast the spell (for concentration checks)
+    int              spell_idx            = -1;   // index into caster's spell list
+    std::string      condition_name;              // "Paralyzed", "Stunned", etc.
+    int              turns_remaining      = 0;    // decremented per turn; condition expires when 0
+    int              next_save_turn       = 0;    // turn number when next save is attempted
+    Spell::SaveAbility_t save_ability    = Spell::SaveDex;  // which save to repeat
+    int              save_dc              = 0;    // DC for saving throws (must be set when condition created)
+    int              save_repeat_turns    = 1;    // repeat save check every N turns (1 = every turn)
+    int              condition_id         = -1;   // unique ID for tracking/removal
+};
+
 // ── A placed agent on the map ──────────────────────────────────────────────
 struct PlacedAgent {
     std::shared_ptr<Agent> agent;
