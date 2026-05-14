@@ -5254,7 +5254,16 @@
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
     "requires_los": true,
-    "check_los_on_center": true
+    "check_los_on_center": true,
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "Power Word Heal",
@@ -7074,7 +7083,16 @@
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
     "requires_los": true,
-    "check_los_on_center": true
+    "check_los_on_center": true,
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   },
   {
     "name": "True Resurrection",
