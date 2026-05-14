@@ -387,6 +387,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 cond.paralyzed = false;
                 cond.incapacitated = false;
                 bm.setAgentConditions(agent_idx, cond);
+            } else if (active_cond.condition_name == "Incapacitated") {
+                Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+                cond.incapacitated = false;
+                bm.setAgentConditions(agent_idx, cond);
             }
 
             // Drop the caster's concentration on the spell that caused this condition
@@ -397,6 +401,22 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     caster_cond.concentrating_on = "";
                     bm.setAgentConditions(active_cond.caster_idx, caster_cond);
                     log_("Caster (agent[{}]) drops concentration", active_cond.caster_idx);
+
+                    // Remove all conditions caused by concentration spells from this caster
+                    const auto& caster_spells = bm.getAgentSpells(active_cond.caster_idx);
+                    std::vector<int> conds_to_remove;
+                    for (const auto& other_cond : activeAgentConditions_) {
+                        if (other_cond.caster_idx == active_cond.caster_idx &&
+                            other_cond.spell_idx >= 0 &&
+                            other_cond.spell_idx < static_cast<int>(caster_spells.size())) {
+                            if (caster_spells[static_cast<std::size_t>(other_cond.spell_idx)].requires_concentration) {
+                                conds_to_remove.push_back(other_cond.condition_id);
+                            }
+                        }
+                    }
+                    for (int cond_id : conds_to_remove) {
+                        removeAgentCondition(cond_id);
+                    }
                 }
             }
 
@@ -407,7 +427,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                  save_d20, save_mod, save_total, save_dc);
         } else {
             // Save failed, skip this turn (only for incapacitating conditions)
-            if (active_cond.condition_name == "Paralyzed") {
+            if (active_cond.condition_name == "Paralyzed" || active_cond.condition_name == "Incapacitated") {
                 result.turn_skipped = true;
                 result.skip_reason = active_cond.condition_name + " (save failed)";
                 result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
@@ -1995,6 +2015,51 @@ void CombatEngine::applyBlinded(BattleMap& bm, int idx) noexcept
     log_("Agent blinded: attack rolls have disadvantage, attacks against have advantage");
 }
 
+void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set incapacitated condition
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.incapacitated = true;
+    bm.setAgentConditions(idx, cond);
+
+    // Break concentration if the agent is concentrating
+    if (cond.concentrating) {
+        cond.concentrating = false;
+        cond.concentrating_on = "";
+        bm.setAgentConditions(idx, cond);
+        log_("Agent incapacitated: concentration broken");
+
+        // Remove all conditions caused by concentration spells cast by this agent
+        const auto& spells = bm.getAgentSpells(idx);
+        std::vector<int> conds_to_remove;
+        for (const auto& active_cond : activeAgentConditions_) {
+            if (active_cond.caster_idx == idx &&
+                active_cond.spell_idx >= 0 &&
+                active_cond.spell_idx < static_cast<int>(spells.size())) {
+                if (spells[static_cast<std::size_t>(active_cond.spell_idx)].requires_concentration) {
+                    conds_to_remove.push_back(active_cond.condition_id);
+                }
+            }
+        }
+        for (int cond_id : conds_to_remove) {
+            removeAgentCondition(cond_id);
+        }
+    }
+
+    // Set all movement speeds to 0
+    Agent::Stats stats = bm.getAgentStats(idx);
+    stats.speed_walk_remaining = 0;
+    stats.speed_fly_remaining = 0;
+    stats.speed_swim_remaining = 0;
+    stats.speed_burrow_remaining = 0;
+    bm.setAgentStats(idx, stats);
+
+    log_("Agent incapacitated: cannot act, movement speed set to 0");
+}
+
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
 {
     cond.condition_id = nextConditionId_++;
@@ -2007,6 +2072,8 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyParalyzed(bm, cond.agent_idx);
             } else if (cond.condition_name == "Blinded") {
                 applyBlinded(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Incapacitated") {
+                applyIncapacitated(bm, cond.agent_idx);
             }
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);
@@ -2041,6 +2108,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.incapacitated = false;
                     } else if (cond.condition_name == "Blinded") {
                         agent_cond.blinded = false;
+                    } else if (cond.condition_name == "Incapacitated") {
+                        agent_cond.incapacitated = false;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for agent[{}]",

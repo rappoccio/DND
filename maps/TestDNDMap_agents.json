@@ -122,17 +122,19 @@
         "Fireball",
         "Grease",
         "Magic Missile",
-	"Hold Person"
+	"Hold Person",
+	"Hypnotic Pattern"
       ],
       "is_npc": true,
       "npc_spell_groups": {
         "1": ["Fireball", "Grease", "Hold Person"],
-        "2": ["Magic Missile"]
+        "2": ["Magic Missile", "Hypnotic Pattern"]
       },
       "npc_spell_uses_cur": {
         "Fireball": 1,
         "Grease": 1,
-        "Magic Missile": 2
+        "Magic Missile": 2,
+	"Hypnotic Pattern": 2
       }
     },
     {

@@ -1326,6 +1326,17 @@ class App:
                 effects_to_remove.append(effect.effect_id)
         for effect_id in effects_to_remove:
             self.bm.remove_spell_effect(effect_id)
+
+        # Remove conditions caused by concentration-requiring spells from this caster
+        conditions_to_remove = []
+        agent_spells = self.combat.get_agent_spells(self.bm, agent_idx)
+        for cond in self.combat.active_agent_conditions:
+            if cond.caster_idx == agent_idx and cond.spell_idx >= 0 and cond.spell_idx < len(agent_spells):
+                if agent_spells[cond.spell_idx].requires_concentration:
+                    conditions_to_remove.append(cond.condition_id)
+        for cond_id in conditions_to_remove:
+            self.combat.remove_agent_condition(cond_id)
+
         # Clear C++ concentration state
         cond = agent.conditions
         cond.concentrating = False
@@ -3192,6 +3203,19 @@ class App:
                     center_y = int(screen_y + size_px / 2)
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 3)
+                    break
+
+        # Incapacitated indicator (circle linking to source)
+        if pt.conditions.incapacitated and agent_idx >= 0:
+            # Find the source of the incapacitated condition from active conditions
+            for cond in self.combat.active_agent_conditions:
+                if cond.agent_idx == agent_idx and cond.condition_name == "Incapacitated":
+                    # Get source's color - use a color based on caster index for visual linking
+                    source_color = self._get_caster_color(cond.caster_idx)
+                    center_x = int(screen_x + size_px / 2)
+                    center_y = int(screen_y + size_px / 2)
+                    radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
+                    pygame.draw.circle(self.screen, source_color, (center_x, center_y), radius, 3)
                     break
 
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
