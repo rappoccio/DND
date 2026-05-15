@@ -2255,6 +2255,10 @@ class App:
             self.move_remaining_swim = ag.swim_remaining
             self.move_remaining_burrow = ag.burrow_remaining
             self._combat_log_add(f"{ag.name} completes movement to ({ag.origin.col},{ag.origin.row}).")
+            # Check if agent slipped — if so, their turn ends
+            if ag.conditions.slipped_this_turn:
+                self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
+                self._advance_turn()
             self._update_reach()
             self._update_attack_overlay()
         else:
@@ -4860,17 +4864,26 @@ class App:
                             if move_success:
                                 # Read back the shared-pool budgets from C++.
                                 ag = self.bm.placed_agents[self.drag_idx]
-                                self.move_remaining_walk   = ag.walk_remaining
-                                self.move_remaining_fly    = ag.fly_remaining
-                                self.move_remaining_swim   = ag.swim_remaining
-                                self.move_remaining_burrow = ag.burrow_remaining
-                                self.last_movement_dist = dist_moved  # Track most recent movement for running jump
-                                print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row})")
+                                # Check if agent slipped — if so, their turn ends
+                                if ag.conditions.slipped_this_turn:
+                                    self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
+                                    self._advance_turn()
+                                else:
+                                    # Only update UI if agent didn't slip
+                                    self.move_remaining_walk   = ag.walk_remaining
+                                    self.move_remaining_fly    = ag.fly_remaining
+                                    self.move_remaining_swim   = ag.swim_remaining
+                                    self.move_remaining_burrow = ag.burrow_remaining
+                                    self.last_movement_dist = dist_moved  # Track most recent movement for running jump
+                                    print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row})")
+                                    self.selected_idx = self.drag_idx
+                                    self._update_reach()
+                                    self._update_attack_overlay()
                             else:
                                 print(f"[Movement] Move failed - likely blocked by terrain")
-                        self.selected_idx = self.drag_idx
-                        self._update_reach()
-                        self._update_attack_overlay()
+                                self.selected_idx = self.drag_idx
+                                self._update_reach()
+                                self._update_attack_overlay()
                     # else: agent stays at original position (C++ not updated)
                     self.drag_idx = -1
                     self.drag_cell = None
@@ -5038,20 +5051,21 @@ class App:
                     if self.btn_cbt_long_jump.clicked(event):
                         if not self.pending_spell_slot:  # Don't allow jump while casting spell
                             self._toggle_jump_overlay()
-                    if self.btn_cbt_standup.clicked(event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.combat.standup(self.bm, idx)
-                            agent = self.bm.placed_agents[idx]
-                            self.move_remaining_walk   = agent.walk_remaining
-                            self.move_remaining_fly    = agent.fly_remaining
-                            self.move_remaining_swim   = agent.swim_remaining
-                            self.move_remaining_burrow = agent.burrow_remaining
-                            self._combat_log_add(f"{agent.name}: Standing up")
-                            self._update_reach()
-                            self._update_attack_overlay()
                     if self.btn_cbt_spell_action.clicked(event):
                         self._start_cast_spell("action")
+                # Stand up doesn't use an action, so it's available regardless of action_used
+                if self.btn_cbt_standup.clicked(event):
+                    idx = self._current_agent_idx()
+                    if 0 <= idx < len(self.bm.placed_agents):
+                        self.combat.standup(self.bm, idx)
+                        agent = self.bm.placed_agents[idx]
+                        self.move_remaining_walk   = agent.walk_remaining
+                        self.move_remaining_fly    = agent.fly_remaining
+                        self.move_remaining_swim   = agent.swim_remaining
+                        self.move_remaining_burrow = agent.burrow_remaining
+                        self._combat_log_add(f"{agent.name}: Standing up")
+                        self._update_reach()
+                        self._update_attack_overlay()
                 if not self.bonus_used:
                     if _has_offhand and self.btn_cbt_atk_bonus.clicked(event):
                         self._start_attack("bonus")
