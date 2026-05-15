@@ -70,6 +70,7 @@ enum class TerrainDifficulty {
     Normal = 0,      // 1.0x movement cost (no effect)
     Halved = 1,      // 0.5x movement cost (Spirit Guardians, etc.)
     Quartered = 2,   // 0.25x movement cost (Plant Growth, etc.)
+    Slipping = 3,    // Icy/greasy surface; DEX save every N feet or go prone
 };
 
 // ── Light levels for visibility (D&D 5e lighting conditions) ──────────────────
@@ -91,6 +92,9 @@ struct ActiveTerrainEffect {
     TerrainDifficulty   difficulty;       // Halved or Quartered
     int                 turns_remaining;  // -1 = permanent, 0+ = expires after N turns
     int                 source_agent_idx; // -1 = DM-placed or no concentration requirement
+    // Slipping terrain (ice/grease) settings
+    int                 slip_save_dc{10};        // DC for DEX save (default 10)
+    int                 slip_distance_feet{5};  // Feet moved before requiring save (default 5)
 };
 
 // ── Active temporary light effect ──────────────────────────────────────────
@@ -200,6 +204,11 @@ public:
     // is_running: true for running jump (full strength), false for standing jump (half strength).
     bool jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept;
 
+    // Force move an agent (push/knockback). Moves agent away from push_from origin.
+    // Does not consume movement budget. Stops at walls or map edge.
+    // Returns number of cells actually moved.
+    [[nodiscard]] int forceMoveAgent(int idx, Cell push_from, int push_ft) noexcept;
+
     // Remove a placed agent by index.
     void removeAgent(int idx) noexcept;
 
@@ -281,7 +290,9 @@ public:
                                          std::vector<Cell> cells,
                                          TerrainDifficulty difficulty,
                                          int turns_remaining,
-                                         int source_agent_idx);
+                                         int source_agent_idx,
+                                         int slip_save_dc = 10,
+                                         int slip_distance_feet = 5);
 
     // Decrement turns_remaining for effects sourced from the given agent.
     // Removes expired effects (turns_remaining <= 0).

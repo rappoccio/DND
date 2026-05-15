@@ -180,6 +180,7 @@ def _dict_to_weapon(d: dict):
             c = rpg.AttackCondition()
             c.condition_name = cond_entry.get("condition_name", "")
             c.condition_duration = int(cond_entry.get("condition_duration", 0))
+            c.push_ft = int(cond_entry.get("push_ft", 0))
             c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
             # Parse save_ability string (target's save - e.g., "SaveDex" -> rpg.SaveAbility.SaveDex)
             save_ability_str = cond_entry.get("save_ability", "SaveDex")
@@ -199,6 +200,7 @@ def _dict_to_weapon(d: dict):
             c = rpg.AttackCondition()
             c.condition_name = str(cond_entry)
             c.condition_duration = 0
+            c.push_ft = 0
             c.save_repeat_turns = 1
             c.save_ability = rpg.SaveAbility.SaveDex
             c.save_dc_ability = rpg.SaveAbility.SaveWis
@@ -421,6 +423,7 @@ def _dict_to_spell(d: dict):
             c = rpg.AttackCondition()
             c.condition_name = cond_entry.get("condition_name", "")
             c.condition_duration = int(cond_entry.get("condition_duration", 0))
+            c.push_ft = int(cond_entry.get("push_ft", 0))
             c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
             # Parse save_ability string (target's save) - defaults to spell's save_ability
             save_ability_str = cond_entry.get("save_ability")
@@ -443,6 +446,7 @@ def _dict_to_spell(d: dict):
             c = rpg.AttackCondition()
             c.condition_name = str(cond_entry)
             c.condition_duration = 0  # will use spell duration
+            c.push_ft = 0
             c.save_repeat_turns = 1
             c.save_ability = s.save_ability  # use spell's ability for legacy conditions
             c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod

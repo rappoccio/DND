@@ -366,6 +366,8 @@ namespace rpg {
       bool blinded{false};       // cannot see; attack rolls against have advantage, own attacks have disadvantage
       bool stunned{false};       // cannot act, auto-fail STR/DEX saves, attacks have advantage
       bool prone{false};         // crawling only, disadvantage on attacks; advantage for attackers within 5ft
+      bool charmed{false};       // cannot attack the charmer or target with damaging abilities
+      bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -491,6 +493,10 @@ namespace rpg {
 
     [[nodiscard]] bool hasDisadvantage() const noexcept { return conditions_.has_disadvantage; }
     void setDisadvantage(bool dis) noexcept { conditions_.has_disadvantage = dis; }
+
+    // ── Slipped this turn (prevents action execution) ─────────────────────────
+    [[nodiscard]] bool hasSlippedThisTurn() const noexcept { return conditions_.slipped_this_turn; }
+    void setSlippedThisTurn(bool slipped) noexcept { conditions_.slipped_this_turn = slipped; }
 
     // ── Movement ──────────────────────────────────────────────────────────────
     // Seed remaining movement budgets from speed values (call at turn start).

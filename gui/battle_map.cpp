@@ -472,6 +472,67 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     return true;
 }
 
+int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return 0;
+    auto& pa = placedAgents_[idx];
+    int agent_size = pa.agent->getSize();
+
+    // Compute direction: away from push_from toward target
+    int dir_col = 0, dir_row = 0;
+    if (pa.origin.col != push_from.col)
+        dir_col = (pa.origin.col > push_from.col) ? 1 : -1;
+    if (pa.origin.row != push_from.row)
+        dir_row = (pa.origin.row > push_from.row) ? 1 : -1;
+
+    // Move cell-by-cell for push_ft/5 cells
+    int max_cells = push_ft / 5;
+    int cells_moved = 0;
+
+    for (int i = 0; i < max_cells; ++i) {
+        Cell next{pa.origin.col + dir_col, pa.origin.row + dir_row};
+
+        // Check bounds
+        if (!inBounds(next, agent_size))
+            break;
+
+        // Check if blocked (use Walk movement type — can't push through walls)
+        if (isBlocked(next, agent_size, MovementType::Walk))
+            break;
+
+        // Move to next cell
+        pa.origin = next;
+        pa.agent->setPosition(next.col, next.row);
+        cells_moved++;
+    }
+
+    // If diagonal movement was blocked, try orthogonal fallback
+    if (cells_moved == 0 && dir_col != 0 && dir_row != 0) {
+        // Try horizontal first
+        for (int i = 0; i < max_cells; ++i) {
+            Cell next{pa.origin.col + dir_col, pa.origin.row};
+            if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk))
+                break;
+            pa.origin = next;
+            pa.agent->setPosition(next.col, next.row);
+            cells_moved++;
+        }
+        // Then try vertical if horizontal didn't work
+        if (cells_moved == 0) {
+            for (int i = 0; i < max_cells; ++i) {
+                Cell next{pa.origin.col, pa.origin.row + dir_row};
+                if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk))
+                    break;
+                pa.origin = next;
+                pa.agent->setPosition(next.col, next.row);
+                cells_moved++;
+            }
+        }
+    }
+
+    return cells_moved;
+}
+
 void BattleMap::removeAgent(int idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
@@ -835,6 +896,7 @@ double BattleMap::getTerrainMultiplier(Cell c, MovementType mt) const noexcept {
     switch (tempTerrainDiff_[idx]) {
         case TerrainDifficulty::Halved:    dynamicMult = 0.5;  break;
         case TerrainDifficulty::Quartered: dynamicMult = 0.25; break;
+        case TerrainDifficulty::Slipping:  dynamicMult = 1.0;  break;  // Slipping doesn't affect movement speed, only triggers saves
         case TerrainDifficulty::Normal:    dynamicMult = 1.0;  break;
     }
 
@@ -1049,7 +1111,9 @@ int BattleMap::placeTerrainEffect(std::string name,
                                    std::vector<Cell> cells,
                                    TerrainDifficulty difficulty,
                                    int turns_remaining,
-                                   int source_agent_idx) {
+                                   int source_agent_idx,
+                                   int slip_save_dc,
+                                   int slip_distance_feet) {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -1063,14 +1127,17 @@ int BattleMap::placeTerrainEffect(std::string name,
 
     // Create the effect with a unique id
     int id = nextEffectId_++;
-    activeTerrainEffects_.push_back({
+    ActiveTerrainEffect effect{
         id,
         std::move(name),
         std::move(indices),
         difficulty,
         turns_remaining,
-        source_agent_idx
-    });
+        source_agent_idx,
+        slip_save_dc,
+        slip_distance_feet
+    };
+    activeTerrainEffects_.push_back(effect);
 
     updateTerrain();
     return id;

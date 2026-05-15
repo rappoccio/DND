@@ -82,7 +82,8 @@
 	"Black Tentacles",
 	"Wall of Fire",
 	"Hold Person",
-	"Blindness/Deafness"
+	"Blindness/Deafness",
+	"Charm Person"  
       ],
       "agent_class": "Wizard",
       "agent_char_level": 9,

@@ -11,6 +11,7 @@ Right panel – agent configuration GUI (add / remove / place agents)
 import sys
 import os
 import json
+import random
 
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
 
@@ -312,6 +313,9 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
+        self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
+        self.pending_shove_type        = ""    # "push" | "prone"
+        self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
         self.pending_move_cell    = None  # destination cell
@@ -511,13 +515,17 @@ class App:
         HW2 = W // 2 - 2
         TW3 = (W - 8) // 3
         self.btn_cbt_atk_action.rect.update( px,           self.btn_cbt_atk_action.rect.y,  HW2, self._BTN_H)
-        self.btn_cbt_pass_action.rect.update(px+HW2+4,     self.btn_cbt_pass_action.rect.y, HW2, self._BTN_H)
+        self.btn_cbt_unarmed.rect.update(    px+HW2+4,     self.btn_cbt_unarmed.rect.y,     HW2, self._BTN_H)
+        self.btn_cbt_pass_action.rect.update(px,           self.btn_cbt_pass_action.rect.y, W, self._BTN_H)
         self.btn_cbt_dash.rect.update(       px,           self.btn_cbt_dash.rect.y,       TW3, self._BTN_H)
         self.btn_cbt_dodge.rect.update(      px+TW3+4,     self.btn_cbt_dodge.rect.y,      TW3, self._BTN_H)
         self.btn_cbt_disengage.rect.update(  px+2*(TW3+4), self.btn_cbt_disengage.rect.y,  TW3, self._BTN_H)
         self.btn_cbt_atk_bonus.rect.update(   px,           self.btn_cbt_atk_bonus.rect.y,   TW3, self._BTN_H)
         self.btn_cbt_spell_bonus.rect.update( px+TW3+4,    self.btn_cbt_spell_bonus.rect.y,  TW3, self._BTN_H)
         self.btn_cbt_pass_bonus.rect.update(  px+2*(TW3+4),self.btn_cbt_pass_bonus.rect.y,   TW3, self._BTN_H)
+        TW2_shove = (W - 4) // 2
+        self.btn_cbt_shove_push.rect.update(  px,           self.btn_cbt_shove_push.rect.y,  TW2_shove, self._BTN_H)
+        self.btn_cbt_shove_prone.rect.update( px+TW2_shove+4, self.btn_cbt_shove_prone.rect.y, TW2_shove, self._BTN_H)
         self.btn_cbt_spell_action.rect.update(px,          self.btn_cbt_spell_action.rect.y,  W,  self._BTN_H)
         self.btn_cbt_end_turn.rect.update(    px,          self.btn_cbt_end_turn.rect.y,       W,  self._BTN_H)
         self.btn_cbt_end_combat.rect.update(  px,          self.btn_cbt_end_combat.rect.y,     W,  self._BTN_H)
@@ -534,6 +542,9 @@ class App:
 
         self.btn_cbt_atk_action  = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Attack",
+                                          COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
+        self.btn_cbt_unarmed     = Button(pygame.Rect(px,       dummy_y, HW, B),
+                                          "👊 Unarmed",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
         self.btn_cbt_pass_action = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "Pass",
@@ -553,6 +564,12 @@ class App:
         self.btn_cbt_pass_bonus  = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "Pass",
                                           COL_BTN_PASS, COL_BTN_PASS_HOV, self.font_md)
+        self.btn_cbt_shove_push  = Button(pygame.Rect(px,       dummy_y, HW, B),
+                                          "🔨 Shove (Push)",
+                                          (140, 100, 150), (160, 120, 170), self.font_md)
+        self.btn_cbt_shove_prone = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
+                                          "⬇ Shove (Prone)",
+                                          (140, 100, 150), (160, 120, 170), self.font_md)
         self.btn_cbt_spell_action= Button(pygame.Rect(px, dummy_y, W, B),
                                           "✨ Cast Spell",
                                           COL_BTN_SPELL, COL_BTN_SPELL_HOV, self.font_md)
@@ -1191,6 +1208,8 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
+        self.pending_shove_slot        = ""
+        self.pending_shove_type        = ""
         self.combat_log                = []
         # Initialize combat log file
         self._combat_log_file = "combat_log.txt"
@@ -1228,6 +1247,8 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
+        self.pending_shove_slot        = ""
+        self.pending_shove_type        = ""
         self.selected_idx              = -1
         self._reach_walk         = []
         self._reach_fly          = []
@@ -1287,6 +1308,8 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
+        self.pending_shove_slot        = ""
+        self.pending_shove_type        = ""
         self._opportunity_queue.clear()
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++)
@@ -1534,9 +1557,16 @@ class App:
         tgt_name = agents[target_idx].name if target_idx < len(agents) else "?"
 
         if not result.valid:
-            self._combat_log_add(f"{atk_name}: out of range")
-            self.pending_attack_slot = ""
-            self.attacks_remaining   = 0
+            # Check if attack failed because agent slipped
+            if atk_idx >= 0 and atk_idx < len(agents) and agents[atk_idx].conditions.slipped_this_turn:
+                self._combat_log_add(f"{atk_name} slipped and cannot act — turn ends.")
+                self.pending_attack_slot = ""
+                self.attacks_remaining   = 0
+                self._advance_turn()
+            else:
+                self._combat_log_add(f"{atk_name}: out of range")
+                self.pending_attack_slot = ""
+                self.attacks_remaining   = 0
             return
 
         if result.hit:
@@ -1587,12 +1617,99 @@ class App:
             # Attacks exhausted — mark action used and clear sequence state
             self.pending_attack_slot = ""
             self._attack_sequence_slot = ""
+
+            # Restore original weapons if this was an unarmed strike
+            if self._unarmed_strike_original_weapons:
+                idx_to_restore, orig_weapons = self._unarmed_strike_original_weapons
+                self.combat.set_agent_weapons(self.bm, idx_to_restore, orig_weapons)
+                self._unarmed_strike_original_weapons = None
+
             if slot == "action":
                 self.action_used = True
             else:
                 self.bonus_used = True
         # Refresh attack overlay (HP may have changed).
         self._update_attack_overlay()
+
+    def _start_unarmed_strike(self):
+        """Start an unarmed strike attack (1 + STR bludgeoning)."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+
+        stats = self.combat.get_agent_stats(self.bm, idx)
+
+        # Create a synthetic unarmed strike weapon (1 + STR mod bludgeoning)
+        unarmed = rpg.Weapon()
+        unarmed.name = "Unarmed Strike"
+        unarmed.type = rpg.WeaponType.Melee
+        unarmed.proficient = True
+        unarmed.finesse = True
+        unarmed.reach_ft = 5  # 5ft reach
+        unarmed.bonus_hit = 0
+        # 1d1 damage (always rolls 1, then STR mod is added as bonus)
+        dmg_roll = rpg.PhysicalDamageRoll()
+        dmg_roll.type = rpg.PhysicalDamageType.Bludgeoning
+        dmg_roll.num_dice = 1
+        dmg_roll.die_size = 1
+        dmg_roll.bonus = 0
+        unarmed.physical_damage_types = [dmg_roll]
+
+        # Save original weapons, add unarmed to front, use it, then restore
+        orig_weapons = self.combat.get_agent_weapons(self.bm, idx)
+        new_weapons = [unarmed] + orig_weapons
+        self.combat.set_agent_weapons(self.bm, idx, new_weapons)
+        self._unarmed_strike_original_weapons = (idx, orig_weapons)
+
+        # Start attack from action slot
+        self.pending_attack_slot = "action"
+        self.pending_weapon_idx = 0
+        self.attacks_remaining = 1
+        self._attack_sequence_slot = "action"
+        self._combat_log_add("Click a target for unarmed strike.")
+
+    def _start_shove(self, shove_type: str):
+        """Start a shove action (requires target selection)."""
+        if self.bonus_used:
+            return
+        self.pending_shove_slot = "bonus"
+        self.pending_shove_type = shove_type
+        hint = f"shove and {'knock prone' if shove_type == 'prone' else 'push 5ft'}"
+        self._combat_log_add(f"Click a target to {hint}.")
+
+    def _resolve_shove(self, target_idx: int):
+        """Execute the pending shove action."""
+        if not self.pending_shove_slot or not self.pending_shove_type:
+            return
+
+        atk_idx = self._current_agent_idx()
+        if atk_idx < 0:
+            self.pending_shove_slot = ""
+            self.pending_shove_type = ""
+            return
+
+        # Create ShoveAction
+        action = rpg.ShoveAction()
+        action.attacker_idx = atk_idx
+        action.target_idx = target_idx
+        action.knock_prone = (self.pending_shove_type == "prone")
+
+        # Execute shove
+        result = self.combat.execute_shove(self.bm, action)
+
+        # Log result
+        if result.valid:
+            self._combat_log_add(result.log_message)
+            if result.push_ft_applied > 0 or result.knocked_prone:
+                self._update_reach()
+                self._update_attack_overlay()
+        else:
+            self._combat_log_add(f"Shove failed: {result.log_message}")
+
+        # Mark bonus action as used
+        self.pending_shove_slot = ""
+        self.pending_shove_type = ""
+        self.bonus_used = True
 
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
         cpp_spells = []
@@ -2223,6 +2340,11 @@ class App:
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
         if not result.valid:
             self._combat_log_add(f"{cast_name}: spell failed (invalid)")
+            # If agent slipped and can't act, auto-advance their turn
+            if caster_idx >= 0 and caster_idx < len(agents):
+                if agents[caster_idx].conditions.slipped_this_turn:
+                    self._combat_log_add(f"{cast_name} slipped and cannot act — turn ends.")
+                    self._advance_turn()
             return
         if not result.target_results:
             self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
@@ -2242,20 +2364,61 @@ class App:
                 aoe_cells_raw = self._aoe_cells(cell, spell)
                 aoe_cells = self._filter_spell_cells_by_range_and_los(aoe_cells_raw, caster_idx, spell, center_cell=cell)
                 if aoe_cells:
-                    terrain_region = self._cells_to_terrain_region(aoe_cells, terrain_effect, spell.name, caster_idx, hatch_pattern, self.pending_spell_idx)
-                    if terrain_region:
-                        # Handle concentration replacement: remove old spell's terrain if one was dropped
-                        if result.concentration_replaced and result.prev_concentration_spell:
-                            agent_name = cast_name
-                            self._terrain_regions = [r for r in self._terrain_regions
-                                                      if not (r.get("source", {}).get("agent") == agent_name and
-                                                              r.get("source", {}).get("spell") == result.prev_concentration_spell)]
-                            self._combat_log_add(f"{cast_name} drops concentration on {result.prev_concentration_spell}.")
+                    # Check if this is slipping terrain (ice/grease)
+                    if terrain_effect.get("type") == "Slipping":
+                        # Use C++ terrain system for slipping mechanics
+                        slip_save_dc = terrain_effect.get("slip_save_dc", 10)
+                        slip_distance_feet = terrain_effect.get("slip_distance_feet", 5)
+                        effect_id = self.bm.place_terrain_effect(
+                            spell.name,
+                            aoe_cells,
+                            rpg.TerrainDifficulty.Slipping,
+                            spell.duration,
+                            caster_idx,
+                            slip_save_dc,
+                            slip_distance_feet
+                        )
+                        if effect_id >= 0:
+                            self._effect_meta[effect_id] = {
+                                "name": spell.name,
+                                "spell": spell.name,
+                                "caster": caster_idx,
+                                "spell_idx": self.pending_spell_idx
+                            }
+                            # Trigger initial DEX saves for agents in the affected area
+                            aoe_cell_set = set((c.row, c.col) for c in aoe_cells)
+                            for idx, agent in enumerate(agents):
+                                if idx == caster_idx:
+                                    continue
+                                agent_cell = (agent.y, agent.x)
+                                if agent_cell in aoe_cell_set:
+                                    # Roll DEX save
+                                    save_d20 = random.randint(1, 20)
+                                    dex_mod = (agent.stats.dex - 10) // 2
+                                    save_total = save_d20 + dex_mod
+                                    if save_total < slip_save_dc:
+                                        # Failed save — apply prone condition
+                                        agent.conditions.prone = True
+                                        self._combat_log_add(f"{agent.name} failed DEX save ({save_total} vs DC {slip_save_dc}) and fell prone.")
+                                    else:
+                                        self._combat_log_add(f"{agent.name} succeeded on DEX save ({save_total} vs DC {slip_save_dc}).")
+                    else:
+                        # Use Python-side terrain system for other terrain effects
+                        terrain_region = self._cells_to_terrain_region(aoe_cells, terrain_effect, spell.name, caster_idx, hatch_pattern, self.pending_spell_idx)
+                        if terrain_region:
+                            # Handle concentration replacement: remove old spell's terrain if one was dropped
+                            if result.concentration_replaced and result.prev_concentration_spell:
+                                agent_name = cast_name
+                                self._terrain_regions = [r for r in self._terrain_regions
+                                                          if not (r.get("source", {}).get("agent") == agent_name and
+                                                                  r.get("source", {}).get("spell") == result.prev_concentration_spell)]
+                                self._combat_log_add(f"{cast_name} drops concentration on {result.prev_concentration_spell}.")
 
-                        self._terrain_regions.append(terrain_region)
-                        self._apply_terrain_to_battle_map()
-                        if spell.requires_concentration:
-                            self._combat_log_add(f"{spell.name}: {cast_name} is concentrating.")
+                            self._terrain_regions.append(terrain_region)
+                            self._apply_terrain_to_battle_map()
+
+                    if spell.requires_concentration:
+                        self._combat_log_add(f"{spell.name}: {cast_name} is concentrating.")
             elif spell.terrain_difficulty != rpg.TerrainDifficulty.Normal:
                 aoe_cells = self._aoe_cells(cell, spell)
                 if aoe_cells:
@@ -3339,6 +3502,19 @@ class App:
                     pygame.draw.circle(self.screen, source_color, (center_x, center_y), radius, 3)
                     break
 
+        # Charmed indicator (circle linking to charmer)
+        if pt.conditions.charmed and agent_idx >= 0:
+            # Find the charmer from active conditions
+            for cond in self.combat.active_agent_conditions:
+                if cond.agent_idx == agent_idx and cond.condition_name == "Charmed":
+                    # Get charmer's color - use a color based on charmer index for visual linking
+                    charmer_color = self._get_caster_color(cond.caster_idx)
+                    center_x = int(screen_x + size_px / 2)
+                    center_y = int(screen_y + size_px / 2)
+                    radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
+                    pygame.draw.circle(self.screen, charmer_color, (center_x, center_y), radius, 3)
+                    break
+
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
         # Get map dimensions if not provided
@@ -3864,14 +4040,21 @@ class App:
             else:
                 self.btn_cbt_atk_action.text = "⚔ Attack"
 
+            TW2_action = (W - gap) // 2
             self.btn_cbt_atk_action.rect.x  = lx
             self.btn_cbt_atk_action.rect.y  = y
-            self.btn_cbt_atk_action.rect.w  = HW
-            self.btn_cbt_pass_action.rect.x = lx + HW + gap
-            self.btn_cbt_pass_action.rect.y = y
-            self.btn_cbt_pass_action.rect.w = HW
+            self.btn_cbt_atk_action.rect.w  = TW2_action
+            self.btn_cbt_unarmed.rect.x     = lx + TW2_action + gap
+            self.btn_cbt_unarmed.rect.y     = y
+            self.btn_cbt_unarmed.rect.w     = TW2_action
             if _cur_has_weapons:
                 self.btn_cbt_atk_action.draw(self.screen)
+            self.btn_cbt_unarmed.draw(self.screen)
+            y += B + gap
+
+            self.btn_cbt_pass_action.rect.x = lx
+            self.btn_cbt_pass_action.rect.y = y
+            self.btn_cbt_pass_action.rect.w = W
             self.btn_cbt_pass_action.draw(self.screen)
             y += B + gap
 
@@ -4016,6 +4199,32 @@ class App:
                 self.btn_cbt_pass_bonus.draw(self.screen)
             y += B
 
+        # Shove buttons (only if there are adjacent enemies, outside the spell layout logic)
+        if not self.bonus_used:
+            _has_adjacent = False
+            if 0 <= cur_idx < len(agents):
+                cur_agent = agents[cur_idx]
+                for i, agent in enumerate(agents):
+                    if i == cur_idx:
+                        continue
+                    dx = abs(agent.origin.col - cur_agent.origin.col)
+                    dy = abs(agent.origin.row - cur_agent.origin.row)
+                    if max(dx, dy) <= 1:  # Adjacent (within 5ft)
+                        _has_adjacent = True
+                        break
+
+            if _has_adjacent:
+                TW2_shove = (W - gap) // 2
+                self.btn_cbt_shove_push.rect.x  = lx
+                self.btn_cbt_shove_push.rect.y  = y
+                self.btn_cbt_shove_push.rect.w  = TW2_shove
+                self.btn_cbt_shove_prone.rect.x = lx + TW2_shove + gap
+                self.btn_cbt_shove_prone.rect.y = y
+                self.btn_cbt_shove_prone.rect.w = TW2_shove
+                self.btn_cbt_shove_push.draw(self.screen)
+                self.btn_cbt_shove_prone.draw(self.screen)
+                y += B + gap
+
         y += section_gap
 
         # ── Movement type toggles ──────────────────────────────────────────
@@ -4065,6 +4274,9 @@ class App:
         elif self.pending_spell_slot:
             hint = "Click a map location" if self.pending_spell_is_aoe else "Click a target"
             txt(f"→ {hint} to cast spell", lx, y, (190, 150, 255))
+            y += 14
+        elif self.pending_shove_slot:
+            txt("→ Click a target to shove", lx, y, (190, 190, 150))
             y += 14
 
         y += section_gap
@@ -4524,6 +4736,8 @@ class App:
                                         self._combat_log_add("No line of sight to target!")
                                 else:
                                     self._resolve_spell_cast(hit)
+                        elif self.pending_shove_slot and hit >= 0:
+                            self._resolve_shove(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -4706,7 +4920,8 @@ class App:
                         start, self._on_save_path_chosen,
                         save_mode=True,
                         extensions=JSON_EXTS,
-                        default_filename=os.path.basename(self._save_path)
+                        default_filename=os.path.basename(self._save_path),
+                        name_pattern="_agents.json"
                     )
 
                 # Load — open browser in load mode
@@ -4715,7 +4930,8 @@ class App:
                     self.file_browser.open(
                         start, self._on_load_path_chosen,
                         save_mode=False,
-                        extensions=JSON_EXTS
+                        extensions=JSON_EXTS,
+                        name_pattern="_agents.json"
                     )
 
                 # Long Rest — reset all spell slots
@@ -4783,6 +4999,8 @@ class App:
                 if not self.action_used:
                     if _has_wpn and self.btn_cbt_atk_action.clicked(event):
                         self._start_attack("action")
+                    if self.btn_cbt_unarmed.clicked(event):
+                        self._start_unarmed_strike()
                     if self.btn_cbt_pass_action.clicked(event):
                         self.action_used = True
                     if self.btn_cbt_dash.clicked(event):
@@ -4839,6 +5057,10 @@ class App:
                         self._start_attack("bonus")
                     if self.btn_cbt_spell_bonus.clicked(event):
                         self._start_cast_spell("bonus")
+                    if self.btn_cbt_shove_push.clicked(event):
+                        self._start_shove("push")
+                    if self.btn_cbt_shove_prone.clicked(event):
+                        self._start_shove("prone")
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

@@ -887,19 +887,21 @@
     "name": "Charm Monster",
     "description": "One creature you can see within range makes a Wisdom saving throw. It does so with Advantage if you or your allies are fighting it. On a failed save, the target has the Charmed condition until the spell ends or until you or your allies damage it. The Charmed creature is Friendly to you. When the spell ends, the target knows it was Charmed by you.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Save",
     "save_ability": "SaveWis",
     "range": 30,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 4,
     "upcast_dice_bonus": 0,
-    "requires_concentration": false,
+    "num_targets": 1,
+    "targets_per_upcast_level": 1,
+    "requires_concentration": true,
     "requires_los": true,
     "check_los_on_center": true,
     "conditions": [
@@ -915,19 +917,21 @@
     "name": "Charm Person",
     "description": "One Humanoid you can see within range makes a Wisdom saving throw. It does so with Advantage if you or your allies are fighting it. On a failed save, the target has the Charmed condition until the spell ends or until you or your allies damage it. The Charmed creature is Friendly to you. When the spell ends, the target knows it was Charmed by you.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Save",
     "save_ability": "SaveWis",
     "range": 30,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 1,
     "upcast_dice_bonus": 0,
-    "requires_concentration": false,
+    "num_targets": 1,
+    "targets_per_upcast_level": 1,
+    "requires_concentration": true,
     "requires_los": true,
     "check_los_on_center": true,
     "conditions": [
@@ -3328,7 +3332,7 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 1,
@@ -3337,8 +3341,10 @@
     "requires_los": false,
     "check_los_on_center": true,
     "terrain_effect": {
-      "type": "Difficult Terrain",
-      "difficulty": "Halved"
+      "type": "Slipping",
+      "difficulty": "Slipping",
+      "slip_save_dc": 10,
+      "slip_distance_feet": 5
     },
     "terrain_color": [
       220,
@@ -3491,7 +3497,14 @@
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
     "requires_los": false,
-    "check_los_on_center": true
+    "check_los_on_center": true,
+    "conditions": [
+      {
+        "condition_name": "Push",
+        "push_ft": 15,
+        "save_ability": "SaveStr"
+      }
+    ]
   },
   {
     "name": "Hallow",
@@ -3950,8 +3963,10 @@
     "requires_los": false,
     "check_los_on_center": true,
     "terrain_effect": {
-      "type": "Difficult Terrain",
-      "difficulty": "Halved"
+      "type": "Slipping",
+      "difficulty": "Slipping",
+      "slip_save_dc": 10,
+      "slip_distance_feet": 5
     },
     "terrain_color": [
       200,
@@ -6959,7 +6974,14 @@
     "upcast_dice_bonus": 1,
     "requires_concentration": false,
     "requires_los": false,
-    "check_los_on_center": true
+    "check_los_on_center": true,
+    "conditions": [
+      {
+        "condition_name": "Push",
+        "push_ft": 10,
+        "save_ability": "SaveCon"
+      }
+    ]
   },
   {
     "name": "Time Stop",

@@ -66,6 +66,7 @@ class FileBrowser:
         # mode state
         self.save_mode  = False
         self.extensions = IMAGE_EXTS
+        self.name_pattern = ""
         self._title     = ""
         self._filename  = ""     # editable in save mode
         self._fn_active = False  # filename input focused
@@ -74,7 +75,8 @@ class FileBrowser:
     def open(self, start_dir: str, callback, *,
              save_mode: bool = False,
              extensions=None,
-             default_filename: str = ""):
+             default_filename: str = "",
+             name_pattern: str = ""):
         if not os.path.isdir(start_dir):
             start_dir = os.path.dirname(start_dir) or "/"
         self.cwd        = os.path.abspath(start_dir)
@@ -83,6 +85,7 @@ class FileBrowser:
         self.save_mode  = save_mode
         self.extensions = extensions if extensions is not None else (
             JSON_EXTS if save_mode else IMAGE_EXTS)
+        self.name_pattern = name_pattern
         self._title     = "Save Layout As" if save_mode else "Open Layout / Select Sprite"
         self._filename  = default_filename
         self._fn_active = save_mode   # auto-focus filename in save mode
@@ -109,6 +112,9 @@ class FileBrowser:
                     entries.append("[/] " + name)
                     raw.append((name, True))
                 elif os.path.splitext(name)[1].lower() in self.extensions:
+                    # If name_pattern is specified, only show files matching the pattern
+                    if self.name_pattern and self.name_pattern not in name:
+                        continue
                     entries.append("    " + name)
                     raw.append((name, False))
         except PermissionError:

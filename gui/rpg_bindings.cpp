@@ -258,6 +258,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
         .def_readwrite("stunned",       &Agent::Conditions::stunned)
+        .def_readwrite("charmed",       &Agent::Conditions::charmed)
+        .def_readwrite("slipped_this_turn", &Agent::Conditions::slipped_this_turn)
         .def_readwrite("prone",         &Agent::Conditions::prone)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
@@ -274,6 +276,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.paralyzed)     s += " paralyzed";
             if (c.blinded)       s += " blinded";
             if (c.stunned)       s += " stunned";
+            if (c.charmed)       s += " charmed";
+            if (c.slipped_this_turn) s += " slipped_this_turn";
             return s + ">"; });
 
     // ── Damage type enums ─────────────────────────────────────────────────────
@@ -305,6 +309,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def(py::init<>())
         .def_readwrite("condition_name",     &AttackCondition::condition_name)
         .def_readwrite("condition_duration", &AttackCondition::condition_duration)
+        .def_readwrite("push_ft",            &AttackCondition::push_ft)
         .def_readwrite("save_repeat_turns",  &AttackCondition::save_repeat_turns)
         .def_readwrite("save_ability",       &AttackCondition::save_ability)
         .def_readwrite("save_dc_ability",    &AttackCondition::save_dc_ability);
@@ -526,6 +531,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("log_message",   &SpellTargetResult::log_message)
         .def_readonly("concentration_checked", &SpellTargetResult::concentration_checked)
         .def_readonly("concentration_lost",    &SpellTargetResult::concentration_lost)
+        .def_readonly("push_ft_applied",       &SpellTargetResult::push_ft_applied)
         .def("__repr__", [](const SpellTargetResult& r){
             return "<SpellTargetResult tgt=" + std::to_string(r.target_idx)
                  + (r.hit ? " HIT" : " MISS")
@@ -546,6 +552,29 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (!r.valid) return std::string("<SpellResult invalid>");
             return "<SpellResult '" + r.spell_name + "' "
                  + std::to_string(r.target_results.size()) + " target(s)>"; });
+
+    // ── ShoveAction / ShoveResult ────────────────────────────────────────────
+    py::class_<ShoveAction>(m, "ShoveAction")
+        .def(py::init<>())
+        .def_readwrite("attacker_idx", &ShoveAction::attacker_idx)
+        .def_readwrite("target_idx",   &ShoveAction::target_idx)
+        .def_readwrite("knock_prone",  &ShoveAction::knock_prone);
+
+    py::class_<ShoveResult>(m, "ShoveResult")
+        .def(py::init<>())
+        .def_readonly("valid",            &ShoveResult::valid)
+        .def_readonly("success",          &ShoveResult::success)
+        .def_readonly("attacker_roll",    &ShoveResult::attacker_roll)
+        .def_readonly("defender_roll",    &ShoveResult::defender_roll)
+        .def_readonly("push_ft_applied",  &ShoveResult::push_ft_applied)
+        .def_readonly("knocked_prone",    &ShoveResult::knocked_prone)
+        .def_readonly("log_message",      &ShoveResult::log_message)
+        .def("__repr__", [](const ShoveResult& r){
+            if (!r.valid) return std::string("<ShoveResult invalid>");
+            return "<ShoveResult " + (r.success ? std::string("success")
+                                                 : std::string("failed"))
+                 + " atk=" + std::to_string(r.attacker_roll)
+                 + " def=" + std::to_string(r.defender_roll) + ">"; });
 
     // ── ActiveEffect ──────────────────────────────────────────────────────────
     py::class_<ActiveEffect>(m, "ActiveEffect")
@@ -637,6 +666,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("hp_before",             &AttackResult::hp_before)
         .def_readonly("hp_after",     &AttackResult::hp_after)
         .def_readonly("target_down",  &AttackResult::target_down)
+        .def_readonly("push_ft_applied", &AttackResult::push_ft_applied)
         .def("__repr__", [](const AttackResult& r){
             if (!r.valid) return std::string("<AttackResult invalid>");
             std::string s = "<AttackResult d20=" + std::to_string(r.d20)
@@ -918,6 +948,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Validate + execute a SpellAction; applies damage/healing to targets\n"
              "and writes HP changes back to BattleMap.\n"
              "Registers persistent effects when spell.duration > 1.")
+        .def("execute_shove",
+             &CombatEngine::executeShove,
+             py::arg("battle_map"), py::arg("action"),
+             "Execute a shove attempt (bonus action, contested Athletics check).\n"
+             "On success: either push 5ft or knock prone based on action.knock_prone.\n"
+             "Returns ShoveResult with rolls, success status, and log message.")
         .def("tick_effects",
              &CombatEngine::tickEffects,
              py::arg("battle_map"),
@@ -1112,6 +1148,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Normal",    TerrainDifficulty::Normal)
         .value("Halved",    TerrainDifficulty::Halved)
         .value("Quartered", TerrainDifficulty::Quartered)
+        .value("Slipping",  TerrainDifficulty::Slipping)
         .export_values();
 
     // ── LightLevel enum ──────────────────────────────────────────────────────
@@ -1206,6 +1243,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Jump placed agent[idx] to new_origin (ignores walls, deducts from walk budget).\n"
              "is_running: True for running jump (up to STR), False for standing jump (up to STR/2).\n"
              "Returns False if out of range or insufficient movement budget.")
+        .def("force_move_agent",   &BattleMap::forceMoveAgent,
+             py::arg("idx"), py::arg("push_from"), py::arg("push_ft"),
+             "Force move agent[idx] away from push_from by up to push_ft.\n"
+             "Does not consume movement budget. Stops at walls.\n"
+             "Returns number of cells actually moved.")
         .def("remove_agent",       &BattleMap::removeAgent,
              py::arg("idx"),
              "Remove placed agent[idx] from the map.")
@@ -1309,6 +1351,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("place_terrain_effect", &BattleMap::placeTerrainEffect,
              py::arg("name"), py::arg("cells"), py::arg("difficulty"),
              py::arg("turns_remaining"), py::arg("source_agent_idx"),
+             py::arg("slip_save_dc") = 10, py::arg("slip_distance_feet") = 5,
              "Place a temporary terrain effect covering the given cells.\n"
              "Returns unique effect id (for later removal/metadata).")
         .def("tick_terrain_effects", &BattleMap::tickTerrainEffects,

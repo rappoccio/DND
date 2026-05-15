@@ -84,6 +84,9 @@ struct AttackResult {
     int  hp_before    = 0;
     int  hp_after     = 0;
     bool target_down  = false;  // hp_after <= 0
+
+    // ── Forced movement (push/knockback) ──────────────────────────────────
+    int  push_ft_applied = 0;   // feet the target was actually pushed
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,6 +140,7 @@ struct SpellTargetResult {
     std::string log_message;   // formatted log message for this target
     bool concentration_checked = false;  // whether concentration save was checked
     bool concentration_lost = false;     // whether target lost concentration
+    int  push_ft_applied = 0;            // feet the target was actually pushed
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,6 +154,28 @@ struct SpellResult {
     std::vector<SpellTargetResult> target_results;
     bool        concentration_replaced     = false;   // caster dropped previous concentration
     std::string prev_concentration_spell   = {};      // name of dropped spell
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Shove action — bonus action to push or knock prone a nearby target
+// ─────────────────────────────────────────────────────────────────────────────
+struct ShoveAction {
+    int  attacker_idx = -1;    // index into BattleMap::placedAgents()
+    int  target_idx   = -1;
+    bool knock_prone  = false;  // true = knock prone; false = push 5ft
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of a shove attempt
+// ─────────────────────────────────────────────────────────────────────────────
+struct ShoveResult {
+    bool valid        = false;
+    bool success      = false;
+    int  attacker_roll = 0;   // Athletics check total
+    int  defender_roll = 0;   // Athletics or Acrobatics (whichever higher)
+    int  push_ft_applied = 0; // feet actually pushed (0 if knocked prone)
+    bool knocked_prone  = false;
+    std::string log_message;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -356,6 +382,7 @@ public:
     void applyBlinded(BattleMap& bm, int idx) noexcept;
     void applyIncapacitated(BattleMap& bm, int idx) noexcept;
     void applyStunned(BattleMap& bm, int idx) noexcept;
+    void applyCharmed(BattleMap& bm, int idx) noexcept;
     void applyProne(BattleMap& bm, int idx) noexcept;
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 
@@ -498,6 +525,12 @@ public:
     [[nodiscard]] SpellResult executeSpell(BattleMap& bm,
                                            const SpellAction& action);
 
+    // Execute a shove attempt (bonus action, contested Athletics check).
+    // Attacker vs target Athletics/Acrobatics (target chooses higher).
+    // On success: either push 5ft or knock prone based on knock_prone flag.
+    [[nodiscard]] ShoveResult executeShove(BattleMap& bm,
+                                           const ShoveAction& action);
+
     // Decrement turns_remaining on all active effects; apply per-tick damage/heal;
     // remove effects whose turns_remaining reaches 0.
     void tickEffects(BattleMap& bm);
@@ -572,6 +605,11 @@ private:
     std::unordered_map<int, int> swimRemaining_;
     std::unordered_map<int, int> burrowRemaining_;
 
+    // Distance moved on slipping terrain (ice/grease) since last save check.
+    // Key = agent_idx; value = feet moved on slipping terrain.
+    // Reset to 0 after a successful or failed save.
+    std::unordered_map<int, int> slipDistanceMoved_;
+
     // Active spell-applied conditions (Hold Person, Stun, etc.)
     std::vector<ActiveAgentCondition> activeAgentConditions_;
     int nextConditionId_{0};
@@ -597,6 +635,9 @@ private:
 
     // Apply a persistent spell effect (damage) to a target agent.
     void applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;
+
+    // Check for slipping terrain (ice/grease) and trigger saves/prone as needed.
+    void checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept;
 };
 
 } // namespace rpg

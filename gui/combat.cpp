@@ -335,6 +335,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return result;
 
+    // Reset slip distance counter and slipped flag for the new turn
+    slipDistanceMoved_[agent_idx] = 0;
+    agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
+
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     const auto& stats = agent.stats;
 
@@ -651,6 +655,9 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
             }
         }
     }
+
+    // Check for slipping terrain (ice/grease) along the path
+    checkSlippingTerrain(bm, idx, oldOrigin, newOrigin);
 
     return true;
 }
@@ -1051,6 +1058,24 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     const PlacedAgent& atk_pt = agents[action.attacker_idx];
     const PlacedAgent& tgt_pt = agents[action.target_idx];
 
+    // Check if attacker is charmed and target is the charmer
+    if (atk_pt.agent->getConditions().charmed) {
+        for (const auto& cond : activeAgentConditions_) {
+            if (cond.agent_idx == action.attacker_idx &&
+                cond.condition_name == "Charmed" &&
+                cond.caster_idx == action.target_idx) {
+                log_("Attack blocked: attacker is charmed and cannot attack the charmer");
+                return invalid;
+            }
+        }
+    }
+
+    // Check if attacker slipped this turn
+    if (atk_pt.agent->hasSlippedThisTurn()) {
+        log_("Attack blocked: attacker slipped and cannot act this turn");
+        return invalid;
+    }
+
     if (action.weapon_idx < 0 ||
             action.weapon_idx >= static_cast<int>(atk_pt.weapons.size()))
         return invalid;
@@ -1220,6 +1245,23 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
             } else {
                 log_("Target resisted weapon condition '{}' (save DC {})",
                      weapon_cond.condition_name, save_dc);
+            }
+        }
+    }
+
+    // Apply weapon push on hit (push_ft > 0 and weapon is proficient)
+    if (r.hit && w.proficient) {
+        for (const auto& weapon_cond : w.conditions) {
+            if (weapon_cond.condition_name == "Push" && weapon_cond.push_ft > 0) {
+                if (action.attacker_idx >= 0 && action.attacker_idx < static_cast<int>(agents.size())) {
+                    const auto& attacker = agents[action.attacker_idx];
+                    int cells_moved = bm.forceMoveAgent(action.target_idx, attacker.origin, weapon_cond.push_ft);
+                    r.push_ft_applied = cells_moved * 5;
+                    if (cells_moved > 0) {
+                        log_("Target pushed {} feet", r.push_ft_applied);
+                    }
+                }
+                break;  // only one push condition per attack
             }
         }
     }
@@ -1499,6 +1541,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         return result;
     const PlacedAgent& caster_pa = agents[static_cast<std::size_t>(action.caster_idx)];
     if (caster_pa.agent->getConditions().incapacitated) return result;
+    if (caster_pa.agent->hasSlippedThisTurn()) return result;
 
     const auto& spells = bm.getAgentSpells(action.caster_idx);
     if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size()))
@@ -1529,6 +1572,28 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple)
         ? action.target_indices
         : resolveAoeTargets(agents, sp, action.caster_idx, action.aoe_col, action.aoe_row);
+
+    // Check if caster is charmed and any target is the charmer
+    if (caster_pa.agent->getConditions().charmed) {
+        int charmer_idx = -1;
+        for (const auto& cond : activeAgentConditions_) {
+            if (cond.agent_idx == action.caster_idx &&
+                cond.condition_name == "Charmed") {
+                charmer_idx = cond.caster_idx;
+                break;
+            }
+        }
+
+        if (charmer_idx >= 0) {
+            // Check if charmer is in the target list
+            for (int tgt_idx : targets) {
+                if (tgt_idx == charmer_idx) {
+                    log_("Spell blocked: caster is charmed and cannot target the charmer with a damaging spell");
+                    return result;  // Invalid (valid = false)
+                }
+            }
+        }
+    }
 
     bool any_conditions_applied = false;
 
@@ -1872,6 +1937,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
                 any_conditions_applied = true;
+
+                // Apply spell push on failed save
+                if (spell_cond.condition_name == "Push" && spell_cond.push_ft > 0 && !tr.saved) {
+                    auto spell_agents = bm.placedAgents();
+                    if (action.caster_idx >= 0 && action.caster_idx < static_cast<int>(spell_agents.size())) {
+                        const auto& caster = spell_agents[action.caster_idx];
+                        int cells_moved = bm.forceMoveAgent(tgt_idx, caster.origin, spell_cond.push_ft);
+                        tr.push_ft_applied = cells_moved * 5;
+                        if (cells_moved > 0) {
+                            log_("Target pushed {} feet by {}", tr.push_ft_applied, sp.name);
+                        }
+                    }
+                }
             }
         }
 
@@ -2013,6 +2091,83 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     std::max(0, slots[static_cast<std::size_t>(slot_level - 1)] - 1);
             }
         }
+    }
+
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Execute a shove attempt (contested Athletics check)
+// ─────────────────────────────────────────────────────────────────────────────
+
+ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
+{
+    ShoveResult result;
+    auto agents = bm.placedAgents();
+
+    // Validate indices
+    if (action.attacker_idx < 0 || action.attacker_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid attacker index.";
+        return result;
+    }
+    if (action.target_idx < 0 || action.target_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid target index.";
+        return result;
+    }
+    if (action.attacker_idx == action.target_idx) {
+        result.log_message = "Cannot shove yourself.";
+        return result;
+    }
+
+    auto& attacker = agents[action.attacker_idx];
+    auto& target = agents[action.target_idx];
+
+    // Check adjacency (within 5ft = 1 cell in any direction)
+    int dx = std::abs(target.origin.col - attacker.origin.col);
+    int dy = std::abs(target.origin.row - attacker.origin.row);
+    int distance_cells = std::max(dx, dy);  // Chebyshev distance
+    if (distance_cells > 1) {
+        result.log_message = "Target is not adjacent (within 5 feet).";
+        return result;
+    }
+
+    // Roll attacker Athletics: d20 + STR mod + proficiency (assume all shoves are proficient)
+    int attacker_str_mod = (attacker.stats.str - 10) / 2;
+    auto attacker_stats = getAgentStats(bm, action.attacker_idx);
+    int attacker_prof = attacker_stats.prof_bonus;
+    int attacker_d20 = roll(20);
+    int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
+
+    // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
+    int target_str_mod = (target.stats.str - 10) / 2;
+    int target_dex_mod = (target.stats.dex - 10) / 2;
+    int target_d20 = roll(20);
+    int target_athletic = target_d20 + target_str_mod;
+    int target_acrobatic = target_d20 + target_dex_mod;
+    int defender_total = std::max(target_athletic, target_acrobatic);
+
+    result.valid = true;
+    result.attacker_roll = attacker_total;
+    result.defender_roll = defender_total;
+    result.success = (attacker_total > defender_total);  // ties go to defender
+
+    if (result.success) {
+        if (action.knock_prone) {
+            applyProne(bm, action.target_idx);
+            result.knocked_prone = true;
+            result.log_message = "\"" + std::string(attacker.agent->name()) + "\" knocked \"" + std::string(target.agent->name()) + "\" prone.";
+        } else {
+            // Push 5ft away
+            int cells_moved = bm.forceMoveAgent(action.target_idx, attacker.origin, 5);
+            result.push_ft_applied = cells_moved * 5;
+            if (result.push_ft_applied > 0) {
+                result.log_message = "\"" + std::string(attacker.agent->name()) + "\" pushed \"" + std::string(target.agent->name()) + "\" " + std::to_string(result.push_ft_applied) + " feet.";
+            } else {
+                result.log_message = "\"" + std::string(attacker.agent->name()) + "\" tried to push \"" + std::string(target.agent->name()) + "\" but they didn't move.";
+            }
+        }
+    } else {
+        result.log_message = "\"" + std::string(target.agent->name()) + "\" resisted the shove from \"" + std::string(attacker.agent->name()) + "\".";
     }
 
     return result;
@@ -2261,6 +2416,19 @@ void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
     log_("Agent stunned: cannot act, auto-fails STR/DEX saves, attacks have advantage");
 }
 
+void CombatEngine::applyCharmed(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set charmed condition
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.charmed = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent charmed: cannot attack the charmer or target with damaging abilities/effects");
+}
+
 void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -2322,6 +2490,8 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyIncapacitated(bm, cond.agent_idx);
             } else if (cond.condition_name == "Stunned") {
                 applyStunned(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Charmed") {
+                applyCharmed(bm, cond.agent_idx);
             }
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);
@@ -2361,6 +2531,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     } else if (cond.condition_name == "Stunned") {
                         agent_cond.stunned = false;
                         agent_cond.incapacitated = false;
+                    } else if (cond.condition_name == "Charmed") {
+                        agent_cond.charmed = false;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for agent[{}]",
@@ -2674,6 +2846,70 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         healAgent(bm, target_idx, total_damage);
     } else {
         damageAgent(bm, target_idx, total_damage);
+    }
+}
+
+void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size()))
+        return;
+
+    // Check all terrain effects to see if any are slipping terrain
+    for (const auto& terrain : bm.activeTerrainEffects()) {
+        if (terrain.difficulty != TerrainDifficulty::Slipping)
+            continue;
+
+        // Check if the agent moved into a cell with this slipping terrain
+        std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
+        bool on_slipping_terrain = false;
+        for (const auto& cell : pathCells) {
+            int cell_idx = cell.row * bm.gridCols() + cell.col;
+            if (std::find(terrain.cell_indices.begin(), terrain.cell_indices.end(), cell_idx) != terrain.cell_indices.end()) {
+                on_slipping_terrain = true;
+                break;
+            }
+        }
+
+        if (!on_slipping_terrain)
+            continue;
+
+        // Agent is on slipping terrain; add distance moved to slip counter
+        int distance_moved = std::max({
+            std::abs(newOrigin.col - oldOrigin.col),
+            std::abs(newOrigin.row - oldOrigin.row)
+        }) * 5;  // Each cell is 5 feet
+
+        int& slip_counter = slipDistanceMoved_[agent_idx];
+        slip_counter += distance_moved;
+
+        // Check if they've moved enough feet to trigger a save
+        if (slip_counter >= terrain.slip_distance_feet) {
+            // Roll DEX save
+            Agent::Stats target_stats = bm.getAgentStats(agent_idx);
+            int save_d20 = roll(20);
+            int save_mod = (target_stats.dex - 10) / 2;
+            int total_save = save_d20 + save_mod;
+
+            log_("{} attempts DEX save ({}) vs DC {} - d20={}, mod={}, total={}",
+                 agents[static_cast<std::size_t>(agent_idx)].agent->name(),
+                 terrain.name,
+                 terrain.slip_save_dc,
+                 save_d20, save_mod, total_save);
+
+            if (total_save < terrain.slip_save_dc) {
+                // Save failed — apply prone condition and skip turn
+                log_("{} slipped on {} and fell prone", agents[static_cast<std::size_t>(agent_idx)].agent->name(), terrain.name);
+                applyProne(bm, agent_idx);
+                agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(true);
+            } else {
+                // Save succeeded — stay upright
+                log_("{} maintained footing on {}", agents[static_cast<std::size_t>(agent_idx)].agent->name(), terrain.name);
+            }
+
+            // Reset slip counter after save check
+            slip_counter = 0;
+        }
     }
 }
 
