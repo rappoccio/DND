@@ -380,6 +380,7 @@ namespace rpg {
       bool prone{false};         // crawling only, disadvantage on attacks; advantage for attackers within 5ft
       bool charmed{false};       // cannot attack the charmer or target with damaging abilities
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
+      bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
     };
 
     // ── Construction ───────────────────────────────────────────────────────

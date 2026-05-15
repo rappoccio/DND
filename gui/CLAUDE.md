@@ -2,6 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL CONSTRAINT: NEVER RUN COMMANDS WITHOUT EXPLICIT PERMISSION
+
+**YOU MUST NOT EXECUTE ANY BASH COMMANDS, PYTHON SCRIPTS, BUILD COMMANDS, OR ANY OTHER OPERATIONS WITHOUT THE USER EXPLICITLY REQUESTING IT.**
+
+This includes:
+- `cmake` build commands
+- `python` script execution  
+- `python3 run_all_tests.py` or any test runners
+- `rm`, `rm -rf`, or any destructive file operations
+- `git` commands that modify state
+- Anything that runs code or changes the filesystem
+
+**Why:** The user handles all builds and executions. Running commands without permission has caused git lock issues in the build cache and violated explicit trust.
+
+**What you CAN do:**
+- Read files using Read tool
+- Propose changes with Edit/Write tools
+- Suggest commands for the user to run (via ! prefix in the prompt)
+
+**What you MUST NOT do:**
+- Execute anything via Bash tool without explicit "run X" request
+- Suggest rm -rf or destructive operations on any directory, especially build/
+- Assume context compaction won't make you forget this
+
+This rule survives context compaction because it's in CLAUDE.md.
+
 ## Architecture Overview
 
 This is a D&D 5e battle map viewer with a **two-layer architecture**:

@@ -9,15 +9,16 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
-from test_helpers import setup_battle_map, create_test_agent
+from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
 
 def test_condition_initialization():
     """Test that conditions are properly initialized."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert not cond.prone
     assert not cond.charmed
     assert not cond.blinded
@@ -28,94 +29,100 @@ def test_condition_initialization():
 def test_set_prone():
     """Test setting and clearing prone condition."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
     # Set prone
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.prone = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.prone
     print("✓ Can set prone condition")
 
     # Clear prone
     cond.prone = False
-    bm.set_agent_conditions(idx, cond)
-    cond = bm.get_agent_conditions(idx)
+    engine.set_agent_conditions(bm, idx, cond)
+    cond = engine.get_agent_conditions(bm, idx)
     assert not cond.prone
     print("✓ Can clear prone condition")
 
 def test_set_charmed():
     """Test charmed condition."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.charmed = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.charmed
     print("✓ Can set charmed condition")
 
 def test_set_blinded():
     """Test blinded condition."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.blinded = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.blinded
     print("✓ Can set blinded condition")
 
 def test_set_hidden():
     """Test hidden condition."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.hidden = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.hidden
     print("✓ Can set hidden condition")
 
 def test_set_restrained():
     """Test restrained condition."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.restrained = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.restrained
     print("✓ Can set restrained condition")
 
 def test_multiple_conditions():
     """Test setting multiple conditions simultaneously."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.prone = True
     cond.charmed = True
     cond.blinded = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.prone
     assert cond.charmed
     assert cond.blinded
@@ -125,19 +132,20 @@ def test_multiple_conditions():
 def test_condition_clearing():
     """Test clearing individual conditions."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.prone = True
     cond.charmed = True
     cond.blinded = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
     # Clear one condition
     cond.prone = False
-    bm.set_agent_conditions(idx, cond)
-    cond = bm.get_agent_conditions(idx)
+    engine.set_agent_conditions(bm, idx, cond)
+    cond = engine.get_agent_conditions(bm, idx)
 
     assert not cond.prone
     assert cond.charmed

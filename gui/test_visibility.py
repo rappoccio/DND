@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
-from test_helpers import setup_battle_map, create_test_agent
+from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
 
 def test_visibility_level_clear():
     """Test Clear visibility level."""
@@ -45,11 +45,12 @@ def test_visibility_level_blocked():
 def test_line_of_sight():
     """Test line of sight between agents."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     agent1 = create_test_agent("Agent1", 5, 5)
     agent2 = create_test_agent("Agent2", 7, 5)  # 2 cells away horizontally
 
-    idx1 = bm.add_agent(agent1)
-    idx2 = bm.add_agent(agent2)
+    idx1 = add_agent_to_battle(engine, bm, agent1)
+    idx2 = add_agent_to_battle(engine, bm, agent2)
 
     has_los = bm.has_line_of_sight(rpg.Cell(5, 5), 1, rpg.Cell(7, 5), 1)
     assert has_los
@@ -57,15 +58,13 @@ def test_line_of_sight():
 
 def test_can_see():
     """Test vision check with all factors."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
-    agent1 = create_test_agent("Observer", 5, 5, wis=14)
+    engine = setup_combat_engine()
+    agent1 = create_test_agent("Observer", 5, 5)
     agent2 = create_test_agent("Target", 7, 5)
 
-    idx1 = bm.add_agent(agent1)
-    idx2 = bm.add_agent(agent2)
-
-    a1 = bm.get_agent(idx1)
+    idx1 = add_agent_to_battle(engine, bm, agent1, wis=14)
+    idx2 = add_agent_to_battle(engine, bm, agent2)
     # WIS 14 = +2 modifier
     # Passive Perception = 10 + WIS modifier = 12
     wis_mod = (14 - 10) // 2
@@ -74,7 +73,10 @@ def test_can_see():
 
 def test_passive_perception():
     """Test passive perception calculation."""
-    agent = create_test_agent("Scout", 5, 5, wis=16)
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    agent = create_test_agent("Scout", 5, 5)
+    idx = add_agent_to_battle(engine, bm, agent, wis=16)
     # WIS 16 = +3 modifier
     # Passive Perception = 10 + WIS modifier = 13
     wis_mod = (16 - 10) // 2
@@ -84,7 +86,10 @@ def test_passive_perception():
 
 def test_stealth_bonus():
     """Test stealth bonus calculation."""
-    agent = create_test_agent("Rogue", 5, 5, dex=18)
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    agent = create_test_agent("Rogue", 5, 5)
+    idx = add_agent_to_battle(engine, bm, agent, dex=18)
     # DEX 18 = +4 modifier
     # Stealth = DEX modifier (if proficient would add prof bonus)
     dex_mod = (18 - 10) // 2
@@ -94,10 +99,10 @@ def test_stealth_bonus():
 
 def test_stealth_proficiency():
     """Test stealth proficiency bonus."""
-    agent = create_test_agent("Rogue", 5, 5, dex=16)
-    a = rpg.AgentConfig()
-    a.stats.dex = 16
-    a.stats.stealth_prof = True
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    agent = create_test_agent("Rogue", 5, 5)
+    idx = add_agent_to_battle(engine, bm, agent, dex=16)
     # With proficiency, gets +prof_bonus to stealth (typically +2 at low levels)
     dex_mod = (16 - 10) // 2
     assert dex_mod == 3
@@ -105,13 +110,13 @@ def test_stealth_proficiency():
 
 def test_check_hide_pre_combat():
     """Test hide check before combat (vs passive perception)."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
-    hider = create_test_agent("Hider", 5, 5, dex=16)
-    observer = create_test_agent("Observer", 8, 5, wis=14)
+    engine = setup_combat_engine()
+    hider = create_test_agent("Hider", 5, 5)
+    observer = create_test_agent("Observer", 8, 5)
 
-    hider_idx = bm.add_agent(hider)
-    observer_idx = bm.add_agent(observer)
+    hider_idx = add_agent_to_battle(engine, bm, hider, dex=16)
+    observer_idx = add_agent_to_battle(engine, bm, observer, wis=14)
 
     # Out of combat: uses passive perception
     in_combat = False
@@ -123,13 +128,13 @@ def test_check_hide_pre_combat():
 
 def test_check_hide_in_combat():
     """Test hide check during combat (vs active perception)."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
-    hider = create_test_agent("Hider", 5, 5, dex=16)
-    observer = create_test_agent("Observer", 8, 5, wis=14)
+    engine = setup_combat_engine()
+    hider = create_test_agent("Hider", 5, 5)
+    observer = create_test_agent("Observer", 8, 5)
 
-    hider_idx = bm.add_agent(hider)
-    observer_idx = bm.add_agent(observer)
+    hider_idx = add_agent_to_battle(engine, bm, hider, dex=16)
+    observer_idx = add_agent_to_battle(engine, bm, observer, wis=14)
 
     # In combat: observer makes active perception roll
     in_combat = True
@@ -140,32 +145,33 @@ def test_check_hide_in_combat():
 def test_hidden_condition():
     """Test that hidden condition is set after successful hide."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     agent = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(agent)
+    idx = add_agent_to_battle(engine, bm, agent)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert not cond.hidden
     cond.hidden = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.hidden
     print("✓ Hidden condition can be set and retrieved")
 
 def test_hidden_agent_reveals_on_attack():
     """Test that attacking reveals hidden agent."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     attacker = create_test_agent("Attacker", 5, 5)
     target = create_test_agent("Target", 7, 5)
 
-    att_idx = bm.add_agent(attacker)
-    tgt_idx = bm.add_agent(target)
+    att_idx = add_agent_to_battle(engine, bm, attacker)
+    tgt_idx = add_agent_to_battle(engine, bm, target)
 
     # Set target hidden
-    cond = bm.get_agent_conditions(tgt_idx)
+    cond = engine.get_agent_conditions(bm, tgt_idx)
     cond.hidden = True
-    bm.set_agent_conditions(tgt_idx, cond)
+    engine.set_agent_conditions(bm, tgt_idx, cond)
 
     # Attack should reveal the target
     # (actual attack execution may vary by implementation)
@@ -174,18 +180,16 @@ def test_hidden_agent_reveals_on_attack():
 
 def test_darkvision():
     """Test darkvision sight range."""
-    agent = create_test_agent("Dwarf", 5, 5)
-    a = rpg.AgentConfig()
-    a.stats.darkvision_range = 60  # 60 feet
-    assert a.stats.darkvision_range == 60
+    stats = rpg.Stats()
+    stats.darkvision_range = 60  # 60 feet
+    assert stats.darkvision_range == 60
     print("✓ Darkvision range property accessible")
 
 def test_truesight():
     """Test truesight sight range."""
-    agent = create_test_agent("Angel", 5, 5)
-    a = rpg.AgentConfig()
-    a.stats.truesight_range = 120  # 120 feet
-    assert a.stats.truesight_range == 120
+    stats = rpg.Stats()
+    stats.truesight_range = 120  # 120 feet
+    assert stats.truesight_range == 120
     print("✓ Truesight range property accessible")
 
 def test_devilssight():
@@ -198,18 +202,18 @@ def test_devilssight():
 
 def test_hidden_agent_detection_on_movement():
     """Test that moving hidden agent triggers LOS recheck."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
-    hider = create_test_agent("Hider", 5, 5, dex=16)
-    observer = create_test_agent("Observer", 8, 5, wis=14)
+    engine = setup_combat_engine()
+    hider = create_test_agent("Hider", 5, 5)
+    observer = create_test_agent("Observer", 8, 5)
 
-    hider_idx = bm.add_agent(hider)
-    observer_idx = bm.add_agent(observer)
+    hider_idx = add_agent_to_battle(engine, bm, hider, dex=16)
+    observer_idx = add_agent_to_battle(engine, bm, observer, wis=14)
 
     # Set hider as hidden
-    cond = bm.get_agent_conditions(hider_idx)
+    cond = engine.get_agent_conditions(bm, hider_idx)
     cond.hidden = True
-    bm.set_agent_conditions(hider_idx, cond)
+    engine.set_agent_conditions(bm, hider_idx, cond)
 
     # Move hider (implementation may trigger detection check)
     print("✓ Hidden agent movement can trigger detection (implementation varies)")
@@ -217,14 +221,15 @@ def test_hidden_agent_detection_on_movement():
 def test_blinded_condition_blocks_sight():
     """Test that blinded condition prevents seeing."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     blind_agent = create_test_agent("BlindAgent", 5, 5)
-    idx = bm.add_agent(blind_agent)
+    idx = add_agent_to_battle(engine, bm, blind_agent)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.blinded = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     assert cond.blinded
     print("✓ Blinded condition can be applied")
 

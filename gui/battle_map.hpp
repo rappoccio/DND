@@ -158,6 +158,7 @@ struct AgentConfig {
     int                   size{1};      // 1–6
     int                   startCol{0};
     int                   startRow{0};
+    Agent::Stats          stats;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

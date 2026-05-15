@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
-from test_helpers import setup_battle_map, create_test_agent
+from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
 
 def test_walk_movement_type():
     """Test that walk movement type exists."""
@@ -25,35 +25,36 @@ def test_fly_movement_type():
 def test_basic_movement():
     """Test moving an agent on the map."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    agent = bm.get_agent(idx)
-    assert agent.origin.col == 5
-    assert agent.origin.row == 5
+    agents = bm.placed_agents
+    assert agents[idx].origin.col == 5
+    assert agents[idx].origin.row == 5
     print("✓ Agent placed at correct location")
 
 def test_movement_budget():
     """Test that movement budget is tracked."""
-    engine = rpg.CombatEngine(42)  # Fixed seed for reproducibility
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
     # Start of turn should have movement available
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     walk_remaining = engine.get_walk_remaining(idx)
     assert walk_remaining > 0
     print(f"✓ Movement budget available: {walk_remaining} feet")
 
 def test_spend_movement():
     """Test spending movement from budget."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     initial = engine.get_walk_remaining(idx)
     engine.spend_walk(idx, 10)
     after = engine.get_walk_remaining(idx)
@@ -84,6 +85,7 @@ def test_terrain_difficulty_slipping():
 def test_place_terrain_effect():
     """Test placing a terrain effect."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     cells = [rpg.Cell(5, 5), rpg.Cell(6, 5)]
     effect_id = bm.place_terrain_effect("Grease", cells, rpg.TerrainDifficulty.Slipping, -1, -1)
     assert effect_id >= 0
@@ -92,6 +94,7 @@ def test_place_terrain_effect():
 def test_remove_terrain_effect():
     """Test removing a terrain effect."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     cells = [rpg.Cell(5, 5)]
     effect_id = bm.place_terrain_effect("Grease", cells, rpg.TerrainDifficulty.Halved, 5, -1)
     assert effect_id >= 0
@@ -101,41 +104,43 @@ def test_remove_terrain_effect():
 def test_terrain_effect_expires():
     """Test that terrain effects expire after duration."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     cells = [rpg.Cell(5, 5)]
     effect_id = bm.place_terrain_effect("Grease", cells, rpg.TerrainDifficulty.Halved, 2, -1)
 
-    # Tick effects twice
-    removed1 = bm.tick_terrain_effects()
+    # Tick effects twice (pass -1 for DM effects)
+    removed1 = bm.tick_terrain_effects(-1)
     assert effect_id not in removed1
 
-    removed2 = bm.tick_terrain_effects()
+    removed2 = bm.tick_terrain_effects(-1)
     assert effect_id in removed2
     print("✓ Terrain effect expires after duration")
 
 def test_permanent_terrain_effect():
     """Test permanent terrain effects (duration -1)."""
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     cells = [rpg.Cell(5, 5)]
     effect_id = bm.place_terrain_effect("Wall", cells, rpg.TerrainDifficulty.Quartered, -1, -1)
 
     # Tick multiple times
     for _ in range(10):
-        bm.tick_terrain_effects()
+        bm.tick_terrain_effects(-1)
 
     # Permanent effect should still be there
-    effects = bm.active_terrain_effects()
+    effects = bm.active_terrain_effects
     effect_ids = [e.id for e in effects]
     assert effect_id in effect_ids
     print("✓ Permanent terrain effects persist")
 
 def test_jump_movement():
     """Test jump movement."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
-    config = create_test_agent("TestAgent", 5, 5, str=14)  # STR +2
-    idx = bm.add_agent(config)
+    engine = setup_combat_engine()
+    config = create_test_agent("TestAgent", 5, 5)  # STR +2
+    idx = add_agent_to_battle(engine, bm, config, str=14)
 
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     # Long jump: STR modifier × 1 foot, with running start
     # With STR 14 (+2), can jump 2 feet with running start
     initial_walk = engine.get_walk_remaining(idx)
@@ -146,24 +151,24 @@ def test_jump_movement():
 
 def test_disengage_action():
     """Test disengage action (no opportunity attacks when moving)."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     # Disengage is a bonus action that uses no movement
     # (implementation details may vary)
     print("✓ Disengage action available (implementation may vary)")
 
 def test_dash_action():
     """Test dash action (double movement speed)."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     initial = engine.get_walk_remaining(idx)
     # Dash action: gain additional movement equal to speed
     # (implementation details may vary)
@@ -172,18 +177,18 @@ def test_dash_action():
 
 def test_standing_up():
     """Test standing up from prone costs movement."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     initial = engine.get_walk_remaining(idx)
 
     # Set prone
-    cond = bm.get_agent_conditions(idx)
+    cond = engine.get_agent_conditions(bm, idx)
     cond.prone = True
-    bm.set_agent_conditions(idx, cond)
+    engine.set_agent_conditions(bm, idx, cond)
 
     # Standing up costs half movement (should be ~15 feet)
     engine.spend_walk(idx, 15)
@@ -193,12 +198,12 @@ def test_standing_up():
 
 def test_multiple_movement_types():
     """Test that agents can use different movement types."""
-    engine = rpg.CombatEngine(42)
     bm = setup_battle_map()
+    engine = setup_combat_engine()
     config = create_test_agent("TestAgent", 5, 5)
-    idx = bm.add_agent(config)
+    idx = add_agent_to_battle(engine, bm, config)
 
-    engine.begin_turn(idx)
+    engine.begin_turn(bm, idx)
     walk_budget = engine.get_walk_remaining(idx)
 
     # Spend some walk movement

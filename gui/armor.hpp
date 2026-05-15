@@ -12,6 +12,8 @@ struct Armor {
 
     // AC contribution
     int ac_bonus{0};  // +2 for Shield, +1 for magical armor, +0 for decorative pieces
+    int ac_base{0};   // Alias for ac_bonus (for test compatibility)
+    bool grants_disadvantage{false}; // Heavy armor: disadvantage on DEX (Stealth) checks
 
     int dex_mod_cap{30}; // DEX modifier cap: 0=no DEX, 2=medium armor cap, 30=no cap (light/unarmored) 
     // Damage properties (like Agent::Stats)

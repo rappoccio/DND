@@ -9,10 +9,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
 
-# Test map and configuration paths
-TEST_MAP_PATH = "/Users/rappoccio/Documents/Claude/Projects/DNDGui/DND/maps/TestGrid12x12.png"
-TERRAIN_CONFIG_PATH = "/Users/rappoccio/Documents/Claude/Projects/DNDGui/DND/maps/TestGrid12x12_terrain.json"
-STATS_PATH = "/Users/rappoccio/Documents/Claude/Projects/DNDGui/DND/sprites/DND2024_MonsterStats.json"
+# Test map and configuration paths (relative to project root, one level up from gui/)
+import os
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_script_dir)  # Go up from gui/ to project root
+TEST_MAP_PATH = os.path.join(_project_root, "maps", "TestGrid12x12.png")
+TERRAIN_CONFIG_PATH = os.path.join(_project_root, "maps", "TestGrid12x12_terrain.json")
+STATS_PATH = os.path.join(_project_root, "sprites", "DND2024_MonsterStats.json")
 
 def setup_battle_map():
     """Initialize and analyze a battle map for testing."""
@@ -21,24 +24,47 @@ def setup_battle_map():
     bm.detect_walls()
     return bm
 
+def setup_combat_engine():
+    """Create a new CombatEngine with a fixed seed."""
+    return rpg.CombatEngine(42)  # Fixed seed for reproducibility
+
 def create_test_agent(name, col, row,
                       str=10, dex=10, con=10, intel=10, wis=10, cha=10,
                       hp=10, ac=10):
     """Create a test AgentConfig with sensible defaults."""
     config = rpg.AgentConfig()
     config.name = name
-    config.origin = rpg.Cell(col, row)
+    config.start_col = col
+    config.start_row = row
     config.size = 1
-    config.stats.str = str
-    config.stats.dex = dex
-    config.stats.con = con
-    config.stats.intel = intel
-    config.stats.wis = wis
-    config.stats.cha = cha
-    config.stats.max_hp = hp
-    config.stats.current_hp = hp
-    config.stats.ac = ac
+    config.sprite_path = "test.png"
     return config
+
+def add_agent_to_battle(engine, bm, config,
+                       str=10, dex=10, con=10, intel=10, wis=10, cha=10,
+                       hp=10, ac=10):
+    """Add an agent to the battle map with stats."""
+    engine.add_agent_config(bm, config)
+    engine.apply_agent_configs(bm)
+
+    # Find the newly added agent index
+    agents = bm.placed_agents
+    idx = len(agents) - 1
+
+    # Create and set stats
+    stats = rpg.Stats()
+    stats.str = str
+    stats.dex = dex
+    stats.con = con
+    stats.intel = intel
+    stats.wis = wis
+    stats.cha = cha
+    stats.hp_max = hp
+    stats.hp_cur = hp
+    stats.base_ac = ac
+    engine.set_agent_stats(bm, idx, stats)
+
+    return idx
 
 def assert_within(actual, expected, tolerance, msg=""):
     """Assert that actual is within tolerance of expected."""
