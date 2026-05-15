@@ -107,8 +107,8 @@ void BattleMap::analyzeGrid()
     tempTerrainDiff_.assign(static_cast<std::size_t>(rows_ * cols_), TerrainDifficulty::Normal);
 
     // Initialize base and computed light levels (default BrightLight)
-    baseLightLevel_.assign(static_cast<std::size_t>(rows_ * cols_), LightLevel::BrightLight);
-    lightLevel_.assign(static_cast<std::size_t>(rows_ * cols_), LightLevel::BrightLight);
+    baseVisibilityLevel_.assign(static_cast<std::size_t>(rows_ * cols_), VisibilityLevel::Clear);
+    lightLevel_.assign(static_cast<std::size_t>(rows_ * cols_), VisibilityLevel::Clear);
 
     std::cout << std::format("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
@@ -937,20 +937,20 @@ void BattleMap::setTerrainType(Cell c, TerrainType t) noexcept {
 }
 
 // ── Light levels (visibility & darkvision) ────────────────────────────────────
-LightLevel BattleMap::getLightLevel(Cell c) const noexcept {
+VisibilityLevel BattleMap::getLightLevel(Cell c) const noexcept {
     if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
-        return LightLevel::BrightLight;  // out-of-bounds is bright
+        return VisibilityLevel::Clear;  // out-of-bounds is bright
     return lightLevel_[c.row * cols_ + c.col];
 }
 
-void BattleMap::setLightLevel(Cell c, LightLevel lvl) noexcept {
+void BattleMap::setLightLevel(Cell c, VisibilityLevel lvl) noexcept {
     if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
         return;
     lightLevel_[c.row * cols_ + c.col] = lvl;
 }
 
 void BattleMap::resetLightLevels() noexcept {
-    std::fill(lightLevel_.begin(), lightLevel_.end(), LightLevel::BrightLight);
+    std::fill(lightLevel_.begin(), lightLevel_.end(), VisibilityLevel::Clear);
 }
 
 bool BattleMap::canSee(Cell obs_origin, int obs_size,
@@ -979,11 +979,11 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
     int dist_ft = min_dist * 5;  // 1 cell = 5 feet
 
     // Find darkest (most restrictive) light level at target's footprint
-    LightLevel effective_light = LightLevel::BrightLight;
+    VisibilityLevel effective_light = VisibilityLevel::Clear;
     for (int tr = 0; tr < tgt_size; ++tr) {
         for (int tc = 0; tc < tgt_size; ++tc) {
             Cell c{tgt_origin.col + tc, tgt_origin.row + tr};
-            LightLevel cell_light = getLightLevel(c);
+            VisibilityLevel cell_light = getLightLevel(c);
             if (static_cast<int>(cell_light) > static_cast<int>(effective_light)) {
                 effective_light = cell_light;
             }
@@ -997,22 +997,24 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
 
     // Devil's Sight: sees in darkness and magical darkness (120ft max normally, but respecting range)
     if (devilssight_ft > 0 && dist_ft <= devilssight_ft &&
-        effective_light != LightLevel::BrightLight && effective_light != LightLevel::DimLight)
+        effective_light != VisibilityLevel::Clear && effective_light != VisibilityLevel::Dim)
         return true;
 
     // Normal visibility by light condition
     switch (effective_light) {
-        case LightLevel::BrightLight:
+        case VisibilityLevel::Clear:
             return true;  // always visible
-        case LightLevel::DimLight:
+        case VisibilityLevel::Dim:
             return true;  // lightly obscured but visible (disadvantage handled separately)
-        case LightLevel::PartiallyObscured:
+        case VisibilityLevel::LightlyObscured:
             return true;  // fog/shadows but visible (disadvantage handled separately)
-        case LightLevel::Darkness:
+        case VisibilityLevel::Dark:
             // visible only with darkvision within range
             return darkvision_ft > 0 && dist_ft <= darkvision_ft;
-        case LightLevel::MagicalDarkness:
+        case VisibilityLevel::MagicalDark:
             return false;  // magical darkness blocks darkvision
+        case VisibilityLevel::Blocked:
+            return false;  // cannot see through walls/obstacles
     }
     return false;
 }
@@ -1039,11 +1041,11 @@ bool BattleMap::perceptionDisadvantage(Cell obs_origin, int obs_size,
     }
 
     // Find effective light at target
-    LightLevel effective_light = LightLevel::BrightLight;
+    VisibilityLevel effective_light = VisibilityLevel::Clear;
     for (int tr = 0; tr < tgt_size; ++tr) {
         for (int tc = 0; tc < tgt_size; ++tc) {
             Cell c{tgt_origin.col + tc, tgt_origin.row + tr};
-            LightLevel cell_light = getLightLevel(c);
+            VisibilityLevel cell_light = getLightLevel(c);
             if (static_cast<int>(cell_light) > static_cast<int>(effective_light)) {
                 effective_light = cell_light;
             }
@@ -1051,12 +1053,12 @@ bool BattleMap::perceptionDisadvantage(Cell obs_origin, int obs_size,
     }
 
     // DimLight: disadvantage with normal or devil's sight
-    if (effective_light == LightLevel::DimLight) {
+    if (effective_light == VisibilityLevel::Dim) {
         return darkvision_ft == 0 && devilssight_ft == 0;  // no advantage from dark-only senses
     }
 
     // Darkness: disadvantage with darkvision
-    if (effective_light == LightLevel::Darkness) {
+    if (effective_light == VisibilityLevel::Dark) {
         return darkvision_ft > 0 && truesight_ft == 0;  // darkvision has disadvantage
     }
 
@@ -1231,10 +1233,10 @@ bool BattleMap::hasActiveTerrainEffects() const noexcept {
 }
 
 // ── Lighting system ────────────────────────────────────────────────────────
-void BattleMap::applyBaseLighting(LightLevel default_light,
+void BattleMap::applyBaseLighting(VisibilityLevel default_light,
                                    const std::vector<std::tuple<int, int, int, int>>& sources) noexcept {
     // Initialize base lighting to default
-    baseLightLevel_.assign(static_cast<std::size_t>(rows_) * cols_, default_light);
+    baseVisibilityLevel_.assign(static_cast<std::size_t>(rows_) * cols_, default_light);
 
     if (vLines_.empty() || hLines_.empty())
         return;  // Grid not yet analyzed
@@ -1274,12 +1276,12 @@ void BattleMap::applyBaseLighting(LightLevel default_light,
                 int dist = std::max(std::abs(r - grid_r), std::abs(c - grid_c));
                 if (dist <= bright_cells) {
                     int idx = r * cols_ + c;
-                    baseLightLevel_[static_cast<std::size_t>(idx)] =
-                        std::min(baseLightLevel_[static_cast<std::size_t>(idx)], LightLevel::BrightLight);
+                    baseVisibilityLevel_[static_cast<std::size_t>(idx)] =
+                        std::min(baseVisibilityLevel_[static_cast<std::size_t>(idx)], VisibilityLevel::Clear);
                 } else if (dist <= dim_cells) {
                     int idx = r * cols_ + c;
-                    baseLightLevel_[static_cast<std::size_t>(idx)] =
-                        std::min(baseLightLevel_[static_cast<std::size_t>(idx)], LightLevel::DimLight);
+                    baseVisibilityLevel_[static_cast<std::size_t>(idx)] =
+                        std::min(baseVisibilityLevel_[static_cast<std::size_t>(idx)], VisibilityLevel::Dim);
                 }
             }
         }
@@ -1290,11 +1292,11 @@ void BattleMap::applyBaseLighting(LightLevel default_light,
 
 void BattleMap::updateLighting() noexcept {
     // Step 1: reset computed lighting to base
-    lightLevel_ = baseLightLevel_;
+    lightLevel_ = baseVisibilityLevel_;
 
     // Step 2: apply normal light effects (brightest wins = std::min)
     for (const auto& eff : activeLightEffects_) {
-        if (eff.light_level == LightLevel::MagicalDarkness)
+        if (eff.light_level == VisibilityLevel::MagicalDark)
             continue;  // Handle magical darkness in step 3
         for (int idx : eff.cell_indices) {
             if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
@@ -1306,18 +1308,18 @@ void BattleMap::updateLighting() noexcept {
 
     // Step 3: apply magical darkness (always wins = override)
     for (const auto& eff : activeLightEffects_) {
-        if (eff.light_level != LightLevel::MagicalDarkness)
+        if (eff.light_level != VisibilityLevel::MagicalDark)
             continue;
         for (int idx : eff.cell_indices) {
             if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
-                lightLevel_[static_cast<std::size_t>(idx)] = LightLevel::MagicalDarkness;
+                lightLevel_[static_cast<std::size_t>(idx)] = VisibilityLevel::MagicalDark;
             }
         }
     }
 }
 
 int BattleMap::placeLightEffect(std::string name, std::vector<Cell> cells,
-                                 LightLevel level, int turns_remaining,
+                                 VisibilityLevel level, int turns_remaining,
                                  int source_agent_idx) noexcept {
     // Convert Cell list to flat indices
     std::vector<int> indices;
@@ -1467,21 +1469,21 @@ const std::vector<ActiveObscurationEffect>& BattleMap::activeObscurationEffects(
     return activeObscurationEffects_;
 }
 
-LightLevel BattleMap::getObscurationAtCell(const Cell& c) const noexcept {
+VisibilityLevel BattleMap::getObscurationAtCell(const Cell& c) const noexcept {
     // Check all obscuration effects to find the highest obscuration level at this cell
-    LightLevel highest = LightLevel::BrightLight;
+    VisibilityLevel highest = VisibilityLevel::Clear;
 
     for (const auto& effect : activeObscurationEffects_) {
         // Check if this cell is in the effect
         if (std::find(effect.cells.begin(), effect.cells.end(), c) != effect.cells.end()) {
             // MagicalDarkness is highest priority (most obscuring)
-            if (effect.obscuration_level == LightLevel::MagicalDarkness) {
-                return LightLevel::MagicalDarkness;
+            if (effect.obscuration_level == VisibilityLevel::MagicalDark) {
+                return VisibilityLevel::MagicalDark;
             }
             // PartiallyObscured is next
-            if (effect.obscuration_level == LightLevel::PartiallyObscured &&
-                highest != LightLevel::MagicalDarkness) {
-                highest = LightLevel::PartiallyObscured;
+            if (effect.obscuration_level == VisibilityLevel::LightlyObscured &&
+                highest != VisibilityLevel::MagicalDark) {
+                highest = VisibilityLevel::LightlyObscured;
             }
         }
     }

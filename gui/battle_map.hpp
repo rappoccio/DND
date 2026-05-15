@@ -73,15 +73,16 @@ enum class TerrainDifficulty {
     Slipping = 3,    // Icy/greasy surface; DEX save every N feet or go prone
 };
 
-// ── Light levels for visibility (D&D 5e lighting conditions) ──────────────────
-// Ordered by restrictiveness: BrightLight (0) < DimLight (1) < Darkness (2) < MagicalDarkness (3).
-// Used for darkvision and visibility calculations.
-enum class LightLevel {
-    BrightLight = 0,       // Full visibility
-    DimLight = 1,          // Lightly obscured; visible to all with LOS
-    PartiallyObscured = 2, // Fog, shadows; disadvantage on perception checks
-    Darkness = 3,          // Heavily obscured; visible only with darkvision within range
-    MagicalDarkness = 4    // Impenetrable; even darkvision cannot see through it
+// ── Visibility/Light levels for D&D 5e lighting and vision ─────────────────────
+// Unified enum for both agent-to-agent sight and location lighting.
+// Ordered by restrictiveness: Clear (0) < Dim (1) < LightlyObscured (2) < Dark (3) < MagicalDark (4) < Blocked (5).
+enum class VisibilityLevel {
+    Clear = 0,              // Fully visible / BrightLight (normal vision)
+    Dim,                    // Lightly obscured but visible / DimLight (visible to all with LOS)
+    LightlyObscured,        // Obscured by fog/shadows (disadvantage on perception/attacks)
+    Dark,                   // Heavily obscured / Darkness (needs darkvision to see)
+    MagicalDark,            // Impenetrable / MagicalDarkness (needs devil's sight to see)
+    Blocked                 // Cannot see at all (blocked by walls, full cover, etc.)
 };
 
 // ── Active temporary terrain effect ────────────────────────────────────────
@@ -102,7 +103,7 @@ struct ActiveLightEffect {
     int              id;               // unique, returned to Python on add
     std::string      name;             // "Torch", "Darkness", "Faerie Fire", etc.
     std::vector<int> cell_indices;     // flat: row*cols_ + col
-    LightLevel       light_level;      // BrightLight, DimLight, Darkness, or MagicalDarkness
+    VisibilityLevel  light_level;      // Clear, Dim, Dark, or MagicalDark
     int              turns_remaining;  // -1 = permanent, 0+ = expires after N turns
     int              source_agent_idx; // -1 = DM-placed or map-defined
 };
@@ -112,7 +113,7 @@ struct ActiveObscurationEffect {
     int          id;                     // unique, returned to Python on add
     int          source_agent_idx = -1;  // caster/source of the effect
     std::vector<Cell> cells;             // cells occupied by this obscuration
-    LightLevel   obscuration_level;      // PartiallyObscured or MagicalDarkness
+    VisibilityLevel obscuration_level;   // LightlyObscured, Dark, or MagicalDark
     int          turns_remaining = 0;    // -1 = permanent, 0+ = expires after N turns
 };
 
@@ -324,9 +325,9 @@ public:
 
     // ── Light levels (visibility & darkvision) ────────────────────────────
     // Get/set the light level at a cell (default BrightLight).
-    [[nodiscard]] LightLevel getLightLevel(Cell c) const noexcept;
-    void setLightLevel(Cell c, LightLevel lvl) noexcept;
-    void resetLightLevels() noexcept;  // fills entire map with BrightLight
+    [[nodiscard]] VisibilityLevel getVisibilityLevel(Cell c) const noexcept;
+    void setVisibilityLevel(Cell c, VisibilityLevel lvl) noexcept;
+    void resetVisibilityLevels() noexcept;  // fills entire map with BrightLight
 
     // Check if an observer can see a target, considering LOS, light, and vision types.
     // obs_origin/tgt_origin: top-left cell of each agent's footprint
@@ -345,15 +346,15 @@ public:
 
     // Apply base lighting from JSON: set default light level, then apply spherical sources.
     // sources: list of (pixel_x, pixel_y, bright_radius_ft, dim_radius_ft)
-    void applyBaseLighting(LightLevel default_light,
+    void applyBaseLighting(VisibilityLevel default_light,
                            const std::vector<std::tuple<int, int, int, int>>& sources) noexcept;
 
-    // Recompute lightLevel_ from baseLightLevel_ + activeLightEffects_.
+    // Recompute lightLevel_ from baseVisibilityLevel_ + activeLightEffects_.
     void updateLighting() noexcept;
 
     // Dynamic light effects (analogous to terrain effects):
     [[nodiscard]] int  placeLightEffect(std::string name, std::vector<Cell> cells,
-                                        LightLevel level, int turns_remaining,
+                                        VisibilityLevel level, int turns_remaining,
                                         int source_agent_idx) noexcept;
     [[nodiscard]] std::vector<int> tickLightEffects(int source_agent_idx) noexcept;
     [[nodiscard]] std::vector<int> tickDmLightEffects() noexcept;
@@ -384,7 +385,11 @@ public:
     // Get all active obscuration effects (for Python to render overlay).
     [[nodiscard]] const std::vector<ActiveObscurationEffect>& activeObscurationEffects() const noexcept;
     // Get the obscuration level at a specific cell. Returns BrightLight if no obscuration.
-    [[nodiscard]] LightLevel getObscurationAtCell(const Cell& c) const noexcept;
+    [[nodiscard]] VisibilityLevel getObscurationAtCell(const Cell& c) const noexcept;
+    // Get/set light level at a cell (for debugging or manual map configuration).
+    [[nodiscard]] VisibilityLevel getLightLevel(Cell c) const noexcept;
+    void setLightLevel(Cell c, VisibilityLevel lvl) noexcept;
+    void resetLightLevels() noexcept;
     // Decrement turns_remaining for all obscuration effects.
     // Removes expired effects. Returns list of removed effect ids.
     [[nodiscard]] std::vector<int> tickObscurationEffects() noexcept;
@@ -445,8 +450,8 @@ private:
     CellSet            disallowed_;
     std::vector<double>     terrainMult_;     // cols × rows static movement multipliers (default 1.0)
     std::vector<TerrainType> terrainType_;    // cols × rows terrain types (default Standard)
-    std::vector<LightLevel>  baseLightLevel_; // cols × rows base light levels (from JSON; default BrightLight)
-    std::vector<LightLevel>  lightLevel_;     // cols × rows computed light levels (base + effects; default BrightLight)
+    std::vector<VisibilityLevel>  baseVisibilityLevel_; // cols × rows base light levels (from JSON; default BrightLight)
+    std::vector<VisibilityLevel>  lightLevel_;     // cols × rows computed light levels (base + effects; default BrightLight)
     std::vector<AgentConfig>  agentConfigs_;
     std::vector<PlacedAgent>  placedAgents_;
 

@@ -101,6 +101,10 @@ namespace rpg {
       bool save_prof_wis{false};
       bool save_prof_cha{false};
 
+      // ── Skill proficiency flags ────────────────────────────────────────
+      bool stealth_prof{false};     // proficiency in Stealth (DEX-based)
+      bool perception_prof{false};  // proficiency in Perception (WIS-based)
+
       // ── Spellcasting ──────────────────────────────────────────────────
       // 0=STR 1=DEX 2=CON 3=INT 4=WIS 5=CHA — drives spell attack rolls and
       // save DCs.  Matches SaveAbility_t ordinal values.
@@ -159,6 +163,14 @@ namespace rpg {
       [[nodiscard]] int spellSaveDcIntel() const noexcept { return _dc(intel, save_prof_intel); }
       [[nodiscard]] int spellSaveDcWis()   const noexcept { return _dc(wis,   save_prof_wis);   }
       [[nodiscard]] int spellSaveDcCha()   const noexcept { return _dc(cha,   save_prof_cha);   }
+
+      // ── Skill bonuses (computed, read-only) ──────────────────────────
+      [[nodiscard]] int stealthBonus() const noexcept {
+        return _mod(dex) + (stealth_prof ? prof_bonus : 0);
+      }
+      [[nodiscard]] int passivePerception() const noexcept {
+        return 10 + _mod(wis) + (perception_prof ? prof_bonus : 0);
+      }
 
       // Default constructor (initializes damage multiplier arrays to 1.0)
       Stats() {

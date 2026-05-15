@@ -558,6 +558,12 @@ class App:
         self.btn_cbt_disengage   = Button(pygame.Rect(px,     dummy_y, HW, B),
                                           "Disengage",
                                           COL_BTN_DISENG, COL_BTN_DISENG_HOV, self.font_md)
+        self.btn_cbt_hide        = Button(pygame.Rect(px,       dummy_y, HW, B),
+                                          "Hide",
+                                          (150, 150, 150), (180, 180, 180), self.font_md)
+        self.btn_cbt_hide_bonus  = Button(pygame.Rect(px,       dummy_y, HW, B),
+                                          "Hide",
+                                          (150, 150, 150), (180, 180, 180), self.font_md)
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
@@ -2255,6 +2261,12 @@ class App:
             self.move_remaining_swim = ag.swim_remaining
             self.move_remaining_burrow = ag.burrow_remaining
             self._combat_log_add(f"{ag.name} completes movement to ({ag.origin.col},{ag.origin.row}).")
+            # Check if hidden agent is detected after moving into LOS
+            if ag.conditions.hidden:
+                in_combat = len(self.initiative_order) > 0
+                detection_msg = self.combat.check_hidden_agent_detection(self.bm, move_idx, in_combat)
+                if detection_msg:
+                    self._combat_log_add(detection_msg)
             # Check if agent slipped — if so, their turn ends
             if ag.conditions.slipped_this_turn:
                 self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
@@ -3519,6 +3531,15 @@ class App:
                     pygame.draw.circle(self.screen, charmer_color, (center_x, center_y), radius, 3)
                     break
 
+        # Hidden indicator (eye-slash symbol)
+        if pt.conditions.hidden:
+            # Draw an eye-slash symbol in the top-right corner
+            icon_font = self.font_md
+            hidden_icon = icon_font.render("🚫", True, (200, 200, 200))
+            icon_x = int(screen_x + size_px - 16)
+            icon_y = int(screen_y - 8)
+            self.screen.blit(hidden_icon, (icon_x, icon_y))
+
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
         # Get map dimensions if not provided
@@ -4062,20 +4083,24 @@ class App:
             self.btn_cbt_pass_action.draw(self.screen)
             y += B + gap
 
-            # Dash, Dodge, Disengage buttons
-            TW3 = (W - 8) // 3
+            # Dash, Dodge, Disengage, Hide buttons
+            TW4 = (W - 12) // 4
             self.btn_cbt_dash.rect.x       = lx
             self.btn_cbt_dash.rect.y       = y
-            self.btn_cbt_dash.rect.w       = TW3
-            self.btn_cbt_dodge.rect.x      = lx + TW3 + gap
+            self.btn_cbt_dash.rect.w       = TW4
+            self.btn_cbt_dodge.rect.x      = lx + TW4 + gap
             self.btn_cbt_dodge.rect.y      = y
-            self.btn_cbt_dodge.rect.w      = TW3
-            self.btn_cbt_disengage.rect.x  = lx + 2 * (TW3 + gap)
+            self.btn_cbt_dodge.rect.w      = TW4
+            self.btn_cbt_disengage.rect.x  = lx + 2 * (TW4 + gap)
             self.btn_cbt_disengage.rect.y  = y
-            self.btn_cbt_disengage.rect.w  = TW3
+            self.btn_cbt_disengage.rect.w  = TW4
+            self.btn_cbt_hide.rect.x       = lx + 3 * (TW4 + gap)
+            self.btn_cbt_hide.rect.y       = y
+            self.btn_cbt_hide.rect.w       = TW4
             self.btn_cbt_dash.draw(self.screen)
             self.btn_cbt_dodge.draw(self.screen)
             self.btn_cbt_disengage.draw(self.screen)
+            self.btn_cbt_hide.draw(self.screen)
             y += B + gap
 
             # Long Jump button
@@ -4228,6 +4253,17 @@ class App:
                 self.btn_cbt_shove_push.draw(self.screen)
                 self.btn_cbt_shove_prone.draw(self.screen)
                 y += B + gap
+
+            # Hide (Cunning Action) button - only if agent has cunning action
+            if 0 <= cur_idx < len(agents):
+                agent = agents[cur_idx]
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.has_cunning_action:
+                    self.btn_cbt_hide_bonus.rect.x = lx
+                    self.btn_cbt_hide_bonus.rect.y = y
+                    self.btn_cbt_hide_bonus.rect.w = W
+                    self.btn_cbt_hide_bonus.draw(self.screen)
+                    y += B + gap
 
         y += section_gap
 
@@ -4869,6 +4905,13 @@ class App:
                                     self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
                                     self._advance_turn()
                                 else:
+                                    # Check if hidden agent is detected after moving into LOS
+                                    if ag.conditions.hidden:
+                                        in_combat = len(self.initiative_order) > 0
+                                        detection_msg = self.combat.check_hidden_agent_detection(self.bm, self.drag_idx, in_combat)
+                                        if detection_msg:
+                                            self._combat_log_add(detection_msg)
+
                                     # Only update UI if agent didn't slip
                                     self.move_remaining_walk   = ag.walk_remaining
                                     self.move_remaining_fly    = ag.fly_remaining
@@ -5040,6 +5083,16 @@ class App:
                             self.bm.placed_agents[idx].disengage()
                             self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging")
                         self.action_used = True
+                    if self.btn_cbt_hide.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            in_combat = len(self.initiative_order) > 0
+                            result = self.combat.check_hide(self.bm, idx, in_combat)
+                            if result.hidden:
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (stealth {result.stealth_total})")
+                            else:
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
+                        self.action_used = True
                     if self.btn_cbt_prone.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -5075,6 +5128,16 @@ class App:
                         self._start_shove("push")
                     if self.btn_cbt_shove_prone.clicked(event):
                         self._start_shove("prone")
+                    if self.btn_cbt_hide_bonus.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            in_combat = len(self.initiative_order) > 0
+                            result = self.combat.check_hide(self.bm, idx, in_combat)
+                            if result.hidden:
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (Cunning Action, stealth {result.stealth_total})")
+                            else:
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
+                        self.bonus_used = True
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

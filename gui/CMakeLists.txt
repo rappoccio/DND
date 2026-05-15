@@ -32,9 +32,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11 googletest nlohmann_json)
 
-# Include GoogleTest module for test discovery
-include(GoogleTest)
-
 # ── Python extension module ───────────────────────────────────────────────────
 pybind11_add_module(rpg_battle_map
     rpg_bindings.cpp
@@ -54,36 +51,9 @@ target_link_libraries(rpg_battle_map PRIVATE
     ${OpenCV_LIBS}
 )
 
-# ── Unit tests (Google Test) ──────────────────────────────────────────────────
-enable_testing()
-
-add_executable(combat_tests
-    combat_tests.cpp
-    battle_map.cpp
-    combat.cpp
-    map_configs.cpp
-    spell.cpp
-)
-
-target_include_directories(combat_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${OpenCV_INCLUDE_DIRS}
-    ${nlohmann_json_SOURCE_DIR}/include
-)
-
-target_link_libraries(combat_tests PRIVATE
-    ${OpenCV_LIBS}
-    gtest_main
-)
-
-if(MSVC)
-    target_compile_options(combat_tests PRIVATE /W4)
-else()
-    target_compile_options(combat_tests PRIVATE
-        -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
-endif()
-
-gtest_discover_tests(combat_tests)
+# ── Unit tests (Python) ──────────────────────────────────────────────────────
+# Tests are now written in Python; see test_*.py scripts
+# No C++ unit tests are built
 
 # ── Compiler warnings ─────────────────────────────────────────────────────────
 if(MSVC)

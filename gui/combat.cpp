@@ -659,6 +659,9 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     // Check for slipping terrain (ice/grease) along the path
     checkSlippingTerrain(bm, idx, oldOrigin, newOrigin);
 
+    // Update darkness-based blinding after movement
+    updateDarknessBlinding(bm, idx);
+
     return true;
 }
 
@@ -692,6 +695,9 @@ bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_run
             }
         }
     }
+
+    // Update darkness-based blinding after jump
+    updateDarknessBlinding(bm, idx);
 
     return true;
 }
@@ -1110,6 +1116,13 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Disadvantage: attacker is blinded");
     }
 
+    // Attacker is hidden: attacks have advantage (will be revealed after attack)
+    bool attacker_was_hidden = atk_cond.hidden;
+    if (attacker_was_hidden) {
+        adv = true;
+        log_("Advantage: attacker is hidden");
+    }
+
     // Target is paralyzed: attacker gets advantage
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
     if (tgt_cond.paralyzed) {
@@ -1264,6 +1277,14 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                 break;  // only one push condition per attack
             }
         }
+    }
+
+    // If attacker was hidden, reveal them (clear hidden condition)
+    if (attacker_was_hidden && action.attacker_idx >= 0 && action.attacker_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions cond = bm.getAgentConditions(action.attacker_idx);
+        cond.hidden = false;
+        bm.setAgentConditions(action.attacker_idx, cond);
+        log_("{} is no longer hidden", agents[action.attacker_idx].agent->name());
     }
 
     return r;
@@ -2066,6 +2087,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // If caster was hidden and cast a spell, reveal them
+    if (result.valid && action.caster_idx >= 0 && action.caster_idx < static_cast<int>(agents.size())) {
+        const Agent::Conditions& caster_cond = agents[static_cast<std::size_t>(action.caster_idx)].agent->getConditions();
+        if (caster_cond.hidden) {
+            Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
+            cond.hidden = false;
+            bm.setAgentConditions(action.caster_idx, cond);
+            log_("{} is no longer hidden", agents[static_cast<std::size_t>(action.caster_idx)].agent->name());
+        }
+    }
+
     // Decrement resources (uses or spell slots) after successful cast
     if (result.valid) {
         PlacedAgent& pa = bm.placedAgentMut(action.caster_idx);
@@ -2357,6 +2389,44 @@ void CombatEngine::applyBlinded(BattleMap& bm, int idx) noexcept
     log_("Agent blinded: attack rolls have disadvantage, attacks against have advantage");
 }
 
+void CombatEngine::updateDarknessBlinding(BattleMap& bm, int agent_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
+    const Agent::Stats& stats = pa.stats;
+    const VisibilityLevel obscuration = bm.getObscurationAtCell(pa.origin);
+
+    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+    bool should_be_blinded = false;
+
+    // Check if agent should be blinded based on darkness/heavy obscurement
+    if (obscuration == VisibilityLevel::Dark) {
+        // Heavily Obscured (Darkness): blinded unless have darkvision
+        should_be_blinded = (stats.darkvision_range == 0);
+    } else if (obscuration == VisibilityLevel::MagicalDark) {
+        // Magically Dark (Impenetrable): blinded unless have devil's sight
+        should_be_blinded = (stats.devilssight_range == 0);
+    }
+    // BrightLight: full visibility, never blinded
+    // DimLight: lightly obscured but visible, never blinded
+    // PartiallyObscured: not fully blinded (disadvantage on perception, but not Blinded condition)
+
+    // Apply or remove blinded condition as needed
+    if (should_be_blinded && !cond.blinded) {
+        cond.blinded = true;
+        bm.setAgentConditions(agent_idx, cond);
+        log_("{} is blinded by darkness", pa.agent->name());
+    } else if (!should_be_blinded && cond.blinded) {
+        // Only remove blinded if it was from darkness (not from a spell like Blindness/Deafness)
+        // For now, we'll remove it - in future we could track the source
+        cond.blinded = false;
+        bm.setAgentConditions(agent_idx, cond);
+        log_("{} can see again", pa.agent->name());
+    }
+}
+
 void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -2440,6 +2510,223 @@ void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
     bm.setAgentConditions(idx, cond);
 
     log_("Agent is now prone: movement costs doubled (triple in difficult terrain), disadvantage on attack rolls");
+}
+
+void CombatEngine::applyHidden(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.hidden = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("{} is now hidden", agents[static_cast<std::size_t>(idx)].agent->name());
+}
+
+HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept
+{
+    HideResult result;
+    auto agents = bm.placedAgents();
+
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid agent";
+        return result;
+    }
+
+    const PlacedAgent& hider_pa = agents[static_cast<std::size_t>(agent_idx)];
+    const Agent::Stats& hider_stats = hider_pa.stats;
+    Cell hider_origin = hider_pa.origin;
+    int hider_size = hider_pa.agent->getSize();
+
+    // Check if any other agent has LOS to the hider — if so, can't hide
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        if (static_cast<int>(i) == agent_idx) continue;
+        if (agents[i].agent->getConditions().incapacitated || agents[i].stats.hp_cur <= 0) continue;
+
+        const PlacedAgent& observer_pa = agents[i];
+        Cell observer_origin = observer_pa.origin;
+        int observer_size = observer_pa.agent->getSize();
+
+        // Check line of sight
+        if (bm.hasLineOfSight(hider_origin, hider_size, observer_origin, observer_size)) {
+            result.log_message = std::format(
+                "{} cannot hide: {} can see them",
+                hider_pa.agent->name(), observer_pa.agent->name()
+            );
+            return result;
+        }
+    }
+
+    result.valid = true;
+
+    // Roll Stealth check
+    result.stealth_d20 = roll(20);
+    int stealth_mod = hider_stats.stealthBonus();
+    result.stealth_total = result.stealth_d20 + stealth_mod;
+
+    log_("{} attempts to hide (Stealth check): d20={} + {} = {}",
+         hider_pa.agent->name(), result.stealth_d20, stealth_mod, result.stealth_total);
+
+    // Contest against agents with LOS to the hider
+    bool spotted = false;
+    std::string contest_log;
+
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        if (static_cast<int>(i) == agent_idx) continue;
+        if (agents[i].agent->getConditions().incapacitated || agents[i].stats.hp_cur <= 0) continue;
+
+        const PlacedAgent& observer_pa = agents[i];
+        Cell observer_origin = observer_pa.origin;
+        int observer_size = observer_pa.agent->getSize();
+
+        // Only contest against agents who have LOS to the hider
+        // (The first loop already confirmed no one has direct LOS, but checking again for clarity)
+        if (!bm.hasLineOfSight(hider_origin, hider_size, observer_origin, observer_size)) {
+            continue;  // Agent can't see hider, skip Perception contest
+        }
+
+        const Agent::Stats& observer_stats = observer_pa.stats;
+        int observer_perception = 0;
+
+        if (in_combat) {
+            // Active Perception roll
+            int perc_d20 = roll(20);
+            int perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
+            observer_perception = perc_d20 + perc_mod;
+            contest_log += std::format(
+                "\n  {}: Perception check d20={} + {} = {}",
+                observer_pa.agent->name(), perc_d20, perc_mod, observer_perception
+            );
+        } else {
+            // Passive Perception
+            observer_perception = observer_stats.passivePerception();
+            contest_log += std::format("\n  {}: Passive Perception {}", observer_pa.agent->name(), observer_perception);
+        }
+
+        if (observer_perception >= result.stealth_total) {
+            spotted = true;
+            contest_log += " — SPOTTED";
+        } else {
+            contest_log += " — doesn't notice";
+        }
+    }
+
+    if (spotted) {
+        result.log_message = std::format(
+            "{} failed to hide (Stealth {}){}",
+            hider_pa.agent->name(), result.stealth_total, contest_log
+        );
+    } else {
+        applyHidden(bm, agent_idx);
+        result.hidden = true;
+        result.log_message = std::format(
+            "{} successfully hidden (Stealth {}){}",
+            hider_pa.agent->name(), result.stealth_total, contest_log
+        );
+    }
+
+    return result;
+}
+
+std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx, bool in_combat) noexcept
+{
+    auto agents = bm.placedAgents();
+
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
+        return "";  // Invalid agent
+    }
+
+    const PlacedAgent& hider_pa = agents[static_cast<std::size_t>(agent_idx)];
+    const Agent::Conditions& hider_cond = hider_pa.agent->getConditions();
+
+    if (!hider_cond.hidden) {
+        return "";  // Agent not hidden, no detection check needed
+    }
+
+    const Agent::Stats& hider_stats = hider_pa.stats;
+    Cell hider_origin = hider_pa.origin;
+    int hider_size = hider_pa.agent->getSize();
+    int hider_stealth = hider_stats.stealthBonus();
+
+    // Check each other agent for LOS
+    std::string detection_log;
+    bool spotted = false;
+
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        if (static_cast<int>(i) == agent_idx) continue;
+        if (agents[i].agent->getConditions().incapacitated || agents[i].stats.hp_cur <= 0) continue;
+
+        const PlacedAgent& observer_pa = agents[i];
+        Cell observer_origin = observer_pa.origin;
+        int observer_size = observer_pa.agent->getSize();
+
+        // Only check agents with LOS to the hidden agent
+        if (!bm.hasLineOfSight(hider_origin, hider_size, observer_origin, observer_size)) {
+            continue;
+        }
+
+        // Agent has LOS, roll Perception to detect
+        const Agent::Stats& observer_stats = observer_pa.stats;
+        int observer_perception = 0;
+        int perc_d20 = 0;
+        int perc_mod = 0;
+        bool is_passive = false;
+
+        if (in_combat) {
+            // Active Perception roll
+            perc_d20 = roll(20);
+            perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
+            observer_perception = perc_d20 + perc_mod;
+        } else {
+            // Passive Perception
+            is_passive = true;
+            observer_perception = observer_stats.passivePerception();
+            perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
+        }
+
+        if (observer_perception >= hider_stealth) {
+            spotted = true;
+            if (is_passive) {
+                detection_log += std::format(
+                    "\n  {}: Passive Perception {} vs {} Stealth {} — SPOTTED",
+                    observer_pa.agent->name(), observer_perception,
+                    hider_pa.agent->name(), hider_stealth
+                );
+            } else {
+                detection_log += std::format(
+                    "\n  {}: Perception d20={} + {} = {} vs {} Stealth {} — SPOTTED",
+                    observer_pa.agent->name(), perc_d20, perc_mod, observer_perception,
+                    hider_pa.agent->name(), hider_stealth
+                );
+            }
+        } else {
+            if (is_passive) {
+                detection_log += std::format(
+                    "\n  {}: Passive Perception {} vs {} Stealth {} — doesn't notice",
+                    observer_pa.agent->name(), observer_perception,
+                    hider_pa.agent->name(), hider_stealth
+                );
+            } else {
+                detection_log += std::format(
+                    "\n  {}: Perception d20={} + {} = {} vs {} Stealth {} — doesn't notice",
+                    observer_pa.agent->name(), perc_d20, perc_mod, observer_perception,
+                    hider_pa.agent->name(), hider_stealth
+                );
+            }
+        }
+    }
+
+    if (spotted) {
+        // Reveal the hidden agent
+        Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+        cond.hidden = false;
+        bm.setAgentConditions(agent_idx, cond);
+
+        return std::format("{} is no longer hidden{}", hider_pa.agent->name(), detection_log);
+    }
+
+    return "";  // Still hidden
 }
 
 void CombatEngine::standup(BattleMap& bm, int idx) noexcept
@@ -2632,6 +2919,13 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 
         const PlacedAgent& target = agents[target_idx];
 
+        // Check if target is hidden — if so, they're invisible
+        if (target.agent->getConditions().hidden) {
+            int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
+            visibilityMap_[key] = VisibilityLevel::Blocked;
+            continue;
+        }
+
         // Calculate distance from viewer to target (Chebyshev distance = max of dx, dy)
         int dx = std::abs(viewer.origin.col - target.origin.col);
         int dy = std::abs(viewer.origin.row - target.origin.row);
@@ -2648,15 +2942,15 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 
             if (has_los) {
                 // Check obscuration at target's location
-                LightLevel obscuration = bm.getObscurationAtCell(target.origin);
+                VisibilityLevel obscuration = bm.getObscurationAtCell(target.origin);
 
                 // Check if viewer can see through magical darkness (devil's sight)
                 bool can_see_through_darkness = viewer_stats.devilssight_range > (chebyshev_distance * 5);
 
-                if (obscuration == LightLevel::MagicalDarkness && !can_see_through_darkness) {
+                if (obscuration == VisibilityLevel::MagicalDark && !can_see_through_darkness) {
                     visibility = VisibilityLevel::Blocked;
-                } else if (obscuration == LightLevel::PartiallyObscured) {
-                    visibility = VisibilityLevel::PartiallyObscured;
+                } else if (obscuration == VisibilityLevel::LightlyObscured) {
+                    visibility = VisibilityLevel::LightlyObscured;
                 } else {
                     visibility = VisibilityLevel::Clear;
                 }

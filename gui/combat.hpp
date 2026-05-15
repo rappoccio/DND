@@ -48,12 +48,17 @@ struct AgentConfig;
 struct ActiveSpellEffect;
 struct ActiveAgentCondition;
 enum class MovementType;
+enum class VisibilityLevel;  // defined in battle_map.hpp
 
-// Visibility level between two agents (determined by LOS, obscuration, etc.)
-enum class VisibilityLevel {
-    Clear = 0,           // Target is clearly visible
-    PartiallyObscured,   // Target is visible but obscured (disadvantage on attacks/perception)
-    Blocked              // Target cannot be seen at all
+// ─────────────────────────────────────────────────────────────────────────────
+//  Hide result (Stealth check vs Perception)
+// ─────────────────────────────────────────────────────────────────────────────
+struct HideResult {
+    bool valid{false};           // agent exists and is out of LOS of all enemies
+    int  stealth_d20{0};         // raw d20 roll for stealth check
+    int  stealth_total{0};       // stealth roll + modifier
+    bool hidden{false};          // successfully hidden after contest
+    std::string log_message;     // diagnostic/contest details
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -384,7 +389,19 @@ public:
     void applyStunned(BattleMap& bm, int idx) noexcept;
     void applyCharmed(BattleMap& bm, int idx) noexcept;
     void applyProne(BattleMap& bm, int idx) noexcept;
+    void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
+
+    // ── Hide action (Stealth check vs Perception) ─────────────────────
+    [[nodiscard]] HideResult checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept;
+    // Check if a hidden agent comes into LOS and gets detected by Perception.
+    // Returns empty message if still hidden, or detection message if revealed.
+    [[nodiscard]] std::string checkHiddenAgentDetection(BattleMap& bm, int agent_idx, bool in_combat) noexcept;
+
+    // ── Darkness-based blinding ──────────────────────────────────────
+    // Apply or remove Blinded condition based on agent's location obscuration.
+    // Agents in Darkness without darkvision, or MagicalDarkness without devil's sight, become Blinded.
+    void updateDarknessBlinding(BattleMap& bm, int agent_idx) noexcept;
 
     // ── Spell-Applied Agent Conditions ────────────────────────────────
     // Add an active spell-applied condition (e.g., Paralyzed from Hold Person).

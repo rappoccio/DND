@@ -173,6 +173,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_prof_intel", &Agent::Stats::save_prof_intel)
         .def_readwrite("save_prof_wis",   &Agent::Stats::save_prof_wis)
         .def_readwrite("save_prof_cha",   &Agent::Stats::save_prof_cha)
+        // Skill proficiency flags
+        .def_readwrite("stealth_prof",    &Agent::Stats::stealth_prof)
+        .def_readwrite("perception_prof", &Agent::Stats::perception_prof)
+        // Skill bonus methods
+        .def("stealth_bonus",       &Agent::Stats::stealthBonus)
+        .def("passive_perception",  &Agent::Stats::passivePerception)
         // Class-feature capability flags
         .def_readwrite("num_attacks",          &Agent::Stats::num_attacks)
         .def_readwrite("has_cunning_action",   &Agent::Stats::has_cunning_action)
@@ -627,6 +633,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
             }
             return std::string("<TurnStartResult turn proceeds>");
         });
+
+    // ── HideResult ────────────────────────────────────────────────────────────
+    py::class_<HideResult>(m, "HideResult")
+        .def(py::init<>())
+        .def_readonly("valid",              &HideResult::valid)
+        .def_readonly("stealth_d20",        &HideResult::stealth_d20)
+        .def_readonly("stealth_total",      &HideResult::stealth_total)
+        .def_readonly("hidden",             &HideResult::hidden)
+        .def_readonly("log_message",        &HideResult::log_message)
+        .def("__repr__", [](const HideResult& r){
+            if (!r.valid) return std::string("<HideResult invalid>");
+            return "<HideResult " + (r.hidden ? std::string("hidden")
+                                              : std::string("spotted"))
+                 + " stealth=" + std::to_string(r.stealth_total) + ">"; });
 
     // ── ActiveAgentCondition ──────────────────────────────────────────────────
     py::class_<ActiveAgentCondition>(m, "ActiveAgentCondition")
@@ -1089,6 +1109,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("idx"),
              "Remove prone condition from agent[idx] (costs half movement speed).")
 
+        // ── Hide mechanics ───────────────────────────────────────────────────
+        .def("check_hide",
+             &CombatEngine::checkHide,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("in_combat"),
+             "Attempt Hide action: validate out-of-LOS, roll Stealth vs Perception.\n"
+             "If successful, applies hidden condition. Returns HideResult with details.")
+        .def("check_hidden_agent_detection",
+             &CombatEngine::checkHiddenAgentDetection,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("in_combat"),
+             "Check if a hidden agent comes into LOS and is detected by Perception.\n"
+             "Returns empty string if still hidden, or detection message if revealed.")
+        .def("update_darkness_blinding",
+             &CombatEngine::updateDarknessBlinding,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Apply or remove Blinded condition based on agent's location obscuration.\n"
+             "Agents in Darkness without darkvision, or MagicalDarkness without devil's sight, become Blinded.")
+
         // ── Visibility and line of sight ────────────────────────────────────
         .def("compute_visibility",
              &CombatEngine::computeVisibility,
@@ -1151,19 +1188,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Slipping",  TerrainDifficulty::Slipping)
         .export_values();
 
-    // ── LightLevel enum ──────────────────────────────────────────────────────
-    py::enum_<LightLevel>(m, "LightLevel")
-        .value("BrightLight",       LightLevel::BrightLight)
-        .value("DimLight",          LightLevel::DimLight)
-        .value("PartiallyObscured", LightLevel::PartiallyObscured)
-        .value("Darkness",          LightLevel::Darkness)
-        .value("MagicalDarkness",   LightLevel::MagicalDarkness)
-        .export_values();
-
+    // ── VisibilityLevel enum (unified for all vision/light) ──────────────────
     py::enum_<VisibilityLevel>(m, "VisibilityLevel")
-        .value("Clear",            VisibilityLevel::Clear)
-        .value("PartiallyObscured", VisibilityLevel::PartiallyObscured)
-        .value("Blocked",          VisibilityLevel::Blocked)
+        .value("Clear",            VisibilityLevel::Clear,
+               "Fully visible (BrightLight area, normal vision)")
+        .value("Dim",              VisibilityLevel::Dim,
+               "Lightly obscured but visible (DimLight area)")
+        .value("LightlyObscured",  VisibilityLevel::LightlyObscured,
+               "Obscured by fog/shadows (disadvantage on perception/attacks)")
+        .value("Dark",             VisibilityLevel::Dark,
+               "Heavily obscured / Darkness (needs darkvision to see)")
+        .value("MagicalDark",      VisibilityLevel::MagicalDark,
+               "Impenetrable / MagicalDarkness (needs devil's sight to see)")
+        .value("Blocked",          VisibilityLevel::Blocked,
+               "Cannot see at all (blocked by walls, full cover, etc.)")
         .export_values();
 
     // ── ActiveTerrainEffect struct ───────────────────────────────────────────
@@ -1194,8 +1232,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("__repr__", [](const ActiveObscurationEffect& e){
             std::string level_str;
             switch (e.obscuration_level) {
-                case LightLevel::PartiallyObscured: level_str = "PartiallyObscured"; break;
-                case LightLevel::MagicalDarkness:   level_str = "MagicalDarkness"; break;
+                case VisibilityLevel::Clear:           level_str = "Clear"; break;
+                case VisibilityLevel::Dim:             level_str = "Dim"; break;
+                case VisibilityLevel::LightlyObscured: level_str = "LightlyObscured"; break;
+                case VisibilityLevel::Dark:            level_str = "Dark"; break;
+                case VisibilityLevel::MagicalDark:     level_str = "MagicalDark"; break;
+                case VisibilityLevel::Blocked:         level_str = "Blocked"; break;
                 default: level_str = "Unknown";
             }
             return "<ActiveObscurationEffect '" + level_str
