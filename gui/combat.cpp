@@ -1364,7 +1364,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         bool is_melee_within_5ft = false;
         if (r.critical && action.weapon_idx < static_cast<int>(atk_pt.weapons.size())) {
             const Weapon& wpn = atk_pt.weapons[static_cast<std::size_t>(action.weapon_idx)];
-            if (wpn.range_short_feet <= 5) {  // melee weapon
+            if (wpn.type == WeaponType::Melee) {  // melee weapon
                 Cell src = agents[action.attacker_idx].origin;
                 Cell tgt = agents[action.target_idx].origin;
                 int dist = std::max(std::abs(src.col - tgt.col), std::abs(src.row - tgt.row));

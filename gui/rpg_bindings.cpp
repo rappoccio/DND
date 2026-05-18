@@ -129,8 +129,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("spells",
             [](const PlacedAgent& p) -> std::vector<Spell> { return p.spells; })
         .def_property_readonly("stats",
-            [](PlacedAgent& p) -> Agent::Stats& { return p.stats; },
-            py::return_value_policy::reference_internal)
+            [](PlacedAgent& p) -> Agent::Stats { return p.stats; })
         .def("set_advantage", [](PlacedAgent& p, bool adv){ p.agent->setAdvantage(adv); },
              py::arg("advantage"), "Set whether the agent has advantage on rolls.")
         .def("has_advantage", [](const PlacedAgent& p){ return p.agent->hasAdvantage(); },

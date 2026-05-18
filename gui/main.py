@@ -1284,13 +1284,15 @@ class App:
         prev_turn_idx = self.turn_idx
         prev_idx = self._current_agent_idx()
 
-        # Find next living agent (skip dead)
+        # Find next living agent (skip only if actually dead, not just unconscious at 0 HP)
         for _ in range(n):
             self.turn_idx = (self.turn_idx + 1) % n
             idx = self._current_agent_idx()
             if 0 <= idx < len(self.bm.placed_agents):
                 stats = self.combat.get_agent_stats(self.bm, idx)
-                if stats.hp_cur > 0:
+                cond = self.combat.get_agent_conditions(self.bm, idx)
+                # Skip only if dead; unconscious agents at 0 HP still get a turn for death saves
+                if stats.hp_cur > 0 or (stats.hp_cur <= 0 and not cond.dead):
                     break
                 else:
                     # Agent is dead, drop concentration if any
