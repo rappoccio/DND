@@ -12,13 +12,11 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "character_class.hpp"
+#include "damage.hpp"
+#include "weapon.hpp"
 
 namespace rpg {
 
-
-  // Some global structs to specify the types of damage allowed. 
-  enum MagicDamage_t{Acid=0,Cold,Fire,Force,Lightning,Necrotic,Poison,Psychic,Radiant,Thunder,NumMagicDamage_t};
-  enum PhysicalDamage_t{Bludgeoning=0,Piercing,Slashing,NumPhysicalDamage_t};
 
   typedef std::map<std::string,MagicDamage_t> MagicDamageMap;
   typedef std::map<std::string,PhysicalDamage_t> PhysicalDamageMap;
@@ -379,6 +377,7 @@ namespace rpg {
       bool stunned{false};       // cannot act, auto-fail STR/DEX saves, attacks have advantage
       bool prone{false};         // crawling only, disadvantage on attacks; advantage for attackers within 5ft
       bool charmed{false};       // cannot attack the charmer or target with damaging abilities
+      bool frightened{false};    // disadvantage on attacks/checks when source in LOS; cannot move closer to source
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
     };
@@ -510,6 +509,7 @@ namespace rpg {
     // ── Slipped this turn (prevents action execution) ─────────────────────────
     [[nodiscard]] bool hasSlippedThisTurn() const noexcept { return conditions_.slipped_this_turn; }
     void setSlippedThisTurn(bool slipped) noexcept { conditions_.slipped_this_turn = slipped; }
+
 
     // ── Movement ──────────────────────────────────────────────────────────────
     // Seed remaining movement budgets from speed values (call at turn start).

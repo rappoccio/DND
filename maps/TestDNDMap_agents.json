@@ -83,7 +83,8 @@
 	"Wall of Fire",
 	"Hold Person",
 	"Blindness/Deafness",
-	"Charm Person"  
+	"Charm Person",
+	"Fear"
       ],
       "agent_class": "Wizard",
       "agent_char_level": 9,

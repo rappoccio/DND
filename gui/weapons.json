@@ -12,7 +12,8 @@
     "bonus_hit": 0,
     "bonus_damage": 0,
     "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 8}],
-    "magic_damage_types": []
+    "magic_damage_types": [],
+    "sprite_path": ""
   },
   {
     "name": "Dagger",
@@ -27,7 +28,8 @@
     "bonus_hit": 0,
     "bonus_damage": 0,
     "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 4}],
-    "magic_damage_types": []
+    "magic_damage_types": [],
+    "sprite_path": ""
   },
   {
     "name": "Longbow",
@@ -42,7 +44,8 @@
     "bonus_hit": 0,
     "bonus_damage": 0,
     "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 8}],
-    "magic_damage_types": []
+    "magic_damage_types": [],
+    "sprite_path": ""
   },
   {
     "name": "Longsword",
@@ -57,7 +60,8 @@
     "bonus_hit": 0,
     "bonus_damage": 0,
     "physical_damage_types": [{"type": "Slashing", "num_dice": 1, "die_size": 8}],
-    "magic_damage_types": []
+    "magic_damage_types": [],
+    "sprite_path": ""
   },
   {
     "name": "UnarmedFire",
@@ -72,7 +76,8 @@
     "bonus_hit": 0,
     "bonus_damage": 3,
     "physical_damage_types": [],
-    "magic_damage_types": [{"type": "Fire", "num_dice": 2, "die_size": 6}]
+    "magic_damage_types": [{"type": "Fire", "num_dice": 2, "die_size": 6}],
+    "sprite_path": ""
   },
   {
     "name": "UnarmedStunningFire",
@@ -84,6 +89,7 @@
     "bonus_damage":3,
     "physical_damage_types": [],
     "magic_damage_types": [{"type": "Fire", "num_dice": 2, "die_size": 6}],
+    "sprite_path": "",
     "conditions": [
       {
         "condition_name": "Stunned",
@@ -93,5 +99,5 @@
 	"save_dc_ability":"SaveDex"
       }
     ]
-  }    
+  }
 ]

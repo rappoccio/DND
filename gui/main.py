@@ -603,6 +603,15 @@ class App:
         self.btn_cbt_drop_concentration = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Drop Concentration",
                                           (150, 100, 100), (200, 130, 130), self.font_md)
+        self.btn_cbt_drop_weapon_main = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Drop Main Hand",
+                                          (130, 80, 60), (170, 110, 90), self.font_md)
+        self.btn_cbt_drop_weapon_off  = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Drop Off Hand",
+                                          (130, 80, 60), (170, 110, 90), self.font_md)
+        self.btn_cbt_drop_weapon_rng  = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Drop Ranged",
+                                          (130, 80, 60), (170, 110, 90), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1445,6 +1454,68 @@ class App:
         """Flush messages from the combat engine logger into the combat log."""
         for msg in self.logger.flush():
             self._combat_log_add(msg)
+
+    def _drop_weapon(self, slot_idx: int):
+        """Drop the equipped weapon in slot_idx onto the current agent's cell."""
+        cur_idx = self._current_agent_idx()
+        if cur_idx < 0:
+            return
+        weapons = list(self.combat.get_agent_weapons(self.bm, cur_idx))
+        weapon = weapons[slot_idx]
+        if not weapon.name or weapon.name == "Unnamed":
+            return
+        # Get sprite_path from weapons.json if available
+        wdict = self.weapon_name_to_dict.get(weapon.name, {})
+        sprite_path = wdict.get("sprite_path", "")
+        # Place item at agent's current cell
+        agent = self.bm.placed_agents[cur_idx]
+        item_id = self.bm.place_item(agent.origin, weapon, sprite_path)
+        # Clear the weapon slot
+        weapons[slot_idx] = rpg.Weapon()
+        self.combat.set_agent_weapons(self.bm, cur_idx, weapons)
+        self._combat_log_add(f"{agent.name} drops {weapon.name}.")
+
+    def _show_item_pickup_menu(self, cell, items, agent_idx, pos):
+        """Show context menu to pick up one of the items at this cell."""
+        menu_items = []
+        for item in items:
+            def _pickup(i=item, a=agent_idx):
+                self._pickup_item(i, a)
+            menu_items.append((f"Pick up {item.weapon.name}", _pickup))
+        if menu_items:
+            self.context_menu.show(pos, menu_items, self.screen.get_size())
+
+    def _pickup_item(self, item, agent_idx: int):
+        """Assign item weapon to agent slot and remove item from map."""
+        weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+        agent = self.bm.placed_agents[agent_idx]
+
+        slot = self._find_pickup_slot(item.weapon, weapons)
+        if slot == -1:
+            self._combat_log_add(f"{agent.name}: no free weapon slot for {item.weapon.name}.")
+            return
+
+        weapons[slot] = item.weapon
+        self.combat.set_agent_weapons(self.bm, agent_idx, weapons)
+        self.bm.remove_item(item.id)
+        self._combat_log_add(f"{agent.name} picks up {item.weapon.name}.")
+
+    def _find_pickup_slot(self, weapon, weapons) -> int:
+        """Auto-assign weapon to best available slot. Returns -1 if no slot free."""
+        EMPTY = lambda w: not w.name or w.name == "Unnamed"
+        # Ranged weapon → prefer ranged slot (index 2) if empty
+        if weapon.type == rpg.WeaponType.Ranged and EMPTY(weapons[2]):
+            return 2
+        # Main hand empty → slot 0
+        if EMPTY(weapons[0]):
+            return 0
+        # Off-hand empty → slot 1
+        if EMPTY(weapons[1]):
+            return 1
+        # Ranged slot empty as last resort for melee
+        if EMPTY(weapons[2]):
+            return 2
+        return -1   # all slots full
 
     def _show_visible_targets_popup(self):
         """Debug popup showing visible targets for the selected agent."""
@@ -2881,8 +2952,17 @@ class App:
                     if spell.uses_max > 0:  # Only save if this is an N/day spell
                         npc_uses[spell.name] = spell.uses_remaining
                 data[-1]["npc_spell_uses_cur"] = npc_uses
+        # Serialize map items
+        items_data = []
+        for item in self.bm.get_all_items():
+            items_data.append({
+                "col":         item.cell.col,
+                "row":         item.cell.row,
+                "weapon_name": item.weapon.name,
+                "sprite_path": item.sprite_path,
+            })
         with open(path, "w") as f:
-            json.dump({"agents": data}, f, indent=2)
+            json.dump({"agents": data, "map_items": items_data}, f, indent=2)
 
     def _load_agents(self, path: str | None = None):
         path = path or self._save_path
@@ -3155,6 +3235,18 @@ class App:
                 # Keep in _agent_meta for stats dialog to access
                 self._agent_meta[i] = {"npc_spell_groups": npc_spell_groups}
 
+        # Restore map items
+        self.bm.clear_items()
+        for idata in data.get("map_items", []):
+            wname = idata.get("weapon_name", "")
+            if not wname or wname not in self.weapon_name_to_dict:
+                continue
+            weapon_dict = self.weapon_name_to_dict[wname]
+            weapon = _dict_to_weapon(weapon_dict)
+            cell = rpg.Cell(int(idata["col"]), int(idata["row"]))
+            sprite_path = idata.get("sprite_path", weapon_dict.get("sprite_path", ""))
+            self.bm.place_item(cell, weapon, sprite_path)
+
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
@@ -3239,10 +3331,10 @@ class App:
         """Save lighting data to JSON file."""
         # Convert enum to string
         light_str_map = {
-            rpg.LightLevel.BrightLight: "BrightLight",
-            rpg.LightLevel.DimLight: "DimLight",
-            rpg.LightLevel.Darkness: "Darkness",
-            rpg.LightLevel.MagicalDarkness: "MagicalDarkness",
+            rpg.VisibilityLevel.Clear: "BrightLight",
+            rpg.VisibilityLevel.Dim: "DimLight",
+            rpg.VisibilityLevel.Dark: "Darkness",
+            rpg.VisibilityLevel.MagicalDark: "MagicalDarkness",
         }
         default_str = light_str_map.get(default_light, "Darkness")
 
@@ -3257,15 +3349,15 @@ class App:
         self._load_lighting()
 
     @staticmethod
-    def _parse_light_level(s: str) -> 'rpg.LightLevel':
-        """Convert string to LightLevel enum."""
+    def _parse_light_level(s: str) -> 'rpg.VisibilityLevel':
+        """Convert string to VisibilityLevel enum."""
         mapping = {
-            "BrightLight": rpg.LightLevel.BrightLight,
-            "DimLight": rpg.LightLevel.DimLight,
-            "Darkness": rpg.LightLevel.Darkness,
-            "MagicalDarkness": rpg.LightLevel.MagicalDarkness,
+            "BrightLight": rpg.VisibilityLevel.Clear,
+            "DimLight": rpg.VisibilityLevel.Dim,
+            "Darkness": rpg.VisibilityLevel.Dark,
+            "MagicalDarkness": rpg.VisibilityLevel.MagicalDark,
         }
-        return mapping.get(s, rpg.LightLevel.BrightLight)
+        return mapping.get(s, rpg.VisibilityLevel.Clear)
 
     def _clear_temporary_terrain(self):
         """Remove spell-created temporary terrain (regions with 'source' field)."""
@@ -3357,10 +3449,10 @@ class App:
                 # Darkness: 90% opacity
                 # MagicalDarkness: 100% opacity
                 opacity = {
-                    rpg.LightLevel.BrightLight: 0,
-                    rpg.LightLevel.DimLight: 128,      # 50% of 255
-                    rpg.LightLevel.Darkness: 230,      # 90% of 255
-                    rpg.LightLevel.MagicalDarkness: 255,
+                    rpg.VisibilityLevel.Clear: 0,
+                    rpg.VisibilityLevel.Dim: 128,      # 50% of 255
+                    rpg.VisibilityLevel.Dark: 230,      # 90% of 255
+                    rpg.VisibilityLevel.MagicalDark: 255,
                 }.get(light_level, 0)
 
                 if opacity > 0:
@@ -3371,7 +3463,7 @@ class App:
                     cell_h = h_lines[r + 1] - h_lines[r]
 
                     # Color depends on light level
-                    if light_level == rpg.LightLevel.MagicalDarkness:
+                    if light_level == rpg.VisibilityLevel.MagicalDark:
                         color = (0, 0, 0, opacity)  # Black for magical darkness
                     else:
                         color = (50, 50, 50, opacity)  # Dark grey for other darkness
@@ -3530,6 +3622,14 @@ class App:
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, charmer_color, (center_x, center_y), radius, 3)
                     break
+
+        # Frightened indicator (purple "FR" badge)
+        if pt.conditions.frightened:
+            badge_font = self.font_sm
+            fr_badge = badge_font.render("FR", True, (180, 100, 200))  # Purple
+            badge_x = int(screen_x + 4)
+            badge_y = int(screen_y + 4)
+            self.screen.blit(fr_badge, (badge_x, badge_y))
 
         # Hidden indicator (eye-slash symbol)
         if pt.conditions.hidden:
@@ -3878,6 +3978,45 @@ class App:
         # Restore the clip rect
         self.screen.set_clip(old_clip)
 
+    def _draw_items(self, cpx: int):
+        """Draw all weapon items sitting on the map grid."""
+        items = self.bm.get_all_items()
+        if not items:
+            return
+
+        # Group items by cell: dict[(col, row)] -> list[MapItem]
+        by_cell: dict = {}
+        for item in items:
+            key = (item.cell.col, item.cell.row)
+            by_cell.setdefault(key, []).append(item)
+
+        ICON_FRAC = 0.45          # item icon is 45% of cell width
+        CASCADE_OFFSET = 3        # pixels per stacked item offset
+        ITEM_COL = (200, 170, 40) # amber/gold fill for fallback box
+        ITEM_BORDER = (255, 215, 0)
+
+        icon_px = max(8, int(cpx * ICON_FRAC))
+
+        for (col, row), cell_items in by_cell.items():
+            sx, sy = self._cell_to_screen(col, row)
+            for stack_idx, item in enumerate(cell_items):
+                offset = stack_idx * CASCADE_OFFSET
+                ix = sx + offset + 2
+                iy = sy + offset + 2
+                # Try sprite first
+                sprite = self._get_sprite(item.sprite_path, icon_px)
+                if sprite:
+                    self.screen.blit(sprite, (ix, iy))
+                else:
+                    # Fallback: amber colored box with weapon name initial
+                    r = pygame.Rect(ix, iy, icon_px, icon_px)
+                    pygame.draw.rect(self.screen, ITEM_COL, r, border_radius=2)
+                    pygame.draw.rect(self.screen, ITEM_BORDER, r, 1, border_radius=2)
+                    initial = item.weapon.name[0].upper() if item.weapon.name else "?"
+                    lbl = self.font_sm.render(initial, True, (255, 255, 255))
+                    self.screen.blit(lbl, (ix + (icon_px - lbl.get_width()) // 2,
+                                           iy + (icon_px - lbl.get_height()) // 2))
+
     def _draw_agents(self):
         bm    = self.bm
         s     = self.map_scale
@@ -3903,6 +4042,9 @@ class App:
 
         # ── Concentration-based terrain overlays (beneath all agents) ──────
         self._draw_concentration_terrain(cpx)
+
+        # ── Draw items on the map ─────────────────────────────────────────
+        self._draw_items(cpx)
 
         # ── Draw all settled agents ───────────────────────────────────────
         for i, pt in enumerate(agents):
@@ -4058,80 +4200,94 @@ class App:
             txt("[Action used]", lx, y, (100, 100, 120))
             y += B
         else:
-            # Attack and Pass buttons
-            # Update Attack button label with attack count if mid-sequence
-            if mid_sequence_action:
-                self.btn_cbt_atk_action.text = f"⚔ Attack ({self.attacks_remaining})"
-            else:
-                self.btn_cbt_atk_action.text = "⚔ Attack"
+            # Check if agent is Frightened - if so, only Dash is allowed
+            cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
+            is_frightened = cur_cond.frightened if cur_cond else False
 
-            TW2_action = (W - gap) // 2
-            self.btn_cbt_atk_action.rect.x  = lx
-            self.btn_cbt_atk_action.rect.y  = y
-            self.btn_cbt_atk_action.rect.w  = TW2_action
-            self.btn_cbt_unarmed.rect.x     = lx + TW2_action + gap
-            self.btn_cbt_unarmed.rect.y     = y
-            self.btn_cbt_unarmed.rect.w     = TW2_action
-            if _cur_has_weapons:
-                self.btn_cbt_atk_action.draw(self.screen)
-            self.btn_cbt_unarmed.draw(self.screen)
-            y += B + gap
-
-            self.btn_cbt_pass_action.rect.x = lx
-            self.btn_cbt_pass_action.rect.y = y
-            self.btn_cbt_pass_action.rect.w = W
-            self.btn_cbt_pass_action.draw(self.screen)
-            y += B + gap
-
-            # Dash, Dodge, Disengage, Hide buttons
-            TW4 = (W - 12) // 4
-            self.btn_cbt_dash.rect.x       = lx
-            self.btn_cbt_dash.rect.y       = y
-            self.btn_cbt_dash.rect.w       = TW4
-            self.btn_cbt_dodge.rect.x      = lx + TW4 + gap
-            self.btn_cbt_dodge.rect.y      = y
-            self.btn_cbt_dodge.rect.w      = TW4
-            self.btn_cbt_disengage.rect.x  = lx + 2 * (TW4 + gap)
-            self.btn_cbt_disengage.rect.y  = y
-            self.btn_cbt_disengage.rect.w  = TW4
-            self.btn_cbt_hide.rect.x       = lx + 3 * (TW4 + gap)
-            self.btn_cbt_hide.rect.y       = y
-            self.btn_cbt_hide.rect.w       = TW4
-            self.btn_cbt_dash.draw(self.screen)
-            self.btn_cbt_dodge.draw(self.screen)
-            self.btn_cbt_disengage.draw(self.screen)
-            self.btn_cbt_hide.draw(self.screen)
-            y += B + gap
-
-            # Long Jump button
-            self.btn_cbt_long_jump.rect.x = lx
-            self.btn_cbt_long_jump.rect.y = y
-            self.btn_cbt_long_jump.rect.w = W
-            self.btn_cbt_long_jump.draw(self.screen)
-            y += B + gap
-
-            # Prone / Stand Up buttons
-            cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
-            is_prone = cond.prone if cond else False
-            if is_prone:
-                self.btn_cbt_standup.rect.x = lx
-                self.btn_cbt_standup.rect.y = y
-                self.btn_cbt_standup.rect.w = W
-                self.btn_cbt_standup.draw(self.screen)
-            else:
-                self.btn_cbt_prone.rect.x = lx
-                self.btn_cbt_prone.rect.y = y
-                self.btn_cbt_prone.rect.w = W
-                self.btn_cbt_prone.draw(self.screen)
-            y += B + gap
-
-            # Cast Spell button (if available)
-            if _cur_can_spell and _cur_has_spells:
-                self.btn_cbt_spell_action.rect.x = lx
-                self.btn_cbt_spell_action.rect.y = y
-                self.btn_cbt_spell_action.rect.w = W
-                self.btn_cbt_spell_action.draw(self.screen)
+            if is_frightened:
+                # Frightened: only Dash button allowed
+                txt("Frightened — must Dash", lx, y, (180, 100, 200))  # Purple
+                y += B
+                self.btn_cbt_dash.rect.x = lx
+                self.btn_cbt_dash.rect.y = y
+                self.btn_cbt_dash.rect.w = W
+                self.btn_cbt_dash.draw(self.screen)
                 y += B + gap
+            else:
+                # Attack and Pass buttons
+                # Update Attack button label with attack count if mid-sequence
+                if mid_sequence_action:
+                    self.btn_cbt_atk_action.text = f"⚔ Attack ({self.attacks_remaining})"
+                else:
+                    self.btn_cbt_atk_action.text = "⚔ Attack"
+
+                TW2_action = (W - gap) // 2
+                self.btn_cbt_atk_action.rect.x  = lx
+                self.btn_cbt_atk_action.rect.y  = y
+                self.btn_cbt_atk_action.rect.w  = TW2_action
+                self.btn_cbt_unarmed.rect.x     = lx + TW2_action + gap
+                self.btn_cbt_unarmed.rect.y     = y
+                self.btn_cbt_unarmed.rect.w     = TW2_action
+                if _cur_has_weapons:
+                    self.btn_cbt_atk_action.draw(self.screen)
+                self.btn_cbt_unarmed.draw(self.screen)
+                y += B + gap
+
+                self.btn_cbt_pass_action.rect.x = lx
+                self.btn_cbt_pass_action.rect.y = y
+                self.btn_cbt_pass_action.rect.w = W
+                self.btn_cbt_pass_action.draw(self.screen)
+                y += B + gap
+
+                # Dash, Dodge, Disengage, Hide buttons
+                TW4 = (W - 12) // 4
+                self.btn_cbt_dash.rect.x       = lx
+                self.btn_cbt_dash.rect.y       = y
+                self.btn_cbt_dash.rect.w       = TW4
+                self.btn_cbt_dodge.rect.x      = lx + TW4 + gap
+                self.btn_cbt_dodge.rect.y      = y
+                self.btn_cbt_dodge.rect.w      = TW4
+                self.btn_cbt_disengage.rect.x  = lx + 2 * (TW4 + gap)
+                self.btn_cbt_disengage.rect.y  = y
+                self.btn_cbt_disengage.rect.w  = TW4
+                self.btn_cbt_hide.rect.x       = lx + 3 * (TW4 + gap)
+                self.btn_cbt_hide.rect.y       = y
+                self.btn_cbt_hide.rect.w       = TW4
+                self.btn_cbt_dash.draw(self.screen)
+                self.btn_cbt_dodge.draw(self.screen)
+                self.btn_cbt_disengage.draw(self.screen)
+                self.btn_cbt_hide.draw(self.screen)
+                y += B + gap
+
+                # Long Jump button
+                self.btn_cbt_long_jump.rect.x = lx
+                self.btn_cbt_long_jump.rect.y = y
+                self.btn_cbt_long_jump.rect.w = W
+                self.btn_cbt_long_jump.draw(self.screen)
+                y += B + gap
+
+                # Prone / Stand Up buttons
+                cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
+                is_prone = cond.prone if cond else False
+                if is_prone:
+                    self.btn_cbt_standup.rect.x = lx
+                    self.btn_cbt_standup.rect.y = y
+                    self.btn_cbt_standup.rect.w = W
+                    self.btn_cbt_standup.draw(self.screen)
+                else:
+                    self.btn_cbt_prone.rect.x = lx
+                    self.btn_cbt_prone.rect.y = y
+                    self.btn_cbt_prone.rect.w = W
+                    self.btn_cbt_prone.draw(self.screen)
+                y += B + gap
+
+                # Cast Spell button (if available)
+                if _cur_can_spell and _cur_has_spells:
+                    self.btn_cbt_spell_action.rect.x = lx
+                    self.btn_cbt_spell_action.rect.y = y
+                    self.btn_cbt_spell_action.rect.w = W
+                    self.btn_cbt_spell_action.draw(self.screen)
+                    y += B + gap
 
         # ── Spell Slots / N/day display ────────────────────────────────────
         if 0 <= cur_idx < len(agents):
@@ -4366,7 +4522,27 @@ class App:
             self.btn_cbt_drop_concentration.rect.y = y
             self.btn_cbt_drop_concentration.rect.w = W
             self.btn_cbt_drop_concentration.draw(self.screen)
-        y += B + section_gap
+            y += B + gap
+
+        # Drop Weapon buttons (show only when slot has a real weapon)
+        if 0 <= cur_idx < len(agents):
+            cur_weapons = self.combat.get_agent_weapons(self.bm, cur_idx)
+            slot_labels = [("Drop Main", cur_weapons[0], 0),
+                          ("Drop Off",  cur_weapons[1], 1),
+                          ("Drop Rng",  cur_weapons[2], 2)]
+            drop_btns = [self.btn_cbt_drop_weapon_main,
+                        self.btn_cbt_drop_weapon_off,
+                        self.btn_cbt_drop_weapon_rng]
+            for btn, (lbl, wpn, _slot_idx) in zip(drop_btns, slot_labels):
+                if wpn.name and wpn.name != "Unnamed":
+                    btn.text = lbl + f": {wpn.name[:10]}"
+                    btn.rect.x = lx
+                    btn.rect.y = y
+                    btn.rect.w = W
+                    btn.draw(self.screen)
+                    y += B + gap
+
+        y += section_gap
 
         # ── Combat log ─────────────────────────────────────────────────────
         txt("Combat Log:", lx, y, COL_LABEL)
@@ -4963,6 +5139,7 @@ class App:
                 if self.btn_clear.clicked(event):
                     self.bm.clear_agents()
                     self.bm.clear_terrain_effects()
+                    self.bm.clear_items()
                     self.selected_idx        = -1
                     self.drag_idx            = -1
                     self._attack_cells_melee = []
@@ -5161,6 +5338,27 @@ class App:
                     self._end_combat()
                 if self.btn_cbt_drop_concentration.clicked(event):
                     self._drop_concentration()
+                if self.btn_cbt_drop_weapon_main.clicked(event):
+                    self._drop_weapon(0)
+                if self.btn_cbt_drop_weapon_off.clicked(event):
+                    self._drop_weapon(1)
+                if self.btn_cbt_drop_weapon_rng.clicked(event):
+                    self._drop_weapon(2)
+                # Item pickup: click a cell with items
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map \
+                        and not self.pending_attack_slot and not self.pending_spell_slot and not self.pending_shove_slot:
+                    items_at_cell = self.bm.get_items_at_cell(cell) if cell is not None else []
+                    if items_at_cell:
+                        cur_idx = self._current_agent_idx() if self.combat_active else self.selected_idx
+                        if cur_idx >= 0:
+                            agent = self.bm.placed_agents[cur_idx]
+                            # Chebyshev distance from agent footprint edge to clicked cell
+                            dc = max(agent.origin.col - cell.col,
+                                    cell.col - (agent.origin.col + agent.size - 1), 0)
+                            dr = max(agent.origin.row - cell.row,
+                                    cell.row - (agent.origin.row + agent.size - 1), 0)
+                            if max(dc, dr) <= 1:
+                                self._show_item_pickup_menu(cell, items_at_cell, cur_idx, event.pos)
 
         return True
 

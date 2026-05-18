@@ -4,25 +4,11 @@
 #include <unordered_map>
 #include "agent.hpp"
 #include "condition.hpp"
+#include "damage.hpp"
 
 namespace rpg {
     // Forward declare TerrainDifficulty to avoid circular includes
     enum class TerrainDifficulty;
-
-    // Damage type with dice information
-    struct MagicDamageRoll {
-        MagicDamage_t type{};
-        int num_dice{1};
-        int die_size{6};
-        int bonus{0};  // Fixed damage bonus (e.g., 1d4+1 has bonus=1)
-    };
-
-    struct PhysicalDamageRoll {
-        PhysicalDamage_t type{};
-        int num_dice{1};
-        int die_size{6};
-        int bonus{0};  // Fixed damage bonus
-    };
 
     struct Spell {
       enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Rectangle, Multiple, NumGeometry_t };

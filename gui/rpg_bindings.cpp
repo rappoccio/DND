@@ -26,6 +26,7 @@
 #include "combat.hpp"
 #include "map_configs.hpp"
 #include "character_class.hpp"
+#include "item.hpp"
 
 namespace py = pybind11;
 using namespace rpg;
@@ -266,6 +267,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
         .def_readwrite("stunned",       &Agent::Conditions::stunned)
         .def_readwrite("charmed",       &Agent::Conditions::charmed)
+        .def_readwrite("frightened",    &Agent::Conditions::frightened)
         .def_readwrite("slipped_this_turn", &Agent::Conditions::slipped_this_turn)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
         .def_readwrite("prone",         &Agent::Conditions::prone)
@@ -285,6 +287,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.blinded)       s += " blinded";
             if (c.stunned)       s += " stunned";
             if (c.charmed)       s += " charmed";
+            if (c.frightened)    s += " frightened";
             if (c.slipped_this_turn) s += " slipped_this_turn";
             return s + ">"; });
 
@@ -362,6 +365,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + (w.type == WeaponType::Melee ? "Melee" : "Ranged")
                  + " " + dmg_str + ">"; });
 
+    // ── MapItem ───────────────────────────────────────────────────────────
+    py::class_<MapItem>(m, "MapItem")
+        .def(py::init<>())
+        .def_readwrite("id",          &MapItem::id)
+        .def_readwrite("cell",        &MapItem::cell)
+        .def_readwrite("weapon",      &MapItem::weapon)
+        .def_readwrite("sprite_path", &MapItem::sprite_path)
+        .def("__repr__", [](const MapItem& mi){
+            return "<MapItem id=" + std::to_string(mi.id)
+                 + " '" + mi.weapon.name + "'"
+                 + " at (" + std::to_string(mi.cell.col)
+                 + "," + std::to_string(mi.cell.row) + ")>"; });
+
     // ── Armor ─────────────────────────────────────────────────────────────
     py::class_<Armor>(m, "Armor")
         .def(py::init<>())
@@ -400,7 +416,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Automatic",  Spell::Automatic)
         .export_values();
 
-    py::enum_<SaveAbility_t>(m, "Ability")
+    py::enum_<SaveAbility_t>(m, "SaveAbility")
         .value("Strength", SaveStr)
         .value("Dexterity", SaveDex)
         .value("Constitution", SaveCon)
@@ -1496,6 +1512,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Returns list of removed effect ids.")
         .def("clear_obscuration_effects", &BattleMap::clearObscurationEffects,
              "Clear all obscuration effects (end of combat).")
+
+        // Map items (weapons on the ground)
+        .def("place_item", &BattleMap::placeItem,
+             py::arg("cell"), py::arg("weapon"), py::arg("sprite_path") = "",
+             "Place a weapon item at a cell. Returns a unique item id.")
+        .def("remove_item", &BattleMap::removeItem,
+             py::arg("item_id"),
+             "Remove the item with the given id from the map.")
+        .def("get_items_at_cell", &BattleMap::getItemsAtCell,
+             py::arg("cell"),
+             "Return list of MapItem at the given cell.")
+        .def("get_all_items", &BattleMap::getAllItems,
+             "Return list of all MapItem on the map.")
+        .def("clear_items", &BattleMap::clearItems,
+             "Remove all items from the map.")
 
         // Expose params so Python can tune detection
         .def_readwrite("params", &BattleMap::params);

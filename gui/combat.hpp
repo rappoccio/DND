@@ -388,6 +388,8 @@ public:
     void applyIncapacitated(BattleMap& bm, int idx) noexcept;
     void applyStunned(BattleMap& bm, int idx) noexcept;
     void applyCharmed(BattleMap& bm, int idx) noexcept;
+    void dropAgentWeapons(BattleMap& bm, int idx) noexcept;
+    void applyFrightened(BattleMap& bm, int idx) noexcept;
     void applyProne(BattleMap& bm, int idx) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed

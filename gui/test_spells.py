@@ -68,8 +68,8 @@ def test_spell_save_ability():
     """Test spell save ability."""
     spell = rpg.Spell()
     spell.name = "Fireball"
-    spell.save_ability = rpg.Ability.Dexterity
-    assert spell.save_ability == rpg.Ability.Dexterity
+    spell.save_ability = rpg.SaveAbility.Dexterity
+    assert spell.save_ability == rpg.SaveAbility.Dexterity
     print("✓ Save ability property correct")
 
 def test_spell_requires_sight():

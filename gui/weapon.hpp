@@ -9,9 +9,8 @@
 
 #include <string>
 #include <vector>
-#include "agent.hpp"
 #include "condition.hpp"
-#include "spell.hpp"  // For MagicDamageRoll and PhysicalDamageRoll
+#include "damage.hpp"  // For MagicDamageRoll and PhysicalDamageRoll
 
 namespace rpg {
 

@@ -479,6 +479,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.save_repeat_turns == -1) continue;  // Never allows saves
         if (active_cond.next_save_turn > 0) continue;  // Not time to save yet
 
+        // Frightened: save only if no LOS to fear source
+        if (active_cond.condition_name == "Frightened" && active_cond.caster_idx >= 0) {
+            Cell src = bm.placedAgents()[active_cond.caster_idx].origin;
+            Cell vic = bm.placedAgents()[active_cond.agent_idx].origin;
+            if (bm.hasLineOfSight(vic, 1, src, 1)) continue;  // still sees source, no save
+        }
+
         // Helper to get ability modifier
         auto getSaveMod = [&](SaveAbility_t ability) -> int {
             int score = 0;
@@ -631,6 +638,20 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     if (idx < 0 || idx >= static_cast<int>(agents.size()))
         return false;
     Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Check if agent is Frightened and would move toward fear source
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.agent_idx == idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
+            Cell src  = bm.placedAgents()[ac.caster_idx].origin;
+            int cur_d = std::max(std::abs(oldOrigin.col - src.col), std::abs(oldOrigin.row - src.row));
+            int new_d = std::max(std::abs(newOrigin.col - src.col), std::abs(newOrigin.row - src.row));
+            if (new_d < cur_d) {
+                log_("Movement blocked: Frightened cannot move closer to fear source");
+                return false;
+            }
+            break;
+        }
+    }
 
     // Delegate to BattleMap for pathfinding and movement budget logic
     if (!bm.moveAgent(idx, newOrigin, type))
@@ -1114,6 +1135,19 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     if (atk_cond.blinded) {
         dis = true;
         log_("Disadvantage: attacker is blinded");
+    }
+
+    // Attacker frightened: disadvantage on attacks when fear source is in LOS
+    if (atk_cond.frightened) {
+        for (const auto& ac : activeAgentConditions_) {
+            if (ac.agent_idx == action.attacker_idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
+                if (bm.hasLineOfSight(atk_pt.origin, atk_sz, bm.placedAgents()[ac.caster_idx].origin, 1)) {
+                    dis = true;
+                    log_("Disadvantage: attacker is frightened and fear source is in LOS");
+                }
+                break;
+            }
+        }
     }
 
     // Attacker is hidden: attacks have advantage (will be revealed after attack)
@@ -1637,6 +1671,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (caster_pa.agent->getConditions().blinded) {
                 caster_dis = true;
                 log_("Disadvantage: caster is blinded");
+            }
+
+            // Frightened: caster has disadvantage when fear source is in LOS
+            if (caster_pa.agent->getConditions().frightened) {
+                for (const auto& ac : activeAgentConditions_) {
+                    if (ac.agent_idx == action.caster_idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
+                        if (bm.hasLineOfSight(caster_pa.origin, caster_pa.agent->getSize(),
+                                              bm.placedAgents()[ac.caster_idx].origin, 1)) {
+                            caster_dis = true;
+                            log_("Disadvantage: caster is frightened and fear source is in LOS");
+                        }
+                        break;
+                    }
+                }
             }
 
             // Apply engagement disadvantage for ranged spells
@@ -2499,6 +2547,30 @@ void CombatEngine::applyCharmed(BattleMap& bm, int idx) noexcept
     log_("Agent charmed: cannot attack the charmer or target with damaging abilities/effects");
 }
 
+void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Get mutable reference and drop all non-empty weapons
+    PlacedAgent& pa = const_cast<PlacedAgent&>(agents[idx]);
+    for (auto& w : pa.weapons) {
+        if (!w.name.empty() && w.name != "Unnamed") {
+            (void)bm.placeItem(pa.origin, w, "");
+            w = Weapon{};
+        }
+    }
+}
+
+void CombatEngine::applyFrightened(BattleMap& bm, int idx) noexcept
+{
+    dropAgentWeapons(bm, idx);
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.frightened = true;
+    bm.setAgentConditions(idx, cond);
+    log_("Agent is Frightened: dropped weapons, disadvantage on attacks/checks when fear source in LOS, cannot approach");
+}
+
 void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -2779,6 +2851,8 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyStunned(bm, cond.agent_idx);
             } else if (cond.condition_name == "Charmed") {
                 applyCharmed(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Frightened") {
+                applyFrightened(bm, cond.agent_idx);
             }
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);
@@ -2820,6 +2894,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.incapacitated = false;
                     } else if (cond.condition_name == "Charmed") {
                         agent_cond.charmed = false;
+                    } else if (cond.condition_name == "Frightened") {
+                        agent_cond.frightened = false;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for agent[{}]",

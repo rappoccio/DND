@@ -1515,4 +1515,38 @@ void BattleMap::clearObscurationEffects() noexcept {
     nextObscurationEffectId_ = 0;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Map items (weapons on the ground)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int BattleMap::placeItem(Cell cell, Weapon weapon, std::string sprite_path) {
+    int id = nextItemId_++;
+    mapItems_.push_back(MapItem{id, cell, std::move(weapon), std::move(sprite_path)});
+    return id;
+}
+
+void BattleMap::removeItem(int item_id) noexcept {
+    mapItems_.erase(
+        std::remove_if(mapItems_.begin(), mapItems_.end(),
+                       [item_id](const MapItem& m){ return m.id == item_id; }),
+        mapItems_.end());
+}
+
+std::vector<MapItem> BattleMap::getItemsAtCell(Cell cell) const noexcept {
+    std::vector<MapItem> result;
+    for (const auto& m : mapItems_)
+        if (m.cell.col == cell.col && m.cell.row == cell.row)
+            result.push_back(m);
+    return result;
+}
+
+std::vector<MapItem> BattleMap::getAllItems() const noexcept {
+    return mapItems_;
+}
+
+void BattleMap::clearItems() noexcept {
+    mapItems_.clear();
+    nextItemId_ = 0;
+}
+
 } // namespace rpg

@@ -13,6 +13,8 @@
 #include "weapon.hpp"
 #include "spell.hpp"
 #include "armor.hpp"
+#include "cell.hpp"
+#include "item.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -23,21 +25,6 @@
 #include <vector>
 
 namespace rpg {
-
-// ── Grid coordinate ────────────────────────────────────────────────────────
-struct Cell {
-    int col{0};
-    int row{0};
-    bool operator==(const Cell&) const noexcept = default;
-};
-
-struct CellHash {
-    std::size_t operator()(const Cell& c) const noexcept {
-        return std::hash<int>{}(c.col) ^ (std::hash<int>{}(c.row) << 16);
-    }
-};
-
-using CellSet = std::unordered_set<Cell, CellHash>;
 
 // ── Wall between two adjacent cells ───────────────────────────────────────
 struct Wall {
@@ -407,6 +394,13 @@ public:
     // Mutable access to a placed agent for in-place modification.
     [[nodiscard]] PlacedAgent& placedAgentMut(int idx) noexcept;
 
+    // ── Map items (weapons on the ground) ──────────────────────────────────
+    [[nodiscard]] int placeItem(Cell cell, Weapon weapon, std::string sprite_path = "");
+    void removeItem(int item_id) noexcept;
+    [[nodiscard]] std::vector<MapItem> getItemsAtCell(Cell cell) const noexcept;
+    [[nodiscard]] std::vector<MapItem> getAllItems()             const noexcept;
+    void clearItems() noexcept;
+
     // ── Tuning parameters ─────────────────────────────────────────────────
     struct DetectionParams {
         // Grid-line detection (Hough)
@@ -472,6 +466,10 @@ private:
     // Active obscuration effects (fog clouds, magical darkness, etc.)
     std::vector<ActiveObscurationEffect> activeObscurationEffects_;
     int nextObscurationEffectId_{0};  // monotonically increasing obscuration effect id generator
+
+    // Map items (weapons sitting on the ground)
+    std::vector<MapItem> mapItems_;
+    int nextItemId_{0};  // monotonically increasing item id generator
 };
 
 } // namespace rpg

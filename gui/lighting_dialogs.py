@@ -19,7 +19,7 @@ class LightingEditorDialog:
         self.app = None
 
         # Lighting configuration
-        self.default_light = rpg.LightLevel.Darkness
+        self.default_light = rpg.VisibilityLevel.Dark
         self.light_sources = []  # list of {"name": str, "x": int, "y": int, "bright": int, "dim": int}
         self.selected_source_idx = -1
         self.placing_light = False
