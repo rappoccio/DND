@@ -272,6 +272,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
         .def_readwrite("prone",         &Agent::Conditions::prone)
         .def_readwrite("unconscious",   &Agent::Conditions::unconscious)
+        .def_readwrite("dead",          &Agent::Conditions::dead)
+        .def_readwrite("death_save_successes", &Agent::Conditions::death_save_successes)
+        .def_readwrite("death_save_failures",  &Agent::Conditions::death_save_failures)
+        .def_readwrite("stabilized",    &Agent::Conditions::stabilized)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
@@ -290,6 +294,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.charmed)       s += " charmed";
             if (c.frightened)    s += " frightened";
             if (c.unconscious)   s += " unconscious";
+            if (c.dead)          s += " dead";
+            if (c.stabilized)    s += " stabilized";
+            if (c.death_save_successes > 0 || c.death_save_failures > 0)
+                s += std::format(" deaths({}/{})", c.death_save_successes, c.death_save_failures);
             if (c.slipped_this_turn) s += " slipped_this_turn";
             return s + ">"; });
 

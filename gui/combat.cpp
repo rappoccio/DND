@@ -342,6 +342,68 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     const auto& stats = agent.stats;
 
+    // Death saves: roll CON save DC 10 if unconscious at 0 HP
+    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+    if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
+        int con_mod = (stats.con - 10) / 2;
+        if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
+        int death_d20 = roll(20);
+        int death_total = death_d20 + con_mod;
+
+        if (death_d20 == 20) {
+            // Natural 20: auto-stabilize
+            cond.stabilized = true;
+            cond.death_save_successes = 3;  // Mark as stabilized
+            bm.setAgentConditions(agent_idx, cond);
+            log_("Death save: NATURAL 20! Character automatically stabilizes");
+            result.save_roll_message = "Death Save: Natural 20! Automatically stabilized!";
+        } else if (death_d20 == 1) {
+            // Natural 1: 2 failures
+            cond.death_save_failures += 2;
+            if (cond.death_save_failures >= 3) {
+                cond.dead = true;
+                log_("Death save: NATURAL 1! Character dies");
+                result.save_roll_message = "Death Save: Natural 1! Character dies!";
+            } else {
+                log_("Death save: Natural 1 (2 failures) — {} failures total", cond.death_save_failures);
+                result.save_roll_message = std::format("Death Save: Natural 1 (2 failures) — {}/3 failures", cond.death_save_failures);
+            }
+            bm.setAgentConditions(agent_idx, cond);
+        } else if (death_total >= 10) {
+            // Success
+            cond.death_save_successes++;
+            if (cond.death_save_successes >= 3) {
+                cond.stabilized = true;
+                log_("Death save: SUCCESS (stabilized) — {}/3 successes", cond.death_save_successes);
+                result.save_roll_message = std::format("Death Save: Success! Stabilized ({}/3 successes)", cond.death_save_successes);
+            } else {
+                log_("Death save: SUCCESS — {}/3 successes", cond.death_save_successes);
+                result.save_roll_message = std::format("Death Save: Success ({}/3 successes)", cond.death_save_successes);
+            }
+            bm.setAgentConditions(agent_idx, cond);
+        } else {
+            // Failure
+            cond.death_save_failures++;
+            if (cond.death_save_failures >= 3) {
+                cond.dead = true;
+                log_("Death save: FAILED — Character dies ({}/3 failures)", cond.death_save_failures);
+                result.save_roll_message = std::format("Death Save: Failed! Character dies ({}/3 failures)", cond.death_save_failures);
+            } else {
+                log_("Death save: FAILED — {}/3 failures", cond.death_save_failures);
+                result.save_roll_message = std::format("Death Save: Failed ({}/3 failures)", cond.death_save_failures);
+            }
+            bm.setAgentConditions(agent_idx, cond);
+        }
+    }
+
+    // If unconscious but not stabilized/dead, skip turn (death save was rolled above)
+    if (cond.unconscious && !cond.stabilized && !cond.dead) {
+        result.turn_skipped = true;
+        result.skip_reason = "Unconscious";
+        log_("Cannot act, skipping turn");
+        return result;
+    }
+
     // Check for incapacitating conditions first (Paralyzed, Incapacitated, Stunned)
     // These always cause a turn skip unless the agent succeeds on a save
     for (auto& active_cond : activeAgentConditions_) {
@@ -354,7 +416,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.save_repeat_turns == -1) {
             result.turn_skipped = true;
             result.skip_reason = active_cond.condition_name;
-            log_("Turn skipped by {} (no save allowed)", active_cond.condition_name);
+            log_("Cannot act, skipping turn");
             return result;
         }
 
@@ -400,16 +462,16 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
             // Handle condition-specific cleanup
             if (active_cond.condition_name == "Paralyzed") {
-                Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+                cond = bm.getAgentConditions(agent_idx);
                 cond.paralyzed = false;
                 cond.incapacitated = false;
                 bm.setAgentConditions(agent_idx, cond);
             } else if (active_cond.condition_name == "Incapacitated") {
-                Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+                cond = bm.getAgentConditions(agent_idx);
                 cond.incapacitated = false;
                 bm.setAgentConditions(agent_idx, cond);
             } else if (active_cond.condition_name == "Stunned") {
-                Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+                cond = bm.getAgentConditions(agent_idx);
                 cond.stunned = false;
                 cond.incapacitated = false;
                 bm.setAgentConditions(agent_idx, cond);
@@ -454,9 +516,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 result.skip_reason = active_cond.condition_name + " (save failed)";
                 result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
                                           " — FAILED (turn skipped)";
-                log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED (turn skipped)",
-                     ability_name(active_cond.save_ability), active_cond.condition_name,
-                     save_d20, save_mod, save_total, save_dc);
+                log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED", ability_name(active_cond.save_ability), active_cond.condition_name, save_d20, save_mod, save_total, save_dc);
+                log_("Cannot act, skipping turn");
                 return result;
             } else {
                 // Non-incapacitating condition failed save, reset next save time
@@ -649,6 +710,14 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size()))
         return false;
+
+    // Check if agent is incapacitated or unconscious - cannot move
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.incapacitated || cond.unconscious) {
+        log_("Movement blocked: agent is incapacitated or unconscious");
+        return false;
+    }
+
     Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
 
     // Check if agent is Frightened and would move toward fear source
@@ -1227,6 +1296,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
 
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
+    log_("[ATTACK START] Agent {} - unconscious={}, hp={}", action.target_idx, tgt_cond.unconscious, tgt_stats.hp_cur);
 
     // Calculate target AC (includes base AC, armor, DEX modifier, temp modifications)
     int target_ac = calculateAC(bm, action.target_idx);
@@ -1248,6 +1318,20 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
             r.critical = true;
             std::string reason = tgt_cond.paralyzed ? "paralyzed" : "unconscious";
             log_("Automatic critical hit: target is {} and within 5 feet", reason);
+
+            // If unconscious, auto-fail 2 death saves
+            if (tgt_cond.unconscious && tgt_stats.hp_cur <= 0) {
+                Agent::Conditions updated_cond = bm.getAgentConditions(action.target_idx);
+                updated_cond.death_save_failures += 2;
+                if (updated_cond.death_save_failures >= 3) {
+                    updated_cond.dead = true;
+                    log_("Melee hit on unconscious: 2 death save failures — character dies");
+                } else {
+                    log_("Melee hit on unconscious: 2 death save failures ({}/3)", updated_cond.death_save_failures);
+                }
+                bm.setAgentConditions(action.target_idx, updated_cond);
+            }
+
             // Re-roll damage with crit flag set
             tgt_stats.hp_cur = r.hp_before;  // revert damage
             rollDamage(w, atk_stats, tgt_stats, r);
@@ -1261,6 +1345,52 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     }
 
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
+
+    // Auto-trigger Unconscious if HP drops to 0 or below
+    bool just_knocked_unconscious = (r.hp_after <= 0 && !tgt_cond.unconscious && !tgt_cond.dead);
+    if (just_knocked_unconscious) {
+        log_("[ATTACK KNOCKDOWN] Agent {} going unconscious from attack damage", action.target_idx);
+        applyUnconscious(bm, action.target_idx);
+        r.target_down = true;
+        // Don't roll death save yet - they'll roll on their next turn or if they take more damage
+    }
+
+    // Death save on damage for agents already unconscious (unless melee hit within 5ft, which auto-fails 2)
+    // Only roll if the agent was ALREADY unconscious BEFORE this attack (not if just knocked unconscious)
+    if (r.hp_after <= 0 && tgt_cond.unconscious && !tgt_cond.dead && r.total_damage > 0 && !just_knocked_unconscious) {
+        log_("[DEATH SAVE ON DAMAGE] Agent {} was already unconscious, rolling death save (was unconscious before: {})",
+             action.target_idx, tgt_cond.unconscious);
+        // Check if this is a melee hit within 5ft (those already auto-failed 2 above)
+        bool is_melee_within_5ft = false;
+        if (r.critical && action.weapon_idx < static_cast<int>(atk_pt.weapons.size())) {
+            const Weapon& wpn = atk_pt.weapons[static_cast<std::size_t>(action.weapon_idx)];
+            if (wpn.range_short_feet <= 5) {  // melee weapon
+                Cell src = agents[action.attacker_idx].origin;
+                Cell tgt = agents[action.target_idx].origin;
+                int dist = std::max(std::abs(src.col - tgt.col), std::abs(src.row - tgt.row));
+                if (dist <= 1) {
+                    is_melee_within_5ft = true;
+                }
+            }
+        }
+        // Only roll regular death save if NOT a melee within 5ft (which auto-fails 2 instead)
+        if (!is_melee_within_5ft) {
+            rollDeathSave(bm, action.target_idx);
+        }
+    }
+
+    // Auto-wake if healed above 0 HP while unconscious
+    if (r.hp_after > 0 && tgt_cond.unconscious && !tgt_cond.dead) {
+        Agent::Conditions updated_tgt_cond = tgt_cond;
+        updated_tgt_cond.unconscious = false;
+        updated_tgt_cond.incapacitated = false;
+        updated_tgt_cond.prone = false;  // Waking up also clears prone
+        updated_tgt_cond.death_save_successes = 0;
+        updated_tgt_cond.death_save_failures = 0;
+        updated_tgt_cond.stabilized = false;
+        bm.setAgentConditions(action.target_idx, updated_tgt_cond);
+        log_("Target healed above 0 HP and wakes up!");
+    }
 
     // Apply weapon conditions on hit
     if (r.hit && !w.conditions.empty()) {
@@ -1823,14 +1953,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             bool target_adv = target_pa.agent->hasAdvantage();
             bool target_dis = target_pa.agent->hasDisadvantage();
 
-            // Paralyzed and Stunned targets automatically fail STR and DEX saves
-            bool auto_fail = (target_cond.paralyzed || target_cond.stunned) &&
+            // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
+            bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
                             (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
 
             int save_d20;
             if (auto_fail) {
                 save_d20 = 1;  // Automatic fail
-                std::string reason = target_cond.paralyzed ? "paralyzed" : "stunned";
+                std::string reason = target_cond.paralyzed ? "paralyzed" : (target_cond.stunned ? "stunned" : "unconscious");
                 log_("Target is {}: automatically fails {} save",
                      reason, sp.save_ability == SaveStr ? "STR" : "DEX");
             } else if (target_adv && target_dis) {
@@ -1966,6 +2096,21 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         tr.hp_after    = tgt_stats.hp_cur;
         tr.target_down = (tgt_stats.hp_cur <= 0);
         bm.setAgentStats(tgt_idx, tgt_stats);
+
+        // Auto-trigger Unconscious if HP drops to 0 or below
+        if (tgt_stats.hp_cur <= 0) {
+            Agent::Conditions tgt_cond_before = bm.getAgentConditions(tgt_idx);
+            bool spell_just_knocked_unconscious = (!tgt_cond_before.unconscious && !tgt_cond_before.dead);
+            if (spell_just_knocked_unconscious) {
+                log_("[SPELL KNOCKDOWN] Agent {} going unconscious from spell damage ({})", tgt_idx, sp.name);
+                applyUnconscious(bm, tgt_idx);
+                // Don't roll death save yet - they'll roll on their next turn or if they take more damage
+            } else if (tgt_cond_before.unconscious && !tgt_cond_before.dead && tr.total_damage > 0) {
+                log_("[SPELL DEATH SAVE] Agent {} already unconscious, rolling death save from spell damage", tgt_idx);
+                // Death save on damage for agents already unconscious
+                rollDeathSave(bm, tgt_idx);
+            }
+        }
 
         // Check concentration saves: once per damage instance (e.g., once per Magic Missile)
         if (tr.total_damage > 0 && !tr.dice_results.empty()) {
@@ -2628,6 +2773,63 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     bm.setAgentConditions(idx, cond);
 
     log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
+}
+
+void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    const auto& agent = agents[static_cast<std::size_t>(idx)];
+    const auto& stats = agent.stats;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (!cond.unconscious || cond.dead || cond.stabilized) {
+        log_("[DEATH SAVE SKIP] Agent {} - unconscious={}, dead={}, stabilized={}",
+             idx, cond.unconscious, cond.dead, cond.stabilized);
+        return;
+    }
+    log_("[DEATH SAVE ROLL] Agent {} rolling death save (current: {}/3 successes, {}/3 failures)",
+         idx, cond.death_save_successes, cond.death_save_failures);
+
+    int con_mod = (stats.con - 10) / 2;
+    if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
+    int death_d20 = roll(20);
+    int death_total = death_d20 + con_mod;
+
+    if (death_d20 == 20) {
+        cond.stabilized = true;
+        cond.death_save_successes = 3;
+        bm.setAgentConditions(idx, cond);
+        log_("Death save (on damage): NATURAL 20! Character automatically stabilizes");
+    } else if (death_d20 == 1) {
+        cond.death_save_failures += 2;
+        if (cond.death_save_failures >= 3) {
+            cond.dead = true;
+            log_("Death save (on damage): NATURAL 1! Character dies");
+        } else {
+            log_("Death save (on damage): Natural 1 (2 failures) — {}/3 failures", cond.death_save_failures);
+        }
+        bm.setAgentConditions(idx, cond);
+    } else if (death_total >= 10) {
+        cond.death_save_successes++;
+        if (cond.death_save_successes >= 3) {
+            cond.stabilized = true;
+            log_("Death save (on damage): SUCCESS (stabilized) — {}/3 successes", cond.death_save_successes);
+        } else {
+            log_("Death save (on damage): SUCCESS — {}/3 successes", cond.death_save_successes);
+        }
+        bm.setAgentConditions(idx, cond);
+    } else {
+        cond.death_save_failures++;
+        if (cond.death_save_failures >= 3) {
+            cond.dead = true;
+            log_("Death save (on damage): FAILED — Character dies");
+        } else {
+            log_("Death save (on damage): FAILED — {}/3 failures", cond.death_save_failures);
+        }
+        bm.setAgentConditions(idx, cond);
+    }
 }
 
 HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept

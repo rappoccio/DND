@@ -381,6 +381,10 @@ namespace rpg {
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
       bool unconscious{false};   // incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft
+      bool dead{false};          // character is dead (permanent until revived by magic)
+      int death_save_successes{0}; // successful death saves (0-3); at 3, character stabilizes
+      int death_save_failures{0};  // failed death saves (0-3); at 3, character dies
+      bool stabilized{false};    // no longer rolling death saves
     };
 
     // ── Construction ───────────────────────────────────────────────────────

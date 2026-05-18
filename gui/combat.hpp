@@ -393,6 +393,7 @@ public:
     void applyProne(BattleMap& bm, int idx) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
+    void rollDeathSave(BattleMap& bm, int idx) noexcept;  // roll a death save for unconscious agent
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 
     // ── Hide action (Stealth check vs Perception) ─────────────────────

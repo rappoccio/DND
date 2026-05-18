@@ -1311,6 +1311,8 @@ class App:
 
         # End previous agent's turn
         if prev_idx >= 0:
+            prev_name = self.bm.placed_agents[prev_idx].name if prev_idx < len(self.bm.placed_agents) else "Unknown"
+            self._combat_log_add(f"[END TURN] {prev_name}")
             self.combat.end_turn(self.bm, prev_idx)
 
         # Reset action economy and per-turn conditions for the new combatant.
@@ -3640,6 +3642,38 @@ class App:
             icon_y = int(screen_y - 8)
             self.screen.blit(hidden_icon, (icon_x, icon_y))
 
+        # Death save bubbles (for unconscious agents)
+        if pt.conditions.unconscious and pt.stats.hp_cur <= 0:
+            bubble_radius = 3
+            bubble_spacing = 2
+            bubble_y = int(screen_y + size_px + 2)
+            bubble_x_start = int(screen_x + size_px // 2 - (3 * (bubble_radius * 2 + bubble_spacing) // 2))
+
+            # Draw 3 green bubbles for successes
+            for i in range(3):
+                x = bubble_x_start + i * (bubble_radius * 2 + bubble_spacing)
+                if i < pt.conditions.death_save_successes:
+                    pygame.draw.circle(self.screen, (50, 200, 50), (x, bubble_y), bubble_radius)
+                else:
+                    pygame.draw.circle(self.screen, (50, 100, 50), (x, bubble_y), bubble_radius, 1)
+
+            # Draw 3 red bubbles for failures
+            bubble_x_start_red = int(screen_x + size_px // 2 - (3 * (bubble_radius * 2 + bubble_spacing) // 2))
+            bubble_y_red = bubble_y + bubble_radius * 2 + bubble_spacing
+            for i in range(3):
+                x = bubble_x_start_red + i * (bubble_radius * 2 + bubble_spacing)
+                if i < pt.conditions.death_save_failures:
+                    pygame.draw.circle(self.screen, (200, 50, 50), (x, bubble_y_red), bubble_radius)
+                else:
+                    pygame.draw.circle(self.screen, (100, 50, 50), (x, bubble_y_red), bubble_radius, 1)
+
+        # Dead indicator (skull-and-crossbones or ⚰️)
+        if pt.conditions.dead:
+            skull_icon = self.font_lg.render("☠", True, (150, 50, 50))
+            skull_x = int(screen_x + size_px // 2 - 8)
+            skull_y = int(screen_y + size_px // 2 - 12)
+            self.screen.blit(skull_icon, (skull_x, skull_y))
+
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
         # Get map dimensions if not provided
@@ -4174,6 +4208,46 @@ class App:
                              pygame.Rect(lx, y, int(W * frac), 12), border_radius=3)
             txt(f"HP {stats.hp_cur}/{stats.hp_max}", lx + W//2 - 22, y - 1)
             y += 12
+
+            # ── Death saves display (if unconscious) ────────────────────────
+            cond = self.combat.get_agent_conditions(self.bm, cur_idx)
+            if cond.unconscious and stats.hp_cur <= 0:
+                y += 8
+                if cond.dead:
+                    txt("DEAD", lx, y, (200, 50, 50), self.font_md)
+                    y += 16
+                elif cond.stabilized:
+                    txt("Stabilized", lx, y, (100, 200, 100), self.font_md)
+                    y += 16
+                else:
+                    txt(f"Death Saves: {cond.death_save_successes}/3 {cond.death_save_failures}/3", lx, y, (200, 200, 150), self.font_sm)
+                    y += 14
+                    # Draw bubble visualization in panel
+                    bubble_radius = 2
+                    bubble_spacing = 1
+                    bubble_x_start = lx
+                    bubble_y = y
+
+                    # Green bubbles for successes
+                    txt("✓", bubble_x_start, bubble_y - 8, (100, 200, 100), self.font_sm)
+                    for i in range(3):
+                        x = bubble_x_start + 16 + i * (bubble_radius * 2 + bubble_spacing)
+                        if i < cond.death_save_successes:
+                            pygame.draw.circle(self.screen, (100, 200, 100), (x, bubble_y), bubble_radius)
+                        else:
+                            pygame.draw.circle(self.screen, (50, 100, 50), (x, bubble_y), bubble_radius, 1)
+
+                    # Red bubbles for failures
+                    bubble_y_red = bubble_y + 10
+                    txt("✗", bubble_x_start, bubble_y_red - 8, (200, 100, 100), self.font_sm)
+                    for i in range(3):
+                        x = bubble_x_start + 16 + i * (bubble_radius * 2 + bubble_spacing)
+                        if i < cond.death_save_failures:
+                            pygame.draw.circle(self.screen, (200, 100, 100), (x, bubble_y_red), bubble_radius)
+                        else:
+                            pygame.draw.circle(self.screen, (100, 50, 50), (x, bubble_y_red), bubble_radius, 1)
+
+                    y += 24
 
         y += section_gap
 
@@ -5352,6 +5426,9 @@ class App:
                         cur_idx = self._current_agent_idx() if self.combat_active else self.selected_idx
                         if cur_idx >= 0:
                             agent = self.bm.placed_agents[cur_idx]
+                            # Don't allow pickup if agent is dead
+                            if agent.conditions.dead:
+                                return True
                             # Chebyshev distance from agent footprint edge to clicked cell
                             dc = max(agent.origin.col - cell.col,
                                     cell.col - (agent.origin.col + agent.size - 1), 0)
