@@ -392,6 +392,7 @@ public:
     void applyFrightened(BattleMap& bm, int idx) noexcept;
     void applyProne(BattleMap& bm, int idx) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
+    void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 
     // ── Hide action (Stealth check vs Perception) ─────────────────────

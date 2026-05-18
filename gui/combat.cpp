@@ -486,6 +486,18 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             if (bm.hasLineOfSight(vic, 1, src, 1)) continue;  // still sees source, no save
         }
 
+        // Unconscious: auto-fail STR/DEX saves
+        Agent::Conditions agent_cond = bm.getAgentConditions(active_cond.agent_idx);
+        if (agent_cond.unconscious && (active_cond.save_ability == SaveStr || active_cond.save_ability == SaveDex)) {
+            auto ability_name = [](SaveAbility_t ab) -> std::string {
+                return (ab == SaveStr) ? "STR" : "DEX";
+            };
+            log_("{} save vs {} — AUTOMATICALLY FAILED (Unconscious auto-fails STR/DEX saves)",
+                 ability_name(active_cond.save_ability), active_cond.condition_name);
+            active_cond.next_save_turn = active_cond.save_repeat_turns;
+            continue;
+        }
+
         // Helper to get ability modifier
         auto getSaveMod = [&](SaveAbility_t ability) -> int {
             int score = 0;
@@ -1176,6 +1188,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Advantage: target is stunned");
     }
 
+    // Target is unconscious: attacker gets advantage
+    if (tgt_cond.unconscious) {
+        adv = true;
+        log_("Advantage: target is unconscious");
+    }
+
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
     if (tgt_cond.prone) {
         int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
@@ -1215,8 +1233,8 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
 
     AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac);
 
-    // Automatic critical hit for melee attacks (within 5 ft) against paralyzed targets
-    if (tgt_cond.paralyzed && r.hit) {
+    // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets
+    if ((tgt_cond.paralyzed || tgt_cond.unconscious) && r.hit) {
         int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
                            tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
                            0});
@@ -1228,7 +1246,8 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         // Within 5 feet (1 cell on 5ft/cell grid)
         if (dist <= 1) {
             r.critical = true;
-            log_("Automatic critical hit: target is paralyzed and within 5 feet");
+            std::string reason = tgt_cond.paralyzed ? "paralyzed" : "unconscious";
+            log_("Automatic critical hit: target is {} and within 5 feet", reason);
             // Re-roll damage with crit flag set
             tgt_stats.hp_cur = r.hp_before;  // revert damage
             rollDamage(w, atk_stats, tgt_stats, r);
@@ -2596,6 +2615,21 @@ void CombatEngine::applyHidden(BattleMap& bm, int idx) noexcept
     log_("{} is now hidden", agents[static_cast<std::size_t>(idx)].agent->name());
 }
 
+void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    dropAgentWeapons(bm, idx);
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.unconscious = true;
+    cond.incapacitated = true;
+    cond.prone = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
+}
+
 HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept
 {
     HideResult result;
@@ -2853,6 +2887,8 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyCharmed(bm, cond.agent_idx);
             } else if (cond.condition_name == "Frightened") {
                 applyFrightened(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Unconscious") {
+                applyUnconscious(bm, cond.agent_idx);
             }
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);
@@ -2896,6 +2932,10 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.charmed = false;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
+                    } else if (cond.condition_name == "Unconscious") {
+                        agent_cond.unconscious = false;
+                        agent_cond.incapacitated = false;
+                        // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for agent[{}]",

@@ -271,6 +271,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("slipped_this_turn", &Agent::Conditions::slipped_this_turn)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
         .def_readwrite("prone",         &Agent::Conditions::prone)
+        .def_readwrite("unconscious",   &Agent::Conditions::unconscious)
         .def_readwrite("concentrating",    &Agent::Conditions::concentrating)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
@@ -288,6 +289,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.stunned)       s += " stunned";
             if (c.charmed)       s += " charmed";
             if (c.frightened)    s += " frightened";
+            if (c.unconscious)   s += " unconscious";
             if (c.slipped_this_turn) s += " slipped_this_turn";
             return s + ">"; });
 

@@ -380,6 +380,7 @@ namespace rpg {
       bool frightened{false};    // disadvantage on attacks/checks when source in LOS; cannot move closer to source
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
+      bool unconscious{false};   // incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft
     };
 
     // ── Construction ───────────────────────────────────────────────────────
