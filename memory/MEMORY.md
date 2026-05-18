@@ -1,0 +1,6 @@
+- [Current Session State](current_session_state.md) — Build fixed, visibility working, map panning added, darkvision/truesight/crawling/prone done
+- [All Core Logic in C++](architecture_cpp_only.md) — Game logic must be C++, Python is UI/I/O only for expert mode & RL training
+- [D&D Battle Map - Pending Features](pending_features.md) — Next major features: Game Mode Architecture, DM/Player visibility, crowd control spells
+- [User handles all builds](feedback_build_handling.md) — Do not attempt C++ builds or Docker; user manages compilation
+- [Vision System Implementation](vision_system_implementation.md) — Phase 1, 2, 3 complete: obscuration, visibility computation, darkvision/truesight/devil's sight
+- [User work preferences](user_preferences.md) — Design discussions without compaction, user handles builds and git
