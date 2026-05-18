@@ -1076,6 +1076,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::applyParalyzed,
              py::arg("battle_map"), py::arg("idx"),
              "Apply paralyzed condition to agent[idx]: sets paralyzed=true, incapacitated=true, and all movement speeds to 0.")
+        .def("apply_poisoned",
+             &CombatEngine::applyPoisoned,
+             py::arg("battle_map"), py::arg("idx"),
+             "Apply poisoned condition to agent[idx]: disadvantage on attack rolls and ability checks.")
+        .def("apply_petrified",
+             &CombatEngine::applyPetrified,
+             py::arg("battle_map"), py::arg("idx"),
+             "Apply petrified condition to agent[idx]: incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned.")
         .def("get_agent_weapons",
              &CombatEngine::getAgentWeapons,
              py::arg("battle_map"), py::arg("idx"),

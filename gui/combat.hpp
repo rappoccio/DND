@@ -393,6 +393,8 @@ public:
     void applyProne(BattleMap& bm, int idx) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
+    void applyPoisoned(BattleMap& bm, int idx) noexcept;  // disadvantage on attacks and ability checks
+    void applyPetrified(BattleMap& bm, int idx) noexcept;  // incapacitated, speed 0, resistance to all damage, immune to poisoned
     void rollDeathSave(BattleMap& bm, int idx) noexcept;  // roll a death save for unconscious agent
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 

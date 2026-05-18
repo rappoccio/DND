@@ -380,6 +380,8 @@ namespace rpg {
       bool frightened{false};    // disadvantage on attacks/checks when source in LOS; cannot move closer to source
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
+      bool poisoned{false};      // disadvantage on attack rolls and ability checks
+      bool petrified{false};     // incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, advantage on attacks
       bool unconscious{false};   // incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft
       bool dead{false};          // character is dead (permanent until revived by magic)
       int death_save_successes{0}; // successful death saves (0-3); at 3, character stabilizes

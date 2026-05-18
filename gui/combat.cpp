@@ -1218,6 +1218,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Disadvantage: attacker is blinded");
     }
 
+    // Attacker poisoned: attacks have disadvantage
+    if (atk_cond.poisoned) {
+        dis = true;
+        log_("Disadvantage: attacker is poisoned");
+    }
+
     // Attacker frightened: disadvantage on attacks when fear source is in LOS
     if (atk_cond.frightened) {
         for (const auto& ac : activeAgentConditions_) {
@@ -2773,6 +2779,58 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     bm.setAgentConditions(idx, cond);
 
     log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
+}
+
+void CombatEngine::applyPoisoned(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    // Petrified agents are immune to poison
+    if (cond.petrified) {
+        log_("Agent is immune to poison (petrified)");
+        return;
+    }
+
+    cond.poisoned = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent is Poisoned: disadvantage on attack rolls and ability checks");
+}
+
+void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Set condition flags
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.petrified = true;
+    cond.incapacitated = true;
+    bm.setAgentConditions(idx, cond);
+
+    // Set all movement speeds to 0
+    Agent::Stats stats = bm.getAgentStats(idx);
+    stats.speed_walk = 0;
+    stats.speed_fly = 0;
+    stats.speed_swim = 0;
+    stats.speed_burrow = 0;
+    stats.speed_walk_remaining = 0;
+    stats.speed_fly_remaining = 0;
+    stats.speed_swim_remaining = 0;
+    stats.speed_burrow_remaining = 0;
+
+    // Set all damage multipliers to 0.5 (resistance to all damage)
+    for (std::size_t i = 0; i < stats.magic_damage_multipliers.size(); ++i) {
+        stats.magic_damage_multipliers[i] = 0.5f;
+    }
+    for (std::size_t i = 0; i < stats.physical_damage_multipliers.size(); ++i) {
+        stats.physical_damage_multipliers[i] = 0.5f;
+    }
+
+    bm.setAgentStats(idx, stats);
+    log_("Agent is Petrified: incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, attacks have advantage");
 }
 
 void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
