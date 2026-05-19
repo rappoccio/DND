@@ -2,16 +2,16 @@
 
 * Blinded (done)
 * Charmed (done)
-* Deafened
+* Deafened (done)
 * Exhaustion
 * Frightened (done)
 * Grappled
 * Incapacitated (done)
 * Invisible (done)
 * Paralyzed (done)
-* Petrified
-* Poisoned
+* Petrified (done)
+* Poisoned (done)
 * Prone (done)
 * Restrained (done)
 * Stunned (done)
-* Unconscious 
+* Unconscious (done)

@@ -282,6 +282,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("concentrating_on", &Agent::Conditions::concentrating_on)
         .def_readwrite("has_advantage",   &Agent::Conditions::has_advantage)
         .def_readwrite("has_disadvantage", &Agent::Conditions::has_disadvantage)
+        .def_readwrite("grappled",       &Agent::Conditions::grappled)
+        .def_readwrite("grappler_idx",   &Agent::Conditions::grappler_idx)
+        .def_readwrite("grapple_escape_dc", &Agent::Conditions::grapple_escape_dc)
+        .def_readwrite("grapple_range_ft",  &Agent::Conditions::grapple_range_ft)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -295,6 +299,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             if (c.stunned)       s += " stunned";
             if (c.charmed)       s += " charmed";
             if (c.frightened)    s += " frightened";
+            if (c.grappled)      s += " grappled";
             if (c.unconscious)   s += " unconscious";
             if (c.dead)          s += " dead";
             if (c.stabilized)    s += " stabilized";
@@ -627,6 +632,42 @@ PYBIND11_MODULE(rpg_battle_map, m)
                                                  : std::string("failed"))
                  + " atk=" + std::to_string(r.attacker_roll)
                  + " def=" + std::to_string(r.defender_roll) + ">"; });
+
+    // ── GrappleAction / GrappleResult / GrappleEscapeResult ────────────────────
+    py::class_<GrappleAction>(m, "GrappleAction")
+        .def(py::init<>())
+        .def_readwrite("attacker_idx", &GrappleAction::attacker_idx)
+        .def_readwrite("target_idx",   &GrappleAction::target_idx);
+
+    py::class_<GrappleResult>(m, "GrappleResult")
+        .def(py::init<>())
+        .def_readonly("valid",            &GrappleResult::valid)
+        .def_readonly("success",          &GrappleResult::success)
+        .def_readonly("attacker_roll",    &GrappleResult::attacker_roll)
+        .def_readonly("defender_roll",    &GrappleResult::defender_roll)
+        .def_readonly("escape_dc",        &GrappleResult::escape_dc)
+        .def_readonly("log_message",      &GrappleResult::log_message)
+        .def("__repr__", [](const GrappleResult& r){
+            if (!r.valid) return std::string("<GrappleResult invalid>");
+            return "<GrappleResult " + (r.success ? std::string("success")
+                                                   : std::string("failed"))
+                 + " atk=" + std::to_string(r.attacker_roll)
+                 + " def=" + std::to_string(r.defender_roll)
+                 + " dc=" + std::to_string(r.escape_dc) + ">"; });
+
+    py::class_<GrappleEscapeResult>(m, "GrappleEscapeResult")
+        .def(py::init<>())
+        .def_readonly("valid",            &GrappleEscapeResult::valid)
+        .def_readonly("success",          &GrappleEscapeResult::success)
+        .def_readonly("escape_roll",      &GrappleEscapeResult::escape_roll)
+        .def_readonly("escape_dc",        &GrappleEscapeResult::escape_dc)
+        .def_readonly("log_message",      &GrappleEscapeResult::log_message)
+        .def("__repr__", [](const GrappleEscapeResult& r){
+            if (!r.valid) return std::string("<GrappleEscapeResult invalid>");
+            return "<GrappleEscapeResult " + (r.success ? std::string("success")
+                                                        : std::string("failed"))
+                 + " roll=" + std::to_string(r.escape_roll)
+                 + " dc=" + std::to_string(r.escape_dc) + ">"; });
 
     // ── ActiveEffect ──────────────────────────────────────────────────────────
     py::class_<ActiveEffect>(m, "ActiveEffect")
@@ -1020,6 +1061,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Execute a shove attempt (bonus action, contested Athletics check).\n"
              "On success: either push 5ft or knock prone based on action.knock_prone.\n"
              "Returns ShoveResult with rolls, success status, and log message.")
+        .def("execute_grapple",
+             &CombatEngine::executeGrapple,
+             py::arg("battle_map"), py::arg("action"),
+             "Execute a grapple attempt (contested Athletics vs Athletics/Acrobatics).\n"
+             "On success: grapple initiates, escape_dc = 10 + attacker_roll.\n"
+             "Returns GrappleResult with rolls, success status, escape_dc, and log message.")
+        .def("execute_grapple_escape",
+             &CombatEngine::executeGrappleEscape,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Attempt to escape an ongoing grapple (contested STR(Athletics)/DEX(Acrobatics) vs escape_dc).\n"
+             "On success: grapple condition is cleared.\n"
+             "Returns GrappleEscapeResult with rolls, success status, and log message.")
         .def("tick_effects",
              &CombatEngine::tickEffects,
              py::arg("battle_map"),

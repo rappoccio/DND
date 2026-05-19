@@ -743,7 +743,56 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
         return false;
     }
 
+    // Check if agent is grappled - cannot move (Speed = 0)
+    if (cond.grappled) {
+        log_("Movement blocked: grappled creature cannot move (Speed = 0)");
+        return false;
+    }
+
+    // Check if grapple should auto-end (grappler incapacitated or out of range)
+    if (cond.grappler_idx >= 0 && cond.grappler_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions grappler_cond = bm.getAgentConditions(cond.grappler_idx);
+        if (grappler_cond.incapacitated) {
+            cond.grappled = false;
+            cond.grappler_idx = -1;
+            bm.setAgentConditions(idx, cond);
+            log_("Grapple ended: grappler is incapacitated");
+            // Continue with movement now that grapple is broken
+        } else {
+            // Check distance
+            Cell grappler_pos = agents[cond.grappler_idx].origin;
+            Cell my_pos = agents[idx].origin;
+            int dist_cells = std::max(std::abs(my_pos.col - grappler_pos.col),
+                                     std::abs(my_pos.row - grappler_pos.row));
+            if (dist_cells * 5 > cond.grapple_range_ft) {
+                cond.grappled = false;
+                cond.grappler_idx = -1;
+                bm.setAgentConditions(idx, cond);
+                log_("Grapple ended: distance exceeds grapple range");
+                // Continue with movement now that grapple is broken
+            }
+        }
+    }
+
     Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Check if agent is grappling someone - double movement cost
+    int move_dist_ft = std::max(std::abs(newOrigin.col - oldOrigin.col),
+                                std::abs(newOrigin.row - oldOrigin.row)) * 5;
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx) continue;
+        Agent::Conditions target_cond = bm.getAgentConditions(i);
+        if (target_cond.grappled && target_cond.grappler_idx == idx) {
+            // Grappler paying extra movement cost to drag
+            int extra_cost = move_dist_ft;
+            if (getWalkRemaining(idx) < extra_cost) {
+                log_("Not enough movement to drag grappled creature");
+                return false;
+            }
+            spendWalk(idx, extra_cost);
+            break;
+        }
+    }
 
     // Check if agent is Frightened and would move toward fear source
     for (const auto& ac : activeAgentConditions_) {
@@ -1259,6 +1308,14 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                 }
                 break;
             }
+        }
+    }
+
+    // Attacker grappled: disadvantage on attacks except against the grappler
+    if (atk_cond.grappled) {
+        if (action.target_idx != atk_cond.grappler_idx) {
+            dis = true;
+            log_("Disadvantage: attacker is grappled");
         }
     }
 
@@ -1889,6 +1946,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         }
                         break;
                     }
+                }
+            }
+
+            // Grappled: caster has disadvantage on spell attacks except against the grappler
+            if (caster_pa.agent->getConditions().grappled) {
+                if (action.target_indices[0] != caster_pa.agent->getConditions().grappler_idx) {
+                    caster_dis = true;
+                    log_("Disadvantage: caster is grappled");
                 }
             }
 
@@ -2534,6 +2599,144 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
         }
     } else {
         result.log_message = "\"" + std::string(target.agent->name()) + "\" resisted the shove from \"" + std::string(attacker.agent->name()) + "\".";
+    }
+
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Apply grappled condition to target
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::applyGrappled(BattleMap& bm, int target_idx, int grappler_idx, int escape_dc) noexcept
+{
+    Agent::Conditions cond = getAgentConditions(bm, target_idx);
+    cond.grappled = true;
+    cond.grappler_idx = grappler_idx;
+    cond.grapple_escape_dc = escape_dc;
+    cond.grapple_range_ft = 5;
+    setAgentConditions(bm, target_idx, cond);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Execute grapple attempt
+// ─────────────────────────────────────────────────────────────────────────────
+
+GrappleResult CombatEngine::executeGrapple(BattleMap& bm, const GrappleAction& action)
+{
+    GrappleResult result;
+    auto agents = bm.placedAgents();
+
+    // Validate indices
+    if (action.attacker_idx < 0 || action.attacker_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid attacker index.";
+        return result;
+    }
+    if (action.target_idx < 0 || action.target_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid target index.";
+        return result;
+    }
+    if (action.attacker_idx == action.target_idx) {
+        result.log_message = "Cannot grapple yourself.";
+        return result;
+    }
+
+    auto& attacker = agents[action.attacker_idx];
+    auto& target = agents[action.target_idx];
+
+    // Check adjacency (within 5ft = 1 cell in any direction)
+    int dx = std::abs(target.origin.col - attacker.origin.col);
+    int dy = std::abs(target.origin.row - attacker.origin.row);
+    int distance_cells = std::max(dx, dy);  // Chebyshev distance
+    if (distance_cells > 1) {
+        result.log_message = "Target is not adjacent (within 5 feet).";
+        return result;
+    }
+
+    // Roll attacker Athletics: d20 + STR mod + proficiency (assume grapple is proficient)
+    int attacker_str_mod = (attacker.stats.str - 10) / 2;
+    auto attacker_stats = getAgentStats(bm, action.attacker_idx);
+    int attacker_prof = attacker_stats.prof_bonus;
+    int attacker_d20 = roll(20);
+    int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
+
+    // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
+    int target_str_mod = (target.stats.str - 10) / 2;
+    int target_dex_mod = (target.stats.dex - 10) / 2;
+    int target_d20 = roll(20);
+    int target_athletic = target_d20 + target_str_mod;
+    int target_acrobatic = target_d20 + target_dex_mod;
+    int defender_total = std::max(target_athletic, target_acrobatic);
+
+    result.valid = true;
+    result.attacker_roll = attacker_total;
+    result.defender_roll = defender_total;
+    result.success = (attacker_total > defender_total);  // ties go to defender
+
+    if (result.success) {
+        result.escape_dc = 10 + attacker_str_mod + attacker_prof;
+        applyGrappled(bm, action.target_idx, action.attacker_idx, result.escape_dc);
+        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" grapples \"" + std::string(target.agent->name()) +
+                            "\" (attacker " + std::to_string(attacker_total) + " vs defender " +
+                            std::to_string(defender_total) + " - DC " + std::to_string(result.escape_dc) + ")";
+    } else {
+        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" fails to grapple \"" +
+                            std::string(target.agent->name()) + "\" (attacker " + std::to_string(attacker_total) +
+                            " vs defender " + std::to_string(defender_total) + ")";
+    }
+
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Execute grapple escape attempt
+// ─────────────────────────────────────────────────────────────────────────────
+
+GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_idx)
+{
+    GrappleEscapeResult result;
+    auto agents = bm.placedAgents();
+
+    // Validate index
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid agent index.";
+        return result;
+    }
+
+    Agent::Conditions cond = getAgentConditions(bm, agent_idx);
+
+    // Check if actually grappled
+    if (!cond.grappled) {
+        result.log_message = "Not grappled.";
+        return result;
+    }
+
+    result.valid = true;
+    result.escape_dc = cond.grapple_escape_dc;
+
+    // Get agent stats
+    auto stats = getAgentStats(bm, agent_idx);
+    int str_mod = (stats.str - 10) / 2;
+    int dex_mod = (stats.dex - 10) / 2;
+
+    // Roll best of STR (Athletics) or DEX (Acrobatics)
+    int str_d20 = roll(20);
+    int dex_d20 = roll(20);
+    int str_roll = str_d20 + str_mod;
+    int dex_roll = dex_d20 + dex_mod;
+    result.escape_roll = std::max(str_roll, dex_roll);
+
+    // Check success
+    if (result.escape_roll >= result.escape_dc) {
+        result.success = true;
+        cond.grappled = false;
+        cond.grappler_idx = -1;
+        setAgentConditions(bm, agent_idx, cond);
+        result.log_message = std::string("\"") + std::string(agents[agent_idx].agent->name()) + "\" escapes grapple! (rolled " +
+                            std::to_string(result.escape_roll) + " vs DC " + std::to_string(result.escape_dc) + ")";
+    } else {
+        result.log_message = std::string("\"") + std::string(agents[agent_idx].agent->name()) + "\" fails to escape grapple (rolled " +
+                            std::to_string(result.escape_roll) + " vs DC " + std::to_string(result.escape_dc) + ")";
     }
 
     return result;

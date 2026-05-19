@@ -184,6 +184,37 @@ struct ShoveResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Grapple action — initiate a grapple (contested Athletics check)
+// ─────────────────────────────────────────────────────────────────────────────
+struct GrappleAction {
+    int  attacker_idx = -1;    // index into BattleMap::placedAgents()
+    int  target_idx   = -1;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of a grapple attempt
+// ─────────────────────────────────────────────────────────────────────────────
+struct GrappleResult {
+    bool valid        = false;
+    bool success      = false;
+    int  attacker_roll = 0;   // Athletics check total
+    int  defender_roll = 0;   // Athletics or Acrobatics (whichever higher)
+    int  escape_dc    = 0;    // DC for target to escape later (10 + attacker's Athletics)
+    std::string log_message;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of a grapple escape attempt
+// ─────────────────────────────────────────────────────────────────────────────
+struct GrappleEscapeResult {
+    bool valid        = false;
+    bool success      = false;
+    int  escape_roll  = 0;    // best of STR (Athletics) or DEX (Acrobatics) rolls
+    int  escape_dc    = 0;    // DC attempted against
+    std::string log_message;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Concentration saving throw result (triggered when a concentrating agent takes damage)
 // ─────────────────────────────────────────────────────────────────────────────
 struct ConcentrationSaveResult {
@@ -391,6 +422,7 @@ public:
     void dropAgentWeapons(BattleMap& bm, int idx) noexcept;
     void applyFrightened(BattleMap& bm, int idx) noexcept;
     void applyProne(BattleMap& bm, int idx) noexcept;
+    void applyGrappled(BattleMap& bm, int target_idx, int grappler_idx, int escape_dc) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
     void applyPoisoned(BattleMap& bm, int idx) noexcept;  // disadvantage on attacks and ability checks
@@ -554,6 +586,18 @@ public:
     // On success: either push 5ft or knock prone based on knock_prone flag.
     [[nodiscard]] ShoveResult executeShove(BattleMap& bm,
                                            const ShoveAction& action);
+
+    // Execute a grapple attempt (contested Athletics check).
+    // Attacker vs target Athletics/Acrobatics (target chooses higher).
+    // On success: target gains Grappled condition with escape DC.
+    [[nodiscard]] GrappleResult executeGrapple(BattleMap& bm,
+                                               const GrappleAction& action);
+
+    // Execute a grapple escape attempt (action to break free).
+    // Target rolls best of STR (Athletics) or DEX (Acrobatics) vs escape DC.
+    // On success: clears Grappled condition.
+    [[nodiscard]] GrappleEscapeResult executeGrappleEscape(BattleMap& bm,
+                                                           int agent_idx);
 
     // Decrement turns_remaining on all active effects; apply per-tick damage/heal;
     // remove effects whose turns_remaining reaches 0.

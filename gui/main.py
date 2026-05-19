@@ -315,6 +315,7 @@ class App:
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
+        self.pending_grapple_slot      = ""    # "" | "bonus" for grapple actions
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
@@ -526,6 +527,8 @@ class App:
         TW2_shove = (W - 4) // 2
         self.btn_cbt_shove_push.rect.update(  px,           self.btn_cbt_shove_push.rect.y,  TW2_shove, self._BTN_H)
         self.btn_cbt_shove_prone.rect.update( px+TW2_shove+4, self.btn_cbt_shove_prone.rect.y, TW2_shove, self._BTN_H)
+        self.btn_cbt_grapple.rect.update(     px,            self.btn_cbt_grapple.rect.y,     TW2_shove, self._BTN_H)
+        self.btn_cbt_grapple_esc.rect.update( px+TW2_shove+4, self.btn_cbt_grapple_esc.rect.y, TW2_shove, self._BTN_H)
         self.btn_cbt_spell_action.rect.update(px,          self.btn_cbt_spell_action.rect.y,  W,  self._BTN_H)
         self.btn_cbt_end_turn.rect.update(    px,          self.btn_cbt_end_turn.rect.y,       W,  self._BTN_H)
         self.btn_cbt_end_combat.rect.update(  px,          self.btn_cbt_end_combat.rect.y,     W,  self._BTN_H)
@@ -576,6 +579,12 @@ class App:
         self.btn_cbt_shove_prone = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "⬇ Shove (Prone)",
                                           (140, 100, 150), (160, 120, 170), self.font_md)
+        self.btn_cbt_grapple     = Button(pygame.Rect(px,       dummy_y, HW, B),
+                                          "✊ Grapple",
+                                          (150, 120, 80), (180, 150, 110), self.font_md)
+        self.btn_cbt_grapple_esc = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
+                                          "💨 Escape",
+                                          (150, 120, 80), (180, 150, 110), self.font_md)
         self.btn_cbt_spell_action= Button(pygame.Rect(px, dummy_y, W, B),
                                           "✨ Cast Spell",
                                           COL_BTN_SPELL, COL_BTN_SPELL_HOV, self.font_md)
@@ -1225,6 +1234,7 @@ class App:
         self.pending_spell_targets     = []
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
+        self.pending_grapple_slot      = ""
         self.combat_log                = []
         # Initialize combat log file
         self._combat_log_file = "combat_log.txt"
@@ -1264,6 +1274,7 @@ class App:
         self.pending_spell_targets     = []
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
+        self.pending_grapple_slot      = ""
         self.selected_idx              = -1
         self._reach_walk         = []
         self._reach_fly          = []
@@ -1329,6 +1340,7 @@ class App:
         self.pending_spell_targets     = []
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
+        self.pending_grapple_slot      = ""
         self._opportunity_queue.clear()
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++)
@@ -1790,6 +1802,74 @@ class App:
         # Mark bonus action as used
         self.pending_shove_slot = ""
         self.pending_shove_type = ""
+        self.bonus_used = True
+
+    def _start_grapple(self):
+        """Start a grapple action (requires target selection)."""
+        if self.bonus_used:
+            return
+        self.pending_grapple_slot = "bonus"
+        self._combat_log_add("Click a target to grapple.")
+
+    def _resolve_grapple(self, target_idx: int):
+        """Execute the pending grapple action."""
+        if not self.pending_grapple_slot:
+            return
+
+        atk_idx = self._current_agent_idx()
+        if atk_idx < 0:
+            self.pending_grapple_slot = ""
+            return
+
+        # Create GrappleAction
+        action = rpg.GrappleAction()
+        action.attacker_idx = atk_idx
+        action.target_idx = target_idx
+
+        # Execute grapple
+        result = self.combat.execute_grapple(self.bm, action)
+
+        # Log result
+        if result.valid:
+            self._combat_log_add(result.log_message)
+            if result.success:
+                self._update_reach()
+                self._update_attack_overlay()
+        else:
+            self._combat_log_add(f"Grapple failed: {result.log_message}")
+
+        # Mark bonus action as used
+        self.pending_grapple_slot = ""
+        self.bonus_used = True
+
+    def _execute_grapple_escape(self):
+        """Execute escape from grapple (bonus action, no target selection)."""
+        if self.bonus_used:
+            return
+
+        agent_idx = self._current_agent_idx()
+        if agent_idx < 0:
+            return
+
+        # Check if agent is actually grappled
+        conds = self.combat.get_agent_conditions(self.bm, agent_idx)
+        if not conds.grappled:
+            self._combat_log_add("Not grappled!")
+            return
+
+        # Execute escape
+        result = self.combat.execute_grapple_escape(self.bm, agent_idx)
+
+        # Log result
+        if result.valid:
+            self._combat_log_add(result.log_message)
+            if result.success:
+                self._update_reach()
+                self._update_attack_overlay()
+        else:
+            self._combat_log_add(f"Escape failed: {result.log_message}")
+
+        # Mark bonus action as used
         self.bonus_used = True
 
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
@@ -3627,12 +3707,20 @@ class App:
                     pygame.draw.circle(self.screen, charmer_color, (center_x, center_y), radius, 3)
                     break
 
+        # Grappled indicator (brown "GR" badge)
+        if pt.conditions.grappled:
+            badge_font = self.font_sm
+            gr_badge = badge_font.render("GR", True, (210, 150, 80))  # Brown/tan
+            badge_x = int(screen_x + 4)
+            badge_y = int(screen_y + 4)
+            self.screen.blit(gr_badge, (badge_x, badge_y))
+
         # Frightened indicator (purple "FR" badge)
         if pt.conditions.frightened:
             badge_font = self.font_sm
             fr_badge = badge_font.render("FR", True, (180, 100, 200))  # Purple
             badge_x = int(screen_x + 4)
-            badge_y = int(screen_y + 4)
+            badge_y = int(screen_y + 22)  # Below grappled badge if both present
             self.screen.blit(fr_badge, (badge_x, badge_y))
 
         # Hidden indicator (eye-slash symbol)
@@ -4486,6 +4574,27 @@ class App:
                 self.btn_cbt_shove_prone.draw(self.screen)
                 y += B + gap
 
+            # Grapple buttons (only if there are adjacent enemies)
+            if _has_adjacent:
+                TW2_grapple = (W - gap) // 2
+                # Check if current agent is grappled
+                if 0 <= cur_idx < len(agents):
+                    cur_conds = self.combat.get_agent_conditions(self.bm, cur_idx)
+                    if cur_conds.grappled:
+                        # Show escape button (full width, can't initiate new grapple while grappled)
+                        self.btn_cbt_grapple_esc.rect.x = lx
+                        self.btn_cbt_grapple_esc.rect.y = y
+                        self.btn_cbt_grapple_esc.rect.w = W
+                        self.btn_cbt_grapple_esc.draw(self.screen)
+                        y += B + gap
+                    else:
+                        # Show initiate grapple button (split width with pass/escape placeholder)
+                        self.btn_cbt_grapple.rect.x = lx
+                        self.btn_cbt_grapple.rect.y = y
+                        self.btn_cbt_grapple.rect.w = TW2_grapple
+                        self.btn_cbt_grapple.draw(self.screen)
+                        y += B + gap
+
             # Hide (Cunning Action) button - only if agent has cunning action
             if 0 <= cur_idx < len(agents):
                 agent = agents[cur_idx]
@@ -4549,6 +4658,9 @@ class App:
             y += 14
         elif self.pending_shove_slot:
             txt("→ Click a target to shove", lx, y, (190, 190, 150))
+            y += 14
+        elif self.pending_grapple_slot:
+            txt("→ Click a target to grapple", lx, y, (190, 190, 150))
             y += 14
 
         y += section_gap
@@ -5030,6 +5142,8 @@ class App:
                                     self._resolve_spell_cast(hit)
                         elif self.pending_shove_slot and hit >= 0:
                             self._resolve_shove(hit)
+                        elif self.pending_grapple_slot and hit >= 0:
+                            self._resolve_grapple(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -5381,6 +5495,10 @@ class App:
                         self._start_shove("push")
                     if self.btn_cbt_shove_prone.clicked(event):
                         self._start_shove("prone")
+                    if self.btn_cbt_grapple.clicked(event):
+                        self._start_grapple()
+                    if self.btn_cbt_grapple_esc.clicked(event):
+                        self._execute_grapple_escape()
                     if self.btn_cbt_hide_bonus.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -5422,7 +5540,7 @@ class App:
                     self._drop_weapon(2)
                 # Item pickup: click a cell with items
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map \
-                        and not self.pending_attack_slot and not self.pending_spell_slot and not self.pending_shove_slot:
+                        and not self.pending_attack_slot and not self.pending_spell_slot and not self.pending_shove_slot and not self.pending_grapple_slot:
                     items_at_cell = self.bm.get_items_at_cell(cell) if cell is not None else []
                     if items_at_cell:
                         cur_idx = self._current_agent_idx() if self.combat_active else self.selected_idx

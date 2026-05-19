@@ -388,6 +388,10 @@ namespace rpg {
       int death_save_successes{0}; // successful death saves (0-3); at 3, character stabilizes
       int death_save_failures{0};  // failed death saves (0-3); at 3, character dies
       bool stabilized{false};    // no longer rolling death saves
+      bool grappled{false};                 // creature is currently grappled
+      int grappler_idx{-1};                 // index of creature doing the grappling (-1 = none)
+      int grapple_escape_dc{10};            // DC to escape grapple
+      int grapple_range_ft{5};              // range at which grapple is broken if exceeded
     };
 
     // ── Construction ───────────────────────────────────────────────────────

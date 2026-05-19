@@ -20,6 +20,7 @@ test_scripts = [
     "test_poisoned.py",
     "test_petrified.py",
     "test_condition_saves.py",
+    "test_grapple.py",
 ]
 
 def run_tests():
