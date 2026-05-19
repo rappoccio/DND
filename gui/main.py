@@ -5219,80 +5219,101 @@ class App:
                         # Debug: check terrain types along the path
                         print(f"[Movement] Terrain at dest: {self.bm.get_terrain_type(self.drag_cell)}")
 
-                        # Opportunity attack: check if agent is moving away from adjacent threats
+                        # Check if agent can move at all (Speed = 0 check)
                         agents = self.bm.placed_agents
                         moving_agent = agents[self.drag_idx]
-                        pre_adjacent = set(self.combat.threatening_agents(self.bm, self.drag_idx)) if self.combat_active else set()
+                        can_move = self.combat.can_agent_move(self.bm, self.drag_idx)
 
-                        # Check if destination would leave all threat zones
-                        move_leaves_all_threats = False
-                        if self.combat_active and pre_adjacent and not moving_agent.conditions.disengaging:
-                            move_leaves_all_threats = True
-                            for threat_idx in pre_adjacent:
-                                if threat_idx >= len(agents):
-                                    continue
-                                threat_agent = agents[threat_idx]
-                                # Calculate Chebyshev distance from threat to destination
-                                dc = max(threat_agent.origin.col - self.drag_cell.col,
-                                        self.drag_cell.col - (threat_agent.origin.col + threat_agent.size - 1),
-                                        0)
-                                dr = max(threat_agent.origin.row - self.drag_cell.row,
-                                        self.drag_cell.row - (threat_agent.origin.row + threat_agent.size - 1),
-                                        0)
-                                dist = max(dc, dr)
-                                if dist <= 1:  # Still within reach of this threat
-                                    move_leaves_all_threats = False
-                                    break
-
-                        # If move would leave all threats, trigger OA first
-                        if move_leaves_all_threats:
-                            self.pending_move_idx = self.drag_idx
-                            self.pending_move_cell = self.drag_cell
-                            self.pending_move_type = self.move_type
-                            for threat_idx in sorted(pre_adjacent):
-                                if threat_idx >= len(agents): continue
-                                t = agents[threat_idx]
-                                if (not t.conditions.reaction_used
-                                        and not t.conditions.incapacitated
-                                        and t.stats.hp_cur > 0):
-                                    self._opportunity_queue.append((threat_idx, self.drag_idx))
-                            self._combat_log_add(f"{moving_agent.name} is threatened! Opportunity attacks triggered.")
-                            self._process_opportunity_queue()
-                        else:
-                            # Normal move - no threat violation
-                            move_success = self.combat.move_agent(self.bm, self.drag_idx, self.drag_cell, self.move_type)
+                        if not can_move:
+                            # Speed = 0, no movement possible, no OA
+                            move_success = False
                             print(f"[Movement] Move result: {move_success}")
-                            self._flush_combat_log()  # Flush any spell effect damage messages
-                            if move_success:
-                                # Read back the shared-pool budgets from C++.
-                                ag = self.bm.placed_agents[self.drag_idx]
-                                # Check if agent slipped — if so, their turn ends
-                                if ag.conditions.slipped_this_turn:
-                                    self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
-                                    self._advance_turn()
-                                else:
-                                    # Check if hidden agent is detected after moving into LOS
-                                    if ag.conditions.hidden:
-                                        in_combat = len(self.initiative_order) > 0
-                                        detection_msg = self.combat.check_hidden_agent_detection(self.bm, self.drag_idx, in_combat)
-                                        if detection_msg:
-                                            self._combat_log_add(detection_msg)
+                            self._combat_log_add(f"{moving_agent.name}: movement blocked — Speed = 0")
+                            self.drag_idx = -1
+                            self.drag_cell = None
+                            self.drag_valid = False
+                            self._update_reach()
+                            self._update_attack_overlay()
+                        else:
+                            # Agent can move, check for opportunity attacks
+                            # Filter out creatures with Speed=0 (they can't make OAs)
+                            all_threats = set(self.combat.threatening_agents(self.bm, self.drag_idx)) if self.combat_active else set()
+                            pre_adjacent = set()
+                            for threat_idx in all_threats:
+                                if threat_idx < len(agents):
+                                    # Only include threats that have Speed > 0 (can make OAs)
+                                    if self.combat.can_agent_move(self.bm, threat_idx):
+                                        pre_adjacent.add(threat_idx)
 
-                                    # Only update UI if agent didn't slip
-                                    self.move_remaining_walk   = ag.walk_remaining
-                                    self.move_remaining_fly    = ag.fly_remaining
-                                    self.move_remaining_swim   = ag.swim_remaining
-                                    self.move_remaining_burrow = ag.burrow_remaining
-                                    self.last_movement_dist = dist_moved  # Track most recent movement for running jump
-                                    print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row})")
+                            # Check if destination would leave all threat zones
+                            move_leaves_all_threats = False
+                            if self.combat_active and pre_adjacent and not moving_agent.conditions.disengaging:
+                                move_leaves_all_threats = True
+                                for threat_idx in pre_adjacent:
+                                    if threat_idx >= len(agents):
+                                        continue
+                                    threat_agent = agents[threat_idx]
+                                    # Calculate Chebyshev distance from threat to destination
+                                    dc = max(threat_agent.origin.col - self.drag_cell.col,
+                                            self.drag_cell.col - (threat_agent.origin.col + threat_agent.size - 1),
+                                            0)
+                                    dr = max(threat_agent.origin.row - self.drag_cell.row,
+                                            self.drag_cell.row - (threat_agent.origin.row + threat_agent.size - 1),
+                                            0)
+                                    dist = max(dc, dr)
+                                    if dist <= 1:  # Still within reach of this threat
+                                        move_leaves_all_threats = False
+                                        break
+
+                            # If move would leave all threats, trigger OA first
+                            if move_leaves_all_threats:
+                                self.pending_move_idx = self.drag_idx
+                                self.pending_move_cell = self.drag_cell
+                                self.pending_move_type = self.move_type
+                                for threat_idx in sorted(pre_adjacent):
+                                    if threat_idx >= len(agents): continue
+                                    t = agents[threat_idx]
+                                    if (not t.conditions.reaction_used
+                                            and not t.conditions.incapacitated
+                                            and t.stats.hp_cur > 0):
+                                        self._opportunity_queue.append((threat_idx, self.drag_idx))
+                                self._combat_log_add(f"{moving_agent.name} is threatened! Opportunity attacks triggered.")
+                                self._process_opportunity_queue()
+                            else:
+                                # Normal move - no threat violation
+                                move_success = self.combat.move_agent(self.bm, self.drag_idx, self.drag_cell, self.move_type)
+                                print(f"[Movement] Move result: {move_success}")
+                                self._flush_combat_log()  # Flush any spell effect damage messages
+                                if move_success:
+                                    # Read back the shared-pool budgets from C++.
+                                    ag = self.bm.placed_agents[self.drag_idx]
+                                    # Check if agent slipped — if so, their turn ends
+                                    if ag.conditions.slipped_this_turn:
+                                        self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
+                                        self._advance_turn()
+                                    else:
+                                        # Check if hidden agent is detected after moving into LOS
+                                        if ag.conditions.hidden:
+                                            in_combat = len(self.initiative_order) > 0
+                                            detection_msg = self.combat.check_hidden_agent_detection(self.bm, self.drag_idx, in_combat)
+                                            if detection_msg:
+                                                self._combat_log_add(detection_msg)
+
+                                        # Only update UI if agent didn't slip
+                                        self.move_remaining_walk   = ag.walk_remaining
+                                        self.move_remaining_fly    = ag.fly_remaining
+                                        self.move_remaining_swim   = ag.swim_remaining
+                                        self.move_remaining_burrow = ag.burrow_remaining
+                                        self.last_movement_dist = dist_moved  # Track most recent movement for running jump
+                                        print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row})")
+                                        self.selected_idx = self.drag_idx
+                                        self._update_reach()
+                                        self._update_attack_overlay()
+                                else:
+                                    print(f"[Movement] Move failed - likely blocked by terrain")
                                     self.selected_idx = self.drag_idx
                                     self._update_reach()
                                     self._update_attack_overlay()
-                            else:
-                                print(f"[Movement] Move failed - likely blocked by terrain")
-                                self.selected_idx = self.drag_idx
-                                self._update_reach()
-                                self._update_attack_overlay()
                     # else: agent stays at original position (C++ not updated)
                     self.drag_idx = -1
                     self.drag_cell = None

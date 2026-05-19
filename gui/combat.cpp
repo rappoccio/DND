@@ -729,6 +729,20 @@ static std::vector<Cell> getCellsAlongPath(Cell start, Cell end) noexcept
     return cells;
 }
 
+bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    // Check for any condition that reduces speed to 0
+    if (cond.incapacitated || cond.unconscious || cond.grappled || cond.paralyzed) {
+        return false;
+    }
+    return true;
+}
+
 bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementType type) noexcept
 {
     // Get old position before moving
@@ -783,13 +797,39 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
         if (i == idx) continue;
         Agent::Conditions target_cond = bm.getAgentConditions(i);
         if (target_cond.grappled && target_cond.grappler_idx == idx) {
-            // Grappler paying extra movement cost to drag
+            // Grappler paying extra movement cost to drag (same as movement type being used)
             int extra_cost = move_dist_ft;
-            if (getWalkRemaining(idx) < extra_cost) {
-                log_("Not enough movement to drag grappled creature");
-                return false;
+            int remaining = 0;
+
+            if (type == MovementType::Walk) {
+                remaining = getWalkRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendWalk(idx, extra_cost);
+            } else if (type == MovementType::Fly) {
+                remaining = getFlyRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendFly(idx, extra_cost);
+            } else if (type == MovementType::Swim) {
+                remaining = getSwimRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendSwim(idx, extra_cost);
+            } else if (type == MovementType::Burrow) {
+                remaining = getBurrowRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendBurrow(idx, extra_cost);
             }
-            spendWalk(idx, extra_cost);
             break;
         }
     }
@@ -837,6 +877,47 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
 
     // Update darkness-based blinding after movement
     updateDarknessBlinding(bm, idx);
+
+    // If grappling someone, drag them along maintaining relative position
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx) continue;
+        Agent::Conditions grappled_cond = bm.getAgentConditions(i);
+        if (grappled_cond.grappled && grappled_cond.grappler_idx == idx) {
+            // Calculate relative offset of grappled creature from grappler
+            int offset_col = agents[i].origin.col - oldOrigin.col;
+            int offset_row = agents[i].origin.row - oldOrigin.row;
+
+            // Try to maintain the same relative position
+            Cell preferred = Cell(newOrigin.col + offset_col, newOrigin.row + offset_row);
+            Cell drag_dest = preferred;
+
+            // Check if preferred position is valid
+            bool position_valid = bm.setAgentPosition(i, preferred);
+
+            // If preferred position blocked, find adjacent unoccupied cell
+            if (!position_valid) {
+                bool found = false;
+                // Try all 8 adjacent cells
+                const int deltas[][2] = {{0,1}, {0,-1}, {1,0}, {-1,0}, {1,1}, {-1,-1}, {1,-1}, {-1,1}};
+                for (const auto& delta : deltas) {
+                    Cell candidate = Cell(newOrigin.col + delta[0], newOrigin.row + delta[1]);
+                    if (bm.setAgentPosition(i, candidate)) {
+                        drag_dest = candidate;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    // No valid position found, leave creature at current position
+                    continue;
+                }
+            } else {
+                drag_dest = preferred;
+            }
+
+            log_("Grappled creature dragged");
+        }
+    }
 
     return true;
 }

@@ -533,6 +533,19 @@ int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft) noexcept
     return cells_moved;
 }
 
+bool BattleMap::setAgentPosition(int idx, Cell newOrigin) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
+    auto& pa = placedAgents_[idx];
+    int agent_size = pa.agent->getSize();
+
+    if (!inBounds(newOrigin, agent_size)) return false;
+
+    pa.origin = newOrigin;
+    pa.agent->setPosition(newOrigin.col, newOrigin.row);
+    return true;
+}
+
 void BattleMap::removeAgent(int idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;

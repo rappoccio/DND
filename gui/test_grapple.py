@@ -218,6 +218,72 @@ def test_grapple_badge_in_repr():
     assert "grappled" in repr_str.lower(), "Grappled status should appear in repr"
     print(f"✓ Grappled condition appears in repr: {repr_str}")
 
+def test_grappler_movement_drags_target():
+    """Test that grappled creatures are dragged when grappler moves."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    # Very strong grappler at (5, 5)
+    grp_config = create_test_agent("Grappler", 5, 5)
+    grp_idx = add_agent_to_battle(engine, bm, grp_config, str=18)
+
+    # Very weak target at (6, 5) - adjacent to grappler
+    tgt_config = create_test_agent("Target", 6, 5)
+    tgt_idx = add_agent_to_battle(engine, bm, tgt_config, str=6)
+
+    # Perform grapple
+    action = rpg.GrappleAction()
+    action.attacker_idx = grp_idx
+    action.target_idx = tgt_idx
+    result = engine.execute_grapple(bm, action)
+
+    if result.valid and result.success:
+        print(f"✓ Grapple succeeded")
+
+        # Begin grappler's turn to get movement budget
+        engine.begin_turn(bm, grp_idx)
+
+        # Get starting positions
+        grp_before = bm.placed_agents[grp_idx]
+        tgt_before = bm.placed_agents[tgt_idx]
+        print(f"  Before move: grappler at ({grp_before.origin.col},{grp_before.origin.row}), target at ({tgt_before.origin.col},{tgt_before.origin.row})")
+
+        # Move grappler 3 cells right and 2 cells down
+        new_grp_pos = rpg.Cell(8, 7)
+        move_success = engine.move_agent(bm, grp_idx, new_grp_pos, rpg.MovementType.Walk)
+
+        if move_success:
+            grp_after = bm.placed_agents[grp_idx]
+            tgt_after = bm.placed_agents[tgt_idx]
+            print(f"  After move: grappler at ({grp_after.origin.col},{grp_after.origin.row}), target at ({tgt_after.origin.col},{tgt_after.origin.row})")
+
+            # Verify grappler moved to destination
+            assert grp_after.origin.col == new_grp_pos.col and grp_after.origin.row == new_grp_pos.row, \
+                "Grappler should move to destination"
+            print(f"  ✓ Grappler moved to ({grp_after.origin.col},{grp_after.origin.row})")
+
+            # Verify target was dragged (not at original position)
+            assert not (tgt_after.origin.col == tgt_before.origin.col and tgt_after.origin.row == tgt_before.origin.row), \
+                "Target should be dragged from original position"
+            print(f"  ✓ Target was dragged from original position")
+
+            # Verify target is adjacent to grappler (within 1 cell Chebyshev distance)
+            dc = abs(tgt_after.origin.col - grp_after.origin.col)
+            dr = abs(tgt_after.origin.row - grp_after.origin.row)
+            dist = max(dc, dr)
+            assert dist <= 1, f"Target should be adjacent to grappler (distance: {dist})"
+            print(f"  ✓ Target is adjacent to grappler (distance: {dist} cells)")
+
+            # Verify target is still grappled
+            tgt_cond = engine.get_agent_conditions(bm, tgt_idx)
+            assert tgt_cond.grappled, "Target should still be grappled after being dragged"
+            assert tgt_cond.grappler_idx == grp_idx, "Grappler index should be correct"
+            print(f"  ✓ Target still grappled after forced movement")
+        else:
+            print("⊘ Move failed")
+    else:
+        print("⊘ Grapple didn't succeed, skipping drag test")
+
 def run_all_tests():
     """Run all grapple tests."""
     tests = [
@@ -230,6 +296,7 @@ def run_all_tests():
         test_grapple_escape_not_grappled,
         test_grappled_agent_cannot_move,
         test_grapple_badge_in_repr,
+        test_grappler_movement_drags_target,
     ]
 
     print("\n" + "="*60)

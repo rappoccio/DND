@@ -1020,6 +1020,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Clear all movement budgets (call at end of combat).")
 
         // ── Agent movement (with spell effect checking) ────────────────────
+        .def("can_agent_move",
+             &CombatEngine::canAgentMove,
+             py::arg("battle_map"), py::arg("idx"),
+             "Check if agent can move (has Speed > 0, not grappled, etc.).\n"
+             "Returns false if any condition reduces speed to 0.")
         .def("move_agent",
              &CombatEngine::moveAgent,
              py::arg("battle_map"), py::arg("idx"), py::arg("new_origin"), py::arg("movement_type"),
@@ -1401,6 +1406,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Force move agent[idx] away from push_from by up to push_ft.\n"
              "Does not consume movement budget. Stops at walls.\n"
              "Returns number of cells actually moved.")
+        .def("set_agent_position", &BattleMap::setAgentPosition,
+             py::arg("idx"), py::arg("new_origin"),
+             "Directly set agent[idx] position (used for grapple dragging).\n"
+             "Returns false if idx invalid or destination out of bounds.")
         .def("remove_agent",       &BattleMap::removeAgent,
              py::arg("idx"),
              "Remove placed agent[idx] from the map.")

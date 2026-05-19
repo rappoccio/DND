@@ -198,6 +198,10 @@ public:
     // Returns number of cells actually moved.
     [[nodiscard]] int forceMoveAgent(int idx, Cell push_from, int push_ft) noexcept;
 
+    // Directly set an agent's position (used for grapple dragging, not validated against movement).
+    // Returns false if idx is invalid or destination is out of bounds.
+    bool setAgentPosition(int idx, Cell newOrigin) noexcept;
+
     // Remove a placed agent by index.
     void removeAgent(int idx) noexcept;
 

@@ -374,6 +374,10 @@ public:
     void clearMovement() noexcept;
 
     // ── Agent movement (checks spell effects on entry) ────────────────────────
+    // Check if an agent can move (has Speed > 0, not grappled, etc.)
+    // Used to determine if movement would trigger opportunity attacks.
+    [[nodiscard]] bool canAgentMove(const BattleMap& bm, int idx) const noexcept;
+
     // Move an already-placed agent to a new grid origin using the specified movement type.
     // Returns false if the agent lacks sufficient budget or destination is blocked.
     // On successful move, checks for spell effects at destination and applies them.
