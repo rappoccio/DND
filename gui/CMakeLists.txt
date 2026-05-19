@@ -10,7 +10,6 @@ find_package(OpenCV 4 REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 
 # pybind11 – fetched automatically so no manual install is needed
-# Google Test – fetched automatically for unit tests
 include(FetchContent)
 FetchContent_Declare(
     pybind11
@@ -19,18 +18,12 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.14.0
-    GIT_SHALLOW    TRUE
-)
-FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG        v3.11.3
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(pybind11 googletest nlohmann_json)
+FetchContent_MakeAvailable(pybind11 nlohmann_json)
 
 # ── Python extension module ───────────────────────────────────────────────────
 pybind11_add_module(rpg_battle_map
@@ -52,8 +45,7 @@ target_link_libraries(rpg_battle_map PRIVATE
 )
 
 # ── Unit tests (Python) ──────────────────────────────────────────────────────
-# Tests are now written in Python; see test_*.py scripts
-# No C++ unit tests are built
+# Tests are written in Python; see test_*.py scripts
 
 # ── Compiler warnings ─────────────────────────────────────────────────────────
 if(MSVC)
