@@ -404,6 +404,31 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         return result;
     }
 
+    // Check if concentration spell has any living targets left
+    if (cond.concentrating && !cond.concentrating_on.empty()) {
+        bool has_living_targets = false;
+        for (const auto& active_cond : activeAgentConditions_) {
+            // Check if any agents have conditions applied by this caster's spells
+            if (active_cond.caster_idx == agent_idx &&
+                active_cond.agent_idx >= 0 &&
+                active_cond.agent_idx < static_cast<int>(agents.size())) {
+                const auto& target_stats = agents[static_cast<std::size_t>(active_cond.agent_idx)].stats;
+                const auto& target_cond = agents[static_cast<std::size_t>(active_cond.agent_idx)].agent->getConditions();
+                // Target is alive if not dead and not unconscious (unconscious targets can't be affected by control spells)
+                if (target_stats.hp_cur > 0 && !target_cond.dead && !target_cond.unconscious) {
+                    has_living_targets = true;
+                    break;
+                }
+            }
+        }
+        if (!has_living_targets) {
+            cond.concentrating = false;
+            cond.concentrating_on = "";
+            bm.setAgentConditions(agent_idx, cond);
+            log_("Concentration on {} dropped: no living targets remaining", cond.concentrating_on);
+        }
+    }
+
     // Check for incapacitating conditions first (Paralyzed, Incapacitated, Stunned)
     // These always cause a turn skip unless the agent succeeds on a save
     for (auto& active_cond : activeAgentConditions_) {
