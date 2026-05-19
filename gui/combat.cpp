@@ -1400,36 +1400,65 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
 
     // Apply weapon conditions on hit
     if (r.hit && !w.conditions.empty()) {
+        auto ability_name = [](SaveAbility_t ab) -> std::string {
+            switch (ab) {
+                case SaveStr: return "STR";
+                case SaveDex: return "DEX";
+                case SaveCon: return "CON";
+                case SaveInt: return "INT";
+                case SaveWis: return "WIS";
+                default: return "CHA";
+            }
+        };
+
         for (const auto& weapon_cond : w.conditions) {
-            int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
+            bool condition_applies = false;
 
-            // Target makes a save to resist the condition
-            auto getSaveMod = [&](SaveAbility_t ability) -> int {
-                int score = 0;
-                bool prof = false;
-                switch (ability) {
-                    case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-                    case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-                    case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-                    case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-                    case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
-                    default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
+            if (!weapon_cond.requires_save) {
+                // Condition is automatic on hit
+                condition_applies = true;
+            } else {
+                // Target makes a save to resist the condition
+                int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
+
+                auto getSaveMod = [&](SaveAbility_t ability) -> int {
+                    int score = 0;
+                    bool prof = false;
+                    switch (ability) {
+                        case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+                        case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+                        case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+                        case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+                        case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+                        default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
+                    }
+                    int m = (score - 10) / 2;
+                    if (score < 10 && (score - 10) % 2 != 0) --m;
+                    return m + (prof ? tgt_stats.prof_bonus : 0);
+                };
+
+                // Check for auto-fail conditions (paralyzed, stunned auto-fail STR/DEX)
+                bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
+                                (weapon_cond.save_ability == SaveStr || weapon_cond.save_ability == SaveDex);
+
+                int save_d20 = auto_fail ? 1 : roll(20);
+                int save_mod = getSaveMod(weapon_cond.save_ability);
+                bool saved = auto_fail ? false : (save_d20 + save_mod >= save_dc);
+
+                condition_applies = !saved;
+
+                if (!saved) {
+                    log_("Target failed {} save vs weapon condition '{}' (save DC {})",
+                         ability_name(weapon_cond.save_ability), weapon_cond.condition_name, save_dc);
+                } else {
+                    log_("Target resisted weapon condition '{}' (save DC {})",
+                         weapon_cond.condition_name, save_dc);
                 }
-                int m = (score - 10) / 2;
-                if (score < 10 && (score - 10) % 2 != 0) --m;
-                return m + (prof ? tgt_stats.prof_bonus : 0);
-            };
+            }
 
-            // Check for auto-fail conditions (paralyzed, stunned auto-fail STR/DEX)
-            bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
-                            (weapon_cond.save_ability == SaveStr || weapon_cond.save_ability == SaveDex);
-
-            int save_d20 = auto_fail ? 1 : roll(20);
-            int save_mod = getSaveMod(weapon_cond.save_ability);
-            bool saved = auto_fail ? false : (save_d20 + save_mod >= save_dc);
-
-            if (!saved) {
-                // Target failed save, apply condition
+            if (condition_applies) {
+                // Apply condition
+                int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
                 ActiveAgentCondition cond;
                 cond.agent_idx = action.target_idx;
                 cond.caster_idx = action.attacker_idx;
@@ -1442,11 +1471,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                 cond.next_save_turn = 0;
 
                 [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
-                log_("Weapon condition '{}' applied to target (save DC {})",
-                     weapon_cond.condition_name, save_dc);
-            } else {
-                log_("Target resisted weapon condition '{}' (save DC {})",
-                     weapon_cond.condition_name, save_dc);
+                log_("Weapon condition '{}' applied to target", weapon_cond.condition_name);
             }
         }
     }
@@ -2138,54 +2163,120 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         // Apply spell-based conditions (e.g., Hold Person applies Paralyzed)
-        bool spell_affected_target = false;
-        switch (sp.attack_type) {
-            case Spell::AttackRoll:
-                spell_affected_target = tr.hit;
-                break;
-            case Spell::Save:
-                spell_affected_target = !tr.saved;  // Condition applies on failed save
-                break;
-            case Spell::Automatic:
-            default:
-                spell_affected_target = true;  // Automatic hits always apply conditions
-                break;
-        }
-
-        if (spell_affected_target && !sp.conditions.empty()) {
-            for (const auto& spell_cond : sp.conditions) {
-                ActiveAgentCondition cond;
-                cond.agent_idx   = tgt_idx;
-                cond.caster_idx  = action.caster_idx;
-                cond.spell_idx   = action.spell_idx;
-                cond.condition_name = spell_cond.condition_name;
-                cond.save_ability = spell_cond.save_ability;
-
-                // Condition duration: if condition_duration is 0, use spell duration
-                cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
-                // Save DC: use caster's spellcasting ability if SaveSpellcasterMod, else use specified ability
-                if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
-                    cond.save_dc = spellSaveDc(caster_stats);
-                } else {
-                    cond.save_dc = spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
+        if (!sp.conditions.empty()) {
+            auto ability_name = [](SaveAbility_t ab) -> std::string {
+                switch (ab) {
+                    case SaveStr: return "STR";
+                    case SaveDex: return "DEX";
+                    case SaveCon: return "CON";
+                    case SaveInt: return "INT";
+                    case SaveWis: return "WIS";
+                    default: return "CHA";
                 }
-                // How often to repeat save checks
-                cond.save_repeat_turns = spell_cond.save_repeat_turns;
-                // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
-                cond.next_save_turn = 0;
+            };
 
-                [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
-                any_conditions_applied = true;
+            for (const auto& spell_cond : sp.conditions) {
+                // Determine if this specific condition applies to the target
+                bool condition_applies = false;
+                bool target_failed_save = false;
 
-                // Apply spell push on failed save
-                if (spell_cond.condition_name == "Push" && spell_cond.push_ft > 0 && !tr.saved) {
-                    auto spell_agents = bm.placedAgents();
-                    if (action.caster_idx >= 0 && action.caster_idx < static_cast<int>(spell_agents.size())) {
-                        const auto& caster = spell_agents[action.caster_idx];
-                        int cells_moved = bm.forceMoveAgent(tgt_idx, caster.origin, spell_cond.push_ft);
-                        tr.push_ft_applied = cells_moved * 5;
-                        if (cells_moved > 0) {
-                            log_("Target pushed {} feet by {}", tr.push_ft_applied, sp.name);
+                if (!spell_cond.requires_save) {
+                    // Condition is automatic: applies on hit (AttackRoll) or always (Automatic)
+                    if (sp.attack_type == Spell::AttackRoll) {
+                        condition_applies = tr.hit;
+                    } else {
+                        condition_applies = true;  // Save or Automatic spells apply conditions automatically
+                    }
+                } else {
+                    // Condition requires a save
+                    int save_dc = spellSaveDc(caster_stats);
+                    const PlacedAgent& target_pa = agents[static_cast<std::size_t>(tgt_idx)];
+                    const Agent::Conditions& target_cond = target_pa.agent->getConditions();
+                    bool target_adv = target_pa.agent->hasAdvantage();
+                    bool target_dis = target_pa.agent->hasDisadvantage();
+
+                    // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
+                    bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
+                                    (spell_cond.save_ability == SaveStr || spell_cond.save_ability == SaveDex);
+
+                    int save_d20;
+                    if (auto_fail) {
+                        save_d20 = 1;
+                        std::string reason = target_cond.paralyzed ? "paralyzed" : (target_cond.stunned ? "stunned" : "unconscious");
+                        log_("Target is {}: automatically fails {} save vs {} condition",
+                             reason, ability_name(spell_cond.save_ability), spell_cond.condition_name);
+                    } else if (target_adv && target_dis) {
+                        save_d20 = roll(20);
+                    } else if (target_adv) {
+                        save_d20 = rollAdvantage(20);
+                    } else if (target_dis) {
+                        save_d20 = rollDisadvantage(20);
+                    } else {
+                        save_d20 = roll(20);
+                    }
+
+                    auto saveMod = [&](SaveAbility_t ab) -> int {
+                        int score = 0; bool prof = false;
+                        switch (ab) {
+                            case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+                            case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+                            case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+                            case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+                            case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+                            default:      score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
+                        }
+                        int m = (score - 10) / 2;
+                        if (score < 10 && (score - 10) % 2 != 0) --m;
+                        return m + (prof ? tgt_stats.prof_bonus : 0);
+                    };
+
+                    bool save_succeeded = (save_d20 + saveMod(spell_cond.save_ability) >= save_dc);
+                    target_failed_save = !save_succeeded;
+                    condition_applies = target_failed_save;
+
+                    log_("{} save vs {} condition: rolled {} + {} = {} vs DC {} — {}",
+                         ability_name(spell_cond.save_ability),
+                         spell_cond.condition_name,
+                         save_d20, saveMod(spell_cond.save_ability),
+                         save_d20 + saveMod(spell_cond.save_ability),
+                         save_dc,
+                         save_succeeded ? "SAVED" : "FAILED");
+                }
+
+                if (condition_applies) {
+                    ActiveAgentCondition cond;
+                    cond.agent_idx   = tgt_idx;
+                    cond.caster_idx  = action.caster_idx;
+                    cond.spell_idx   = action.spell_idx;
+                    cond.condition_name = spell_cond.condition_name;
+                    cond.save_ability = spell_cond.save_ability;
+
+                    // Condition duration: if condition_duration is 0, use spell duration
+                    cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
+                    // Save DC: use caster's spellcasting ability if SaveSpellcasterMod, else use specified ability
+                    if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
+                        cond.save_dc = spellSaveDc(caster_stats);
+                    } else {
+                        cond.save_dc = spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
+                    }
+                    // How often to repeat save checks
+                    cond.save_repeat_turns = spell_cond.save_repeat_turns;
+                    // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
+                    cond.next_save_turn = 0;
+
+                    [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
+                    any_conditions_applied = true;
+
+                    // Apply spell push on failed save
+                    if (spell_cond.condition_name == "Push" && spell_cond.push_ft > 0) {
+                        auto spell_agents = bm.placedAgents();
+                        if (action.caster_idx >= 0 && action.caster_idx < static_cast<int>(spell_agents.size())) {
+                            const auto& caster = spell_agents[action.caster_idx];
+                            int cells_moved = bm.forceMoveAgent(tgt_idx, caster.origin, spell_cond.push_ft);
+                            tr.push_ft_applied = cells_moved * 5;
+                            if (cells_moved > 0) {
+                                log_("Target pushed {} feet by {}", tr.push_ft_applied, sp.name);
+                            }
                         }
                     }
                 }

@@ -15,6 +15,7 @@ struct AttackCondition {
     int save_repeat_turns = 1;            // repeat save check every N turns
     SaveAbility_t save_ability = SaveDex;      // target's save type
     SaveAbility_t save_dc_ability = SaveWis;   // attacker's ability for DC
+    bool requires_save = false;           // if false, condition applies automatically; if true, target gets a save
 };
 
 } // namespace rpg

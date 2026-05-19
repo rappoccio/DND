@@ -5696,6 +5696,14 @@
       }
     ],
     "physical_damage_types": [],
+    "conditions":[
+      {
+	"condition_name": "Poisoned",
+	"condition_duration":0,
+	"save_repeat_turns":1,
+	"requires_save":false
+      }
+    ],
     "level": 1,
     "upcast_dice_bonus": 1,
     "requires_concentration": false,

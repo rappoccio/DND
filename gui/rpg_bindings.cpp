@@ -332,7 +332,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("push_ft",            &AttackCondition::push_ft)
         .def_readwrite("save_repeat_turns",  &AttackCondition::save_repeat_turns)
         .def_readwrite("save_ability",       &AttackCondition::save_ability)
-        .def_readwrite("save_dc_ability",    &AttackCondition::save_dc_ability);
+        .def_readwrite("save_dc_ability",    &AttackCondition::save_dc_ability)
+        .def_readwrite("requires_save",      &AttackCondition::requires_save,
+             "If true, target gets a save to negate the condition; if false, condition applies automatically.");
 
     // ── Weapon ────────────────────────────────────────────────────────────────
     py::class_<Weapon>(m, "Weapon")
