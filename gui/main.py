@@ -2942,7 +2942,9 @@ class App:
                 c = rpg.AttackCondition()
                 c.condition_name = cond_entry.get("condition_name", "")
                 c.condition_duration = int(cond_entry.get("condition_duration", 0))
+                c.push_ft = int(cond_entry.get("push_ft", 0))
                 c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
+                c.requires_save = ("save_ability" in cond_entry)
                 # Parse save_ability string (target's save) - defaults to spell's save_ability
                 save_ability_str = cond_entry.get("save_ability")
                 if save_ability_str:
@@ -2964,7 +2966,9 @@ class App:
                 c = rpg.AttackCondition()
                 c.condition_name = str(cond_entry)
                 c.condition_duration = 0  # will use spell duration
+                c.push_ft = 0
                 c.save_repeat_turns = 1
+                c.requires_save = False
                 c.save_ability = s.save_ability  # use spell's ability for legacy conditions
                 c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
                 conditions.append(c)

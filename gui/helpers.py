@@ -440,6 +440,8 @@ def _dict_to_spell(d: dict):
                 c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
             except AttributeError:
                 c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
+            # Condition requires a save if it has a save_ability specified (and it's not just defaulting to spell's ability)
+            c.requires_save = ("save_ability" in cond_entry)
             conditions.append(c)
         else:
             # Simple string: just the condition name (legacy support)

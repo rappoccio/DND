@@ -190,3 +190,10 @@ c.push_ft = cond_dict.get("push_ft", 0)
 6. Diagonal push blocked: falls back to orthogonal
 7. Weapon push: only fires if attacker is proficient
 8. Unarmed strike: 1 + STR mod bludgeoning damage, proficiency applies
+
+---
+
+## Post-Implementation Notes
+
+### Grapple UI Refactoring (TODO)
+The Grapple button is currently a separate button, but it should be an unarmed attack option instead. When implementing unarmed strikes (punch, kick, headbutt, etc.), Grapple should be one of the available unarmed attack options. This will be done when completing the unarmed strike implementation.
