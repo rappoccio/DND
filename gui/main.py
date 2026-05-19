@@ -315,7 +315,9 @@ class App:
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
-        self.pending_grapple_slot      = ""    # "" | "bonus" for grapple actions
+        self.pending_grapple_slot      = ""
+        self.pending_unarmed_type      = ""    # "" | "bonus" for grapple actions
+        self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
@@ -1108,16 +1110,25 @@ class App:
         """Seed this turn's movement budgets from the agent's stats."""
         if 0 <= agent_idx < len(self.bm.placed_agents):
             stats  = self.combat.get_agent_stats(self.bm, agent_idx)
+            cond   = self.combat.get_agent_conditions(self.bm, agent_idx)
             agent  = self.bm.placed_agents[agent_idx]
             walk   = stats.speed_walk
             fly    = stats.speed_fly
             swim   = stats.speed_swim
             burrow = stats.speed_burrow
-            self.move_remaining_walk   = walk
-            self.move_remaining_fly    = fly
-            self.move_remaining_swim   = swim
-            self.move_remaining_burrow = burrow
+            # Pass base speeds to init_movement; C++ getWalkRemaining() applies exhaustion penalty
             agent.init_movement(walk, fly, swim, burrow)
+            # Update UI with exhaustion-adjusted remaining movement
+            exhaustion_reduction = 5 * cond.exhaustion_level
+            self.move_remaining_walk   = max(0, walk - exhaustion_reduction)
+            self.move_remaining_fly    = max(0, fly - exhaustion_reduction)
+            self.move_remaining_swim   = max(0, swim - exhaustion_reduction)
+            self.move_remaining_burrow = max(0, burrow - exhaustion_reduction)
+            if cond.exhaustion_level > 0:
+                print(f"[_reset_movement] Agent {agent.name}: exhaustion_level={cond.exhaustion_level} (−{exhaustion_reduction}ft)")
+                print(f"  walk: {walk} → {self.move_remaining_walk}, fly: {fly} → {self.move_remaining_fly}, swim: {swim} → {self.move_remaining_swim}, burrow: {burrow} → {self.move_remaining_burrow}")
+            else:
+                print(f"[_reset_movement] Agent {agent.name}: exhaustion_level=0, walk={walk}, fly={fly}, swim={swim}, burrow={burrow}")
         else:
             self.move_remaining_walk   = 0
             self.move_remaining_fly    = 0
@@ -1235,6 +1246,7 @@ class App:
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
+        self.pending_unarmed_type      = ""
         self.combat_log                = []
         # Initialize combat log file
         self._combat_log_file = "combat_log.txt"
@@ -1275,6 +1287,7 @@ class App:
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
+        self.pending_unarmed_type      = ""
         self.selected_idx              = -1
         self._reach_walk         = []
         self._reach_fly          = []
@@ -1341,6 +1354,7 @@ class App:
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
+        self.pending_unarmed_type      = ""
         self._opportunity_queue.clear()
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++)
@@ -1662,16 +1676,25 @@ class App:
                 self.attacks_remaining   = 0
             return
 
+        # Check if attacker has exhaustion for potential penalty note
+        atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx) if 0 <= atk_idx < len(agents) else None
+        exh_note = ""
+        if atk_cond and atk_cond.exhaustion_level >= 1:
+            penalty = 2 * atk_cond.exhaustion_level
+            exh_note = f" [−{penalty} exhaustion]"
+
         if result.hit:
             dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
             dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
             msg = (f"{atk_name}→{tgt_name}: "
                    f"HIT {result.total_damage} {dmg_type_str}"
                    f"{' CRIT!' if result.critical else ''}"
-                   f"{' — DOWN' if result.target_down else ''}")
+                   f"{' — DOWN' if result.target_down else ''}"
+                   f"{exh_note}")
         else:
             msg = (f"{atk_name}→{tgt_name}: "
-                   f"miss (roll {result.total_roll} vs AC {result.target_ac})")
+                   f"miss (roll {result.total_roll} vs AC {result.target_ac})"
+                   f"{exh_note}")
         self._combat_log_add(msg)
 
         # Check concentration save if damage was dealt
@@ -1724,42 +1747,79 @@ class App:
         # Refresh attack overlay (HP may have changed).
         self._update_attack_overlay()
 
-    def _start_unarmed_strike(self):
-        """Start an unarmed strike attack (1 + STR bludgeoning)."""
-        idx = self._current_agent_idx()
-        if idx < 0:
-            return
-
-        stats = self.combat.get_agent_stats(self.bm, idx)
-
-        # Create a synthetic unarmed strike weapon (1 + STR mod bludgeoning)
+    def _create_unarmed_punch_weapon(self):
+        """Create a synthetic unarmed punch weapon (1 + STR bludgeoning)."""
         unarmed = rpg.Weapon()
         unarmed.name = "Unarmed Strike"
         unarmed.type = rpg.WeaponType.Melee
         unarmed.proficient = True
         unarmed.finesse = True
-        unarmed.reach_ft = 5  # 5ft reach
+        unarmed.reach_ft = 5
         unarmed.bonus_hit = 0
-        # 1d1 damage (always rolls 1, then STR mod is added as bonus)
         dmg_roll = rpg.PhysicalDamageRoll()
-        dmg_roll.type = rpg.PhysicalDamageType.Bludgeoning
+        dmg_roll.type = rpg.PhysicalDamage.Bludgeoning
         dmg_roll.num_dice = 1
         dmg_roll.die_size = 1
         dmg_roll.bonus = 0
         unarmed.physical_damage_types = [dmg_roll]
+        return unarmed
 
-        # Save original weapons, add unarmed to front, use it, then restore
+    def _show_unarmed_menu(self, mouse_pos):
+        """Show the unarmed strike options menu at mouse position."""
+        items = [
+            ("👊 Punch", lambda: self._start_unarmed_punch()),
+            ("🤝 Grapple", lambda: self._start_unarmed_grapple()),
+            ("🔨 Push", lambda: self._start_unarmed_push()),
+        ]
+        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+
+    def _start_unarmed_punch(self):
+        """Start an unarmed punch attack (1 + STR bludgeoning)."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        unarmed = self._create_unarmed_punch_weapon()
         orig_weapons = self.combat.get_agent_weapons(self.bm, idx)
-        new_weapons = [unarmed] + orig_weapons
+        new_weapons = [unarmed] + orig_weapons[1:]
         self.combat.set_agent_weapons(self.bm, idx, new_weapons)
         self._unarmed_strike_original_weapons = (idx, orig_weapons)
+        self.pending_unarmed_type = "punch"
+        self._combat_log_add("Click a target to punch.")
 
-        # Start attack from action slot
-        self.pending_attack_slot = "action"
-        self.pending_weapon_idx = 0
-        self.attacks_remaining = 1
-        self._attack_sequence_slot = "action"
-        self._combat_log_add("Click a target for unarmed strike.")
+    def _start_unarmed_grapple(self):
+        """Start an unarmed grapple action (requires target selection)."""
+        if self._current_agent_idx() < 0:
+            return
+        self.pending_unarmed_type = "grapple"
+        self._combat_log_add("Click a target to grapple.")
+
+    def _start_unarmed_push(self):
+        """Start an unarmed push action (requires target selection)."""
+        if self._current_agent_idx() < 0:
+            return
+        self.pending_unarmed_type = "push"
+        self._combat_log_add("Click a target to push.")
+
+    def _resolve_unarmed_option(self, target_idx: int):
+        """Route unarmed option to appropriate resolver."""
+        if not self.pending_unarmed_type:
+            return
+
+        if self.pending_unarmed_type == "punch":
+            self._resolve_combat_attack(target_idx)
+        elif self.pending_unarmed_type == "grapple":
+            self.pending_grapple_slot = "action"  # Set before resolver checks it
+            self._resolve_grapple(target_idx)
+            self.bonus_used = False  # _resolve_grapple marks bonus_used, but this is an action
+            self.action_used = True
+        elif self.pending_unarmed_type == "push":
+            self.pending_shove_slot = "action"
+            self.pending_shove_type = "push"
+            self._resolve_shove(target_idx)
+            self.bonus_used = False  # _resolve_shove marks bonus_used, but this is an action
+            self.action_used = True
+
+        self.pending_unarmed_type = ""
 
     def _start_shove(self, shove_type: str):
         """Start a shove action (requires target selection)."""
@@ -2259,12 +2319,17 @@ class App:
             self._combat_log_add(msg)
 
     def _on_long_rest(self):
-        """Reset all spell slots and NPC spell uses to their maximum values."""
+        """Reset all spell slots, NPC spell uses, and decrement exhaustion by 1."""
         agents = self.bm.placed_agents
         for idx in range(len(agents)):
             stats = self.combat.get_agent_stats(self.bm, idx)
             stats.restore_spell_slots()
             self.combat.set_agent_stats(self.bm, idx, stats)
+            # Decrement exhaustion by 1 (minimum 0)
+            cond = self.combat.get_agent_conditions(self.bm, idx)
+            if cond.exhaustion_level > 0:
+                cond.exhaustion_level = max(0, cond.exhaustion_level - 1)
+                self.combat.set_agent_conditions(self.bm, idx, cond)
             # Reset NPC spell uses: copy uses_max back to uses_remaining
             if idx in self._agent_meta:
                 spells = self.combat.get_agent_spells(self.bm, idx)
@@ -4303,8 +4368,16 @@ class App:
             txt(f"HP {stats.hp_cur}/{stats.hp_max}", lx + W//2 - 22, y - 1)
             y += 12
 
-            # ── Death saves display (if unconscious) ────────────────────────
+            # ── Exhaustion display ─────────────────────────────────────────────
             cond = self.combat.get_agent_conditions(self.bm, cur_idx)
+            if cond.exhaustion_level >= 1:
+                exh_col = ((200, 100, 50) if cond.exhaustion_level < 6 else
+                          (200, 50, 50))  # Red at level 6 (death)
+                txt(f"🔗 Exhaustion L{cond.exhaustion_level}", lx, y, exh_col, self.font_sm)
+                y += 16
+
+            # ── Death saves display (if unconscious) ────────────────────────
+
             if cond.unconscious and stats.hp_cur <= 0:
                 y += 8
                 if cond.dead:
@@ -4616,7 +4689,14 @@ class App:
         txt("Movement", lx, y, COL_LABEL)
         y += 16
 
+        # Show exhaustion speed reduction if active
         mv_stats = self.combat.get_agent_stats(self.bm, cur_idx) if 0 <= cur_idx < len(self.bm.placed_agents) else None
+        cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(self.bm.placed_agents) else None
+        if cur_cond and cur_cond.exhaustion_level >= 1:
+            reduction = 5 * cur_cond.exhaustion_level
+            exh_note = f"(−{reduction}ft exhaustion)" if reduction < 30 else "(exhaustion: 0ft movement)"
+            txt(exh_note, lx, y, (200, 100, 50), self.font_sm)
+            y += 14
         mv_entries = [
             (rpg.MovementType.Walk,   "Walk",   self.move_remaining_walk,
              mv_stats.speed_walk   if mv_stats else 0),
@@ -4665,6 +4745,14 @@ class App:
             y += 14
         elif self.pending_grapple_slot:
             txt("→ Click a target to grapple", lx, y, (190, 190, 150))
+            y += 14
+        elif self.pending_unarmed_type:
+            hint_text = {
+                "punch": "→ Click a target to punch",
+                "grapple": "→ Click a target to grapple",
+                "push": "→ Click a target to push",
+            }.get(self.pending_unarmed_type, "→ Click a target")
+            txt(hint_text, lx, y, (190, 190, 150))
             y += 14
 
         y += section_gap
@@ -4949,8 +5037,19 @@ class App:
                 self.spell_dialog.handle(event, self.screen)
                 continue
             if self.conditions_dialog.active:
-                if self.conditions_dialog.handle(event):
-                    continue
+                was_active = self.conditions_dialog.active
+                self.conditions_dialog.handle(event)
+                # Check if dialog just closed, apply modified conditions
+                if was_active and not self.conditions_dialog.active and self.conditions_dialog.agent_idx is not None:
+                    agent_idx = self.conditions_dialog.agent_idx
+                    if 0 <= agent_idx < len(self.bm.placed_agents):
+                        modified_cond = self.conditions_dialog.conditions
+                        print(f"[main.py] Dialog closed for agent {agent_idx}, applying conditions: exhaustion_level={modified_cond.exhaustion_level}")
+                        self.combat.set_agent_conditions(self.bm, agent_idx, modified_cond)
+                        print(f"[main.py] Conditions applied, verifying: {self.combat.get_agent_conditions(self.bm, agent_idx).exhaustion_level}")
+                    self.conditions_dialog.agent_idx = None  # Clear after applying
+                    self.conditions_dialog.conditions = {}  # Clear conditions
+                continue
             # ── Placement mode (floating agent) ───────────────────────────────
             if self.placement_mode_active:
                 if event.type == pygame.MOUSEMOTION:
@@ -5148,6 +5247,8 @@ class App:
                             self._resolve_shove(hit)
                         elif self.pending_grapple_slot and hit >= 0:
                             self._resolve_grapple(hit)
+                        elif self.pending_unarmed_type and hit >= 0:
+                            self._resolve_unarmed_option(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -5309,7 +5410,17 @@ class App:
                                         self.move_remaining_swim   = ag.swim_remaining
                                         self.move_remaining_burrow = ag.burrow_remaining
                                         self.last_movement_dist = dist_moved  # Track most recent movement for running jump
-                                        print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row})")
+                                        # Log remaining movement for current movement type
+                                        remaining = 0
+                                        if self.move_type == rpg.MovementType.Walk:
+                                            remaining = self.move_remaining_walk
+                                        elif self.move_type == rpg.MovementType.Fly:
+                                            remaining = self.move_remaining_fly
+                                        elif self.move_type == rpg.MovementType.Swim:
+                                            remaining = self.move_remaining_swim
+                                        elif self.move_type == rpg.MovementType.Burrow:
+                                            remaining = self.move_remaining_burrow
+                                        print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row}) ({remaining} feet remaining)")
                                         self.selected_idx = self.drag_idx
                                         self._update_reach()
                                         self._update_attack_overlay()
@@ -5435,7 +5546,7 @@ class App:
                             if 0 <= agent_idx < len(self.bm.placed_agents):
                                 agent = self.bm.placed_agents[agent_idx]
                                 cond = self.combat.get_agent_conditions(self.bm, agent_idx)
-                                self.conditions_dialog.open(agent.name, cond)
+                                self.conditions_dialog.open(agent.name, cond, agent_idx)
                             break
 
                 # ── Combat panel buttons ───────────────────────────────────
@@ -5448,7 +5559,7 @@ class App:
                     if _has_wpn and self.btn_cbt_atk_action.clicked(event):
                         self._start_attack("action")
                     if self.btn_cbt_unarmed.clicked(event):
-                        self._start_unarmed_strike()
+                        self._show_unarmed_menu(pygame.mouse.get_pos())
                     if self.btn_cbt_pass_action.clicked(event):
                         self.action_used = True
                     if self.btn_cbt_dash.clicked(event):

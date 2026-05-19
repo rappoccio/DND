@@ -4,7 +4,7 @@ import pygame
 from constants import *
 
 class ConditionsDialog:
-    """Modal dialog showing an agent's active conditions."""
+    """Modal dialog showing an agent's active conditions with exhaustion controls."""
     DLG_W = 400
     DLG_H = 300
     PAD = 12
@@ -27,11 +27,15 @@ class ConditionsDialog:
         self.agent_name = ""
         self.conditions = {}
         self._close_btn_rect = None
+        self._exh_slider_rect = None
+        self.agent_idx = None
 
-    def open(self, agent_name: str, conditions):
+    def open(self, agent_name: str, conditions, agent_idx=None):
         """Open the dialog with agent conditions."""
+        print(f"[ConditionsDialog.open] Opening for {agent_name} (idx={agent_idx}), exhaustion_level={conditions.exhaustion_level if conditions else 'None'}")
         self.agent_name = agent_name
         self.conditions = conditions
+        self.agent_idx = agent_idx
         self.active = True
 
         # Center the dialog on screen
@@ -39,12 +43,13 @@ class ConditionsDialog:
         self.rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2,
                                 self.DLG_W, self.DLG_H)
         self._close_btn_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+        print(f"[ConditionsDialog.open] Dialog rect: {self.rect}, slider will be at y={self.rect.y + 50}")
 
     def close(self):
-        """Close the dialog."""
+        """Close the dialog. Conditions are kept until main.py processes them."""
         self.active = False
         self.rect = None
-        self.conditions = {}
+        # Keep agent_idx and conditions until main.py has processed them
 
     def handle(self, event):
         """Handle input events. Returns True if consumed."""
@@ -53,14 +58,26 @@ class ConditionsDialog:
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._close_btn_rect and self._close_btn_rect.collidepoint(event.pos):
+                print(f"[ConditionsDialog] Close button clicked")
                 self.close()
+                return True
+            # Exhaustion slider click
+            if self._exh_slider_rect and self._exh_slider_rect.collidepoint(event.pos):
+                # Calculate exhaustion level from click position on slider
+                rel_x = event.pos[0] - self._exh_slider_rect.x
+                level = min(6, max(0, int((rel_x / self._exh_slider_rect.width) * 6)))
+                print(f"[ConditionsDialog] Exhaustion slider clicked: rel_x={rel_x}, slider_width={self._exh_slider_rect.width}, new_level={level}")
+                self.conditions.exhaustion_level = level
+                print(f"[ConditionsDialog] Exhaustion set to {self.conditions.exhaustion_level}")
                 return True
             # Close on click outside
             if not self.rect.collidepoint(event.pos):
+                print(f"[ConditionsDialog] Clicked outside dialog, closing")
                 self.close()
                 return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            print(f"[ConditionsDialog] ESC pressed, closing")
             self.close()
             return True
 
@@ -85,27 +102,65 @@ class ConditionsDialog:
         close_text = self.font_sm.render("✕", True, (220, 220, 220))
         surf.blit(close_text, close_text.get_rect(center=self._close_btn_rect.center))
 
-        # Conditions list
+        # Exhaustion slider (always shown)
+        lx = self.rect.x + self.PAD
+        w = self.DLG_W - self.PAD * 2
         y = self.rect.y + 50
+
+        exh_label = self.font_sm.render("Exhaustion:", True, self.C_LABEL)
+        surf.blit(exh_label, (lx, y))
+        y += 16
+
+        # Draw slider track
+        slider_w = w - 30  # Leave room for level display
+        slider_h = 20
+        self._exh_slider_rect = pygame.Rect(lx, y, slider_w, slider_h)
+        pygame.draw.rect(surf, (40, 40, 60), self._exh_slider_rect, border_radius=3)
+        pygame.draw.rect(surf, (80, 80, 120), self._exh_slider_rect, 1, border_radius=3)
+
+        # Draw filled portion based on exhaustion level
+        if self.conditions and self.conditions.exhaustion_level > 0:
+            filled_w = int(slider_w * (self.conditions.exhaustion_level / 6))
+            pygame.draw.rect(surf, (200, 100, 50), pygame.Rect(lx, y, filled_w, slider_h), border_radius=3)
+
+        # Draw level labels (0-6)
+        for i in range(7):
+            label_x = lx + int(slider_w * (i / 6)) - 4
+            label_surf = self.font_sm.render(str(i), True, (150, 150, 150))
+            surf.blit(label_surf, (label_x, y + slider_h + 2))
+
+        # Current level display
+        level_text = self.font_sm.render(f"L{self.conditions.exhaustion_level if self.conditions else 0}", True, self.C_TEXT)
+        surf.blit(level_text, (lx + slider_w + 4, y + 2))
+
+        y += slider_h + 24
         max_y = self.rect.bottom - self.PAD
 
-        if not self.conditions or not any(self.conditions.values()):
-            no_cond = self.font_sm.render("No active conditions", True, (100, 100, 120))
+        # Check if there are any other active conditions
+        has_other_conditions = False
+        if self.conditions:
+            cond_dict = self.conditions
+            has_other_conditions = (cond_dict.blinded or cond_dict.charmed or cond_dict.deafened or
+                                   cond_dict.frightened or cond_dict.grappled or
+                                   cond_dict.incapacitated or cond_dict.invisible or cond_dict.paralyzed or
+                                   cond_dict.petrified or cond_dict.poisoned or cond_dict.prone or
+                                   cond_dict.restrained or cond_dict.stunned or cond_dict.unconscious)
+
+        if not has_other_conditions:
+            no_cond = self.font_sm.render("No other active conditions", True, (100, 100, 120))
             surf.blit(no_cond, (self.rect.x + self.PAD, y))
         else:
             # Format condition names nicely
             condition_names = []
             cond_dict = self.conditions
 
-            # Check various conditions
+            # Check various conditions (exhaustion handled by slider above)
             if cond_dict.blinded:
                 condition_names.append("Blinded")
             if cond_dict.charmed:
                 condition_names.append("Charmed")
             if cond_dict.deafened:
                 condition_names.append("Deafened")
-            if cond_dict.exhaustion > 0:
-                condition_names.append(f"Exhaustion (level {cond_dict.exhaustion})")
             if cond_dict.frightened:
                 condition_names.append("Frightened")
             if cond_dict.grappled:
@@ -136,6 +191,3 @@ class ConditionsDialog:
                     cond_text = self.font_sm.render(f"• {cond_name}", True, self.C_CONDITION)
                     surf.blit(cond_text, (self.rect.x + self.PAD + 10, y))
                     y += self.LINE_H
-            else:
-                no_cond = self.font_sm.render("No active conditions", True, (100, 100, 120))
-                surf.blit(no_cond, (self.rect.x + self.PAD, y))

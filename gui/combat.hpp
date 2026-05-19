@@ -518,7 +518,8 @@ public:
                                           const Agent::Stats& attacker,
                                           int target_ac,
                                           bool advantage = false,
-                                          bool disadvantage = false);
+                                          bool disadvantage = false,
+                                          int exhaustion_level = 0);
 
     // Roll damage dice and populate the damage fields of an existing result.
     // Applies target's damage multipliers (resistance/vulnerability/immunity).
@@ -536,7 +537,8 @@ public:
                                               Agent::Stats& target,
                                               bool advantage = false,
                                               bool disadvantage = false,
-                                              int target_ac = -1);
+                                              int target_ac = -1,
+                                              int exhaustion_level = 0);
 
     // ── High-level BattleMap integration ─────────────────────────────────
 

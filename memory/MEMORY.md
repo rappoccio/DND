@@ -14,6 +14,9 @@
 - [Plan: Unit Test Framework](plan_unit_test.md) — Full combat scenario test with monsters
 - [Plan: Lifecycle Management](plan_lifecycle.md) — beginTurn/endTurn, agent method migration, spell effects
 
-### ⏳ Pending
+### ✅ Completed (cont.)
 - [Plan: Forced Movement](plan_forced_movement.md) — Shove, spell push (Thunderwave), unarmed strike
+
+### ⏳ Pending
 - [Plan: Class/Spell-Slot Migration](plan_class_spellslot_migration.md) — C++ class tables, spell levels, slot management
+- Grapple refactoring — make Grapple an unarmed attack option

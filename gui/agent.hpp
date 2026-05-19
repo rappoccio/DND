@@ -392,6 +392,7 @@ namespace rpg {
       int grappler_idx{-1};                 // index of creature doing the grappling (-1 = none)
       int grapple_escape_dc{10};            // DC to escape grapple
       int grapple_range_ft{5};              // range at which grapple is broken if exceeded
+      int exhaustion_level{0};              // exhaustion level (0-6; 6 = death)
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -542,10 +543,18 @@ namespace rpg {
       speed_burrow_remaining_ += burrow_ft;
     }
 
-    [[nodiscard]] int getWalkRemaining()   const noexcept { return speed_walk_remaining_;   }
-    [[nodiscard]] int getFlyRemaining()    const noexcept { return speed_fly_remaining_;    }
-    [[nodiscard]] int getSwimRemaining()   const noexcept { return speed_swim_remaining_;   }
-    [[nodiscard]] int getBurrowRemaining() const noexcept { return speed_burrow_remaining_; }
+    [[nodiscard]] int getWalkRemaining()   const noexcept {
+        return std::max(0, speed_walk_remaining_ - (5 * conditions_.exhaustion_level));
+    }
+    [[nodiscard]] int getFlyRemaining()    const noexcept {
+        return std::max(0, speed_fly_remaining_ - (5 * conditions_.exhaustion_level));
+    }
+    [[nodiscard]] int getSwimRemaining()   const noexcept {
+        return std::max(0, speed_swim_remaining_ - (5 * conditions_.exhaustion_level));
+    }
+    [[nodiscard]] int getBurrowRemaining() const noexcept {
+        return std::max(0, speed_burrow_remaining_ - (5 * conditions_.exhaustion_level));
+    }
 
     // Move to grid cell (x, y, z). Distance is Euclidean in cells × 5 ft.
     // All movement types share a pool: spending any type deducts from all others.

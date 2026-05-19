@@ -55,11 +55,11 @@ originSessionId: 6a475336-8241-4b12-ad96-af65d34b9e00
    - Distinguish from existing Line and Cone geometries
    - NOTE: Cube geometry deferred until 3D height maps are implemented (requires major refactoring)
 
-2c. **Crowd control spells** (#24)
-   - Skip turns (stunned, paralyzed, held conditions)
-   - Automatic/forced movement triggered by spells
-   - Dropping/disarming weapons
-   - Integrate with condition system on agents
+2c. **Crowd control spells** (#24) ✅ COMPLETED
+   - ✅ Skip turns (stunned, paralyzed, held conditions)
+   - ✅ Automatic/forced movement triggered by spells
+   - ✅ Dropping/disarming weapons
+   - ✅ Integrate with condition system on agents
 
 3. **Visibility and light mechanics** (#25)
    - ✅ Darkness and dim light areas

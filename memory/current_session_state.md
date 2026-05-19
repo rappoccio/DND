@@ -4,40 +4,32 @@ description: Active work and implementation progress
 type: project
 ---
 
-## Session Progress (May 14-15, 2026)
+## Session Progress (May 14-19, 2026)
 
 ### Completed
 - Fixed Docker build and noVNC connectivity
 - Fixed visibility popup bug
 - Implemented map panning with mouse wheel and arrow keys
 - Updated memory with vision system and darkvision/truesight/devil's sight additions
+- ✅ Thunderwave Push now working correctly (forceMoveAgent executing)
+- ✅ Crowd Control Spells (stun, paralyze, held conditions)
 
-### In Progress: Forced Movement System
+### Forced Movement System - COMPLETE
 
-Implementing push/shove/knockback mechanics. All logic in C++, Python for UI only.
+All push/shove/knockback mechanics implemented. All logic in C++, Python for UI only.
 
 **Completed Steps:**
-1. ✅ Added `push_ft` field to `AttackCondition` (condition.hpp)
-2. ✅ Implemented `BattleMap::forceMoveAgent()` (battle_map.hpp/cpp)
-   - Moves agent away from attacker by computing direction vector
-   - Stops at walls, map edge
-   - Returns cells actually moved
-   - Diagonal fallback to orthogonal if blocked
-
-3. ✅ Added result fields and Shove types (combat.hpp)
-   - Added `push_ft_applied` to `AttackResult` and `SpellTargetResult`
-   - Added `ShoveAction` and `ShoveResult` structs
-   - Declared `executeShove()` method
-
-**Next Steps:**
-4. Implement `executeShove()` in combat.cpp
-   - Contested Athletics check: attacker vs target (Acrobatics/Athletics)
-   - On success: knock prone OR push 5ft (based on flag)
-5. Handle "Push" condition in `executeAction()` and `executeSpell()`
-6. Add rpg_bindings for all new C++ API
-7. Update helpers.py to parse `push_ft` from JSON
-8. Update spells.json (Thunderwave, Gust of Wind)
-9. Python UI: Shove button (bonus action), unarmed strike button
+1. ✅ Added `push_ft` field to `AttackCondition`
+2. ✅ Implemented `BattleMap::forceMoveAgent()`
+3. ✅ Added result structs (ShoveAction, ShoveResult, push_ft_applied)
+4. ✅ Implemented `executeShove()` in combat.cpp
+5. ✅ Handle "Push" condition in `executeAction()` and `executeSpell()`
+6. ✅ rpg_bindings for ShoveAction/ShoveResult API
+7. ✅ helpers.py parses `push_ft` from JSON
+8. ✅ spells.json updated (Thunderwave push_ft: 10, Gust of Wind push_ft: 15)
+9. ✅ Python UI - Shove buttons (bonus action) + Unarmed Strike menu:
+   - "🔨 Shove (Push)" and "⬇ Shove (Prone)" in bonus action section
+   - "👊 Unarmed" opens modal with Punch/Grapple/Push options (action)
 
 ---
 

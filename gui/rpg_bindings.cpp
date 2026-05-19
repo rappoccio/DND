@@ -286,6 +286,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("grappler_idx",   &Agent::Conditions::grappler_idx)
         .def_readwrite("grapple_escape_dc", &Agent::Conditions::grapple_escape_dc)
         .def_readwrite("grapple_range_ft",  &Agent::Conditions::grapple_range_ft)
+        .def_readwrite("exhaustion_level",  &Agent::Conditions::exhaustion_level)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -909,13 +910,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::rollToHit,
              py::arg("weapon"), py::arg("attacker_stats"),
              py::arg("target_ac"), py::arg("advantage") = false,
-             py::arg("disadvantage") = false,
+             py::arg("disadvantage") = false, py::arg("exhaustion_level") = 0,
              "Roll d20 + modifier vs AC.  Does not apply damage.")
         .def("resolve_attack",
              &CombatEngine::resolveAttack,
              py::arg("weapon"), py::arg("attacker_stats"),
              py::arg("target_stats"), py::arg("advantage") = false,
              py::arg("disadvantage") = false, py::arg("target_ac") = -1,
+             py::arg("exhaustion_level") = 0,
              "Roll to hit, roll damage, apply to target_stats in place. "
              "target_ac: pre-calculated AC (-1 uses target_stats.base_ac).")
 

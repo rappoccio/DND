@@ -340,10 +340,22 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
 
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
-    const auto& stats = agent.stats;
+    auto stats = agent.stats;
+
+    // Death from Exhaustion: agent dies at exhaustion level 6
+    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+    if (cond.exhaustion_level >= 6 && stats.hp_cur > 0) {
+        stats.hp_cur = 0;
+        cond.dead = true;
+        cond.unconscious = true;
+        bm.setAgentStats(agent_idx, stats);
+        bm.setAgentConditions(agent_idx, cond);
+        log_("Agent dies from Exhaustion Level 6");
+        result.save_roll_message = "DEATH: Exhaustion Level 6";
+        return result;
+    }
 
     // Death saves: roll CON save DC 10 if unconscious at 0 HP
-    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
     if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
         int con_mod = (stats.con - 10) / 2;
         if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
@@ -603,7 +615,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         int save_mod = getSaveMod(active_cond.save_ability);
         int save_d20 = roll(20);
-        int save_total = save_d20 + save_mod;
+        int save_total = save_d20 + save_mod - (2 * agent_cond.exhaustion_level);
         int save_dc = active_cond.save_dc;
 
         auto ability_name = [](SaveAbility_t ab) -> std::string {
@@ -1200,7 +1212,8 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
                                       const Agent::Stats& attacker,
                                       int target_ac,
                                       bool advantage,
-                                      bool disadvantage)
+                                      bool disadvantage,
+                                      int exhaustion_level)
 {
     AttackResult r;
     r.disadvantage = disadvantage;
@@ -1226,7 +1239,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 
     r.critical   = (r.d20 == 20);
     r.fumble     = (r.d20 == 1);
-    r.total_roll = r.d20 + r.attack_mod;
+    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level);
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
 
     return r;
@@ -1281,10 +1294,11 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           Agent::Stats& target,
                                           bool advantage,
                                           bool disadvantage,
-                                          int target_ac)
+                                          int target_ac,
+                                          int exhaustion_level)
 {
     if (target_ac == -1) target_ac = target.base_ac;
-    AttackResult r = rollToHit(w, attacker, target_ac, advantage, disadvantage);
+    AttackResult r = rollToHit(w, attacker, target_ac, advantage, disadvantage, exhaustion_level);
     r.hp_before = target.hp_cur;
 
     if (r.hit) {
@@ -1470,7 +1484,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // Calculate target AC (includes base AC, armor, DEX modifier, temp modifications)
     int target_ac = calculateAC(bm, action.target_idx);
 
-    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac);
+    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac, atk_cond.exhaustion_level);
 
     // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets
     if ((tgt_cond.paralyzed || tgt_cond.unconscious) && r.hit) {
