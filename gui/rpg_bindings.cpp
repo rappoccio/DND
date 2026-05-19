@@ -264,11 +264,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
+        .def_readwrite("deafened",      &Agent::Conditions::deafened)
         .def_readwrite("stunned",       &Agent::Conditions::stunned)
         .def_readwrite("charmed",       &Agent::Conditions::charmed)
         .def_readwrite("frightened",    &Agent::Conditions::frightened)
         .def_readwrite("slipped_this_turn", &Agent::Conditions::slipped_this_turn)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
+        .def_readwrite("poisoned",      &Agent::Conditions::poisoned)
+        .def_readwrite("petrified",     &Agent::Conditions::petrified)
         .def_readwrite("prone",         &Agent::Conditions::prone)
         .def_readwrite("unconscious",   &Agent::Conditions::unconscious)
         .def_readwrite("dead",          &Agent::Conditions::dead)
@@ -1082,6 +1085,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::applyPoisoned,
              py::arg("battle_map"), py::arg("idx"),
              "Apply poisoned condition to agent[idx]: disadvantage on attack rolls and ability checks.")
+        .def("apply_deafened",
+             &CombatEngine::applyDeafened,
+             py::arg("battle_map"), py::arg("idx"),
+             "Apply deafened condition to agent[idx]: cannot hear; auto-fail ability checks requiring hearing.")
         .def("apply_petrified",
              &CombatEngine::applyPetrified,
              py::arg("battle_map"), py::arg("idx"),

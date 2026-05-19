@@ -374,6 +374,7 @@ namespace rpg {
       bool has_disadvantage{false}; // disadvantage on attack rolls, ability checks, saving throws
       bool paralyzed{false};     // cannot move, speed 0, auto-fail STR/DEX saves, attacks have advantage and auto-crit within 5ft
       bool blinded{false};       // cannot see; attack rolls against have advantage, own attacks have disadvantage
+      bool deafened{false};      // cannot hear; auto-fail ability checks requiring hearing
       bool stunned{false};       // cannot act, auto-fail STR/DEX saves, attacks have advantage
       bool prone{false};         // crawling only, disadvantage on attacks; advantage for attackers within 5ft
       bool charmed{false};       // cannot attack the charmer or target with damaging abilities

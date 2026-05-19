@@ -16,6 +16,10 @@ test_scripts = [
     "test_visibility.py",
     "test_frightened.py",
     "test_unconscious.py",
+    "test_deafened.py",
+    "test_poisoned.py",
+    "test_petrified.py",
+    "test_condition_saves.py",
 ]
 
 def run_tests():

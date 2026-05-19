@@ -41,12 +41,12 @@ def test_attack_condition_automatic():
     weapon.conditions = [cond]
 
     # Set weapon on attacker
-    attacker_stats = engine.get_agent_stats(bm, attacker_idx)
-    attacker_stats.weapons = [weapon]
-    engine.set_agent_stats(bm, attacker_idx, attacker_stats)
+    dummy1 = rpg.Weapon()
+    dummy2 = rpg.Weapon()
+    engine.set_agent_weapons(bm, attacker_idx, [weapon, dummy1, dummy2])
 
     # Execute attack
-    action = rpg.AttackAction()
+    action = rpg.Attack()
     action.attacker_idx = attacker_idx
     action.target_idx = target_idx
     action.weapon_idx = 0
@@ -91,12 +91,12 @@ def test_attack_condition_requires_save():
     weapon.conditions = [cond]
 
     # Set weapon on attacker
-    attacker_stats = engine.get_agent_stats(bm, attacker_idx)
-    attacker_stats.weapons = [weapon]
-    engine.set_agent_stats(bm, attacker_idx, attacker_stats)
+    dummy1 = rpg.Weapon()
+    dummy2 = rpg.Weapon()
+    engine.set_agent_weapons(bm, attacker_idx, [weapon, dummy1, dummy2])
 
     # Execute attack
-    action = rpg.AttackAction()
+    action = rpg.Attack()
     action.attacker_idx = attacker_idx
     action.target_idx = target_idx
     action.weapon_idx = 0
@@ -148,8 +148,8 @@ def test_spell_automatic_condition():
     spell.conditions = [cond]
 
     # Set spell on caster
+    engine.set_agent_spells(bm, caster_idx, [spell])
     caster_stats = engine.get_agent_stats(bm, caster_idx)
-    caster_stats.spells = [spell]
     caster_stats.can_cast_spell = True
     engine.set_agent_stats(bm, caster_idx, caster_stats)
 
@@ -205,8 +205,8 @@ def test_spell_save_based_condition():
     spell.conditions = [cond]
 
     # Set spell on caster
+    engine.set_agent_spells(bm, caster_idx, [spell])
     caster_stats = engine.get_agent_stats(bm, caster_idx)
-    caster_stats.spells = [spell]
     caster_stats.can_cast_spell = True
     engine.set_agent_stats(bm, caster_idx, caster_stats)
 
@@ -271,8 +271,8 @@ def test_mixed_conditions_on_spell():
     spell.conditions = [cond1, cond2]
 
     # Set spell on caster
+    engine.set_agent_spells(bm, caster_idx, [spell])
     caster_stats = engine.get_agent_stats(bm, caster_idx)
-    caster_stats.spells = [spell]
     caster_stats.can_cast_spell = True
     engine.set_agent_stats(bm, caster_idx, caster_stats)
 

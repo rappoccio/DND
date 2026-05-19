@@ -2890,6 +2890,18 @@ void CombatEngine::applyPoisoned(BattleMap& bm, int idx) noexcept
     log_("Agent is Poisoned: disadvantage on attack rolls and ability checks");
 }
 
+void CombatEngine::applyDeafened(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.deafened = true;
+    bm.setAgentConditions(idx, cond);
+
+    log_("Agent is Deafened: cannot hear; auto-fail ability checks requiring hearing");
+}
+
 void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -3240,6 +3252,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyFrightened(bm, cond.agent_idx);
             } else if (cond.condition_name == "Unconscious") {
                 applyUnconscious(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Poisoned") {
+                applyPoisoned(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Deafened") {
+                applyDeafened(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Petrified") {
+                applyPetrified(bm, cond.agent_idx);
             }
             log_("Applied condition '{}' to agent[{}] for {} turns",
                  cond.condition_name, cond.agent_idx, cond.turns_remaining);

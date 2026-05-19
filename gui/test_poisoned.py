@@ -19,12 +19,7 @@ def test_poisoned_condition_creation():
     idx = add_agent_to_battle(engine, bm, config)
 
     # Apply poisoned
-    cond = rpg.ActiveAgentCondition()
-    cond.agent_idx = idx
-    cond.caster_idx = 0
-    cond.condition_name = "Poisoned"
-    cond.turns_remaining = 3
-    engine.add_agent_condition(bm, cond)
+    engine.apply_poisoned(bm, idx)
 
     assert engine.get_agent_conditions(bm, idx).poisoned == True
     print("✓ Poisoned condition created")
@@ -42,19 +37,14 @@ def test_poisoned_disadvantage_on_attacks():
     target_idx = add_agent_to_battle(engine, bm, target_config)
 
     # Poison the attacker
-    cond = rpg.ActiveAgentCondition()
-    cond.agent_idx = attacker_idx
-    cond.caster_idx = target_idx
-    cond.condition_name = "Poisoned"
-    cond.turns_remaining = 3
-    engine.add_agent_condition(bm, cond)
+    engine.apply_poisoned(bm, attacker_idx)
 
     # Verify poisoned
     attacker_cond = engine.get_agent_conditions(bm, attacker_idx)
     assert attacker_cond.poisoned == True
 
     # Make an attack - should have disadvantage
-    action = rpg.AttackAction()
+    action = rpg.Attack()
     action.attacker_idx = attacker_idx
     action.target_idx = target_idx
     action.weapon_idx = 0  # rapier

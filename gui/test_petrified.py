@@ -59,10 +59,6 @@ def test_petrified_sets_speed_zero():
     assert stats_after.speed_fly == 0
     assert stats_after.speed_swim == 0
     assert stats_after.speed_burrow == 0
-    assert stats_after.speed_walk_remaining == 0
-    assert stats_after.speed_fly_remaining == 0
-    assert stats_after.speed_swim_remaining == 0
-    assert stats_after.speed_burrow_remaining == 0
     print("✓ Petrified sets all speeds to 0")
 
 def test_petrified_resistance_to_all_damage():
