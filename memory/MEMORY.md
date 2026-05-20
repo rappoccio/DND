@@ -19,6 +19,7 @@
 
 ### ⏳ Pending
 - [Plan: D&D Class System](plan_dnd_class_system.md) — Full implementation with Resource abstraction, Barbarian first
-  - [Phase 1: Resource System](plan_phase1_resource.md) — Generic Resource struct for Rage, Ki, Sorcery Points, etc.
+  - [Phase 1: Resource System](plan_phase1_resource.md) — ✅ COMPLETE — Generic Resource struct for Rage, Ki, Sorcery Points, etc.
+  - [Phase 2: Class Metadata Enums](plan_phase2_enums.md) — Background, Alignment, Barbarian Subclass enums
 - [Plan: Class/Spell-Slot Migration](plan_class_spellslot_migration.md) — C++ class tables, spell levels, slot management
 - Grapple refactoring — make Grapple an unarmed attack option

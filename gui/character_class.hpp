@@ -1,6 +1,8 @@
 #pragma once
 #include <array>
 #include <algorithm>
+#include <vector>
+#include <string>
 
 namespace rpg {
 
@@ -134,6 +136,110 @@ inline std::array<int,9> compute_class_slots(CharacterClass cls, int lvl) {
         default:
             return {};  // Non-casters: all zeros
     }
+}
+
+// ── Skill Enum (18 D&D 5e skills) ───────────────────────────────────────
+enum Skill {
+    SkillNone = 0,
+    Acrobatics, AnimalHandling, Arcana, Athletics, Deception,
+    History, Insight, Intimidation, Investigation, Medicine,
+    Nature, Perception, Performance, Persuasion, Religion,
+    SleigtOfHand, Stealth, Survival,
+    NumSkill
+};
+
+// ── Background Enum (16 D&D 5e 2024 PHB backgrounds) ───────────────────
+enum Background {
+    BackgroundNone = 0,
+    Acolyte, Artisan, Charlatan, Criminal, Entertainer,
+    Farmer, Guard, Guide, Hermit, Merchant,
+    Noble, Sage, Sailor, Scribe, Soldier,
+    Wayfarer,
+    NumBackground
+};
+
+// ── Alignment Enum (9 D&D alignments) ────────────────────────────────────
+enum Alignment {
+    AlignmentNone = 0,
+    LawfulGood, LawfulNeutral, LawfulEvil,
+    NeutralGood, TrueNeutral, NeutralEvil,
+    ChaoticGood, ChaoticNeutral, ChaoticEvil,
+    NumAlignment
+};
+
+// ── Barbarian Subclass Enum (2024 D&D) ──────────────────────────────────
+enum BarbianSubclass {
+    BarbianSubclassNone = 0,
+    BerserkerPath, WildHeartPath, WorldTreePath, ZealotPath,
+    NumBarbianSubclass
+};
+
+// ── Origin Struct (Background with abilities, feat, and skills) ──────────
+struct Origin {
+    Background background;
+    std::array<int, 3> ability_increases;  // 3 ability indices (0-5)
+    std::string origin_feat;                // e.g., "Magic Initiate (Cleric)"
+    std::vector<Skill> skill_proficiencies; // skills granted by origin
+};
+
+// ── Origin Data (all 16 2024 PHB backgrounds) ────────────────────────────
+static const std::array<Origin, 16> kOrigins = {{
+    // Acolyte: INT, WIS, CHA | Magic Initiate (Cleric) | Insight, Religion
+    {Acolyte, {3, 4, 5}, "Magic Initiate (Cleric)", {Insight, Religion}},
+
+    // Artisan: STR, DEX, INT | Crafter | Investigation, Persuasion
+    {Artisan, {0, 1, 3}, "Crafter", {Investigation, Persuasion}},
+
+    // Charlatan: DEX, CON, CHA | Skilled | Deception, Sleight of Hand
+    {Charlatan, {1, 2, 5}, "Skilled", {Deception, SleigtOfHand}},
+
+    // Criminal: DEX, CON, INT | Alert | Sleight of Hand, Stealth
+    {Criminal, {1, 2, 3}, "Alert", {SleigtOfHand, Stealth}},
+
+    // Entertainer: STR, DEX, CHA | Musician | Acrobatics, Performance
+    {Entertainer, {0, 1, 5}, "Musician", {Acrobatics, Performance}},
+
+    // Farmer: STR, CON, WIS | Tough | Animal Handling, Nature
+    {Farmer, {0, 2, 4}, "Tough", {AnimalHandling, Nature}},
+
+    // Guard: STR, INT, WIS | Alert | Athletics, Perception
+    {Guard, {0, 3, 4}, "Alert", {Athletics, Perception}},
+
+    // Guide: DEX, CON, WIS | Magic Initiate (Druid) | Stealth, Survival
+    {Guide, {1, 2, 4}, "Magic Initiate (Druid)", {Stealth, Survival}},
+
+    // Hermit: CON, WIS, CHA | Healer | Medicine, Religion
+    {Hermit, {2, 4, 5}, "Healer", {Medicine, Religion}},
+
+    // Merchant: CON, INT, CHA | Lucky | Animal Handling, Persuasion
+    {Merchant, {2, 3, 5}, "Lucky", {AnimalHandling, Persuasion}},
+
+    // Noble: STR, INT, CHA | Skilled | History, Persuasion
+    {Noble, {0, 3, 5}, "Skilled", {History, Persuasion}},
+
+    // Sage: CON, INT, WIS | Magic Initiate (Wizard) | Arcana, History
+    {Sage, {2, 3, 4}, "Magic Initiate (Wizard)", {Arcana, History}},
+
+    // Sailor: STR, DEX, WIS | Tavern Brawler | Acrobatics, Perception
+    {Sailor, {0, 1, 4}, "Tavern Brawler", {Acrobatics, Perception}},
+
+    // Scribe: DEX, INT, WIS | Skilled | Investigation, Perception
+    {Scribe, {1, 3, 4}, "Skilled", {Investigation, Perception}},
+
+    // Soldier: STR, DEX, CON | Savage Attacker | Athletics, Intimidation
+    {Soldier, {0, 1, 2}, "Savage Attacker", {Athletics, Intimidation}},
+
+    // Wayfarer: DEX, WIS, CHA | Lucky | Insight, Stealth
+    {Wayfarer, {1, 4, 5}, "Lucky", {Insight, Stealth}},
+}};
+
+// Helper to get Origin by Background
+inline const Origin& getOrigin(Background bg) {
+    if (bg >= 1 && bg < static_cast<int>(kOrigins.size()) + 1) {
+        return kOrigins[bg - 1];  // 0-indexed array, 1-indexed enum
+    }
+    // Fallback (should never happen in practice)
+    return kOrigins[0];
 }
 
 } // namespace rpg

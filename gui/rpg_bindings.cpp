@@ -294,6 +294,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("spell_save_dc_intel", &Agent::Stats::spellSaveDcIntel)
         .def_property_readonly("spell_save_dc_wis",   &Agent::Stats::spellSaveDcWis)
         .def_property_readonly("spell_save_dc_cha",   &Agent::Stats::spellSaveDcCha)
+        // Character identity & background
+        .def_readwrite("background", &Agent::Stats::background,
+             "Character background (Acolyte, Criminal, etc.)")
+        .def_readwrite("alignment", &Agent::Stats::alignment,
+             "Character alignment (LawfulGood, TrueNeutral, etc.)")
+        .def_readwrite("barbarian_subclass", &Agent::Stats::barbarian_subclass,
+             "Barbarian subclass (only valid when character_class == Barbarian)")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -503,6 +510,80 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("SaveCha", SaveCha)
         .value("SaveSpellcasterMod", SaveSpellcasterMod)
         .export_values();
+
+    // ── Skill Enum (18 D&D skills) ────────────────────────────────────────────
+    py::enum_<Skill>(m, "Skill")
+        .value("Acrobatics", Acrobatics)
+        .value("AnimalHandling", AnimalHandling)
+        .value("Arcana", Arcana)
+        .value("Athletics", Athletics)
+        .value("Deception", Deception)
+        .value("History", History)
+        .value("Insight", Insight)
+        .value("Intimidation", Intimidation)
+        .value("Investigation", Investigation)
+        .value("Medicine", Medicine)
+        .value("Nature", Nature)
+        .value("Perception", Perception)
+        .value("Performance", Performance)
+        .value("Persuasion", Persuasion)
+        .value("Religion", Religion)
+        .value("SleigtOfHand", SleigtOfHand)
+        .value("Stealth", Stealth)
+        .value("Survival", Survival)
+        .export_values();
+
+    // ── Background Enum (16 2024 PHB backgrounds) ────────────────────────────
+    py::enum_<Background>(m, "Background")
+        .value("NONE", BackgroundNone)
+        .value("Acolyte", Acolyte)
+        .value("Artisan", Artisan)
+        .value("Charlatan", Charlatan)
+        .value("Criminal", Criminal)
+        .value("Entertainer", Entertainer)
+        .value("Farmer", Farmer)
+        .value("Guard", Guard)
+        .value("Guide", Guide)
+        .value("Hermit", Hermit)
+        .value("Merchant", Merchant)
+        .value("Noble", Noble)
+        .value("Sage", Sage)
+        .value("Sailor", Sailor)
+        .value("Scribe", Scribe)
+        .value("Soldier", Soldier)
+        .value("Wayfarer", Wayfarer)
+        .export_values();
+
+    // ── Alignment Enum (9 alignments) ────────────────────────────────────────
+    py::enum_<Alignment>(m, "Alignment")
+        .value("NONE", AlignmentNone)
+        .value("LawfulGood", LawfulGood)
+        .value("LawfulNeutral", LawfulNeutral)
+        .value("LawfulEvil", LawfulEvil)
+        .value("NeutralGood", NeutralGood)
+        .value("TrueNeutral", TrueNeutral)
+        .value("NeutralEvil", NeutralEvil)
+        .value("ChaoticGood", ChaoticGood)
+        .value("ChaoticNeutral", ChaoticNeutral)
+        .value("ChaoticEvil", ChaoticEvil)
+        .export_values();
+
+    // ── Barbarian Subclass Enum (2024 D&D) ──────────────────────────────────
+    py::enum_<BarbianSubclass>(m, "BarbianSubclass")
+        .value("NONE", BarbianSubclassNone)
+        .value("Berserker", BerserkerPath)
+        .value("WildHeart", WildHeartPath)
+        .value("WorldTree", WorldTreePath)
+        .value("Zealot", ZealotPath)
+        .export_values();
+
+    // ── Origin Struct ────────────────────────────────────────────────────────
+    py::class_<Origin>(m, "Origin")
+        .def(py::init<>())
+        .def_readwrite("background", &Origin::background)
+        .def_readwrite("ability_increases", &Origin::ability_increases)
+        .def_readwrite("origin_feat", &Origin::origin_feat)
+        .def_readwrite("skill_proficiencies", &Origin::skill_proficiencies);
 
     // ── Character Class & Caster Type ─────────────────────────────────────────
     py::enum_<CharacterClass>(m, "CharacterClass")

@@ -348,6 +348,11 @@ namespace rpg {
       // ── Class Resources (Rage, Ki, Sorcery Points, etc.) ──────────────────
       std::map<std::string, Resource> resources{};
 
+      // ── Character Identity & Background ──────────────────────────────────
+      Background background{BackgroundNone};
+      Alignment alignment{TrueNeutral};
+      BarbianSubclass barbarian_subclass{BarbianSubclassNone};
+
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {
         auto it = resources.find(name);
