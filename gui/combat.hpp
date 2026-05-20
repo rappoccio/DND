@@ -561,6 +561,11 @@ public:
     // End Rage: set raging=false, clear BPS resistance (restore 1.0x multiplier)
     void endRage(BattleMap& bm, int idx);
 
+    // Apply Brutal Strike effects: damage + chosen effects (Forceful/Hamstring/Staggering/Sundering)
+    // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)
+    void applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                const std::vector<int>& effects) noexcept;
+
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;

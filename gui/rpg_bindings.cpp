@@ -305,6 +305,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wild Heart Rage of the Wilds choice (Bear/Eagle/Wolf); set before activateRage()")
         .def_readwrite("wild_heart_aspect", &Agent::Stats::wild_heart_aspect,
              "Wild Heart L6 Aspect choice (Owl/Panther/Salmon); set before combat or at long rest")
+        .def_readwrite("brutal_strike_damage_dice", &Agent::Stats::brutal_strike_damage_dice,
+             "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -355,6 +357,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
+        .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
+        .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
+        .def_readwrite("sundering_target_idx", &Agent::Conditions::sundering_target_idx)
+        .def_readwrite("staggered_next_save", &Agent::Conditions::staggered_next_save)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -1254,6 +1260,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::endRage,
              py::arg("battle_map"), py::arg("agent_idx"),
              "End Barbarian Rage: set raging=false, restore normal damage multipliers, clear reckless_attack.")
+        .def("apply_brutal_strike_effect",
+             &CombatEngine::applyBrutalStrikeEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"),
+             "Apply Brutal Strike effects: damage + chosen effects (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering).")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),

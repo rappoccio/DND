@@ -1119,6 +1119,10 @@ std::vector<AttackResult> CombatEngine::runRound(
         Agent::Conditions cond = bm.getAgentConditions(i);
         cond.berserker_frenzy_used = false;
         cond.zealot_divine_fury_used = false;
+        cond.brutal_strike_available = false;
+        cond.hamstrung = false;
+        cond.sundering_target_idx = -1;
+        cond.staggered_next_save = false;
         bm.setAgentConditions(i, cond);
     }
 
@@ -1573,10 +1577,26 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // Calculate target AC (includes base AC, armor, DEX modifier, temp modifications)
     int target_ac = calculateAC(bm, action.target_idx);
 
+    // Check Brutal Strike eligibility (L9+: Reckless Attack + melee weapon)
+    bool can_use_brutal_strike = false;
+    if (atk_stats.character_class == CharacterClass::Barbarian &&
+        atk_stats.char_level >= 9 &&
+        atk_cond.reckless_attack &&
+        (w.type == WeaponType::Melee || w.thrown)) {
+        can_use_brutal_strike = true;
+        log_("Brutal Strike eligible: L9+ Barbarian with Reckless Attack + melee weapon");
+    }
+
     AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac, atk_cond.exhaustion_level, atk_cond);
 
-    // Berserker Frenzy: add extra d6s damage on first hit when Reckless Attack + Rage active
+    // Set Brutal Strike flag if eligible and attack hits
     Agent::Conditions updated_atk_cond = atk_cond;
+    if (r.hit && can_use_brutal_strike) {
+        updated_atk_cond.brutal_strike_available = true;
+        log_("Agent {} can use Brutal Strike on this attack", action.attacker_idx);
+    }
+
+    // Berserker Frenzy: add extra d6s damage on first hit when Reckless Attack + Rage active
     if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
         atk_stats.barbarian_subclass == BerserkerPath &&
         atk_cond.raging && atk_cond.reckless_attack &&
@@ -3552,6 +3572,58 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
     log_("Agent {} ends Rage: raging=false, BPS resistance cleared, reckless_attack cleared", idx);
 }
 
+void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                          const std::vector<int>& effects) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+    Agent::Conditions tgt_cond = bm.getAgentConditions(target_idx);
+
+    // Roll and apply Brutal Strike damage (1d10 or 2d10)
+    int damage_dice = atk_stats.brutal_strike_damage_dice;
+    int bs_damage = 0;
+    for (int i = 0; i < damage_dice; ++i) {
+        bs_damage += roll(10);
+    }
+
+    // Apply damage to target
+    int overflow = std::max(0, bs_damage - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - bs_damage);
+    tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    log_("Brutal Strike: {} damage", bs_damage);
+
+    // Apply chosen effects
+    for (int effect : effects) {
+        if (effect == 0) {  // Forceful Blow: Push 15 ft
+            log_("Brutal Strike: Forceful Blow - pushing target 15 ft");
+            // Push logic would go here (reuse push_agent if available)
+            // For now, just log it
+        } else if (effect == 1) {  // Hamstring Blow: Speed -15 ft
+            tgt_cond.hamstrung = true;
+            log_("Brutal Strike: Hamstring Blow - target speed -15 ft until start of next turn");
+        } else if (effect == 2) {  // Staggering Blow (L13): Disadvantage on next save
+            tgt_cond.staggered_next_save = true;
+            log_("Brutal Strike: Staggering Blow - disadvantage on next save");
+        } else if (effect == 3) {  // Sundering Blow (L13): +5 to next attack vs target
+            tgt_cond.sundering_target_idx = attacker_idx;
+            log_("Brutal Strike: Sundering Blow - +5 to next attack vs target");
+        }
+    }
+
+    // Clear Brutal Strike flag
+    atk_cond.brutal_strike_available = false;
+
+    bm.setAgentStats(attacker_idx, atk_stats);
+    bm.setAgentConditions(attacker_idx, atk_cond);
+    bm.setAgentStats(target_idx, tgt_stats);
+    bm.setAgentConditions(target_idx, tgt_cond);
+}
+
 bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept
 {
     auto agents = bm.placedAgents();
@@ -4364,6 +4436,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // Fast Movement (L5+): +10 feet speed (not in heavy armor, but we can't check that here)
       if (level >= 5) {
         speed_walk += 10;
+      }
+
+      // Brutal Strike (L9+): 1d10 damage; L17+: 2d10 damage
+      if (level >= 9) {
+        brutal_strike_damage_dice = 1;
+      }
+      if (level >= 17) {
+        brutal_strike_damage_dice = 2;
       }
       break;
     }

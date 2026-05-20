@@ -356,6 +356,7 @@ namespace rpg {
       BarbianSubclass barbarian_subclass{BarbianSubclassNone};
       WildHeartRageChoice wild_heart_rage_choice{WildHeartNone};  // Which animal form for Rage of the Wilds
       WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
+      int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
 
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {
@@ -449,6 +450,10 @@ namespace rpg {
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
       bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
+      bool brutal_strike_available{false};  // Brutal Strike can be used this attack
+      bool hamstrung{false};                // Hamstring Blow effect: speed -15ft (expires start of next turn)
+      int sundering_target_idx{-1};         // Sundering Blow: +5 to hit vs this target (expires start of next turn)
+      bool staggered_next_save{false};      // Staggering Blow: disadvantage on next save
     };
 
     // ── Construction ───────────────────────────────────────────────────────
