@@ -18,5 +18,7 @@
 - [Plan: Forced Movement](plan_forced_movement.md) — Shove, spell push (Thunderwave), unarmed strike
 
 ### ⏳ Pending
+- [Plan: D&D Class System](plan_dnd_class_system.md) — Full implementation with Resource abstraction, Barbarian first
+  - [Phase 1: Resource System](plan_phase1_resource.md) — Generic Resource struct for Rage, Ki, Sorcery Points, etc.
 - [Plan: Class/Spell-Slot Migration](plan_class_spellslot_migration.md) — C++ class tables, spell levels, slot management
 - Grapple refactoring — make Grapple an unarmed attack option

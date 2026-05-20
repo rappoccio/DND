@@ -4013,4 +4013,67 @@ void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOr
     }
 }
 
+// ── Resource Initialization by Class and Level ──────────────────────────────
+void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
+  resources.clear();
+
+  switch (cls) {
+    case Barbarian: {
+      // Rage: uses per day scales with level
+      // Level 1-2: 2 uses, Level 3-4: 3 uses, Level 5-6: 3 uses, Level 7-8: 4 uses,
+      // Level 9-10: 4 uses, Level 11-12: 4 uses, Level 13-14: 5 uses, Level 15-16: 5 uses,
+      // Level 17-18: 6 uses, Level 19-20: 6 uses (but 20 is unlimited)
+      int rage_uses = 2;
+      if (level >= 3) rage_uses = 3;
+      if (level >= 5) rage_uses = 3;
+      if (level >= 7) rage_uses = 4;
+      if (level >= 9) rage_uses = 4;
+      if (level >= 11) rage_uses = 4;
+      if (level >= 13) rage_uses = 5;
+      if (level >= 15) rage_uses = 5;
+      if (level >= 17) rage_uses = 6;
+      if (level >= 20) rage_uses = INT_MAX;  // unlimited
+
+      Resource rage("Rage", rage_uses, 10);  // 10-turn duration (~1 minute)
+      rage.short_rest_regen = 0;  // not restored on short rest
+      rage.long_rest_regen = (level >= 20) ? INT_MAX : rage_uses;
+      resources["Rage"] = rage;
+      break;
+    }
+
+    case Monk: {
+      // Ki: number of ki points = character level
+      Resource ki("Ki", level, 0);  // no duration
+      ki.short_rest_regen = level;  // fully restored on short rest
+      ki.long_rest_regen = level;
+      resources["Ki"] = ki;
+      break;
+    }
+
+    case Sorcerer: {
+      // Sorcery Points: equal to sorcerer level
+      Resource sp("Sorcery Points", level, 0);
+      sp.short_rest_regen = 0;
+      sp.long_rest_regen = level;
+      resources["Sorcery Points"] = sp;
+      break;
+    }
+
+    case Cleric: {
+      // Channel Divinity: uses per rest = 1 + WIS mod (minimum 1)
+      int cd_uses = std::max(1, 1 + _mod(wis));
+      Resource cd("Channel Divinity", cd_uses, 0);
+      cd.short_rest_regen = 0;
+      cd.long_rest_regen = cd_uses;
+      resources["Channel Divinity"] = cd;
+      break;
+    }
+
+    // Other classes without resources (Fighter, Rogue, Ranger, Paladin, Warlock, Bard, Druid)
+    // have no custom resources
+    default:
+      break;
+  }
+}
+
 } // namespace rpg

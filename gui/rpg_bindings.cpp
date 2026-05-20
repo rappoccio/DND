@@ -144,6 +144,43 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + " at (" + std::to_string(p.origin.col)
                  + "," + std::to_string(p.origin.row) + ")>"; });
 
+    // ── Resource (class features: Rage, Ki, Sorcery Points, etc.) ──────────
+    py::class_<Resource>(m, "Resource")
+        .def(py::init<>())
+        .def(py::init<const std::string&, int>(), py::arg("name"), py::arg("max"))
+        .def(py::init<const std::string&, int, int>(), py::arg("name"), py::arg("max"), py::arg("duration"))
+        .def_readwrite("name", &Resource::name)
+        .def_readwrite("current", &Resource::current)
+        .def_readwrite("max", &Resource::max)
+        .def_readwrite("short_rest_regen", &Resource::short_rest_regen)
+        .def_readwrite("long_rest_regen", &Resource::long_rest_regen)
+        .def_readwrite("duration", &Resource::duration)
+        .def_readwrite("duration_remaining", &Resource::duration_remaining)
+        .def("is_full", &Resource::isFull,
+             "Check if resource is at maximum.")
+        .def("is_empty", &Resource::isEmpty,
+             "Check if resource is depleted.")
+        .def("is_active", &Resource::isActive,
+             "Check if duration-based resource is still active (duration_remaining > 0).")
+        .def("spend", &Resource::spend,
+             py::arg("amount") = 1,
+             "Spend from resource. Returns True if successful, False if not enough.")
+        .def("gain", &Resource::gain,
+             py::arg("amount") = 1,
+             "Gain resource (capped at max).")
+        .def("restore_long_rest", &Resource::restore_long_rest,
+             "Restore resource after a long rest.")
+        .def("restore_short_rest", &Resource::restore_short_rest,
+             "Restore resource after a short rest.")
+        .def("tick_duration", &Resource::tick_duration,
+             "Tick down duration by 1 turn.")
+        .def("reset_duration", &Resource::reset_duration,
+             "Reset duration_remaining to its maximum.")
+        .def("__repr__", [](const Resource& r){
+            return "<Resource '" + r.name
+                 + "' " + std::to_string(r.current)
+                 + "/" + std::to_string(r.max) + ">"; });
+
     // ── Stats (nested inside Agent) ──────────────────────────────────────────
     py::class_<Agent::Stats>(m, "Stats")
         .def(py::init<>())
@@ -223,6 +260,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Mark that a leveled spell has been cast this turn (if spell_level >= 1).")
         .def("reset_leveled_spell_cast_flag", &Agent::Stats::resetLeveledSpellCastFlag,
              "Reset the leveled spell flag at the start of a new turn.")
+        // Class resources (Rage, Ki, Sorcery Points, etc.)
+        .def("get_resource", py::overload_cast<const std::string&>(&Agent::Stats::getResource),
+             py::arg("name"), py::return_value_policy::reference,
+             "Get a resource by name (e.g., 'Rage', 'Ki'). Returns None if not found.")
+        .def("initialize_class_resources", &Agent::Stats::initializeClassResources,
+             py::arg("cls"), py::arg("level"),
+             "Initialize resources for a class at a given level (Rage for Barbarian, Ki for Monk, etc.)")
+        .def("restore_resources_long_rest", &Agent::Stats::restore_resources_long_rest,
+             "Restore all resources and spell slots after a long rest.")
+        .def("restore_resources_short_rest", &Agent::Stats::restore_resources_short_rest,
+             "Restore resources that are restored on short rest (e.g., Ki for Monk).")
+        .def("tick_resource_durations", &Agent::Stats::tick_resource_durations,
+             "Tick down duration counters for all duration-based resources (call at end of turn).")
+        .def_readwrite("resources", &Agent::Stats::resources,
+             "Map of class resources by name (e.g., {'Rage': Resource(...), 'Ki': Resource(...)})")
         .def("set_magic_damage_multiplier", &Agent::Stats::set_magic_damage_multiplier,
              py::arg("type_idx"), py::arg("multiplier"),
              "Set magic damage multiplier: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable")

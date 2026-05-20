@@ -14,6 +14,7 @@
 #include "character_class.hpp"
 #include "damage.hpp"
 #include "weapon.hpp"
+#include "resource.hpp"
 
 namespace rpg {
 
@@ -342,6 +343,47 @@ namespace rpg {
           return physical_damage_multipliers[type_idx];
         }
         return 1.0f;
+      }
+
+      // ── Class Resources (Rage, Ki, Sorcery Points, etc.) ──────────────────
+      std::map<std::string, Resource> resources{};
+
+      // Helper: get resource by name (returns nullptr if not found)
+      [[nodiscard]] Resource* getResource(const std::string& name) noexcept {
+        auto it = resources.find(name);
+        return (it != resources.end()) ? &it->second : nullptr;
+      }
+
+      // Helper: const version
+      [[nodiscard]] const Resource* getResource(const std::string& name) const noexcept {
+        auto it = resources.find(name);
+        return (it != resources.end()) ? &it->second : nullptr;
+      }
+
+      // Initialize class resources based on class and level
+      // Declared here, implemented in agent.cpp
+      void initializeClassResources(CharacterClass cls, int level);
+
+      // Long rest: restore spell slots + all resources
+      void restore_resources_long_rest() {
+        restore_spell_slots();
+        for (auto& [name, res] : resources) {
+          res.restore_long_rest();
+        }
+      }
+
+      // Short rest: restore some resources (e.g., Ki for Monk)
+      void restore_resources_short_rest() {
+        for (auto& [name, res] : resources) {
+          res.restore_short_rest();
+        }
+      }
+
+      // Called at end of turn to tick down duration-based resources
+      void tick_resource_durations() {
+        for (auto& [name, res] : resources) {
+          res.tick_duration();
+        }
       }
 
     private:
