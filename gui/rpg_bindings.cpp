@@ -590,6 +590,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Wolf", WolfForm)
         .export_values();
 
+    py::enum_<WildHeartAspect>(m, "WildHeartAspect")
+        .value("NONE", AspectNone)
+        .value("Owl", OwlAspect)
+        .value("Panther", PantherAspect)
+        .value("Salmon", SalmonAspect)
+        .export_values();
+
     // ── Origin Struct ────────────────────────────────────────────────────────
     py::class_<Origin>(m, "Origin")
         .def(py::init<>())

@@ -181,6 +181,14 @@ enum WildHeartRageChoice {
     NumWildHeartRageChoice
 };
 
+enum WildHeartAspect {
+    AspectNone = 0,
+    OwlAspect,      // Darkvision 60ft
+    PantherAspect,  // Climb speed = Walk speed
+    SalmonAspect,   // Swim speed = Walk speed
+    NumWildHeartAspect
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;

@@ -4321,6 +4321,16 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       rage.short_rest_regen = 1;  // regain 1 use on short rest
       rage.long_rest_regen = rage_uses;
       resources["Rage"] = rage;
+
+      // Extra Attack (L5+): gain second weapon attack per action
+      if (level >= 5) {
+        num_attacks = 2;
+      }
+
+      // Fast Movement (L5+): +10 feet speed (not in heavy armor, but we can't check that here)
+      if (level >= 5) {
+        speed_walk += 10;
+      }
       break;
     }
 

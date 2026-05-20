@@ -84,10 +84,12 @@ namespace rpg {
       int speed_walk{30};  // total walking speed in feet
       int speed_swim{0};   // total swimming speed in feet (0 = cannot swim)
       int speed_fly{0};    // total flying speed in feet   (0 = cannot fly)
+      int speed_climb{0};  // total climbing speed in feet (0 = cannot climb; Wild Heart L6 Panther aspect)
       int speed_burrow{0}; // total burrowing speed in feet (0 = cannot burrow)
       int speed_walk_remaining{30}; // remaining walking speed in feet
       int speed_swim_remaining{0};  // remaining swimming speed in feet
       int speed_fly_remaining{0};   // remaining flying speed in feet
+      int speed_climb_remaining{0}; // remaining climbing speed in feet
       int speed_burrow_remaining{0};// remaining burrowing speed in feet      
       int prof_bonus{2};   // proficiency bonus (+2 at level 1–4)
 
@@ -353,6 +355,7 @@ namespace rpg {
       Alignment alignment{TrueNeutral};
       BarbianSubclass barbarian_subclass{BarbianSubclassNone};
       WildHeartRageChoice wild_heart_rage_choice{WildHeartNone};  // Which animal form for Rage of the Wilds
+      WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
 
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {
@@ -445,6 +448,7 @@ namespace rpg {
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
+      bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
     };
 
     // ── Construction ───────────────────────────────────────────────────────
