@@ -3449,6 +3449,30 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
         log_("Agent {} grants Vitality: {} temp HP", idx, vitality_temp_hp);
     }
 
+    // Berserker L6: Mindless Rage - clear Charmed and Frightened conditions
+    if (stats.barbarian_subclass == BerserkerPath && stats.char_level >= 6) {
+        cond.charmed = false;
+        cond.frightened = false;
+        log_("Agent {} Mindless Rage: charmed/frightened cleared", idx);
+    }
+
+    // Wild Heart L6: Aspect of the Wilds - apply aspect bonuses
+    if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 6) {
+        if (stats.wild_heart_aspect == OwlAspect) {
+            stats.darkvision_range = std::max(stats.darkvision_range, 60);
+            log_("Agent {} Owl Aspect: darkvision 60 ft", idx);
+        } else if (stats.wild_heart_aspect == SalmonAspect) {
+            stats.speed_swim = std::max(stats.speed_swim, stats.speed_walk);
+            log_("Agent {} Salmon Aspect: swim speed = walk speed ({})", idx, stats.speed_walk);
+        }
+    }
+
+    // Reset Zealot Fanatical Focus flag on Rage activation (can use once per Rage)
+    if (stats.barbarian_subclass == ZealotPath && stats.char_level >= 6) {
+        cond.fanatical_focus_used = false;
+        log_("Agent {} Fanatical Focus: ready for use this Rage", idx);
+    }
+
     // Spend one use of Rage resource
     if (stats.resources.find("Rage") != stats.resources.end()) {
         Resource& rage = stats.resources.at("Rage");
@@ -3505,6 +3529,16 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
         stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Lightning)] = 1.0f;
         stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Poison)] = 1.0f;
         stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Thunder)] = 1.0f;
+    }
+
+    // Wild Heart L6 Aspect: restore swim speed / darkvision on Rage end
+    if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 6) {
+        if (stats.wild_heart_aspect == SalmonAspect) {
+            stats.speed_swim = 0;  // Reset swim speed (Salmon aspect only during Rage)
+        }
+        if (stats.wild_heart_aspect == OwlAspect) {
+            stats.darkvision_range = 0;  // Reset darkvision (Owl aspect only during Rage)
+        }
     }
 
     // Clear Rage duration

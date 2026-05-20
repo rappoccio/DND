@@ -303,6 +303,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Barbarian subclass (only valid when character_class == Barbarian)")
         .def_readwrite("wild_heart_rage_choice", &Agent::Stats::wild_heart_rage_choice,
              "Wild Heart Rage of the Wilds choice (Bear/Eagle/Wolf); set before activateRage()")
+        .def_readwrite("wild_heart_aspect", &Agent::Stats::wild_heart_aspect,
+             "Wild Heart L6 Aspect choice (Owl/Panther/Salmon); set before combat or at long rest")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -352,6 +354,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
+        .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
