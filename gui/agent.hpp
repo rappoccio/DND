@@ -352,6 +352,7 @@ namespace rpg {
       Background background{BackgroundNone};
       Alignment alignment{TrueNeutral};
       BarbianSubclass barbarian_subclass{BarbianSubclassNone};
+      WildHeartRageChoice wild_heart_rage_choice{WildHeartNone};  // Which animal form for Rage of the Wilds
 
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {
@@ -440,6 +441,10 @@ namespace rpg {
       int grapple_escape_dc{10};            // DC to escape grapple
       int grapple_range_ft{5};              // range at which grapple is broken if exceeded
       int exhaustion_level{0};              // exhaustion level (0-6; 6 = death)
+      bool raging{false};                   // Barbarian is currently in Rage
+      bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
+      bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
+      bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
     };
 
     // ── Construction ───────────────────────────────────────────────────────

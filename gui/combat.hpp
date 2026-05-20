@@ -532,13 +532,38 @@ public:
     // Resolve a complete attack (roll to hit, roll damage, apply to target).
     // target is modified in place (hp_cur clamped to [0, hp_max]).
     // target_ac: pre-calculated AC (if -1, uses target.base_ac; otherwise uses provided value).
+    // attacker_conditions: attacker's conditions (used for Rage bonus, etc.)
     [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
                                               const Agent::Stats& attacker,
                                               Agent::Stats& target,
                                               bool advantage = false,
                                               bool disadvantage = false,
                                               int target_ac = -1,
-                                              int exhaustion_level = 0);
+                                              int exhaustion_level = 0,
+                                              const Agent::Conditions& attacker_conditions = Agent::Conditions());
+
+    // ── Class feature helpers ────────────────────────────────────────────
+
+    // Get Barbarian Rage damage bonus based on level
+    static int getRageDamageBonus(int level) noexcept {
+        if (level >= 17) return 4;
+        if (level >= 9)  return 3;
+        return 2;
+    }
+
+    // Barbarian Rage lifecycle methods
+    // Activate Rage: set raging=true, apply BPS resistance (0.5x multiplier)
+    void activateRage(BattleMap& bm, int idx);
+
+    // Extend Rage: reset duration_remaining on Rage resource
+    void extendRage(BattleMap& bm, int idx);
+
+    // End Rage: set raging=false, clear BPS resistance (restore 1.0x multiplier)
+    void endRage(BattleMap& bm, int idx);
+
+    // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
+    // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
+    bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
 
     // ── High-level BattleMap integration ─────────────────────────────────
 

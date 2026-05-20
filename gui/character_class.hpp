@@ -174,6 +174,13 @@ enum BarbianSubclass {
     NumBarbianSubclass
 };
 
+// Wild Heart Rage of the Wilds animal choice
+enum WildHeartRageChoice {
+    WildHeartNone = 0,
+    BearForm, EagleForm, WolfForm,
+    NumWildHeartRageChoice
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;

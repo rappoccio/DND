@@ -301,6 +301,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Character alignment (LawfulGood, TrueNeutral, etc.)")
         .def_readwrite("barbarian_subclass", &Agent::Stats::barbarian_subclass,
              "Barbarian subclass (only valid when character_class == Barbarian)")
+        .def_readwrite("wild_heart_rage_choice", &Agent::Stats::wild_heart_rage_choice,
+             "Wild Heart Rage of the Wilds choice (Bear/Eagle/Wolf); set before activateRage()")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -346,6 +348,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("grapple_escape_dc", &Agent::Conditions::grapple_escape_dc)
         .def_readwrite("grapple_range_ft",  &Agent::Conditions::grapple_range_ft)
         .def_readwrite("exhaustion_level",  &Agent::Conditions::exhaustion_level)
+        .def_readwrite("raging",            &Agent::Conditions::raging)
+        .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
+        .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
+        .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -575,6 +581,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("WildHeart", WildHeartPath)
         .value("WorldTree", WorldTreePath)
         .value("Zealot", ZealotPath)
+        .export_values();
+
+    py::enum_<WildHeartRageChoice>(m, "WildHeartRageChoice")
+        .value("NONE", WildHeartNone)
+        .value("Bear", BearForm)
+        .value("Eagle", EagleForm)
+        .value("Wolf", WolfForm)
         .export_values();
 
     // ── Origin Struct ────────────────────────────────────────────────────────
@@ -1032,6 +1045,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     py::arg("battle_map"), py::arg("idx"), py::arg("amount"),
                     "Raise hp_cur of agent[idx] by amount (clamped to hp_max). "
                     "Returns new hp_cur.")
+        .def_static("get_rage_damage_bonus",
+                    &CombatEngine::getRageDamageBonus,
+                    py::arg("level"),
+                    "Get Barbarian Rage damage bonus for a given level.")
 
         // Dice rollers
         .def("roll",              &CombatEngine::roll,            py::arg("sides"))
@@ -1050,7 +1067,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("weapon"), py::arg("attacker_stats"),
              py::arg("target_stats"), py::arg("advantage") = false,
              py::arg("disadvantage") = false, py::arg("target_ac") = -1,
-             py::arg("exhaustion_level") = 0,
+             py::arg("exhaustion_level") = 0, py::arg("attacker_conditions") = Agent::Conditions(),
              "Roll to hit, roll damage, apply to target_stats in place. "
              "target_ac: pre-calculated AC (-1 uses target_stats.base_ac).")
 
@@ -1213,6 +1230,26 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Attempt to escape an ongoing grapple (contested STR(Athletics)/DEX(Acrobatics) vs escape_dc).\n"
              "On success: grapple condition is cleared.\n"
              "Returns GrappleEscapeResult with rolls, success status, and log message.")
+
+        // Barbarian Rage lifecycle
+        .def("activate_rage",
+             &CombatEngine::activateRage,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Activate Barbarian Rage: set raging=true, apply 0.5x physical damage multipliers (B/P/S), spend 1 Rage use.")
+        .def("extend_rage",
+             &CombatEngine::extendRage,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Extend active Rage: reset duration_remaining to full duration.")
+        .def("end_rage",
+             &CombatEngine::endRage,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "End Barbarian Rage: set raging=false, restore normal damage multipliers, clear reckless_attack.")
+        .def("can_use_primal_knowledge",
+             &CombatEngine::canUsePrimalKnowledge,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),
+             "Check if Barbarian can use STR for a skill (Acrobatics/Stealth) while Raging.\n"
+             "Returns true if: L3+ Barbarian, Raging, and skill is Acrobatics or Stealth.")
+
         .def("tick_effects",
              &CombatEngine::tickEffects,
              py::arg("battle_map"),

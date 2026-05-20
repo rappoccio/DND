@@ -215,6 +215,36 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         return 10;  // default AC
 
     const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
+
+    // Check if any armor is equipped
+    bool has_armor = false;
+    for (const auto& piece : pa.armor) {
+        if (!piece.name.empty()) {
+            has_armor = true;
+            break;
+        }
+    }
+
+    // Barbarian Unarmored Defense: AC = 10 + DEX + CON (no armor worn)
+    if (pa.stats.character_class == CharacterClass::Barbarian && !has_armor) {
+        int dex_mod = (pa.stats.dex - 10) / 2;
+        int con_mod = (pa.stats.con - 10) / 2;
+        int ac = 10 + dex_mod + con_mod;
+
+        // Add shield bonus (off-hand weapon with ac_bonus)
+        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
+            const Weapon& shield = pa.weapons.back();
+            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+                ac += shield.ac_bonus;
+            }
+        }
+
+        // Add temporary modifications
+        ac += pa.stats.ac_temporary_modifications;
+        return ac;
+    }
+
+    // Standard AC calculation (non-Barbarian or wearing armor)
     int ac = pa.stats.base_ac;
 
     // Calculate DEX modifier and determine cap from equipped armor
@@ -1081,9 +1111,15 @@ std::vector<AttackResult> CombatEngine::runRound(
     std::vector<AttackResult> results;
     const int n = static_cast<int>(bm.placedAgents().size());
 
-    // Reset reaction_used for all agents at the start of the round
+    // Reset per-turn flags at the start of the round
     for (int i = 0; i < n; ++i) {
         bm.placedAgents()[static_cast<std::size_t>(i)].agent->setReactionUsed(false);
+
+        // Reset Barbarian per-turn flags
+        Agent::Conditions cond = bm.getAgentConditions(i);
+        cond.berserker_frenzy_used = false;
+        cond.zealot_divine_fury_used = false;
+        bm.setAgentConditions(i, cond);
     }
 
     for (const TurnActions& t : turns) {
@@ -1295,7 +1331,8 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           bool advantage,
                                           bool disadvantage,
                                           int target_ac,
-                                          int exhaustion_level)
+                                          int exhaustion_level,
+                                          const Agent::Conditions& attacker_conditions)
 {
     if (target_ac == -1) target_ac = target.base_ac;
     AttackResult r = rollToHit(w, attacker, target_ac, advantage, disadvantage, exhaustion_level);
@@ -1303,6 +1340,15 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
 
     if (r.hit) {
         rollDamage(w, attacker, target, r);
+
+        // Barbarian Rage damage bonus (STR-based attacks only)
+        // Applies to melee and thrown weapons (where STR is the primary damage ability)
+        if (attacker_conditions.raging &&
+            attacker.character_class == CharacterClass::Barbarian &&
+            (w.type == WeaponType::Melee || w.thrown)) {
+            r.total_damage += getRageDamageBonus(attacker.char_level);
+        }
+
         // Temporary HP absorbs damage first, then overflow damages hp_cur
         int overflow = std::max(0, r.total_damage - target.temp_hp);
         target.temp_hp = std::max(0, target.temp_hp - r.total_damage);
@@ -1380,8 +1426,16 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     bool adv = atk_pt.agent->hasAdvantage();
     bool dis = disadv || atk_pt.agent->hasDisadvantage();
 
-    // Attacker blinded: attacks have disadvantage
+    // Attacker conditions
     const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
+
+    // Barbarian Reckless Attack: give attacker advantage on STR-based melee attacks
+    if (atk_cond.reckless_attack && w.type != WeaponType::Ranged &&
+        (w.type == WeaponType::Melee || w.thrown)) {
+        adv = true;
+    }
+
+    // Attacker blinded: attacks have disadvantage
     if (atk_cond.blinded) {
         dis = true;
         log_("Disadvantage: attacker is blinded");
@@ -1421,6 +1475,35 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Advantage: attacker is hidden");
     }
 
+    // Wild Heart Wolf Form: allies within 5ft of the Barbarian get advantage on attacks
+    // Check if there's a Wolf-form Wild Heart Barbarian within 5ft of the attacker
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == action.attacker_idx) continue;  // Skip self
+        const PlacedAgent& ally_pa = agents[static_cast<std::size_t>(i)];
+        const Agent::Stats& ally_stats = ally_pa.stats;
+        const Agent::Conditions& ally_cond = ally_pa.agent->getConditions();
+
+        // Check if ally is a Wolf-form Wild Heart Barbarian in Rage
+        if (ally_stats.barbarian_subclass == WildHeartPath &&
+            ally_stats.wild_heart_rage_choice == WolfForm &&
+            ally_cond.raging) {
+            // Check distance: within 5ft (1 cell on 5ft/cell grid = Chebyshev distance <= 1)
+            int dc = std::max({atk_pt.origin.col - ally_pa.origin.col,
+                               ally_pa.origin.col - (atk_pt.origin.col + atk_sz - 1),
+                               0});
+            int dr = std::max({atk_pt.origin.row - ally_pa.origin.row,
+                               ally_pa.origin.row - (atk_pt.origin.row + atk_sz - 1),
+                               0});
+            int dist = std::max(dc, dr);
+
+            if (dist <= 1) {
+                adv = true;
+                log_("Advantage: Wild Heart Wolf Form ally within 5 feet");
+                break;
+            }
+        }
+    }
+
     // Target is paralyzed: attacker gets advantage
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
     if (tgt_cond.paralyzed) {
@@ -1444,6 +1527,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     if (tgt_cond.unconscious) {
         adv = true;
         log_("Advantage: target is unconscious");
+    }
+
+    // Target has Reckless Attack active (Barbarian): attacker gets advantage
+    if (tgt_cond.reckless_attack) {
+        adv = true;
+        log_("Advantage: target has Reckless Attack active");
     }
 
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
@@ -1484,7 +1573,62 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // Calculate target AC (includes base AC, armor, DEX modifier, temp modifications)
     int target_ac = calculateAC(bm, action.target_idx);
 
-    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac, atk_cond.exhaustion_level);
+    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac, atk_cond.exhaustion_level, atk_cond);
+
+    // Berserker Frenzy: add extra d6s damage on first hit when Reckless Attack + Rage active
+    Agent::Conditions updated_atk_cond = atk_cond;
+    if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
+        atk_stats.barbarian_subclass == BerserkerPath &&
+        atk_cond.raging && atk_cond.reckless_attack &&
+        !atk_cond.berserker_frenzy_used &&
+        (w.type == WeaponType::Melee || w.thrown)) {
+
+        // Roll d6s equal to Rage damage bonus
+        int rage_dmg_bonus = getRageDamageBonus(atk_stats.char_level);
+        int frenzy_bonus = 0;
+        for (int i = 0; i < rage_dmg_bonus; ++i) {
+            frenzy_bonus += roll(6);
+        }
+
+        r.total_damage += frenzy_bonus;
+        // Update target HP with the additional damage
+        int overflow = std::max(0, frenzy_bonus - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - frenzy_bonus);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+
+        // Mark Frenzy as used this turn
+        updated_atk_cond.berserker_frenzy_used = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+
+        log_("Berserker Frenzy: added {}d6 = {} damage", rage_dmg_bonus, frenzy_bonus);
+    }
+
+    // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging
+    if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
+        atk_stats.barbarian_subclass == ZealotPath &&
+        atk_cond.raging &&
+        !atk_cond.zealot_divine_fury_used &&
+        (w.type == WeaponType::Melee || w.thrown)) {
+
+        // Roll 1d6 + floor(level/2)
+        int divine_fury_bonus = roll(6) + (atk_stats.char_level / 2);
+
+        r.total_damage += divine_fury_bonus;
+        // Update target HP with the additional damage
+        int overflow = std::max(0, divine_fury_bonus - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - divine_fury_bonus);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+
+        // Mark Divine Fury as used this turn
+        updated_atk_cond.zealot_divine_fury_used = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+
+        log_("Zealot Divine Fury: added 1d6 + {} = {} damage", atk_stats.char_level / 2, divine_fury_bonus);
+    }
 
     // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets
     if ((tgt_cond.paralyzed || tgt_cond.unconscious) && r.hit) {
@@ -2172,6 +2316,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
             bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
                             (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
+
+            // Barbarian Danger Sense (L2+): Advantage on DEX saves unless Incapacitated
+            if (sp.save_ability == SaveDex && !target_cond.incapacitated &&
+                tgt_stats.character_class == CharacterClass::Barbarian && tgt_stats.char_level >= 2) {
+                target_adv = true;
+                log_("Danger Sense: target has Advantage on DEX save");
+            }
 
             int save_d20;
             if (auto_fail) {
@@ -3257,6 +3408,139 @@ void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
     log_("Agent is Petrified: incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, attacks have advantage");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Barbarian Rage lifecycle methods
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::activateRage(BattleMap& bm, int idx)
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    Agent::Stats stats = bm.getAgentStats(idx);
+
+    // Set raging flag
+    cond.raging = true;
+
+    // Apply BPS (Bludgeoning, Piercing, Slashing) resistance (0.5x multiplier)
+    stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)] = 0.5f;
+    stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Piercing)] = 0.5f;
+    stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Slashing)] = 0.5f;
+
+    // Wild Heart Bear Form: extra resistance to non-Force/Necrotic/Psychic/Radiant damage
+    // (Bear grants resistance to all damage except Force, Necrotic, Psychic, Radiant)
+    if (stats.barbarian_subclass == WildHeartPath && stats.wild_heart_rage_choice == BearForm) {
+        // Bludgeoning, Piercing, Slashing already at 0.5x from Rage
+        // Add resistance to Acid, Cold, Fire, Lightning, Poison, Thunder (0.5x)
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Acid)] = 0.5f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Cold)] = 0.5f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Fire)] = 0.5f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Lightning)] = 0.5f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Poison)] = 0.5f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Thunder)] = 0.5f;
+        log_("Agent {} activates Bear Form: resistance to all non-Force/Necrotic/Psychic/Radiant damage", idx);
+    }
+
+    // World Tree Vitality of the Tree: grant temp HP = Barbarian level on Rage activation
+    if (stats.barbarian_subclass == WorldTreePath) {
+        int vitality_temp_hp = stats.char_level;
+        stats.temp_hp = std::max(stats.temp_hp, vitality_temp_hp);
+        log_("Agent {} grants Vitality: {} temp HP", idx, vitality_temp_hp);
+    }
+
+    // Spend one use of Rage resource
+    if (stats.resources.find("Rage") != stats.resources.end()) {
+        Resource& rage = stats.resources.at("Rage");
+        if (rage.current > 0) {
+            rage.current--;
+            rage.duration_remaining = rage.duration;
+        }
+    }
+
+    bm.setAgentConditions(idx, cond);
+    bm.setAgentStats(idx, stats);
+    log_("Agent {} activates Rage: raging=true, BPS resistance (0.5x)", idx);
+}
+
+void CombatEngine::extendRage(BattleMap& bm, int idx)
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+
+    // Reset Rage duration
+    if (stats.resources.find("Rage") != stats.resources.end()) {
+        Resource& rage = stats.resources.at("Rage");
+        rage.duration_remaining = rage.duration;
+    }
+
+    bm.setAgentStats(idx, stats);
+    log_("Agent {} extends Rage: duration reset", idx);
+}
+
+void CombatEngine::endRage(BattleMap& bm, int idx)
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    Agent::Stats stats = bm.getAgentStats(idx);
+
+    // Clear raging flag
+    cond.raging = false;
+    cond.reckless_attack = false;
+
+    // Restore normal damage multipliers for BPS (1.0x)
+    stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)] = 1.0f;
+    stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Piercing)] = 1.0f;
+    stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Slashing)] = 1.0f;
+
+    // Wild Heart Bear Form: restore magic damage multipliers
+    if (stats.barbarian_subclass == WildHeartPath && stats.wild_heart_rage_choice == BearForm) {
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Acid)] = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Cold)] = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Fire)] = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Lightning)] = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Poison)] = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Thunder)] = 1.0f;
+    }
+
+    // Clear Rage duration
+    if (stats.resources.find("Rage") != stats.resources.end()) {
+        Resource& rage = stats.resources.at("Rage");
+        rage.duration_remaining = 0;
+    }
+
+    bm.setAgentConditions(idx, cond);
+    bm.setAgentStats(idx, stats);
+    log_("Agent {} ends Rage: raging=false, BPS resistance cleared, reckless_attack cleared", idx);
+}
+
+bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
+    const Agent::Stats& stats = pa.stats;
+    const Agent::Conditions& cond = pa.agent->getConditions();
+
+    // Primal Knowledge (L3): Acrobatics and Stealth can use STR instead of their normal ability while Raging
+    if (stats.character_class != CharacterClass::Barbarian || stats.char_level < 3)
+        return false;
+
+    if (!cond.raging)
+        return false;
+
+    // Only Acrobatics and Stealth are relevant for combat
+    if (skill_name == "Acrobatics" || skill_name == "Stealth")
+        return true;
+
+    return false;
+}
+
 void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -4032,11 +4316,10 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       if (level >= 13) rage_uses = 5;
       if (level >= 15) rage_uses = 5;
       if (level >= 17) rage_uses = 6;
-      if (level >= 20) rage_uses = INT_MAX;  // unlimited
 
       Resource rage("Rage", rage_uses, 10);  // 10-turn duration (~1 minute)
-      rage.short_rest_regen = 0;  // not restored on short rest
-      rage.long_rest_regen = (level >= 20) ? INT_MAX : rage_uses;
+      rage.short_rest_regen = 1;  // regain 1 use on short rest
+      rage.long_rest_regen = rage_uses;
       resources["Rage"] = rage;
       break;
     }
