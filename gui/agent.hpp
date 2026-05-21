@@ -357,6 +357,7 @@ namespace rpg {
       WildHeartRageChoice wild_heart_rage_choice{WildHeartNone};  // Which animal form for Rage of the Wilds
       WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
       int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
+      WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
 
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {

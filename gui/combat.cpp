@@ -4476,6 +4476,23 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       break;
     }
 
+    case Wizard: {
+      // Arcane Recovery: recover spell levels = ceil(level / 2) once per long rest
+      // Full mechanic deferred; for now just track the resource exists
+      Resource ar("Arcane Recovery", 1, 0);  // 1 use per long rest
+      ar.long_rest_regen = 1;
+      resources["Arcane Recovery"] = ar;
+
+      // Spellcasting ability is INT for Wizards
+      spellcasting_ability = 3;  // 3 = INT (SaveAbility_t::SaveInt)
+
+      // Cantrips known: 3 at L1, +1 at L4 and L10
+      // This is tracked separately in the spell system; just mark can_cast_spell
+      can_cast_spell = true;
+
+      break;
+    }
+
     // Other classes without resources (Fighter, Rogue, Ranger, Paladin, Warlock, Bard, Druid)
     // have no custom resources
     default:

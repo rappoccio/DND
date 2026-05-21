@@ -14,15 +14,18 @@ namespace rpg {
       enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Rectangle, Multiple, NumGeometry_t };
       enum SpellType_t  { Harm=0, Heal, NumSpellType_t };
       enum SpellAttack_t{ AttackRoll=0, Save, Automatic, NumSpellAttack_t };
+      enum SpellSchool_t{ SchoolNone=0, Abjuration, Conjuration, Divination, Enchantment, Evocation, Illusion, Necromancy, Transmutation, NumSpellSchool_t };
 
-      // String -> enum map for JSON input (e.g., "Multiple" -> Multiple)
+      // String -> enum maps for JSON input (e.g., "Multiple" -> Multiple, "evocation" -> Evocation)
       static const std::unordered_map<std::string, Geometry_t> geometryNameMap;
+      static const std::unordered_map<std::string, SpellSchool_t> schoolNameMap;
 
       std::string    name{"Unnamed Spell"};
       SpellType_t    type{Harm};
       Geometry_t     geometry{Single};
       SpellAttack_t  attack_type{AttackRoll};
       SaveAbility_t  save_ability{SaveDex};
+      SpellSchool_t  school{SchoolNone};
 
       int range{30};    // range in feet to the target or area origin
       int radius{10};   // radius in feet (Cone, Sphere)

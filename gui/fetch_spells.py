@@ -272,6 +272,66 @@ def spell_to_dict(api_spell: dict) -> dict:
 
     return result
 
+def merge_spell_schools(spells_path: str, spells_raw_path: str) -> None:
+    """Merge school data from spells_raw.json into spells.json."""
+    print("Merging spell schools...")
+
+    # Load spells
+    with open(spells_path, 'r') as f:
+        spells = json.load(f)
+
+    # Load raw spells
+    with open(spells_raw_path, 'r') as f:
+        spells_raw = json.load(f)
+
+    # Build name -> school map from raw data
+    school_map = {}
+    for raw_spell in spells_raw:
+        name = raw_spell.get("name")
+        school = raw_spell.get("school", {})
+        school_key = school.get("key", "").lower()
+        if name and school_key:
+            school_map[name] = school_key
+
+    # Merge schools into spells
+    matched = 0
+    already_has = 0
+    missing = 0
+    missing_spells = []
+
+    for spell in spells:
+        spell_name = spell.get("name")
+
+        if not spell_name:
+            continue
+
+        # Check if school already exists
+        if "school" in spell:
+            already_has += 1
+            continue
+
+        # Look up school from raw data
+        if spell_name in school_map:
+            spell["school"] = school_map[spell_name]
+            matched += 1
+        else:
+            missing += 1
+            missing_spells.append(spell_name)
+
+    # Save updated spells.json
+    with open(spells_path, 'w') as f:
+        json.dump(spells, f, indent=2)
+
+    # Summary
+    print(f"  Matched:      {matched} spells")
+    print(f"  Already have: {already_has} spells")
+    print(f"  Missing:      {missing} spells")
+
+    if missing > 0 and missing_spells:
+        print(f"  Missing spells: {', '.join(missing_spells[:5])}")
+        if len(missing_spells) > 5:
+            print(f"    ... and {len(missing_spells) - 5} more")
+
 def main():
     """Main entry point."""
     limit = None
@@ -307,6 +367,9 @@ def main():
         json.dump(spells, f, indent=2)
 
     print(f"✓ Saved raw spell data to {raw_path}")
+
+    # Merge schools from raw data into processed spells
+    merge_spell_schools(output_path, raw_path)
 
     # Show sample
     if spell_dicts:

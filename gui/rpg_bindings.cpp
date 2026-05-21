@@ -307,6 +307,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wild Heart L6 Aspect choice (Owl/Panther/Salmon); set before combat or at long rest")
         .def_readwrite("brutal_strike_damage_dice", &Agent::Stats::brutal_strike_damage_dice,
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
+        .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
+             "Wizard subclass (only valid when character_class == Wizard)")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -510,6 +512,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Automatic",  Spell::Automatic)
         .export_values();
 
+    py::enum_<Spell::SpellSchool_t>(m, "SpellSchool")
+        .value("NONE",        Spell::SchoolNone)
+        .value("Abjuration",  Spell::Abjuration)
+        .value("Conjuration", Spell::Conjuration)
+        .value("Divination",  Spell::Divination)
+        .value("Enchantment", Spell::Enchantment)
+        .value("Evocation",   Spell::Evocation)
+        .value("Illusion",    Spell::Illusion)
+        .value("Necromancy",  Spell::Necromancy)
+        .value("Transmutation", Spell::Transmutation)
+        .export_values();
+
     py::enum_<SaveAbility_t>(m, "SaveAbility")
         .value("Strength", SaveStr)
         .value("Dexterity", SaveDex)
@@ -606,6 +620,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Salmon", SalmonAspect)
         .export_values();
 
+    // ── Wizard Subclass Enum (2024 D&D) ──────────────────────────────────────
+    py::enum_<WizardSubclass>(m, "WizardSubclass")
+        .value("NONE", WizardSubclassNone)
+        .value("Abjurer", AbjurerPath)
+        .value("Diviner", DivinierPath)
+        .value("Evoker", EvokerPath)
+        .value("Illusionist", IllusionistPath)
+        .export_values();
+
     // ── Origin Struct ────────────────────────────────────────────────────────
     py::class_<Origin>(m, "Origin")
         .def(py::init<>())
@@ -672,6 +695,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("geometry",             &Spell::geometry)
         .def_readwrite("attack_type",          &Spell::attack_type)
         .def_readwrite("save_ability",         &Spell::save_ability)
+        .def_readwrite("school",               &Spell::school,
+             "Spell school: Abjuration, Conjuration, Divination, Enchantment, Evocation, Illusion, Necromancy, Transmutation.")
         .def_readwrite("range",                &Spell::range)
         .def_readwrite("radius",               &Spell::radius)
         .def_readwrite("width",                &Spell::width)

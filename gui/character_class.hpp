@@ -189,6 +189,13 @@ enum WildHeartAspect {
     NumWildHeartAspect
 };
 
+// ── Wizard Subclass Enum (2024 D&D) ──────────────────────────────────
+enum WizardSubclass {
+    WizardSubclassNone = 0,
+    AbjurerPath, DivinierPath, EvokerPath, IllusionistPath,
+    NumWizardSubclass
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;

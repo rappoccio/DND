@@ -10,4 +10,15 @@ const std::unordered_map<std::string, Spell::Geometry_t> Spell::geometryNameMap 
     {"Multiple", Spell::Multiple}
 };
 
+const std::unordered_map<std::string, Spell::SpellSchool_t> Spell::schoolNameMap {
+    {"abjuration", Spell::Abjuration},
+    {"conjuration", Spell::Conjuration},
+    {"divination", Spell::Divination},
+    {"enchantment", Spell::Enchantment},
+    {"evocation", Spell::Evocation},
+    {"illusion", Spell::Illusion},
+    {"necromancy", Spell::Necromancy},
+    {"transmutation", Spell::Transmutation}
+};
+
 } // namespace rpg
