@@ -30,6 +30,12 @@ void CombatEngine::reseed(uint32_t seed)
 int CombatEngine::roll(int sides)
 {
     assert(sides >= 2 && "Die must have at least 2 sides");
+    // Portent Dice: if pending, return it instead of rolling (and clear)
+    if (pending_portent_die_ >= 0) {
+        int result = pending_portent_die_;
+        pending_portent_die_ = -1;
+        return result;
+    }
     return std::uniform_int_distribution<int>{1, sides}(rng_);
 }
 
@@ -2784,8 +2790,30 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 auto& slots = stats.spell_slots_remaining;
                 slots[static_cast<std::size_t>(slot_level - 1)] =
                     std::max(0, slots[static_cast<std::size_t>(slot_level - 1)] - 1);
+
+                // Wizard Diviner L6: Expert Divination
+                // Cast Divination spell with L2+ slot → regain highest-level lower-level slot (max L5)
+                if (stats.character_class == Wizard && stats.wizard_subclass == DivinierPath &&
+                    sp.school == Spell::Divination && slot_level >= 2) {
+                    // Find highest expended lower-level slot (capped at L5)
+                    int restore_level = -1;
+                    for (int lvl = std::min(5, slot_level - 1); lvl >= 1; --lvl) {
+                        if (slots[static_cast<std::size_t>(lvl - 1)] <
+                            stats.spell_slots_max[static_cast<std::size_t>(lvl - 1)]) {
+                            restore_level = lvl;
+                            break;
+                        }
+                    }
+                    if (restore_level > 0) {
+                        slots[static_cast<std::size_t>(restore_level - 1)]++;
+                        log_("Agent {} Expert Divination: restored 1 level {} spell slot", action.caster_idx, restore_level);
+                    }
+                }
             }
         }
+
+        // Persist stats back to battle map after modifications
+        bm.setAgentStats(action.caster_idx, stats);
     }
 
     return result;
@@ -3647,6 +3675,107 @@ bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std
     return false;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Diviner Wizard Portent Dice
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+
+    // Check if Diviner wizard with Portent Dice resource
+    if (stats.character_class != Wizard || stats.wizard_subclass != DivinierPath) {
+        log_("Agent {} is not a Diviner Wizard", agent_idx);
+        return false;
+    }
+
+    auto* portent_res = stats.getResource("Portent Dice");
+    if (!portent_res) {
+        log_("Agent {} has no Portent Dice resource", agent_idx);
+        return false;
+    }
+
+    // Check if this agent already used a portent this round
+    auto it = agent_portent_round_used_.find(agent_idx);
+    if (it != agent_portent_round_used_.end() && it->second == current_round) {
+        log_("Agent {} already used Portent Dice in round {}", agent_idx, current_round);
+        return false;
+    }
+
+    // Check if die_index is valid and portent_dice has that index
+    if (die_index < 0 || die_index >= static_cast<int>(stats.portent_dice.size())) {
+        log_("Agent {} has no portent die at index {}", agent_idx, die_index);
+        return false;
+    }
+
+    // Get the die value and remove it from the deque
+    int die_value = stats.portent_dice[static_cast<std::size_t>(die_index)];
+    stats.portent_dice.erase(stats.portent_dice.begin() + die_index);
+
+    // Decrement the resource
+    portent_res = stats.getResource("Portent Dice");
+    if (portent_res) {
+        portent_res->current = std::max(0, portent_res->current - 1);
+    }
+
+    // Set pending portent for next roll
+    pending_portent_die_ = die_value;
+
+    // Track that this agent used a portent in this round
+    agent_portent_round_used_[agent_idx] = current_round;
+
+    // Save stats back
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("Agent {} using Portent Die: value={}, remaining={}/{}",
+         agent_idx, die_value, portent_res ? portent_res->current : 0,
+         portent_res ? portent_res->max : 0);
+
+    return true;
+}
+
+void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+
+    // Check if Diviner wizard
+    if (stats.character_class != Wizard || stats.wizard_subclass != DivinierPath) {
+        return;
+    }
+
+    auto* portent_res = stats.getResource("Portent Dice");
+    if (!portent_res) {
+        return;
+    }
+
+    // Clear old dice and roll new ones
+    stats.portent_dice.clear();
+    int count = portent_res->current;  // Use current after long rest restoration
+    for (int i = 0; i < count; ++i) {
+        stats.portent_dice.push_back(roll(20));
+    }
+
+    // Save stats back
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("Agent {} regenerated {} Portent Dice: [{}]",
+         agent_idx, count,
+         [&]() {
+             std::string vals;
+             for (int i = 0; i < static_cast<int>(stats.portent_dice.size()); ++i) {
+                 if (i > 0) vals += ", ";
+                 vals += std::to_string(stats.portent_dice[static_cast<std::size_t>(i)]);
+             }
+             return vals;
+         }());
+}
+
 void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -3701,6 +3830,28 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
             log_("Death save (on damage): FAILED — {}/3 failures", cond.death_save_failures);
         }
         bm.setAgentConditions(idx, cond);
+    }
+}
+
+void CombatEngine::applyLongRest(BattleMap& bm) noexcept
+{
+    auto agents = bm.placedAgents();
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        int agent_idx = static_cast<int>(i);
+        Agent::Stats stats = bm.getAgentStats(agent_idx);
+
+        // Restore spell slots and all resources
+        stats.restore_resources_long_rest();
+
+        // Save stats back (includes resource restoration)
+        bm.setAgentStats(agent_idx, stats);
+
+        // Regenerate Portent Dice for Diviners
+        if (stats.character_class == Wizard && stats.wizard_subclass == DivinierPath) {
+            regeneratePortentDice(bm, agent_idx);
+        }
+
+        log_("Agent {} completed long rest: resources restored, Portent Dice regenerated", agent_idx);
     }
 }
 
@@ -4482,6 +4633,25 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       Resource ar("Arcane Recovery", 1, 0);  // 1 use per long rest
       ar.long_rest_regen = 1;
       resources["Arcane Recovery"] = ar;
+
+      // Memorize Spell (L5+): swap 1 prepared spell after short rest
+      if (level >= 5) {
+        Resource ms("Memorize Spell", 1, 0);  // 1 use per short rest
+        ms.short_rest_regen = 1;
+        ms.long_rest_regen = 1;  // Also restored on long rest
+        resources["Memorize Spell"] = ms;
+      }
+
+      // Portent Dice (L3+): Diviner only, but we create the resource for all Wizards
+      // It will only be usable if wizard_subclass == Diviner
+      if (level >= 3) {
+        int portent_max = 2;
+        if (level >= 14) portent_max = 3;
+        Resource pd("Portent Dice", portent_max, 0);  // Uses per long rest
+        pd.long_rest_regen = portent_max;
+        resources["Portent Dice"] = pd;
+        // Note: portent_dice deque will be populated on long rest or first use
+      }
 
       // Spellcasting ability is INT for Wizards
       spellcasting_ability = 3;  // 3 = INT (SaveAbility_t::SaveInt)

@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <concepts>
+#include <deque>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -358,6 +359,7 @@ namespace rpg {
       WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
       int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
+      std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
 
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {

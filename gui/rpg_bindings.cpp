@@ -309,6 +309,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
         .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
              "Wizard subclass (only valid when character_class == Wizard)")
+        .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
+             "Diviner Wizard: deque of d20 portent rolls (regenerated on long rest, used with use_portent_die)")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -1294,6 +1296,28 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),
              "Check if Barbarian can use STR for a skill (Acrobatics/Stealth) while Raging.\n"
              "Returns true if: L3+ Barbarian, Raging, and skill is Acrobatics or Stealth.")
+
+        // ── Diviner Wizard Portent Dice ──────────────────────────────────────
+        .def("use_portent_die",
+             &CombatEngine::usePortentDie,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("die_index"), py::arg("current_round"),
+             "Use a Portent Die on the next roll (for Diviner Wizards).\n"
+             "Validates agent is Diviner, has dice, not used this round.\n"
+             "Sets pending_portent_die for CombatEngine::roll() to return.\n"
+             "Decrements Portent Dice resource.\n"
+             "die_index: 0-based index into agent's portent_dice deque.\n"
+             "current_round: for per-round enforcement.\n"
+             "Returns true on success, false on validation failure.")
+        .def("regenerate_portent_dice",
+             &CombatEngine::regeneratePortentDice,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Regenerate Portent Dice pool after long rest (for Diviner Wizards).\n"
+             "Rolls new d20s and populates agent's portent_dice deque.")
+        .def("apply_long_rest",
+             &CombatEngine::applyLongRest,
+             py::arg("battle_map"),
+             "Apply long rest to all agents: restore spell slots, resources,\n"
+             "and regenerate Portent Dice for Diviner Wizards.")
 
         .def("tick_effects",
              &CombatEngine::tickEffects,

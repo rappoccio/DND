@@ -570,6 +570,23 @@ public:
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
 
+    // ── Diviner Wizard Portent Dice ──────────────────────────────────────
+    // Use a portent die on the next roll: validates agent is Diviner, has dice, and
+    // hasn't used portent this round. Sets pending_portent_die which CombatEngine::roll()
+    // will return instead of rolling. Decrements the Portent Dice resource.
+    // die_index: index into agent's portent_dice deque (0-based)
+    // current_round: current round number for per-round limit enforcement
+    // Returns true on success, false if agent/die is invalid or already used this round.
+    [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
+
+    // Regenerate portent dice pool for a Diviner after long rest.
+    // Rolls count d20s and populates agent's portent_dice deque.
+    void regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept;
+
+    // ── Rest and Recovery ────────────────────────────────────────────────
+    // Apply long rest to all agents: restore spell slots, resources, Portent Dice, etc.
+    void applyLongRest(BattleMap& bm) noexcept;
+
     // ── High-level BattleMap integration ─────────────────────────────────
 
     // Validate an Attack (range + LoS), then call resolveAttack and
@@ -723,6 +740,10 @@ private:
     // Visibility map: (source_idx, target_idx) -> VisibilityLevel
     // Computed at turn start and cached until next turn
     std::unordered_map<int64_t, VisibilityLevel> visibilityMap_;
+
+    // Portent Dice system (Diviner Wizard L3+)
+    int pending_portent_die_{-1};    // d20 value to use on next roll (-1 = none pending)
+    std::unordered_map<int, int> agent_portent_round_used_;  // track which round each agent last used portent
 
     MessageLogger* logger_{nullptr};
 
