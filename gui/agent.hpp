@@ -451,6 +451,7 @@ namespace rpg {
       bool raging{false};                   // Barbarian is currently in Rage
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
+      bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
       bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
       bool brutal_strike_available{false};  // Brutal Strike can be used this attack

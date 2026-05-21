@@ -476,6 +476,9 @@ public:
     void addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept;
     void removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept;
 
+    // Return agent name for logging; "agent[idx]" if idx is out of range.
+    [[nodiscard]] std::string agentName(const BattleMap& bm, int idx) const noexcept;
+
     // NPC spell initialization: set is_npc=true and init uses_max/uses_remaining from spell groups.
     void initNpcSpellGroups(BattleMap& bm, int agent_idx,
                            const std::map<int, std::vector<std::string>>& groups) noexcept;
@@ -564,7 +567,7 @@ public:
     // Apply Brutal Strike effects: damage + chosen effects (Forceful/Hamstring/Staggering/Sundering)
     // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)
     void applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                const std::vector<int>& effects) noexcept;
+                                const std::vector<int>& effects, AttackResult& result) noexcept;
 
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"

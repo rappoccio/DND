@@ -585,7 +585,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     caster_cond.concentrating = false;
                     caster_cond.concentrating_on = "";
                     bm.setAgentConditions(active_cond.caster_idx, caster_cond);
-                    log_("Caster (agent[{}]) drops concentration", active_cond.caster_idx);
+                    log_("Caster ({}) drops concentration", agentName(bm, active_cond.caster_idx));
 
                     // Remove all conditions caused by concentration spells from this caster
                     const auto& caster_spells = bm.getAgentSpells(active_cond.caster_idx);
@@ -1156,6 +1156,7 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.berserker_frenzy_used = false;
         cond.zealot_divine_fury_used = false;
         cond.brutal_strike_available = false;
+        cond.brutal_strike_used_this_turn = false;
         cond.hamstrung = false;
         cond.sundering_target_idx = -1;
         cond.staggered_next_save = false;
@@ -1622,13 +1623,14 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
 
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
-    log_("[ATTACK START] Agent {} - unconscious={}, hp={}", action.target_idx, tgt_cond.unconscious, tgt_stats.hp_cur);
+    log_("[ATTACK START] {} - unconscious={}, hp={}", agentName(bm, action.target_idx), tgt_cond.unconscious, tgt_stats.hp_cur);
 
-    // Check Brutal Strike eligibility (L9+: Reckless Attack + melee weapon)
+    // Check Brutal Strike eligibility (L9+: Reckless Attack + melee weapon, once per turn)
     bool can_use_brutal_strike = false;
     if (atk_stats.character_class == CharacterClass::Barbarian &&
         atk_stats.char_level >= 9 &&
         atk_cond.reckless_attack &&
+        !atk_cond.brutal_strike_used_this_turn &&
         (w.type == WeaponType::Melee || w.thrown)) {
         can_use_brutal_strike = true;
         log_("Brutal Strike eligible: L9+ Barbarian with Reckless Attack + melee weapon");
@@ -1640,7 +1642,8 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     Agent::Conditions updated_atk_cond = atk_cond;
     if (r.hit && can_use_brutal_strike) {
         updated_atk_cond.brutal_strike_available = true;
-        log_("Agent {} can use Brutal Strike on this attack", action.attacker_idx);
+        log_("{} can use Brutal Strike on this attack", agentName(bm, action.attacker_idx));
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
     // Reckless Attack: auto-reroll on miss for Barbarians
     else if (!r.hit &&
@@ -1651,7 +1654,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         adv = true;
         r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
-        log_("Agent {} uses Reckless Attack (auto-reroll on miss)", action.attacker_idx);
+        log_("{} uses Reckless Attack (auto-reroll on miss)", agentName(bm, action.attacker_idx));
     }
 
     // Apply base attack damage to the target's working stats. resolveAttack now
@@ -1740,7 +1743,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // Auto-trigger Unconscious if HP drops to 0 or below
     bool just_knocked_unconscious = (r.hp_after <= 0 && !tgt_cond.unconscious && !tgt_cond.dead);
     if (just_knocked_unconscious) {
-        log_("[ATTACK KNOCKDOWN] Agent {} going unconscious from attack damage", action.target_idx);
+        log_("[ATTACK KNOCKDOWN] {} going unconscious from attack damage", agentName(bm, action.target_idx));
         applyUnconscious(bm, action.target_idx);
         r.target_down = true;
         // Don't roll death save yet - they'll roll on their next turn or if they take more damage
@@ -1749,8 +1752,8 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // Death save on damage for agents already unconscious (unless melee hit within 5ft, which auto-fails 2)
     // Only roll if the agent was ALREADY unconscious BEFORE this attack (not if just knocked unconscious)
     if (r.hp_after <= 0 && tgt_cond.unconscious && !tgt_cond.dead && r.total_damage > 0 && !just_knocked_unconscious) {
-        log_("[DEATH SAVE ON DAMAGE] Agent {} was already unconscious, rolling death save (was unconscious before: {})",
-             action.target_idx, tgt_cond.unconscious);
+        log_("[DEATH SAVE ON DAMAGE] {} was already unconscious, rolling death save (was unconscious before: {})",
+             agentName(bm, action.target_idx), tgt_cond.unconscious);
         // Check if this is a melee hit within 5ft (those already auto-failed 2 above)
         bool is_melee_within_5ft = false;
         if (r.critical && action.weapon_idx < static_cast<int>(atk_pt.weapons.size())) {
@@ -2534,11 +2537,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             Agent::Conditions tgt_cond_before = bm.getAgentConditions(tgt_idx);
             bool spell_just_knocked_unconscious = (!tgt_cond_before.unconscious && !tgt_cond_before.dead);
             if (spell_just_knocked_unconscious) {
-                log_("[SPELL KNOCKDOWN] Agent {} going unconscious from spell damage ({})", tgt_idx, sp.name);
+                log_("[SPELL KNOCKDOWN] {} going unconscious from spell damage ({})", agentName(bm, tgt_idx), sp.name);
                 applyUnconscious(bm, tgt_idx);
                 // Don't roll death save yet - they'll roll on their next turn or if they take more damage
             } else if (tgt_cond_before.unconscious && !tgt_cond_before.dead && tr.total_damage > 0) {
-                log_("[SPELL DEATH SAVE] Agent {} already unconscious, rolling death save from spell damage", tgt_idx);
+                log_("[SPELL DEATH SAVE] {} already unconscious, rolling death save from spell damage", agentName(bm, tgt_idx));
                 // Death save on damage for agents already unconscious
                 rollDeathSave(bm, tgt_idx);
             }
@@ -2578,8 +2581,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
             for (const auto& spell_cond : sp.conditions) {
                 // Determine if this specific condition applies to the target
-                log_("[COND] Processing condition '{}' for agent[{}], push_ft={}",
-                     spell_cond.condition_name, tgt_idx, spell_cond.push_ft);
+                log_("[COND] Processing condition '{}' for {}, push_ft={}",
+                     spell_cond.condition_name, agentName(bm, tgt_idx), spell_cond.push_ft);
                 bool condition_applies = false;
                 bool target_failed_save = false;
 
@@ -2632,8 +2635,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 }
 
                 if (condition_applies) {
-                    log_("[APPLY] Applying condition '{}' to agent[{}], requires_save={}, push_ft={}",
-                         spell_cond.condition_name, tgt_idx, spell_cond.requires_save, spell_cond.push_ft);
+                    log_("[APPLY] Applying condition '{}' to {}, requires_save={}, push_ft={}",
+                         spell_cond.condition_name, agentName(bm, tgt_idx), spell_cond.requires_save, spell_cond.push_ft);
 
                     ActiveAgentCondition cond;
                     cond.agent_idx   = tgt_idx;
@@ -2660,7 +2663,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                     // Apply spell push on failed save
                     if (spell_cond.condition_name == "Push" && spell_cond.push_ft > 0) {
-                        log_("[PUSH] Attempting to push agent[{}] {} feet by spell '{}'", tgt_idx, spell_cond.push_ft, sp.name);
+                        log_("[PUSH] Attempting to push {} {} feet by spell '{}'", agentName(bm, tgt_idx), spell_cond.push_ft, sp.name);
                         auto spell_agents = bm.placedAgents();
                         if (action.caster_idx >= 0 && action.caster_idx < static_cast<int>(spell_agents.size())) {
                             const auto& caster = spell_agents[action.caster_idx];
@@ -2858,7 +2861,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     }
                     if (restore_level > 0) {
                         slots[static_cast<std::size_t>(restore_level - 1)]++;
-                        log_("Agent {} Expert Divination: restored 1 level {} spell slot", action.caster_idx, restore_level);
+                        log_("{} Expert Divination: restored 1 level {} spell slot", agentName(bm, action.caster_idx), restore_level);
                     }
                 }
 
@@ -2869,7 +2872,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     int max_ward = 2 * stats.char_level + (stats.intel - 10) / 2;
                     int ward_gain = 2 * slot_level;
                     stats.temp_hp = std::min(stats.temp_hp + ward_gain, max_ward);
-                    log_("Agent {} Arcane Ward charged: +{} HP ({}/{})", action.caster_idx, ward_gain, stats.temp_hp, max_ward);
+                    log_("{} Arcane Ward charged: +{} HP ({}/{})", agentName(bm, action.caster_idx), ward_gain, stats.temp_hp, max_ward);
                 }
             }
         }
@@ -3549,38 +3552,38 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
         stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Lightning)] = 0.5f;
         stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Poison)] = 0.5f;
         stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Thunder)] = 0.5f;
-        log_("Agent {} activates Bear Form: resistance to all non-Force/Necrotic/Psychic/Radiant damage", idx);
+        log_("{} activates Bear Form: resistance to all non-Force/Necrotic/Psychic/Radiant damage", agentName(bm, idx));
     }
 
     // World Tree Vitality of the Tree: grant temp HP = Barbarian level on Rage activation
     if (stats.barbarian_subclass == WorldTreePath) {
         int vitality_temp_hp = stats.char_level;
         stats.temp_hp = std::max(stats.temp_hp, vitality_temp_hp);
-        log_("Agent {} grants Vitality: {} temp HP", idx, vitality_temp_hp);
+        log_("{} grants Vitality: {} temp HP", agentName(bm, idx), vitality_temp_hp);
     }
 
     // Berserker L6: Mindless Rage - clear Charmed and Frightened conditions
     if (stats.barbarian_subclass == BerserkerPath && stats.char_level >= 6) {
         cond.charmed = false;
         cond.frightened = false;
-        log_("Agent {} Mindless Rage: charmed/frightened cleared", idx);
+        log_("{} Mindless Rage: charmed/frightened cleared", agentName(bm, idx));
     }
 
     // Wild Heart L6: Aspect of the Wilds - apply aspect bonuses
     if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 6) {
         if (stats.wild_heart_aspect == OwlAspect) {
             stats.darkvision_range = std::max(stats.darkvision_range, 60);
-            log_("Agent {} Owl Aspect: darkvision 60 ft", idx);
+            log_("{} Owl Aspect: darkvision 60 ft", agentName(bm, idx));
         } else if (stats.wild_heart_aspect == SalmonAspect) {
             stats.speed_swim = std::max(stats.speed_swim, stats.speed_walk);
-            log_("Agent {} Salmon Aspect: swim speed = walk speed ({})", idx, stats.speed_walk);
+            log_("{} Salmon Aspect: swim speed = walk speed ({})", agentName(bm, idx), stats.speed_walk);
         }
     }
 
     // Reset Zealot Fanatical Focus flag on Rage activation (can use once per Rage)
     if (stats.barbarian_subclass == ZealotPath && stats.char_level >= 6) {
         cond.fanatical_focus_used = false;
-        log_("Agent {} Fanatical Focus: ready for use this Rage", idx);
+        log_("{} Fanatical Focus: ready for use this Rage", agentName(bm, idx));
     }
 
     // Spend one use of Rage resource
@@ -3594,7 +3597,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
 
     bm.setAgentConditions(idx, cond);
     bm.setAgentStats(idx, stats);
-    log_("Agent {} activates Rage: raging=true, BPS resistance (0.5x)", idx);
+    log_("{} activates Rage: raging=true, BPS resistance (0.5x)", agentName(bm, idx));
 }
 
 void CombatEngine::extendRage(BattleMap& bm, int idx)
@@ -3611,7 +3614,7 @@ void CombatEngine::extendRage(BattleMap& bm, int idx)
     }
 
     bm.setAgentStats(idx, stats);
-    log_("Agent {} extends Rage: duration reset", idx);
+    log_("{} extends Rage: duration reset", agentName(bm, idx));
 }
 
 void CombatEngine::endRage(BattleMap& bm, int idx)
@@ -3659,11 +3662,11 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
 
     bm.setAgentConditions(idx, cond);
     bm.setAgentStats(idx, stats);
-    log_("Agent {} ends Rage: raging=false, BPS resistance cleared, reckless_attack cleared", idx);
+    log_("{} ends Rage: raging=false, BPS resistance cleared, reckless_attack cleared", agentName(bm, idx));
 }
 
 void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                          const std::vector<int>& effects) noexcept
+                                          const std::vector<int>& effects, AttackResult& result) noexcept
 {
     auto agents = bm.placedAgents();
     if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
@@ -3674,38 +3677,46 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
     Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
     Agent::Conditions tgt_cond = bm.getAgentConditions(target_idx);
 
-    // Roll and apply Brutal Strike damage (1d10 or 2d10)
+    // Roll Brutal Strike damage (1d10 or 2d10)
     int damage_dice = atk_stats.brutal_strike_damage_dice;
     int bs_damage = 0;
     for (int i = 0; i < damage_dice; ++i) {
         bs_damage += roll(10);
     }
 
-    // Apply damage to target
+    // Add brutal strike damage to result's breakdown
+    result.damage_breakdown.push_back({"brutal", bs_damage});
+    result.total_damage += bs_damage;
+
+    // Apply damage to target (apply additional Brutal Strike damage)
     int overflow = std::max(0, bs_damage - tgt_stats.temp_hp);
     tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - bs_damage);
     tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
-    log_("Brutal Strike: +{} ({}d10) damage", bs_damage, damage_dice);
 
     // Apply chosen effects
+    std::string effect_name;
     for (int effect : effects) {
         if (effect == 0) {  // Forceful Blow: Push 15 ft
-            log_("Brutal Strike: Forceful Blow - pushing target 15 ft");
-            // Push logic would go here (reuse push_agent if available)
-            // For now, just log it
+            effect_name = "Forceful Blow";
         } else if (effect == 1) {  // Hamstring Blow: Speed -15 ft
             tgt_cond.hamstrung = true;
-            log_("Brutal Strike: Hamstring Blow - target speed -15 ft until start of next turn");
+            effect_name = "Hamstring Blow";
         } else if (effect == 2) {  // Staggering Blow (L13): Disadvantage on next save
             tgt_cond.staggered_next_save = true;
-            log_("Brutal Strike: Staggering Blow - disadvantage on next save");
+            effect_name = "Staggering Blow";
         } else if (effect == 3) {  // Sundering Blow (L13): +5 to next attack vs target
             tgt_cond.sundering_target_idx = attacker_idx;
-            log_("Brutal Strike: Sundering Blow - +5 to next attack vs target");
+            effect_name = "Sundering Blow";
         }
     }
 
-    // Clear Brutal Strike flag
+    // Log Brutal Strike with the chosen effect
+    if (!effect_name.empty()) {
+        log_("Brutal Strike ({}): +{} damage", effect_name, bs_damage);
+    }
+
+    // Set per-turn flag and clear availability
+    atk_cond.brutal_strike_used_this_turn = true;
     atk_cond.brutal_strike_available = false;
 
     bm.setAgentStats(attacker_idx, atk_stats);
@@ -3750,26 +3761,26 @@ bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, in
 
     // Check if Diviner wizard with Portent Dice resource
     if (stats.character_class != Wizard || stats.wizard_subclass != DivinierPath) {
-        log_("Agent {} is not a Diviner Wizard", agent_idx);
+        log_("{} is not a Diviner Wizard", agentName(bm, agent_idx));
         return false;
     }
 
     auto* portent_res = stats.getResource("Portent Dice");
     if (!portent_res) {
-        log_("Agent {} has no Portent Dice resource", agent_idx);
+        log_("{} has no Portent Dice resource", agentName(bm, agent_idx));
         return false;
     }
 
     // Check if this agent already used a portent this round
     auto it = agent_portent_round_used_.find(agent_idx);
     if (it != agent_portent_round_used_.end() && it->second == current_round) {
-        log_("Agent {} already used Portent Dice in round {}", agent_idx, current_round);
+        log_("{} already used Portent Dice in round {}", agentName(bm, agent_idx), current_round);
         return false;
     }
 
     // Check if die_index is valid and portent_dice has that index
     if (die_index < 0 || die_index >= static_cast<int>(stats.portent_dice.size())) {
-        log_("Agent {} has no portent die at index {}", agent_idx, die_index);
+        log_("{} has no portent die at index {}", agentName(bm, agent_idx), die_index);
         return false;
     }
 
@@ -3792,8 +3803,8 @@ bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, in
     // Save stats back
     bm.setAgentStats(agent_idx, stats);
 
-    log_("Agent {} using Portent Die: value={}, remaining={}/{}",
-         agent_idx, die_value, portent_res ? portent_res->current : 0,
+    log_("{} using Portent Die: value={}, remaining={}/{}",
+         agentName(bm, agent_idx), die_value, portent_res ? portent_res->current : 0,
          portent_res ? portent_res->max : 0);
 
     return true;
@@ -3826,8 +3837,8 @@ void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
     // Save stats back
     bm.setAgentStats(agent_idx, stats);
 
-    log_("Agent {} regenerated {} Portent Dice: [{}]",
-         agent_idx, count,
+    log_("{} regenerated {} Portent Dice: [{}]",
+         agentName(bm, agent_idx), count,
          [&]() {
              std::string vals;
              for (int i = 0; i < static_cast<int>(stats.portent_dice.size()); ++i) {
@@ -3870,8 +3881,8 @@ bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_l
     // Save stats back
     bm.setAgentStats(agent_idx, stats);
 
-    log_("Agent {} expends Level {} slot, Arcane Ward now {}/{}",
-         agent_idx, slot_level, stats.temp_hp, max_ward);
+    log_("{} expends Level {} slot, Arcane Ward now {}/{}",
+         agentName(bm, agent_idx), slot_level, stats.temp_hp, max_ward);
 
     return true;
 }
@@ -3886,12 +3897,12 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     if (!cond.unconscious || cond.dead || cond.stabilized) {
-        log_("[DEATH SAVE SKIP] Agent {} - unconscious={}, dead={}, stabilized={}",
-             idx, cond.unconscious, cond.dead, cond.stabilized);
+        log_("[DEATH SAVE SKIP] {} - unconscious={}, dead={}, stabilized={}",
+             agentName(bm, idx), cond.unconscious, cond.dead, cond.stabilized);
         return;
     }
-    log_("[DEATH SAVE ROLL] Agent {} rolling death save (current: {}/3 successes, {}/3 failures)",
-         idx, cond.death_save_successes, cond.death_save_failures);
+    log_("[DEATH SAVE ROLL] {} rolling death save (current: {}/3 successes, {}/3 failures)",
+         agentName(bm, idx), cond.death_save_successes, cond.death_save_failures);
 
     int con_mod = (stats.con - 10) / 2;
     if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
@@ -3956,7 +3967,7 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
             regeneratePortentDice(bm, agent_idx);
         }
 
-        log_("Agent {} completed long rest: resources restored, Portent Dice regenerated", agent_idx);
+        log_("{} completed long rest: resources restored, Portent Dice regenerated", agentName(bm, agent_idx));
     }
 }
 
@@ -4226,8 +4237,8 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
             } else if (cond.condition_name == "Petrified") {
                 applyPetrified(bm, cond.agent_idx);
             }
-            log_("Applied condition '{}' to agent[{}] for {} turns",
-                 cond.condition_name, cond.agent_idx, cond.turns_remaining);
+            log_("Applied condition '{}' to {} for {} turns",
+                 cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);
         }
     }
 
@@ -4274,8 +4285,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
-                    log_("Condition '{}' expired for agent[{}]",
-                         cond.condition_name, cond.agent_idx);
+                    log_("Condition '{}' expired for {}",
+                         cond.condition_name, agentName(bm, cond.agent_idx));
                 }
             }
         }
@@ -4340,6 +4351,14 @@ void CombatEngine::addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept
 void CombatEngine::removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept
 {
     bm.removeSpellFromAgent(idx, spell_idx);
+}
+
+std::string CombatEngine::agentName(const BattleMap& bm, int idx) const noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return "agent[" + std::to_string(idx) + "]";
+    return std::string(agents[idx].agent->name());
 }
 
 void CombatEngine::initNpcSpellGroups(BattleMap& bm, int agent_idx,

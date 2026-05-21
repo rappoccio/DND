@@ -199,11 +199,16 @@
         "gloves": "",
         "cloak": ""
       },
+      "is_npc":true,
+      "npc_spell_groups": {
+	"3":["Magic Missile", "Grease"],
+	"1":["Fireball"]
+      },
       "spell_indices": [
         "Grease",
         "Magic Missile",
         "Fireball"
-      ],
+      ],	
       "agent_class": "None",
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
@@ -229,22 +234,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": false,
-      "npc_spell_groups": {
-        "3": [
-          "Grease",
-          "Magic Missile"
-        ],
-        "1": [
-          "Fireball"
-        ]
-      },
-      "npc_spell_uses_cur": {
-        "Grease": 3,
-        "Magic Missile": 3,
-        "Fireball": 1
-      }
+      ]
     },
     {
       "name": "Fire Elemental",
@@ -364,12 +354,15 @@
         "gloves": "",
         "cloak": ""
       },
-      "spell_indices": [
-        "Magic Missile",
-        "Cone of Cold"
-      ],
+      "is_npc": true,
+      "npc_spell_groups": {
+        "3": ["Magic Missile"],
+        "1": ["Cone of Cold"]
+      },
+      "spell_indices": ["Magic Missile", "Cone of Cold", "Ray of Frost"],
       "agent_class": "None",
       "agent_char_level": 1,
+      "npc_spell_uses_cur": {},
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "spell_slots_max": [
@@ -393,38 +386,25 @@
         0,
         0,
         0
-      ],
-      "is_npc": false,
-      "npc_spell_groups": {
-        "3": [
-          "Magic Missile"
-        ],
-        "1": [
-          "Cone of Cold"
-        ]
-      },
-      "npc_spell_uses_cur": {
-        "Magic Missile": 3,
-        "Cone of Cold": 1
-      }
+      ]
     },
     {
-      "name": "Barbarian 1",
+      "name": "Drak",
       "sprite_path": "",
       "size": 1,
-      "col": 12,
+      "col": 10,
       "row": 12,
       "stats": {
-        "str": 15,
+        "str": 20,
         "dex": 14,
-        "con": 13,
-        "intel": 12,
+        "con": 16,
+        "intel": 8,
         "wis": 10,
         "cha": 8,
-        "hp_max": 50,
-        "hp_cur": 50,
-        "ac": 10,
-        "speed_walk": 110,
+        "hp_max": 95,
+        "hp_cur": 95,
+        "ac": 13,
+        "speed_walk": 50,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -455,7 +435,7 @@
       },
       "spell_indices": [],
       "agent_class": "Barbarian",
-      "agent_char_level": 5,
+      "agent_char_level": 9,
       "agent_barbarian_subclass": "Berserker",
       "agent_wizard_subclass": "NONE",
       "spell_slots_max": [
@@ -482,21 +462,21 @@
       ]
     },
     {
-      "name": "Wizard 1",
+      "name": "Kaitglia Lastbane",
       "sprite_path": "",
       "size": 1,
       "col": 10,
       "row": 5,
       "stats": {
-        "str": 15,
+        "str": 8,
         "dex": 14,
-        "con": 13,
-        "intel": 12,
-        "wis": 10,
+        "con": 14,
+        "intel": 20,
+        "wis": 13,
         "cha": 8,
-        "hp_max": 35,
-        "hp_cur": 35,
-        "ac": 10,
+        "hp_max": 65,
+        "hp_cur": 65,
+        "ac": 12,
         "speed_walk": 30,
         "speed_swim": 0,
         "speed_fly": 0,
@@ -527,22 +507,28 @@
         "cloak": ""
       },
       "spell_indices": [
-        "Magic Missile",
         "Fireball",
         "Fire Bolt",
+        "Hypnotic Pattern",
         "Grease",
-        "Hypnotic Pattern"
+        "Magic Missile",
+        "Thunderwave",
+        "Cone of Cold",
+        "Wall of Fire",
+        "Hold Monster",
+        "Ice Storm",
+        "Black Tentacles"
       ],
       "agent_class": "Wizard",
-      "agent_char_level": 6,
+      "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
-      "agent_wizard_subclass": "Abjurer",
+      "agent_wizard_subclass": "NONE",
       "spell_slots_max": [
         4,
         3,
         3,
-        0,
-        0,
+        3,
+        1,
         0,
         0,
         0,
@@ -552,7 +538,7 @@
         4,
         3,
         3,
-        0,
+        3,
         0,
         0,
         0,

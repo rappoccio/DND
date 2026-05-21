@@ -1288,8 +1288,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "End Barbarian Rage: set raging=false, restore normal damage multipliers, clear reckless_attack.")
         .def("apply_brutal_strike_effect",
              &CombatEngine::applyBrutalStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"),
-             "Apply Brutal Strike effects: damage + chosen effects (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering).")
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
+             "Apply Brutal Strike effects: damage + chosen effects (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering).\n"
+             "Modifies the AttackResult to include brutal strike damage in damage_breakdown and updates total_damage.")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),

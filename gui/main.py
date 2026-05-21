@@ -277,6 +277,7 @@ class App:
         self.placement_config: rpg.AgentConfig | None = None  # Config for agent being placed
         self.placement_cell: rpg.Cell | None = None  # Current cell under mouse
         self.placement_valid = False  # Is current placement location valid?
+        self._pc_name_input: TextInput | None = None  # Name input for new PC
 
         # ── Selection state ───────────────────────────────────────────────
         self.selected_idx  = -1        # index of selected agent (-1 = none)
@@ -632,6 +633,9 @@ class App:
         self.btn_cbt_rage = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Rage (Bonus)",
                                           (180, 80, 60), (220, 110, 90), self.font_md)
+        self.btn_cbt_reckless = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Reckless Attack (Action)",
+                                          (200, 100, 80), (240, 130, 110), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -802,7 +806,7 @@ class App:
         self.selected_mob_stats = None  # No mob stats for PCs
         self.current_mob_grid_size = 1
 
-        # Enter placement mode with new PC
+        # Setup PC config
         cfg = rpg.AgentConfig()
         cfg.name        = f"{class_name} 1"
         cfg.sprite_path = ""  # PCs don't have sprites initially
@@ -833,10 +837,16 @@ class App:
         self._pending_pc_class = class_name
         self._pending_pc_stats = stats
 
-        self.placement_mode_active = True
+        self.placement_mode_active = False
         self.placement_config = cfg
         self.placement_cell = None
         self.placement_valid = False
+
+        # Create TextInput for name editing in the panel
+        px, W, _, _, _, _ = self._panel_layout()
+        self._pc_name_input = TextInput(pygame.Rect(px, 70, W, 28), placeholder=cfg.name, font=self.font_md)
+        self._pc_name_input.text = cfg.name
+        self._pc_name_input.active = True
 
     def _mob_stats_to_d_d_stats(self, mob_data: dict):
         """Convert CSV mob stats to D&D 5e agent stats."""
@@ -1609,6 +1619,16 @@ class App:
 
         self._combat_log_add(visibility_info)
 
+    def _activate_reckless_and_attack(self, idx: int, slot: str):
+        """Set Reckless Attack flag and proceed with attack."""
+        cond = self.combat.get_agent_conditions(self.bm, idx)
+        cond.reckless_attack = True
+        self.combat.set_agent_conditions(self.bm, idx, cond)
+        agent = self.bm.placed_agents[idx]
+        self._combat_log_add(f"{agent.name}: Activates Reckless Attack (enemies gain advantage)")
+        # Continue with weapon selection
+        self._start_attack(slot)
+
     def _start_attack(self, slot: str):
         """Begin target-selection for an attack in the given slot."""
         idx = self._current_agent_idx()
@@ -1624,6 +1644,21 @@ class App:
             return
 
         stats = self.combat.get_agent_stats(self.bm, idx)
+        conds = self.combat.get_agent_conditions(self.bm, idx)
+
+        # Reckless Attack prompt for Barbarians
+        if (stats.character_class == rpg.CharacterClass.Barbarian and
+            conds.raging and not conds.reckless_attack):
+            def _proceed_normal():
+                self._start_attack(slot)
+            options = [
+                ("Use Reckless Attack", lambda: self._activate_reckless_and_attack(idx, slot)),
+                ("Normal Attack", _proceed_normal)
+            ]
+            px_popup = self._panel_x() + self._PANEL_PAD
+            self.context_menu.show((px_popup, 290), options, self.screen.get_size())
+            return
+
         # Only seed attacks_remaining when starting a fresh sequence (== 0).
         # If mid-sequence and same slot, don't reset. If mid-sequence and different slot, reject.
         if self.attacks_remaining == 0:
@@ -1714,25 +1749,33 @@ class App:
             penalty = 2 * atk_cond.exhaustion_level
             exh_note = f" [−{penalty} exhaustion]"
 
-        if result.hit:
-            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
-            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-            msg = (f"{atk_name}→{tgt_name}: "
-                   f"HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
-                   f"{' CRIT!' if result.critical else ''}"
-                   f"{' — DOWN' if result.target_down else ''}"
-                   f"{exh_note}")
-        else:
-            msg = (f"{atk_name}→{tgt_name}: "
-                   f"miss (roll {result.total_roll} vs AC {result.target_ac})"
-                   f"{exh_note}")
-        self._combat_log_add(msg)
-
-        # Brutal Strike: offer effect selection if hit and available
+        # Check for Brutal Strike before logging
+        has_brutal_strike = False
         if result.hit and result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if atk_cond and atk_cond.brutal_strike_available:
-                self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name)
+                has_brutal_strike = True
+
+        # Format attack message
+        if result.hit:
+            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            atk_msg = (f"{atk_name}→{tgt_name}: "
+                       f"HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
+                       f"{' CRIT!' if result.critical else ''}"
+                       f"{' — DOWN' if result.target_down else ''}"
+                       f"{exh_note}")
+        else:
+            atk_msg = (f"{atk_name}→{tgt_name}: "
+                       f"miss (roll {result.total_roll} vs AC {result.target_ac})"
+                       f"{exh_note}")
+
+        # If no Brutal Strike, log attack immediately
+        if not has_brutal_strike:
+            self._combat_log_add(atk_msg)
+        else:
+            # Defer logging until after Brutal Strike is applied
+            self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
 
         # Check concentration save if damage was dealt
         if result.hit and result.total_damage > 0:
@@ -1797,14 +1840,27 @@ class App:
         # Refresh attack overlay (HP may have changed).
         self._update_attack_overlay()
 
-    def _offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name):
-        """Show Brutal Strike effect menu after a hit."""
+    def _offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show Brutal Strike effect menu after a hit. Logs the attack after effect is chosen."""
         atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
         level = atk_stats.char_level
         dice_str = "2d10" if level >= 17 else "1d10"
 
         def _apply(effects):
-            self.combat.apply_brutal_strike_effect(self.bm, atk_idx, target_idx, effects)
+            if effects:
+                # Apply Brutal Strike effect and modify result
+                self.combat.apply_brutal_strike_effect(self.bm, atk_idx, target_idx, effects, result)
+                # Re-format attack message with updated damage breakdown
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                updated_msg = (f"{atk_name}→{tgt_name}: "
+                               f"HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
+                               f"{' CRIT!' if result.critical else ''}"
+                               f"{' — DOWN' if result.target_down else ''}")
+                self._combat_log_add(updated_msg)
+            else:
+                # Skip chosen - log original attack
+                self._combat_log_add(atk_msg)
             self._flush_combat_log()
             self._update_attack_overlay()
 
@@ -1817,7 +1873,7 @@ class App:
                 (f"Staggering Blow ({dice_str} + disadv next save)", lambda: _apply([2])),
                 (f"Sundering Blow ({dice_str} + +5 next atk vs target)", lambda: _apply([3])),
             ]
-        options.append(("Skip Brutal Strike", lambda: None))
+        options.append(("Skip Brutal Strike", lambda: _apply([])))
 
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
@@ -4916,6 +4972,7 @@ class App:
                         self.btn_cbt_rage.draw(self.screen)
                         y += B + gap
 
+
         y += section_gap
 
         # ── Movement type toggles ──────────────────────────────────────────
@@ -5109,6 +5166,15 @@ class App:
                          pygame.Rect(px, 0, PANEL_W, sh))
         pygame.draw.line(self.screen, COL_PANEL_BORDER, (px, 0), (px, sh))
 
+        # ── PC name input (after selecting PC class) ──────────────────────
+        if self._pc_name_input:
+            title = self.font_md.render("Enter character name:", True, COL_TEXT)
+            self.screen.blit(title, (lx, 30))
+            self._pc_name_input.draw(self.screen)
+            hint = self.font_sm.render("Press Enter to continue", True, (150, 150, 150))
+            self.screen.blit(hint, (lx, self._pc_name_input.rect.bottom + 8))
+            return
+
         # ── Placement mode ─────────────────────────────────────────────────
         if self.placement_mode_active:
             title = self.font_lg.render("Click to place", True, (255, 200, 100))
@@ -5283,6 +5349,23 @@ class App:
                     self.conditions_dialog.agent_idx = None  # Clear after applying
                     self.conditions_dialog.conditions = {}  # Clear conditions
                 continue
+            # ── PC name input (editing name after selecting class) ─────────
+            if self._pc_name_input:
+                self._pc_name_input.handle(event)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    # User confirmed the name; start placement mode
+                    if self.placement_config:
+                        self.placement_config.name = self._pc_name_input.text.strip() or self.placement_config.name
+                    self._pc_name_input = None
+                    self.placement_mode_active = True
+                    continue
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    # Cancel PC placement
+                    self._pc_name_input = None
+                    self.placement_config = None
+                    continue
+                else:
+                    continue
             # ── Placement mode (floating agent) ───────────────────────────────
             if self.placement_mode_active:
                 if event.type == pygame.MOUSEMOTION:
@@ -5347,12 +5430,14 @@ class App:
                         self.placement_mode_active = False
                         self.placement_config = None
                         self.placement_cell = None
+                        self._pc_name_input = None
                     continue
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     # Cancel placement
                     self.placement_mode_active = False
                     self.placement_config = None
                     self.placement_cell = None
+                    self._pc_name_input = None
                     continue
 
             # Context menu sits above normal map events but below modals.
@@ -5900,6 +5985,15 @@ class App:
                             agent = self.bm.placed_agents[idx]
                             self._combat_log_add(f"{agent.name}: Enters a rage!")
                         self.bonus_used = True
+                    if self.btn_cbt_reckless.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            cond = self.combat.get_agent_conditions(self.bm, idx)
+                            cond.reckless_attack = True
+                            self.combat.set_agent_conditions(self.bm, idx, cond)
+                            agent = self.bm.placed_agents[idx]
+                            self._combat_log_add(f"{agent.name}: Activates Reckless Attack (enemies gain advantage on attacks vs you)")
+                        self.action_used = True
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):
