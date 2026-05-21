@@ -6,7 +6,6 @@
       "size": 1,
       "col": 12,
       "row": 10,
-      "darkvision_range": 60,
       "stats": {
         "str": 10,
         "dex": 18,
@@ -22,24 +21,57 @@
         "speed_fly": 30,
         "speed_burrow": 0,
         "prof_bonus": 2,
-        "num_attacks": 2,
         "save_prof_str": false,
         "save_prof_dex": true,
         "save_prof_con": true,
         "save_prof_intel": false,
         "save_prof_wis": false,
         "save_prof_cha": false,
+        "num_attacks": 2,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
         "spellcasting_ability": "cha"
       },
-      "weapon_indices": ["Rapier", "Dagger", "Longbow"],
-      "armor_indices": [
-        "",
-        "Leather",
-        "",
-        "",
-        "",
-        "Fire Resistant Cloak"
-      ]	
+      "weapons": {
+        "main_hand": "Rapier",
+        "off_hand": "Dagger",
+        "ranged": "Longbow"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "None",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
     },
     {
       "name": "Baba Lysaga",
@@ -47,7 +79,6 @@
       "size": 1,
       "col": 9,
       "row": 7,
-      "devilssight_range": 60,
       "stats": {
         "str": 18,
         "dex": 10,
@@ -63,34 +94,57 @@
         "speed_fly": 0,
         "speed_burrow": 0,
         "prof_bonus": 2,
-        "num_attacks": 1,
         "save_prof_str": true,
         "save_prof_dex": false,
         "save_prof_con": false,
         "save_prof_intel": false,
         "save_prof_wis": true,
         "save_prof_cha": false,
-        "spellcasting_ability": "wis"
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "int"
       },
-      "weapon_indices": [],
-      "spells": [
-        "Fireball",
-        "Grease",
-        "Ice Storm",
-        "Plant Growth",
-	"Ray of Sickness",
-	"Black Tentacles",
-	"Wall of Fire",
-	"Hold Person",
-	"Blindness/Deafness",
-	"Charm Person",
-	"Fear",
-	"Thunderwave"
-      ],
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
       "agent_class": "Wizard",
       "agent_char_level": 9,
-      "spell_slots_max": [4, 3, 3, 3, 1, 0, 0, 0, 0],
-      "spell_slots_cur": [4, 3, 3, 3, 1, 0, 0, 0, 0]
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "spell_slots_max": [
+        4,
+        3,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        4,
+        3,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
     },
     {
       "name": "Cult Mage",
@@ -113,34 +167,57 @@
         "speed_fly": 0,
         "speed_burrow": 0,
         "prof_bonus": 2,
-        "num_attacks": 1,
         "save_prof_str": false,
         "save_prof_dex": false,
         "save_prof_con": false,
         "save_prof_intel": true,
         "save_prof_wis": false,
         "save_prof_cha": false,
-        "spellcasting_ability": "intel"
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
       },
-      "weapon_indices": [],
-      "spells": [
-        "Fireball",
-        "Grease",
-        "Magic Missile",
-	"Hold Person",
-	"Hypnotic Pattern"
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "None",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ],
-      "is_npc": true,
-      "npc_spell_groups": {
-        "1": ["Fireball", "Grease", "Hold Person"],
-        "2": ["Magic Missile", "Hypnotic Pattern"]
-      },
-      "npc_spell_uses_cur": {
-        "Fireball": 1,
-        "Grease": 1,
-        "Magic Missile": 2,
-	"Hypnotic Pattern": 2
-      }
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
     },
     {
       "name": "Fire Elemental",
@@ -157,27 +234,63 @@
         "cha": 8,
         "hp_max": 39,
         "hp_cur": 39,
-	"temp_hp": 40,
         "ac": 15,
         "speed_walk": 0,
         "speed_swim": 0,
         "speed_fly": 60,
         "speed_burrow": 0,
         "prof_bonus": 2,
-        "num_attacks": 2,
         "save_prof_str": false,
         "save_prof_dex": false,
         "save_prof_con": false,
         "save_prof_intel": false,
         "save_prof_wis": false,
         "save_prof_cha": false,
-        "spellcasting_ability": "cha",
-        "temp_hp": 0,
-        "magic_immunities": ["Fire"],
-        "physical_resistances": ["Bludgeoning", "Piercing", "Slashing"],
-        "magic_vulnerabilities": ["Cold"]
+        "num_attacks": 2,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
       },
-      "weapon_indices": ["UnarmedStunningFire"]
+      "weapons": {
+        "main_hand": "UnarmedStunningFire",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "None",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
     },
     {
       "name": "Frost Mage",
@@ -200,28 +313,210 @@
         "speed_fly": 0,
         "speed_burrow": 0,
         "prof_bonus": 2,
-        "num_attacks": 1,
         "save_prof_str": false,
         "save_prof_dex": true,
         "save_prof_con": false,
         "save_prof_intel": true,
         "save_prof_wis": false,
         "save_prof_cha": false,
-        "spellcasting_ability": "intel",
-        "temp_hp": 0,
-        "magic_resistances": ["Cold"]
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
       },
-      "weapon_indices": [],
-      "spells": ["Ice Storm", "Cone of Cold", "Magic Missile"],
-      "is_npc": true,
-      "npc_spell_groups": {
-        "1": ["Cone of Cold"],
-        "2": ["Magic Missile"]
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
       },
-      "npc_spell_uses_cur": {
-        "Cone of Cold": 1,
-        "Magic Missile": 3
-      }
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "None",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Barbarian 1",
+      "sprite_path": "",
+      "size": 1,
+      "col": 12,
+      "row": 12,
+      "stats": {
+        "str": 15,
+        "dex": 14,
+        "con": 13,
+        "intel": 12,
+        "wis": 10,
+        "cha": 8,
+        "hp_max": 50,
+        "hp_cur": 50,
+        "ac": 10,
+        "speed_walk": 80,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 2,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
+      },
+      "weapons": {
+        "main_hand": "Longsword",
+        "off_hand": "Dagger",
+        "ranged": "Longbow"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "Barbarian",
+      "agent_char_level": 5,
+      "agent_barbarian_subclass": "Berserker",
+      "agent_wizard_subclass": "NONE",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Wizard 1",
+      "sprite_path": "",
+      "size": 1,
+      "col": 9,
+      "row": 12,
+      "stats": {
+        "str": 15,
+        "dex": 14,
+        "con": 13,
+        "intel": 12,
+        "wis": 10,
+        "cha": 8,
+        "hp_max": 32,
+        "hp_cur": 32,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "int"
+      },
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [
+        "Fire Bolt",
+        "Fireball",
+        "Chromatic Orb",
+        "Hypnotic Pattern",
+        "Fear"
+      ],
+      "agent_class": "Wizard",
+      "agent_char_level": 5,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "Diviner",
+      "spell_slots_max": [
+        4,
+        3,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        4,
+        3,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
     }
-  ]
+  ],
+  "map_items": []
 }

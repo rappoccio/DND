@@ -41,12 +41,40 @@ int CombatEngine::roll(int sides)
 
 int CombatEngine::rollAdvantage(int sides)
 {
-    return std::max(roll(sides), roll(sides));
+    // Check if portent die is pending (need to apply after advantage logic)
+    int pending_portent = pending_portent_die_;
+    if (pending_portent >= 0) {
+        pending_portent_die_ = -1;  // Consume it now
+    }
+
+    int result = std::max(roll(sides), roll(sides));
+
+    // Apply portent die if one was pending (after advantage selection)
+    if (pending_portent >= 0) {
+        log_("Portent Die: replacing roll {} with {}", result, pending_portent);
+        result = pending_portent;
+    }
+
+    return result;
 }
 
 int CombatEngine::rollDisadvantage(int sides)
 {
-    return std::min(roll(sides), roll(sides));
+    // Check if portent die is pending (need to apply after disadvantage logic)
+    int pending_portent = pending_portent_die_;
+    if (pending_portent >= 0) {
+        pending_portent_die_ = -1;  // Consume it now
+    }
+
+    int result = std::min(roll(sides), roll(sides));
+
+    // Apply portent die if one was pending (after disadvantage selection)
+    if (pending_portent >= 0) {
+        log_("Portent Die: replacing roll {} with {}", result, pending_portent);
+        result = pending_portent;
+    }
+
+    return result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1266,6 +1294,12 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.attack_mod   = attackModifier(w, attacker) + w.bonus_hit;
     r.target_ac    = target_ac;
 
+    // Check if portent die is pending (need to apply after advantage/disadvantage logic)
+    int pending_portent = pending_portent_die_;
+    if (pending_portent >= 0) {
+        pending_portent_die_ = -1;  // Consume it now
+    }
+
     // If both advantage and disadvantage: they cancel out (roll normally)
     if (advantage && disadvantage) {
         int d1 = roll(20), d2 = roll(20);
@@ -1281,6 +1315,12 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
         log_("Disadvantage: rolled {} and {} → kept {}", d1, d2, r.d20);
     } else {
         r.d20 = roll(20);
+    }
+
+    // Apply portent die if one was pending (after advantage/disadvantage selection)
+    if (pending_portent >= 0) {
+        log_("Portent Die: replacing roll {} with {}", r.d20, pending_portent);
+        r.d20 = pending_portent;
     }
 
     r.critical   = (r.d20 == 20);

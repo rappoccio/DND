@@ -623,6 +623,12 @@ class App:
         self.btn_cbt_drop_weapon_rng  = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Drop Ranged",
                                           (130, 80, 60), (170, 110, 90), self.font_md)
+        self.btn_cbt_use_portent = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Use Portent Die",
+                                          (200, 160, 100), (220, 180, 120), self.font_md)
+        self.btn_cbt_rage = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Rage (Bonus)",
+                                          (180, 80, 60), (220, 110, 90), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -817,6 +823,8 @@ class App:
         stats.num_attacks = 1
         # Set class and level (this also sets can_cast_spell and spell slots)
         stats.set_class_level(getattr(rpg.CharacterClass, class_name), 1)
+        # Initialize class resources (Rage, Ki, etc.)
+        stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), 1)
 
         # Store for use in placement handler
         self._pending_pc_class = class_name
@@ -991,7 +999,7 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE"):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1022,6 +1030,16 @@ class App:
         stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
         # Restore remaining slots to max (they're newly set)
         stats.spell_slots_remaining = list(stats.spell_slots_max)
+
+        # Set subclass BEFORE initializing resources (resource init may check subclass)
+        if class_name == "Barbarian" and subclass_name != "NONE":
+            stats.barbarian_subclass = getattr(rpg.BarbianSubclass, subclass_name)
+        elif class_name == "Wizard" and subclass_name != "NONE":
+            stats.wizard_subclass = getattr(rpg.WizardSubclass, subclass_name)
+
+        # Initialize class resources (Rage, Ki, Portent Dice, etc.)
+        # This must come AFTER setting subclass since resource creation checks subclass
+        stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
@@ -1764,6 +1782,44 @@ class App:
         unarmed.physical_damage_types = [dmg_roll]
         return unarmed
 
+    def _show_portent_dice_menu(self):
+        """Show available portent dice for selection."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        if (stats.character_class != rpg.CharacterClass.Wizard or
+            stats.wizard_subclass != rpg.WizardSubclass.Diviner):
+            self._combat_log_add("Not a Diviner Wizard!")
+            return
+        if len(stats.portent_dice) == 0:
+            self._combat_log_add("No portent dice available!")
+            return
+
+        # Create menu items for each portent die
+        items = []
+        for die_idx, die_value in enumerate(stats.portent_dice):
+            label = f"⚔️  Portent d20 → {die_value}"
+            items.append((label, lambda idx=die_idx: self._use_portent_die_at_index(idx)))
+
+        mouse_pos = pygame.mouse.get_pos()
+        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+
+    def _use_portent_die_at_index(self, die_index: int):
+        """Use the selected portent die."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        success = self.combat.use_portent_die(self.bm, idx, die_index, self.round_num)
+        if success:
+            stats = self.combat.get_agent_stats(self.bm, idx)
+            portent_res = stats.get_resource("Portent Dice")
+            remaining = portent_res.current if portent_res else 0
+            agent_name = self.bm.placed_agents[idx].name if idx < len(self.bm.placed_agents) else "Unknown"
+            self._combat_log_add(f"{agent_name}: Portent die activated! ({remaining} remaining)")
+        else:
+            self._combat_log_add("Cannot use Portent Die (already used this round)")
+
     def _show_unarmed_menu(self, mouse_pos):
         """Show the unarmed strike options menu at mouse position."""
         items = [
@@ -2319,12 +2375,12 @@ class App:
             self._combat_log_add(msg)
 
     def _on_long_rest(self):
-        """Reset all spell slots, NPC spell uses, and decrement exhaustion by 1."""
+        """Reset all spell slots, NPC spell uses, decrement exhaustion by 1, and regenerate Portent Dice."""
+        # Apply combat engine long rest (restores resources, regenerates Portent Dice)
+        self.combat.apply_long_rest(self.bm)
+
         agents = self.bm.placed_agents
         for idx in range(len(agents)):
-            stats = self.combat.get_agent_stats(self.bm, idx)
-            stats.restore_spell_slots()
-            self.combat.set_agent_stats(self.bm, idx, stats)
             # Decrement exhaustion by 1 (minimum 0)
             cond = self.combat.get_agent_conditions(self.bm, idx)
             if cond.exhaustion_level > 0:
@@ -2337,7 +2393,7 @@ class App:
                     if spell.uses_max > 0:
                         spell.uses_remaining = spell.uses_max
         if self.combat_active:
-            self._combat_log_add("Long rest — all spell slots and daily spells restored.")
+            self._combat_log_add("Long rest — spell slots, resources, and Portent Dice restored.")
 
     def _process_opportunity_queue(self):
         """Process one opportunity attack from the queue, then chain to the next."""
@@ -3091,6 +3147,8 @@ class App:
                                   for s in self.combat.get_agent_spells(self.bm, i)],
                 "agent_class":      s.character_class.name,
                 "agent_char_level": s.char_level,
+                "agent_barbarian_subclass": s.barbarian_subclass.name,
+                "agent_wizard_subclass": s.wizard_subclass.name,
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
             })
@@ -3369,6 +3427,16 @@ class App:
             class_name = t.get("agent_class", "None")
             char_level = int(t.get("agent_char_level", 1))
             stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
+            # Restore subclass BEFORE initializing resources (resource init may check subclass)
+            barb_subclass_name = t.get("agent_barbarian_subclass", "NONE")
+            if barb_subclass_name != "NONE":
+                stats.barbarian_subclass = getattr(rpg.BarbianSubclass, barb_subclass_name)
+            wiz_subclass_name = t.get("agent_wizard_subclass", "NONE")
+            if wiz_subclass_name != "NONE":
+                stats.wizard_subclass = getattr(rpg.WizardSubclass, wiz_subclass_name)
+            # Initialize class resources (Rage, Ki, etc.)
+            # This must come AFTER setting subclass since resource init may check subclass
+            stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
             # Restore remaining spell slots if they were saved
             slots_cur = t.get("spell_slots_cur")
             if slots_cur:
@@ -4580,6 +4648,28 @@ class App:
 
         y += section_gap
 
+        # ── Portent Dice section (Diviner Wizards) ─────────────────────────
+        if 0 <= cur_idx < len(agents):
+            stats = self.combat.get_agent_stats(self.bm, cur_idx)
+            is_wizard = stats.character_class == rpg.CharacterClass.Wizard
+            is_diviner = stats.wizard_subclass == rpg.WizardSubclass.Diviner
+            if is_wizard and is_diviner:
+                portent_res = stats.get_resource("Portent Dice")
+                if portent_res and len(stats.portent_dice) > 0:
+                    txt("Portent Dice:", lx, y, (200, 180, 100), self.font_sm)
+                    y += 14
+                    # Show available dice
+                    dice_str = ", ".join(str(d) for d in stats.portent_dice)
+                    txt(f"  [{dice_str}]", lx, y, (220, 200, 120), self.font_sm)
+                    y += 14
+                    # Use Portent button
+                    self.btn_cbt_use_portent.rect.x = lx
+                    self.btn_cbt_use_portent.rect.y = y
+                    self.btn_cbt_use_portent.rect.w = W
+                    self.btn_cbt_use_portent.draw(self.screen)
+                    y += B + gap
+                    y += section_gap
+
         # ── Bonus Action section ───────────────────────────────────────────
         bon_lbl = "Bonus Action" + (" ✓" if self.bonus_used else "")
         txt(bon_lbl, lx, y, COL_LABEL)
@@ -4683,6 +4773,19 @@ class App:
                     self.btn_cbt_hide_bonus.rect.w = W
                     self.btn_cbt_hide_bonus.draw(self.screen)
                     y += B + gap
+
+            # Rage button - only if agent is Barbarian, not raging, and has uses
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Barbarian:
+                    conds = self.combat.get_agent_conditions(self.bm, cur_idx)
+                    rage_resource = stats.get_resource("Rage")
+                    if not conds.raging and rage_resource and rage_resource.current > 0:
+                        self.btn_cbt_rage.rect.x = lx
+                        self.btn_cbt_rage.rect.y = y
+                        self.btn_cbt_rage.rect.w = W
+                        self.btn_cbt_rage.draw(self.screen)
+                        y += B + gap
 
         y += section_gap
 
@@ -5165,13 +5268,20 @@ class App:
                             is_npc = stats.is_npc
                             npc_spell_groups = self._agent_meta.get(h, {}).get("npc_spell_groups", {})
                             armor = self.combat.get_agent_armor(self.bm, h)
+                            # Get subclass name from stats based on class
+                            subclass_name = "NONE"
+                            if class_name == "Barbarian":
+                                subclass_name = stats.barbarian_subclass.name
+                            elif class_name == "Wizard":
+                                subclass_name = stats.wizard_subclass.name
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
                                 self._on_stats_ok,
                                 is_npc=is_npc,
                                 npc_spell_groups=npc_spell_groups,
-                                armor_list=armor)
+                                armor_list=armor,
+                                subclass_name=subclass_name)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             weapon_array = self.combat.get_agent_weapons(self.bm, h)
@@ -5623,6 +5733,8 @@ class App:
                         self._combat_log_add(f"{agent.name}: Standing up")
                         self._update_reach()
                         self._update_attack_overlay()
+                if self.btn_cbt_use_portent.clicked(event):
+                    self._show_portent_dice_menu()
                 if not self.bonus_used:
                     if _has_offhand and self.btn_cbt_atk_bonus.clicked(event):
                         self._start_attack("bonus")
@@ -5645,6 +5757,13 @@ class App:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (Cunning Action, stealth {result.stealth_total})")
                             else:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
+                        self.bonus_used = True
+                    if self.btn_cbt_rage.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.combat.activate_rage(self.bm, idx)
+                            agent = self.bm.placed_agents[idx]
+                            self._combat_log_add(f"{agent.name}: Enters a rage!")
                         self.bonus_used = True
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True

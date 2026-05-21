@@ -450,12 +450,14 @@ class StatsDialog:
         self._agent_idx          = -1
         self._agent_name         = ""
         self._class_name         = "None"
+        self._subclass_name      = "None"
         self._char_level         = 1
         self._cb                 = None
         self.steppers: dict      = {}   # populated in open()
         self.prof_flags: dict    = {}   # save_prof_<ability> -> bool
         self._prof_rects: dict   = {}   # same keys -> pygame.Rect
         self._class_rects: dict  = {}   # class cycle button rects
+        self._subclass_rects: dict = {}  # subclass cycle button rects
         self._char_level_stepper = None  # IntStepper for character level
         self._is_npc             = False
         self._npc_spell_groups   = {}    # {N: [spell_names]}
@@ -463,11 +465,12 @@ class StatsDialog:
         self._spell_selection_dialog = None
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None):
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE"):
         self.active             = True
         self._agent_idx         = agent_idx
         self._agent_name        = agent_name
         self._class_name        = class_name
+        self._subclass_name     = subclass_name
         self._char_level        = char_level
         self._cb                = callback
         self._is_npc            = is_npc
@@ -475,6 +478,20 @@ class StatsDialog:
         self._armor_list        = armor_list or []
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._build_steppers(self._dlg(screen), stats)
+
+    def _get_available_subclasses(self, class_name: str) -> list[str]:
+        """Return list of available subclasses for a given class (using enum names)."""
+        subclasses = {
+            "Barbarian": ["NONE", "Berserker", "WildHeart", "WorldTree", "Zealot"],
+            "Wizard": ["NONE", "Abjurer", "Diviner", "Evoker", "Illusionist"],
+        }
+        return subclasses.get(class_name, ["NONE"])
+
+    def _display_subclass_name(self, enum_name: str) -> str:
+        """Convert enum name to display name for UI."""
+        if enum_name == "NONE":
+            return "None"
+        return enum_name
 
     # ── geometry ─────────────────────────────────────────────────────────────
     def _dlg(self, screen) -> pygame.Rect:
@@ -610,10 +627,26 @@ class StatsDialog:
                 if available and left_rect and left_rect.collidepoint(event.pos):
                     idx = available.index(self._class_name) if self._class_name in available else 0
                     self._class_name = available[(idx - 1) % len(available)]
+                    self._subclass_name = "NONE"  # Reset subclass when class changes
                     return True
                 if available and right_rect and right_rect.collidepoint(event.pos):
                     idx = available.index(self._class_name) if self._class_name in available else 0
                     self._class_name = available[(idx + 1) % len(available)]
+                    self._subclass_name = "NONE"  # Reset subclass when class changes
+                    return True
+
+            # Subclass cycle buttons
+            if self._subclass_rects:
+                available = self._subclass_rects.get("available", [])
+                left_rect = self._subclass_rects.get("left")
+                right_rect = self._subclass_rects.get("right")
+                if available and left_rect and left_rect.collidepoint(event.pos):
+                    idx = available.index(self._subclass_name) if self._subclass_name in available else 0
+                    self._subclass_name = available[(idx - 1) % len(available)]
+                    return True
+                if available and right_rect and right_rect.collidepoint(event.pos):
+                    idx = available.index(self._subclass_name) if self._subclass_name in available else 0
+                    self._subclass_name = available[(idx + 1) % len(available)]
                     return True
 
             # Proficiency checkboxes
@@ -647,7 +680,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -800,11 +833,45 @@ class StatsDialog:
             screen.blit(right_txt, right_txt.get_rect(center=right_btn_r.center))
 
             self._class_rects = {"left": left_btn_r, "right": right_btn_r, "available": available_classes}
+
+            # Subclass cycle buttons (below class, if class has subclasses)
+            available_subclasses = self._get_available_subclasses(self._class_name)
+            if len(available_subclasses) > 1:  # Only show if there are subclass options
+                subclass_y = class_y + 24
+                subclass_lbl = self.font_sm.render("Subclass:", True, self.C_LABEL)
+                screen.blit(subclass_lbl, (dlg.x + PAD, subclass_y))
+
+                left_sub_r = pygame.Rect(dlg.x + PAD + 75, subclass_y, 20, 16)
+                right_sub_r = pygame.Rect(dlg.right - PAD - 20, subclass_y, 20, 16)
+                subclass_txt_r = pygame.Rect(left_sub_r.right + 4, subclass_y, right_sub_r.left - left_sub_r.right - 8, 16)
+
+                pygame.draw.rect(screen, (60, 55, 80), left_sub_r, border_radius=2)
+                pygame.draw.rect(screen, (120, 100, 150), left_sub_r, 1, border_radius=2)
+                left_sub_txt = self.font_sm.render("<", True, (220, 210, 240))
+                screen.blit(left_sub_txt, left_sub_txt.get_rect(center=left_sub_r.center))
+
+                pygame.draw.rect(screen, (60, 55, 80), subclass_txt_r, border_radius=2)
+                pygame.draw.rect(screen, (120, 100, 150), subclass_txt_r, 1, border_radius=2)
+                subclass_txt = self.font_sm.render(self._display_subclass_name(self._subclass_name), True, (220, 210, 240))
+                screen.blit(subclass_txt, subclass_txt.get_rect(center=subclass_txt_r.center))
+
+                pygame.draw.rect(screen, (60, 55, 80), right_sub_r, border_radius=2)
+                pygame.draw.rect(screen, (120, 100, 150), right_sub_r, 1, border_radius=2)
+                right_sub_txt = self.font_sm.render(">", True, (220, 210, 240))
+                screen.blit(right_sub_txt, right_sub_txt.get_rect(center=right_sub_r.center))
+
+                self._subclass_rects = {"left": left_sub_r, "right": right_sub_r, "available": available_subclasses}
+                npc_checkbox_y = subclass_y + 24
+            else:
+                self._subclass_rects = {}
+                npc_checkbox_y = class_y + 24
         else:
             self._class_rects = {}
+            self._subclass_rects = {}
+            npc_checkbox_y = dlg.y + self.HDR_H + self.PAD + 300
 
         # ── NPC Spells Section ────────────────────────────────────────────
-        npc_checkbox_y = class_y + 24 if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
+        npc_checkbox_y = npc_checkbox_y if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
         npc_checkbox_h = 16
         self._npc_checkbox_rect = pygame.Rect(dlg.x + self.PAD, npc_checkbox_y, npc_checkbox_h, npc_checkbox_h)
 
