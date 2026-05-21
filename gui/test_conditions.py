@@ -24,7 +24,7 @@ def test_condition_initialization():
     assert not cond.blinded
     assert not cond.hidden
     assert not cond.restrained
-    print("✓ Conditions initialize to false")
+    print("✅ Conditions initialize to false")
 
 def test_set_prone():
     """Test setting and clearing prone condition."""
@@ -40,14 +40,14 @@ def test_set_prone():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.prone
-    print("✓ Can set prone condition")
+    print("✅ Can set prone condition")
 
     # Clear prone
     cond.prone = False
     engine.set_agent_conditions(bm, idx, cond)
     cond = engine.get_agent_conditions(bm, idx)
     assert not cond.prone
-    print("✓ Can clear prone condition")
+    print("✅ Can clear prone condition")
 
 def test_set_charmed():
     """Test charmed condition."""
@@ -62,7 +62,7 @@ def test_set_charmed():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.charmed
-    print("✓ Can set charmed condition")
+    print("✅ Can set charmed condition")
 
 def test_set_blinded():
     """Test blinded condition."""
@@ -77,7 +77,7 @@ def test_set_blinded():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.blinded
-    print("✓ Can set blinded condition")
+    print("✅ Can set blinded condition")
 
 def test_set_hidden():
     """Test hidden condition."""
@@ -92,7 +92,7 @@ def test_set_hidden():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.hidden
-    print("✓ Can set hidden condition")
+    print("✅ Can set hidden condition")
 
 def test_set_restrained():
     """Test restrained condition."""
@@ -107,7 +107,7 @@ def test_set_restrained():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.restrained
-    print("✓ Can set restrained condition")
+    print("✅ Can set restrained condition")
 
 def test_multiple_conditions():
     """Test setting multiple conditions simultaneously."""
@@ -127,7 +127,7 @@ def test_multiple_conditions():
     assert cond.charmed
     assert cond.blinded
     assert not cond.hidden
-    print("✓ Can set multiple conditions simultaneously")
+    print("✅ Can set multiple conditions simultaneously")
 
 def test_condition_clearing():
     """Test clearing individual conditions."""
@@ -150,7 +150,7 @@ def test_condition_clearing():
     assert not cond.prone
     assert cond.charmed
     assert cond.blinded
-    print("✓ Can clear individual conditions without affecting others")
+    print("✅ Can clear individual conditions without affecting others")
 
 if __name__ == "__main__":
     tests = [
@@ -175,10 +175,10 @@ if __name__ == "__main__":
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("=" * 60)

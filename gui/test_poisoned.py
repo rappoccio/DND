@@ -22,7 +22,7 @@ def test_poisoned_condition_creation():
     engine.apply_poisoned(bm, idx)
 
     assert engine.get_agent_conditions(bm, idx).poisoned == True
-    print("✓ Poisoned condition created")
+    print("✅ Poisoned condition created")
 
 def test_poisoned_disadvantage_on_attacks():
     """Test that poisoned agents have disadvantage on attack rolls."""
@@ -51,7 +51,7 @@ def test_poisoned_disadvantage_on_attacks():
 
     # Since we can't easily check disadvantage in the result, we verify
     # the condition is set and would apply disadvantage
-    print("✓ Poisoned attack would have disadvantage (condition set)")
+    print("✅ Poisoned attack would have disadvantage (condition set)")
 
 def test_poisoned_flag_set():
     """Test that poisoned flag is properly tracked."""
@@ -69,7 +69,7 @@ def test_poisoned_flag_set():
 
     # Now poisoned
     assert engine.get_agent_conditions(bm, idx).poisoned == True
-    print("✓ Poisoned flag properly tracked")
+    print("✅ Poisoned flag properly tracked")
 
 def test_poisoned_multiple_conditions():
     """Test that poisoned can coexist with other conditions."""
@@ -89,7 +89,7 @@ def test_poisoned_multiple_conditions():
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.poisoned == True
     assert cond.prone == True
-    print("✓ Poisoned coexists with other conditions")
+    print("✅ Poisoned coexists with other conditions")
 
 def run_tests():
     """Run all poisoned condition tests."""
@@ -113,10 +113,10 @@ def run_tests():
             passed += 1
             print()
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}\n")
             failed += 1
 
     print("="*60)

@@ -534,13 +534,10 @@ public:
     // target_ac: pre-calculated AC (if -1, uses target.base_ac; otherwise uses provided value).
     // attacker_conditions: attacker's conditions (used for Rage bonus, etc.)
     [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
-                                              const Agent::Stats& attacker,
-                                              Agent::Stats& target,
+                                              const Agent& attacker,
+                                              Agent& target,
                                               bool advantage = false,
-                                              bool disadvantage = false,
-                                              int target_ac = -1,
-                                              int exhaustion_level = 0,
-                                              const Agent::Conditions& attacker_conditions = Agent::Conditions());
+                                              bool disadvantage = false);
 
     // ── Class feature helpers ────────────────────────────────────────────
 
@@ -582,6 +579,12 @@ public:
     // Regenerate portent dice pool for a Diviner after long rest.
     // Rolls count d20s and populates agent's portent_dice deque.
     void regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept;
+
+    // ── Abjurer Wizard Arcane Ward ────────────────────────────────────────
+    // Expend a spell slot as a bonus action to charge Arcane Ward (L3+).
+    // Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).
+    // Returns true on success, false if agent is not an Abjurer L3+ or has no ward.
+    [[nodiscard]] bool expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept;
 
     // ── Rest and Recovery ────────────────────────────────────────────────
     // Apply long rest to all agents: restore spell slots, resources, Portent Dice, etc.

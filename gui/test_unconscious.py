@@ -24,7 +24,7 @@ def test_unconscious_condition_creation():
     engine.set_agent_conditions(bm, idx, cond)
 
     assert engine.get_agent_conditions(bm, idx).unconscious == True
-    print("✓ Unconscious condition creation")
+    print("✅ Unconscious condition creation")
 
 def test_unconscious_applies_flags():
     """Test that Unconscious sets incapacitated and prone flags."""
@@ -52,7 +52,7 @@ def test_unconscious_applies_flags():
     assert agent_cond.unconscious == True
     assert agent_cond.incapacitated == True
     assert agent_cond.prone == True
-    print("✓ Unconscious sets incapacitated and prone")
+    print("✅ Unconscious sets incapacitated and prone")
 
 def test_weapon_drop_on_unconscious():
     """Test that weapons are dropped when Unconscious is applied."""
@@ -92,7 +92,7 @@ def test_weapon_drop_on_unconscious():
     assert len(items) == 2, f"Expected 2 items on ground, got {len(items)}"
     assert items[0].weapon.name in ["Longsword", "Dagger"]
     assert items[1].weapon.name in ["Longsword", "Dagger"]
-    print("✓ Weapon drop on unconscious")
+    print("✅ Weapon drop on unconscious")
 
 def test_unconscious_auto_fail_saves():
     """Test that Unconscious agents auto-fail STR/DEX saves."""
@@ -121,7 +121,7 @@ def test_unconscious_auto_fail_saves():
     # Begin turn should auto-fail STR save
     result = engine.begin_turn(bm, agent_idx)
     # Note: save_roll_message would be in result, but we just verify it doesn't crash
-    print("✓ Unconscious auto-fails STR/DEX saves")
+    print("✅ Unconscious auto-fails STR/DEX saves")
 
 def test_unconscious_remains_prone():
     """Test that Unconscious condition expiring keeps agent prone."""
@@ -153,7 +153,7 @@ def test_unconscious_remains_prone():
     assert agent_cond.unconscious == False
     assert agent_cond.prone == True
     assert agent_cond.incapacitated == False
-    print("✓ Unconscious expires but remains prone")
+    print("✅ Unconscious expires but remains prone")
 
 def run_tests():
     """Run all Unconscious condition tests."""
@@ -177,10 +177,10 @@ def run_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("\n" + "="*50)

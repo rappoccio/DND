@@ -1107,12 +1107,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Roll d20 + modifier vs AC.  Does not apply damage.")
         .def("resolve_attack",
              &CombatEngine::resolveAttack,
-             py::arg("weapon"), py::arg("attacker_stats"),
-             py::arg("target_stats"), py::arg("advantage") = false,
-             py::arg("disadvantage") = false, py::arg("target_ac") = -1,
-             py::arg("exhaustion_level") = 0, py::arg("attacker_conditions") = Agent::Conditions(),
-             "Roll to hit, roll damage, apply to target_stats in place. "
-             "target_ac: pre-calculated AC (-1 uses target_stats.base_ac).")
+             py::arg("weapon"), py::arg("attacker"), py::arg("target"),
+             py::arg("advantage") = false, py::arg("disadvantage") = false,
+             "Roll to hit, roll damage, and apply damage to target. "
+             "Applies Barbarian Rage bonus, temporary HP absorption, etc.")
 
         // High-level
         // Initiative
@@ -1313,6 +1311,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Regenerate Portent Dice pool after long rest (for Diviner Wizards).\n"
              "Rolls new d20s and populates agent's portent_dice deque.")
+        .def("expend_arcane_ward_slot",
+             &CombatEngine::expendArcaneWardSlot,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("slot_level"),
+             "Expend a spell slot as bonus action to charge Arcane Ward (for Abjurer Wizards L3+).\n"
+             "Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).\n"
+             "slot_level: 1-9 (spell slot level to expend).\n"
+             "Returns true on success, false if agent is not Abjurer L3+ or has no ward.")
         .def("apply_long_rest",
              &CombatEngine::applyLongRest,
              py::arg("battle_map"),

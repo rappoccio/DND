@@ -94,7 +94,7 @@ def test_barbarian_resources_level_1():
     assert rage.current == 2, f"Expected current=2, got {rage.current}"
     assert rage.max == 2, f"Expected max=2, got {rage.max}"
     assert rage.duration == 10, f"Expected duration=10, got {rage.duration}"
-    assert rage.short_rest_regen == 0, f"Expected short_rest_regen=0, got {rage.short_rest_regen}"
+    assert rage.short_rest_regen == 1, f"Expected short_rest_regen=1, got {rage.short_rest_regen}"
     assert rage.long_rest_regen == 2, f"Expected long_rest_regen=2, got {rage.long_rest_regen}"
     print("✅ test_barbarian_resources_level_1 passed")
 

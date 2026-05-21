@@ -24,7 +24,7 @@ def test_petrified_condition_creation():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.petrified == True
-    print("✓ Petrified condition created")
+    print("✅ Petrified condition created")
 
 def test_petrified_applies_incapacitated():
     """Test that Petrified sets incapacitated flag."""
@@ -37,7 +37,7 @@ def test_petrified_applies_incapacitated():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.incapacitated == True
-    print("✓ Petrified sets incapacitated flag")
+    print("✅ Petrified sets incapacitated flag")
 
 def test_petrified_sets_speed_zero():
     """Test that Petrified sets all movement speeds to 0."""
@@ -59,7 +59,7 @@ def test_petrified_sets_speed_zero():
     assert stats_after.speed_fly == 0
     assert stats_after.speed_swim == 0
     assert stats_after.speed_burrow == 0
-    print("✓ Petrified sets all speeds to 0")
+    print("✅ Petrified sets all speeds to 0")
 
 def test_petrified_resistance_to_all_damage():
     """Test that Petrified sets 0.5x resistance to all damage types."""
@@ -80,7 +80,7 @@ def test_petrified_resistance_to_all_damage():
     for multiplier in stats.physical_damage_multipliers:
         assert multiplier == 0.5, f"Expected 0.5 resistance, got {multiplier}"
     
-    print("✓ Petrified has 0.5x resistance to all damage")
+    print("✅ Petrified has 0.5x resistance to all damage")
 
 def test_petrified_immune_to_poison():
     """Test that Petrified agents cannot be poisoned."""
@@ -99,7 +99,7 @@ def test_petrified_immune_to_poison():
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.poisoned == False, "Petrified agent should be immune to poison"
     assert cond.petrified == True
-    print("✓ Petrified immune to poison")
+    print("✅ Petrified immune to poison")
 
 def test_poisoned_then_petrified():
     """Test that petrifying a poisoned agent keeps poison (applied before immunity)."""
@@ -120,7 +120,7 @@ def test_poisoned_then_petrified():
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.poisoned == True
     assert cond.petrified == True
-    print("✓ Pre-existing poison persists when petrified")
+    print("✅ Pre-existing poison persists when petrified")
 
 def run_tests():
     """Run all petrified condition tests."""
@@ -146,10 +146,10 @@ def run_tests():
             passed += 1
             print()
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}\n")
             failed += 1
 
     print("="*60)

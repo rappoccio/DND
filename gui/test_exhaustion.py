@@ -29,9 +29,9 @@ def test_exhaustion_speed_reduction():
     stats = combat.get_agent_stats(bm, idx)
     print(f"Base walk speed: {stats.speed_walk} ft")
 
-    # Verify base movement remaining
-    agents = bm.placed_agents
-    walk_remaining = agents[idx].agent.getWalkRemaining()
+    # Verify base movement remaining (use combat engine)
+    combat.begin_turn(bm, idx)
+    walk_remaining = combat.get_walk_remaining(idx)
     print(f"Movement remaining (no exhaustion): {walk_remaining} ft")
     assert walk_remaining == 30, f"Expected 30, got {walk_remaining}"
 
@@ -39,8 +39,8 @@ def test_exhaustion_speed_reduction():
     cond = combat.get_agent_conditions(bm, idx)
     cond.exhaustion_level = 1
     combat.set_agent_conditions(bm, idx, cond)
-    agents = bm.placed_agents
-    walk_remaining = agents[idx].agent.getWalkRemaining()
+    combat.begin_turn(bm, idx)  # Reset movement budget with exhaustion
+    walk_remaining = combat.get_walk_remaining(idx)
     print(f"Movement remaining (exhaustion L1): {walk_remaining} ft")
     assert walk_remaining == 25, f"Expected 25, got {walk_remaining}"
 
@@ -48,21 +48,21 @@ def test_exhaustion_speed_reduction():
     cond = combat.get_agent_conditions(bm, idx)
     cond.exhaustion_level = 3
     combat.set_agent_conditions(bm, idx, cond)
-    agents = bm.placed_agents
-    walk_remaining = agents[idx].agent.getWalkRemaining()
+    combat.begin_turn(bm, idx)  # Reset movement budget with exhaustion
+    walk_remaining = combat.get_walk_remaining(idx)
     print(f"Movement remaining (exhaustion L3): {walk_remaining} ft")
     assert walk_remaining == 15, f"Expected 15, got {walk_remaining}"
 
-    # Apply exhaustion level 6 (should reduce by 30 ft = 0)
+    # Apply exhaustion level 5 (should reduce by 25 ft = 5)
     cond = combat.get_agent_conditions(bm, idx)
-    cond.exhaustion_level = 6
+    cond.exhaustion_level = 5
     combat.set_agent_conditions(bm, idx, cond)
-    agents = bm.placed_agents
-    walk_remaining = agents[idx].agent.getWalkRemaining()
-    print(f"Movement remaining (exhaustion L6): {walk_remaining} ft")
-    assert walk_remaining == 0, f"Expected 0, got {walk_remaining}"
+    combat.begin_turn(bm, idx)  # Reset movement budget with exhaustion
+    walk_remaining = combat.get_walk_remaining(idx)
+    print(f"Movement remaining (exhaustion L5): {walk_remaining} ft")
+    assert walk_remaining == 5, f"Expected 5, got {walk_remaining}"
 
-    print("✓ Speed reduction works correctly")
+    print("✅ Speed reduction works correctly")
 
 def test_exhaustion_death_at_level_6():
     """Test that agent dies at exhaustion level 6."""
@@ -94,7 +94,7 @@ def test_exhaustion_death_at_level_6():
     assert stats_after.hp_cur == 0, f"Expected HP=0, got {stats_after.hp_cur}"
     assert cond_after.dead, "Agent should be marked as dead"
 
-    print("✓ Death at exhaustion level 6 works correctly")
+    print("✅ Death at exhaustion level 6 works correctly")
 
 def test_exhaustion_attack_penalty():
     """Test that exhaustion applies -2 penalty per level to attack rolls."""
@@ -119,20 +119,21 @@ def test_exhaustion_attack_penalty():
     # Roll attack with no exhaustion
     result_no_exhaustion = combat.roll_to_hit(weapon, attacker_stats, target_ac, exhaustion_level=0)
     print(f"Attack roll (no exhaustion): d20={result_no_exhaustion.d20}, total={result_no_exhaustion.total_roll}")
-    base_roll = result_no_exhaustion.total_roll
 
-    # Roll attack with exhaustion level 2 (should be -4)
+    # Roll attack with exhaustion level 2 (should be -4 penalty)
     result_with_exhaustion = combat.roll_to_hit(weapon, attacker_stats, target_ac, exhaustion_level=2)
     print(f"Attack roll (exhaustion L2): d20={result_with_exhaustion.d20}, total={result_with_exhaustion.total_roll}")
 
-    # Both rolls should have same d20, but totals differ by 4
-    assert result_no_exhaustion.d20 == result_with_exhaustion.d20, "d20 should be same"
-    expected_diff = 4  # -2 * 2 levels
-    actual_diff = result_no_exhaustion.total_roll - result_with_exhaustion.total_roll
-    print(f"Penalty applied: {actual_diff}")
-    assert actual_diff == expected_diff, f"Expected -4 penalty, got -{actual_diff}"
+    # Verify exhaustion penalty is applied by comparing modifiers: should be -2 * 2 levels = -4
+    # modifier = total - d20, so the modifier difference should be 4
+    modifier_no_exhaustion = result_no_exhaustion.total_roll - result_no_exhaustion.d20
+    modifier_with_exhaustion = result_with_exhaustion.total_roll - result_with_exhaustion.d20
+    expected_penalty = 4  # -2 * 2 levels
+    actual_penalty = modifier_no_exhaustion - modifier_with_exhaustion
+    print(f"Penalty applied: {actual_penalty}")
+    assert actual_penalty == expected_penalty, f"Expected {expected_penalty} penalty, got {actual_penalty}"
 
-    print("✓ Attack roll penalty works correctly")
+    print("✅ Attack roll penalty works correctly")
 
 def test_exhaustion_saving_throw_penalty():
     """Test that exhaustion applies -2 penalty per level to saving throws."""
@@ -158,7 +159,7 @@ def test_exhaustion_saving_throw_penalty():
 
     # Test case: agent with exhaustion L2 should get -4 to saves
     # (This would be tested via executeTurn with actual conditions)
-    print("✓ Saving throw penalty logic verified (tested in executeTurn)")
+    print("✅ Saving throw penalty logic verified (tested in executeTurn)")
 
 def test_exhaustion_levels():
     """Test that exhaustion level can be set and retrieved."""
@@ -180,7 +181,7 @@ def test_exhaustion_levels():
         print(f"Set exhaustion L{level}: {cond_check.exhaustion_level}")
         assert cond_check.exhaustion_level == level, f"Failed to set level {level}"
 
-    print("✓ Exhaustion levels can be stored and retrieved")
+    print("✅ Exhaustion levels can be stored and retrieved")
 
 def run_all_tests():
     """Run all exhaustion tests."""
@@ -196,14 +197,14 @@ def run_all_tests():
         test_exhaustion_death_at_level_6()
 
         print("\n" + "=" * 60)
-        print("✓ All exhaustion tests passed!")
+        print("✅ All exhaustion tests passed!")
         print("=" * 60)
         return True
     except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
+        print(f"\n❌ Test failed: {e}")
         return False
     except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
+        print(f"\n❌ Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         return False

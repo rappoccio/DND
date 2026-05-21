@@ -709,11 +709,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         break;  // Only check one condition per turn
     }
 
-    // Seed movement budgets from current stats
-    walkRemaining_[agent_idx] = stats.speed_walk;
-    flyRemaining_ [agent_idx] = stats.speed_fly;
-    swimRemaining_[agent_idx] = stats.speed_swim;
-    burrowRemaining_[agent_idx] = stats.speed_burrow;
+    // Seed movement budgets from current stats, applying exhaustion penalty (5 ft per level)
+    cond = bm.getAgentConditions(agent_idx);
+    int exhaustion_penalty = 5 * cond.exhaustion_level;
+    walkRemaining_[agent_idx] = std::max(0, stats.speed_walk - exhaustion_penalty);
+    flyRemaining_ [agent_idx] = std::max(0, stats.speed_fly - exhaustion_penalty);
+    swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - exhaustion_penalty);
+    burrowRemaining_[agent_idx] = std::max(0, stats.speed_burrow - exhaustion_penalty);
 
     // Reset per-turn conditions
     agent.agent->turn();
@@ -1376,37 +1378,34 @@ void CombatEngine::rollDamage(const Weapon& w,
 }
 
 AttackResult CombatEngine::resolveAttack(const Weapon& w,
-                                          const Agent::Stats& attacker,
-                                          Agent::Stats& target,
+                                          const Agent& attacker,
+                                          Agent& target,
                                           bool advantage,
-                                          bool disadvantage,
-                                          int target_ac,
-                                          int exhaustion_level,
-                                          const Agent::Conditions& attacker_conditions)
+                                          bool disadvantage)
 {
-    if (target_ac == -1) target_ac = target.base_ac;
-    AttackResult r = rollToHit(w, attacker, target_ac, advantage, disadvantage, exhaustion_level);
-    r.hp_before = target.hp_cur;
+    int target_ac = target.getStats().base_ac;
+    AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage, attacker.getConditions().exhaustion_level);
+    r.hp_before = target.getStats().hp_cur;
 
     if (r.hit) {
-        rollDamage(w, attacker, target, r);
+        rollDamage(w, attacker.getStats(), target.getStats(), r);
 
         // Barbarian Rage damage bonus (STR-based attacks only)
         // Applies to melee and thrown weapons (where STR is the primary damage ability)
-        if (attacker_conditions.raging &&
-            attacker.character_class == CharacterClass::Barbarian &&
+        if (attacker.getConditions().raging &&
+            attacker.getStats().character_class == CharacterClass::Barbarian &&
             (w.type == WeaponType::Melee || w.thrown)) {
-            r.total_damage += getRageDamageBonus(attacker.char_level);
+            r.total_damage += getRageDamageBonus(attacker.getStats().char_level);
         }
 
         // Temporary HP absorbs damage first, then overflow damages hp_cur
-        int overflow = std::max(0, r.total_damage - target.temp_hp);
-        target.temp_hp = std::max(0, target.temp_hp - r.total_damage);
-        target.hp_cur = std::clamp(target.hp_cur - overflow,
-                                    0, target.hp_max);
+        int overflow = std::max(0, r.total_damage - target.getStats().temp_hp);
+        target.getStats().temp_hp = std::max(0, target.getStats().temp_hp - r.total_damage);
+        target.getStats().hp_cur = std::clamp(target.getStats().hp_cur - overflow,
+                                    0, target.getStats().hp_max);
     }
 
-    r.hp_after    = target.hp_cur;
+    r.hp_after    = target.getStats().hp_cur;
     r.target_down = (r.hp_after <= 0);
     r.valid       = true;
     return r;
@@ -1620,9 +1619,6 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
     log_("[ATTACK START] Agent {} - unconscious={}, hp={}", action.target_idx, tgt_cond.unconscious, tgt_stats.hp_cur);
 
-    // Calculate target AC (includes base AC, armor, DEX modifier, temp modifications)
-    int target_ac = calculateAC(bm, action.target_idx);
-
     // Check Brutal Strike eligibility (L9+: Reckless Attack + melee weapon)
     bool can_use_brutal_strike = false;
     if (atk_stats.character_class == CharacterClass::Barbarian &&
@@ -1633,7 +1629,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Brutal Strike eligible: L9+ Barbarian with Reckless Attack + melee weapon");
     }
 
-    AttackResult r = resolveAttack(w, atk_stats, tgt_stats, adv, dis, target_ac, atk_cond.exhaustion_level, atk_cond);
+    AttackResult r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
 
     // Set Brutal Strike flag if eligible and attack hits
     Agent::Conditions updated_atk_cond = atk_cond;
@@ -1713,7 +1709,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
             log_("Automatic critical hit: target is {} and within 5 feet", reason);
 
             // If unconscious, auto-fail 2 death saves
-            if (tgt_cond.unconscious && tgt_stats.hp_cur <= 0) {
+            if (tgt_cond.unconscious) {
                 Agent::Conditions updated_cond = bm.getAgentConditions(action.target_idx);
                 updated_cond.death_save_failures += 2;
                 if (updated_cond.death_save_failures >= 3) {
@@ -1773,7 +1769,8 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     }
 
     // Auto-wake if healed above 0 HP while unconscious
-    if (r.hp_after > 0 && tgt_cond.unconscious && !tgt_cond.dead) {
+    // But only if not actively dying (death save failures already set by damage/auto-crit)
+    if (r.hp_after > 0 && tgt_cond.unconscious && !tgt_cond.dead && tgt_cond.death_save_failures == 0) {
         Agent::Conditions updated_tgt_cond = tgt_cond;
         updated_tgt_cond.unconscious = false;
         updated_tgt_cond.incapacitated = false;
@@ -2809,6 +2806,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     // Decrement resources (uses or spell slots) after successful cast
     if (result.valid) {
+        log_("[DEBUG execute_spell] result.valid=true, slot_level={}, caster_idx={}", action.slot_level, action.caster_idx);
         PlacedAgent& pa = bm.placedAgentMut(action.caster_idx);
         Spell& spell_mut = pa.spells[static_cast<std::size_t>(action.spell_idx)];
         Agent::Stats& stats = pa.stats;
@@ -2819,13 +2817,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         if (stats.is_npc) {
+            log_("[DEBUG execute_spell] NPC branch taken for agent {}", action.caster_idx);
             // NPC: decrement N/day uses
             if (spell_mut.uses_max > 0) {
                 spell_mut.uses_remaining = std::max(0, spell_mut.uses_remaining - 1);
             }
         } else {
+            log_("[DEBUG execute_spell] Player branch taken for agent {}", action.caster_idx);
             // Player: decrement spell slot (if not a cantrip)
             int slot_level = action.slot_level > 0 ? action.slot_level : sp.level;
+            log_("[DEBUG execute_spell] Calculated slot_level={}, checking if > 0 and <= 9", slot_level);
             if (slot_level > 0 && slot_level <= 9) {
                 auto& slots = stats.spell_slots_remaining;
                 slots[static_cast<std::size_t>(slot_level - 1)] =
@@ -2833,8 +2834,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Wizard Diviner L6: Expert Divination
                 // Cast Divination spell with L2+ slot → regain highest-level lower-level slot (max L5)
+                log_("[EXPERT DIVINATION DEBUG] Spell: {}, School: {}, IsWizard: {}, IsDiviner: {}, IsL2Plus: {}",
+                     spell_mut.name, static_cast<int>(spell_mut.school),
+                     (stats.character_class == Wizard ? 1 : 0),
+                     (stats.wizard_subclass == DivinierPath ? 1 : 0),
+                     (slot_level >= 2 ? 1 : 0));
+                log_("[EXPERT DIVINATION DEBUG] Spell::Divination value: {}, Match: {}",
+                     static_cast<int>(Spell::Divination), (spell_mut.school == Spell::Divination ? 1 : 0));
+
                 if (stats.character_class == Wizard && stats.wizard_subclass == DivinierPath &&
-                    sp.school == Spell::Divination && slot_level >= 2) {
+                    spell_mut.school == Spell::Divination && slot_level >= 2) {
+                    log_("[EXPERT DIVINATION] Restoring spell slot for spell: {}", spell_mut.name);
                     // Find highest expended lower-level slot (capped at L5)
                     int restore_level = -1;
                     for (int lvl = std::min(5, slot_level - 1); lvl >= 1; --lvl) {
@@ -2848,6 +2858,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         slots[static_cast<std::size_t>(restore_level - 1)]++;
                         log_("Agent {} Expert Divination: restored 1 level {} spell slot", action.caster_idx, restore_level);
                     }
+                }
+
+                // Wizard Abjurer L3+: Arcane Ward auto-charging
+                // Cast abjuration spell → Ward gains 2 × spell slot level (capped at max)
+                if (stats.character_class == Wizard && stats.wizard_subclass == AbjurerPath &&
+                    stats.char_level >= 3 && spell_mut.school == Spell::Abjuration) {
+                    int max_ward = 2 * stats.char_level + (stats.intel - 10) / 2;
+                    int ward_gain = 2 * slot_level;
+                    stats.temp_hp = std::min(stats.temp_hp + ward_gain, max_ward);
+                    log_("Agent {} Arcane Ward charged: +{} HP ({}/{})", action.caster_idx, ward_gain, stats.temp_hp, max_ward);
                 }
             }
         }
@@ -3816,6 +3836,44 @@ void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
          }());
 }
 
+bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+
+    // Validate: Abjurer L3+ with active ward
+    if (stats.character_class != Wizard || stats.wizard_subclass != AbjurerPath ||
+        stats.char_level < 3 || stats.temp_hp <= 0) {
+        return false;
+    }
+
+    // Validate: slot_level is valid (1-9)
+    if (slot_level < 1 || slot_level > 9) return false;
+
+    // Validate: agent has remaining spell slot at this level
+    if (stats.spell_slots_remaining[static_cast<std::size_t>(slot_level - 1)] <= 0) {
+        return false;
+    }
+
+    // Expend the slot
+    stats.spell_slots_remaining[static_cast<std::size_t>(slot_level - 1)]--;
+
+    // Charge the ward
+    int max_ward = 2 * stats.char_level + (stats.intel - 10) / 2;
+    int ward_gain = 2 * slot_level;
+    stats.temp_hp = std::min(stats.temp_hp + ward_gain, max_ward);
+
+    // Save stats back
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("Agent {} expends Level {} slot, Arcane Ward now {}/{}",
+         agent_idx, slot_level, stats.temp_hp, max_ward);
+
+    return true;
+}
+
 void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -3882,6 +3940,11 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
 
         // Restore spell slots and all resources
         stats.restore_resources_long_rest();
+
+        // Initialize Arcane Ward for Abjurers at L3+
+        if (stats.character_class == Wizard && stats.wizard_subclass == AbjurerPath && stats.char_level >= 3) {
+            stats.temp_hp = stats.char_level;
+        }
 
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);

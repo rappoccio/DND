@@ -9,6 +9,7 @@ import sys
 import os
 
 test_scripts = [
+    # Core mechanics
     "test_conditions.py",
     "test_combat.py",
     "test_spells.py",
@@ -21,6 +22,23 @@ test_scripts = [
     "test_petrified.py",
     "test_condition_saves.py",
     "test_grapple.py",
+    "test_death_saves.py",
+    "test_exhaustion.py",
+    "test_forced_movement_oa.py",
+    "test_resource.py",
+
+    # Barbarian features
+    "test_barbarian_l1_3.py",
+    "test_barbarian_l5.py",
+    "test_barbarian_l6.py",
+    "test_barbarian_l9_17.py",
+
+    # Wizard features
+    "test_wizard_l1_3.py",
+    "test_wizard_l3_portent.py",
+    "test_wizard_l3_arcaneward.py",
+    "test_wizard_l5.py",
+    "test_wizard_l6_diviner.py",
 ]
 
 def run_tests():

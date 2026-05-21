@@ -170,10 +170,10 @@ if __name__ == "__main__":
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("=" * 60)

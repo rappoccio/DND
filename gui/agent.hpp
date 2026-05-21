@@ -568,7 +568,9 @@ namespace rpg {
 
 
     
-    // -- Get conditions
+    // -- Get stats and conditions
+    [[nodiscard]] Stats& getStats() noexcept { return stats_; }
+    [[nodiscard]] const Stats& getStats() const noexcept { return stats_; }
     [[nodiscard]] const Conditions& getConditions() const noexcept { return conditions_; }
     void setConditions(const Conditions& c) noexcept { conditions_ = c; }
 
@@ -629,6 +631,7 @@ namespace rpg {
     bool burrowTo(int x, int y, int z = 0) noexcept { return _moveTo(x, y, z, speed_burrow_remaining_); }
 
   protected:
+    Stats stats_;
     Conditions conditions_;
 
   private:

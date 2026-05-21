@@ -40,7 +40,7 @@ def test_shove_triggers_oa():
     if result.success:
         # Victim should have been pushed 5 feet (1 cell)
         pushed_agent = bm.placed_agents[vic_idx]
-        print(f"✓ Shove succeeded: victim pushed to ({pushed_agent.origin.col},{pushed_agent.origin.row})")
+        print(f"✅ Shove succeeded: victim pushed to ({pushed_agent.origin.col},{pushed_agent.origin.row})")
         # Verify victim is no longer adjacent to threat (left threat zone)
         # Distance from threat at (8,5) to victim should be > 1
         dc = max(threat_config.origin.col - pushed_agent.origin.col,
@@ -54,7 +54,7 @@ def test_shove_triggers_oa():
         if dist > 1:
             print(f"  → Victim left threat zone (should trigger OA on threat)")
     else:
-        print("⊘ Shove failed (victim won, no forced movement)")
+        print("🔴 Shove failed (victim won, no forced movement)")
 
 def test_grapple_drag_triggers_oa():
     """Test that grappled creature being dragged by grappler triggers OA when leaving threat zones."""
@@ -83,7 +83,7 @@ def test_grapple_drag_triggers_oa():
     result = engine.execute_grapple(bm, action)
 
     if result.valid and result.success:
-        print(f"✓ Grapple succeeded: victim grappled by grappler")
+        print(f"✅ Grapple succeeded: victim grappled by grappler")
 
         # Now move grappler away from threat (to 3, 5)
         # This should drag victim along, moving victim away from threat
@@ -102,16 +102,16 @@ def test_grapple_drag_triggers_oa():
             # Verify victim was dragged to same position as grappler
             assert victim_after.origin.col == grappler_after.origin.col, "Victim should be dragged to grappler's position"
             assert victim_after.origin.row == grappler_after.origin.row, "Victim should be dragged to grappler's position"
-            print(f"  ✓ Victim correctly dragged along with grappler")
+            print(f"  ✅ Victim correctly dragged along with grappler")
 
             # Verify victim is still grappled
             vic_cond = engine.get_agent_conditions(bm, vic_idx)
             assert vic_cond.grappled, "Victim should still be grappled after being dragged"
-            print(f"  ✓ Victim still grappled after forced movement")
+            print(f"  ✅ Victim still grappled after forced movement")
         else:
-            print("⊘ Move failed")
+            print("🔴 Move failed")
     else:
-        print("⊘ Grapple didn't succeed, skipping drag test")
+        print("🔴 Grapple didn't succeed, skipping drag test")
 
 def test_forced_movement_leaves_threat_zone():
     """Test that forced movement triggering OA is detected when victim leaves threat zone."""
@@ -132,7 +132,7 @@ def test_forced_movement_leaves_threat_zone():
 
     # Verify threat can see victim initially
     threatening = set(engine.threatening_agents(bm, vic_idx))
-    print(f"✓ Initial threats to victim: {threatening}")
+    print(f"✅ Initial threats to victim: {threatening}")
     assert threat_idx in threatening, "Threat should be adjacent to victim"
 
     # Perform shove to push victim away
@@ -152,11 +152,11 @@ def test_forced_movement_leaves_threat_zone():
         new_threatening = set(engine.threatening_agents(bm, vic_idx))
         print(f"  → New threats after forced movement: {new_threatening}")
         if threat_idx not in new_threatening:
-            print(f"  ✓ Victim left threat zone (OA opportunity)")
+            print(f"  ✅ Victim left threat zone (OA opportunity)")
         else:
-            print(f"  ⊘ Victim still in threat zone")
+            print(f"  🔴 Victim still in threat zone")
     else:
-        print("⊘ Shove failed")
+        print("🔴 Shove failed")
 
 def test_grappled_cannot_be_forcibly_moved_elsewhere():
     """Test that a grappled creature cannot be shoved/pushed away from grappler."""
@@ -203,11 +203,11 @@ def test_grappled_cannot_be_forcibly_moved_elsewhere():
                     victim.origin.row - (grappler.origin.row + 1 - 1),
                     0)
             dist = max(dc, dr)
-            print(f"✓ Shove against grappled creature: distance from grappler = {dist}")
+            print(f"✅ Shove against grappled creature: distance from grappler = {dist}")
         else:
-            print("✓ Shove against grappled creature failed/prevented")
+            print("✅ Shove against grappled creature failed/prevented")
     else:
-        print("⊘ Initial grapple didn't succeed")
+        print("🔴 Initial grapple didn't succeed")
 
 def run_all_tests():
     """Run all forced movement + OA tests."""
@@ -230,10 +230,10 @@ def run_all_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: Unexpected error: {e}")
+            print(f"❌ {test.__name__}: Unexpected error: {e}")
             failed += 1
 
     print("\n" + "="*60)

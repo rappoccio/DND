@@ -23,7 +23,7 @@ def test_grapple_initialization():
     assert cond.grappler_idx == -1, "Grappler index should be -1 initially"
     assert cond.grapple_escape_dc == 10, "Escape DC should be 10 (default) initially"
     assert cond.grapple_range_ft == 5, "Grapple range should be 5 (default) initially"
-    print("✓ Grapple condition fields initialize correctly")
+    print("✅ Grapple condition fields initialize correctly")
 
 def test_grapple_success_strong_vs_weak():
     """Test successful grapple: strong grappler vs weak target."""
@@ -47,7 +47,7 @@ def test_grapple_success_strong_vs_weak():
 
     assert result.valid, "Grapple should be valid"
     # Strong attacker should likely succeed (though not guaranteed due to randomness)
-    print(f"✓ Grapple executed: attacker {result.attacker_roll} vs defender {result.defender_roll}")
+    print(f"✅ Grapple executed: attacker {result.attacker_roll} vs defender {result.defender_roll}")
     if result.success:
         print(f"  → Grapple succeeded! Escape DC: {result.escape_dc}")
         # Verify target is now grappled
@@ -70,7 +70,7 @@ def test_grapple_invalid_target_index():
 
     result = engine.execute_grapple(bm, action)
     assert not result.valid, "Grapple with invalid target should be invalid"
-    print("✓ Grapple rejects invalid target index")
+    print("✅ Grapple rejects invalid target index")
 
 def test_grapple_cannot_self_target():
     """Test that an agent cannot grapple itself."""
@@ -85,7 +85,7 @@ def test_grapple_cannot_self_target():
 
     result = engine.execute_grapple(bm, action)
     assert not result.valid, "Cannot grapple self"
-    print("✓ Grapple prevents self-targeting")
+    print("✅ Grapple prevents self-targeting")
 
 def test_grapple_requires_adjacency():
     """Test that grapple requires targets within 5 feet (1 cell)."""
@@ -106,7 +106,7 @@ def test_grapple_requires_adjacency():
 
     result = engine.execute_grapple(bm, action)
     assert not result.valid, "Grapple requires adjacency (within 1 cell)"
-    print("✓ Grapple requires adjacency")
+    print("✅ Grapple requires adjacency")
 
 def test_grapple_escape_success():
     """Test successful escape from grapple."""
@@ -138,7 +138,7 @@ def test_grapple_escape_success():
         # Try to escape
         escape_result = engine.execute_grapple_escape(bm, tgt_idx)
         assert escape_result.valid, "Escape attempt should be valid"
-        print(f"✓ Escape roll {escape_result.escape_roll} vs DC {escape_result.escape_dc}")
+        print(f"✅ Escape roll {escape_result.escape_roll} vs DC {escape_result.escape_dc}")
 
         if escape_result.success:
             # Verify grapple is cleared
@@ -151,7 +151,7 @@ def test_grapple_escape_success():
             assert tgt_cond.grappled, "Target should still be grappled after failed escape"
             print("  → Target failed to escape (still grappled)")
     else:
-        print("⊘ Skipping escape test: grapple didn't succeed in initial attempt")
+        print("🔴 Skipping escape test: grapple didn't succeed in initial attempt")
 
 def test_grapple_escape_not_grappled():
     """Test that escape attempt fails if agent is not grappled."""
@@ -163,7 +163,7 @@ def test_grapple_escape_not_grappled():
     # Try to escape when not grappled
     result = engine.execute_grapple_escape(bm, idx)
     assert not result.valid, "Escape should be invalid if not grappled"
-    print("✓ Cannot escape if not grappled")
+    print("✅ Cannot escape if not grappled")
 
 def test_grappled_agent_cannot_move():
     """Test that grappled agents cannot move (Speed = 0)."""
@@ -193,9 +193,9 @@ def test_grappled_agent_cannot_move():
         can_move = engine.move_agent(bm, tgt_idx, new_pos, rpg.MovementType.Walk)
 
         assert not can_move, "Grappled agent should not be able to move"
-        print("✓ Grappled agents cannot move (Speed = 0)")
+        print("✅ Grappled agents cannot move (Speed = 0)")
     else:
-        print("⊘ Skipping movement test: grapple didn't succeed")
+        print("🔴 Skipping movement test: grapple didn't succeed")
 
 def test_grapple_badge_in_repr():
     """Test that grappled condition appears in repr."""
@@ -216,7 +216,7 @@ def test_grapple_badge_in_repr():
     cond = engine.get_agent_conditions(bm, idx)
     repr_str = repr(cond)
     assert "grappled" in repr_str.lower(), "Grappled status should appear in repr"
-    print(f"✓ Grappled condition appears in repr: {repr_str}")
+    print(f"✅ Grappled condition appears in repr: {repr_str}")
 
 def test_grappler_movement_drags_target():
     """Test that grappled creatures are dragged when grappler moves."""
@@ -238,7 +238,7 @@ def test_grappler_movement_drags_target():
     result = engine.execute_grapple(bm, action)
 
     if result.valid and result.success:
-        print(f"✓ Grapple succeeded")
+        print(f"✅ Grapple succeeded")
 
         # Begin grappler's turn to get movement budget
         engine.begin_turn(bm, grp_idx)
@@ -260,29 +260,29 @@ def test_grappler_movement_drags_target():
             # Verify grappler moved to destination
             assert grp_after.origin.col == new_grp_pos.col and grp_after.origin.row == new_grp_pos.row, \
                 "Grappler should move to destination"
-            print(f"  ✓ Grappler moved to ({grp_after.origin.col},{grp_after.origin.row})")
+            print(f"  ✅ Grappler moved to ({grp_after.origin.col},{grp_after.origin.row})")
 
             # Verify target was dragged (not at original position)
             assert not (tgt_after.origin.col == tgt_before.origin.col and tgt_after.origin.row == tgt_before.origin.row), \
                 "Target should be dragged from original position"
-            print(f"  ✓ Target was dragged from original position")
+            print(f"  ✅ Target was dragged from original position")
 
             # Verify target is adjacent to grappler (within 1 cell Chebyshev distance)
             dc = abs(tgt_after.origin.col - grp_after.origin.col)
             dr = abs(tgt_after.origin.row - grp_after.origin.row)
             dist = max(dc, dr)
             assert dist <= 1, f"Target should be adjacent to grappler (distance: {dist})"
-            print(f"  ✓ Target is adjacent to grappler (distance: {dist} cells)")
+            print(f"  ✅ Target is adjacent to grappler (distance: {dist} cells)")
 
             # Verify target is still grappled
             tgt_cond = engine.get_agent_conditions(bm, tgt_idx)
             assert tgt_cond.grappled, "Target should still be grappled after being dragged"
             assert tgt_cond.grappler_idx == grp_idx, "Grappler index should be correct"
-            print(f"  ✓ Target still grappled after forced movement")
+            print(f"  ✅ Target still grappled after forced movement")
         else:
-            print("⊘ Move failed")
+            print("🔴 Move failed")
     else:
-        print("⊘ Grapple didn't succeed, skipping drag test")
+        print("🔴 Grapple didn't succeed, skipping drag test")
 
 def run_all_tests():
     """Run all grapple tests."""
@@ -311,10 +311,10 @@ def run_all_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: Unexpected error: {e}")
+            print(f"❌ {test.__name__}: Unexpected error: {e}")
             failed += 1
 
     print("\n" + "="*60)

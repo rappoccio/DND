@@ -49,19 +49,19 @@ def test_melee_autocrit_death_save():
     assert target_cond.unconscious == True
     assert target_cond.death_save_successes == 0
     assert target_cond.death_save_failures == 0
-    print("✓ Target knocked unconscious")
+    print("✅ Target knocked unconscious")
 
     # Attack with melee weapon (rapier = first weapon)
-    action = rpg.AttackAction()
+    action = rpg.Attack()
     action.attacker_idx = attacker_idx
     action.target_idx = target_idx
     action.weapon_idx = 0  # rapier is index 0
 
-    result = engine.execute_attack(bm, action)
+    result = engine.execute_action(bm, action)
 
     # Verify auto-crit was triggered
     assert result.critical == True, "Expected auto-crit for melee hit on unconscious target"
-    print("✓ Auto-crit triggered")
+    print("✅ Auto-crit triggered")
 
     # Check death save state after attack
     target_cond_after = engine.get_agent_conditions(bm, target_idx)
@@ -72,12 +72,12 @@ def test_melee_autocrit_death_save():
         f"Expected 2 death save failures, got {target_cond_after.death_save_failures}"
     assert target_cond_after.death_save_successes == 0, \
         f"Expected 0 successes, got {target_cond_after.death_save_successes}"
-    print("✓ Exactly 2 death save failures applied (no additional roll)")
+    print("✅ Exactly 2 death save failures applied (no additional roll)")
 
     # Target should still be unconscious but not dead yet (needs 3 failures)
     assert target_cond_after.unconscious == True
     assert target_cond_after.dead == False
-    print("✓ Target unconscious but not dead")
+    print("✅ Target unconscious but not dead")
 
 def test_melee_autocrit_kills_on_third_failure():
     """
@@ -110,19 +110,19 @@ def test_melee_autocrit_kills_on_third_failure():
     print(f"Initial state: {target_cond.death_save_failures}/3 failures")
 
     # Attack with melee weapon within 5ft
-    action = rpg.AttackAction()
+    action = rpg.Attack()
     action.attacker_idx = attacker_idx
     action.target_idx = target_idx
     action.weapon_idx = 0  # rapier
 
-    result = engine.execute_attack(bm, action)
+    result = engine.execute_action(bm, action)
 
     # Should have 3 failures total: 1 + 2 from auto-crit = dead
     target_cond_after = engine.get_agent_conditions(bm, target_idx)
     assert target_cond_after.death_save_failures == 3, \
         f"Expected 3 failures, got {target_cond_after.death_save_failures}"
     assert target_cond_after.dead == True, "Expected target to be dead"
-    print("✓ 3 failures triggered death (1 existing + 2 from auto-crit)")
+    print("✅ 3 failures triggered death (1 existing + 2 from auto-crit)")
 
 def test_ranged_attack_no_autocrit():
     """
@@ -147,22 +147,22 @@ def test_ranged_attack_no_autocrit():
     engine.add_agent_condition(bm, cond)
 
     # Attack with ranged weapon
-    action = rpg.AttackAction()
+    action = rpg.Attack()
     action.attacker_idx = attacker_idx
     action.target_idx = target_idx
     action.weapon_idx = 2  # longbow is index 2
 
-    result = engine.execute_attack(bm, action)
+    result = engine.execute_action(bm, action)
 
     # Ranged attacks should NOT auto-crit
     assert result.critical == False, "Ranged attacks should not auto-crit"
-    print("✓ Ranged attack did not auto-crit")
+    print("✅ Ranged attack did not auto-crit")
 
     # Should not have death save failures applied
     target_cond_after = engine.get_agent_conditions(bm, target_idx)
     assert target_cond_after.death_save_failures == 0, \
         "Ranged attack should not apply death save failures"
-    print("✓ No automatic death save failures from ranged attack")
+    print("✅ No automatic death save failures from ranged attack")
 
 def run_tests():
     """Run all death save tests."""
@@ -185,10 +185,10 @@ def run_tests():
             passed += 1
             print()
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}\n")
             failed += 1
 
     print("="*60)

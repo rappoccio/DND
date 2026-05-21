@@ -20,7 +20,7 @@ def test_ac_calculation():
 
     stats = engine.get_agent_stats(bm, idx)
     assert stats.base_ac == 10
-    print("✓ AC calculation correct")
+    print("✅ AC calculation correct")
 
 def test_melee_weapon_creation():
     """Test creating a melee weapon."""
@@ -28,7 +28,7 @@ def test_melee_weapon_creation():
     assert weapon.name == "Longsword"
     assert weapon.damage_dice == 8
     assert weapon.damage_dice_count == 1
-    print("✓ Melee weapon created correctly")
+    print("✅ Melee weapon created correctly")
 
 def test_ranged_weapon_creation():
     """Test creating a ranged weapon."""
@@ -36,7 +36,7 @@ def test_ranged_weapon_creation():
     assert weapon.name == "Shortbow"
     assert weapon.damage_dice == 6
     assert weapon.damage_dice_count == 1
-    print("✓ Ranged weapon created correctly")
+    print("✅ Ranged weapon created correctly")
 
 def test_armor_creation():
     """Test creating armor."""
@@ -44,7 +44,7 @@ def test_armor_creation():
     assert armor.name == "Leather Armor"
     assert armor.ac_base == 12
     assert not armor.grants_disadvantage
-    print("✓ Armor created correctly")
+    print("✅ Armor created correctly")
 
 def test_attack_modifier_strength():
     """Test attack modifier based on strength."""
@@ -57,7 +57,7 @@ def test_attack_modifier_strength():
     # STR 16 = +3 modifier
     expected_mod = (16 - 10) // 2
     assert expected_mod == 3
-    print("✓ Attack modifier based on strength correct")
+    print("✅ Attack modifier based on strength correct")
 
 def test_attack_modifier_dexterity():
     """Test attack modifier based on dexterity."""
@@ -70,7 +70,7 @@ def test_attack_modifier_dexterity():
     # DEX 18 = +4 modifier
     expected_mod = (18 - 10) // 2
     assert expected_mod == 4
-    print("✓ Attack modifier based on dexterity correct")
+    print("✅ Attack modifier based on dexterity correct")
 
 def test_damage_modifier_strength():
     """Test damage modifier based on strength."""
@@ -83,7 +83,7 @@ def test_damage_modifier_strength():
     # STR 15 = +2 modifier
     expected_mod = (15 - 10) // 2
     assert expected_mod == 2
-    print("✓ Damage modifier based on strength correct")
+    print("✅ Damage modifier based on strength correct")
 
 def test_ability_modifier_formulas():
     """Test all ability modifier calculations."""
@@ -103,7 +103,7 @@ def test_ability_modifier_formulas():
         actual_mod = (score - 10) // 2
         assert actual_mod == expected_mod, f"Score {score}: expected {expected_mod}, got {actual_mod}"
 
-    print("✓ All ability modifier calculations correct")
+    print("✅ All ability modifier calculations correct")
 
 def test_ac_with_dexterity():
     """Test that AC benefits from DEX modifier."""
@@ -117,7 +117,7 @@ def test_ac_with_dexterity():
     # (This assumes the game applies DEX to AC, which is standard in D&D 5e)
     dex_mod = (16 - 10) // 2
     assert dex_mod == 3
-    print("✓ DEX modifier for AC correct")
+    print("✅ DEX modifier for AC correct")
 
 def test_multiple_agents_independent_stats():
     """Test that stats can be set on different agents."""
@@ -132,7 +132,7 @@ def test_multiple_agents_independent_stats():
     # Verify stats were set correctly
     assert stats.str == 18, f"Expected str=18, got {stats.str}"
     assert stats.base_ac == 12, f"Expected base_ac=12, got {stats.base_ac}"
-    print("✓ Agent stats can be set and retrieved correctly")
+    print("✅ Agent stats can be set and retrieved correctly")
 
 def test_constitution_affects_hp():
     """Test that CON modifier affects max HP."""
@@ -145,14 +145,14 @@ def test_constitution_affects_hp():
     stats = engine.get_agent_stats(bm, idx)
     con_mod = (16 - 10) // 2
     assert con_mod == 3
-    print("✓ CON modifier calculation correct")
+    print("✅ CON modifier calculation correct")
 
 def test_attack_bonus_from_weapon():
     """Test that weapon attack bonus is applied."""
     weapon = create_melee_weapon()
     weapon.attack_bonus = 2
     assert weapon.attack_bonus == 2
-    print("✓ Weapon attack bonus applied")
+    print("✅ Weapon attack bonus applied")
 
 def test_damage_dice_count():
     """Test damage dice count for different weapons."""
@@ -164,7 +164,7 @@ def test_damage_dice_count():
     greatsword.damage_dice = 6
     greatsword.damage_dice_count = 2
     assert greatsword.damage_dice_count == 2
-    print("✓ Damage dice count correct for weapons")
+    print("✅ Damage dice count correct for weapons")
 
 if __name__ == "__main__":
     tests = [
@@ -194,10 +194,10 @@ if __name__ == "__main__":
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("=" * 60)

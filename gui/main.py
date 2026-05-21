@@ -593,6 +593,9 @@ class App:
         self.btn_cbt_spell_bonus = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "✨ Spell",
                                           COL_BTN_SPELL, COL_BTN_SPELL_HOV, self.font_md)
+        self.btn_cbt_charge_arcane_ward = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "🔮 Ward",
+                                          (120, 100, 180), (150, 130, 210), self.font_md)
         self.btn_cbt_long_jump   = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Long Jump",
                                           (100, 150, 200), (120, 170, 220), self.font_md)
@@ -1819,6 +1822,50 @@ class App:
             self._combat_log_add(f"{agent_name}: Portent die activated! ({remaining} remaining)")
         else:
             self._combat_log_add("Cannot use Portent Die (already used this round)")
+
+    def _show_arcane_ward_menu(self):
+        """Show available spell slots for Arcane Ward charging."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        if (stats.character_class != rpg.CharacterClass.Wizard or
+            stats.wizard_subclass != rpg.WizardSubclass.Abjurer or
+            stats.char_level < 3 or stats.temp_hp <= 0):
+            self._combat_log_add("Cannot charge Arcane Ward!")
+            return
+
+        # Create menu items for available spell slots
+        items = []
+        max_ward = 2 * stats.char_level + (stats.intel - 10) // 2
+        for slot_level in range(1, 10):
+            remaining = stats.spell_slots_remaining[slot_level - 1]
+            if remaining > 0:
+                ward_gain = 2 * slot_level
+                label = f"Level {slot_level} Slot (+{ward_gain} HP)"
+                items.append((label, lambda lvl=slot_level: self._expend_arcane_ward_slot(lvl)))
+
+        if not items:
+            self._combat_log_add("No spell slots available!")
+            return
+
+        mouse_pos = pygame.mouse.get_pos()
+        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+
+    def _expend_arcane_ward_slot(self, slot_level: int):
+        """Expend a spell slot to charge Arcane Ward."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        success = self.combat.expend_arcane_ward_slot(self.bm, idx, slot_level)
+        if success:
+            stats = self.combat.get_agent_stats(self.bm, idx)
+            agent_name = self.bm.placed_agents[idx].name if idx < len(self.bm.placed_agents) else "Unknown"
+            max_ward = 2 * stats.char_level + (stats.intel - 10) // 2
+            self._combat_log_add(f"{agent_name}: Expends Level {slot_level} slot, Arcane Ward now {stats.temp_hp}/{max_ward}")
+            self.bonus_used = True
+        else:
+            self._combat_log_add("Failed to expend spell slot for Arcane Ward!")
 
     def _show_unarmed_menu(self, mouse_pos):
         """Show the unarmed strike options menu at mouse position."""
@@ -4430,11 +4477,27 @@ class App:
                       COL_HP_LOW)
             txt(f"Turn: {pt.name}", lx, y, COL_TEXT, self.font_md)
             y += 20
+
+            # Draw HP bar with temp HP indicator
+            total_bar_width = stats.hp_max + stats.temp_hp
+            bar_width = W if total_bar_width == 0 else W * (stats.hp_max / max(total_bar_width, 1))
+            temp_hp_width = W - bar_width
+
             pygame.draw.rect(self.screen, (50, 50, 50),
                              pygame.Rect(lx, y, W, 12), border_radius=3)
+            # Draw regular HP in color
             pygame.draw.rect(self.screen, hp_col,
-                             pygame.Rect(lx, y, int(W * frac), 12), border_radius=3)
-            txt(f"HP {stats.hp_cur}/{stats.hp_max}", lx + W//2 - 22, y - 1)
+                             pygame.Rect(lx, y, int(bar_width), 12), border_radius=3)
+            # Draw temp HP in blue
+            if stats.temp_hp > 0:
+                pygame.draw.rect(self.screen, (100, 150, 255),
+                                 pygame.Rect(lx + int(bar_width), y, int(temp_hp_width), 12), border_radius=3)
+
+            # Display HP text with temp HP indicator
+            if stats.temp_hp > 0:
+                txt(f"HP {stats.hp_cur} (+{stats.temp_hp})", lx + W//2 - 40, y - 1)
+            else:
+                txt(f"HP {stats.hp_cur}/{stats.hp_max}", lx + W//2 - 22, y - 1)
             y += 12
 
             # ── Exhaustion display ─────────────────────────────────────────────
@@ -4715,6 +4778,18 @@ class App:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_pass_bonus.draw(self.screen)
             y += B
+
+        # Arcane Ward charging button (Abjurer L3+ with active ward)
+        if not self.bonus_used and 0 <= cur_idx < len(agents):
+            cur_stats = self.bm.placed_agents[cur_idx].stats
+            if (cur_stats.character_class == rpg.CharacterClass.Wizard and
+                cur_stats.wizard_subclass == rpg.WizardSubclass.Abjurer and
+                cur_stats.char_level >= 3 and cur_stats.temp_hp > 0):
+                self.btn_cbt_charge_arcane_ward.rect.x = lx
+                self.btn_cbt_charge_arcane_ward.rect.y = y
+                self.btn_cbt_charge_arcane_ward.rect.w = W
+                self.btn_cbt_charge_arcane_ward.draw(self.screen)
+                y += B + gap
 
         # Shove buttons (only if there are adjacent enemies, outside the spell layout logic)
         if not self.bonus_used:
@@ -5767,6 +5842,8 @@ class App:
                         self.bonus_used = True
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
+                    if self.btn_cbt_charge_arcane_ward.clicked(event):
+                        self._show_arcane_ward_menu()
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for mv_mt, mv_rect in self._move_type_btns.items():
                         if mv_rect.collidepoint(event.pos):

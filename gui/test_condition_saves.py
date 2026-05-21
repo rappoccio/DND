@@ -57,9 +57,9 @@ def test_attack_condition_automatic():
         # On hit, poisoned should be applied automatically (no save)
         target_cond = engine.get_agent_conditions(bm, target_idx)
         assert target_cond.poisoned == True, "Automatic condition should apply on hit"
-        print("✓ Weapon condition with requires_save=false applies automatically on hit")
+        print("✅ Weapon condition with requires_save=false applies automatically on hit")
     else:
-        print("✓ Weapon condition test setup (miss, condition not applied)")
+        print("✅ Weapon condition test setup (miss, condition not applied)")
 
 def test_attack_condition_requires_save():
     """Test that a weapon condition with requires_save=true requires a save."""
@@ -109,9 +109,9 @@ def test_attack_condition_requires_save():
         # With CON=16, save DC likely won't force failure, but it COULD
         # Just verify the condition property exists and is accessible
         assert hasattr(target_cond, 'stunned'), "Stunned condition should exist"
-        print("✓ Weapon condition with requires_save=true requires save (save-based condition set up)")
+        print("✅ Weapon condition with requires_save=true requires save (save-based condition set up)")
     else:
-        print("✓ Weapon condition test setup (miss, condition not applied)")
+        print("✅ Weapon condition test setup (miss, condition not applied)")
 
 def test_spell_automatic_condition():
     """Test spell with automatic condition (requires_save=false)."""
@@ -167,11 +167,11 @@ def test_spell_automatic_condition():
             # On hit, poisoned should apply automatically
             target_cond = engine.get_agent_conditions(bm, target_idx)
             assert target_cond.poisoned == True, "Spell automatic condition should apply on hit"
-            print("✓ Spell with automatic condition (requires_save=false) applies on hit")
+            print("✅ Spell with automatic condition (requires_save=false) applies on hit")
         else:
-            print("✓ Spell test setup (miss, condition not applied)")
+            print("✅ Spell test setup (miss, condition not applied)")
     else:
-        print("✓ Spell cast setup (spell effect created)")
+        print("✅ Spell cast setup (spell effect created)")
 
 def test_spell_save_based_condition():
     """Test spell with save-based condition (requires_save=true)."""
@@ -224,9 +224,9 @@ def test_spell_save_based_condition():
         target_cond = engine.get_agent_conditions(bm, target_idx)
         # Just verify the condition is accessible
         assert hasattr(target_cond, 'paralyzed'), "Paralyzed condition should exist"
-        print("✓ Spell with save-based condition (requires_save=true) set up correctly")
+        print("✅ Spell with save-based condition (requires_save=true) set up correctly")
     else:
-        print("✓ Spell cast setup (spell effect created)")
+        print("✅ Spell cast setup (spell effect created)")
 
 def test_mixed_conditions_on_spell():
     """Test spell with both automatic and save-based conditions."""
@@ -291,11 +291,11 @@ def test_mixed_conditions_on_spell():
             target_cond = engine.get_agent_conditions(bm, target_idx)
             assert target_cond.poisoned == True, "Automatic poisoned should apply"
             # Stunned might or might not apply depending on save result
-            print("✓ Spell with mixed conditions: automatic applied, save-based evaluated")
+            print("✅ Spell with mixed conditions: automatic applied, save-based evaluated")
         else:
-            print("✓ Spell test setup (miss, conditions not applied)")
+            print("✅ Spell test setup (miss, conditions not applied)")
     else:
-        print("✓ Spell cast setup (spell effect created)")
+        print("✅ Spell cast setup (spell effect created)")
 
 def run_tests():
     """Run all condition save requirement tests."""
@@ -320,10 +320,10 @@ def run_tests():
             passed += 1
             print()
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}\n")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}\n")
             failed += 1
 
     print("="*60)

@@ -15,12 +15,12 @@ def test_walk_movement_type():
     """Test that walk movement type exists."""
     assert hasattr(rpg, 'MovementType')
     assert hasattr(rpg.MovementType, 'Walk')
-    print("✓ Walk movement type exists")
+    print("✅ Walk movement type exists")
 
 def test_fly_movement_type():
     """Test that fly movement type exists."""
     assert hasattr(rpg.MovementType, 'Fly')
-    print("✓ Fly movement type exists")
+    print("✅ Fly movement type exists")
 
 def test_basic_movement():
     """Test moving an agent on the map."""
@@ -32,7 +32,7 @@ def test_basic_movement():
     agents = bm.placed_agents
     assert agents[idx].origin.col == 5
     assert agents[idx].origin.row == 5
-    print("✓ Agent placed at correct location")
+    print("✅ Agent placed at correct location")
 
 def test_movement_budget():
     """Test that movement budget is tracked."""
@@ -45,7 +45,7 @@ def test_movement_budget():
     engine.begin_turn(bm, idx)
     walk_remaining = engine.get_walk_remaining(idx)
     assert walk_remaining > 0
-    print(f"✓ Movement budget available: {walk_remaining} feet")
+    print(f"✅ Movement budget available: {walk_remaining} feet")
 
 def test_spend_movement():
     """Test spending movement from budget."""
@@ -59,28 +59,28 @@ def test_spend_movement():
     engine.spend_walk(idx, 10)
     after = engine.get_walk_remaining(idx)
     assert after == initial - 10
-    print(f"✓ Movement spent correctly: {initial} - 10 = {after}")
+    print(f"✅ Movement spent correctly: {initial} - 10 = {after}")
 
 def test_terrain_difficulty_normal():
     """Test terrain with normal difficulty (1.0x cost)."""
     assert hasattr(rpg, 'TerrainDifficulty')
     assert hasattr(rpg.TerrainDifficulty, 'Normal')
-    print("✓ Normal terrain difficulty exists")
+    print("✅ Normal terrain difficulty exists")
 
 def test_terrain_difficulty_halved():
     """Test terrain with halved cost (0.5x)."""
     assert hasattr(rpg.TerrainDifficulty, 'Halved')
-    print("✓ Halved terrain difficulty exists")
+    print("✅ Halved terrain difficulty exists")
 
 def test_terrain_difficulty_quartered():
     """Test terrain with quartered cost (0.25x)."""
     assert hasattr(rpg.TerrainDifficulty, 'Quartered')
-    print("✓ Quartered terrain difficulty exists")
+    print("✅ Quartered terrain difficulty exists")
 
 def test_terrain_difficulty_slipping():
     """Test slipping terrain (ice/grease)."""
     assert hasattr(rpg.TerrainDifficulty, 'Slipping')
-    print("✓ Slipping terrain difficulty exists")
+    print("✅ Slipping terrain difficulty exists")
 
 def test_place_terrain_effect():
     """Test placing a terrain effect."""
@@ -89,7 +89,7 @@ def test_place_terrain_effect():
     cells = [rpg.Cell(5, 5), rpg.Cell(6, 5)]
     effect_id = bm.place_terrain_effect("Grease", cells, rpg.TerrainDifficulty.Slipping, -1, -1)
     assert effect_id >= 0
-    print(f"✓ Terrain effect placed with ID: {effect_id}")
+    print(f"✅ Terrain effect placed with ID: {effect_id}")
 
 def test_remove_terrain_effect():
     """Test removing a terrain effect."""
@@ -99,7 +99,7 @@ def test_remove_terrain_effect():
     effect_id = bm.place_terrain_effect("Grease", cells, rpg.TerrainDifficulty.Halved, 5, -1)
     assert effect_id >= 0
     bm.remove_terrain_effect(effect_id)
-    print("✓ Terrain effect removed successfully")
+    print("✅ Terrain effect removed successfully")
 
 def test_terrain_effect_expires():
     """Test that terrain effects expire after duration."""
@@ -114,7 +114,7 @@ def test_terrain_effect_expires():
 
     removed2 = bm.tick_terrain_effects(-1)
     assert effect_id in removed2
-    print("✓ Terrain effect expires after duration")
+    print("✅ Terrain effect expires after duration")
 
 def test_permanent_terrain_effect():
     """Test permanent terrain effects (duration -1)."""
@@ -131,7 +131,7 @@ def test_permanent_terrain_effect():
     effects = bm.active_terrain_effects
     effect_ids = [e.id for e in effects]
     assert effect_id in effect_ids
-    print("✓ Permanent terrain effects persist")
+    print("✅ Permanent terrain effects persist")
 
 def test_jump_movement():
     """Test jump movement."""
@@ -147,7 +147,7 @@ def test_jump_movement():
     engine.spend_walk(idx, 5)  # Jump costs movement
     after_jump = engine.get_walk_remaining(idx)
     assert after_jump < initial_walk
-    print("✓ Jump movement costs movement budget")
+    print("✅ Jump movement costs movement budget")
 
 def test_disengage_action():
     """Test disengage action (no opportunity attacks when moving)."""
@@ -159,7 +159,7 @@ def test_disengage_action():
     engine.begin_turn(bm, idx)
     # Disengage is a bonus action that uses no movement
     # (implementation details may vary)
-    print("✓ Disengage action available (implementation may vary)")
+    print("✅ Disengage action available (implementation may vary)")
 
 def test_dash_action():
     """Test dash action (double movement speed)."""
@@ -173,7 +173,7 @@ def test_dash_action():
     # Dash action: gain additional movement equal to speed
     # (implementation details may vary)
     assert initial > 0
-    print("✓ Dash action affects movement budget")
+    print("✅ Dash action affects movement budget")
 
 def test_standing_up():
     """Test standing up from prone costs movement."""
@@ -194,7 +194,7 @@ def test_standing_up():
     engine.spend_walk(idx, 15)
     after = engine.get_walk_remaining(idx)
     assert after == initial - 15
-    print("✓ Standing up costs movement (half speed)")
+    print("✅ Standing up costs movement (half speed)")
 
 def test_multiple_movement_types():
     """Test that agents can use different movement types."""
@@ -209,7 +209,7 @@ def test_multiple_movement_types():
     # Spend some walk movement
     engine.spend_walk(idx, 10)
     assert engine.get_walk_remaining(idx) == walk_budget - 10
-    print("✓ Movement types tracked independently")
+    print("✅ Movement types tracked independently")
 
 if __name__ == "__main__":
     tests = [
@@ -244,10 +244,10 @@ if __name__ == "__main__":
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("=" * 60)

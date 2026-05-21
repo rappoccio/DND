@@ -87,12 +87,12 @@ def test_unarmored_defense():
 
 def test_unarmored_defense_with_shield():
     """Test Unarmored Defense with shield bonus - SKIPPED (requires PlacedAgent.weapons access)"""
-    print("⊘ test_unarmored_defense_with_shield skipped (needs PlacedAgent.weapons)")
+    print("🔴 test_unarmored_defense_with_shield skipped (needs PlacedAgent.weapons)")
 
 
 def test_unarmored_defense_not_with_armor():
     """Test that Unarmored Defense doesn't apply when wearing armor - SKIPPED (requires PlacedAgent.armor access)"""
-    print("⊘ test_unarmored_defense_not_with_armor skipped (needs PlacedAgent.armor)")
+    print("🔴 test_unarmored_defense_not_with_armor skipped (needs PlacedAgent.armor)")
 
 
 def test_rage_damage_bonus_by_level():

@@ -27,7 +27,7 @@ def test_map_item_creation():
     assert item.cell.row == 10
     assert item.weapon.name == "Longsword"
     assert item.sprite_path == "sprites/longsword.png"
-    print("✓ MapItem creation")
+    print("✅ MapItem creation")
 
 def test_place_item():
     """Test placing items on the battle map."""
@@ -45,7 +45,7 @@ def test_place_item():
     items = bm.get_items_at_cell(cell)
     assert len(items) == 1, "Should have 1 item at that cell"
     assert items[0].weapon.name == "Rapier"
-    print("✓ Place item")
+    print("✅ Place item")
 
 def test_get_items_at_cell():
     """Test retrieving items from specific cells."""
@@ -79,7 +79,7 @@ def test_get_items_at_cell():
     # Check empty cell
     empty_items = bm.get_items_at_cell(rpg.Cell(10, 10))
     assert len(empty_items) == 0
-    print("✓ Get items at cell")
+    print("✅ Get items at cell")
 
 def test_remove_item():
     """Test removing items from the map."""
@@ -95,7 +95,7 @@ def test_remove_item():
 
     bm.remove_item(id1)
     assert len(bm.get_items_at_cell(cell)) == 0
-    print("✓ Remove item")
+    print("✅ Remove item")
 
 def test_get_all_items():
     """Test retrieving all items on the map."""
@@ -116,7 +116,7 @@ def test_get_all_items():
     weapon_names = [item.weapon.name for item in all_items]
     assert "Sword" in weapon_names
     assert "Axe" in weapon_names
-    print("✓ Get all items")
+    print("✅ Get all items")
 
 def test_clear_items():
     """Test clearing all items from the map."""
@@ -131,7 +131,7 @@ def test_clear_items():
     assert len(bm.get_all_items()) == 2
     bm.clear_items()
     assert len(bm.get_all_items()) == 0
-    print("✓ Clear items")
+    print("✅ Clear items")
 
 def test_item_with_sprite_path():
     """Test items with custom sprite paths."""
@@ -148,7 +148,7 @@ def test_item_with_sprite_path():
     items = bm.get_items_at_cell(cell)
     assert len(items) == 1
     assert items[0].sprite_path == sprite_path
-    print("✓ Item with sprite path")
+    print("✅ Item with sprite path")
 
 def test_multiple_items_same_cell():
     """Test placing multiple items on the same cell."""
@@ -175,7 +175,7 @@ def test_multiple_items_same_cell():
     items = bm.get_items_at_cell(cell)
     assert len(items) == 4
     assert not any(item.id == ids[2] for item in items)
-    print("✓ Multiple items same cell")
+    print("✅ Multiple items same cell")
 
 def test_cell_equality():
     """Test Cell equality for item placement."""
@@ -196,7 +196,7 @@ def test_cell_equality():
     # Should find item using equivalent cell
     items = bm.get_items_at_cell(cell2)
     assert len(items) == 1
-    print("✓ Cell equality")
+    print("✅ Cell equality")
 
 def run_tests():
     """Run all item tests."""
@@ -224,10 +224,10 @@ def run_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("\n" + "="*50)

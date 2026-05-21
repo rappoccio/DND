@@ -15,32 +15,32 @@ def test_visibility_level_clear():
     """Test Clear visibility level."""
     assert hasattr(rpg, 'VisibilityLevel')
     assert hasattr(rpg.VisibilityLevel, 'Clear')
-    print("✓ Clear visibility level exists")
+    print("✅ Clear visibility level exists")
 
 def test_visibility_level_dim():
     """Test Dim visibility level."""
     assert hasattr(rpg.VisibilityLevel, 'Dim')
-    print("✓ Dim visibility level exists")
+    print("✅ Dim visibility level exists")
 
 def test_visibility_level_lightly_obscured():
     """Test LightlyObscured visibility level."""
     assert hasattr(rpg.VisibilityLevel, 'LightlyObscured')
-    print("✓ LightlyObscured visibility level exists")
+    print("✅ LightlyObscured visibility level exists")
 
 def test_visibility_level_dark():
     """Test Dark visibility level."""
     assert hasattr(rpg.VisibilityLevel, 'Dark')
-    print("✓ Dark visibility level exists")
+    print("✅ Dark visibility level exists")
 
 def test_visibility_level_magical_dark():
     """Test MagicalDark visibility level."""
     assert hasattr(rpg.VisibilityLevel, 'MagicalDark')
-    print("✓ MagicalDark visibility level exists")
+    print("✅ MagicalDark visibility level exists")
 
 def test_visibility_level_blocked():
     """Test Blocked visibility level (no LOS)."""
     assert hasattr(rpg.VisibilityLevel, 'Blocked')
-    print("✓ Blocked visibility level exists")
+    print("✅ Blocked visibility level exists")
 
 def test_line_of_sight():
     """Test line of sight between agents."""
@@ -54,7 +54,7 @@ def test_line_of_sight():
 
     has_los = bm.has_line_of_sight(rpg.Cell(5, 5), 1, rpg.Cell(7, 5), 1)
     assert has_los
-    print("✓ Line of sight computed correctly")
+    print("✅ Line of sight computed correctly")
 
 def test_can_see():
     """Test vision check with all factors."""
@@ -69,7 +69,7 @@ def test_can_see():
     # Passive Perception = 10 + WIS modifier = 12
     wis_mod = (14 - 10) // 2
     assert wis_mod == 2
-    print("✓ Can see computation includes visibility factors")
+    print("✅ Can see computation includes visibility factors")
 
 def test_passive_perception():
     """Test passive perception calculation."""
@@ -82,7 +82,7 @@ def test_passive_perception():
     wis_mod = (16 - 10) // 2
     passive_perception = 10 + wis_mod
     assert passive_perception == 13
-    print("✓ Passive perception calculation correct")
+    print("✅ Passive perception calculation correct")
 
 def test_stealth_bonus():
     """Test stealth bonus calculation."""
@@ -95,7 +95,7 @@ def test_stealth_bonus():
     dex_mod = (18 - 10) // 2
     stealth_bonus = dex_mod
     assert stealth_bonus == 4
-    print("✓ Stealth bonus calculation correct")
+    print("✅ Stealth bonus calculation correct")
 
 def test_stealth_proficiency():
     """Test stealth proficiency bonus."""
@@ -106,7 +106,7 @@ def test_stealth_proficiency():
     # With proficiency, gets +prof_bonus to stealth (typically +2 at low levels)
     dex_mod = (16 - 10) // 2
     assert dex_mod == 3
-    print("✓ Stealth proficiency flag accessible")
+    print("✅ Stealth proficiency flag accessible")
 
 def test_check_hide_pre_combat():
     """Test hide check before combat (vs passive perception)."""
@@ -124,7 +124,7 @@ def test_check_hide_pre_combat():
     assert hasattr(result, 'valid')
     assert hasattr(result, 'hidden')
     assert hasattr(result, 'stealth_total')
-    print("✓ Hide check returns proper result structure")
+    print("✅ Hide check returns proper result structure")
 
 def test_check_hide_in_combat():
     """Test hide check during combat (vs active perception)."""
@@ -140,7 +140,7 @@ def test_check_hide_in_combat():
     in_combat = True
     result = engine.check_hide(bm, hider_idx, in_combat)
     assert hasattr(result, 'valid')
-    print("✓ Hide check in combat works")
+    print("✅ Hide check in combat works")
 
 def test_hidden_condition():
     """Test that hidden condition is set after successful hide."""
@@ -156,7 +156,7 @@ def test_hidden_condition():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.hidden
-    print("✓ Hidden condition can be set and retrieved")
+    print("✅ Hidden condition can be set and retrieved")
 
 def test_hidden_agent_reveals_on_attack():
     """Test that attacking reveals hidden agent."""
@@ -176,21 +176,21 @@ def test_hidden_agent_reveals_on_attack():
     # Attack should reveal the target
     # (actual attack execution may vary by implementation)
     assert cond.hidden
-    print("✓ Hidden condition affects combat (implementation varies)")
+    print("✅ Hidden condition affects combat (implementation varies)")
 
 def test_darkvision():
     """Test darkvision sight range."""
     stats = rpg.Stats()
     stats.darkvision_range = 60  # 60 feet
     assert stats.darkvision_range == 60
-    print("✓ Darkvision range property accessible")
+    print("✅ Darkvision range property accessible")
 
 def test_truesight():
     """Test truesight sight range."""
     stats = rpg.Stats()
     stats.truesight_range = 120  # 120 feet
     assert stats.truesight_range == 120
-    print("✓ Truesight range property accessible")
+    print("✅ Truesight range property accessible")
 
 def test_devilssight():
     """Test devil's sight (see in magical darkness)."""
@@ -198,7 +198,7 @@ def test_devilssight():
     a = rpg.AgentConfig()
     a.stats.devilssight_range = 120  # Can see in darkness within 120 feet
     assert a.stats.devilssight_range == 120
-    print("✓ Devil's sight range property accessible")
+    print("✅ Devil's sight range property accessible")
 
 def test_hidden_agent_detection_on_movement():
     """Test that moving hidden agent triggers LOS recheck."""
@@ -216,7 +216,7 @@ def test_hidden_agent_detection_on_movement():
     engine.set_agent_conditions(bm, hider_idx, cond)
 
     # Move hider (implementation may trigger detection check)
-    print("✓ Hidden agent movement can trigger detection (implementation varies)")
+    print("✅ Hidden agent movement can trigger detection (implementation varies)")
 
 def test_blinded_condition_blocks_sight():
     """Test that blinded condition prevents seeing."""
@@ -231,14 +231,14 @@ def test_blinded_condition_blocks_sight():
 
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.blinded
-    print("✓ Blinded condition can be applied")
+    print("✅ Blinded condition can be applied")
 
 def test_advantage_on_stealth_with_invisible():
     """Test that invisible agents have advantage on stealth (conceptually)."""
     # Invisible agents automatically succeed on stealth checks
     agent = create_test_agent("Invisible", 5, 5)
     assert agent.name == "Invisible"
-    print("✓ Invisibility concept acknowledged")
+    print("✅ Invisibility concept acknowledged")
 
 if __name__ == "__main__":
     tests = [
@@ -276,10 +276,10 @@ if __name__ == "__main__":
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("=" * 60)

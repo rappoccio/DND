@@ -17,7 +17,7 @@ def test_spell_creation():
     spell.level = 3
     assert spell.name == "Fireball"
     assert spell.level == 3
-    print("✓ Spell created correctly")
+    print("✅ Spell created correctly")
 
 def test_spell_range():
     """Test spell range property."""
@@ -25,7 +25,7 @@ def test_spell_range():
     spell.name = "Fireball"
     spell.range = 150
     assert spell.range == 150
-    print("✓ Spell range property correct")
+    print("✅ Spell range property correct")
 
 def test_spell_area_of_effect():
     """Test spell with area of effect."""
@@ -35,7 +35,7 @@ def test_spell_area_of_effect():
     spell.radius = 20
     assert spell.geometry == rpg.SpellGeometry.Sphere
     assert spell.radius == 20
-    print("✓ Area of effect properties correct")
+    print("✅ Area of effect properties correct")
 
 def test_concentration_spell():
     """Test concentration requirement."""
@@ -45,7 +45,7 @@ def test_concentration_spell():
     spell.duration = 10
     assert spell.requires_concentration
     assert spell.duration == 10
-    print("✓ Concentration spell properties correct")
+    print("✅ Concentration spell properties correct")
 
 def test_cantrip():
     """Test cantrip (0-level spell)."""
@@ -53,7 +53,7 @@ def test_cantrip():
     spell.name = "Fire Bolt"
     spell.level = 0
     assert spell.level == 0
-    print("✓ Cantrip created correctly")
+    print("✅ Cantrip created correctly")
 
 def test_spell_upcast():
     """Test spell upcast bonus."""
@@ -62,7 +62,7 @@ def test_spell_upcast():
     spell.level = 1
     spell.upcast_dice_bonus = 1  # +1d4 per upcast level
     assert spell.upcast_dice_bonus == 1
-    print("✓ Upcast bonus property correct")
+    print("✅ Upcast bonus property correct")
 
 def test_spell_save_ability():
     """Test spell save ability."""
@@ -70,7 +70,7 @@ def test_spell_save_ability():
     spell.name = "Fireball"
     spell.save_ability = rpg.SaveAbility.Dexterity
     assert spell.save_ability == rpg.SaveAbility.Dexterity
-    print("✓ Save ability property correct")
+    print("✅ Save ability property correct")
 
 def test_spell_requires_sight():
     """Test spell sight requirements."""
@@ -83,7 +83,7 @@ def test_spell_requires_sight():
     spell2.name = "Chromatic Orb"
     spell2.requires_sight = True
     assert spell2.requires_sight
-    print("✓ Spell sight requirements correct")
+    print("✅ Spell sight requirements correct")
 
 def test_spell_requires_los():
     """Test line of sight requirement."""
@@ -91,7 +91,7 @@ def test_spell_requires_los():
     spell.name = "Fireball"
     spell.requires_los = True
     assert spell.requires_los
-    print("✓ LOS requirement property correct")
+    print("✅ LOS requirement property correct")
 
 def test_spell_damage_rolls():
     """Test spell damage rolls."""
@@ -109,7 +109,7 @@ def test_spell_damage_rolls():
     assert dmg.type == rpg.MagicDamage.Force, f"Expected Force, got {dmg.type}"
     assert dmg.num_dice == 1, f"Expected 1 die, got {dmg.num_dice}"
     assert dmg.die_size == 4, f"Expected d4, got d{dmg.die_size}"
-    print("✓ Magic damage rolls correct")
+    print("✅ Magic damage rolls correct")
 
 def test_physical_damage_rolls():
     """Test physical damage rolls."""
@@ -126,7 +126,7 @@ def test_physical_damage_rolls():
     assert dmg.type == rpg.PhysicalDamage.Bludgeoning, f"Expected Bludgeoning, got {dmg.type}"
     assert dmg.num_dice == 1, f"Expected 1 die, got {dmg.num_dice}"
     assert dmg.die_size == 8, f"Expected d8, got d{dmg.die_size}"
-    print("✓ Physical damage rolls correct")
+    print("✅ Physical damage rolls correct")
 
 def test_spell_duration():
     """Test spell duration in rounds."""
@@ -134,7 +134,7 @@ def test_spell_duration():
     spell.name = "Bless"
     spell.duration = 600  # 10 minutes = 100 rounds
     assert spell.duration == 600
-    print("✓ Spell duration property correct")
+    print("✅ Spell duration property correct")
 
 def test_spell_multiple_targets():
     """Test spell with multiple targets."""
@@ -144,7 +144,7 @@ def test_spell_multiple_targets():
     spell.targets_per_upcast_level = 1  # +1 missile per upcast
     assert spell.num_targets == 3
     assert spell.targets_per_upcast_level == 1
-    print("✓ Multiple targets property correct")
+    print("✅ Multiple targets property correct")
 
 def test_spell_nday_uses():
     """Test N/day spell uses."""
@@ -154,7 +154,7 @@ def test_spell_nday_uses():
     spell.uses_remaining = 2
     assert spell.uses_max == 3
     assert spell.uses_remaining == 2
-    print("✓ N/day uses property correct")
+    print("✅ N/day uses property correct")
 
 def test_spell_turn_effects():
     """Test effects triggered on turn start/end."""
@@ -164,7 +164,7 @@ def test_spell_turn_effects():
     spell.effects_on_end_turn = False
     assert not spell.effects_on_begin_turn
     assert not spell.effects_on_end_turn
-    print("✓ Turn effects property correct")
+    print("✅ Turn effects property correct")
 
 def test_spell_terrain_difficulty():
     """Test spell that creates terrain."""
@@ -173,7 +173,7 @@ def test_spell_terrain_difficulty():
     spell.terrain_difficulty = rpg.TerrainDifficulty.Slipping
     spell.duration = 60  # 1 minute
     assert spell.terrain_difficulty == rpg.TerrainDifficulty.Slipping
-    print("✓ Terrain difficulty property correct")
+    print("✅ Terrain difficulty property correct")
 
 if __name__ == "__main__":
     tests = [
@@ -206,10 +206,10 @@ if __name__ == "__main__":
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("=" * 60)

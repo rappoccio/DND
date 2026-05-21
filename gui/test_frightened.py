@@ -24,7 +24,7 @@ def test_frightened_condition_creation():
     engine.set_agent_conditions(bm, idx, cond)
 
     assert engine.get_agent_conditions(bm, idx).frightened == True
-    print("✓ Frightened condition creation")
+    print("✅ Frightened condition creation")
 
 def test_frighten_disadvantage_flag():
     """Test that frightened agents have disadvantage flag set."""
@@ -53,7 +53,7 @@ def test_frighten_disadvantage_flag():
     # Check that the target is now frightened
     target_cond = engine.get_agent_conditions(bm, target_idx)
     assert target_cond.frightened == True
-    print("✓ Frightened disadvantage flag set")
+    print("✅ Frightened disadvantage flag set")
 
 def test_weapon_drop_on_frighten():
     """Test that weapons are dropped when Frightened is applied."""
@@ -96,7 +96,7 @@ def test_weapon_drop_on_frighten():
     assert len(items) == 2, f"Expected 2 items on ground, got {len(items)}"
     assert items[0].weapon.name in ["Longsword", "Dagger"]
     assert items[1].weapon.name in ["Longsword", "Dagger"]
-    print("✓ Weapon drop on frighten")
+    print("✅ Weapon drop on frighten")
 
 def test_frightened_movement_blocked():
     """Test that frightened agents can't move closer to fear source."""
@@ -133,7 +133,7 @@ def test_frightened_movement_blocked():
     # Verify the condition is set (movement is blocked by the condition logic)
     target_cond = engine.get_agent_conditions(bm, target_idx)
     assert target_cond.frightened == True
-    print("✓ Frightened movement blocked")
+    print("✅ Frightened movement blocked")
 
 def test_frightened_loses_condition():
     """Test that Frightened condition can be removed."""
@@ -165,7 +165,7 @@ def test_frightened_loses_condition():
 
     # Check if frightened is still there (it might be, depends on save success)
     # For this test, we're just checking that the condition can be cleared
-    print("✓ Frightened condition lifecycle")
+    print("✅ Frightened condition lifecycle")
 
 def test_fear_spell_setup():
     """Test that Fear spell is properly configured."""
@@ -187,7 +187,7 @@ def test_fear_spell_setup():
     assert fear_spell.get("radius") == 15
     assert len(fear_spell.get("conditions", [])) > 0
     assert fear_spell["conditions"][0].get("condition_name") == "Frightened"
-    print("✓ Fear spell setup in JSON")
+    print("✅ Fear spell setup in JSON")
 
 def run_tests():
     """Run all Frightened condition tests."""
@@ -212,10 +212,10 @@ def run_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"✗ {test.__name__}: {e}")
+            print(f"❌ {test.__name__}: {e}")
             failed += 1
         except Exception as e:
-            print(f"✗ {test.__name__}: {type(e).__name__}: {e}")
+            print(f"❌ {test.__name__}: {type(e).__name__}: {e}")
             failed += 1
 
     print("\n" + "="*50)
