@@ -304,7 +304,7 @@ void BattleMap::applyAgentConfigs()
         }
         auto tok = std::make_shared<ConfiguredAgent>(
             cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}, {}});
+        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}});
     }
     std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
 }
@@ -446,7 +446,7 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     int jump_dist_ft = jump_dist_cells * 5;
 
     // Determine max jump distance based on strength and running/standing
-    int strength = pa.stats.str;
+    int strength = pa.agent->getStats().str;
     int max_jump_ft = is_running ? strength : (strength / 2);
 
     // Check if jump is within range
@@ -555,13 +555,13 @@ void BattleMap::removeAgent(int idx) noexcept
 Agent::Stats BattleMap::getAgentStats(int idx) const noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
-    return placedAgents_[idx].stats;
+    return placedAgents_[idx].agent->getStats();
 }
 
 void BattleMap::setAgentStats(int idx, Agent::Stats s) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
-    placedAgents_[idx].stats = s;
+    placedAgents_[idx].agent->setStats(s);
 }
 
 Agent::Conditions BattleMap::getAgentConditions(int idx) const noexcept
@@ -581,8 +581,8 @@ void BattleMap::applyDash(int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     auto& pa = placedAgents_[idx];
     pa.agent->dash();
-    pa.agent->addMovement(pa.stats.speed_walk, pa.stats.speed_fly,
-                          pa.stats.speed_swim, pa.stats.speed_burrow);
+    pa.agent->addMovement(pa.agent->getStats().speed_walk, pa.agent->getStats().speed_fly,
+                          pa.agent->getStats().speed_swim, pa.agent->getStats().speed_burrow);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1092,7 +1092,7 @@ void BattleMap::initNpcSpellGroups(int agent_idx,
         return;
 
     PlacedAgent& pa = placedAgents_[static_cast<std::size_t>(agent_idx)];
-    pa.stats.is_npc = true;
+    pa.agent->getStats().is_npc = true;
 
     // Initialize uses_max and uses_remaining for each spell based on its group
     for (auto& spell : pa.spells) {

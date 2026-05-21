@@ -1596,7 +1596,10 @@ class App:
                 visible_count += 1
                 vis_name = {
                     rpg.VisibilityLevel.Clear: "Clear",
-                    rpg.VisibilityLevel.PartiallyObscured: "Partially Obscured",
+                    rpg.VisibilityLevel.Dim: "Dim",
+                    rpg.VisibilityLevel.LightlyObscured: "Lightly Obscured",
+                    rpg.VisibilityLevel.Dark: "Dark",
+                    rpg.VisibilityLevel.MagicalDark: "Magical Darkness",
                     rpg.VisibilityLevel.Blocked: "Blocked"
                 }.get(vis_level, "Unknown")
                 visibility_info += f"  • {agent.name} ({vis_name})\n"
@@ -1665,6 +1668,13 @@ class App:
                 self.screen.get_size()
             )
 
+    def _damage_breakdown_str(self, result) -> str:
+        """Return ' [4 (weapon) + 3 (rage)]' when a hit has multiple damage sources, else ''."""
+        bd = getattr(result, "damage_breakdown", None)
+        if not bd or len(bd) <= 1:
+            return ""
+        return " [" + " + ".join(f"{amt} ({label})" for label, amt in bd) + "]"
+
     def _resolve_combat_attack(self, target_idx: int):
         """Resolve the pending attack against target_idx."""
         atk_idx = self._current_agent_idx()
@@ -1708,7 +1718,7 @@ class App:
             dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
             dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
             msg = (f"{atk_name}→{tgt_name}: "
-                   f"HIT {result.total_damage} {dmg_type_str}"
+                   f"HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
                    f"{' CRIT!' if result.critical else ''}"
                    f"{' — DOWN' if result.target_down else ''}"
                    f"{exh_note}")
@@ -2561,7 +2571,7 @@ class App:
             dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
             dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
             self._combat_log_add(
-                f"{atk_name}→{tgt_name}: OA HIT {result.total_damage} {dmg_type_str}"
+                f"{atk_name}→{tgt_name}: OA HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
                 f"{' CRIT!' if result.critical else ''}"
                 f"{' — DOWN' if result.target_down else ''}")
         else:
@@ -5294,18 +5304,24 @@ class App:
                         cfg = self.placement_config
                         cfg.start_col = self.placement_cell.col
                         cfg.start_row = self.placement_cell.row
-                        # Save stats + weapons for all existing agents before
-                        # apply_agent_configs() recreates them from scratch
+                        # Save full state for all existing agents before
+                        # apply_agent_configs() recreates them from scratch.
+                        # NOTE: spells and armor live on PlacedAgent (not in stats),
+                        # so they must be saved/restored explicitly or they are lost.
                         existing = self.bm.placed_agents
                         saved = [(self.combat.get_agent_stats(self.bm, i),
-                                  self.combat.get_agent_weapons(self.bm, i))
+                                  self.combat.get_agent_weapons(self.bm, i),
+                                  self.combat.get_agent_spells(self.bm, i),
+                                  self.combat.get_agent_armor(self.bm, i))
                                  for i in range(len(existing))]
                         self.combat.add_agent_config(self.bm, cfg)
                         self.combat.apply_agent_configs(self.bm)
-                        # Restore previously saved stats + weapons (spell slots are in stats)
-                        for i, (st, wps) in enumerate(saved):
+                        # Restore previously saved stats + weapons + spells + armor
+                        for i, (st, wps, spl, arm) in enumerate(saved):
                             self.combat.set_agent_stats(self.bm, i, st)
                             self.combat.set_agent_weapons(self.bm, i, wps)
+                            self.combat.set_agent_spells(self.bm, i, spl)
+                            self.combat.set_agent_armor(self.bm, i, arm)
                         # Apply mob stats and auto-weapons to the newly placed agent
                         idx = len(self.bm.placed_agents) - 1
                         if self.selected_mob_stats:

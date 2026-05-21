@@ -37,6 +37,7 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace rpg {
@@ -84,6 +85,8 @@ struct AttackResult {
     int  total_damage = 0;          // max(0, sum(dice) + damage_mod)
     std::vector<MagicDamage_t>    magic_damage_types;
     std::vector<PhysicalDamage_t> physical_damage_types;
+    // Per-source damage breakdown, e.g. [("weapon",4),("rage",3)]. Sums to total_damage.
+    std::vector<std::pair<std::string,int>> damage_breakdown;
 
     // ── Target outcome ────────────────────────────────────────────────────
     int  hp_before    = 0;
@@ -529,13 +532,13 @@ public:
                     const Agent::Stats& target,
                     AttackResult& result);
 
-    // Resolve a complete attack (roll to hit, roll damage, apply to target).
-    // target is modified in place (hp_cur clamped to [0, hp_max]).
-    // target_ac: pre-calculated AC (if -1, uses target.base_ac; otherwise uses provided value).
+    // Resolve a complete attack (roll to hit, roll damage, compute result).
+    // Pure with respect to the target: computes total_damage / hp_after but does
+    // NOT mutate the target's HP. The caller applies and persists the damage.
     // attacker_conditions: attacker's conditions (used for Rage bonus, etc.)
     [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
                                               const Agent& attacker,
-                                              Agent& target,
+                                              const Agent& target,
                                               bool advantage = false,
                                               bool disadvantage = false);
 

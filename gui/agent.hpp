@@ -572,6 +572,7 @@ namespace rpg {
     [[nodiscard]] Stats& getStats() noexcept { return stats_; }
     [[nodiscard]] const Stats& getStats() const noexcept { return stats_; }
     [[nodiscard]] const Conditions& getConditions() const noexcept { return conditions_; }
+    void setStats(const Stats& s) noexcept { stats_ = s; }
     void setConditions(const Conditions& c) noexcept { conditions_ = c; }
 
     // ── Reaction tracking (one reaction per round) ────────────────────────────

@@ -26,6 +26,17 @@ type: project
   - Choice between: Forceful Blow (push), Hamstring Blow (speed -15ft)
   - L13+ adds: Staggering Blow (disadv next save), Sundering Blow (+5 next attack)
   - Calls C++ `apply_brutal_strike_effect` with chosen effects
+### QoL improvements (May 21)
+- ✅ **Barbarian damage breakdown logging** — DONE (rebuild needed): `AttackResult.damage_breakdown` vector of (label, amount); logs e.g. `HIT 7 [4 (weapon) + 3 (rage)]`. Frenzy = own attack line; Brutal Strike = own `+N (NdY)` line.
+- ⏳ **PC custom names** — SPEC'd for Haiku: PCs default to `"{class} 1"` at main.py:807 `_on_pc_class_selected`; prompt for a name (reuse `TextInput` widget) and set `cfg.name` before placement. Pure Python.
+- ⏳ **Logs show agent[N] instead of names** — SPEC'd for Haiku: add `CombatEngine::agentName(bm, idx)` helper; convert ~20 index-based `log_` calls in combat.cpp (e.g. `[COND] ... agent[0]`). C++ rebuild.
+
+- ✅ **Stats homogenization** (May 21) — VERIFIED: compiled + all tests pass:
+  - Removed duplicate `Agent::Stats stats` member from `PlacedAgent`
+  - Stats now live solely in `Agent` (single source of truth, mirroring how Conditions already worked)
+  - `get/setAgentStats` delegate to `agent->getStats()/setStats()`; added `Agent::setStats()`
+  - Fixed a latent dual-store bug: `resolveAttack` had been reading AC/mods from and writing damage to the dead `Agent::stats_` while everything else used `PlacedAgent.stats`
+  - `resolveAttack` is now compute-only (`const Agent& target`); `executeAction` applies base damage once to its working copy and persists it
 
 ### Forced Movement System - COMPLETE
 

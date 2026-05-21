@@ -118,7 +118,15 @@
         "gloves": "",
         "cloak": ""
       },
-      "spell_indices": [],
+      "spell_indices": [
+        "Magic Missile",
+        "Wall of Fire",
+        "Fireball",
+        "Hypnotic Pattern",
+        "Hold Person",
+        "Ice Storm",
+        "Plant Growth"
+      ],
       "agent_class": "Wizard",
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
@@ -191,7 +199,11 @@
         "gloves": "",
         "cloak": ""
       },
-      "spell_indices": [],
+      "spell_indices": [
+        "Grease",
+        "Magic Missile",
+        "Fireball"
+      ],
       "agent_class": "None",
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
@@ -217,7 +229,22 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": false,
+      "npc_spell_groups": {
+        "3": [
+          "Grease",
+          "Magic Missile"
+        ],
+        "1": [
+          "Fireball"
+        ]
+      },
+      "npc_spell_uses_cur": {
+        "Grease": 3,
+        "Magic Missile": 3,
+        "Fireball": 1
+      }
     },
     {
       "name": "Fire Elemental",
@@ -337,7 +364,10 @@
         "gloves": "",
         "cloak": ""
       },
-      "spell_indices": [],
+      "spell_indices": [
+        "Magic Missile",
+        "Cone of Cold"
+      ],
       "agent_class": "None",
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
@@ -363,7 +393,20 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": false,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile"
+        ],
+        "1": [
+          "Cone of Cold"
+        ]
+      },
+      "npc_spell_uses_cur": {
+        "Magic Missile": 3,
+        "Cone of Cold": 1
+      }
     },
     {
       "name": "Barbarian 1",
@@ -381,7 +424,7 @@
         "hp_max": 50,
         "hp_cur": 50,
         "ac": 10,
-        "speed_walk": 100,
+        "speed_walk": 110,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -442,79 +485,6 @@
       "name": "Wizard 1",
       "sprite_path": "",
       "size": 1,
-      "col": 9,
-      "row": 12,
-      "stats": {
-        "str": 15,
-        "dex": 14,
-        "con": 13,
-        "intel": 12,
-        "wis": 10,
-        "cha": 8,
-        "hp_max": 32,
-        "hp_cur": 32,
-        "ac": 10,
-        "speed_walk": 30,
-        "speed_swim": 0,
-        "speed_fly": 0,
-        "speed_burrow": 0,
-        "prof_bonus": 2,
-        "save_prof_str": false,
-        "save_prof_dex": false,
-        "save_prof_con": false,
-        "save_prof_intel": false,
-        "save_prof_wis": false,
-        "save_prof_cha": false,
-        "num_attacks": 1,
-        "has_cunning_action": false,
-        "has_offhand_attack": false,
-        "spellcasting_ability": "int"
-      },
-      "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
-      },
-      "armor": {
-        "helmet": "",
-        "chest": "",
-        "leggings": "",
-        "boots": "",
-        "gloves": "",
-        "cloak": ""
-      },
-      "spell_indices": [],
-      "agent_class": "Wizard",
-      "agent_char_level": 5,
-      "agent_barbarian_subclass": "NONE",
-      "agent_wizard_subclass": "Diviner",
-      "spell_slots_max": [
-        4,
-        3,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "spell_slots_cur": [
-        4,
-        3,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "Wizard 1",
-      "sprite_path": "",
-      "size": 1,
       "col": 10,
       "row": 5,
       "stats": {
@@ -556,7 +526,13 @@
         "gloves": "",
         "cloak": ""
       },
-      "spell_indices": [],
+      "spell_indices": [
+        "Magic Missile",
+        "Fireball",
+        "Fire Bolt",
+        "Grease",
+        "Hypnotic Pattern"
+      ],
       "agent_class": "Wizard",
       "agent_char_level": 6,
       "agent_barbarian_subclass": "NONE",

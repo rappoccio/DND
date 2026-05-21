@@ -260,9 +260,9 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     }
 
     // Barbarian Unarmored Defense: AC = 10 + DEX + CON (no armor worn)
-    if (pa.stats.character_class == CharacterClass::Barbarian && !has_armor) {
-        int dex_mod = (pa.stats.dex - 10) / 2;
-        int con_mod = (pa.stats.con - 10) / 2;
+    if (pa.agent->getStats().character_class == CharacterClass::Barbarian && !has_armor) {
+        int dex_mod = (pa.agent->getStats().dex - 10) / 2;
+        int con_mod = (pa.agent->getStats().con - 10) / 2;
         int ac = 10 + dex_mod + con_mod;
 
         // Add shield bonus (off-hand weapon with ac_bonus)
@@ -274,15 +274,15 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         }
 
         // Add temporary modifications
-        ac += pa.stats.ac_temporary_modifications;
+        ac += pa.agent->getStats().ac_temporary_modifications;
         return ac;
     }
 
     // Standard AC calculation (non-Barbarian or wearing armor)
-    int ac = pa.stats.base_ac;
+    int ac = pa.agent->getStats().base_ac;
 
     // Calculate DEX modifier and determine cap from equipped armor
-    int dex_mod = (pa.stats.dex - 10) / 2;
+    int dex_mod = (pa.agent->getStats().dex - 10) / 2;
     int dex_mod_cap = 30;  // Default: no cap (light armor/unarmored)
 
     // Find the most restrictive DEX modifier cap from equipped armor
@@ -313,7 +313,7 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     }
 
     // Add temporary modifications
-    ac += pa.stats.ac_temporary_modifications;
+    ac += pa.agent->getStats().ac_temporary_modifications;
 
     // TODO: Apply condition modifiers (prone, etc.)
 
@@ -384,7 +384,7 @@ bool CombatEngine::canEquipArmor(const BattleMap& bm, int agent_idx, const Armor
         return false;
 
     const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
-    return pa.stats.str >= armor.str_requirement;
+    return pa.agent->getStats().str >= armor.str_requirement;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -404,7 +404,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
 
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
-    auto stats = agent.stats;
+    auto stats = agent.agent->getStats();
 
     // Death from Exhaustion: agent dies at exhaustion level 6
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
@@ -488,7 +488,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             if (active_cond.caster_idx == agent_idx &&
                 active_cond.agent_idx >= 0 &&
                 active_cond.agent_idx < static_cast<int>(agents.size())) {
-                const auto& target_stats = agents[static_cast<std::size_t>(active_cond.agent_idx)].stats;
+                const auto& target_stats = agents[static_cast<std::size_t>(active_cond.agent_idx)].agent->getStats();
                 const auto& target_cond = agents[static_cast<std::size_t>(active_cond.agent_idx)].agent->getConditions();
                 // Target is alive if not dead and not unconscious (unconscious targets can't be affected by control spells)
                 if (target_stats.hp_cur > 0 && !target_cond.dead && !target_cond.unconscious) {
@@ -1267,7 +1267,7 @@ std::vector<int> CombatEngine::threateningAgents(const BattleMap& bm, int target
         if (i == target_idx) continue;
         const PlacedAgent& other = agents[static_cast<std::size_t>(i)];
         if (other.agent->getConditions().incapacitated) continue;
-        if (other.stats.hp_cur <= 0) continue;
+        if (other.agent->getStats().hp_cur <= 0) continue;
 
         // Chebyshev distance from target's footprint to other's origin
         int dc = std::max({tgt.origin.col - other.origin.col,
@@ -1375,11 +1375,13 @@ void CombatEngine::rollDamage(const Weapon& w,
 
     result.damage_mod   = damageAbilityMod(w, attacker) + w.bonus_damage;
     result.total_damage = std::max(0, raw + result.damage_mod);
+    result.damage_breakdown.clear();
+    result.damage_breakdown.push_back({"weapon", result.total_damage});
 }
 
 AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           const Agent& attacker,
-                                          Agent& target,
+                                          const Agent& target,
                                           bool advantage,
                                           bool disadvantage)
 {
@@ -1395,17 +1397,20 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
         if (attacker.getConditions().raging &&
             attacker.getStats().character_class == CharacterClass::Barbarian &&
             (w.type == WeaponType::Melee || w.thrown)) {
-            r.total_damage += getRageDamageBonus(attacker.getStats().char_level);
+            int rage_bonus = getRageDamageBonus(attacker.getStats().char_level);
+            r.total_damage += rage_bonus;
+            r.damage_breakdown.push_back({"rage", rage_bonus});
         }
 
-        // Temporary HP absorbs damage first, then overflow damages hp_cur
+        // Compute resulting HP without mutating the target — the caller applies
+        // the damage to its working stats copy and persists it once. (Temp HP
+        // absorbs first, then overflow reduces hp_cur.)
         int overflow = std::max(0, r.total_damage - target.getStats().temp_hp);
-        target.getStats().temp_hp = std::max(0, target.getStats().temp_hp - r.total_damage);
-        target.getStats().hp_cur = std::clamp(target.getStats().hp_cur - overflow,
-                                    0, target.getStats().hp_max);
+        r.hp_after = std::clamp(target.getStats().hp_cur - overflow, 0, target.getStats().hp_max);
+    } else {
+        r.hp_after = target.getStats().hp_cur;
     }
 
-    r.hp_after    = target.getStats().hp_cur;
     r.target_down = (r.hp_after <= 0);
     r.valid       = true;
     return r;
@@ -1529,7 +1534,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
         if (i == action.attacker_idx) continue;  // Skip self
         const PlacedAgent& ally_pa = agents[static_cast<std::size_t>(i)];
-        const Agent::Stats& ally_stats = ally_pa.stats;
+        const Agent::Stats& ally_stats = ally_pa.agent->getStats();
         const Agent::Conditions& ally_cond = ally_pa.agent->getConditions();
 
         // Check if ally is a Wolf-form Wild Heart Barbarian in Rage
@@ -1649,6 +1654,19 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Agent {} uses Reckless Attack (auto-reroll on miss)", action.attacker_idx);
     }
 
+    // Apply base attack damage to the target's working stats. resolveAttack now
+    // computes damage but does not mutate HP, so the single source of truth is
+    // applied here (and persisted once via setAgentStats below). Subsequent
+    // class effects (Divine Fury) and the auto-crit path adjust tgt_stats further.
+    const int temp_hp_before = tgt_stats.temp_hp;  // for auto-crit revert
+    if (r.hit) {
+        int overflow = std::max(0, r.total_damage - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - r.total_damage);
+        tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after    = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+    }
+
     // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging
     if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
         atk_stats.barbarian_subclass == ZealotPath &&
@@ -1660,6 +1678,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         int divine_fury_bonus = roll(6) + (atk_stats.char_level / 2);
 
         r.total_damage += divine_fury_bonus;
+        r.damage_breakdown.push_back({"divine fury", divine_fury_bonus});
         // Update target HP with the additional damage
         int overflow = std::max(0, divine_fury_bonus - tgt_stats.temp_hp);
         tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - divine_fury_bonus);
@@ -1703,8 +1722,9 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                 bm.setAgentConditions(action.target_idx, updated_cond);
             }
 
-            // Re-roll damage with crit flag set
-            tgt_stats.hp_cur = r.hp_before;  // revert damage
+            // Re-roll damage with crit flag set (revert HP and temp HP to pre-attack)
+            tgt_stats.hp_cur  = r.hp_before;
+            tgt_stats.temp_hp = temp_hp_before;
             rollDamage(w, atk_stats, tgt_stats, r);
             int overflow = std::max(0, r.total_damage - tgt_stats.temp_hp);
             tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - r.total_damage);
@@ -2154,7 +2174,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     result.spell_name  = sp.name;
     result.attack_type = sp.attack_type;
 
-    const Agent::Stats& caster_stats = caster_pa.stats;
+    const Agent::Stats& caster_stats = caster_pa.agent->getStats();
 
     // Concentration management: check if casting a concentration spell
     if (sp.requires_concentration) {
@@ -2791,7 +2811,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         log_("[DEBUG execute_spell] result.valid=true, slot_level={}, caster_idx={}", action.slot_level, action.caster_idx);
         PlacedAgent& pa = bm.placedAgentMut(action.caster_idx);
         Spell& spell_mut = pa.spells[static_cast<std::size_t>(action.spell_idx)];
-        Agent::Stats& stats = pa.stats;
+        Agent::Stats& stats = pa.agent->getStats();
 
         // Mark leveled spell cast (once per turn, even if upcasted)
         if (sp.level > 0) {
@@ -2897,15 +2917,15 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     }
 
     // Roll attacker Athletics: d20 + STR mod + proficiency (assume all shoves are proficient)
-    int attacker_str_mod = (attacker.stats.str - 10) / 2;
+    int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
     auto attacker_stats = getAgentStats(bm, action.attacker_idx);
     int attacker_prof = attacker_stats.prof_bonus;
     int attacker_d20 = roll(20);
     int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
 
     // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
-    int target_str_mod = (target.stats.str - 10) / 2;
-    int target_dex_mod = (target.stats.dex - 10) / 2;
+    int target_str_mod = (target.agent->getStats().str - 10) / 2;
+    int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
     int target_d20 = roll(20);
     int target_athletic = target_d20 + target_str_mod;
     int target_acrobatic = target_d20 + target_dex_mod;
@@ -2988,15 +3008,15 @@ GrappleResult CombatEngine::executeGrapple(BattleMap& bm, const GrappleAction& a
     }
 
     // Roll attacker Athletics: d20 + STR mod + proficiency (assume grapple is proficient)
-    int attacker_str_mod = (attacker.stats.str - 10) / 2;
+    int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
     auto attacker_stats = getAgentStats(bm, action.attacker_idx);
     int attacker_prof = attacker_stats.prof_bonus;
     int attacker_d20 = roll(20);
     int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
 
     // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
-    int target_str_mod = (target.stats.str - 10) / 2;
-    int target_dex_mod = (target.stats.dex - 10) / 2;
+    int target_str_mod = (target.agent->getStats().str - 10) / 2;
+    int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
     int target_d20 = roll(20);
     int target_athletic = target_d20 + target_str_mod;
     int target_acrobatic = target_d20 + target_dex_mod;
@@ -3266,7 +3286,7 @@ void CombatEngine::updateDarknessBlinding(BattleMap& bm, int agent_idx) noexcept
     if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
 
     const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
-    const Agent::Stats& stats = pa.stats;
+    const Agent::Stats& stats = pa.agent->getStats();
     const VisibilityLevel obscuration = bm.getObscurationAtCell(pa.origin);
 
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
@@ -3665,7 +3685,7 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
     int overflow = std::max(0, bs_damage - tgt_stats.temp_hp);
     tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - bs_damage);
     tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
-    log_("Brutal Strike: {} damage", bs_damage);
+    log_("Brutal Strike: +{} ({}d10) damage", bs_damage, damage_dice);
 
     // Apply chosen effects
     for (int effect : effects) {
@@ -3700,7 +3720,7 @@ bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
-    const Agent::Stats& stats = pa.stats;
+    const Agent::Stats& stats = pa.agent->getStats();
     const Agent::Conditions& cond = pa.agent->getConditions();
 
     // Primal Knowledge (L3): Acrobatics and Stealth can use STR instead of their normal ability while Raging
@@ -3862,7 +3882,7 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
     const auto& agent = agents[static_cast<std::size_t>(idx)];
-    const auto& stats = agent.stats;
+    const auto& stats = agent.agent->getStats();
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     if (!cond.unconscious || cond.dead || cond.stabilized) {
@@ -3951,14 +3971,14 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
     }
 
     const PlacedAgent& hider_pa = agents[static_cast<std::size_t>(agent_idx)];
-    const Agent::Stats& hider_stats = hider_pa.stats;
+    const Agent::Stats& hider_stats = hider_pa.agent->getStats();
     Cell hider_origin = hider_pa.origin;
     int hider_size = hider_pa.agent->getSize();
 
     // Check if any other agent has LOS to the hider — if so, can't hide
     for (std::size_t i = 0; i < agents.size(); ++i) {
         if (static_cast<int>(i) == agent_idx) continue;
-        if (agents[i].agent->getConditions().incapacitated || agents[i].stats.hp_cur <= 0) continue;
+        if (agents[i].agent->getConditions().incapacitated || agents[i].agent->getStats().hp_cur <= 0) continue;
 
         const PlacedAgent& observer_pa = agents[i];
         Cell observer_origin = observer_pa.origin;
@@ -3990,7 +4010,7 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
 
     for (std::size_t i = 0; i < agents.size(); ++i) {
         if (static_cast<int>(i) == agent_idx) continue;
-        if (agents[i].agent->getConditions().incapacitated || agents[i].stats.hp_cur <= 0) continue;
+        if (agents[i].agent->getConditions().incapacitated || agents[i].agent->getStats().hp_cur <= 0) continue;
 
         const PlacedAgent& observer_pa = agents[i];
         Cell observer_origin = observer_pa.origin;
@@ -4002,7 +4022,7 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
             continue;  // Agent can't see hider, skip Perception contest
         }
 
-        const Agent::Stats& observer_stats = observer_pa.stats;
+        const Agent::Stats& observer_stats = observer_pa.agent->getStats();
         int observer_perception = 0;
 
         if (in_combat) {
@@ -4060,7 +4080,7 @@ std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx
         return "";  // Agent not hidden, no detection check needed
     }
 
-    const Agent::Stats& hider_stats = hider_pa.stats;
+    const Agent::Stats& hider_stats = hider_pa.agent->getStats();
     Cell hider_origin = hider_pa.origin;
     int hider_size = hider_pa.agent->getSize();
     int hider_stealth = hider_stats.stealthBonus();
@@ -4071,7 +4091,7 @@ std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx
 
     for (std::size_t i = 0; i < agents.size(); ++i) {
         if (static_cast<int>(i) == agent_idx) continue;
-        if (agents[i].agent->getConditions().incapacitated || agents[i].stats.hp_cur <= 0) continue;
+        if (agents[i].agent->getConditions().incapacitated || agents[i].agent->getStats().hp_cur <= 0) continue;
 
         const PlacedAgent& observer_pa = agents[i];
         Cell observer_origin = observer_pa.origin;
@@ -4083,7 +4103,7 @@ std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx
         }
 
         // Agent has LOS, roll Perception to detect
-        const Agent::Stats& observer_stats = observer_pa.stats;
+        const Agent::Stats& observer_stats = observer_pa.agent->getStats();
         int observer_perception = 0;
         int perc_d20 = 0;
         int perc_mod = 0;
@@ -4158,7 +4178,7 @@ void CombatEngine::standup(BattleMap& bm, int idx) noexcept
     }
 
     // Cost to stand up: half of walk speed
-    int walk_speed = agents[idx].stats.speed_walk;
+    int walk_speed = agents[idx].agent->getStats().speed_walk;
     int standup_cost = walk_speed / 2;
 
     // Check if agent has enough movement
@@ -4335,7 +4355,7 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
         return;
 
     const PlacedAgent& viewer = agents[static_cast<std::size_t>(agent_idx)];
-    const Agent::Stats& viewer_stats = viewer.stats;
+    const Agent::Stats& viewer_stats = viewer.agent->getStats();
 
     // Base perception range (in feet): half of base wisdom score, minimum 20 feet
     // This is a heuristic; D&D 5e uses specific rules per situation
@@ -4420,7 +4440,7 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
 
     // DC is 10 or half damage, whichever is higher
     int dc = std::max(10, damage / 2);
-    int con_mod = (pa.stats.con - 10) / 2;
+    int con_mod = (pa.agent->getStats().con - 10) / 2;
     int save_roll = roll(20);
     int save_total = save_roll + con_mod;
 
@@ -4469,7 +4489,7 @@ std::vector<int> CombatEngine::availableCastableSpells(
         return result;
 
     const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
-    const Agent::Stats& stats = pa.stats;
+    const Agent::Stats& stats = pa.agent->getStats();
     const auto& spells = pa.spells;
 
     for (size_t i = 0; i < spells.size(); ++i) {

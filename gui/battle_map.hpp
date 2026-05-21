@@ -132,7 +132,6 @@ struct ActiveAgentCondition {
 struct PlacedAgent {
     std::shared_ptr<Agent> agent;
     Cell                   origin;        // top-left cell of the NxN footprint
-    Agent::Stats           stats;         // D&D 5.5e character stats
     std::array<Weapon, 3>  weapons;       // [Main Hand, Off Hand, Ranged]
     std::vector<Spell>     spells;        // known spells (may be empty)
     std::array<Armor, 6>   armor;         // [Helmet, Chest, Leggings, Boots, Gloves, Cloak]

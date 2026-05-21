@@ -129,7 +129,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("spells",
             [](const PlacedAgent& p) -> std::vector<Spell> { return p.spells; })
         .def_property_readonly("stats",
-            [](PlacedAgent& p) -> Agent::Stats { return p.stats; })
+            [](PlacedAgent& p) -> Agent::Stats { return p.agent->getStats(); })
         .def("set_advantage", [](PlacedAgent& p, bool adv){ p.agent->setAdvantage(adv); },
              py::arg("advantage"), "Set whether the agent has advantage on rolls.")
         .def("has_advantage", [](const PlacedAgent& p){ return p.agent->hasAdvantage(); },
@@ -958,6 +958,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("dice_results",          &AttackResult::dice_results)
         .def_readonly("damage_mod",            &AttackResult::damage_mod)
         .def_readonly("total_damage",          &AttackResult::total_damage)
+        .def_readonly("damage_breakdown",      &AttackResult::damage_breakdown)
         .def_readonly("physical_damage_types", &AttackResult::physical_damage_types)
         .def_readonly("magic_damage_types",    &AttackResult::magic_damage_types)
         .def_readonly("hp_before",             &AttackResult::hp_before)

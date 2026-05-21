@@ -4,6 +4,9 @@
 - [Grapple Mechanics](grapple_mechanics.md) — Complete D&D 5e grapple implementation with dragging and OA filtering
 - [Speed=0 and OA Mechanics](feedback_speed_zero_mechanics.md) — Creatures with Speed=0 can't move or make OAs; forced movement bypasses validation
 - [Architecture: Mechanics in C++](architecture_mechanics_in_cpp.md) — Game mechanics belong in C++, Python UI is rendering/interaction only
+- [Architecture: Agent as Character](architecture_agent_as_character.md) — Consolidate stats/logic into Agent toward per-class objects; virtual dispatch (not concepts); stats homogenized May 21
+- [GUI Not Tested](feedback_gui_not_tested.md) — main.py GUI isn't covered by run_all_tests.py; GUI changes need manual in-app verification
+- [Model-Split Workflow](feedback_model_split_workflow.md) — User uses Opus for analysis/specs, Haiku for mechanical coding; hand off with precise self-contained specs
 - [Fix: Thunderwave Push](fix_thunderwave_push.md) — Fixed missing push_ft/requires_save in main.py's _dict_to_spell method
 - [Exhaustion GUI Complete](exhaustion_gui_complete.md) — Interactive slider controls, combat panel display, movement integration, long rest decrement
 - [Barbarian L1-3 Complete](barbarian_l1_3_complete.md) — All 9 tasks complete: Rage lifecycle, all 4 subclass L3 features, Danger Sense, Primal Knowledge; 12 tests passing
