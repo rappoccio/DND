@@ -1,25 +1,9 @@
-- [Current Session State](current_session_state.md) — Build fixed, visibility working, map panning added, darkvision/truesight/crawling/prone done
-- [All Core Logic in C++](architecture_cpp_only.md) — Game logic must be C++, Python is UI/I/O only for expert mode & RL training
-- [D&D Battle Map - Pending Features](pending_features.md) — Next major features: Game Mode Architecture, DM/Player visibility, crowd control spells
-- [User handles all builds](feedback_build_handling.md) — Do not attempt C++ builds or Docker; user manages compilation
-- [Vision System Implementation](vision_system_implementation.md) — Phase 1, 2, 3 complete: obscuration, visibility computation, darkvision/truesight/devil's sight
-- [User work preferences](user_preferences.md) — Design discussions without compaction, user handles builds and git
-
-## Implementation Plans
-
-### ✅ Completed
-- [Plan: Hide Action](plan_hide_action.md) — Stealth checks, hidden condition, advantage on first attack, Cunning Action
-- [Plan: Frightened Condition](plan_frightened_condition.md) — Fear spell, disadvantage, weapon drop, movement restriction
-- [Plan: Lighting System](plan_lighting_system.md) — D&D 5e lighting, vision types, light effects
-- [Plan: Unit Test Framework](plan_unit_test.md) — Full combat scenario test with monsters
-- [Plan: Lifecycle Management](plan_lifecycle.md) — beginTurn/endTurn, agent method migration, spell effects
-
-### ✅ Completed (cont.)
-- [Plan: Forced Movement](plan_forced_movement.md) — Shove, spell push (Thunderwave), unarmed strike
-
-### ⏳ Pending
-- [Plan: D&D Class System](plan_dnd_class_system.md) — Full implementation with Resource abstraction, Barbarian first
-  - [Phase 1: Resource System](plan_phase1_resource.md) — ✅ COMPLETE — Generic Resource struct for Rage, Ki, Sorcery Points, etc.
-  - [Phase 2: Class Metadata Enums](plan_phase2_enums.md) — Background, Alignment, Barbarian Subclass enums
-- [Plan: Class/Spell-Slot Migration](plan_class_spellslot_migration.md) — C++ class tables, spell levels, slot management
-- Grapple refactoring — make Grapple an unarmed attack option
+- [To-Do List](TODO.md) — Tracking completed features (Portent Dice, Rage, Subclass system) and backlog
+- [Subclass Selection, Rage, Portent Dice](session_subclass_rage_portent.md) — UI for selecting subclasses, Rage bonus button, fixed Portent Dice with advantage/disadvantage
+- [Grapple Mechanics](grapple_mechanics.md) — Complete D&D 5e grapple implementation with dragging and OA filtering
+- [Speed=0 and OA Mechanics](feedback_speed_zero_mechanics.md) — Creatures with Speed=0 can't move or make OAs; forced movement bypasses validation
+- [Architecture: Mechanics in C++](architecture_mechanics_in_cpp.md) — Game mechanics belong in C++, Python UI is rendering/interaction only
+- [Fix: Thunderwave Push](fix_thunderwave_push.md) — Fixed missing push_ft/requires_save in main.py's _dict_to_spell method
+- [Exhaustion GUI Complete](exhaustion_gui_complete.md) — Interactive slider controls, combat panel display, movement integration, long rest decrement
+- [Barbarian L1-3 Complete](barbarian_l1_3_complete.md) — All 9 tasks complete: Rage lifecycle, all 4 subclass L3 features, Danger Sense, Primal Knowledge; 12 tests passing
+- [Known Limitations](known_limitations.md) — Panther Aspect (climb speed) and Branches of the Tree deferred; requires movement system and reaction system integration
