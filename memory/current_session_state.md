@@ -4,7 +4,7 @@ description: Active work and implementation progress
 type: project
 ---
 
-## Session Progress (May 14-19, 2026)
+## Session Progress (May 14-21, 2026)
 
 ### Completed
 - Fixed Docker build and noVNC connectivity
@@ -13,6 +13,19 @@ type: project
 - Updated memory with vision system and darkvision/truesight/devil's sight additions
 - ✅ Thunderwave Push now working correctly (forceMoveAgent executing)
 - ✅ Crowd Control Spells (stun, paralyze, held conditions)
+- ✅ Abjurer L3 (Arcane Ward) - Complete with long rest init, auto-charging, bonus action UI
+- ✅ **Reckless Attack System** (May 21):
+  - C++: Auto-triggers on Barbarian miss (sets flag, re-rolls with advantage)
+  - Enemies gain advantage against Reckless Barbarians
+  - Removed old Frenzy d6 damage placeholder
+- ✅ **Berserker L3: Frenzy Bonus Attack** (May 21):
+  - After action attack with Reckless + Rage, grants bonus melee attack
+  - Tracked with `berserker_frenzy_used` flag (per-round)
+- ✅ **Brutal Strike (L9+)** (May 21):
+  - Python context menu after hit with Reckless active
+  - Choice between: Forceful Blow (push), Hamstring Blow (speed -15ft)
+  - L13+ adds: Staggering Blow (disadv next save), Sundering Blow (+5 next attack)
+  - Calls C++ `apply_brutal_strike_effect` with chosen effects
 
 ### Forced Movement System - COMPLETE
 

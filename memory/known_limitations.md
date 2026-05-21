@@ -9,7 +9,12 @@ metadata:
 
 ## Known Limitations
 
-**Date: 2026-05-19**
+**Date: 2026-05-21**
+
+### Barbarian Reckless Attack Mechanic
+- **Limitation**: Reckless Attack is always automatically triggered on any Barbarian melee/thrown attack miss
+- **Why deferred**: Full Reckless Attack system would allow player choice to opt-in/opt-out per attack. Current auto-trigger avoids menu complexity.
+- **Future**: Add toggle button or per-attack menu for player control
 
 ### Implemented Features ✅
 - Barbarian L1-3: All core mechanics and subclass features

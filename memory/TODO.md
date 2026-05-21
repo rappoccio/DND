@@ -27,13 +27,27 @@
 - [x] Resource initialization after subclass selection
 - [x] Subclass reset when class changes
 
+### Abjurer L3 (Arcane Ward) - COMPLETE
+- [x] Implement Arcane Ward resource (temp HP charging)
+- [x] Ward charges on abjuration spell casts
+- [x] Manual charging via bonus action + spell slot selection UI
+- [x] Long rest initialization
+- [x] Integration with class resources system
+
 ## In Progress
 
-### Abjurer L3 (Arcane Ward)
-- [ ] Implement Arcane Ward resource
-- [ ] Ward grants damage reduction
-- [ ] Ward breaks when threshold exceeded
-- [ ] Integration with class resources system
+(None currently)
+
+## What's Actually Still TODO for Barbarian L1-3 Completion
+
+Based on May 21 review - BPS resistance and lifecycle are DONE:
+- ✅ **Berserker L3: Frenzy** - IMPLEMENTED (bonus melee attack after action with Reckless+Rage)
+- ✅ **Reckless Attack** - IMPLEMENTED (auto-triggers on miss with advantage)
+- ✅ **Brutal Strike (L9+)** - IMPLEMENTED (context menu for effect selection)
+- [ ] 3 other Barbarian subclass L3 features (Wild Heart, World Tree, Zealot Divine Fury)
+- [ ] Primal Knowledge feature (STR-based skill checks in Rage)
+- [ ] Danger Sense (L2 - Advantage on DEX saves)
+- [ ] Additional tests for above features
 
 ## Backlog
 

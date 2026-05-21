@@ -41,8 +41,8 @@ metadata:
 ### STILL TODO (L1-3 completion)
 
 **Implementation Needed:**
-1. **Step 4: Rage BPS Resistance** — Set physical_damage_multipliers for Bludgeoning/Piercing/Slashing to 0.5
-2. **Step 7: Rage Lifecycle Methods** — activateRage(), extendRage(), endRage() in C++
+1. ✅ **Step 4: Rage BPS Resistance** — COMPLETE (set in activateRage/endRage)
+2. ✅ **Step 7: Rage Lifecycle Methods** — COMPLETE (activateRage(), endRage() in C++)
 3. **Step 8: Subclass L3 Features:**
    - Berserker: Frenzy (extra d6s damage on first Reckless hit)
    - Wild Heart: Rage of the Wilds (Bear/Eagle/Wolf choice per Rage), Animal Speaker

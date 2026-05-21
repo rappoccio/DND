@@ -1718,6 +1718,12 @@ class App:
                    f"{exh_note}")
         self._combat_log_add(msg)
 
+        # Brutal Strike: offer effect selection if hit and available
+        if result.hit and result.valid:
+            atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
+            if atk_cond and atk_cond.brutal_strike_available:
+                self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name)
+
         # Check concentration save if damage was dealt
         if result.hit and result.total_damage > 0:
             csave = self.combat.concentration_save(self.bm, target_idx, result.total_damage)
@@ -1763,10 +1769,48 @@ class App:
 
             if slot == "action":
                 self.action_used = True
+                # Check Berserker Frenzy: bonus melee attack after action with Reckless + Rage
+                atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+                atk_cond  = self.combat.get_agent_conditions(self.bm, atk_idx)
+                if (atk_stats.character_class == rpg.CharacterClass.Barbarian and
+                        atk_stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and
+                        atk_cond.raging and atk_cond.reckless_attack and
+                        not atk_cond.berserker_frenzy_used and
+                        not self.bonus_used):
+                    self._combat_log_add(f"{atk_name}: Berserker Frenzy — bonus melee attack!")
+                    cond = self.combat.get_agent_conditions(self.bm, atk_idx)
+                    cond.berserker_frenzy_used = True
+                    self.combat.set_agent_conditions(self.bm, atk_idx, cond)
+                    self._start_attack("bonus")
             else:
                 self.bonus_used = True
         # Refresh attack overlay (HP may have changed).
         self._update_attack_overlay()
+
+    def _offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name):
+        """Show Brutal Strike effect menu after a hit."""
+        atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        level = atk_stats.char_level
+        dice_str = "2d10" if level >= 17 else "1d10"
+
+        def _apply(effects):
+            self.combat.apply_brutal_strike_effect(self.bm, atk_idx, target_idx, effects)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        options = [
+            (f"Forceful Blow ({dice_str} + push 15ft)", lambda: _apply([0])),
+            (f"Hamstring Blow ({dice_str} + speed −15ft)", lambda: _apply([1])),
+        ]
+        if level >= 13:
+            options += [
+                (f"Staggering Blow ({dice_str} + disadv next save)", lambda: _apply([2])),
+                (f"Sundering Blow ({dice_str} + +5 next atk vs target)", lambda: _apply([3])),
+            ]
+        options.append(("Skip Brutal Strike", lambda: None))
+
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
 
     def _create_unarmed_punch_weapon(self):
         """Create a synthetic unarmed punch weapon (1 + STR bludgeoning)."""

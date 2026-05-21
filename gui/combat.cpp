@@ -1637,34 +1637,16 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         updated_atk_cond.brutal_strike_available = true;
         log_("Agent {} can use Brutal Strike on this attack", action.attacker_idx);
     }
-
-    // Berserker Frenzy: add extra d6s damage on first hit when Reckless Attack + Rage active
-    if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
-        atk_stats.barbarian_subclass == BerserkerPath &&
-        atk_cond.raging && atk_cond.reckless_attack &&
-        !atk_cond.berserker_frenzy_used &&
-        (w.type == WeaponType::Melee || w.thrown)) {
-
-        // Roll d6s equal to Rage damage bonus
-        int rage_dmg_bonus = getRageDamageBonus(atk_stats.char_level);
-        int frenzy_bonus = 0;
-        for (int i = 0; i < rage_dmg_bonus; ++i) {
-            frenzy_bonus += roll(6);
-        }
-
-        r.total_damage += frenzy_bonus;
-        // Update target HP with the additional damage
-        int overflow = std::max(0, frenzy_bonus - tgt_stats.temp_hp);
-        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - frenzy_bonus);
-        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
-        r.hp_after = tgt_stats.hp_cur;
-        r.target_down = (r.hp_after <= 0);
-
-        // Mark Frenzy as used this turn
-        updated_atk_cond.berserker_frenzy_used = true;
+    // Reckless Attack: auto-reroll on miss for Barbarians
+    else if (!r.hit &&
+             atk_stats.character_class == CharacterClass::Barbarian &&
+             !atk_cond.reckless_attack &&
+             (w.type == WeaponType::Melee || w.thrown)) {
+        updated_atk_cond.reckless_attack = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
-
-        log_("Berserker Frenzy: added {}d6 = {} damage", rage_dmg_bonus, frenzy_bonus);
+        adv = true;
+        r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
+        log_("Agent {} uses Reckless Attack (auto-reroll on miss)", action.attacker_idx);
     }
 
     // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging
