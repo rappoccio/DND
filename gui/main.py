@@ -1530,6 +1530,11 @@ class App:
         sprite_path = wdict.get("sprite_path", "")
         # Place item at agent's current cell
         agent = self.bm.placed_agents[cur_idx]
+        import traceback
+        print(f"[_drop_weapon] Dropping {weapon.name} from slot {slot_idx} for agent {agent.name} at ({agent.origin.col},{agent.origin.row})")
+        print(f"[_drop_weapon] Call stack:")
+        for line in traceback.format_stack()[:-1]:
+            print(f"  {line.strip()}")
         item_id = self.bm.place_item(agent.origin, weapon, sprite_path)
         # Clear the weapon slot
         weapons[slot_idx] = rpg.Weapon()
@@ -1822,18 +1827,14 @@ class App:
 
             if slot == "action":
                 self.action_used = True
-                # Check Berserker Frenzy: bonus melee attack after action with Reckless + Rage
+                # Check Berserker Frenzy: bonus melee attack every turn while raging
                 atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
                 atk_cond  = self.combat.get_agent_conditions(self.bm, atk_idx)
                 if (atk_stats.character_class == rpg.CharacterClass.Barbarian and
                         atk_stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and
-                        atk_cond.raging and atk_cond.reckless_attack and
-                        not atk_cond.berserker_frenzy_used and
+                        atk_cond.raging and
                         not self.bonus_used):
                     self._combat_log_add(f"{atk_name}: Berserker Frenzy — bonus melee attack!")
-                    cond = self.combat.get_agent_conditions(self.bm, atk_idx)
-                    cond.berserker_frenzy_used = True
-                    self.combat.set_agent_conditions(self.bm, atk_idx, cond)
                     self._start_attack("bonus")
             else:
                 self.bonus_used = True

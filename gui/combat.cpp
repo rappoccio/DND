@@ -399,6 +399,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return result;
 
+
+    auto agent_name = agentName(bm, agent_idx); 
     // Reset slip distance counter and slipped flag for the new turn
     slipDistanceMoved_[agent_idx] = 0;
     agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
@@ -414,7 +416,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         cond.unconscious = true;
         bm.setAgentStats(agent_idx, stats);
         bm.setAgentConditions(agent_idx, cond);
-        log_("Agent dies from Exhaustion Level 6");
+        log_("{} dies from Exhaustion Level 6", agent_name);
         result.save_roll_message = "DEATH: Exhaustion Level 6";
         return result;
     }
@@ -476,7 +478,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     if (cond.unconscious && !cond.stabilized && !cond.dead) {
         result.turn_skipped = true;
         result.skip_reason = "Unconscious";
-        log_("Cannot act, skipping turn");
+        log_("{} cannot act, skipping turn", agent_name);
         return result;
     }
 
@@ -517,7 +519,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.save_repeat_turns == -1) {
             result.turn_skipped = true;
             result.skip_reason = active_cond.condition_name;
-            log_("Cannot act, skipping turn");
+            log_("{} cannot act, skipping turn", agent_name);
             return result;
         }
 
@@ -585,7 +587,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     caster_cond.concentrating = false;
                     caster_cond.concentrating_on = "";
                     bm.setAgentConditions(active_cond.caster_idx, caster_cond);
-                    log_("Caster ({}) drops concentration", agentName(bm, active_cond.caster_idx));
+                    log_("{} drops concentration", agentName(bm, active_cond.caster_idx));
 
                     // Remove all conditions caused by concentration spells from this caster
                     const auto& caster_spells = bm.getAgentSpells(active_cond.caster_idx);
@@ -618,7 +620,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
                                           " — FAILED (turn skipped)";
                 log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED", ability_name(active_cond.save_ability), active_cond.condition_name, save_d20, save_mod, save_total, save_dc);
-                log_("Cannot act, skipping turn");
+                log_("{} cannot act, skipping turn", agent_name);
                 return result;
             } else {
                 // Non-incapacitating condition failed save, reset next save time
@@ -1153,6 +1155,7 @@ std::vector<AttackResult> CombatEngine::runRound(
 
         // Reset Barbarian per-turn flags
         Agent::Conditions cond = bm.getAgentConditions(i);
+        cond.reckless_attack = false;
         cond.berserker_frenzy_used = false;
         cond.zealot_divine_fury_used = false;
         cond.brutal_strike_available = false;
@@ -1642,7 +1645,6 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     Agent::Conditions updated_atk_cond = atk_cond;
     if (r.hit && can_use_brutal_strike) {
         updated_atk_cond.brutal_strike_available = true;
-        log_("{} can use Brutal Strike on this attack", agentName(bm, action.attacker_idx));
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
     // Reckless Attack: auto-reroll on miss for Barbarians
@@ -1693,7 +1695,35 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         updated_atk_cond.zealot_divine_fury_used = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
 
-        log_("Zealot Divine Fury: added 1d6 + {} = {} damage", atk_stats.char_level / 2, divine_fury_bonus);
+        //log_("Zealot Divine Fury: added 1d6 + {} = {} damage", atk_stats.char_level / 2, divine_fury_bonus);
+    }
+    
+    // Berserker Frenzy bonus: add extra Nd6, where N is the rage damage bonus
+    if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
+        atk_stats.barbarian_subclass == BerserkerPath &&
+        atk_cond.raging &&
+        !atk_cond.berserker_frenzy_used &&
+        (w.type == WeaponType::Melee || w.thrown)) {
+
+        // Roll 1d6 + floor(level/2)
+        int berserker_frenzy_bonus = 0;
+
+	for ( int irage_bonus = 0; irage_bonus < getRageDamageBonus(atk_stats.char_level); ++irage_bonus ){
+	  berserker_frenzy_bonus += roll(6); 
+	}
+
+        r.total_damage += berserker_frenzy_bonus;
+        r.damage_breakdown.push_back({"frenzy", berserker_frenzy_bonus});
+        // Update target HP with the additional damage
+        int overflow = std::max(0, berserker_frenzy_bonus - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - berserker_frenzy_bonus);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+
+        // Mark Divine Fury as used this turn
+        updated_atk_cond.berserker_frenzy_used = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
     // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets
@@ -3402,6 +3432,7 @@ void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
     PlacedAgent& pa = const_cast<PlacedAgent&>(agents[idx]);
     for (auto& w : pa.weapons) {
         if (!w.name.empty() && w.name != "Unnamed") {
+	    log_("{} dropped weapon {}", agentName(bm, idx), w.name);
             (void)bm.placeItem(pa.origin, w, "");
             w = Weapon{};
         }
@@ -3712,7 +3743,7 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
 
     // Log Brutal Strike with the chosen effect
     if (!effect_name.empty()) {
-        log_("Brutal Strike ({}): +{} damage", effect_name, bs_damage);
+        log_("{} is {}", agentName(bm, target_idx), effect_name );
     }
 
     // Set per-turn flag and clear availability

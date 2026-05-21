@@ -522,7 +522,7 @@
       "agent_class": "Wizard",
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
-      "agent_wizard_subclass": "NONE",
+      "agent_wizard_subclass": "Diviner",
       "spell_slots_max": [
         4,
         3,
