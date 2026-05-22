@@ -1340,7 +1340,6 @@ class App:
         self._reach_fly          = []
         self._reach_set          = set()
         self._effect_meta         = {}
-        self._concentration_state = {}
         self._spell_metadata      = {}
         self.bm.clear_terrain_effects()
         self._attack_cells_melee = []
@@ -1374,8 +1373,6 @@ class App:
         # Round advancement: when turn_idx wraps to 0
         if self.turn_idx < prev_turn_idx:
             self.round_num += 1
-            # Tick concentration terrain duration
-            self._tick_concentration_terrain()
             # Tick DM-placed effects at round boundary
             expired_dm = self.bm.tick_dm_terrain_effects()
             for effect_id in expired_dm:
@@ -1427,95 +1424,34 @@ class App:
             # Initialize Python-side movement tracking (C++ also seeds in beginTurn)
             self._reset_movement(new_idx)
 
-        # Tick terrain effects (stays in Python for now — terrain is BattleMap concern)
+        # Tick this agent's terrain in C++ (also clears concentration if a concentration terrain expired)
         if new_idx >= 0:
-            expired = self.bm.tick_terrain_effects(new_idx)
-            for effect_id in expired:
+            tick = self.combat.tick_terrain_for_turn(self.bm, new_idx)
+            for effect_id in tick.expired_terrain_ids:
                 if effect_id in self._effect_meta:
                     effect_name = self._effect_meta[effect_id].get("name", "Effect")
                     self._combat_log_add(f"{effect_name} fades.")
                     del self._effect_meta[effect_id]
+            if tick.concentration.dropped:
+                self._sync_spell_effect_cache()
+                conc_name = self.bm.placed_agents[new_idx].name
+                self._combat_log_add(f"{conc_name}'s {tick.concentration.spell_name or 'spell'} effect expired.")
 
         self._update_reach()
         self._update_attack_overlay()
 
-    # FLAG: Move to C++
     def _drop_concentration(self):
-        """Drop concentration for current agent and remove associated terrain."""
-        cur_idx = self._current_agent_idx()
-        self._drop_concentration_for_agent(cur_idx)
+        """Drop concentration for the current agent (game logic in C++)."""
+        self._drop_concentration_for_agent(self._current_agent_idx())
 
-    # FLAG: Move to C++
     def _drop_concentration_for_agent(self, agent_idx: int):
-        """Drop concentration for specified agent and remove associated terrain."""
-        if agent_idx < 0 or agent_idx >= len(self.bm.placed_agents):
-            return
-        agent = self.bm.placed_agents[agent_idx]
-        if not agent.conditions.concentrating:
-            return
-        spell_name = agent.conditions.concentrating_on
-        agent_name = agent.name
-        # Remove terrain regions from this agent's concentration spell
-        self._terrain_regions = [r for r in self._terrain_regions
-                                  if not (r.get("source", {}).get("agent") == agent_name and
-                                          r.get("source", {}).get("spell") == spell_name)]
-        # Remove spell effects from this agent's concentration spell
-        effects_to_remove = []
-        for effect in self.bm.active_spell_effects:
-            if effect.caster_idx == agent_idx and effect.spell.name == spell_name:
-                effects_to_remove.append(effect.effect_id)
-        for effect_id in effects_to_remove:
-            self.bm.remove_spell_effect(effect_id)
-        # Sync the visualization cache with removed effects
-        self._sync_spell_effect_cache()
-
-        # Remove conditions caused by concentration-requiring spells from this caster
-        conditions_to_remove = []
-        agent_spells = self.combat.get_agent_spells(self.bm, agent_idx)
-        for cond in self.combat.active_agent_conditions:
-            if cond.caster_idx == agent_idx and cond.spell_idx >= 0 and cond.spell_idx < len(agent_spells):
-                if agent_spells[cond.spell_idx].requires_concentration:
-                    conditions_to_remove.append(cond.condition_id)
-        for cond_id in conditions_to_remove:
-            self.combat.remove_agent_condition(cond_id)
-
-        # Clear C++ concentration state
-        cond = agent.conditions
-        cond.concentrating = False
-        cond.concentrating_on = ""
-        self.combat.set_agent_conditions(self.bm, agent_idx, cond)
-        self._apply_terrain_to_battle_map()
-        self._combat_log_add(f"{agent_name} drops concentration on {spell_name or 'spell'}.")
-        self._save_terrain()
-
-    # FLAG: Move to C++
-    def _tick_concentration_terrain(self):
-        """Decrement duration on concentration terrain and remove expired effects."""
-        expired_spells = []
-        for region in self._terrain_regions:
-            if region.get("source", {}).get("requires_concentration"):
-                duration = region["source"].get("duration_remaining", 0)
-                if duration > 0:
-                    region["source"]["duration_remaining"] = duration - 1
-                    if duration - 1 == 0:
-                        expired_spells.append((region.get("source", {}).get("agent"), region.get("source", {}).get("spell")))
-        # Remove expired terrain
-        self._terrain_regions = [r for r in self._terrain_regions
-                                  if not (r.get("source", {}).get("requires_concentration") and
-                                          r.get("source", {}).get("duration_remaining", 0) <= 0)]
-        # Clear concentration for agents with expired effects (C++ side)
-        for agent_name, spell_name in expired_spells:
-            for i, agent in enumerate(self.bm.placed_agents):
-                if agent.name == agent_name:
-                    if agent.conditions.concentrating and agent.conditions.concentrating_on == spell_name:
-                        cond = agent.conditions
-                        cond.concentrating = False
-                        cond.concentrating_on = ""
-                        self.combat.set_agent_conditions(self.bm, i, cond)
-                        self._combat_log_add(f"{spell_name} effect on {agent_name} has expired.")
-                    break
-        self._apply_terrain_to_battle_map()
-        self._save_terrain()
+        """Drop concentration for an agent. Terrain/effect/condition removal lives in
+        C++ drop_concentration; Python only refreshes the render cache and logs."""
+        res = self.combat.drop_concentration(self.bm, agent_idx)
+        if res.dropped:
+            self._sync_spell_effect_cache()  # render cache only
+            name = self.bm.placed_agents[agent_idx].name
+            self._combat_log_add(f"{name} drops concentration on {res.spell_name or 'spell'}.")
 
     def _replay_log_action(self, action_type: str, **kwargs):
         """Log an action to the replay log for later reproduction."""
@@ -2870,96 +2806,8 @@ class App:
             # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
             self._sync_spell_effect_cache()
 
-        # Auto-place terrain effect if spell has one
-        if 0 <= caster_idx < len(agents) and 0 <= self.pending_spell_idx < len(agents[caster_idx].spells):
-            spell = agents[caster_idx].spells[self.pending_spell_idx]
-            # Get terrain_effect and hatch_pattern from metadata
-            spell_meta = self._spell_metadata.get((caster_idx, self.pending_spell_idx), {})
-            terrain_effect = spell_meta.get("terrain_effect")
-            hatch_pattern = spell_meta.get("hatch_pattern")
-            if terrain_effect:
-                aoe_cells_raw = self._aoe_cells(cell, spell)
-                aoe_cells = self._filter_spell_cells_by_range_and_los(aoe_cells_raw, caster_idx, spell, center_cell=cell)
-                if aoe_cells:
-                    # Check if this is slipping terrain (ice/grease)
-                    if terrain_effect.get("type") == "Slipping":
-                        # Use C++ terrain system for slipping mechanics
-                        slip_save_dc = terrain_effect.get("slip_save_dc", 10)
-                        slip_distance_feet = terrain_effect.get("slip_distance_feet", 5)
-                        effect_id = self.bm.place_terrain_effect(
-                            spell.name,
-                            aoe_cells,
-                            rpg.TerrainDifficulty.Slipping,
-                            spell.duration,
-                            caster_idx,
-                            slip_save_dc,
-                            slip_distance_feet
-                        )
-                        if effect_id >= 0:
-                            self._effect_meta[effect_id] = {
-                                "name": spell.name,
-                                "spell": spell.name,
-                                "caster": caster_idx,
-                                "spell_idx": self.pending_spell_idx
-                            }
-                            # Trigger initial DEX saves for agents in the affected area
-                            aoe_cell_set = set((c.row, c.col) for c in aoe_cells)
-                            for idx, agent in enumerate(agents):
-                                if idx == caster_idx:
-                                    continue
-                                agent_cell = (agent.y, agent.x)
-                                if agent_cell in aoe_cell_set:
-                                    # Roll DEX save
-                                    save_d20 = random.randint(1, 20)
-                                    dex_mod = (agent.stats.dex - 10) // 2
-                                    save_total = save_d20 + dex_mod
-                                    if save_total < slip_save_dc:
-                                        # Failed save — apply prone condition
-                                        agent.conditions.prone = True
-                                        self._combat_log_add(f"{agent.name} failed DEX save ({save_total} vs DC {slip_save_dc}) and fell prone.")
-                                    else:
-                                        self._combat_log_add(f"{agent.name} succeeded on DEX save ({save_total} vs DC {slip_save_dc}).")
-                    else:
-                        # Use Python-side terrain system for other terrain effects
-                        terrain_region = self._cells_to_terrain_region(aoe_cells, terrain_effect, spell.name, caster_idx, hatch_pattern, self.pending_spell_idx)
-                        if terrain_region:
-                            # Handle concentration replacement: remove old spell's terrain if one was dropped
-                            if result.concentration_replaced and result.prev_concentration_spell:
-                                agent_name = cast_name
-                                self._terrain_regions = [r for r in self._terrain_regions
-                                                          if not (r.get("source", {}).get("agent") == agent_name and
-                                                                  r.get("source", {}).get("spell") == result.prev_concentration_spell)]
-                                self._combat_log_add(f"{cast_name} drops concentration on {result.prev_concentration_spell}.")
-
-                            self._terrain_regions.append(terrain_region)
-                            self._apply_terrain_to_battle_map()
-
-                    if spell.requires_concentration:
-                        self._combat_log_add(f"{spell.name}: {cast_name} is concentrating.")
-            elif spell.terrain_difficulty != rpg.TerrainDifficulty.Normal:
-                aoe_cells = self._aoe_cells(cell, spell)
-                if aoe_cells:
-                    effect_id = self.bm.place_terrain_effect(
-                        spell.name,
-                        aoe_cells,
-                        spell.terrain_difficulty,
-                        spell.duration,
-                        caster_idx
-                    )
-                    if effect_id >= 0:
-                        # Store metadata for rendering
-                        if spell.terrain_difficulty == rpg.TerrainDifficulty.Halved:
-                            color = (80, 200, 80, 80)  # Green
-                        elif spell.terrain_difficulty == rpg.TerrainDifficulty.Quartered:
-                            color = (200, 60, 60, 80)  # Red
-                        else:
-                            color = (100, 180, 220, 80)  # Cyan
-                        self._effect_meta[effect_id] = {
-                            "name": spell.name,
-                            "color": color,
-                            "cells": [(c.col, c.row) for c in aoe_cells]
-                        }
-                        self._combat_log_add(f"{spell.name} terrain effect placed.")
+        # Terrain placement (incl. slipping DEX saves) is handled in C++ executeSpell;
+        # spell terrain renders from bm.active_terrain_effects via _draw_temp_terrain_overlays.
 
         if slot == "action":
             self.action_used = True
@@ -3052,26 +2900,6 @@ class App:
         return self.bm.filter_spell_cells(cells, caster.origin, caster.size, spell, center_cell)
 
     # FLAG: Move to C++
-    def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None, spell_idx: int = -1) -> dict:
-        """Convert list of cells to a terrain region with source metadata."""
-        if not cells:
-            return None
-        caster_name = self.bm.placed_agents[caster_idx].name if caster_idx < len(self.bm.placed_agents) else "Unknown"
-        return {
-            "type": terrain_effect.get("type", "Difficult Terrain"),
-            "cells": [(c.col, c.row) for c in cells],  # Store actual affected cells
-            "multiplier": terrain_effect.get("multiplier", 0.5),
-            "source": {
-                "agent": caster_name,
-                "caster": caster_idx,
-                "spell": spell_name,
-                "spell_idx": spell_idx,
-                "requires_concentration": True,
-                "duration_remaining": terrain_effect.get("duration", 10),
-            },
-            "hatch_pattern": hatch_pattern
-        }
-
     def _draw_spell_aoe_preview(self, cpx: int):
         """Translucent AoE highlight while the player is aiming a non-Single spell."""
         if not self.pending_spell_is_aoe or self.spell_hover_cell is None:
@@ -4363,88 +4191,8 @@ class App:
             border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
             pygame.draw.rect(self.screen, border_color, border_rect, 2)
 
-        # Draw concentration-based terrain with hatching patterns, cell-by-cell
-        hatch_patterns = ['//', '\\\\', '||', '--', '++', 'xx', 'oo', 'OO', '..', '**']
-        for i, region in enumerate(self._terrain_regions):
-            if not region.get("source", {}).get("requires_concentration"):
-                continue
-
-            cells = region.get("cells", [])
-            if not cells:
-                continue
-
-            hatch = region.get("hatch_pattern") or hatch_patterns[i % len(hatch_patterns)]
-            multiplier = region.get("multiplier", 0.5)
-            duration = region.get("source", {}).get("duration_remaining", 0)
-            spell_name = region.get("source", {}).get("spell", "Effect")
-            caster_idx = region.get("source", {}).get("caster", -1)
-            spell_idx = region.get("source", {}).get("spell_idx", -1)
-
-            # Get color from spell metadata if available, otherwise use brown default
-            spell_meta = self._spell_metadata.get((caster_idx, spell_idx), {})
-            if "terrain_color" in spell_meta and spell_meta["terrain_color"]:
-                rgb = spell_meta["terrain_color"]
-                color = (rgb[0], rgb[1], rgb[2], 100)
-            else:
-                # Default brown color for difficult terrain
-                color = (139, 90, 43, 100)
-
-            # Create fill and border surfaces for one cell
-            fill_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
-            fill_surf.fill(color)
-            border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
-            border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
-            pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
-
-            # Draw each cell
-            map_w, map_h = self.map_rect.width, self.map_rect.height
-            for col, row in cells:
-                sx, sy = self._cell_to_screen(col, row)
-                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
-                    continue
-                self.screen.blit(fill_surf, (sx, sy))
-                self.screen.blit(border_surf, (sx, sy))
-                # Draw hatching for this cell
-                self._draw_cell_hatching(hatch, sx, sy, cpx, color)
-
-            # Draw duration label on first cell
-            if cells:
-                first_col, first_row = cells[0]
-                sx, sy = self._cell_to_screen(first_col, first_row)
-                if not (sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h):
-                    spell = region.get("source", {}).get("spell", "Effect")
-                    duration_txt = self.font_sm.render(f"{spell}({duration})", True, (255, 255, 255))
-                    self.screen.blit(duration_txt, (sx + 3, sy + 3))
-
-    def _draw_cell_hatching(self, pattern: str, sx: int, sy: int, cpx: int, color: tuple):
-        """Draw hatching pattern for a single cell."""
-        hatch_color = tuple(min(c + 100, 255) for c in color[:3]) + (120,)
-        spacing = 4
-
-        # Clip to cell bounds
-        clip_rect = pygame.Rect(sx, sy, cpx, cpx)
-        old_clip = self.screen.get_clip()
-        self.screen.set_clip(clip_rect)
-
-        try:
-            if pattern == '//' or pattern == 'xx':
-                # Forward diagonal lines
-                for i in range(-cpx, cpx * 2, spacing):
-                    pygame.draw.line(self.screen, hatch_color, (sx + i, sy), (sx + i + cpx, sy + cpx), 1)
-            if pattern == '\\\\' or pattern == 'xx':
-                # Backward diagonal lines
-                for i in range(-cpx, cpx * 2, spacing):
-                    pygame.draw.line(self.screen, hatch_color, (sx + i + cpx, sy), (sx + i, sy + cpx), 1)
-            if pattern == '||' or pattern == '++':
-                # Vertical lines
-                for i in range(0, cpx, spacing):
-                    pygame.draw.line(self.screen, hatch_color, (sx + i, sy), (sx + i, sy + cpx), 1)
-            if pattern == '--' or pattern == '++':
-                # Horizontal lines
-                for i in range(0, cpx, spacing):
-                    pygame.draw.line(self.screen, hatch_color, (sx, sy + i), (sx + cpx, sy + i), 1)
-        finally:
-            self.screen.set_clip(old_clip)
+        # Concentration/spell terrain now renders via _draw_temp_terrain_overlays
+        # (reads bm.active_terrain_effects); only static DM-painted terrain is drawn above.
 
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""

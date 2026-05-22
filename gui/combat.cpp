@@ -3411,28 +3411,11 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     cond.incapacitated = true;
     bm.setAgentConditions(idx, cond);
 
-    // Break concentration if the agent is concentrating
+    // Break concentration if the agent is concentrating.
+    // dropConcentration cascades removal of terrain + spell-effects + conditions.
     if (cond.concentrating) {
-        cond.concentrating = false;
-        cond.concentrating_on = "";
-        bm.setAgentConditions(idx, cond);
+        [[maybe_unused]] auto dropped = dropConcentration(bm, idx);
         log_("Agent incapacitated: concentration broken");
-
-        // Remove all conditions caused by concentration spells cast by this agent
-        const auto& spells = bm.getAgentSpells(idx);
-        std::vector<int> conds_to_remove;
-        for (const auto& active_cond : activeAgentConditions_) {
-            if (active_cond.caster_idx == idx &&
-                active_cond.spell_idx >= 0 &&
-                active_cond.spell_idx < static_cast<int>(spells.size())) {
-                if (spells[static_cast<std::size_t>(active_cond.spell_idx)].requires_concentration) {
-                    conds_to_remove.push_back(active_cond.condition_id);
-                }
-            }
-        }
-        for (int cond_id : conds_to_remove) {
-            removeAgentCondition(cond_id);
-        }
     }
 
     // Set all movement speeds to 0
@@ -3459,12 +3442,18 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     result.dropped    = true;
     result.spell_name = cond.concentrating_on;
 
-    // 1. Remove terrain effects from this source
-    result.removed_terrain_ids = bm.removeTerrainEffectsBySource(agent_idx);
+    // 1. Remove this caster's concentration terrain only (leave non-concentration
+    //    timed terrain, e.g. Grease, which is not a concentration spell in 5e).
+    for (const auto& eff : bm.activeTerrainEffects()) {
+        if (eff.source_agent_idx == agent_idx && eff.requires_concentration)
+            result.removed_terrain_ids.push_back(eff.id);
+    }
+    for (int tid : result.removed_terrain_ids)
+        bm.removeTerrainEffect(tid);
 
-    // 2. Remove spell effects cast by this agent
+    // 2. Remove this caster's concentration spell-effects only
     for (const auto& eff : bm.activeSpellEffects()) {
-        if (eff.caster_idx == agent_idx)
+        if (eff.caster_idx == agent_idx && eff.spell.requires_concentration)
             result.removed_spell_effect_ids.push_back(eff.effect_id);
     }
     for (int eid : result.removed_spell_effect_ids)
@@ -3485,6 +3474,32 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     cond.concentrating    = false;
     cond.concentrating_on = {};
     bm.setAgentConditions(agent_idx, cond);
+
+    return result;
+}
+
+TerrainTickResult CombatEngine::tickTerrainForTurn(BattleMap& bm, int agent_idx)
+{
+    TerrainTickResult result;
+
+    // Snapshot which of this source's terrain effects are concentration-bound,
+    // so we can detect a concentration spell ending by natural expiry.
+    std::unordered_set<int> concentration_ids;
+    for (const auto& eff : bm.activeTerrainEffects()) {
+        if (eff.source_agent_idx == agent_idx && eff.requires_concentration)
+            concentration_ids.insert(eff.id);
+    }
+
+    result.expired_terrain_ids = bm.tickTerrainEffects(agent_idx);
+
+    // If a concentration terrain expired, the caster's concentration ends —
+    // drop it (and cascade removal of the spell's other effects/conditions).
+    for (int id : result.expired_terrain_ids) {
+        if (concentration_ids.count(id)) {
+            result.concentration = dropConcentration(bm, agent_idx);
+            break;
+        }
+    }
 
     return result;
 }

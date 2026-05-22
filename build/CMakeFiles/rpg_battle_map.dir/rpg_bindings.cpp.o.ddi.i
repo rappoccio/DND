@@ -201911,6 +201911,14 @@ struct DropConcentrationResult {
 
 
 
+struct TerrainTickResult {
+    std::vector<int> expired_terrain_ids;
+    DropConcentrationResult concentration;
+};
+
+
+
+
 struct SpellResult {
     bool valid = false;
     int spell_idx = -1;
@@ -201997,14 +202005,14 @@ struct ActiveEffect {
     Spell spell;
     int turns_remaining = 0;
 };
-# 262 "/home/user/Claude/DND/gui/combat.hpp"
+# 270 "/home/user/Claude/DND/gui/combat.hpp"
 struct InitiativeEntry {
     int agent_idx = -1;
     int d20 = 0;
     int modifier = 0;
     int total = 0;
 };
-# 278 "/home/user/Claude/DND/gui/combat.hpp"
+# 286 "/home/user/Claude/DND/gui/combat.hpp"
 struct TurnActions {
     int agent_idx = -1;
 
@@ -202105,7 +202113,7 @@ public:
 
 
     void applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept;
-# 390 "/home/user/Claude/DND/gui/combat.hpp"
+# 398 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
     [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
     [[nodiscard]] int getSwimRemaining(int agent_idx) const noexcept;
@@ -202134,7 +202142,7 @@ public:
 
 
     bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
-# 429 "/home/user/Claude/DND/gui/combat.hpp"
+# 437 "/home/user/Claude/DND/gui/combat.hpp"
     TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
 
 
@@ -202314,7 +202322,7 @@ public:
 
 
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
-# 616 "/home/user/Claude/DND/gui/combat.hpp"
+# 624 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
 
 
@@ -202338,9 +202346,9 @@ public:
 
     [[nodiscard]] AttackResult executeAction(BattleMap& bm,
                                               const Attack& action);
-# 647 "/home/user/Claude/DND/gui/combat.hpp"
+# 655 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
-# 667 "/home/user/Claude/DND/gui/combat.hpp"
+# 675 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<AttackResult> runRound(BattleMap& bm,
                                        const std::vector<TurnActions>& turns);
 
@@ -202355,6 +202363,10 @@ public:
 
 
     [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
+
+
+
+    [[nodiscard]] TerrainTickResult tickTerrainForTurn(BattleMap& bm, int agent_idx);
 
 
 
@@ -202403,7 +202415,7 @@ public:
 
 
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept;
-# 750 "/home/user/Claude/DND/gui/combat.hpp"
+# 762 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] std::vector<float> getBattleObservation(
         const BattleMap& bm,
         int attacker_idx,
@@ -203475,6 +203487,11 @@ m
         .def_readonly("removed_condition_ids", &DropConcentrationResult::removed_condition_ids);
 
 
+    py::class_<TerrainTickResult>(m, "TerrainTickResult")
+        .def_readonly("expired_terrain_ids", &TerrainTickResult::expired_terrain_ids)
+        .def_readonly("concentration", &TerrainTickResult::concentration);
+
+
     py::class_<BrutalStrikeCtx>(m, "BrutalStrikeCtx")
         .def_readonly("attacker_idx", &BrutalStrikeCtx::attacker_idx)
         .def_readonly("target_idx", &BrutalStrikeCtx::target_idx)
@@ -203957,6 +203974,11 @@ m
              &CombatEngine::dropConcentration,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Drop concentration for agent: removes terrain, spell effects, conditions. Returns removed IDs.")
+        .def("tick_terrain_for_turn",
+             &CombatEngine::tickTerrainForTurn,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Tick the agent's terrain at start of turn; clears concentration if a concentration terrain expired.\n"
+             "Returns TerrainTickResult(expired_terrain_ids, concentration).")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),

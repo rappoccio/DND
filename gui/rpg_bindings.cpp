@@ -828,6 +828,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("removed_spell_effect_ids",  &DropConcentrationResult::removed_spell_effect_ids)
         .def_readonly("removed_condition_ids",     &DropConcentrationResult::removed_condition_ids);
 
+    // ── TerrainTickResult ────────────────────────────────────────────────────
+    py::class_<TerrainTickResult>(m, "TerrainTickResult")
+        .def_readonly("expired_terrain_ids", &TerrainTickResult::expired_terrain_ids)
+        .def_readonly("concentration",       &TerrainTickResult::concentration);
+
     // ── CombatDecider interface ──────────────────────────────────────────────
     py::class_<BrutalStrikeCtx>(m, "BrutalStrikeCtx")
         .def_readonly("attacker_idx", &BrutalStrikeCtx::attacker_idx)
@@ -1311,6 +1316,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::dropConcentration,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Drop concentration for agent: removes terrain, spell effects, conditions. Returns removed IDs.")
+        .def("tick_terrain_for_turn",
+             &CombatEngine::tickTerrainForTurn,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Tick the agent's terrain at start of turn; clears concentration if a concentration terrain expired.\n"
+             "Returns TerrainTickResult(expired_terrain_ids, concentration).")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),

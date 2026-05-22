@@ -170256,6 +170256,14 @@ struct DropConcentrationResult {
 
 
 
+struct TerrainTickResult {
+    std::vector<int> expired_terrain_ids;
+    DropConcentrationResult concentration;
+};
+
+
+
+
 struct SpellResult {
     bool valid = false;
     int spell_idx = -1;
@@ -170342,14 +170350,14 @@ struct ActiveEffect {
     Spell spell;
     int turns_remaining = 0;
 };
-# 262 "/home/user/Claude/DND/gui/combat.hpp"
+# 270 "/home/user/Claude/DND/gui/combat.hpp"
 struct InitiativeEntry {
     int agent_idx = -1;
     int d20 = 0;
     int modifier = 0;
     int total = 0;
 };
-# 278 "/home/user/Claude/DND/gui/combat.hpp"
+# 286 "/home/user/Claude/DND/gui/combat.hpp"
 struct TurnActions {
     int agent_idx = -1;
 
@@ -170450,7 +170458,7 @@ public:
 
 
     void applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept;
-# 390 "/home/user/Claude/DND/gui/combat.hpp"
+# 398 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
     [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
     [[nodiscard]] int getSwimRemaining(int agent_idx) const noexcept;
@@ -170479,7 +170487,7 @@ public:
 
 
     bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
-# 429 "/home/user/Claude/DND/gui/combat.hpp"
+# 437 "/home/user/Claude/DND/gui/combat.hpp"
     TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
 
 
@@ -170659,7 +170667,7 @@ public:
 
 
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
-# 616 "/home/user/Claude/DND/gui/combat.hpp"
+# 624 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
 
 
@@ -170683,9 +170691,9 @@ public:
 
     [[nodiscard]] AttackResult executeAction(BattleMap& bm,
                                               const Attack& action);
-# 647 "/home/user/Claude/DND/gui/combat.hpp"
+# 655 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
-# 667 "/home/user/Claude/DND/gui/combat.hpp"
+# 675 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<AttackResult> runRound(BattleMap& bm,
                                        const std::vector<TurnActions>& turns);
 
@@ -170700,6 +170708,10 @@ public:
 
 
     [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
+
+
+
+    [[nodiscard]] TerrainTickResult tickTerrainForTurn(BattleMap& bm, int agent_idx);
 
 
 
@@ -170748,7 +170760,7 @@ public:
 
 
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept;
-# 750 "/home/user/Claude/DND/gui/combat.hpp"
+# 762 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] std::vector<float> getBattleObservation(
         const BattleMap& bm,
         int attacker_idx,
@@ -176093,27 +176105,10 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     bm.setAgentConditions(idx, cond);
 
 
+
     if (cond.concentrating) {
-        cond.concentrating = false;
-        cond.concentrating_on = "";
-        bm.setAgentConditions(idx, cond);
+        [[maybe_unused]] auto dropped = dropConcentration(bm, idx);
         log_("Agent incapacitated: concentration broken");
-
-
-        const auto& spells = bm.getAgentSpells(idx);
-        std::vector<int> conds_to_remove;
-        for (const auto& active_cond : activeAgentConditions_) {
-            if (active_cond.caster_idx == idx &&
-                active_cond.spell_idx >= 0 &&
-                active_cond.spell_idx < static_cast<int>(spells.size())) {
-                if (spells[static_cast<std::size_t>(active_cond.spell_idx)].requires_concentration) {
-                    conds_to_remove.push_back(active_cond.condition_id);
-                }
-            }
-        }
-        for (int cond_id : conds_to_remove) {
-            removeAgentCondition(cond_id);
-        }
     }
 
 
@@ -176141,11 +176136,17 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     result.spell_name = cond.concentrating_on;
 
 
-    result.removed_terrain_ids = bm.removeTerrainEffectsBySource(agent_idx);
+
+    for (const auto& eff : bm.activeTerrainEffects()) {
+        if (eff.source_agent_idx == agent_idx && eff.requires_concentration)
+            result.removed_terrain_ids.push_back(eff.id);
+    }
+    for (int tid : result.removed_terrain_ids)
+        bm.removeTerrainEffect(tid);
 
 
     for (const auto& eff : bm.activeSpellEffects()) {
-        if (eff.caster_idx == agent_idx)
+        if (eff.caster_idx == agent_idx && eff.spell.requires_concentration)
             result.removed_spell_effect_ids.push_back(eff.effect_id);
     }
     for (int eid : result.removed_spell_effect_ids)
@@ -176166,6 +176167,32 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     cond.concentrating = false;
     cond.concentrating_on = {};
     bm.setAgentConditions(agent_idx, cond);
+
+    return result;
+}
+
+TerrainTickResult CombatEngine::tickTerrainForTurn(BattleMap& bm, int agent_idx)
+{
+    TerrainTickResult result;
+
+
+
+    std::unordered_set<int> concentration_ids;
+    for (const auto& eff : bm.activeTerrainEffects()) {
+        if (eff.source_agent_idx == agent_idx && eff.requires_concentration)
+            concentration_ids.insert(eff.id);
+    }
+
+    result.expired_terrain_ids = bm.tickTerrainEffects(agent_idx);
+
+
+
+    for (int id : result.expired_terrain_ids) {
+        if (concentration_ids.count(id)) {
+            result.concentration = dropConcentration(bm, agent_idx);
+            break;
+        }
+    }
 
     return result;
 }

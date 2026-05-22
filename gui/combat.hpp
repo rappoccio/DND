@@ -163,6 +163,14 @@ struct DropConcentrationResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Result of ticking an agent's terrain at the start of their turn
+// ─────────────────────────────────────────────────────────────────────────────
+struct TerrainTickResult {
+    std::vector<int>        expired_terrain_ids;  // terrain effects that ran out this turn
+    DropConcentrationResult concentration;        // populated if a concentration terrain expired
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Full result for a spell cast
 // ─────────────────────────────────────────────────────────────────────────────
 struct SpellResult {
@@ -678,6 +686,10 @@ public:
 
     // Drop concentration for the given agent: removes terrain, spell effects, conditions.
     [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
+
+    // Tick the given agent's terrain at the start of their turn. Decrements durations,
+    // removes expired effects, and clears concentration if a concentration terrain expired.
+    [[nodiscard]] TerrainTickResult tickTerrainForTurn(BattleMap& bm, int agent_idx);
 
     // Execute a shove attempt (bonus action, contested Athletics check).
     // Attacker vs target Athletics/Acrobatics (target chooses higher).
