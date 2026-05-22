@@ -3840,8 +3840,14 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
     // Apply chosen effects
     std::string effect_name;
     for (int effect : effects) {
-        if (effect == 0) {  // Forceful Blow: Push 15 ft
+        if (effect == 0) {  // Forceful Blow: Push 15 ft straight away from the attacker
             effect_name = "Forceful Blow";
+            const Cell attacker_origin = agents[static_cast<std::size_t>(attacker_idx)].origin;
+            int cells_moved = bm.forceMoveAgent(target_idx, attacker_origin, 15);
+            result.push_ft_applied = cells_moved * 5;
+            if (cells_moved > 0) {
+                log_("{} is pushed {} feet (Forceful Blow)", agentName(bm, target_idx), cells_moved * 5);
+            }
         } else if (effect == 1) {  // Hamstring Blow: Speed -15 ft
             tgt_cond.hamstrung = true;
             effect_name = "Hamstring Blow";

@@ -70,6 +70,35 @@ def test_brutal_strike_conditions_binding():
     print("✅ test_brutal_strike_conditions_binding passed")
 
 
+def test_forceful_blow_push():
+    """Verify Forceful Blow (effect 0) pushes the target away from the attacker."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    config_atk = create_test_agent("Barbarian9", 5, 5)
+    idx_atk = add_agent_to_battle(engine, bm, config_atk)
+
+    config_tgt = create_test_agent("Target", 6, 5)
+    idx_tgt = add_agent_to_battle(engine, bm, config_tgt)
+
+    stats = engine.get_agent_stats(bm, idx_atk)
+    stats.character_class = rpg.CharacterClass.Barbarian
+    stats.char_level = 9
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 9)
+    engine.set_agent_stats(bm, idx_atk, stats)
+
+    before_col = bm.placed_agents[idx_tgt].origin.col
+
+    # Apply Brutal Strike with Forceful Blow effect (effect 0)
+    result = rpg.AttackResult()
+    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [0], result)
+
+    after_col = bm.placed_agents[idx_tgt].origin.col
+    assert result.push_ft_applied > 0, f"Forceful Blow should push the target, got {result.push_ft_applied} ft"
+    assert after_col > before_col, f"Target should be pushed away from attacker (+x): before {before_col}, after {after_col}"
+    print("✅ test_forceful_blow_push passed")
+
+
 def test_hamstring_blow_condition():
     """Verify Hamstring Blow applies hamstrung condition"""
     bm = setup_battle_map()
@@ -244,6 +273,7 @@ if __name__ == "__main__":
     test_brutal_strike_damage_dice_l9()
     test_brutal_strike_damage_dice_l17()
     test_brutal_strike_conditions_binding()
+    test_forceful_blow_push()
     test_hamstring_blow_condition()
     test_staggering_blow_condition_l13()
     test_sundering_blow_condition_l13()

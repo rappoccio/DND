@@ -176535,6 +176535,12 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
     for (int effect : effects) {
         if (effect == 0) {
             effect_name = "Forceful Blow";
+            const Cell attacker_origin = agents[static_cast<std::size_t>(attacker_idx)].origin;
+            int cells_moved = bm.forceMoveAgent(target_idx, attacker_origin, 15);
+            result.push_ft_applied = cells_moved * 5;
+            if (cells_moved > 0) {
+                log_("{} is pushed {} feet (Forceful Blow)", agentName(bm, target_idx), cells_moved * 5);
+            }
         } else if (effect == 1) {
             tgt_cond.hamstrung = true;
             effect_name = "Hamstring Blow";
