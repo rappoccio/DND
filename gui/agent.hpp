@@ -504,7 +504,10 @@ namespace rpg {
       conditions_.reaction_used = false;
       // Per-turn Barbarian flags. Previously reset only in CombatEngine::runRound,
       // which the GUI never calls — left Brutal Strike/Divine Fury stuck after one use.
-      conditions_.reckless_attack              = false;
+      // NOTE: reckless_attack is intentionally NOT reset here. In this app Reckless Attack
+      // is a Rage-coupled stance (declared once while raging; cleared by endRage), and
+      // Brutal Strike eligibility requires it — resetting it per turn made Brutal Strike
+      // unavailable on every turn after the one it was declared.
       conditions_.brutal_strike_used_this_turn = false;
       conditions_.brutal_strike_available      = false;
       conditions_.berserker_frenzy_used        = false;
