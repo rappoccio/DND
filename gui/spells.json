@@ -5439,11 +5439,11 @@
     "name": "Plant Growth",
     "description": "This spell channels vitality into plants. The casting time you use determines whether the spell has the Overgrowth or the Enrichment effect below.\n\n**_Overgrowth._** Choose a point within range. All normal plants in a 100-foot-radius Sphere centered on that point become thick and overgrown. A creature moving through that area must spend 4 feet of movement for every 1 foot it moves. You can exclude one or more areas of any size within the spell's area from being affected.\n\n**_Enrichment._** All plants in a half-mile radius centered on a point within range become enriched for 365 days. The plants yield twice the normal amount of food when harvested. They can benefit from only one *Plant Growth* per year.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Sphere",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 150,
-    "radius": 0,
+    "radius": 10,
     "width": 0,
     "length": 0,
     "duration": 1,
@@ -5454,7 +5454,17 @@
     "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true,
-    "school": "transmutation"
+    "school": "transmutation",
+    "terrain_effect": {
+      "type": "Difficult Terrain",
+      "difficulty": "Quartered"
+    },
+    "terrain_color": [
+      34,
+      139,
+      34
+    ],
+    "hatch_pattern": "//"      
   },
   {
     "name": "Poison Spray",
