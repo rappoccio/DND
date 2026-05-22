@@ -1875,6 +1875,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("remove_spell_effect", &BattleMap::removeSpellEffect,
              py::arg("effect_id"),
              "Remove a spell effect by id.")
+        .def("clear_spell_effects", &BattleMap::clearSpellEffects,
+             "Remove all active spell effects (e.g. on End Combat).")
 
         // Dynamic light effects (spells, DM-placed lights, etc. with duration)
         .def("apply_base_lighting", &BattleMap::applyBaseLighting,

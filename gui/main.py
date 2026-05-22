@@ -1342,6 +1342,7 @@ class App:
         self._effect_meta         = {}
         self._spell_metadata      = {}
         self.bm.clear_terrain_effects()
+        self.bm.clear_spell_effects()
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
