@@ -410,6 +410,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // Death from Exhaustion: agent dies at exhaustion level 6
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+
+    // Reset per-turn Barbarian flags at start of each turn
+    cond.reckless_attack = false;
+
     if (cond.exhaustion_level >= 6 && stats.hp_cur > 0) {
         stats.hp_cur = 0;
         cond.dead = true;
@@ -580,29 +584,29 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 bm.setAgentConditions(agent_idx, cond);
             }
 
-            // Drop the caster's concentration on the spell that caused this condition
+            // Drop the caster's concentration ONLY if this was the last affected target from that spell
             if (active_cond.caster_idx >= 0 && active_cond.caster_idx < static_cast<int>(agents.size())) {
                 Agent::Conditions caster_cond = bm.getAgentConditions(active_cond.caster_idx);
                 if (caster_cond.concentrating) {
-                    caster_cond.concentrating = false;
-                    caster_cond.concentrating_on = "";
-                    bm.setAgentConditions(active_cond.caster_idx, caster_cond);
-                    log_("{} drops concentration", agentName(bm, active_cond.caster_idx));
-
-                    // Remove all conditions caused by concentration spells from this caster
-                    const auto& caster_spells = bm.getAgentSpells(active_cond.caster_idx);
-                    std::vector<int> conds_to_remove;
+                    // Check if there are any remaining conditions from this spell
+                    bool spell_still_affects_targets = false;
                     for (const auto& other_cond : activeAgentConditions_) {
                         if (other_cond.caster_idx == active_cond.caster_idx &&
-                            other_cond.spell_idx >= 0 &&
-                            other_cond.spell_idx < static_cast<int>(caster_spells.size())) {
-                            if (caster_spells[static_cast<std::size_t>(other_cond.spell_idx)].requires_concentration) {
-                                conds_to_remove.push_back(other_cond.condition_id);
-                            }
+                            other_cond.spell_idx == active_cond.spell_idx &&
+                            other_cond.condition_id != active_cond.condition_id) {
+                            spell_still_affects_targets = true;
+                            break;
                         }
                     }
-                    for (int cond_id : conds_to_remove) {
-                        removeAgentCondition(cond_id);
+
+                    // Only drop concentration if this was the last affected target
+                    if (!spell_still_affects_targets) {
+                        caster_cond.concentrating = false;
+                        caster_cond.concentrating_on = "";
+                        bm.setAgentConditions(active_cond.caster_idx, caster_cond);
+                        log_("{} drops concentration on spell (no more affected targets)", agentName(bm, active_cond.caster_idx));
+                    } else {
+                        log_("{} maintains concentration on spell (still {} other affected targets)", agentName(bm, active_cond.caster_idx), spell_still_affects_targets ? "has" : "no");
                     }
                 }
             }
@@ -1153,9 +1157,8 @@ std::vector<AttackResult> CombatEngine::runRound(
     for (int i = 0; i < n; ++i) {
         bm.placedAgents()[static_cast<std::size_t>(i)].agent->setReactionUsed(false);
 
-        // Reset Barbarian per-turn flags
+        // Reset per-round Barbarian flags (per-turn flags reset in beginTurn)
         Agent::Conditions cond = bm.getAgentConditions(i);
-        cond.reckless_attack = false;
         cond.berserker_frenzy_used = false;
         cond.zealot_divine_fury_used = false;
         cond.brutal_strike_available = false;
@@ -2611,8 +2614,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
             for (const auto& spell_cond : sp.conditions) {
                 // Determine if this specific condition applies to the target
-                log_("[COND] Processing condition '{}' for {}, push_ft={}",
-                     spell_cond.condition_name, agentName(bm, tgt_idx), spell_cond.push_ft);
+                log_("[COND] Processing condition '{}' for {}, requires_save={}, push_ft={}",
+                     spell_cond.condition_name, agentName(bm, tgt_idx), spell_cond.requires_save, spell_cond.push_ft);
                 bool condition_applies = false;
                 bool target_failed_save = false;
 
@@ -2623,6 +2626,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         // For Save spells, reuse the existing save result
                         target_failed_save = !tr.saved;
                         condition_applies = target_failed_save;
+                        log_("[COND SAVE] {} vs {}: tr.saved={}, target_failed_save={}, condition_applies={}",
+                             spell_cond.condition_name, agentName(bm, tgt_idx), tr.saved, target_failed_save, condition_applies);
                     } else {
                         // For other spell types, roll a new save for this condition
                         int save_dc = spellSaveDc(caster_stats);
@@ -4236,7 +4241,7 @@ void CombatEngine::standup(BattleMap& bm, int idx) noexcept
     cond.prone = false;
     bm.setAgentConditions(idx, cond);
 
-    log_("Agent stands up, spending {} feet of movement", standup_cost);
+    log_("{} stands up, spending {} feet of movement", agentName(bm, idx), standup_cost);
 }
 
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
@@ -4317,6 +4322,62 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for {}",
+                         cond.condition_name, agentName(bm, cond.agent_idx));
+                }
+            }
+        }
+    }
+
+    // Remove expired conditions
+    std::vector<ActiveAgentCondition> remaining;
+    for (const auto& cond : activeAgentConditions_) {
+        if (std::find(removed_ids.begin(), removed_ids.end(), cond.condition_id) == removed_ids.end()) {
+            remaining.push_back(cond);
+        }
+    }
+    activeAgentConditions_ = remaining;
+
+    return removed_ids;
+}
+
+std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept
+{
+    std::vector<int> removed_ids;
+
+    for (auto& cond : activeAgentConditions_) {
+        // Only tick conditions cast by this caster
+        if (cond.caster_idx != caster_idx) continue;
+
+        --cond.turns_remaining;
+        if (cond.turns_remaining <= 0) {
+            removed_ids.push_back(cond.condition_id);
+
+            // Remove the condition from the agent
+            if (cond.agent_idx >= 0) {
+                auto agents = bm.placedAgents();
+                if (cond.agent_idx < static_cast<int>(agents.size())) {
+                    auto agent_cond = bm.getAgentConditions(cond.agent_idx);
+                    if (cond.condition_name == "Paralyzed") {
+                        agent_cond.paralyzed = false;
+                        agent_cond.incapacitated = false;
+                    } else if (cond.condition_name == "Blinded") {
+                        agent_cond.blinded = false;
+                    } else if (cond.condition_name == "Incapacitated") {
+                        agent_cond.incapacitated = false;
+                    } else if (cond.condition_name == "Stunned") {
+                        agent_cond.stunned = false;
+                        agent_cond.incapacitated = false;
+                    } else if (cond.condition_name == "Charmed") {
+                        agent_cond.charmed = false;
+                    } else if (cond.condition_name == "Frightened") {
+                        agent_cond.frightened = false;
+                    } else if (cond.condition_name == "Unconscious") {
+                        agent_cond.unconscious = false;
+                        agent_cond.incapacitated = false;
+                        // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
+                    }
+                    bm.setAgentConditions(cond.agent_idx, agent_cond);
+                    log_("Condition '{}' expired for {} (spell duration ended)",
                          cond.condition_name, agentName(bm, cond.agent_idx));
                 }
             }

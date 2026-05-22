@@ -289,9 +289,12 @@ class App:
         self.show_lighting_overlay = False  # Toggle for lighting visualization
 
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
-        self.combat = rpg.CombatEngine()
+        import time
+        self.combat_seed = int(time.time() * 1000) % (2**32)
+        self.combat = rpg.CombatEngine(self.combat_seed)
         self.logger = rpg.MessageLogger()
         self.combat.set_logger(self.logger)
+        self.replay_log_file = None  # Will be set during combat start
 
         # ── Attack-range overlay ──────────────────────────────────────────
         self._attack_cells_melee:  list = []   # cells attackable by active melee weapon
@@ -1228,6 +1231,7 @@ class App:
         agent = self.bm.placed_agents[agent_idx]
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
 
+        # FLAG: Move to C++
         # Calculate jump distance for logging (from current position to target)
         jump_dist = (abs(target_cell.col - agent.origin.col) +
                      abs(target_cell.row - agent.origin.row)) * 5
@@ -1281,8 +1285,20 @@ class App:
         self.combat_log                = []
         # Initialize combat log file
         self._combat_log_file = "combat_log.txt"
+        # Initialize replay log file (contains seed and all actions for reproduction)
+        self.replay_log_file = "replay_log.txt"
+        with open(self.replay_log_file, "w") as f:
+            f.write(f"=== COMBAT REPLAY LOG ===\n")
+            f.write(f"To replay this combat with the exact same dice rolls:\n")
+            f.write(f"1. Create a new CombatEngine with seed={self.combat_seed}\n")
+            f.write(f"2. Set up the same agent positions\n")
+            f.write(f"3. Execute actions in the order listed below\n")
+            f.write(f"\nSEED: {self.combat_seed}\n")
+            f.write(f"INITIATIVE: {[(self.bm.placed_agents[e.agent_idx].name, e.total) for e in order]}\n")
+            f.write(f"\n=== ACTIONS (JSON format) ===\n")
         with open(self._combat_log_file, "w") as f:
             f.write("=== COMBAT LOG ===\n")
+            f.write(f"Seed: {self.combat_seed}\n")
         self._effect_meta         = {}
         self.bm.clear_terrain_effects()
         # Apply armor multipliers for all agents at combat start
@@ -1339,6 +1355,7 @@ class App:
         prev_turn_idx = self.turn_idx
         prev_idx = self._current_agent_idx()
 
+        # FLAG: Move to C++
         # Find next living agent (skip only if actually dead, not just unconscious at 0 HP)
         for _ in range(n):
             self.turn_idx = (self.turn_idx + 1) % n
@@ -1353,6 +1370,7 @@ class App:
                     # Agent is dead, drop concentration if any
                     self._drop_concentration_for_agent(idx)
 
+        # FLAG: Move to C++
         # Round advancement: when turn_idx wraps to 0
         if self.turn_idx < prev_turn_idx:
             self.round_num += 1
@@ -1394,8 +1412,8 @@ class App:
         if new_idx >= 0:
             turn_result = self.combat.begin_turn(self.bm, new_idx)
 
-            # Tick agent conditions AFTER begin_turn so they can affect this turn
-            self.combat.tick_agent_conditions(self.bm)
+            # Tick conditions cast by this agent (duration counted in this agent's turns, not absolute turns)
+            self.combat.tick_agent_conditions_for_caster(self.bm, new_idx)
 
             # Log any save rolls (e.g., paralyzed escape attempt)
             if turn_result.save_roll_message:
@@ -1421,11 +1439,13 @@ class App:
         self._update_reach()
         self._update_attack_overlay()
 
+    # FLAG: Move to C++
     def _drop_concentration(self):
         """Drop concentration for current agent and remove associated terrain."""
         cur_idx = self._current_agent_idx()
         self._drop_concentration_for_agent(cur_idx)
 
+    # FLAG: Move to C++
     def _drop_concentration_for_agent(self, agent_idx: int):
         """Drop concentration for specified agent and remove associated terrain."""
         if agent_idx < 0 or agent_idx >= len(self.bm.placed_agents):
@@ -1468,6 +1488,7 @@ class App:
         self._combat_log_add(f"{agent_name} drops concentration on {spell_name or 'spell'}.")
         self._save_terrain()
 
+    # FLAG: Move to C++
     def _tick_concentration_terrain(self):
         """Decrement duration on concentration terrain and remove expired effects."""
         expired_spells = []
@@ -1496,6 +1517,18 @@ class App:
         self._apply_terrain_to_battle_map()
         self._save_terrain()
 
+    def _replay_log_action(self, action_type: str, **kwargs):
+        """Log an action to the replay log for later reproduction."""
+        if not self.replay_log_file:
+            return
+        import json
+        log_entry = {"action": action_type, **kwargs}
+        try:
+            with open(self.replay_log_file, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except IOError:
+            pass  # Silently fail if replay log can't be written
+
     def _combat_log_add(self, msg: str):
         self.combat_log.insert(0, msg)
         if len(self.combat_log) > 10:
@@ -1516,6 +1549,7 @@ class App:
         for msg in self.logger.flush():
             self._combat_log_add(msg)
 
+    # FLAG: Move to C++
     def _drop_weapon(self, slot_idx: int):
         """Drop the equipped weapon in slot_idx onto the current agent's cell."""
         cur_idx = self._current_agent_idx()
@@ -1541,6 +1575,7 @@ class App:
         self.combat.set_agent_weapons(self.bm, cur_idx, weapons)
         self._combat_log_add(f"{agent.name} drops {weapon.name}.")
 
+    # FLAG: Move to C++
     def _show_item_pickup_menu(self, cell, items, agent_idx, pos):
         """Show context menu to pick up one of the items at this cell."""
         menu_items = []
@@ -1551,6 +1586,7 @@ class App:
         if menu_items:
             self.context_menu.show(pos, menu_items, self.screen.get_size())
 
+    # FLAG: Move to C++
     def _pickup_item(self, item, agent_idx: int):
         """Assign item weapon to agent slot and remove item from map."""
         weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
@@ -1624,6 +1660,7 @@ class App:
 
         self._combat_log_add(visibility_info)
 
+    # FLAG: Move to C++
     def _activate_reckless_and_attack(self, idx: int, slot: str):
         """Set Reckless Attack flag and proceed with attack."""
         cond = self.combat.get_agent_conditions(self.bm, idx)
@@ -1683,6 +1720,7 @@ class App:
             suffix = f" ({rem} attack{'s' if rem != 1 else ''} remaining)"
             self._combat_log_add(f"Click a target on the map.{suffix}")
 
+        # FLAG: Move to C++
         # Filter weapons for bonus attacks: only show off-hand weapons
         weapons_to_use = weapons
         if slot == "bonus":
@@ -1725,6 +1763,8 @@ class App:
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus")
+        # Log to replay log
+        self._replay_log_action("attack", attacker_idx=atk_idx, target_idx=target_idx, weapon_idx=self.pending_weapon_idx, slot=slot)
         result = self.combat.execute_action(self.bm, action)
         # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
@@ -1734,6 +1774,7 @@ class App:
         atk_name = agents[atk_idx].name if atk_idx < len(agents) else "?"
         tgt_name = agents[target_idx].name if target_idx < len(agents) else "?"
 
+        # FLAG: Move to C++
         if not result.valid:
             # Check if attack failed because agent slipped
             if atk_idx >= 0 and atk_idx < len(agents) and agents[atk_idx].conditions.slipped_this_turn:
@@ -1748,12 +1789,14 @@ class App:
             return
 
         # Check if attacker has exhaustion for potential penalty note
+        # FLAG: Move to C++
         atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx) if 0 <= atk_idx < len(agents) else None
         exh_note = ""
         if atk_cond and atk_cond.exhaustion_level >= 1:
             penalty = 2 * atk_cond.exhaustion_level
             exh_note = f" [−{penalty} exhaustion]"
 
+        # FLAG: Move to C++ 
         # Check for Brutal Strike before logging
         has_brutal_strike = False
         if result.hit and result.valid:
@@ -1761,6 +1804,7 @@ class App:
             if atk_cond and atk_cond.brutal_strike_available:
                 has_brutal_strike = True
 
+        # FLAG: Move to C++
         # Format attack message
         if result.hit:
             dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
@@ -1775,6 +1819,7 @@ class App:
                        f"miss (roll {result.total_roll} vs AC {result.target_ac})"
                        f"{exh_note}")
 
+        # FLAG: Move to C++
         # If no Brutal Strike, log attack immediately
         if not has_brutal_strike:
             self._combat_log_add(atk_msg)
@@ -1782,6 +1827,7 @@ class App:
             # Defer logging until after Brutal Strike is applied
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
 
+        # FLAG: Move to C++
         # Check concentration save if damage was dealt
         if result.hit and result.total_damage > 0:
             csave = self.combat.concentration_save(self.bm, target_idx, result.total_damage)
@@ -1803,10 +1849,11 @@ class App:
                     self._apply_terrain_to_battle_map()
                     self._combat_log_add(f"{agent_name} drops concentration on {spell_name}.")
 
+        # FLAG: Move to C++
         # If target is down, drop their concentration
         if result.target_down:
             self._drop_concentration_for_agent(target_idx)
-
+        # FLAG: Move to C++
         self.attacks_remaining -= 1
         if self.attacks_remaining > 0:
             # More attacks left — clear pending slot so user can move or pick another weapon
@@ -1825,6 +1872,7 @@ class App:
                 self.combat.set_agent_weapons(self.bm, idx_to_restore, orig_weapons)
                 self._unarmed_strike_original_weapons = None
 
+            # FLAG: Move to C++
             if slot == "action":
                 self.action_used = True
                 # Check Berserker Frenzy: bonus melee attack every turn while raging
@@ -1847,6 +1895,7 @@ class App:
         level = atk_stats.char_level
         dice_str = "2d10" if level >= 17 else "1d10"
 
+        # FLAG: Move to C++
         def _apply(effects):
             if effects:
                 # Apply Brutal Strike effect and modify result
@@ -1919,6 +1968,7 @@ class App:
         mouse_pos = pygame.mouse.get_pos()
         self.context_menu.show(mouse_pos, items, self.screen.get_size())
 
+    # FLAG: Move to C++
     def _use_portent_die_at_index(self, die_index: int):
         """Use the selected portent die."""
         idx = self._current_agent_idx()
@@ -1963,6 +2013,7 @@ class App:
         mouse_pos = pygame.mouse.get_pos()
         self.context_menu.show(mouse_pos, items, self.screen.get_size())
 
+    # FLAG: Move to C++
     def _expend_arcane_ward_slot(self, slot_level: int):
         """Expend a spell slot to charge Arcane Ward."""
         idx = self._current_agent_idx()
@@ -2116,6 +2167,7 @@ class App:
         self.pending_grapple_slot = ""
         self.bonus_used = True
 
+    # FLAG: Move to C++
     def _execute_grapple_escape(self):
         """Execute escape from grapple (bonus action, no target selection)."""
         if self.bonus_used:
@@ -2161,6 +2213,7 @@ class App:
             self._spell_metadata[(agent_idx, j)] = meta
         self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
 
+    # FLAG: Move to C++
     def _start_cast_spell(self, slot: str):
         self.jump_overlay_active = False  # Close jump overlay when casting spell
         self.jump_reachable_cells = []
@@ -2397,6 +2450,7 @@ class App:
 
         return ""
 
+    # FLAG: Move to C++
     def _log_spell_results(self, result, cast_name: str, caster_idx: int = -1, spell_idx: int = -1):
         agents = self.bm.placed_agents
         spell = None
@@ -2532,6 +2586,7 @@ class App:
                            f"{' — DOWN' if tr.target_down else ''}")
             self._combat_log_add(msg)
 
+    # FLAG: Move to C++
     def _on_long_rest(self):
         """Reset all spell slots, NPC spell uses, decrement exhaustion by 1, and regenerate Portent Dice."""
         # Apply combat engine long rest (restores resources, regenerates Portent Dice)
@@ -2553,6 +2608,7 @@ class App:
         if self.combat_active:
             self._combat_log_add("Long rest — spell slots, resources, and Portent Dice restored.")
 
+    # FLAG: Move to C++
     def _process_opportunity_queue(self):
         """Process one opportunity attack from the queue, then chain to the next."""
         if not self._opportunity_queue:
@@ -2616,6 +2672,7 @@ class App:
         px, py = self._agent_screen_pos(attacker_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    # FLAG: Move to C++
     def _log_opportunity_result(self, atk_idx: int, tgt_idx: int, result):
         """Log weapon-based opportunity attack result."""
         agents = self.bm.placed_agents
@@ -2635,6 +2692,7 @@ class App:
             self._combat_log_add(
                 f"{atk_name}→{tgt_name}: OA miss (roll {result.total_roll} vs AC {result.target_ac})")
 
+    # FLAG: Move to C++
     def _check_concentration_after_oa(self, tgt_idx: int, result):
         """Check concentration save after OA damage (weapon only)."""
         if result.hit and result.total_damage > 0:
@@ -2674,6 +2732,8 @@ class App:
         y = ag.origin.row * cpx + cpx // 2
         return (x, y)
 
+
+    # FLAG: Move to C++
     def _complete_pending_move(self):
         """Complete a move that was pending while OA resolved."""
         if self.pending_move_idx < 0:
@@ -2686,6 +2746,8 @@ class App:
         self.pending_move_type = None
 
         agents = self.bm.placed_agents
+        # Log to replay log
+        self._replay_log_action("move", agent_idx=move_idx, col=move_cell.col, row=move_cell.row, move_type=move_type.name)
         move_success = self.combat.move_agent(self.bm, move_idx, move_cell, move_type)
         self._flush_combat_log()  # Flush any spell effect damage messages
         if move_success:
@@ -2710,6 +2772,7 @@ class App:
         else:
             self._combat_log_add(f"{agents[move_idx].name if move_idx < len(agents) else '?'}: movement blocked")
 
+    # FLAG: Move to C++
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -2737,6 +2800,9 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
+        # Log to replay log
+        self._replay_log_action("spell", caster_idx=caster_idx, spell_idx=self.pending_spell_idx,
+                               slot=slot, targets=action.target_indices)
         result = self.combat.execute_spell(self.bm, action)
 
         self._flush_combat_log()
@@ -2761,6 +2827,7 @@ class App:
         else:
             self.bonus_used = True
 
+    # FLAG: Move to C++
     def _resolve_spell_cast_aoe(self, cell):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -2899,6 +2966,7 @@ class App:
         else:
             self.bonus_used = True
 
+    # FLAG: Move to C++
     def _aoe_cells(self, center_cell, spell) -> list:
         """Return list of rpg.Cell objects covered by the spell AoE (1 cell = 5 ft)."""
         import math
@@ -2971,6 +3039,8 @@ class App:
 
         return cells
 
+
+    # FLAG: Move to C++
     def _filter_spell_cells_by_range_and_los(self, cells: list, caster_idx: int, spell, center_cell=None) -> list:
         """Filter cells using C++ method that respects spell's requires_los and check_los_on_center flags."""
         if caster_idx < 0 or caster_idx >= len(self.bm.placed_agents):
@@ -2981,6 +3051,7 @@ class App:
         caster = self.bm.placed_agents[caster_idx]
         return self.bm.filter_spell_cells(cells, caster.origin, caster.size, spell, center_cell)
 
+    # FLAG: Move to C++
     def _cells_to_terrain_region(self, cells: list, terrain_effect: dict, spell_name: str, caster_idx: int, hatch_pattern: str = None, spell_idx: int = -1) -> dict:
         """Convert list of cells to a terrain region with source metadata."""
         if not cells:
@@ -3214,6 +3285,19 @@ class App:
         s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
         s.effects_on_end_turn = d.get("effects_on_end_turn", False)
 
+        # Parse terrain effect (Grease, Spike Growth, etc.) onto the C++ Spell.
+        # Cosmetic color/hatch stay in _spell_metadata for rendering.
+        te = d.get("terrain_effect")
+        if te:
+            if te.get("type") == "Slipping":
+                s.terrain_difficulty = rpg.TerrainDifficulty.Slipping
+                s.slip_save_dc       = int(te.get("slip_save_dc", 10))
+                s.slip_distance_feet = int(te.get("slip_distance_feet", 5))
+            else:
+                m = float(te.get("multiplier", 0.5))
+                s.terrain_difficulty = (rpg.TerrainDifficulty.Quartered if m <= 0.25
+                                        else rpg.TerrainDifficulty.Halved)
+
         # Parse conditions applied by this spell (e.g., Hold Person applies Paralyzed)
         conditions = []
         for cond_entry in d.get("conditions", []):
@@ -3256,6 +3340,8 @@ class App:
 
         return s
 
+
+    # FLAG: Move to C++
     def _save_agents(self, path: str | None = None):
         path = path or self._save_path
         data = []
@@ -3334,6 +3420,7 @@ class App:
         with open(path, "w") as f:
             json.dump({"agents": data, "map_items": items_data}, f, indent=2)
 
+    # FLAG: Move to C++
     def _load_agents(self, path: str | None = None):
         path = path or self._save_path
         if not os.path.exists(path):

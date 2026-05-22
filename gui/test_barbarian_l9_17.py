@@ -89,7 +89,8 @@ def test_hamstring_blow_condition():
     engine.set_agent_stats(bm, idx_atk, stats)
 
     # Apply Brutal Strike with Hamstring Blow effect (effect 1)
-    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [1])
+    result = rpg.AttackResult()
+    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [1], result)
 
     # Verify target has hamstrung condition
     cond_tgt = engine.get_agent_conditions(bm, idx_tgt)
@@ -115,7 +116,8 @@ def test_staggering_blow_condition_l13():
     engine.set_agent_stats(bm, idx_atk, stats)
 
     # Apply Brutal Strike with Staggering Blow effect (effect 2)
-    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [2])
+    result = rpg.AttackResult()
+    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [2], result)
 
     # Verify target has staggered_next_save condition
     cond_tgt = engine.get_agent_conditions(bm, idx_tgt)
@@ -141,7 +143,8 @@ def test_sundering_blow_condition_l13():
     engine.set_agent_stats(bm, idx_atk, stats)
 
     # Apply Brutal Strike with Sundering Blow effect (effect 3)
-    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [3])
+    result = rpg.AttackResult()
+    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [3], result)
 
     # Verify target has sundering_target_idx set to attacker
     cond_tgt = engine.get_agent_conditions(bm, idx_tgt)
@@ -167,7 +170,8 @@ def test_brutal_strike_multi_effect_l17():
     engine.set_agent_stats(bm, idx_atk, stats)
 
     # Apply Brutal Strike with two effects: Hamstring (1) and Staggering (2)
-    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [1, 2])
+    result = rpg.AttackResult()
+    engine.apply_brutal_strike_effect(bm, idx_atk, idx_tgt, [1, 2], result)
 
     # Verify both conditions are applied
     cond_tgt = engine.get_agent_conditions(bm, idx_tgt)

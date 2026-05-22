@@ -1,0 +1,11 @@
+{
+"rules": [
+{
+"primary-output": "CMakeFiles/rpg_battle_map.dir/battle_map.cpp.o",
+"requires": [
+]
+}
+],
+"version": 0,
+"revision": 0
+}

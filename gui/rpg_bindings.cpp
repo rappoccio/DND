@@ -709,6 +709,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("terrain_difficulty",   &Spell::terrain_difficulty,
              "Terrain difficulty applied by this spell (Normal = no terrain effect).\n"
              "The duration is the same as spell.duration (in rounds).")
+        .def_readwrite("slip_save_dc",         &Spell::slip_save_dc,
+             "Slipping terrain: DEX save DC.")
+        .def_readwrite("slip_distance_feet",   &Spell::slip_distance_feet,
+             "Slipping terrain: feet moved before a save is required.")
         .def_readwrite("requires_concentration", &Spell::requires_concentration,
              "If true, caster must maintain concentration; breaks on damage (CON save).")
         .def_readwrite("requires_los", &Spell::requires_los,
@@ -1458,6 +1462,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Decrement all active agent condition durations by 1 turn.\n"
              "Remove expired conditions and apply their end-of-life effects.\n"
              "Returns list of expired condition IDs.")
+        .def("tick_agent_conditions_for_caster",
+             &CombatEngine::tickAgentConditionsForCaster,
+             py::arg("battle_map"), py::arg("caster_idx"),
+             "Decrement condition durations for conditions cast by the given caster.\n"
+             "Duration is counted in the caster's turns, not absolute turns.\n"
+             "Returns list of expired condition IDs.")
         .def("remove_agent_condition",
              &CombatEngine::removeAgentCondition,
              py::arg("condition_id"),
@@ -1575,7 +1585,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("cell_indices",      &ActiveTerrainEffect::cell_indices)
         .def_readonly("difficulty",        &ActiveTerrainEffect::difficulty)
         .def_readonly("turns_remaining",   &ActiveTerrainEffect::turns_remaining)
-        .def_readonly("source_agent_idx",  &ActiveTerrainEffect::source_agent_idx);
+        .def_readonly("source_agent_idx",  &ActiveTerrainEffect::source_agent_idx)
+        .def_readonly("spell_idx",         &ActiveTerrainEffect::spell_idx)
+        .def_readonly("requires_concentration", &ActiveTerrainEffect::requires_concentration);
 
     // ── ActiveLightEffect struct ────────────────────────────────────────────
     py::class_<ActiveLightEffect>(m, "ActiveLightEffect")
@@ -1681,6 +1693,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Respects spell.requires_los and spell.check_los_on_center flags.\n"
              "If check_los_on_center, only the center cell needs LOS (D&D 5e standard).")
 
+        .def("aoe_cells", &BattleMap::aoeCells,
+             py::arg("center"), py::arg("spell"), py::arg("caster_origin"),
+             "Cells covered by a spell's AoE geometry (Cone/Line use caster_origin as apex).")
+
         // Attack target cells (melee reach or ranged range, with LoS filter)
         .def("attack_target_cells",
              [](const BattleMap& bm, Cell origin, int agentSize, int rangeFt) {
@@ -1762,6 +1778,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("name"), py::arg("cells"), py::arg("difficulty"),
              py::arg("turns_remaining"), py::arg("source_agent_idx"),
              py::arg("slip_save_dc") = 10, py::arg("slip_distance_feet") = 5,
+             py::arg("spell_idx") = -1, py::arg("requires_concentration") = false,
              "Place a temporary terrain effect covering the given cells.\n"
              "Returns unique effect id (for later removal/metadata).")
         .def("tick_terrain_effects", &BattleMap::tickTerrainEffects,

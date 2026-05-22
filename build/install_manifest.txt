@@ -1,0 +1,1 @@
+/home/user/Claude/DND/gui/rpg_battle_map.cpython-312-x86_64-linux-gnu.so

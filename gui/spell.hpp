@@ -44,6 +44,8 @@ namespace rpg {
       // If terrain_difficulty is Normal (0), no terrain effect is created.
       // The terrain effect duration is the same as the spell's duration (in rounds).
       TerrainDifficulty terrain_difficulty{static_cast<TerrainDifficulty>(0)};  // Normal
+      int slip_save_dc{10};       // Slipping terrain: DEX save DC
+      int slip_distance_feet{5};  // Slipping terrain: feet moved before a save is required
 
       bool requires_concentration{false};  // Caster must maintain concentration; breaks on damage
       bool requires_los{false};            // Spell requires line of sight to target/area

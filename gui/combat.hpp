@@ -458,6 +458,10 @@ public:
     // Decrement turns_remaining and handle condition expiration.
     // Returns list of removed condition ids.
     [[nodiscard]] std::vector<int> tickAgentConditions(BattleMap& bm) noexcept;
+    // Decrement turns_remaining only for conditions cast by the given caster.
+    // Duration is counted in the caster's turns, not absolute turns.
+    // Returns list of removed condition ids.
+    [[nodiscard]] std::vector<int> tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept;
     // Remove a condition by id.
     void removeAgentCondition(int condition_id) noexcept;
 

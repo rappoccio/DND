@@ -83,6 +83,8 @@ struct ActiveTerrainEffect {
     // Slipping terrain (ice/grease) settings
     int                 slip_save_dc{10};        // DC for DEX save (default 10)
     int                 slip_distance_feet{5};  // Feet moved before requiring save (default 5)
+    int                 spell_idx{-1};                  // caster's spell index (-1 = none)
+    bool                requires_concentration{false};  // terrain ends when caster drops concentration
 };
 
 // ── Active temporary light effect ──────────────────────────────────────────
@@ -262,6 +264,11 @@ public:
                                                      Cell casterOrigin, int casterSize,
                                                      const Spell& spell, Cell centerCell) const;
 
+    // Compute the grid cells covered by a spell's AoE geometry (1 cell = 5 ft).
+    // Cone/Line use casterOrigin as the apex/source. Single/Multiple return {}.
+    [[nodiscard]] std::vector<Cell> aoeCells(Cell center, const Spell& spell,
+                                             Cell casterOrigin) const;
+
     // ── Terrain multipliers ───────────────────────────────────────────────
     // Movement cost multiplier for each cell (default 1.0).
     // Used for difficult terrain, spells, etc. Stored as cols × rows.
@@ -284,7 +291,9 @@ public:
                                          int turns_remaining,
                                          int source_agent_idx,
                                          int slip_save_dc = 10,
-                                         int slip_distance_feet = 5);
+                                         int slip_distance_feet = 5,
+                                         int spell_idx = -1,
+                                         bool requires_concentration = false);
 
     // Decrement turns_remaining for effects sourced from the given agent.
     // Removes expired effects (turns_remaining <= 0).

@@ -5,6 +5,8 @@
 - [Speed=0 and OA Mechanics](feedback_speed_zero_mechanics.md) — Creatures with Speed=0 can't move or make OAs; forced movement bypasses validation
 - [Architecture: Mechanics in C++](architecture_mechanics_in_cpp.md) — Game mechanics belong in C++, Python UI is rendering/interaction only
 - [Architecture: Agent as Character](architecture_agent_as_character.md) — Consolidate stats/logic into Agent toward per-class objects; virtual dispatch (not concepts); stats homogenized May 21
+- [Architecture: Decider/Flow-State](architecture_decider_flow_state.md) — Moving main.py logic to C++: mechanics in C++, decision points via CombatDecider (GUI=Python callback, RL=default policy); terrain migration is first epic
+- [Build & Test Workflow](feedback_build_handling.md) — Building/testing now ALLOWED via Docker (iCloud issue fixed); image entrypoint is /bin/bash so pass `-c`; repo at ~/Claude/DND
 - [GUI Not Tested](feedback_gui_not_tested.md) — main.py GUI isn't covered by run_all_tests.py; GUI changes need manual in-app verification
 - [Model-Split Workflow](feedback_model_split_workflow.md) — User uses Opus for analysis/specs, Haiku for mechanical coding; hand off with precise self-contained specs
 - [Fix: Thunderwave Push](fix_thunderwave_push.md) — Fixed missing push_ft/requires_save in main.py's _dict_to_spell method

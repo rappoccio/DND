@@ -1,0 +1,11 @@
+ninja_dyndep_version = 1.0
+build CMakeFiles/rpg_battle_map.dir/rpg_bindings.cpp.o: dyndep
+
+build CMakeFiles/rpg_battle_map.dir/battle_map.cpp.o: dyndep
+
+build CMakeFiles/rpg_battle_map.dir/combat.cpp.o: dyndep
+
+build CMakeFiles/rpg_battle_map.dir/map_configs.cpp.o: dyndep
+
+build CMakeFiles/rpg_battle_map.dir/spell.cpp.o: dyndep
+

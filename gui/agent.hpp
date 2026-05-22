@@ -502,6 +502,13 @@ namespace rpg {
       conditions_.dodging     = false;
       conditions_.disengaging = false;
       conditions_.reaction_used = false;
+      // Per-turn Barbarian flags. Previously reset only in CombatEngine::runRound,
+      // which the GUI never calls — left Brutal Strike/Divine Fury stuck after one use.
+      conditions_.reckless_attack              = false;
+      conditions_.brutal_strike_used_this_turn = false;
+      conditions_.brutal_strike_available      = false;
+      conditions_.berserker_frenzy_used        = false;
+      conditions_.zealot_divine_fury_used      = false;
       takeTurn();
     }
 

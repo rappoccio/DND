@@ -852,6 +852,76 @@ std::vector<Cell> BattleMap::attackTargetCells(Cell origin, int tokenSize,
     return result;
 }
 
+std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
+                                      Cell casterOrigin) const {
+    std::vector<Cell> cells;
+    const double ax = static_cast<double>(center.col);
+    const double ay = static_cast<double>(center.row);
+
+    switch (spell.geometry) {
+    case Spell::Sphere: {
+        const double r = spell.radius / 5.0;
+        for (int c = 0; c < cols_; ++c)
+            for (int rr = 0; rr < rows_; ++rr) {
+                const double dx = c - ax, dy = rr - ay;
+                if (std::sqrt(dx * dx + dy * dy) <= r) cells.push_back(Cell{c, rr});
+            }
+        break;
+    }
+    case Spell::Cone: {
+        const double cx = casterOrigin.col, cy = casterOrigin.row;
+        const double dx = ax - cx, dy = ay - cy;
+        const double ln = std::sqrt(dx * dx + dy * dy);
+        if (ln < 0.001) break;
+        const double ux = dx / ln, uy = dy / ln;
+        const double r = spell.radius / 5.0;
+        for (int c = 0; c < cols_; ++c)
+            for (int rr = 0; rr < rows_; ++rr) {
+                const double px = c - cx, py = rr - cy;
+                const double plen = std::sqrt(px * px + py * py);
+                if (plen < 0.001) continue;
+                const double dot = px * ux + py * uy;
+                if (dot > 0 && plen <= r && (dot / plen) >= 0.866)
+                    cells.push_back(Cell{c, rr});
+            }
+        break;
+    }
+    case Spell::Line: {
+        const double cx = casterOrigin.col, cy = casterOrigin.row;
+        const double dx = ax - cx, dy = ay - cy;
+        const double ln = std::sqrt(dx * dx + dy * dy);
+        if (ln < 0.001) break;
+        const double ux = dx / ln, uy = dy / ln;
+        const double lcells = spell.length / 5.0;
+        const double wcells = spell.width / 5.0;
+        for (int c = 0; c < cols_; ++c)
+            for (int rr = 0; rr < rows_; ++rr) {
+                const double px = c - cx, py = rr - cy;
+                const double along = px * ux + py * uy;
+                const double perp = std::abs(-py * ux + px * uy);
+                if (along >= 0.0 && along <= lcells && perp <= wcells / 2.0)
+                    cells.push_back(Cell{c, rr});
+            }
+        break;
+    }
+    case Spell::Square:
+    case Spell::Rectangle: {
+        const double wcells = spell.width / 5.0;
+        const double lcells = spell.length / 5.0;
+        for (int c = 0; c < cols_; ++c)
+            for (int rr = 0; rr < rows_; ++rr) {
+                const double dx = std::abs(c - ax), dy = std::abs(rr - ay);
+                if (dx <= wcells / 2.0 && dy <= lcells / 2.0)
+                    cells.push_back(Cell{c, rr});
+            }
+        break;
+    }
+    default:  // Single, Multiple, NumGeometry_t: no AoE footprint
+        break;
+    }
+    return cells;
+}
+
 std::vector<Cell> BattleMap::filterSpellCells(const std::vector<Cell>& cells,
                                               Cell casterOrigin, int casterSize,
                                               const Spell& spell, Cell centerCell) const
@@ -1128,7 +1198,9 @@ int BattleMap::placeTerrainEffect(std::string name,
                                    int turns_remaining,
                                    int source_agent_idx,
                                    int slip_save_dc,
-                                   int slip_distance_feet) {
+                                   int slip_distance_feet,
+                                   int spell_idx,
+                                   bool requires_concentration) {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -1150,7 +1222,9 @@ int BattleMap::placeTerrainEffect(std::string name,
         turns_remaining,
         source_agent_idx,
         slip_save_dc,
-        slip_distance_feet
+        slip_distance_feet,
+        spell_idx,
+        requires_concentration
     };
     activeTerrainEffects_.push_back(effect);
 
