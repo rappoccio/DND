@@ -4040,10 +4040,16 @@ class App:
         raw_v = self.bm.v_line_positions
 
         for effect in self.bm.active_terrain_effects:
-            # Get color from metadata, or use a default based on difficulty
-            if effect.id in self._effect_meta:
-                color = self._effect_meta[effect.id].get("color", (100, 180, 220, 80))
-            else:
+            # Color by the spell's name. Terrain effect ids share an integer space with
+            # persistent spell-effect ids, so keying color off _effect_meta[id] bleeds the
+            # latest spell-effect color onto all terrain. Look up terrain_color by name instead.
+            color = None
+            si = self.spell_name_to_idx.get(effect.name)
+            if si is not None:
+                rgb = self.all_spells[si].get("terrain_color")
+                if rgb:
+                    color = (rgb[0], rgb[1], rgb[2], 90)
+            if color is None:
                 # Default colors by difficulty
                 if effect.difficulty == rpg.TerrainDifficulty.Halved:
                     color = (80, 200, 80, 80)  # Green

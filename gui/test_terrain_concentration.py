@@ -120,6 +120,73 @@ def test_drop_concentration_leaves_nonconcentration_terrain():
     print("✅ test_drop_concentration_leaves_nonconcentration_terrain passed")
 
 
+def _make_condition_spell(name, geometry):
+    spell = rpg.Spell()
+    spell.name = name
+    spell.level = 0  # avoid slot requirements
+    spell.attack_type = rpg.SpellAttack.Save
+    spell.save_ability = rpg.SaveAbility.Strength
+    spell.geometry = geometry
+    spell.range = 90
+    spell.width = 10
+    spell.length = 10
+    spell.duration = 10
+    spell.requires_concentration = True
+    cond = rpg.AttackCondition()
+    cond.condition_name = "Restrained"
+    cond.requires_save = True
+    cond.save_ability = rpg.SaveAbility.Strength
+    cond.condition_duration = 0
+    spell.conditions = [cond]
+    return spell
+
+
+def test_aoe_concentration_holds_with_no_targets():
+    """An AoE condition spell cast on empty ground still establishes concentration:
+    the area persists even with no creatures currently caught."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster_idx = add_agent_to_battle(engine, bm, create_test_agent("Caster", 2, 2))
+    stats = engine.get_agent_stats(bm, caster_idx)
+    stats.can_cast_spell = True
+    engine.set_agent_stats(bm, caster_idx, stats)
+
+    engine.set_agent_spells(bm, caster_idx, [_make_condition_spell("Black Tentacles", rpg.SpellGeometry.Square)])
+
+    action = rpg.SpellAction()
+    action.caster_idx = caster_idx
+    action.spell_idx = 0
+    action.aoe_col = 9  # far from the caster — no creature in the area
+    action.aoe_row = 9
+    result = engine.execute_spell(bm, action)
+    assert result.valid, "AoE cast on empty ground should be a valid cast"
+    assert engine.get_agent_conditions(bm, caster_idx).concentrating, \
+        "AoE concentration spell must hold concentration even with no targets in area"
+    print("✅ test_aoe_concentration_holds_with_no_targets passed")
+
+
+def test_multiple_target_concentration_drops_with_no_targets():
+    """A Multiple-target condition spell with no targets affected does NOT concentrate."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster_idx = add_agent_to_battle(engine, bm, create_test_agent("Caster", 2, 2))
+    stats = engine.get_agent_stats(bm, caster_idx)
+    stats.can_cast_spell = True
+    engine.set_agent_stats(bm, caster_idx, stats)
+
+    engine.set_agent_spells(bm, caster_idx, [_make_condition_spell("Hold Monster", rpg.SpellGeometry.Multiple)])
+
+    action = rpg.SpellAction()
+    action.caster_idx = caster_idx
+    action.spell_idx = 0
+    action.target_indices = []  # no targets selected
+    result = engine.execute_spell(bm, action)
+    # No condition could land with zero targets -> concentration should not be established.
+    assert not engine.get_agent_conditions(bm, caster_idx).concentrating, \
+        "Multiple-target spell with no affected targets must not hold concentration"
+    print("✅ test_multiple_target_concentration_drops_with_no_targets passed")
+
+
 if __name__ == "__main__":
     test_terrain_concentration_bindings_present()
     test_drop_concentration_noop_when_not_concentrating()
@@ -127,4 +194,6 @@ if __name__ == "__main__":
     test_tick_clears_concentration_on_expiry()
     test_tick_nonconcentration_terrain_keeps_concentration()
     test_drop_concentration_leaves_nonconcentration_terrain()
+    test_aoe_concentration_holds_with_no_targets()
+    test_multiple_target_concentration_drops_with_no_targets()
     print("\n✅ All terrain/concentration tests passed!")

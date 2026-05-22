@@ -2744,11 +2744,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // For damage/heal spells or AoE terrain spells, set concentration if any targets were affected
     bool should_concentrate = false;
     if (sp.requires_concentration && result.valid) {
-        if (!sp.conditions.empty()) {
-            // Condition-based spell: only concentrate if a condition was applied
+        const bool is_aoe = (sp.geometry != Spell::Single && sp.geometry != Spell::Multiple);
+        if (is_aoe) {
+            // AoE spells create a persistent area (terrain/zone); concentration holds
+            // even with no current targets in the area.
+            should_concentrate = true;
+        } else if (!sp.conditions.empty()) {
+            // Targeted (Single/Multiple) condition spell: only concentrate if a
+            // condition actually landed (e.g. Hold Person fizzles if every target saved).
             should_concentrate = any_conditions_applied;
         } else {
-            // Damage/heal/terrain spell: concentrate if spell hit any targets
             should_concentrate = true;
         }
     }

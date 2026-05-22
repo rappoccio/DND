@@ -175437,11 +175437,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     bool should_concentrate = false;
     if (sp.requires_concentration && result.valid) {
-        if (!sp.conditions.empty()) {
+        const bool is_aoe = (sp.geometry != Spell::Single && sp.geometry != Spell::Multiple);
+        if (is_aoe) {
+
+
+            should_concentrate = true;
+        } else if (!sp.conditions.empty()) {
+
 
             should_concentrate = any_conditions_applied;
         } else {
-
             should_concentrate = true;
         }
     }
