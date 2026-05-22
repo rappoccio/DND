@@ -152,6 +152,17 @@ struct SpellTargetResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Result of dropping concentration
+// ─────────────────────────────────────────────────────────────────────────────
+struct DropConcentrationResult {
+    bool dropped = false;
+    std::string spell_name;
+    std::vector<int> removed_terrain_ids;
+    std::vector<int> removed_spell_effect_ids;
+    std::vector<int> removed_condition_ids;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Full result for a spell cast
 // ─────────────────────────────────────────────────────────────────────────────
 struct SpellResult {
@@ -162,6 +173,7 @@ struct SpellResult {
     std::vector<SpellTargetResult> target_results;
     bool        concentration_replaced     = false;   // caster dropped previous concentration
     std::string prev_concentration_spell   = {};      // name of dropped spell
+    std::vector<int> terrain_effect_ids    = {};      // ids of new terrain effects placed by this spell
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -289,6 +301,20 @@ struct TurnStartResult {
     bool turn_skipped = false;          // true if agent's turn should be skipped (e.g., paralyzed save failed)
     std::string skip_reason;            // reason for skip (e.g., "Hold Person (save failed)")
     std::string save_roll_message;      // log message from save roll (if any)
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CombatDecider interface — decision points for GUI (Python callback) vs RL/headless (default policy)
+// ─────────────────────────────────────────────────────────────────────────────
+struct BrutalStrikeCtx { int attacker_idx; int target_idx; int level; };
+struct RecklessCtx     { int attacker_idx; };
+struct OACtx           { int attacker_idx; int target_idx; };
+
+struct CombatDecider {
+    virtual ~CombatDecider() = default;
+    virtual std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx&) { return {}; }
+    virtual bool             chooseReckless(const RecklessCtx&)          { return false; }
+    virtual int              chooseOAResponse(const OACtx&)              { return -1; }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -507,6 +533,9 @@ public:
     // reasons for conditions, etc.). Optional; null = silent.
     void setLogger(MessageLogger* logger) noexcept { logger_ = logger; }
 
+    // Set the CombatDecider for decision points (GUI=Python subclass, RL/headless=nullptr).
+    void setDecider(CombatDecider* d) noexcept { decider_ = d; }
+
     // ── Dice rollers ──────────────────────────────────────────────────────
     int roll(int sides);            // 1dN  (result 1…sides)
     int rollAdvantage(int sides);   // 2dN, keep higher
@@ -647,6 +676,9 @@ public:
     [[nodiscard]] SpellResult executeSpell(BattleMap& bm,
                                            const SpellAction& action);
 
+    // Drop concentration for the given agent: removes terrain, spell effects, conditions.
+    [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
+
     // Execute a shove attempt (bonus action, contested Athletics check).
     // Attacker vs target Athletics/Acrobatics (target chooses higher).
     // On success: either push 5ft or knock prone based on knock_prone flag.
@@ -759,6 +791,7 @@ private:
     std::unordered_map<int, int> agent_portent_round_used_;  // track which round each agent last used portent
 
     MessageLogger* logger_{nullptr};
+    CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
 
     // Emit a message to the logger (if attached).
     template<typename... Args>

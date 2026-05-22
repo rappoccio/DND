@@ -2222,6 +2222,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             cond.concentrating    = false;
             cond.concentrating_on = {};
             bm.setAgentConditions(action.caster_idx, cond);
+            // Remove old spell's terrain when dropping concentration
+            [[maybe_unused]] auto removed_ids = bm.removeTerrainEffectsBySource(action.caster_idx);
         }
     }
 
@@ -2833,6 +2835,49 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Terrain placement: if spell creates difficult terrain
+    if (result.valid && sp.terrain_difficulty != TerrainDifficulty::Normal) {
+        Cell center = Cell{action.aoe_col, action.aoe_row};
+        Cell caster_origin = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].origin;
+        int caster_size = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].agent->getSize();
+
+        auto raw_cells = bm.aoeCells(center, sp, caster_origin);
+        auto terrain_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
+
+        if (!terrain_cells.empty()) {
+            int terrain_id = bm.placeTerrainEffect(
+                sp.name, terrain_cells, sp.terrain_difficulty,
+                sp.duration, action.caster_idx,
+                sp.slip_save_dc, sp.slip_distance_feet,
+                action.spell_idx, sp.requires_concentration);
+
+            if (terrain_id >= 0) {
+                result.terrain_effect_ids.push_back(terrain_id);
+
+                // Slipping terrain: immediate DEX save for agents in the AoE
+                if (sp.terrain_difficulty == TerrainDifficulty::Slipping) {
+                    for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {
+                        if (i == action.caster_idx) continue;
+                        Cell agent_cell = bm.placedAgents()[static_cast<std::size_t>(i)].origin;
+                        bool in_aoe = std::any_of(terrain_cells.begin(), terrain_cells.end(),
+                            [&agent_cell](const Cell& c) { return c.col == agent_cell.col && c.row == agent_cell.row; });
+                        if (!in_aoe) continue;
+                        auto stats = getAgentStats(bm, i);
+                        int dex_mod = (stats.dex - 10) / 2;
+                        int d20 = roll(20);
+                        if (d20 + dex_mod < sp.slip_save_dc) {
+                            Agent::Conditions cond_i = bm.getAgentConditions(i);
+                            cond_i.prone = true;
+                            bm.setAgentConditions(i, cond_i);
+                            log_("Slipping terrain: {} fails DEX save (d20={}) — prone.",
+                                 bm.placedAgents()[i].agent->name(), d20);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // If caster was hidden and cast a spell, reveal them
     if (result.valid && action.caster_idx >= 0 && action.caster_idx < static_cast<int>(agents.size())) {
         const Agent::Conditions& caster_cond = agents[static_cast<std::size_t>(action.caster_idx)].agent->getConditions();
@@ -3399,6 +3444,49 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     bm.setAgentStats(idx, stats);
 
     log_("Agent incapacitated: cannot act, movement speed set to 0");
+}
+
+DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent_idx)
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size()))
+        return {};
+    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+    if (!cond.concentrating)
+        return {};
+
+    DropConcentrationResult result;
+    result.dropped    = true;
+    result.spell_name = cond.concentrating_on;
+
+    // 1. Remove terrain effects from this source
+    result.removed_terrain_ids = bm.removeTerrainEffectsBySource(agent_idx);
+
+    // 2. Remove spell effects cast by this agent
+    for (const auto& eff : bm.activeSpellEffects()) {
+        if (eff.caster_idx == agent_idx)
+            result.removed_spell_effect_ids.push_back(eff.effect_id);
+    }
+    for (int eid : result.removed_spell_effect_ids)
+        bm.removeSpellEffect(eid);
+
+    // 3. Remove conditions applied by this agent's concentration spells
+    const auto& spells = bm.getAgentSpells(agent_idx);
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.caster_idx == agent_idx &&
+            ac.spell_idx >= 0 && ac.spell_idx < static_cast<int>(spells.size()) &&
+            spells[static_cast<std::size_t>(ac.spell_idx)].requires_concentration)
+            result.removed_condition_ids.push_back(ac.condition_id);
+    }
+    for (int cid : result.removed_condition_ids)
+        removeAgentCondition(cid);
+
+    // 4. Clear C++ concentration state
+    cond.concentrating    = false;
+    cond.concentrating_on = {};
+    bm.setAgentConditions(agent_idx, cond);
+
+    return result;
 }
 
 void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept

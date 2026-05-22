@@ -170245,6 +170245,17 @@ struct SpellTargetResult {
 
 
 
+struct DropConcentrationResult {
+    bool dropped = false;
+    std::string spell_name;
+    std::vector<int> removed_terrain_ids;
+    std::vector<int> removed_spell_effect_ids;
+    std::vector<int> removed_condition_ids;
+};
+
+
+
+
 struct SpellResult {
     bool valid = false;
     int spell_idx = -1;
@@ -170253,6 +170264,7 @@ struct SpellResult {
     std::vector<SpellTargetResult> target_results;
     bool concentration_replaced = false;
     std::string prev_concentration_spell = {};
+    std::vector<int> terrain_effect_ids = {};
 };
 
 
@@ -170330,14 +170342,14 @@ struct ActiveEffect {
     Spell spell;
     int turns_remaining = 0;
 };
-# 250 "/home/user/Claude/DND/gui/combat.hpp"
+# 262 "/home/user/Claude/DND/gui/combat.hpp"
 struct InitiativeEntry {
     int agent_idx = -1;
     int d20 = 0;
     int modifier = 0;
     int total = 0;
 };
-# 266 "/home/user/Claude/DND/gui/combat.hpp"
+# 278 "/home/user/Claude/DND/gui/combat.hpp"
 struct TurnActions {
     int agent_idx = -1;
 
@@ -170364,6 +170376,20 @@ struct TurnStartResult {
     bool turn_skipped = false;
     std::string skip_reason;
     std::string save_roll_message;
+};
+
+
+
+
+struct BrutalStrikeCtx { int attacker_idx; int target_idx; int level; };
+struct RecklessCtx { int attacker_idx; };
+struct OACtx { int attacker_idx; int target_idx; };
+
+struct CombatDecider {
+    virtual ~CombatDecider() = default;
+    virtual std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx&) { return {}; }
+    virtual bool chooseReckless(const RecklessCtx&) { return false; }
+    virtual int chooseOAResponse(const OACtx&) { return -1; }
 };
 
 
@@ -170424,7 +170450,7 @@ public:
 
 
     void applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept;
-# 364 "/home/user/Claude/DND/gui/combat.hpp"
+# 390 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
     [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
     [[nodiscard]] int getSwimRemaining(int agent_idx) const noexcept;
@@ -170453,7 +170479,7 @@ public:
 
 
     bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
-# 403 "/home/user/Claude/DND/gui/combat.hpp"
+# 429 "/home/user/Claude/DND/gui/combat.hpp"
     TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
 
 
@@ -170562,6 +170588,9 @@ public:
     void setLogger(MessageLogger* logger) noexcept { logger_ = logger; }
 
 
+    void setDecider(CombatDecider* d) noexcept { decider_ = d; }
+
+
     int roll(int sides);
     int rollAdvantage(int sides);
     int rollDisadvantage(int sides);
@@ -170630,7 +170659,7 @@ public:
 
 
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
-# 587 "/home/user/Claude/DND/gui/combat.hpp"
+# 616 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
 
 
@@ -170654,9 +170683,9 @@ public:
 
     [[nodiscard]] AttackResult executeAction(BattleMap& bm,
                                               const Attack& action);
-# 618 "/home/user/Claude/DND/gui/combat.hpp"
+# 647 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
-# 638 "/home/user/Claude/DND/gui/combat.hpp"
+# 667 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<AttackResult> runRound(BattleMap& bm,
                                        const std::vector<TurnActions>& turns);
 
@@ -170668,6 +170697,9 @@ public:
 
     [[nodiscard]] SpellResult executeSpell(BattleMap& bm,
                                            const SpellAction& action);
+
+
+    [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
 
 
 
@@ -170716,7 +170748,7 @@ public:
 
 
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept;
-# 718 "/home/user/Claude/DND/gui/combat.hpp"
+# 750 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] std::vector<float> getBattleObservation(
         const BattleMap& bm,
         int attacker_idx,
@@ -170761,6 +170793,7 @@ private:
     std::unordered_map<int, int> agent_portent_round_used_;
 
     MessageLogger* logger_{nullptr};
+    CombatDecider* decider_{nullptr};
 
 
     template<typename... Args>
@@ -174870,6 +174903,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             cond.concentrating = false;
             cond.concentrating_on = {};
             bm.setAgentConditions(action.caster_idx, cond);
+
+            [[maybe_unused]] auto removed_ids = bm.removeTerrainEffectsBySource(action.caster_idx);
         }
     }
 
@@ -175482,6 +175517,49 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
 
+    if (result.valid && sp.terrain_difficulty != TerrainDifficulty::Normal) {
+        Cell center = Cell{action.aoe_col, action.aoe_row};
+        Cell caster_origin = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].origin;
+        int caster_size = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].agent->getSize();
+
+        auto raw_cells = bm.aoeCells(center, sp, caster_origin);
+        auto terrain_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
+
+        if (!terrain_cells.empty()) {
+            int terrain_id = bm.placeTerrainEffect(
+                sp.name, terrain_cells, sp.terrain_difficulty,
+                sp.duration, action.caster_idx,
+                sp.slip_save_dc, sp.slip_distance_feet,
+                action.spell_idx, sp.requires_concentration);
+
+            if (terrain_id >= 0) {
+                result.terrain_effect_ids.push_back(terrain_id);
+
+
+                if (sp.terrain_difficulty == TerrainDifficulty::Slipping) {
+                    for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {
+                        if (i == action.caster_idx) continue;
+                        Cell agent_cell = bm.placedAgents()[static_cast<std::size_t>(i)].origin;
+                        bool in_aoe = std::any_of(terrain_cells.begin(), terrain_cells.end(),
+                            [&agent_cell](const Cell& c) { return c.col == agent_cell.col && c.row == agent_cell.row; });
+                        if (!in_aoe) continue;
+                        auto stats = getAgentStats(bm, i);
+                        int dex_mod = (stats.dex - 10) / 2;
+                        int d20 = roll(20);
+                        if (d20 + dex_mod < sp.slip_save_dc) {
+                            Agent::Conditions cond_i = bm.getAgentConditions(i);
+                            cond_i.prone = true;
+                            bm.setAgentConditions(i, cond_i);
+                            log_("Slipping terrain: {} fails DEX save (d20={}) — prone.",
+                                 bm.placedAgents()[i].agent->name(), d20);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
     if (result.valid && action.caster_idx >= 0 && action.caster_idx < static_cast<int>(agents.size())) {
         const Agent::Conditions& caster_cond = agents[static_cast<std::size_t>(action.caster_idx)].agent->getConditions();
         if (caster_cond.hidden) {
@@ -176047,6 +176125,49 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     bm.setAgentStats(idx, stats);
 
     log_("Agent incapacitated: cannot act, movement speed set to 0");
+}
+
+DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent_idx)
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size()))
+        return {};
+    Agent::Conditions cond = bm.getAgentConditions(agent_idx);
+    if (!cond.concentrating)
+        return {};
+
+    DropConcentrationResult result;
+    result.dropped = true;
+    result.spell_name = cond.concentrating_on;
+
+
+    result.removed_terrain_ids = bm.removeTerrainEffectsBySource(agent_idx);
+
+
+    for (const auto& eff : bm.activeSpellEffects()) {
+        if (eff.caster_idx == agent_idx)
+            result.removed_spell_effect_ids.push_back(eff.effect_id);
+    }
+    for (int eid : result.removed_spell_effect_ids)
+        bm.removeSpellEffect(eid);
+
+
+    const auto& spells = bm.getAgentSpells(agent_idx);
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.caster_idx == agent_idx &&
+            ac.spell_idx >= 0 && ac.spell_idx < static_cast<int>(spells.size()) &&
+            spells[static_cast<std::size_t>(ac.spell_idx)].requires_concentration)
+            result.removed_condition_ids.push_back(ac.condition_id);
+    }
+    for (int cid : result.removed_condition_ids)
+        removeAgentCondition(cid);
+
+
+    cond.concentrating = false;
+    cond.concentrating_on = {};
+    bm.setAgentConditions(agent_idx, cond);
+
+    return result;
 }
 
 void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept

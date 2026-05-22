@@ -201900,6 +201900,17 @@ struct SpellTargetResult {
 
 
 
+struct DropConcentrationResult {
+    bool dropped = false;
+    std::string spell_name;
+    std::vector<int> removed_terrain_ids;
+    std::vector<int> removed_spell_effect_ids;
+    std::vector<int> removed_condition_ids;
+};
+
+
+
+
 struct SpellResult {
     bool valid = false;
     int spell_idx = -1;
@@ -201908,6 +201919,7 @@ struct SpellResult {
     std::vector<SpellTargetResult> target_results;
     bool concentration_replaced = false;
     std::string prev_concentration_spell = {};
+    std::vector<int> terrain_effect_ids = {};
 };
 
 
@@ -201985,14 +201997,14 @@ struct ActiveEffect {
     Spell spell;
     int turns_remaining = 0;
 };
-# 250 "/home/user/Claude/DND/gui/combat.hpp"
+# 262 "/home/user/Claude/DND/gui/combat.hpp"
 struct InitiativeEntry {
     int agent_idx = -1;
     int d20 = 0;
     int modifier = 0;
     int total = 0;
 };
-# 266 "/home/user/Claude/DND/gui/combat.hpp"
+# 278 "/home/user/Claude/DND/gui/combat.hpp"
 struct TurnActions {
     int agent_idx = -1;
 
@@ -202019,6 +202031,20 @@ struct TurnStartResult {
     bool turn_skipped = false;
     std::string skip_reason;
     std::string save_roll_message;
+};
+
+
+
+
+struct BrutalStrikeCtx { int attacker_idx; int target_idx; int level; };
+struct RecklessCtx { int attacker_idx; };
+struct OACtx { int attacker_idx; int target_idx; };
+
+struct CombatDecider {
+    virtual ~CombatDecider() = default;
+    virtual std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx&) { return {}; }
+    virtual bool chooseReckless(const RecklessCtx&) { return false; }
+    virtual int chooseOAResponse(const OACtx&) { return -1; }
 };
 
 
@@ -202079,7 +202105,7 @@ public:
 
 
     void applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept;
-# 364 "/home/user/Claude/DND/gui/combat.hpp"
+# 390 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] int getWalkRemaining(int agent_idx) const noexcept;
     [[nodiscard]] int getFlyRemaining (int agent_idx) const noexcept;
     [[nodiscard]] int getSwimRemaining(int agent_idx) const noexcept;
@@ -202108,7 +202134,7 @@ public:
 
 
     bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
-# 403 "/home/user/Claude/DND/gui/combat.hpp"
+# 429 "/home/user/Claude/DND/gui/combat.hpp"
     TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
 
 
@@ -202217,6 +202243,9 @@ public:
     void setLogger(MessageLogger* logger) noexcept { logger_ = logger; }
 
 
+    void setDecider(CombatDecider* d) noexcept { decider_ = d; }
+
+
     int roll(int sides);
     int rollAdvantage(int sides);
     int rollDisadvantage(int sides);
@@ -202285,7 +202314,7 @@ public:
 
 
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
-# 587 "/home/user/Claude/DND/gui/combat.hpp"
+# 616 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
 
 
@@ -202309,9 +202338,9 @@ public:
 
     [[nodiscard]] AttackResult executeAction(BattleMap& bm,
                                               const Attack& action);
-# 618 "/home/user/Claude/DND/gui/combat.hpp"
+# 647 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
-# 638 "/home/user/Claude/DND/gui/combat.hpp"
+# 667 "/home/user/Claude/DND/gui/combat.hpp"
     std::vector<AttackResult> runRound(BattleMap& bm,
                                        const std::vector<TurnActions>& turns);
 
@@ -202323,6 +202352,9 @@ public:
 
     [[nodiscard]] SpellResult executeSpell(BattleMap& bm,
                                            const SpellAction& action);
+
+
+    [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
 
 
 
@@ -202371,7 +202403,7 @@ public:
 
 
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept;
-# 718 "/home/user/Claude/DND/gui/combat.hpp"
+# 750 "/home/user/Claude/DND/gui/combat.hpp"
     [[nodiscard]] std::vector<float> getBattleObservation(
         const BattleMap& bm,
         int attacker_idx,
@@ -202416,6 +202448,7 @@ private:
     std::unordered_map<int, int> agent_portent_round_used_;
 
     MessageLogger* logger_{nullptr};
+    CombatDecider* decider_{nullptr};
 
 
     template<typename... Args>
@@ -202462,26 +202495,208 @@ static std::vector<Cell> cellSetToVec(const CellSet& s) {
 }
 
 
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+struct PyCombatDecider : public CombatDecider {
+    using CombatDecider::CombatDecider;
+    std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx& ctx) override {
+        
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       do { do { pybind11::gil_scoped_acquire gil; pybind11::function override = pybind11::get_override(static_cast<const 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       CombatDecider 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       *>(this), 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       "chooseBrutalStrike"
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); if (override) { auto o = override(
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       ctx
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+#pragma GCC diagnostic push
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+        if (pybind11::detail::cast_is_temporary_value_reference<
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       std::vector<int> 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >::value && !pybind11::detail::is_same_ignoring_cvref<
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       std::vector<int>
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       , PyObject *>::value) { static pybind11::detail::override_caster_t<
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       std::vector<int> 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       > caster; return pybind11::detail::cast_ref<
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       std::vector<int> 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >(std::move(o), caster); } 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+#pragma GCC diagnostic pop
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+        return pybind11::detail::cast_safe<
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       std::vector<int> 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >(std::move(o)); } } while (false); return 
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       CombatDecider
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ::
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       chooseBrutalStrike
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       (
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       ctx
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); } while (false)
+# 43 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+                                                                                  ;
+    }
+    bool chooseReckless(const RecklessCtx& ctx) override {
+        
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       do { do { pybind11::gil_scoped_acquire gil; pybind11::function override = pybind11::get_override(static_cast<const 
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       CombatDecider 
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       *>(this), 
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       "chooseReckless"
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); if (override) { auto o = override(
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       ctx
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); 
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+#pragma GCC diagnostic push
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+        if (pybind11::detail::cast_is_temporary_value_reference<
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       bool
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >::value && !pybind11::detail::is_same_ignoring_cvref<
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       bool
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       , PyObject *>::value) { static pybind11::detail::override_caster_t<
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       bool
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       > caster; return pybind11::detail::cast_ref<
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       bool
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >(std::move(o), caster); } 
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+#pragma GCC diagnostic pop
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+        return pybind11::detail::cast_safe<
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       bool
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >(std::move(o)); } } while (false); return 
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       CombatDecider
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ::
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       chooseReckless
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       (
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       ctx
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); } while (false)
+# 46 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+                                                                  ;
+    }
+    int chooseOAResponse(const OACtx& ctx) override {
+        
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       do { do { pybind11::gil_scoped_acquire gil; pybind11::function override = pybind11::get_override(static_cast<const 
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       CombatDecider 
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       *>(this), 
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       "chooseOAResponse"
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); if (override) { auto o = override(
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       ctx
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); 
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+#pragma GCC diagnostic push
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+        if (pybind11::detail::cast_is_temporary_value_reference<
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       int
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >::value && !pybind11::detail::is_same_ignoring_cvref<
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       int
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       , PyObject *>::value) { static pybind11::detail::override_caster_t<
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       int
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       > caster; return pybind11::detail::cast_ref<
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       int
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >(std::move(o), caster); } 
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+#pragma GCC diagnostic pop
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+        return pybind11::detail::cast_safe<
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       int
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       >(std::move(o)); } } while (false); return 
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       CombatDecider
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ::
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       chooseOAResponse
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       (
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+       ctx
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+       ); } while (false)
+# 49 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+                                                                   ;
+    }
+};
+
+
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
 static ::pybind11::module_::module_def pybind11_module_def_rpg_battle_map [[maybe_unused]]; [[maybe_unused]] static void pybind11_init_rpg_battle_map(::pybind11::module_ &); extern "C" [[maybe_unused]] __attribute__((visibility("default"))) PyObject *PyInit_rpg_battle_map(); extern "C" __attribute__((visibility("default"))) PyObject *PyInit_rpg_battle_map() { { const char *compiled_ver = 
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
 "3" 
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
 "." 
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
 "12"
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
 ; const char *runtime_ver = Py_GetVersion(); size_t len = std::strlen(compiled_ver); if (std::strncmp(runtime_ver, compiled_ver, len) != 0 || (runtime_ver[len] >= '0' && runtime_ver[len] <= '9')) { PyErr_Format(PyExc_ImportError, "Python version mismatch: module was compiled for Python %s, " "but the interpreter version is incompatible: %s.", compiled_ver, runtime_ver); return nullptr; } } pybind11::detail::get_internals(); auto m = ::pybind11::module_::create_extension_module( 
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
 "rpg_battle_map"
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
 , nullptr, &pybind11_module_def_rpg_battle_map); try { pybind11_init_rpg_battle_map(m); return m.ptr(); } catch (pybind11::error_already_set & e) { pybind11::raise_from(e, PyExc_ImportError, "initialization failed"); return nullptr; } catch (const std::exception &e) { ::pybind11::set_error(PyExc_ImportError, e.what()); return nullptr; } } void pybind11_init_rpg_battle_map(::pybind11::module_ & (
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
 m
-# 39 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
+# 53 "/home/user/Claude/DND/gui/rpg_bindings.cpp" 3 4
 ))
 
-# 40 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
+# 54 "/home/user/Claude/DND/gui/rpg_bindings.cpp"
 {
     m.doc() = "RPG Battle Map – C++ analysis core (grid detection, wall detection, agents)";
 
@@ -203244,10 +203459,39 @@ m
         .def_readonly("target_results", &SpellResult::target_results)
         .def_readonly("concentration_replaced", &SpellResult::concentration_replaced)
         .def_readonly("prev_concentration_spell", &SpellResult::prev_concentration_spell)
+        .def_readonly("terrain_effect_ids", &SpellResult::terrain_effect_ids,
+             "IDs of terrain effects placed by this spell (for Python render cache).")
         .def("__repr__", [](const SpellResult& r){
             if (!r.valid) return std::string("<SpellResult invalid>");
             return "<SpellResult '" + r.spell_name + "' "
                  + std::to_string(r.target_results.size()) + " target(s)>"; });
+
+
+    py::class_<DropConcentrationResult>(m, "DropConcentrationResult")
+        .def_readonly("dropped", &DropConcentrationResult::dropped)
+        .def_readonly("spell_name", &DropConcentrationResult::spell_name)
+        .def_readonly("removed_terrain_ids", &DropConcentrationResult::removed_terrain_ids)
+        .def_readonly("removed_spell_effect_ids", &DropConcentrationResult::removed_spell_effect_ids)
+        .def_readonly("removed_condition_ids", &DropConcentrationResult::removed_condition_ids);
+
+
+    py::class_<BrutalStrikeCtx>(m, "BrutalStrikeCtx")
+        .def_readonly("attacker_idx", &BrutalStrikeCtx::attacker_idx)
+        .def_readonly("target_idx", &BrutalStrikeCtx::target_idx)
+        .def_readonly("level", &BrutalStrikeCtx::level);
+
+    py::class_<RecklessCtx>(m, "RecklessCtx")
+        .def_readonly("attacker_idx", &RecklessCtx::attacker_idx);
+
+    py::class_<OACtx>(m, "OACtx")
+        .def_readonly("attacker_idx", &OACtx::attacker_idx)
+        .def_readonly("target_idx", &OACtx::target_idx);
+
+    py::class_<CombatDecider, PyCombatDecider>(m, "CombatDecider")
+        .def(py::init<>())
+        .def("choose_brutal_strike", &CombatDecider::chooseBrutalStrike)
+        .def("choose_reckless", &CombatDecider::chooseReckless)
+        .def("choose_oa_response", &CombatDecider::chooseOAResponse);
 
 
     py::class_<ShoveAction>(m, "ShoveAction")
@@ -203686,6 +203930,12 @@ m
              py::keep_alive<1, 2>(),
              "Attach a MessageLogger; flush() it after each action to read messages.")
 
+        .def("set_decider",
+             &CombatEngine::setDecider,
+             py::arg("decider"),
+             py::keep_alive<1, 2>(),
+             "Set the CombatDecider (GUI=Python subclass, RL/headless=nullptr for defaults).")
+
 
         .def("run_round",
              &CombatEngine::runRound,
@@ -203703,6 +203953,10 @@ m
              "Validate + execute a SpellAction; applies damage/healing to targets\n"
              "and writes HP changes back to BattleMap.\n"
              "Registers persistent effects when spell.duration > 1.")
+        .def("drop_concentration",
+             &CombatEngine::dropConcentration,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Drop concentration for agent: removes terrain, spell effects, conditions. Returns removed IDs.")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),

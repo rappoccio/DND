@@ -36,6 +36,20 @@ static std::vector<Cell> cellSetToVec(const CellSet& s) {
     return {s.begin(), s.end()};
 }
 
+// Python trampoline for CombatDecider interface
+struct PyCombatDecider : public CombatDecider {
+    using CombatDecider::CombatDecider;
+    std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx& ctx) override {
+        PYBIND11_OVERRIDE(std::vector<int>, CombatDecider, chooseBrutalStrike, ctx);
+    }
+    bool chooseReckless(const RecklessCtx& ctx) override {
+        PYBIND11_OVERRIDE(bool, CombatDecider, chooseReckless, ctx);
+    }
+    int chooseOAResponse(const OACtx& ctx) override {
+        PYBIND11_OVERRIDE(int, CombatDecider, chooseOAResponse, ctx);
+    }
+};
+
 PYBIND11_MODULE(rpg_battle_map, m)
 {
     m.doc() = "RPG Battle Map – C++ analysis core (grid detection, wall detection, agents)";
@@ -799,10 +813,39 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("target_results",             &SpellResult::target_results)
         .def_readonly("concentration_replaced",     &SpellResult::concentration_replaced)
         .def_readonly("prev_concentration_spell",   &SpellResult::prev_concentration_spell)
+        .def_readonly("terrain_effect_ids",         &SpellResult::terrain_effect_ids,
+             "IDs of terrain effects placed by this spell (for Python render cache).")
         .def("__repr__", [](const SpellResult& r){
             if (!r.valid) return std::string("<SpellResult invalid>");
             return "<SpellResult '" + r.spell_name + "' "
                  + std::to_string(r.target_results.size()) + " target(s)>"; });
+
+    // ── DropConcentrationResult ──────────────────────────────────────────────
+    py::class_<DropConcentrationResult>(m, "DropConcentrationResult")
+        .def_readonly("dropped",                   &DropConcentrationResult::dropped)
+        .def_readonly("spell_name",                &DropConcentrationResult::spell_name)
+        .def_readonly("removed_terrain_ids",       &DropConcentrationResult::removed_terrain_ids)
+        .def_readonly("removed_spell_effect_ids",  &DropConcentrationResult::removed_spell_effect_ids)
+        .def_readonly("removed_condition_ids",     &DropConcentrationResult::removed_condition_ids);
+
+    // ── CombatDecider interface ──────────────────────────────────────────────
+    py::class_<BrutalStrikeCtx>(m, "BrutalStrikeCtx")
+        .def_readonly("attacker_idx", &BrutalStrikeCtx::attacker_idx)
+        .def_readonly("target_idx",   &BrutalStrikeCtx::target_idx)
+        .def_readonly("level",        &BrutalStrikeCtx::level);
+
+    py::class_<RecklessCtx>(m, "RecklessCtx")
+        .def_readonly("attacker_idx", &RecklessCtx::attacker_idx);
+
+    py::class_<OACtx>(m, "OACtx")
+        .def_readonly("attacker_idx", &OACtx::attacker_idx)
+        .def_readonly("target_idx",   &OACtx::target_idx);
+
+    py::class_<CombatDecider, PyCombatDecider>(m, "CombatDecider")
+        .def(py::init<>())
+        .def("choose_brutal_strike", &CombatDecider::chooseBrutalStrike)
+        .def("choose_reckless",      &CombatDecider::chooseReckless)
+        .def("choose_oa_response",   &CombatDecider::chooseOAResponse);
 
     // ── ShoveAction / ShoveResult ────────────────────────────────────────────
     py::class_<ShoveAction>(m, "ShoveAction")
@@ -1241,6 +1284,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::keep_alive<1, 2>(),
              "Attach a MessageLogger; flush() it after each action to read messages.")
 
+        .def("set_decider",
+             &CombatEngine::setDecider,
+             py::arg("decider"),
+             py::keep_alive<1, 2>(),
+             "Set the CombatDecider (GUI=Python subclass, RL/headless=nullptr for defaults).")
+
         // Round execution
         .def("run_round",
              &CombatEngine::runRound,
@@ -1258,6 +1307,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Validate + execute a SpellAction; applies damage/healing to targets\n"
              "and writes HP changes back to BattleMap.\n"
              "Registers persistent effects when spell.duration > 1.")
+        .def("drop_concentration",
+             &CombatEngine::dropConcentration,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Drop concentration for agent: removes terrain, spell effects, conditions. Returns removed IDs.")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),
