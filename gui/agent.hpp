@@ -303,6 +303,15 @@ namespace rpg {
         spell_slots_remaining = spell_slots_max;
       }
 
+      // Pact Magic: the single slot level a Warlock's slots occupy (1-5), or 0 if none.
+      // Warlock pact slots are all the same level (see kPact), so the spell-cast UI uses
+      // this to cast at — and consume — the pact slot.
+      [[nodiscard]] int pact_slot_level() const noexcept {
+        for (int i = 0; i < static_cast<int>(spell_slots_max.size()); ++i)
+          if (spell_slots_max[static_cast<std::size_t>(i)] > 0) return i + 1;
+        return 0;
+      }
+
       // D&D 5e rule: only one leveled spell (level >= 1) per turn.
       // Check if a leveled spell can be cast this turn.
       [[nodiscard]] bool canCastLeveledSpell() const noexcept {
@@ -359,6 +368,8 @@ namespace rpg {
       WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
       int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
+      WarlockSubclass warlock_subclass{WarlockSubclassNone};     // Warlock patron choice
+      int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
 
       // Helper: get resource by name (returns nullptr if not found)
@@ -387,6 +398,9 @@ namespace rpg {
 
       // Short rest: restore some resources (e.g., Ki for Monk)
       void restore_resources_short_rest() {
+        // Warlock Pact Magic slots recharge on a short rest as well as a long rest.
+        if (get_caster_type(character_class) == CasterPact)
+          restore_spell_slots();
         for (auto& [name, res] : resources) {
           res.restore_short_rest();
         }
@@ -458,6 +472,7 @@ namespace rpg {
       bool hamstrung{false};                // Hamstring Blow effect: speed -15ft (expires start of next turn)
       int sundering_target_idx{-1};         // Sundering Blow: +5 to hit vs this target (expires start of next turn)
       bool staggered_next_save{false};      // Staggering Blow: disadvantage on next save
+      bool radiant_soul_used{false};        // Celestial L6: Radiant Soul bonus damage already used this turn
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -513,6 +528,7 @@ namespace rpg {
       conditions_.brutal_strike_available      = false;
       conditions_.berserker_frenzy_used        = false;
       conditions_.zealot_divine_fury_used      = false;
+      conditions_.radiant_soul_used            = false;
       takeTurn();
     }
 

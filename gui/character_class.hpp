@@ -196,6 +196,13 @@ enum WizardSubclass {
     NumWizardSubclass
 };
 
+// ── Warlock Subclass (Patron) Enum (2024 D&D) ────────────────────────
+enum WarlockSubclass {
+    WarlockSubclassNone = 0,
+    ArchfeyPath, CelestialPath, FiendPath, GreatOldOnePath,
+    NumWarlockSubclass
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;

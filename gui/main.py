@@ -328,6 +328,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""    # "" | "bonus" for grapple actions
         self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
+        self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
@@ -476,8 +477,10 @@ class App:
         self.btn_load = Button(pygame.Rect(px + SW+4, b1, SW, B), "Load",
                               (50, 75, 120), (70, 100, 155), font=self.font_md)
         lr_y = b1 + B + self._BTN_GAP
-        self.btn_long_rest = Button(pygame.Rect(px, lr_y, W, B), "Long Rest",
+        self.btn_long_rest = Button(pygame.Rect(px, lr_y, HW, B), "Long Rest",
                                     (60, 100, 60), (80, 130, 80), font=self.font_md)
+        self.btn_short_rest = Button(pygame.Rect(px + HW + 4, lr_y, HW, B), "Short Rest",
+                                    (60, 90, 110), (80, 120, 150), font=self.font_md)
         bc_y = lr_y + B + self._BTN_GAP + 8
         self.btn_begin_combat = Button(pygame.Rect(px, bc_y, W, B),
                                       "Begin Combat",
@@ -513,7 +516,8 @@ class App:
         self.btn_save.rect.update(px,        b1, SW, self._BTN_H)
         self.btn_load.rect.update(px + SW+4, b1, SW, self._BTN_H)
         lr_y = b1 + self._BTN_H + self._BTN_GAP
-        self.btn_long_rest.rect.update(px, lr_y, W, self._BTN_H)
+        self.btn_long_rest.rect.update(px, lr_y, SW, self._BTN_H)
+        self.btn_short_rest.rect.update(px + SW + 4, lr_y, SW, self._BTN_H)
         bc_y = lr_y + self._BTN_H + self._BTN_GAP + 8
         self.btn_begin_combat.rect.update(px, bc_y, W, self._BTN_H)
         ter_y = bc_y + self._BTN_H + self._BTN_GAP
@@ -645,6 +649,12 @@ class App:
         self.btn_cbt_reckless = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Reckless Attack (Action)",
                                           (200, 100, 80), (240, 130, 110), self.font_md)
+        self.btn_cbt_magical_cunning = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Magical Cunning",
+                                          (120, 80, 180), (150, 110, 210), self.font_md)
+        self.btn_cbt_healing_light = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Healing Light",
+                                          (210, 180, 70), (240, 210, 100), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1058,6 +1068,8 @@ class App:
             stats.barbarian_subclass = getattr(rpg.BarbianSubclass, subclass_name)
         elif class_name == "Wizard" and subclass_name != "NONE":
             stats.wizard_subclass = getattr(rpg.WizardSubclass, subclass_name)
+        elif class_name == "Warlock" and subclass_name != "NONE":
+            stats.warlock_subclass = getattr(rpg.WarlockSubclass, subclass_name)
 
         # Initialize class resources (Rage, Ki, Portent Dice, etc.)
         # This must come AFTER setting subclass since resource creation checks subclass
@@ -2021,6 +2033,39 @@ class App:
 
         self.pending_unarmed_type = ""
 
+    def _resolve_healing_light(self, target_idx: int):
+        """Celestial Warlock Healing Light: spend max(1, CHA mod) d6 on the clicked target."""
+        self.pending_heal_light = False
+        healer_idx = self._current_agent_idx()
+        if not (0 <= healer_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, healer_idx)
+        cha_mod = (stats.cha - 10) // 2
+        num_dice = max(1, cha_mod)
+        healed = self.combat.use_healing_light(self.bm, healer_idx, target_idx, num_dice)
+        if healed > 0:
+            tgt_name = self.bm.placed_agents[target_idx].name
+            self._combat_log_add(
+                f"{self.bm.placed_agents[healer_idx].name}: Healing Light restores {healed} HP to {tgt_name}.")
+            self._flush_combat_log()
+        else:
+            self._combat_log_add("Healing Light unavailable (no dice left or invalid target).")
+        self.bonus_used = True
+
+    def _set_fiendish_resilience(self, agent_idx: int, dmg_idx: int):
+        """Fiend Warlock L10: set the chosen damage resistance (0.5x), clearing any prior choice."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        old = stats.fiendish_resilience_type
+        if old >= 0:
+            stats.set_magic_damage_multiplier(old, 1.0)  # clear previous selection
+        stats.fiendish_resilience_type = dmg_idx
+        stats.set_magic_damage_multiplier(dmg_idx, 0.5)
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
+        self._combat_log_add(
+            f"{self.bm.placed_agents[agent_idx].name}: Fiendish Resilience set (damage type {dmg_idx}, resistance).")
+
     def _start_shove(self, shove_type: str):
         """Start a shove action (requires target selection)."""
         if self.bonus_used:
@@ -2542,6 +2587,23 @@ class App:
                         spell.uses_remaining = spell.uses_max
         if self.combat_active:
             self._combat_log_add("Long rest — spell slots, resources, and Portent Dice restored.")
+        self._report_celestial_resilience()
+
+    def _on_short_rest(self):
+        """Restore short-rest resources (Warlock Pact Magic slots, Monk Ki, etc.)."""
+        self.combat.apply_short_rest(self.bm)
+        self._combat_log_add("Short rest — short-rest resources restored (e.g. Pact Magic slots).")
+        self._report_celestial_resilience()
+
+    def _report_celestial_resilience(self):
+        """Surface Celestial Resilience temp HP in the combat log so the L10 gate is visible."""
+        agents = self.bm.placed_agents
+        for idx in range(len(agents)):
+            s = self.combat.get_agent_stats(self.bm, idx)
+            if (s.character_class == rpg.CharacterClass.Warlock and
+                    s.warlock_subclass == rpg.WarlockSubclass.Celestial and
+                    s.char_level >= 10 and s.temp_hp > 0):
+                self._combat_log_add(f"{agents[idx].name}: Celestial Resilience — {s.temp_hp} temp HP")
 
     # FLAG: Move to C++
     def _process_opportunity_queue(self):
@@ -2706,6 +2768,16 @@ class App:
             self._combat_log_add(f"{agents[move_idx].name if move_idx < len(agents) else '?'}: movement blocked")
 
     # FLAG: Move to C++
+    def _apply_pact_slot_level(self, caster_idx: int, sp, action):
+        """Warlocks cast leveled spells at their single Pact Magic slot level (and consume
+        that slot). Cantrips (level 0) are unaffected."""
+        if sp.level >= 1:
+            cs = self.combat.get_agent_stats(self.bm, caster_idx)
+            if cs.character_class == rpg.CharacterClass.Warlock:
+                pl = cs.pact_slot_level()
+                if pl > 0:
+                    action.slot_level = pl
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -2733,6 +2805,7 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
+        self._apply_pact_slot_level(caster_idx, sp, action)
         result = self.combat.execute_spell(self.bm, action)
 
         self._flush_combat_log()
@@ -2774,6 +2847,7 @@ class App:
         action.target_indices = []
         action.aoe_col        = cell.col
         action.aoe_row        = cell.row
+        self._apply_pact_slot_level(caster_idx, sp, action)
         result = self.combat.execute_spell(self.bm, action)
 
         self._flush_combat_log()
@@ -3215,6 +3289,8 @@ class App:
                 "agent_char_level": s.char_level,
                 "agent_barbarian_subclass": s.barbarian_subclass.name,
                 "agent_wizard_subclass": s.wizard_subclass.name,
+                "agent_warlock_subclass": s.warlock_subclass.name,
+                "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
             })
@@ -3501,6 +3577,12 @@ class App:
             wiz_subclass_name = t.get("agent_wizard_subclass", "NONE")
             if wiz_subclass_name != "NONE":
                 stats.wizard_subclass = getattr(rpg.WizardSubclass, wiz_subclass_name)
+            warlock_subclass_name = t.get("agent_warlock_subclass", "NONE")
+            if warlock_subclass_name != "NONE":
+                stats.warlock_subclass = getattr(rpg.WarlockSubclass, warlock_subclass_name)
+            # Fiend L10 Fiendish Resilience: chosen damage type must be restored BEFORE
+            # initialize_class_resources so the resistance multiplier re-applies.
+            stats.fiendish_resilience_type = int(t.get("agent_fiendish_resilience_type", -1))
             # Initialize class resources (Rage, Ki, etc.)
             # This must come AFTER setting subclass since resource init may check subclass
             stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
@@ -4852,6 +4934,32 @@ class App:
                         self.btn_cbt_rage.draw(self.screen)
                         y += B + gap
 
+            # Magical Cunning button - Warlock (L2+) with the feature still available this long rest
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Warlock:
+                    mc = stats.get_resource("Magical Cunning")
+                    if mc and mc.current > 0:
+                        self.btn_cbt_magical_cunning.rect.x = lx
+                        self.btn_cbt_magical_cunning.rect.y = y
+                        self.btn_cbt_magical_cunning.rect.w = W
+                        self.btn_cbt_magical_cunning.draw(self.screen)
+                        y += B + gap
+
+            # Healing Light button - Celestial Warlock (L3+) with dice left in the pool
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Warlock and
+                        stats.warlock_subclass == rpg.WarlockSubclass.Celestial and
+                        stats.char_level >= 3):
+                    hl = stats.get_resource("Healing Light")
+                    if hl and hl.current > 0:
+                        self.btn_cbt_healing_light.rect.x = lx
+                        self.btn_cbt_healing_light.rect.y = y
+                        self.btn_cbt_healing_light.rect.w = W
+                        self.btn_cbt_healing_light.draw(self.screen)
+                        y += B + gap
+
 
         y += section_gap
 
@@ -5084,9 +5192,10 @@ class App:
         hint = self.font_sm.render(hint_txt, True, (100, 100, 130))
         self.screen.blit(hint, (lx, self.btn_begin_combat.rect.bottom + 4))
 
-        # ── Long Rest button (only when agents are placed) ────────────────
+        # ── Long Rest / Short Rest buttons (only when agents are placed) ──
         if self.bm.placed_agents:
             self.btn_long_rest.draw(self.screen)
+            self.btn_short_rest.draw(self.screen)
 
         # ── Begin Combat button (only when agents are placed) ─────────────
         if self.bm.placed_agents:
@@ -5381,6 +5490,8 @@ class App:
                                 subclass_name = stats.barbarian_subclass.name
                             elif class_name == "Wizard":
                                 subclass_name = stats.wizard_subclass.name
+                            elif class_name == "Warlock":
+                                subclass_name = stats.warlock_subclass.name
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
@@ -5444,6 +5555,19 @@ class App:
                         if (_hs.character_class == rpg.CharacterClass.Wizard and
                                 _hs.wizard_subclass == rpg.WizardSubclass.Evoker):
                             _menu_opts.append(("Edit Safe Targets", _edit_safe_targets))
+                        # Fiend Warlock L10+: choose the Fiendish Resilience damage resistance.
+                        if (_hs.character_class == rpg.CharacterClass.Warlock and
+                                _hs.warlock_subclass == rpg.WarlockSubclass.Fiend and
+                                _hs.char_level >= 10):
+                            def _choose_fiendish_resilience(h=hit, pos=event.pos):
+                                # Force (index 3) is excluded by the feature.
+                                _types = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4),
+                                          ("Necrotic", 5), ("Poison", 6), ("Psychic", 7),
+                                          ("Radiant", 8), ("Thunder", 9)]
+                                _opts = [(nm, (lambda hh=h, ii=ix: self._set_fiendish_resilience(hh, ii)))
+                                         for nm, ix in _types]
+                                self.context_menu.show(pos, _opts, self.screen.get_size())
+                            _menu_opts.append(("Fiendish Resilience", _choose_fiendish_resilience))
                         self.context_menu.show(event.pos, _menu_opts, self.screen.get_size())
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map:
@@ -5478,6 +5602,8 @@ class App:
                             self._resolve_grapple(hit)
                         elif self.pending_unarmed_type and hit >= 0:
                             self._resolve_unarmed_option(hit)
+                        elif self.pending_heal_light and hit >= 0:
+                            self._resolve_healing_light(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -5726,6 +5852,10 @@ class App:
                 if self.btn_long_rest.clicked(event):
                     self._on_long_rest()
 
+                # Short Rest — restore short-rest resources (Warlock pact slots, Monk Ki, …)
+                if self.btn_short_rest.clicked(event):
+                    self._on_short_rest()
+
                 # Remove pending agent by clicking ✕
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     list_y = self.btn_clear.rect.bottom + 20 + 18
@@ -5893,6 +6023,18 @@ class App:
                             agent = self.bm.placed_agents[idx]
                             self._combat_log_add(f"{agent.name}: Activates Reckless Attack (enemies gain advantage on attacks vs you)")
                         self.action_used = True
+                    if self.btn_cbt_magical_cunning.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.use_magical_cunning(self.bm, idx):
+                                self._flush_combat_log()
+                            else:
+                                self._combat_log_add("Magical Cunning unavailable.")
+                    if self.btn_cbt_healing_light.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_heal_light = True
+                            self._combat_log_add("Healing Light — click an ally (or self) to heal.")
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

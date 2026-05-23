@@ -1780,6 +1780,16 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         applyUnconscious(bm, action.target_idx);
         r.target_down = true;
         // Don't roll death save yet - they'll roll on their next turn or if they take more damage
+
+        // TASK A: Dark One's Blessing (Fiend L3): temp HP on kill
+        if (atk_stats.character_class == CharacterClass::Warlock && atk_stats.warlock_subclass == FiendPath && atk_stats.char_level >= 3) {
+            int chaMod = (atk_stats.cha - 10) / 2;
+            if (atk_stats.cha < 10 && (atk_stats.cha - 10) % 2 != 0) --chaMod;
+            int bonus = std::max(1, chaMod + atk_stats.char_level);
+            atk_stats.temp_hp = std::max(atk_stats.temp_hp, bonus);
+            bm.setAgentStats(action.attacker_idx, atk_stats);
+            log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, action.attacker_idx), bonus);
+        }
     }
 
     // Death save on damage for agents already unconscious (unless melee hit within 5ft, which auto-fails 2)
@@ -2267,6 +2277,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
     bool any_conditions_applied = false;
+    bool any_kill = false;  // TASK A: Dark One's Blessing tracking
+
+    // TASK D: Radiant Soul (Celestial L6): does this spell deal Radiant(8) or Fire(2) damage?
+    // Computed once per cast; the +CHA bonus below applies to the first damaged target this turn.
+    bool spell_radiant_or_fire = false;
+    for (const auto& rinfo : sp.magic_damage_rolls)
+        if (rinfo.type == 8 || rinfo.type == 2) { spell_radiant_or_fire = true; break; }
+    if (!spell_radiant_or_fire)
+        for (const auto& rinfo : sp.physical_damage_rolls)
+            if (rinfo.type == 8 || rinfo.type == 2) { spell_radiant_or_fire = true; break; }
 
     for (int tgt_idx : targets) {
         if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) continue;
@@ -2575,9 +2595,33 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         } // switch
 
+        // TASK D: Radiant Soul (Celestial L6+): once per turn, add CHA mod to one damaging
+        // Radiant/Fire spell. Applies across all attack types (AttackRoll/Save/Automatic).
+        if (tr.total_damage > 0 && sp.type != Spell::Heal && spell_radiant_or_fire &&
+            caster_stats.character_class == CharacterClass::Warlock &&
+            caster_stats.warlock_subclass == CelestialPath && caster_stats.char_level >= 6) {
+            Agent::Conditions caster_cond = bm.getAgentConditions(action.caster_idx);
+            if (!caster_cond.radiant_soul_used) {
+                int chaMod = (caster_stats.cha - 10) / 2;
+                if (caster_stats.cha < 10 && (caster_stats.cha - 10) % 2 != 0) --chaMod;
+                if (chaMod > 0) {
+                    int overflow = std::max(0, chaMod - tgt_stats.temp_hp);
+                    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - chaMod);
+                    tgt_stats.hp_cur  = std::max(0, tgt_stats.hp_cur - overflow);
+                    tr.total_damage += chaMod;
+                    log_("{}: Radiant Soul adds {} damage to {} spell", agentName(bm, action.caster_idx), chaMod, sp.name);
+                }
+                caster_cond.radiant_soul_used = true;
+                bm.setAgentConditions(action.caster_idx, caster_cond);
+            }
+        }
+
         tr.hp_after    = tgt_stats.hp_cur;
         tr.target_down = (tgt_stats.hp_cur <= 0);
         bm.setAgentStats(tgt_idx, tgt_stats);
+
+        // TASK A: Dark One's Blessing tracking
+        if (tr.target_down) any_kill = true;
 
         // Auto-trigger Unconscious if HP drops to 0 or below
         if (tgt_stats.hp_cur <= 0) {
@@ -2735,6 +2779,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         result.target_results.push_back(tr);
+    }
+
+    // TASK A: Dark One's Blessing (Fiend L3): temp HP on spell kill
+    if (any_kill && caster_stats.character_class == CharacterClass::Warlock && caster_stats.warlock_subclass == FiendPath && caster_stats.char_level >= 3) {
+        int chaMod = (caster_stats.cha - 10) / 2;
+        if (caster_stats.cha < 10 && (caster_stats.cha - 10) % 2 != 0) --chaMod;
+        int bonus = std::max(1, chaMod + caster_stats.char_level);
+        Agent::Stats updated_stats = bm.getAgentStats(action.caster_idx);
+        updated_stats.temp_hp = std::max(updated_stats.temp_hp, bonus);
+        bm.setAgentStats(action.caster_idx, updated_stats);
+        log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, action.caster_idx), bonus);
     }
 
     // Register persistent effects (duration > 1 means per-tick damage/heal on
@@ -3529,6 +3584,83 @@ void CombatEngine::clearAllConcentration(BattleMap& bm)
     }
 }
 
+bool CombatEngine::useMagicalCunning(BattleMap& bm, int agent_idx)
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    if (stats.character_class != Warlock) return false;
+
+    Resource* mc = stats.getResource("Magical Cunning");
+    if (!mc || mc->current <= 0) return false;  // not available / already used
+
+    const int lvl = stats.pact_slot_level();
+    if (lvl < 1) return false;
+    const std::size_t i = static_cast<std::size_t>(lvl - 1);
+    const int maxs = stats.spell_slots_max[i];
+    const int expended = maxs - stats.spell_slots_remaining[i];
+    if (expended <= 0) return false;  // nothing to recover
+
+    // ceil(max/2), or all expended at L20 (Eldritch Master).
+    const int recover = (stats.char_level >= 20) ? expended
+                                                 : std::min(expended, (maxs + 1) / 2);
+    stats.spell_slots_remaining[i] += recover;
+    mc->spend();
+    bm.setAgentStats(agent_idx, stats);
+    log_("{}: Magical Cunning recovers {} pact slot(s).", agentName(bm, agent_idx), recover);
+
+    // TASK E: Celestial Resilience (Celestial L10): temp HP on Magical Cunning use
+    if (stats.character_class == CharacterClass::Warlock && stats.warlock_subclass == CelestialPath && stats.char_level >= 10) {
+        int chaMod = (stats.cha - 10) / 2;
+        if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
+        stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+        bm.setAgentStats(agent_idx, stats);
+        log_("{}: Celestial Resilience grants {} temp HP", agentName(bm, agent_idx), stats.char_level + chaMod);
+    }
+
+    return true;
+}
+
+int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx, int num_dice)
+{
+    auto agents = bm.placedAgents();
+    if (healer_idx < 0 || healer_idx >= static_cast<int>(agents.size())) return 0;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats healer_stats = bm.getAgentStats(healer_idx);
+    if (healer_stats.character_class != CharacterClass::Warlock || healer_stats.warlock_subclass != CelestialPath ||
+        healer_stats.char_level < 3) {
+        return 0;
+    }
+
+    Resource* hl = healer_stats.getResource("Healing Light");
+    if (!hl || hl->current <= 0) return 0;
+
+    int chaMod = (healer_stats.cha - 10) / 2;
+    if (healer_stats.cha < 10 && (healer_stats.cha - 10) % 2 != 0) --chaMod;
+    int max_dice = std::max(1, chaMod);
+
+    num_dice = std::min(num_dice, std::min(hl->current, max_dice));
+    if (num_dice <= 0) return 0;
+
+    int total_healing = 0;
+    for (int i = 0; i < num_dice; ++i) {
+        total_healing += roll(6);
+    }
+
+    hl->spend(num_dice);  // hl points into healer_stats.resources, so this mutates it in place
+    bm.setAgentStats(healer_idx, healer_stats);
+
+    Agent::Stats target_stats = bm.getAgentStats(target_idx);
+    int healed = std::min(total_healing, target_stats.hp_max - target_stats.hp_cur);
+    target_stats.hp_cur = std::min(target_stats.hp_max, target_stats.hp_cur + total_healing);
+    bm.setAgentStats(target_idx, target_stats);
+
+    log_("{}: Healing Light: {} d6 = {} healing to {}", agentName(bm, healer_idx), num_dice, total_healing, agentName(bm, target_idx));
+    return healed;
+}
+
 void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -4129,6 +4261,13 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
             stats.temp_hp = stats.char_level;
         }
 
+        // TASK E: Celestial Resilience (Celestial L10): temp HP on long rest
+        if (stats.character_class == CharacterClass::Warlock && stats.warlock_subclass == CelestialPath && stats.char_level >= 10) {
+            int chaMod = (stats.cha - 10) / 2;
+            if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
+            stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+        }
+
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);
 
@@ -4138,6 +4277,26 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         }
 
         log_("{} completed long rest: resources restored, Portent Dice regenerated", agentName(bm, agent_idx));
+    }
+}
+
+void CombatEngine::applyShortRest(BattleMap& bm) noexcept
+{
+    auto agents = bm.placedAgents();
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        int agent_idx = static_cast<int>(i);
+        Agent::Stats stats = bm.getAgentStats(agent_idx);
+        stats.restore_resources_short_rest();  // Warlock pact slots, Monk Ki, etc.
+
+        // TASK E: Celestial Resilience (Celestial L10): temp HP on short rest
+        if (stats.character_class == CharacterClass::Warlock && stats.warlock_subclass == CelestialPath && stats.char_level >= 10) {
+            int chaMod = (stats.cha - 10) / 2;
+            if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
+            stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+        }
+
+        bm.setAgentStats(agent_idx, stats);
+        log_("{} completed short rest: short-rest resources restored", agentName(bm, agent_idx));
     }
 }
 
@@ -5013,7 +5172,44 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       break;
     }
 
-    // Other classes without resources (Fighter, Rogue, Ranger, Paladin, Warlock, Bard, Druid)
+    case Warlock: {
+      // Pact Magic: Charisma caster. Pact slots come from kPact (set by set_class_level);
+      // they all share one level and recharge on a SHORT or long rest.
+      spellcasting_ability = 5;  // 5 = CHA
+      can_cast_spell = true;
+      save_prof_wis = true;      // Warlock saving-throw proficiencies: WIS and CHA
+      save_prof_cha = true;
+      spell_slots_remaining = spell_slots_max;  // start with pact slots full
+
+      // Magical Cunning (L2+): once per long rest, recover expended pact slots up to
+      // ceil(max/2) — or all of them at L20 (Eldritch Master). See useMagicalCunning.
+      if (level >= 2) {
+        Resource mc("Magical Cunning", 1, 1);  // 1 use, available now, restored on long rest
+        mc.long_rest_regen = 1;
+        resources["Magical Cunning"] = mc;
+      }
+
+      // Subclass-specific features
+      if (warlock_subclass == FiendPath && level >= 10 && fiendish_resilience_type >= 0) {
+        set_magic_damage_multiplier(fiendish_resilience_type, 0.5f);
+      }
+      if (warlock_subclass == CelestialPath && level >= 6) {
+        set_magic_damage_multiplier(8 /* Radiant */, 0.5f);
+      }
+      if (warlock_subclass == GreatOldOnePath && level >= 10) {
+        set_magic_damage_multiplier(7 /* Psychic */, 0.5f);
+      }
+
+      // Healing Light (Celestial L3): pool of d6 healing
+      if (warlock_subclass == CelestialPath && level >= 3) {
+        Resource hl("Healing Light", 1 + level, 1 + level);
+        hl.long_rest_regen = 1 + level;
+        resources["Healing Light"] = hl;
+      }
+      break;
+    }
+
+    // Other classes without resources (Fighter, Rogue, Ranger, Paladin, Bard, Druid)
     // have no custom resources
     default:
       break;

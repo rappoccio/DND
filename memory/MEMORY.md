@@ -1,4 +1,5 @@
 - [To-Do List](TODO.md) — Tracking completed features (Portent Dice, Rage, Subclass system) and backlog
+- [Checked Combat Replay](replay_instructions.md) — record a combat + replay it headlessly asserting engine state reproduces; deterministic bug regression (`replay.py --check`)
 - [Subclass Selection, Rage, Portent Dice](session_subclass_rage_portent.md) — UI for selecting subclasses, Rage bonus button, fixed Portent Dice with advantage/disadvantage
 - [Grapple Mechanics](grapple_mechanics.md) — Complete D&D 5e grapple implementation with dragging and OA filtering
 - [Speed=0 and OA Mechanics](feedback_speed_zero_mechanics.md) — Creatures with Speed=0 can't move or make OAs; forced movement bypasses validation

@@ -648,6 +648,10 @@ public:
     // Apply long rest to all agents: restore spell slots, resources, Portent Dice, etc.
     void applyLongRest(BattleMap& bm) noexcept;
 
+    // Apply short rest to all agents: restore short-rest resources (Warlock Pact Magic
+    // slots, Monk Ki, etc.). Does not restore long-rest-only resources.
+    void applyShortRest(BattleMap& bm) noexcept;
+
     // ── High-level BattleMap integration ─────────────────────────────────
 
     // Validate an Attack (range + LoS), then call resolveAttack and
@@ -700,6 +704,15 @@ public:
 
     // Drop concentration for every concentrating agent (e.g. on End Combat).
     void clearAllConcentration(BattleMap& bm);
+
+    // Warlock Magical Cunning (L2+): recover expended Pact Magic slots up to ceil(max/2)
+    // — or all of them at L20 (Eldritch Master) — once per long rest. Returns true if used.
+    bool useMagicalCunning(BattleMap& bm, int agent_idx);
+
+    // Celestial Warlock Healing Light (L3+): spend d6 healing dice from the pool.
+    // Validates healer is Celestial L3+, clamps num_dice, spends from resource, rolls and heals target.
+    // Returns HP healed (0 if invalid).
+    int useHealingLight(BattleMap& bm, int healer_idx, int target_idx, int num_dice);
 
     // Tick the given agent's terrain at the start of their turn. Decrements durations,
     // removes expired effects, and clears concentration if a concentration terrain expired.

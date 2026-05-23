@@ -266,6 +266,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Set the character class and level. Automatically computes spell_slots_max and updates can_cast_spell.")
         .def("restore_spell_slots", &Agent::Stats::restore_spell_slots,
              "Restore spell_slots_remaining to their maximum (Long Rest).")
+        .def("pact_slot_level", &Agent::Stats::pact_slot_level,
+             "Warlock Pact Magic: the single slot level (1-5) the pact slots occupy, or 0 if none.")
         // D&D 5e leveled spell per-turn rule
         .def("can_cast_leveled_spell", &Agent::Stats::canCastLeveledSpell,
              "Check if a leveled spell (level >= 1) can be cast this turn.")
@@ -323,6 +325,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
         .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
              "Wizard subclass (only valid when character_class == Wizard)")
+        .def_readwrite("warlock_subclass", &Agent::Stats::warlock_subclass,
+             "Warlock patron subclass (only valid when character_class == Warlock)")
+        .def_readwrite("fiendish_resilience_type", &Agent::Stats::fiendish_resilience_type,
+             "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
              "Diviner Wizard: deque of d20 portent rolls (regenerated on long rest, used with use_portent_die)")
         .def("__repr__", [](const Agent::Stats& s){
@@ -374,6 +380,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
+        .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
         .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
@@ -643,6 +650,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Diviner", DivinierPath)
         .value("Evoker", EvokerPath)
         .value("Illusionist", IllusionistPath)
+        .export_values();
+
+    // ── Warlock Subclass (Patron) Enum (2024 D&D) ────────────────────────────
+    py::enum_<WarlockSubclass>(m, "WarlockSubclass")
+        .value("NONE", WarlockSubclassNone)
+        .value("Archfey", ArchfeyPath)
+        .value("Celestial", CelestialPath)
+        .value("Fiend", FiendPath)
+        .value("GreatOldOne", GreatOldOnePath)
         .export_values();
 
     // ── Origin Struct ────────────────────────────────────────────────────────
@@ -1334,6 +1350,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::clearAllConcentration,
              py::arg("battle_map"),
              "Drop concentration for every concentrating agent (e.g. on End Combat).")
+        .def("use_magical_cunning",
+             &CombatEngine::useMagicalCunning,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Warlock Magical Cunning: recover expended Pact Magic slots (ceil(max/2), or all at L20).\n"
+             "Returns True if used; False if unavailable or nothing to recover.")
+        .def("use_healing_light",
+             &CombatEngine::useHealingLight,
+             py::arg("battle_map"), py::arg("healer_idx"), py::arg("target_idx"), py::arg("num_dice"),
+             "Celestial Warlock Healing Light (L3+): spend d6 healing dice.\n"
+             "Validates healer is Celestial L3+, clamps num_dice to min(num_dice, current, chaMod).\n"
+             "Spends dice from resource, rolls that many d6, heals target.\n"
+             "Returns HP healed (0 if invalid).")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),
@@ -1405,6 +1433,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"),
              "Apply long rest to all agents: restore spell slots, resources,\n"
              "and regenerate Portent Dice for Diviner Wizards.")
+        .def("apply_short_rest",
+             &CombatEngine::applyShortRest,
+             py::arg("battle_map"),
+             "Apply short rest to all agents: restore short-rest resources\n"
+             "(Warlock Pact Magic slots, Monk Ki, etc.).")
 
         .def("tick_effects",
              &CombatEngine::tickEffects,

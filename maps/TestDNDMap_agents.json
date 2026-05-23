@@ -50,6 +50,7 @@
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         0,
         0,
@@ -131,6 +132,7 @@
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         4,
         3,
@@ -208,6 +210,7 @@
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         0,
         0,
@@ -229,22 +232,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": false,
-      "npc_spell_groups": {
-        "3": [
-          "Magic Missile",
-          "Grease"
-        ],
-        "1": [
-          "Fireball"
-        ]
-      },
-      "npc_spell_uses_cur": {
-        "Grease": 3,
-        "Magic Missile": 3,
-        "Fireball": 1
-      }
+      ]
     },
     {
       "name": "Fire Elemental",
@@ -296,6 +284,7 @@
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         0,
         0,
@@ -373,6 +362,7 @@
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         0,
         0,
@@ -394,20 +384,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": false,
-      "npc_spell_groups": {
-        "3": [
-          "Magic Missile"
-        ],
-        "1": [
-          "Cone of Cold"
-        ]
-      },
-      "npc_spell_uses_cur": {
-        "Magic Missile": 3,
-        "Cone of Cold": 1
-      }
+      ]
     },
     {
       "name": "Drak",
@@ -425,7 +402,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 60,
+        "speed_walk": 100,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -459,6 +436,7 @@
       "agent_char_level": 9,
       "agent_barbarian_subclass": "Berserker",
       "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         0,
         0,
@@ -544,6 +522,7 @@
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "Diviner",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         4,
         3,
@@ -560,7 +539,7 @@
         3,
         3,
         3,
-        0,
+        1,
         0,
         0,
         0,
@@ -624,6 +603,7 @@
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "Evoker",
+      "agent_warlock_subclass": "NONE",
       "spell_slots_max": [
         4,
         3,
@@ -641,6 +621,233 @@
         3,
         3,
         1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Zyphara",
+      "sprite_path": "",
+      "size": 1,
+      "col": 13,
+      "row": 4,
+      "stats": {
+        "str": 15,
+        "dex": 14,
+        "con": 13,
+        "intel": 12,
+        "wis": 10,
+        "cha": 8,
+        "hp_max": 8,
+        "hp_cur": 8,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
+      },
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "Barbarian",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Iago",
+      "sprite_path": "",
+      "size": 1,
+      "col": 8,
+      "row": 14,
+      "stats": {
+        "str": 8,
+        "dex": 12,
+        "con": 14,
+        "intel": 20,
+        "wis": 12,
+        "cha": 8,
+        "hp_max": 35,
+        "hp_cur": 35,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "int"
+      },
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "Wizard",
+      "agent_char_level": 9,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "Evoker",
+      "agent_warlock_subclass": "NONE",
+      "spell_slots_max": [
+        4,
+        3,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        4,
+        3,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Kaili",
+      "sprite_path": "",
+      "size": 1,
+      "col": 5,
+      "row": 8,
+      "stats": {
+        "str": 8,
+        "dex": 14,
+        "con": 16,
+        "intel": 8,
+        "wis": 10,
+        "cha": 18,
+        "hp_max": 65,
+        "hp_cur": 65,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": true,
+        "save_prof_cha": true,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
+      },
+      "weapons": {
+        "main_hand": "Dagger",
+        "off_hand": "Unnamed",
+        "ranged": "Longbow"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [
+        "Fireball",
+        "Invisibility",
+        "Eyebite",
+        "Eldritch Blast"
+      ],
+      "agent_class": "Warlock",
+      "agent_char_level": 9,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "Fiend",
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        2,
         0,
         0,
         0,

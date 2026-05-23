@@ -256,3 +256,72 @@ engine.set_agent_stats(bm, idx, stats)
 **Future improvement:**
 - Modify `add_agent_to_battle()` or battle agent creation to preserve config stats
 - OR provide a post-add stats migration function
+
+---
+
+## Warlock (added 2026-05-23)
+
+Built as a phased epic. **Phase 1 (Pact Magic foundation) is implemented**; everything else is
+deferred. Scope is combat-only — flavor / out-of-combat utility is intentionally NOT modeled.
+
+### Implemented (Phase 1) ✅
+- Chassis: CHA spellcasting, WIS+CHA save proficiencies, `can_cast_spell`.
+- `WarlockSubclass` enum (Archfey/Celestial/Fiend/GreatOldOne) + `warlock_subclass` field + GUI
+  patron selection + save/load (`agent_warlock_subclass`).
+- Pact Magic slots via `kPact` (uniform level), **short-rest recharge**, cast-at-pact-level
+  (`pact_slot_level()`), Magical Cunning (recover ceil(max/2) once per long rest; all at L20).
+- Tests: `test_warlock_l1_5.py`.
+
+### Deferred to later phases ❌
+- **Phase 2 — 4 patron subclasses' combat features**: Fiend (Dark One's Blessing temp-HP-on-kill,
+  Dark One's Own Luck d10, Fiendish Resilience, Hurl Through Hell); Celestial (Healing Light pool,
+  Radiant Soul +CHA radiant/fire, Celestial Resilience, Searing Vengeance); Great Old One (Psychic
+  Spells damage-type swap, Eldritch Hex, Thought Shield psychic-resist+reflect, Clairvoyant
+  Combatant); Archfey (Steps of the Fey misty-step uses, Beguiling Defenses charm immunity + psychic
+  reflect, Misty Escape). These are specializations of existing engine pieces (temp HP, resistances,
+  +CHA damage, condition immunities, healing pools).
+- **Phase 3 — combat-relevant Eldritch Invocations**: Agonizing Blast (+CHA to cantrip damage),
+  Repelling Blast (push), Eldritch Spear (range), Devil's Sight, Eldritch Mind (advantage on
+  concentration saves), Pact of the Blade (CHA finesse pact weapon + conjure), Thirsting Blade /
+  Devouring Blade (extra attacks), Eldritch Smite, Lifedrinker.
+- **Phase 4**: Mystic Arcanum (free 6th–9th-level cast/long rest), Eldritch Master.
+- **Phase 5**: backfill missing Warlock/patron spells into `spells.json` (e.g. Hunger of Hadar,
+  Witch Bolt) — many subclass "always-prepared" spells are absent.
+
+### Needs new infrastructure (deferred) 🔧
+- **"Always-prepared" spells mechanism**: patron spells and several invocation/feature spells are
+  "always prepared." No engine mechanism exists; until built, the player prepares them manually.
+- **Eldritch Invocation selection UI** + an at-will / once-per-rest free-cast mechanism for the
+  "cast spell X without a slot" invocations.
+
+### Not modeled (combat simulator only) 🚫
+- Contact Patron / Contact Other Plane, telepathy (Awakened Mind), familiars (Pact of the Chain,
+  Investment of the Chain Master), Pact of the Tome book/rituals, underwater breathing (Gift of the
+  Depths), disguise/illusion utility (Mask of Many Faces, Master of Myriad Forms, Misty Visions,
+  One with Shadows), planar travel, Gift of the Protectors, and other purely out-of-combat utility.
+
+### Phase 2 (patron subclasses) — implemented vs deferred (2026-05-23)
+**Implemented (Fiend / Celestial / Great Old One — specializations of existing pieces):**
+Dark One's Blessing (temp HP on a kill), Fiendish Resilience (chosen damage resistance), Healing
+Light (d6 heal pool), Radiant Soul (Radiant resistance + once/turn +CHA to radiant/fire spell
+damage), Celestial Resilience (self temp HP on rest), Thought Shield (Psychic resistance).
+
+**Deferred — Archfey patron (entire subclass), skipped for now.** Steps of the Fey, Misty Escape,
+Bewitching Magic all hinge on a Misty Step *teleport primitive* + free-casting (new infra);
+Beguiling Defenses needs the damage-reflect reaction hook below. Revisit when teleport lands.
+
+**Deferred — features needing NEW hooks (not "specialize existing pieces"):**
+- *Dark One's Own Luck* (Fiend L6): add 1d10 to a check/save after seeing it → needs an
+  "add-to-roll" hook (Portent only *replaces* a roll, doesn't add).
+- *Hurl Through Hell* (Fiend L14): on-hit, banish target (remove from map, return next turn) →
+  needs a temporary-removal/return mechanic.
+- *Searing Vengeance* (Celestial L14): intercept an ally's death save → needs a death-save hook.
+- *Damage-reflect reactions* (GOO Thought Shield reflect, Archfey Beguiling Defenses) → need a
+  reaction-triggered reflect-on-damage hook.
+- *Psychic Spells* (GOO L3): per-cast option to change a spell's damage type to Psychic → needs a
+  cast-time choice mechanism.
+- *Eldritch Hex* (GOO L10): depends on the deferred "always-prepared" Hex + Hex's curse mechanics.
+- *Awakened Mind / Clairvoyant Combatant* (GOO): telepathy (out-of-combat) — not modeled.
+- *Dark One's Blessing ally-within-10ft trigger* and *Celestial Resilience ally temp HP*: the
+  "you/an ally" and "up to 5 allies" parts need party/proximity targeting; only the self case is
+  implemented for now.
