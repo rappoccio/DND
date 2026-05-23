@@ -1295,6 +1295,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::keep_alive<1, 2>(),
              "Set the CombatDecider (GUI=Python subclass, RL/headless=nullptr for defaults).")
 
+        .def("set_safe_targets",
+             &CombatEngine::setSafeTargets,
+             py::arg("caster_idx"), py::arg("targets"),
+             "Set the agent indices fully excluded from caster_idx's AoE spells (Evoker safe targets).")
+        .def("get_safe_targets",
+             &CombatEngine::getSafeTargets,
+             py::arg("caster_idx"),
+             "Get the agent indices excluded from caster_idx's AoE spells.")
+
         // Round execution
         .def("run_round",
              &CombatEngine::runRound,
@@ -1321,6 +1330,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Tick the agent's terrain at start of turn; clears concentration if a concentration terrain expired.\n"
              "Returns TerrainTickResult(expired_terrain_ids, concentration).")
+        .def("clear_all_concentration",
+             &CombatEngine::clearAllConcentration,
+             py::arg("battle_map"),
+             "Drop concentration for every concentrating agent (e.g. on End Combat).")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),

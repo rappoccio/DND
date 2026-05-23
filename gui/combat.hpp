@@ -544,6 +544,17 @@ public:
     // Set the CombatDecider for decision points (GUI=Python subclass, RL/headless=nullptr).
     void setDecider(CombatDecider* d) noexcept { decider_ = d; }
 
+    // Evoker "safe targets": creatures fully excluded from this caster's AoE spells
+    // (no save, no damage, no conditions). Manually selected in the GUI for Evokers now;
+    // intended to be auto-populated from the player's party later.
+    void setSafeTargets(int caster_idx, std::vector<int> targets) noexcept {
+        safeTargets_[caster_idx] = std::move(targets);
+    }
+    [[nodiscard]] std::vector<int> getSafeTargets(int caster_idx) const {
+        auto it = safeTargets_.find(caster_idx);
+        return it == safeTargets_.end() ? std::vector<int>{} : it->second;
+    }
+
     // ── Dice rollers ──────────────────────────────────────────────────────
     int roll(int sides);            // 1dN  (result 1…sides)
     int rollAdvantage(int sides);   // 2dN, keep higher
@@ -687,6 +698,9 @@ public:
     // Drop concentration for the given agent: removes terrain, spell effects, conditions.
     [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
 
+    // Drop concentration for every concentrating agent (e.g. on End Combat).
+    void clearAllConcentration(BattleMap& bm);
+
     // Tick the given agent's terrain at the start of their turn. Decrements durations,
     // removes expired effects, and clears concentration if a concentration terrain expired.
     [[nodiscard]] TerrainTickResult tickTerrainForTurn(BattleMap& bm, int agent_idx);
@@ -804,6 +818,7 @@ private:
 
     MessageLogger* logger_{nullptr};
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
+    std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 
     // Emit a message to the logger (if attached).
     template<typename... Args>

@@ -27,6 +27,7 @@ test_scripts = [
     "test_forced_movement_oa.py",
     "test_resource.py",
     "test_terrain_concentration.py",
+    "test_evoker_safe_targets.py",
 
     # Barbarian features
     "test_barbarian_l1_3.py",

@@ -1,4 +1,3 @@
-- [Plan: Arcane Ward](plan_arcane_ward.md) — Abjurer L3 temp HP charging on abjuration spells + bonus action expending slots
 - [To-Do List](TODO.md) — Tracking completed features (Portent Dice, Rage, Subclass system) and backlog
 - [Subclass Selection, Rage, Portent Dice](session_subclass_rage_portent.md) — UI for selecting subclasses, Rage bonus button, fixed Portent Dice with advantage/disadvantage
 - [Grapple Mechanics](grapple_mechanics.md) — Complete D&D 5e grapple implementation with dragging and OA filtering

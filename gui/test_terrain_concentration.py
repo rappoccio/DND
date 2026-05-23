@@ -187,6 +187,27 @@ def test_multiple_target_concentration_drops_with_no_targets():
     print("✅ test_multiple_target_concentration_drops_with_no_targets passed")
 
 
+def test_clear_all_concentration():
+    """clear_all_concentration (End Combat) drops concentration + cascades for every agent."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    a = add_agent_to_battle(engine, bm, create_test_agent("CasterA", 5, 5))
+    b = add_agent_to_battle(engine, bm, create_test_agent("CasterB", 7, 7))
+    for idx, name, cell in [(a, "Spike Growth", rpg.Cell(5, 5)), (b, "Web", rpg.Cell(7, 7))]:
+        bm.place_terrain_effect(name, [cell], rpg.TerrainDifficulty.Quartered, 5, idx, 10, 5, 0, True)
+        c = engine.get_agent_conditions(bm, idx)
+        c.concentrating = True
+        c.concentrating_on = name
+        engine.set_agent_conditions(bm, idx, c)
+    assert bm.has_active_terrain_effects()
+
+    engine.clear_all_concentration(bm)
+    assert not engine.get_agent_conditions(bm, a).concentrating, "A's concentration should be cleared"
+    assert not engine.get_agent_conditions(bm, b).concentrating, "B's concentration should be cleared"
+    assert not bm.has_active_terrain_effects(), "concentration terrain should be cleared too"
+    print("✅ test_clear_all_concentration passed")
+
+
 if __name__ == "__main__":
     test_terrain_concentration_bindings_present()
     test_drop_concentration_noop_when_not_concentrating()
@@ -196,4 +217,5 @@ if __name__ == "__main__":
     test_drop_concentration_leaves_nonconcentration_terrain()
     test_aoe_concentration_holds_with_no_targets()
     test_multiple_target_concentration_drops_with_no_targets()
+    test_clear_all_concentration()
     print("\n✅ All terrain/concentration tests passed!")

@@ -72,8 +72,8 @@ def test_brutal_strike_conditions_binding():
 
 
 def test_brutal_strike_available_each_turn():
-    """Reckless Attack is a Rage-coupled stance: declared once, it persists across turns,
-    so Brutal Strike is eligible again every turn (not just the round it was declared)."""
+    """Reckless Attack is a per-turn declaration: it resets at the start of each turn, and
+    Brutal Strike is eligible again on any turn the Barbarian re-declares Reckless Attack."""
     bm = setup_battle_map()
     engine = setup_combat_engine()
 
@@ -88,26 +88,28 @@ def test_brutal_strike_available_each_turn():
     w = create_melee_weapon(); w.proficient = True
     engine.set_agent_weapons(bm, atk, [w, create_melee_weapon(), create_melee_weapon()])
 
-    # Declare Rage + Reckless Attack ONCE (turn 1).
+    # Turn 1: declare Rage + Reckless Attack, eligible attack -> BS available, then consumed.
     c = engine.get_agent_conditions(bm, atk)
     c.raging = True
     c.reckless_attack = True
     engine.set_agent_conditions(bm, atk, c)
-
-    # Turn 1: eligible attack hits -> Brutal Strike becomes available, then is consumed.
     engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
     assert engine.get_agent_conditions(bm, atk).brutal_strike_available, "BS should be available turn 1"
     res = rpg.AttackResult()
     engine.apply_brutal_strike_effect(bm, atk, tgt, [1], res)
 
-    # Turn 2: begin a new turn WITHOUT re-declaring Reckless Attack.
+    # Turn 2: a new turn resets the per-turn flags, including reckless_attack.
     engine.begin_turn(bm, atk)
     c2 = engine.get_agent_conditions(bm, atk)
-    assert c2.reckless_attack, "Reckless Attack should persist across turns while raging"
-    assert not c2.brutal_strike_available, "BS availability should reset at turn start"
+    assert not c2.reckless_attack, "Reckless Attack resets at the start of each turn (per-turn declaration)"
+    assert not c2.brutal_strike_available, "BS availability resets at turn start"
+
+    # Re-declare Reckless Attack this turn -> Brutal Strike is eligible again.
+    c2.reckless_attack = True
+    engine.set_agent_conditions(bm, atk, c2)
     engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
     assert engine.get_agent_conditions(bm, atk).brutal_strike_available, \
-        "BS should be eligible again on turn 2 (once per turn)"
+        "BS should be eligible again on turn 2 after re-declaring Reckless Attack"
     print("✅ test_brutal_strike_available_each_turn passed")
 
 

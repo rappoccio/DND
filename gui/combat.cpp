@@ -2227,10 +2227,22 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
-    const std::vector<int> targets =
+    std::vector<int> targets =
         (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple)
         ? action.target_indices
         : resolveAoeTargets(agents, sp, action.caster_idx, action.aoe_col, action.aoe_row);
+
+    // Evoker safe targets: fully exclude the caster's protected allies from AoE spells
+    // (no save, no damage, no conditions). Single/Multiple are directly targeted, so untouched.
+    if (sp.geometry != Spell::Single && sp.geometry != Spell::Multiple) {
+        auto it = safeTargets_.find(action.caster_idx);
+        if (it != safeTargets_.end() && !it->second.empty()) {
+            const std::vector<int>& safe = it->second;
+            std::erase_if(targets, [&safe](int t) {
+                return std::find(safe.begin(), safe.end(), t) != safe.end();
+            });
+        }
+    }
 
     // Check if caster is charmed and any target is the charmer
     if (caster_pa.agent->getConditions().charmed) {
@@ -3507,6 +3519,14 @@ TerrainTickResult CombatEngine::tickTerrainForTurn(BattleMap& bm, int agent_idx)
     }
 
     return result;
+}
+
+void CombatEngine::clearAllConcentration(BattleMap& bm)
+{
+    for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {
+        if (bm.getAgentConditions(i).concentrating)
+            (void)dropConcentration(bm, i);  // cascades: terrain + spell effects + conditions + flag
+    }
 }
 
 void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept

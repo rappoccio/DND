@@ -265,6 +265,10 @@ class App:
         self._load_spell_effects()
         self._load_lighting()
 
+        # Evoker "safe targets" editing: index of the Evoker whose safe set is being
+        # edited via map clicks (-1 = not editing). Out-of-combat only.
+        self.safe_target_edit_idx = -1
+
         # ── Drag-and-drop state ───────────────────────────────────────────
         self.drag_idx     = -1         # index of agent being dragged
         self.drag_origin  = None       # Cell: original position (for cancel)
@@ -1268,6 +1272,7 @@ class App:
             return
         self.initiative_order    = order
         self.combat_active       = True
+        self.safe_target_edit_idx = -1  # exit any safe-target editing when combat starts
         self.turn_idx            = 0
         self.round_num           = 0
         self.action_used          = False
@@ -1341,6 +1346,7 @@ class App:
         self._reach_set          = set()
         self._effect_meta         = {}
         self._spell_metadata      = {}
+        self.combat.clear_all_concentration(self.bm)  # drop lingering concentration on all agents
         self.bm.clear_terrain_effects()
         self.bm.clear_spell_effects()
         self._attack_cells_melee = []
@@ -4279,6 +4285,50 @@ class App:
                     self.screen.blit(lbl, (ix + (icon_px - lbl.get_width()) // 2,
                                            iy + (icon_px - lbl.get_height()) // 2))
 
+    def _toggle_safe_target(self, hit: int):
+        """Toggle an agent in/out of the edited Evoker's safe-target set; empty/self finishes."""
+        caster = self.safe_target_edit_idx
+        if caster < 0 or caster >= len(self.bm.placed_agents):
+            self.safe_target_edit_idx = -1
+            return
+        if hit < 0 or hit == caster:
+            self._combat_log_add(f"Done editing safe targets for {self.bm.placed_agents[caster].name}.")
+            self.safe_target_edit_idx = -1
+            return
+        safe = list(self.combat.get_safe_targets(caster))
+        if hit in safe:
+            safe.remove(hit)
+            verb = "no longer safe from"
+        else:
+            safe.append(hit)
+            verb = "now safe from"
+        self.combat.set_safe_targets(caster, safe)
+        self._combat_log_add(
+            f"{self.bm.placed_agents[hit].name} is {verb} {self.bm.placed_agents[caster].name}'s AoEs.")
+
+    def _draw_safe_target_highlights(self):
+        """While editing an Evoker's safe set, outline the Evoker (cyan) and its safe targets (green)."""
+        if self.safe_target_edit_idx < 0:
+            return
+        agents = self.bm.placed_agents
+        caster = self.safe_target_edit_idx
+        if caster >= len(agents):
+            return
+        cpx = int(self.bm.cell_pixel_size * self.map_scale)
+        safe = set(self.combat.get_safe_targets(caster))
+
+        def _outline(idx, color):
+            if idx < 0 or idx >= len(agents):
+                return
+            pt = agents[idx]
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            size_px = cpx * pt.size
+            pygame.draw.rect(self.screen, color, pygame.Rect(sx, sy, size_px, size_px), 3)
+
+        _outline(caster, (100, 180, 220))   # the Evoker being edited (cyan)
+        for idx in safe:
+            _outline(idx, (60, 220, 80))     # safe allies (green)
+
     def _draw_agents(self):
         bm    = self.bm
         s     = self.map_scale
@@ -5290,6 +5340,13 @@ class App:
 
             # ── Keyboard shortcuts ────────────────────────────────────────
             if event.type == pygame.KEYDOWN:
+                # Esc finishes Evoker safe-target editing.
+                if event.key == pygame.K_ESCAPE and self.safe_target_edit_idx >= 0:
+                    self._combat_log_add(
+                        f"Done editing safe targets for "
+                        f"{self.bm.placed_agents[self.safe_target_edit_idx].name}.")
+                    self.safe_target_edit_idx = -1
+                    continue
                 # Delete / Backspace removes the selected placed agent,
                 # but ONLY when not in combat.
                 if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE) \
@@ -5385,20 +5442,31 @@ class App:
                                 self.combat.set_agent_armor(self.bm, h, cpp_armor)
                             self.armor_dialog.open(self.screen, h, pt2.name, armor_array,
                                                   self.armor_selection_dialog, _on_armor_done)
-                        self.context_menu.show(
-                            event.pos,
-                            [("Edit Stats",   _open_stats),
-                             ("Edit Weapons", _open_weapons),
-                             ("Edit Armor",   _open_armor),
-                             ("Edit Spells",  _open_spells)],
-                            self.screen.get_size()
-                        )
+                        def _edit_safe_targets(h=hit):
+                            self.safe_target_edit_idx = h
+                            self._combat_log_add(
+                                f"Editing safe targets for {self.bm.placed_agents[h].name}: "
+                                f"click allies to toggle them safe from this Evoker's AoEs "
+                                f"(Esc or click empty space to finish).")
+                        _menu_opts = [("Edit Stats",   _open_stats),
+                                      ("Edit Weapons", _open_weapons),
+                                      ("Edit Armor",   _open_armor),
+                                      ("Edit Spells",  _open_spells)]
+                        # Evoker Wizards only: manage the set of creatures safe from their AoEs.
+                        _hs = self.combat.get_agent_stats(self.bm, hit)
+                        if (_hs.character_class == rpg.CharacterClass.Wizard and
+                                _hs.wizard_subclass == rpg.WizardSubclass.Evoker):
+                            _menu_opts.append(("Edit Safe Targets", _edit_safe_targets))
+                        self.context_menu.show(event.pos, _menu_opts, self.screen.get_size())
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map:
                 cell = self._screen_to_cell(*event.pos)
                 if cell is not None:
                     hit = self._agent_at(cell)
-                    if self.combat_active:
+                    if self.safe_target_edit_idx >= 0 and not self.combat_active:
+                        # Evoker safe-target editing: clicking an ally toggles it; empty/self finishes.
+                        self._toggle_safe_target(hit)
+                    elif self.combat_active:
                         # Pending attack: resolve against the clicked agent.
                         if self.pending_attack_slot and hit >= 0:
                             self._resolve_combat_attack(hit)
@@ -5899,6 +5967,7 @@ class App:
             self.screen.fill(COL_BG)
             self._draw_map()
             self._draw_agents()
+            self._draw_safe_target_highlights()
             self._draw_panel()
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
