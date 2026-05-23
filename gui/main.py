@@ -294,8 +294,10 @@ class App:
 
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
         import time
+        from replay_record import RecordingCombat
         self.combat_seed = int(time.time() * 1000) % (2**32)
-        self.combat = rpg.CombatEngine(self.combat_seed)
+        # Wrap the engine so every state-mutating call is recorded for checked replay.
+        self.combat = RecordingCombat(rpg.CombatEngine(self.combat_seed), rpg)
         self.logger = rpg.MessageLogger()
         self.combat.set_logger(self.logger)
         self.replay_log_file = None  # Will be set during combat start
@@ -1290,17 +1292,18 @@ class App:
         self.combat_log                = []
         # Initialize combat log file
         self._combat_log_file = "combat_log.txt"
-        # Initialize replay log file (contains seed and all actions for reproduction)
+        # Initialize replay log file. Header carries the seed; the RecordingCombat
+        # wrapper then appends one JSON event per engine call (with a state snapshot)
+        # for deterministic checked replay (see replay.py / replay_record.py).
         self.replay_log_file = "replay_log.txt"
         with open(self.replay_log_file, "w") as f:
             f.write(f"=== COMBAT REPLAY LOG ===\n")
-            f.write(f"To replay this combat with the exact same dice rolls:\n")
-            f.write(f"1. Create a new CombatEngine with seed={self.combat_seed}\n")
-            f.write(f"2. Set up the same agent positions\n")
-            f.write(f"3. Execute actions in the order listed below\n")
+            f.write(f"Checked replay:  python3 replay.py <map_image> [replay_log.txt]\n")
             f.write(f"\nSEED: {self.combat_seed}\n")
             f.write(f"INITIATIVE: {[(self.bm.placed_agents[e.agent_idx].name, e.total) for e in order]}\n")
-            f.write(f"\n=== ACTIONS (JSON format) ===\n")
+            f.write(f"\n=== EVENTS (JSON) ===\n")
+        # Begin recording every engine mutation through the wrapper.
+        self.combat.start_recording(self.replay_log_file, self.bm)
         with open(self._combat_log_file, "w") as f:
             f.write("=== COMBAT LOG ===\n")
             f.write(f"Seed: {self.combat_seed}\n")
@@ -1347,6 +1350,7 @@ class App:
         self._effect_meta         = {}
         self._spell_metadata      = {}
         self.combat.clear_all_concentration(self.bm)  # drop lingering concentration on all agents
+        self.combat.stop_recording()                  # finish the replay event log
         self.bm.clear_terrain_effects()
         self.bm.clear_spell_effects()
         self._attack_cells_melee = []
@@ -1460,17 +1464,6 @@ class App:
             name = self.bm.placed_agents[agent_idx].name
             self._combat_log_add(f"{name} drops concentration on {res.spell_name or 'spell'}.")
 
-    def _replay_log_action(self, action_type: str, **kwargs):
-        """Log an action to the replay log for later reproduction."""
-        if not self.replay_log_file:
-            return
-        import json
-        log_entry = {"action": action_type, **kwargs}
-        try:
-            with open(self.replay_log_file, "a") as f:
-                f.write(json.dumps(log_entry) + "\n")
-        except IOError:
-            pass  # Silently fail if replay log can't be written
 
     def _combat_log_add(self, msg: str):
         self.combat_log.insert(0, msg)
@@ -1609,6 +1602,7 @@ class App:
         cond = self.combat.get_agent_conditions(self.bm, idx)
         cond.reckless_attack = True
         self.combat.set_agent_conditions(self.bm, idx, cond)
+        self.combat.log_event("reckless", idx=idx)  # record for checked replay
         agent = self.bm.placed_agents[idx]
         self._combat_log_add(f"{agent.name}: Activates Reckless Attack (enemies gain advantage)")
         # Continue with weapon selection
@@ -1706,8 +1700,6 @@ class App:
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus")
-        # Log to replay log
-        self._replay_log_action("attack", attacker_idx=atk_idx, target_idx=target_idx, weapon_idx=self.pending_weapon_idx, slot=slot)
         result = self.combat.execute_action(self.bm, action)
         # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
@@ -2689,8 +2681,6 @@ class App:
         self.pending_move_type = None
 
         agents = self.bm.placed_agents
-        # Log to replay log
-        self._replay_log_action("move", agent_idx=move_idx, col=move_cell.col, row=move_cell.row, move_type=move_type.name)
         move_success = self.combat.move_agent(self.bm, move_idx, move_cell, move_type)
         self._flush_combat_log()  # Flush any spell effect damage messages
         if move_success:
@@ -2743,9 +2733,6 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
-        # Log to replay log
-        self._replay_log_action("spell", caster_idx=caster_idx, spell_idx=self.pending_spell_idx,
-                               slot=slot, targets=action.target_indices)
         result = self.combat.execute_spell(self.bm, action)
 
         self._flush_combat_log()
@@ -5902,6 +5889,7 @@ class App:
                             cond = self.combat.get_agent_conditions(self.bm, idx)
                             cond.reckless_attack = True
                             self.combat.set_agent_conditions(self.bm, idx, cond)
+                            self.combat.log_event("reckless", idx=idx)  # record for checked replay
                             agent = self.bm.placed_agents[idx]
                             self._combat_log_add(f"{agent.name}: Activates Reckless Attack (enemies gain advantage on attacks vs you)")
                         self.action_used = True
