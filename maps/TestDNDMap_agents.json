@@ -199,16 +199,11 @@
         "gloves": "",
         "cloak": ""
       },
-      "is_npc":true,
-      "npc_spell_groups": {
-	"3":["Magic Missile", "Grease"],
-	"1":["Fireball"]
-      },
       "spell_indices": [
         "Grease",
         "Magic Missile",
         "Fireball"
-      ],	
+      ],
       "agent_class": "None",
       "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
@@ -234,7 +229,22 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": false,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile",
+          "Grease"
+        ],
+        "1": [
+          "Fireball"
+        ]
+      },
+      "npc_spell_uses_cur": {
+        "Grease": 3,
+        "Magic Missile": 3,
+        "Fireball": 1
+      }
     },
     {
       "name": "Fire Elemental",
@@ -354,15 +364,13 @@
         "gloves": "",
         "cloak": ""
       },
-      "is_npc": true,
-      "npc_spell_groups": {
-        "3": ["Magic Missile"],
-        "1": ["Cone of Cold"]
-      },
-      "spell_indices": ["Magic Missile", "Cone of Cold", "Ray of Frost"],
+      "spell_indices": [
+        "Magic Missile",
+        "Cone of Cold",
+        "Ray of Frost"
+      ],
       "agent_class": "None",
       "agent_char_level": 1,
-      "npc_spell_uses_cur": {},
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "spell_slots_max": [
@@ -386,7 +394,20 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": false,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile"
+        ],
+        "1": [
+          "Cone of Cold"
+        ]
+      },
+      "npc_spell_uses_cur": {
+        "Magic Missile": 3,
+        "Cone of Cold": 1
+      }
     },
     {
       "name": "Drak",
@@ -404,7 +425,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 50,
+        "speed_walk": 60,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -540,6 +561,86 @@
         3,
         3,
         0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Shanananananayeah",
+      "sprite_path": "",
+      "size": 1,
+      "col": 13,
+      "row": 14,
+      "stats": {
+        "str": 8,
+        "dex": 12,
+        "con": 14,
+        "intel": 20,
+        "wis": 10,
+        "cha": 8,
+        "hp_max": 8,
+        "hp_cur": 8,
+        "ac": 12,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "int"
+      },
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [
+        "Fireball",
+        "Hypnotic Pattern",
+        "Hold Person",
+        "Ice Storm",
+        "Sleet Storm",
+        "Magic Missile"
+      ],
+      "agent_class": "Wizard",
+      "agent_char_level": 9,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "Evoker",
+      "spell_slots_max": [
+        4,
+        3,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        4,
+        3,
+        3,
+        3,
+        1,
         0,
         0,
         0,
