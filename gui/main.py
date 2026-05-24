@@ -655,6 +655,9 @@ class App:
         self.btn_cbt_healing_light = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Healing Light",
                                           (210, 180, 70), (240, 210, 100), self.font_md)
+        self.btn_cbt_steady_aim = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Steady Aim",
+                                          (90, 140, 190), (120, 170, 220), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1070,6 +1073,8 @@ class App:
             stats.wizard_subclass = getattr(rpg.WizardSubclass, subclass_name)
         elif class_name == "Warlock" and subclass_name != "NONE":
             stats.warlock_subclass = getattr(rpg.WarlockSubclass, subclass_name)
+        elif class_name == "Rogue" and subclass_name != "NONE":
+            stats.rogue_subclass = getattr(rpg.RogueSubclass, subclass_name)
 
         # Initialize class resources (Rage, Ki, Portent Dice, etc.)
         # This must come AFTER setting subclass since resource creation checks subclass
@@ -3290,6 +3295,7 @@ class App:
                 "agent_barbarian_subclass": s.barbarian_subclass.name,
                 "agent_wizard_subclass": s.wizard_subclass.name,
                 "agent_warlock_subclass": s.warlock_subclass.name,
+                "agent_rogue_subclass": s.rogue_subclass.name,
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
@@ -3580,6 +3586,9 @@ class App:
             warlock_subclass_name = t.get("agent_warlock_subclass", "NONE")
             if warlock_subclass_name != "NONE":
                 stats.warlock_subclass = getattr(rpg.WarlockSubclass, warlock_subclass_name)
+            rogue_subclass_name = t.get("agent_rogue_subclass", "NONE")
+            if rogue_subclass_name != "NONE":
+                stats.rogue_subclass = getattr(rpg.RogueSubclass, rogue_subclass_name)
             # Fiend L10 Fiendish Resilience: chosen damage type must be restored BEFORE
             # initialize_class_resources so the resistance multiplier re-applies.
             stats.fiendish_resilience_type = int(t.get("agent_fiendish_resilience_type", -1))
@@ -4960,6 +4969,18 @@ class App:
                         self.btn_cbt_healing_light.draw(self.screen)
                         y += B + gap
 
+            # Steady Aim button - Rogue (L3+): advantage on next attack, but speed drops to 0
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                conds = self.combat.get_agent_conditions(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Rogue and
+                        stats.char_level >= 3 and not conds.steady_aim):
+                    self.btn_cbt_steady_aim.rect.x = lx
+                    self.btn_cbt_steady_aim.rect.y = y
+                    self.btn_cbt_steady_aim.rect.w = W
+                    self.btn_cbt_steady_aim.draw(self.screen)
+                    y += B + gap
+
 
         y += section_gap
 
@@ -6035,6 +6056,21 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_heal_light = True
                             self._combat_log_add("Healing Light — click an ally (or self) to heal.")
+                    if self.btn_cbt_steady_aim.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            cond = self.combat.get_agent_conditions(self.bm, idx)
+                            cond.steady_aim = True
+                            self.combat.set_agent_conditions(self.bm, idx, cond)
+                            # Steady Aim sets your Speed to 0 for the rest of the turn.
+                            self.move_remaining_walk = 0
+                            self.move_remaining_fly = 0
+                            self.move_remaining_swim = 0
+                            self.move_remaining_burrow = 0
+                            self._update_reach()
+                            self.bonus_used = True
+                            self._combat_log_add(
+                                f"{self.bm.placed_agents[idx].name}: Steady Aim — advantage on next attack (Speed 0).")
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

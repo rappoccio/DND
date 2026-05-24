@@ -369,6 +369,7 @@ namespace rpg {
       int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
       WarlockSubclass warlock_subclass{WarlockSubclassNone};     // Warlock patron choice
+      RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
 
@@ -473,6 +474,8 @@ namespace rpg {
       int sundering_target_idx{-1};         // Sundering Blow: +5 to hit vs this target (expires start of next turn)
       bool staggered_next_save{false};      // Staggering Blow: disadvantage on next save
       bool radiant_soul_used{false};        // Celestial L6: Radiant Soul bonus damage already used this turn
+      bool sneak_attack_used{false};        // Rogue: Sneak Attack already applied this turn (once per turn)
+      bool steady_aim{false};               // Rogue L3: Steady Aim grants advantage on the next attack this turn
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -529,6 +532,8 @@ namespace rpg {
       conditions_.berserker_frenzy_used        = false;
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;
+      conditions_.sneak_attack_used            = false;
+      conditions_.steady_aim                   = false;
       takeTurn();
     }
 

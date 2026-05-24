@@ -325,3 +325,53 @@ Beguiling Defenses needs the damage-reflect reaction hook below. Revisit when te
 - *Dark One's Blessing ally-within-10ft trigger* and *Celestial Resilience ally temp HP*: the
   "you/an ally" and "up to 5 allies" parts need party/proximity targeting; only the self case is
   implemented for now.
+
+---
+
+## Rogue (added 2026-05-23)
+
+Phased epic. **Phase 1 (chassis + Sneak Attack + core defenses) is implemented**; later phases and
+out-of-combat utility are deferred. Combat-sim scope only.
+
+### Implemented (Phase 1) ✅
+- `RogueSubclass` enum (ArcaneTrickster/Assassin/Soulknife/Thief) + field + bindings + GUI patron
+  picker + save/load (`agent_rogue_subclass`).
+- Chassis: DEX+INT save proficiencies, Cunning Action flag (L2+), Slippery Mind (+WIS/CHA, L15+).
+- **Sneak Attack**: once/turn `ceil(level/2)d6`, gated on a hit with a Finesse/Ranged weapon while
+  having **advantage** on the roll. Mirrors the Zealot Divine Fury pattern (`sneak_attack_used`
+  per-turn flag, `damage_breakdown` entry). Added before the base HP application so Uncanny Dodge
+  can halve it.
+- Steady Aim (L3, bonus action → advantage next attack + Speed 0), Uncanny Dodge (L5, reaction
+  halves a hit), Evasion (L7, DEX-save → 0 on success / half on fail), Elusive (L18, no attacker
+  advantage unless you're Incapacitated). Tests: `test_rogue_l1_18.py`.
+
+### Deferred — needs the team/faction system 🔧
+- **Sneak Attack "ally within 5 ft" trigger**: without ally/enemy distinction we can't detect a
+  qualifying ally, so Phase 1 gates Sneak Attack on advantage only. (Same blocker as Evoker Sculpt.)
+
+### Deferred — Phase 2 (Sneak Attack riders, specialize existing pieces)
+- Cunning Strike (L5: Poison/Trip/Withdraw), Improved Cunning Strike (L11: two effects),
+  Devious Strikes (L14: Daze/Knock Out/Obscure). Reuse Poisoned/Prone/Unconscious/Blinded; Daze
+  needs a small limited-action condition; die-cost reduces Sneak Attack dice.
+
+### Deferred — Phase 3 (subclasses)
+- Assassin (Assassinate first-round advantage + bonus damage, Death Strike, Envenom Weapons),
+  Arcane Trickster (INT third-caster + Magical Ambush), Soulknife (Psychic Blades + energy dice),
+  Thief (Supreme Sneak). Several need round/turn-order or initiative hooks.
+
+### Deferred — need NEW hooks (not "specialize existing pieces")
+- *Stroke of Luck* (L20): turn a failed d20 into a 20 → needs a roll-replace hook (Portent only
+  *replaces*, and that itself isn't wired into the roll path yet).
+- *Spell Thief* (Arcane Trickster L17), *Thief's Reflexes* (Thief L17, two turns round 1) → need
+  reaction-on-cast and initiative-insertion hooks.
+
+### Not modeled (combat simulator only / out-of-combat) 🚫
+- Expertise, Reliable Talent, Thieves' Cant, Weapon Mastery, Fast Hands, Second-Story Work (climb —
+  see Panther climb deferral), Use Magic Device, Infiltration Expertise, Mage Hand Legerdemain,
+  Assassin's Tools, and other skill/utility features.
+
+### Known fidelity note
+- Uncanny Dodge halves base + Sneak Attack but not damage a Barbarian attacker adds *after* the base
+  application (Divine Fury/Frenzy), and the auto-crit re-roll path (paralyzed/unconscious target)
+  rebuilds the breakdown from the weapon only, dropping Sneak Attack — same pre-existing pattern as
+  Divine Fury. Acceptable for Phase 1.

@@ -327,6 +327,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wizard subclass (only valid when character_class == Wizard)")
         .def_readwrite("warlock_subclass", &Agent::Stats::warlock_subclass,
              "Warlock patron subclass (only valid when character_class == Warlock)")
+        .def_readwrite("rogue_subclass", &Agent::Stats::rogue_subclass,
+             "Rogue subclass (only valid when character_class == Rogue)")
         .def_readwrite("fiendish_resilience_type", &Agent::Stats::fiendish_resilience_type,
              "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
@@ -381,6 +383,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
+        .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
+        .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
         .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
@@ -659,6 +663,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Celestial", CelestialPath)
         .value("Fiend", FiendPath)
         .value("GreatOldOne", GreatOldOnePath)
+        .export_values();
+
+    py::enum_<RogueSubclass>(m, "RogueSubclass")
+        .value("NONE", RogueSubclassNone)
+        .value("ArcaneTrickster", ArcaneTricksterPath)
+        .value("Assassin", AssassinPath)
+        .value("Soulknife", SoulknifePath)
+        .value("Thief", ThiefPath)
         .export_values();
 
     // ── Origin Struct ────────────────────────────────────────────────────────

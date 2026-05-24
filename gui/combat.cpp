@@ -1536,6 +1536,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Advantage: attacker is hidden");
     }
 
+    // Rogue Steady Aim: the bonus action grants advantage on this attack (consumed below).
+    if (atk_cond.steady_aim) {
+        adv = true;
+        log_("Advantage: Steady Aim");
+    }
+
     // Wild Heart Wolf Form: allies within 5ft of the Barbarian get advantage on attacks
     // Check if there's a Wolf-form Wild Heart Barbarian within 5ft of the attacker
     for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
@@ -1642,6 +1648,13 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Brutal Strike eligible: L9+ Barbarian with Reckless Attack + melee weapon");
     }
 
+    // Rogue Elusive (L18+): no attack roll can have advantage against you unless Incapacitated.
+    if (adv && tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 18 &&
+        !tgt_cond.incapacitated) {
+        adv = false;
+        log_("Elusive: target is a L18+ Rogue — advantage negated");
+    }
+
     AttackResult r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
 
     // Set Brutal Strike flag if eligible and attack hits
@@ -1660,6 +1673,45 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         adv = true;
         r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
         log_("{} uses Reckless Attack (auto-reroll on miss)", agentName(bm, action.attacker_idx));
+    }
+
+    // Consume Rogue Steady Aim: it grants advantage on a single attack this turn.
+    if (atk_cond.steady_aim) {
+        updated_atk_cond.steady_aim = false;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Rogue Sneak Attack ────────────────────────────────────────────────
+    // Once per turn: +ceil(level/2)d6 when you hit with a Finesse or Ranged weapon and had
+    // advantage on the roll. (The "ally within 5 ft" trigger is deferred — it needs a team/
+    // faction system; for now Sneak Attack is gated on having advantage only.) Added before the
+    // base HP application below so Uncanny Dodge can halve the full hit.
+    if (r.hit && atk_stats.character_class == CharacterClass::Rogue &&
+        (w.finesse || w.type == WeaponType::Ranged) &&
+        adv && !dis && !atk_cond.sneak_attack_used) {
+        int sneak_dice = (atk_stats.char_level + 1) / 2;  // 1d6 @ L1-2 … 10d6 @ L19-20
+        int sneak_bonus = 0;
+        for (int i = 0; i < sneak_dice; ++i) sneak_bonus += roll(6);
+        r.total_damage += sneak_bonus;
+        r.damage_breakdown.push_back({"sneak attack", sneak_bonus});
+        updated_atk_cond.sneak_attack_used = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        log_("Sneak Attack: {} adds {}d6 = {} damage", agentName(bm, action.attacker_idx), sneak_dice, sneak_bonus);
+    }
+
+    // ── Rogue Uncanny Dodge (L5+) ─────────────────────────────────────────
+    // Reaction: halve the attack's damage (round down). Consumes the target's reaction.
+    if (r.hit && r.total_damage > 0 &&
+        tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 5 &&
+        !tgt_cond.reaction_used && !tgt_cond.incapacitated) {
+        int before = r.total_damage;
+        r.total_damage = before / 2;
+        Agent::Conditions tdef = bm.getAgentConditions(action.target_idx);
+        tdef.reaction_used = true;
+        bm.setAgentConditions(action.target_idx, tdef);
+        r.damage_breakdown.push_back({"uncanny dodge", r.total_damage - before});  // negative: reduction
+        log_("Uncanny Dodge: {} halves the attack ({} -> {})",
+             agentName(bm, action.target_idx), before, r.total_damage);
     }
 
     // Apply base attack damage to the target's working stats. resolveAttack now
@@ -2525,6 +2577,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 // Then apply half damage on successful save
                 if (tr.saved) modified_damage /= 2;
                 dmg += modified_damage;
+            }
+
+            // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
+            // A successful save already halved per-roll above; override to the Evasion outcome.
+            if (sp.save_ability == SaveDex && sp.type != Spell::Heal &&
+                tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 7 &&
+                !target_cond.incapacitated) {
+                dmg = tr.saved ? 0 : (dmg / 2);
+                log_("Evasion: {} {} damage on a DEX save", agentName(bm, tgt_idx),
+                     tr.saved ? "takes no" : "halves");
             }
 
             tr.dice_results = dice;
@@ -5114,6 +5176,20 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       ki.short_rest_regen = level;  // fully restored on short rest
       ki.long_rest_regen = level;
       resources["Ki"] = ki;
+      break;
+    }
+
+    case Rogue: {
+      // Chassis: Dexterity + Intelligence saving-throw proficiencies.
+      save_prof_dex = true;
+      save_prof_intel = true;
+      // Cunning Action (L2+): Dash/Disengage/Hide as a bonus action.
+      if (level >= 2) has_cunning_action = true;
+      // Slippery Mind (L15+): proficiency in Wisdom and Charisma saves.
+      if (level >= 15) {
+        save_prof_wis = true;
+        save_prof_cha = true;
+      }
       break;
     }
 

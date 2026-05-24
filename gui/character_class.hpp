@@ -203,6 +203,13 @@ enum WarlockSubclass {
     NumWarlockSubclass
 };
 
+// ── Rogue Subclass Enum (2024 D&D) ───────────────────────────────────
+enum RogueSubclass {
+    RogueSubclassNone = 0,
+    ArcaneTricksterPath, AssassinPath, SoulknifePath, ThiefPath,
+    NumRogueSubclass
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;

@@ -46,6 +46,9 @@ test_scripts = [
     # Warlock features
     "test_warlock_l1_5.py",
     "test_warlock_phase2.py",
+
+    # Rogue features
+    "test_rogue_l1_18.py",
 ]
 
 def run_tests():

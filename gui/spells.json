@@ -4022,6 +4022,50 @@
     "school": "abjuration"
   },
   {
+    "name": "Hunger of Hadar",
+    "description": "You open a gateway to the Far Realm, a region infested with unspeakable horrors. A 20-foot-radius Sphere of Darkness appears, centered on a point with range and lasting for the duration. The Sphere is Difficult Terrain, and it is filled with strange whispers and slurping noises, which can be heard up to 30 feet away. No light, magical or otherwise, can illuminate the area, and creatures fully within it have the Blinded condition. Any creature that starts its turn in the area takes 2d6 Cold damage. Any creature that ends its turn there must succeed on a Dexterity saving throw or take 2d6 Acid damage from otherworldly tentacles.",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Save",
+    "save_ability": "SaveDex",
+    "range": 150,
+    "radius": 20,
+    "width": 0,
+    "length": 0,
+    "duration": 10,
+    "magic_damage_types": [
+      {
+        "type": "Cold",
+        "num_dice": 2,
+        "die_size": 6
+      },
+      {
+        "type": "Acid",
+        "num_dice": 2,
+        "die_size": 6
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 3,
+    "upcast_dice_bonus": 1,
+    "requires_concentration": true,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "terrain_effect": {                                                                                                                               
+      "type": "Difficult Terrain",
+      "difficulty": "Halved"
+    },      
+    "terrain_color": [
+      151,
+      193,
+      230
+    ],
+    "hatch_pattern": "///",
+    "effects_on_begin_turn": true,
+    "effects_on_end_turn": true,
+    "school": "conjuration"
+  },    
+  {
     "name": "Hunter's Mark",
     "description": "You magically mark one creature you can see within range as your quarry. Until the spell ends, you deal an extra 1d6 Force damage to the target whenever you hit it with an attack roll. You also have Advantage on any Wisdom (Perception or Survival) check you make to find it. If the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action to move the mark to a new creature you can see within range.",
     "type": "Harm",

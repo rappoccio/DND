@@ -51,6 +51,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
@@ -133,6 +135,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         4,
         3,
@@ -211,6 +215,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
@@ -285,6 +291,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
@@ -363,6 +371,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
@@ -402,7 +412,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 100,
+        "speed_walk": 110,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -437,6 +447,8 @@
       "agent_barbarian_subclass": "Berserker",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
@@ -523,6 +535,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "Diviner",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         4,
         3,
@@ -604,6 +618,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "Evoker",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         4,
         3,
@@ -678,6 +694,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
@@ -752,6 +770,8 @@
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "Evoker",
       "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         4,
         3,
@@ -824,13 +844,16 @@
         "Fireball",
         "Invisibility",
         "Eyebite",
-        "Eldritch Blast"
+        "Eldritch Blast",
+        "Hunger of Hadar"
       ],
       "agent_class": "Warlock",
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "Fiend",
+      "agent_rogue_subclass": "NONE",
+      "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
         0,
