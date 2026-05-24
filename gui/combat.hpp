@@ -466,6 +466,10 @@ public:
     void applyGrappled(BattleMap& bm, int target_idx, int grappler_idx, int escape_dc) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
+    // Rogue Cunning Strike rider application (save + condition): Poison/Trip/Withdraw/KnockOut/Obscure.
+    // Internal helper called by applyCunningStrikeEffect after the Sneak Attack dice are spent.
+    void applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,
+                                  const std::vector<int>& effects) noexcept;
     void applyPoisoned(BattleMap& bm, int idx) noexcept;  // disadvantage on attacks and ability checks
     void applyDeafened(BattleMap& bm, int idx) noexcept;  // cannot hear; auto-fail ability checks requiring hearing
     void applyPetrified(BattleMap& bm, int idx) noexcept;  // incapacitated, speed 0, resistance to all damage, immune to poisoned
@@ -620,6 +624,14 @@ public:
     // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)
     void applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                 const std::vector<int>& effects, AttackResult& result) noexcept;
+
+    // Apply Rogue Sneak Attack + optional Cunning Strike riders out of band, after a qualifying hit
+    // (cunning_strike_available). Rolls (sneak_dice − rider cost)d6, adds it to result/damage and the
+    // target's HP, marks Sneak Attack used, then applies any rider conditions. effects: rider codes
+    // (0=Poison 1=Trip 2=Withdraw 4=KnockOut 5=Obscure); empty = full Sneak Attack with no rider.
+    // Invalid/over-budget rider sets are ignored (full Sneak Attack still applies, no rider).
+    void applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                  const std::vector<int>& effects, AttackResult& result) noexcept;
 
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"

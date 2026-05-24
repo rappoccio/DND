@@ -384,6 +384,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
+        .def_readwrite("cunning_strike_available", &Agent::Conditions::cunning_strike_available)
         .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
@@ -1411,6 +1412,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
              "Apply Brutal Strike effects: damage + chosen effects (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering).\n"
              "Modifies the AttackResult to include brutal strike damage in damage_breakdown and updates total_damage.")
+        .def("apply_cunning_strike_effect",
+             &CombatEngine::applyCunningStrikeEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
+             "Apply Rogue Sneak Attack + optional Cunning Strike riders after a qualifying hit\n"
+             "(conditions.cunning_strike_available). effects: rider codes (0=Poison, 1=Trip, 2=Withdraw,\n"
+             "4=KnockOut, 5=Obscure); empty = full Sneak Attack with no rider. Rolls (sneak dice − cost)d6,\n"
+             "folds it into the AttackResult and target HP, then applies any rider conditions.")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),

@@ -349,10 +349,16 @@ out-of-combat utility are deferred. Combat-sim scope only.
 - **Sneak Attack "ally within 5 ft" trigger**: without ally/enemy distinction we can't detect a
   qualifying ally, so Phase 1 gates Sneak Attack on advantage only. (Same blocker as Evoker Sculpt.)
 
-### Deferred — Phase 2 (Sneak Attack riders, specialize existing pieces)
-- Cunning Strike (L5: Poison/Trip/Withdraw), Improved Cunning Strike (L11: two effects),
-  Devious Strikes (L14: Daze/Knock Out/Obscure). Reuse Poisoned/Prone/Unconscious/Blinded; Daze
-  needs a small limited-action condition; die-cost reduces Sneak Attack dice.
+### Implemented (Phase 2) ✅
+- **Cunning Strike** (L5: Poison/Trip/Withdraw) with die-cost validation, **Improved Cunning Strike**
+  (L11: two effects), **Devious Strikes L14** (Knock Out/Obscure). Reuse Poisoned/Prone/Unconscious/
+  Blinded; die-cost reduces Sneak Attack dice; per-attack GUI menu before execute. Tests:
+  `test_rogue_phase2.py`.
+
+### Deferred — Phase 2 continued (Cunning Strike riders)
+- **Daze (Devious Strikes L14)** — "on its next turn the target can do only one of move / action /
+  bonus action." Needs per-turn action-economy tracking the engine doesn't model; effect code 3 is
+  treated as invalid until that exists. All other Cunning Strike effects are implemented.
 
 ### Deferred — Phase 3 (subclasses)
 - Assassin (Assassinate first-round advantage + bonus damage, Death Strike, Envenom Weapons),

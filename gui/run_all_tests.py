@@ -49,6 +49,7 @@ test_scripts = [
 
     # Rogue features
     "test_rogue_l1_18.py",
+    "test_rogue_phase2.py",
 ]
 
 def run_tests():

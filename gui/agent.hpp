@@ -475,6 +475,7 @@ namespace rpg {
       bool staggered_next_save{false};      // Staggering Blow: disadvantage on next save
       bool radiant_soul_used{false};        // Celestial L6: Radiant Soul bonus damage already used this turn
       bool sneak_attack_used{false};        // Rogue: Sneak Attack already applied this turn (once per turn)
+      bool cunning_strike_available{false}; // Rogue: a qualifying hit can apply Sneak Attack / Cunning Strike this attack
       bool steady_aim{false};               // Rogue L3: Steady Aim grants advantage on the next attack this turn
     };
 
@@ -533,6 +534,7 @@ namespace rpg {
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;
       conditions_.sneak_attack_used            = false;
+      conditions_.cunning_strike_available     = false;
       conditions_.steady_aim                   = false;
       takeTurn();
     }

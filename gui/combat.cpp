@@ -1424,6 +1424,30 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Rogue Cunning Strike helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Rogue Cunning Strike: Sneak Attack dice cost per effect (0 = unknown/deferred → invalid).
+static int cunningStrikeCost(int effect) noexcept {
+    switch (effect) {
+        case 0: return 1;  // Poison
+        case 1: return 1;  // Trip
+        case 2: return 1;  // Withdraw
+        case 4: return 6;  // Knock Out
+        case 5: return 3;  // Obscure
+        default: return 0; // 3=Daze deferred, anything else invalid
+    }
+}
+
+static int cunningStrikeMinLevel(int effect) noexcept {
+    switch (effect) {
+        case 0: case 1: case 2: return 5;   // Cunning Strike
+        case 4: case 5:         return 14;  // Devious Strikes
+        default:                return 99;  // invalid
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  High-level BattleMap integration
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1573,6 +1597,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
 
     // Target is paralyzed: attacker gets advantage
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
+    // Snapshot incapacitation BEFORE this attack's own effects can change it. tgt_cond is a
+    // live reference, so a rider applied mid-resolution (e.g. Cunning Strike Knock Out) would
+    // otherwise leak into the post-resolution blocks below (auto-crit-on-unconscious and
+    // auto-wake) and act on the very hit that caused the condition.
+    const bool tgt_unconscious_at_attack   = tgt_cond.unconscious;
+    const bool tgt_incapacitated_at_attack = tgt_cond.paralyzed || tgt_unconscious_at_attack;
     if (tgt_cond.paralyzed) {
         adv = true;
         log_("Advantage: target is paralyzed");
@@ -1681,22 +1711,17 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
-    // ── Rogue Sneak Attack ────────────────────────────────────────────────
-    // Once per turn: +ceil(level/2)d6 when you hit with a Finesse or Ranged weapon and had
-    // advantage on the roll. (The "ally within 5 ft" trigger is deferred — it needs a team/
-    // faction system; for now Sneak Attack is gated on having advantage only.) Added before the
-    // base HP application below so Uncanny Dodge can halve the full hit.
+    // ── Rogue Sneak Attack / Cunning Strike eligibility ───────────────────
+    // Once per turn, a hit with a Finesse or Ranged weapon while having advantage qualifies for
+    // Sneak Attack. Like Brutal Strike, the dice and any Cunning Strike rider are applied out of
+    // band via applyCunningStrikeEffect() AFTER this attack fully resolves — so a rider that sets a
+    // condition (e.g. Knock Out) can never leak into this attack's own post-resolution logic. Here
+    // we only flag availability. (The "ally within 5 ft" trigger is deferred — needs a faction system.)
     if (r.hit && atk_stats.character_class == CharacterClass::Rogue &&
         (w.finesse || w.type == WeaponType::Ranged) &&
         adv && !dis && !atk_cond.sneak_attack_used) {
-        int sneak_dice = (atk_stats.char_level + 1) / 2;  // 1d6 @ L1-2 … 10d6 @ L19-20
-        int sneak_bonus = 0;
-        for (int i = 0; i < sneak_dice; ++i) sneak_bonus += roll(6);
-        r.total_damage += sneak_bonus;
-        r.damage_breakdown.push_back({"sneak attack", sneak_bonus});
-        updated_atk_cond.sneak_attack_used = true;
+        updated_atk_cond.cunning_strike_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
-        log_("Sneak Attack: {} adds {}d6 = {} damage", agentName(bm, action.attacker_idx), sneak_dice, sneak_bonus);
     }
 
     // ── Rogue Uncanny Dodge (L5+) ─────────────────────────────────────────
@@ -1781,8 +1806,10 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
-    // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets
-    if ((tgt_cond.paralyzed || tgt_cond.unconscious) && r.hit) {
+    // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets.
+    // Uses the pre-attack snapshot so a rider this attack applied (Cunning Strike Knock Out) does not
+    // retroactively crit the triggering hit.
+    if (tgt_incapacitated_at_attack && r.hit) {
         int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
                            tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
                            0});
@@ -1869,8 +1896,10 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     }
 
     // Auto-wake if healed above 0 HP while unconscious
-    // But only if not actively dying (death save failures already set by damage/auto-crit)
-    if (r.hp_after > 0 && tgt_cond.unconscious && !tgt_cond.dead && tgt_cond.death_save_failures == 0) {
+    // But only if not actively dying (death save failures already set by damage/auto-crit).
+    // Uses the pre-attack snapshot: a rider this attack applied (Cunning Strike Knock Out) must
+    // not be undone by the same hit just because the target still has positive HP.
+    if (r.hp_after > 0 && tgt_unconscious_at_attack && !tgt_cond.dead && tgt_cond.death_save_failures == 0) {
         Agent::Conditions updated_tgt_cond = tgt_cond;
         updated_tgt_cond.unconscious = false;
         updated_tgt_cond.incapacitated = false;
@@ -3815,6 +3844,84 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
 }
 
+void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,
+                                            const std::vector<int>& effects) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return;
+
+    const Agent::Stats atk = bm.getAgentStats(attacker_idx);
+    const int dc = spellSaveDcFromAbility(atk, SaveDex);  // 8 + prof + DEX mod
+
+    auto saveMod = [](const Agent::Stats& s, SaveAbility_t ab) -> int {
+        int score = 0; bool prof = false;
+        switch (ab) {
+            case SaveStr: score = s.str;   prof = s.save_prof_str;   break;
+            case SaveDex: score = s.dex;   prof = s.save_prof_dex;   break;
+            case SaveCon: score = s.con;   prof = s.save_prof_con;   break;
+            case SaveInt: score = s.intel; prof = s.save_prof_intel; break;
+            case SaveWis: score = s.wis;   prof = s.save_prof_wis;   break;
+            default:      score = s.cha;   prof = s.save_prof_cha;   break;
+        }
+        int m = (score - 10) / 2;
+        if (score < 10 && (score - 10) % 2 != 0) --m;
+        return m + (prof ? s.prof_bonus : 0);
+    };
+
+    for (int e : effects) {
+        if (e == 2) {  // Withdraw — no save; attacker moves without provoking opportunity attacks
+            Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+            ac.disengaging = true;
+            bm.setAgentConditions(attacker_idx, ac);
+            log_("Cunning Strike (Withdraw): {} won't provoke opportunity attacks",
+                 agentName(bm, attacker_idx));
+            continue;
+        }
+
+        SaveAbility_t sa; std::string name; int dur; int repeat;
+        switch (e) {
+            case 0: sa = SaveCon; name = "Poisoned";    dur = 10; repeat = 1; break;
+            case 1: sa = SaveDex; name = "Prone";       dur = 10; repeat = 0; break;
+            case 4: sa = SaveCon; name = "Unconscious"; dur = 10; repeat = 1; break;  // Knock Out
+            case 5: sa = SaveDex; name = "Blinded";     dur = 2;  repeat = 0; break;  // Obscure
+            default: continue;  // 3=Daze deferred / unknown
+        }
+
+        const Agent::Stats tgt = bm.getAgentStats(target_idx);
+        const Agent::Conditions& tc0 = agents[static_cast<std::size_t>(target_idx)].agent->getConditions();
+        bool auto_fail = (tc0.paralyzed || tc0.stunned) && (sa == SaveStr || sa == SaveDex);
+        int d20 = auto_fail ? 1 : roll(20);
+        bool saved = auto_fail ? false : (d20 + saveMod(tgt, sa) >= dc);
+        if (saved) {
+            log_("Cunning Strike: {} resisted {} (DC {})", agentName(bm, target_idx), name, dc);
+            continue;
+        }
+
+        // Set the flag immediately, and register an ActiveAgentCondition for duration / repeat saves.
+        Agent::Conditions tc = bm.getAgentConditions(target_idx);
+        if      (name == "Poisoned")    tc.poisoned = true;
+        else if (name == "Prone")       tc.prone = true;
+        else if (name == "Blinded")     tc.blinded = true;
+        else if (name == "Unconscious") { tc.unconscious = true; tc.incapacitated = true; tc.prone = true; }
+        bm.setAgentConditions(target_idx, tc);
+
+        ActiveAgentCondition cond;
+        cond.agent_idx        = target_idx;
+        cond.caster_idx       = attacker_idx;
+        cond.spell_idx        = -1;
+        cond.condition_name   = name;
+        cond.save_ability     = sa;
+        cond.turns_remaining  = dur;
+        cond.save_dc          = dc;
+        cond.save_repeat_turns = repeat;
+        cond.next_save_turn   = 0;
+        (void)addAgentCondition(bm, cond);
+        log_("Cunning Strike: {} fails its {} save → {} (DC {})",
+             agentName(bm, target_idx), name, name, dc);
+    }
+}
+
 void CombatEngine::applyPoisoned(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -4087,6 +4194,67 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
     bm.setAgentConditions(attacker_idx, atk_cond);
     bm.setAgentStats(target_idx, tgt_stats);
     bm.setAgentConditions(target_idx, tgt_cond);
+}
+
+void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                            const std::vector<int>& effects, AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return;
+
+    Agent::Stats      atk_stats = bm.getAgentStats(attacker_idx);
+    Agent::Conditions atk_cond  = bm.getAgentConditions(attacker_idx);
+
+    // Only valid right after a qualifying hit flagged this attack, and only once per turn.
+    if (!atk_cond.cunning_strike_available || atk_cond.sneak_attack_used) return;
+
+    const int sneak_dice = (atk_stats.char_level + 1) / 2;  // 1d6 @ L1-2 … 10d6 @ L19-20
+
+    // Validate the chosen rider set: count limit (Improved Cunning Strike), per-effect cost, min level.
+    const int max_effects = (atk_stats.char_level >= 11) ? 2 : 1;
+    int cost = 0;
+    bool effects_ok = (static_cast<int>(effects.size()) <= max_effects);
+    for (int e : effects) {
+        int c = cunningStrikeCost(e);
+        if (c <= 0 || atk_stats.char_level < cunningStrikeMinLevel(e)) { effects_ok = false; break; }
+        cost += c;
+    }
+    if (!effects_ok || cost > sneak_dice) { effects_ok = false; cost = 0; }
+
+    // Roll the remaining Sneak Attack dice and fold them into the result + target HP.
+    const int dmg_dice = sneak_dice - cost;
+    int sneak_bonus = 0;
+    for (int i = 0; i < dmg_dice; ++i) sneak_bonus += roll(6);
+
+    result.total_damage += sneak_bonus;
+    result.damage_breakdown.push_back({"sneak attack", sneak_bonus});
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+    int overflow = std::max(0, sneak_bonus - tgt_stats.temp_hp);
+    tgt_stats.temp_hp  = std::max(0, tgt_stats.temp_hp - sneak_bonus);
+    tgt_stats.hp_cur   = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    result.hp_after    = tgt_stats.hp_cur;
+    result.target_down = (result.hp_after <= 0);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    atk_cond.sneak_attack_used        = true;
+    atk_cond.cunning_strike_available = false;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    log_("Sneak Attack: {} adds {}d6 = {} damage", agentName(bm, attacker_idx), dmg_dice, sneak_bonus);
+
+    // If the Sneak Attack dropped the target, knock it unconscious (matches the base-attack path).
+    Agent::Conditions tgt_cond = bm.getAgentConditions(target_idx);
+    if (result.hp_after <= 0 && !tgt_cond.unconscious && !tgt_cond.dead) {
+        applyUnconscious(bm, target_idx);
+        result.target_down = true;
+    }
+
+    // Apply rider conditions LAST, after this attack's damage is fully settled — so a rider that sets
+    // a condition (e.g. Knock Out → Unconscious) can never feed back into this attack's resolution.
+    if (effects_ok && cost > 0)
+        applyCunningStrikeRiders(bm, attacker_idx, target_idx, effects);
 }
 
 bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept

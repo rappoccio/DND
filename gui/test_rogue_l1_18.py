@@ -62,12 +62,18 @@ def _three(primary):
 def _hit_once(engine, bm, atk, tgt, give_adv=False, wpn=0, tries=40):
     """Attack until it lands. A natural-1 auto-misses regardless of bonus, so a single seeded
     roll can fumble; misses deal no damage, so retrying is safe. Re-applies advantage each
-    iteration when requested (advantage is required for Sneak Attack)."""
+    iteration when requested (advantage is required for Sneak Attack).
+
+    Sneak Attack is applied out of band (Brutal-Strike-style): if the landed hit flags
+    cunning_strike_available, this helper immediately applies the dice with no rider, so the
+    returned AttackResult includes the Sneak Attack damage just like a full attack would."""
     for _ in range(tries):
         if give_adv:
             _give_advantage(engine, bm, atk)
         r = engine.execute_action(bm, rpg.Attack(atk, tgt, wpn))
         if r.hit:
+            if engine.get_agent_conditions(bm, atk).cunning_strike_available:
+                engine.apply_cunning_strike_effect(bm, atk, tgt, [], r)
             return r
     raise AssertionError(f"attack never landed in {tries} tries")
 

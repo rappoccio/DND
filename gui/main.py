@@ -326,7 +326,6 @@ class App:
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
-        self.pending_unarmed_type      = ""    # "" | "bonus" for grapple actions
         self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
@@ -583,6 +582,12 @@ class App:
         self.btn_cbt_hide_bonus  = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "Hide",
                                           (150, 150, 150), (180, 180, 180), self.font_md)
+        self.btn_cbt_dash_bonus  = Button(pygame.Rect(px,       dummy_y, HW, B),
+                                          "Dash",
+                                          COL_BTN_DASH, COL_BTN_DASH_HOV, self.font_md)
+        self.btn_cbt_disengage_bonus = Button(pygame.Rect(px,   dummy_y, HW, B),
+                                          "Disengage",
+                                          COL_BTN_DISENG, COL_BTN_DISENG_HOV, self.font_md)
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
@@ -1717,6 +1722,7 @@ class App:
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus")
+
         result = self.combat.execute_action(self.bm, action)
         # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
@@ -1748,12 +1754,15 @@ class App:
             penalty = 2 * atk_cond.exhaustion_level
             exh_note = f" [−{penalty} exhaustion]"
 
-        # FLAG: Move to C++ 
-        # Check for Brutal Strike before logging
+        # FLAG: Move to C++
+        # Check for a post-hit rider menu (Cunning Strike or Brutal Strike) before logging.
         has_brutal_strike = False
+        has_cunning_strike = False
         if result.hit and result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
-            if atk_cond and atk_cond.brutal_strike_available:
+            if atk_cond and atk_cond.cunning_strike_available:
+                has_cunning_strike = True
+            elif atk_cond and atk_cond.brutal_strike_available:
                 has_brutal_strike = True
 
         # FLAG: Move to C++
@@ -1772,12 +1781,13 @@ class App:
                        f"{exh_note}")
 
         # FLAG: Move to C++
-        # If no Brutal Strike, log attack immediately
-        if not has_brutal_strike:
-            self._combat_log_add(atk_msg)
-        else:
-            # Defer logging until after Brutal Strike is applied
+        # Defer logging until the rider effect is chosen; otherwise log immediately.
+        if has_cunning_strike:
+            self._offer_cunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_brutal_strike:
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        else:
+            self._combat_log_add(atk_msg)
 
         # FLAG: Move to C++
         # Check concentration save if damage was dealt
@@ -1876,6 +1886,50 @@ class App:
                 (f"Sundering Blow ({dice_str} + +5 next atk vs target)", lambda: _apply([3])),
             ]
         options.append(("Skip Brutal Strike", lambda: _apply([])))
+
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_cunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show the Sneak Attack / Cunning Strike menu after a qualifying hit.
+
+        Mirrors _offer_brutal_strike: the attack already resolved, so the chosen riders (and the
+        Sneak Attack dice) are applied out of band via apply_cunning_strike_effect. "Sneak Attack
+        only" spends no dice on a rider. Logs the final attack message after the choice.
+        """
+        atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        level = atk_stats.char_level
+
+        def _apply(effects):
+            self.combat.apply_cunning_strike_effect(self.bm, atk_idx, target_idx, effects, result)
+            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            updated_msg = (f"{atk_name}→{tgt_name}: "
+                           f"HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
+                           f"{' CRIT!' if result.critical else ''}"
+                           f"{' — DOWN' if result.target_down else ''}")
+            self._combat_log_add(updated_msg)
+            self._flush_combat_log()
+            # Sneak Attack damage can drop the target after the base attack already settled.
+            if result.target_down:
+                self._drop_concentration_for_agent(target_idx)
+            self._update_attack_overlay()
+
+        options = []
+        if level >= 5:
+            options += [
+                ("Poison (1 die)", lambda: _apply([0])),
+                ("Trip (1 die)", lambda: _apply([1])),
+                ("Withdraw (1 die)", lambda: _apply([2])),
+            ]
+        if level >= 11:
+            options.append(("Poison + Trip (2 dice)", lambda: _apply([0, 1])))
+        if level >= 14:
+            options += [
+                ("Knock Out (6 dice)", lambda: _apply([4])),
+                ("Obscure (3 dice)", lambda: _apply([5])),
+            ]
+        options.append(("Sneak Attack only", lambda: _apply([])))
 
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
@@ -4919,7 +4973,7 @@ class App:
                         self.btn_cbt_grapple.draw(self.screen)
                         y += B + gap
 
-            # Hide (Cunning Action) button - only if agent has cunning action
+            # Hide, Dash, Disengage (Cunning Action) buttons - only if agent has cunning action
             if 0 <= cur_idx < len(agents):
                 agent = agents[cur_idx]
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -4928,6 +4982,16 @@ class App:
                     self.btn_cbt_hide_bonus.rect.y = y
                     self.btn_cbt_hide_bonus.rect.w = W
                     self.btn_cbt_hide_bonus.draw(self.screen)
+                    y += B + gap
+                    self.btn_cbt_dash_bonus.rect.x = lx
+                    self.btn_cbt_dash_bonus.rect.y = y
+                    self.btn_cbt_dash_bonus.rect.w = W
+                    self.btn_cbt_dash_bonus.draw(self.screen)
+                    y += B + gap
+                    self.btn_cbt_disengage_bonus.rect.x = lx
+                    self.btn_cbt_disengage_bonus.rect.y = y
+                    self.btn_cbt_disengage_bonus.rect.w = W
+                    self.btn_cbt_disengage_bonus.draw(self.screen)
                     y += B + gap
 
             # Rage button - only if agent is Barbarian, not raging, and has uses
@@ -6026,6 +6090,24 @@ class App:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (Cunning Action, stealth {result.stealth_total})")
                             else:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
+                        self.bonus_used = True
+                    if self.btn_cbt_dash_bonus.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            agent = self.bm.placed_agents[idx]
+                            self.bm.apply_dash(idx)
+                            self.move_remaining_walk   = agent.walk_remaining
+                            self.move_remaining_fly    = agent.fly_remaining
+                            self.move_remaining_swim   = agent.swim_remaining
+                            self.move_remaining_burrow = agent.burrow_remaining
+                            self._combat_log_add(f"{agent.name}: Dashing (Cunning Action, +{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
+                            self._update_reach()
+                        self.bonus_used = True
+                    if self.btn_cbt_disengage_bonus.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.bm.placed_agents[idx].disengage()
+                            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging (Cunning Action)")
                         self.bonus_used = True
                     if self.btn_cbt_rage.clicked(event):
                         idx = self._current_agent_idx()
