@@ -399,8 +399,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return result;
 
+    // New turn: advance the counter used for persistent-zone "once per turn" dedup.
+    ++turnCounter_;
 
-    auto agent_name = agentName(bm, agent_idx); 
+    auto agent_name = agentName(bm, agent_idx);
     // Reset slip distance counter and slipped flag for the new turn
     slipDistanceMoved_[agent_idx] = 0;
     agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
@@ -502,6 +504,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     break;
                 }
             }
+        }
+        // A persistent zone (Spirit Guardians, Cloudkill, etc.) keeps concentration alive
+        // on its own — the area is the ongoing effect even with no condition-targets.
+        if (!has_living_targets) {
+            for (const auto& fx : bm.activeSpellEffects())
+                if (fx.caster_idx == agent_idx) { has_living_targets = true; break; }
         }
         if (!has_living_targets) {
             cond.concentrating = false;
@@ -731,6 +739,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     new_stats.resetLeveledSpellCastFlag();
     bm.setAgentStats(agent_idx, new_stats);
 
+    // Keep any Emanation anchored to this agent centered on them (e.g. after a forced move).
+    recomputeAnchoredEffects(bm, agent_idx);
+
     // Apply begin-of-turn spell effects
     for (const auto& effect : bm.activeSpellEffects()) {
         if (!effect.spell.effects_on_begin_turn) continue;
@@ -742,7 +753,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             for (int r = agent.origin.row; r < agent.origin.row + agent.agent->getSize() && !in_effect; ++r) {
                 auto it = std::find(effect.cells.begin(), effect.cells.end(), Cell{c, r});
                 if (it != effect.cells.end()) {
-                    applySpellEffect(bm, effect, agent_idx);
+                    applyZoneIfNewThisTurn(bm, effect, agent_idx);
                     in_effect = true;
                 }
             }
@@ -825,6 +836,17 @@ bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
         return false;
     }
     return true;
+}
+
+// True if any cell of the agent's NxN footprint lies within the given cell set.
+static bool footprintOverlapsCells(const PlacedAgent& pa, const std::vector<Cell>& cells)
+{
+    const int size = pa.agent->getSize();
+    for (int c = pa.origin.col; c < pa.origin.col + size; ++c)
+        for (int r = pa.origin.row; r < pa.origin.row + size; ++r)
+            if (std::find(cells.begin(), cells.end(), Cell{c, r}) != cells.end())
+                return true;
+    return false;
 }
 
 bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementType type) noexcept
@@ -936,23 +958,37 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     if (!bm.moveAgent(idx, newOrigin, type))
         return false;
 
-    // Check for spell effects along the path from old to new position
+    // Check for spell effects along the path from old to new position. A creature that
+    // enters a zone is affected at most once per turn (see applyZoneIfNewThisTurn).
     std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
-
-    // Track which effects we've already applied to avoid double-hits
-    std::unordered_set<int> appliedEffects;
-
     for (const auto& pathCell : pathCells) {
         for (const auto& effect : bm.activeSpellEffects()) {
-            if (appliedEffects.count(effect.effect_id)) continue;  // Already applied this effect
-            if (effect.caster_idx == idx) continue;  // Don't damage self
+            if (effect.caster_idx == idx) continue;  // don't damage self
+            if (std::find(effect.cells.begin(), effect.cells.end(), pathCell) != effect.cells.end())
+                applyZoneIfNewThisTurn(bm, effect, idx);
+        }
+    }
 
-            // Check if this path cell is in the effect
-            auto it = std::find(effect.cells.begin(), effect.cells.end(), pathCell);
-            if (it != effect.cells.end()) {
-                applySpellEffect(bm, effect, idx);
-                appliedEffects.insert(effect.effect_id);
-            }
+    // A moving Sphere (Emanation) anchored to this agent follows them as they move.
+    // Snapshot each anchored zone's footprint, re-center it, then affect creatures the
+    // zone newly swept onto — "whenever the Emanation enters a creature's space" (once/turn).
+    std::vector<std::pair<int, std::vector<Cell>>> oldAnchoredCells;  // (effect_id, cells before move)
+    for (const auto& effect : bm.activeSpellEffects())
+        if (effect.anchor_agent_idx == idx)
+            oldAnchoredCells.emplace_back(effect.effect_id, effect.cells);
+
+    recomputeAnchoredEffects(bm, idx);
+
+    for (const auto& [eff_id, oldCells] : oldAnchoredCells) {
+        const ActiveSpellEffect* eff = nullptr;
+        for (const auto& e : bm.activeSpellEffects())
+            if (e.effect_id == eff_id) { eff = &e; break; }
+        if (!eff) continue;
+        for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
+            if (j == idx) continue;  // the anchor is never affected by its own Emanation
+            const PlacedAgent& other = agents[static_cast<std::size_t>(j)];
+            if (footprintOverlapsCells(other, eff->cells) && !footprintOverlapsCells(other, oldCells))
+                applyZoneIfNewThisTurn(bm, *eff, j);
         }
     }
 
@@ -2196,6 +2232,22 @@ int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ab
 //  AoE target resolver  (1 cell = 5 ft, D&D standard)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Cells of a Sphere of the given foot-radius centered on (center_col, center_row).
+// Matches the integer-radius disc used by the persistent-effect builder, so a moving
+// Sphere's footprint is identical whether it's first placed or later re-centered.
+static std::vector<Cell> sphereCellsAround(int center_col, int center_row, int radius_ft)
+{
+    std::vector<Cell> cells;
+    const int radius_cells = (radius_ft + 4) / 5;  // feet -> cells (5 ft/cell)
+    for (int c = center_col - radius_cells; c <= center_col + radius_cells; ++c)
+        for (int r = center_row - radius_cells; r <= center_row + radius_cells; ++r) {
+            const int dc = c - center_col, dr = r - center_row;
+            if (dc * dc + dr * dr <= radius_cells * radius_cells)
+                cells.push_back(Cell{c, r});
+        }
+    return cells;
+}
+
 static std::vector<int> resolveAoeTargets(
     std::span<const PlacedAgent> agents,
     const Spell& sp,
@@ -2280,6 +2332,36 @@ static std::vector<int> resolveAoeTargets(
 //  executeSpell
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Re-center any persistent Sphere effects anchored to this agent on their current
+// position. Called when the agent moves and at the start of their turn so an
+// Emanation (e.g. Spirit Guardians) tracks the caster.
+void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
+    const Cell origin = agents[static_cast<std::size_t>(agent_idx)].origin;
+
+    std::vector<std::pair<int, int>> to_update;  // (effect_id, radius_ft)
+    for (const auto& eff : bm.activeSpellEffects())
+        if (eff.anchor_agent_idx == agent_idx)
+            to_update.emplace_back(eff.effect_id, eff.spell.radius);
+
+    for (const auto& [id, radius] : to_update)
+        bm.setSpellEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
+}
+
+bool CombatEngine::applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept
+{
+    const int64_t key = (static_cast<int64_t>(effect.effect_id) << 32)
+                      ^ static_cast<int64_t>(static_cast<uint32_t>(target_idx));
+    auto it = zoneAppliedTurn_.find(key);
+    if (it != zoneAppliedTurn_.end() && it->second == turnCounter_)
+        return false;  // already applied to this target by this effect this turn
+    applySpellEffect(bm, effect, target_idx);
+    zoneAppliedTurn_[key] = turnCounter_;
+    return true;
+}
+
 SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 {
     SpellResult result;
@@ -2318,10 +2400,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Moving Sphere (Emanation): the area is centered on the caster, not an aimed point.
+    const bool moving_sphere = (sp.geometry == Spell::Sphere && sp.moves_with_caster);
+    int center_col = action.aoe_col;
+    int center_row = action.aoe_row;
+    if (moving_sphere) {
+        center_col = caster_pa.origin.col;
+        center_row = caster_pa.origin.row;
+    }
+
     std::vector<int> targets =
         (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple)
         ? action.target_indices
-        : resolveAoeTargets(agents, sp, action.caster_idx, action.aoe_col, action.aoe_row);
+        : resolveAoeTargets(agents, sp, action.caster_idx, center_col, center_row);
 
     // Evoker safe targets: fully exclude the caster's protected allies from AoE spells
     // (no save, no damage, no conditions). Single/Multiple are directly targeted, so untouched.
@@ -2334,6 +2425,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             });
         }
     }
+
+    // Emanation ignores the caster's own space — the caster is never a target.
+    if (moving_sphere)
+        std::erase(targets, action.caster_idx);
 
     // Check if caster is charmed and any target is the charmer
     if (caster_pa.agent->getConditions().charmed) {
@@ -2491,6 +2586,18 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 }
 
                 tr.dice_results = dice;
+
+                // Agonizing Blast: add CHA modifier to each Eldritch Blast beam's damage.
+                if (sp.name == "Eldritch Blast" &&
+                    caster_stats.character_class == CharacterClass::Warlock &&
+                    caster_stats.hasInvocation(0)) {
+                    int chaMod = abilityMod(caster_stats.cha);
+                    if (chaMod > 0) {
+                        dmg += chaMod;
+                        log_("Agonizing Blast: +{} damage", chaMod);
+                    }
+                }
+
                 if (sp.type == Spell::Heal) {
                     tr.total_healing = std::max(0, dmg);
                     tgt_stats.hp_cur = std::min(tgt_stats.hp_max,
@@ -2711,6 +2818,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         tr.target_down = (tgt_stats.hp_cur <= 0);
         bm.setAgentStats(tgt_idx, tgt_stats);
 
+        // Repelling Blast: each Eldritch Blast beam that hits pushes the target 10 ft away.
+        if (tr.hit && sp.name == "Eldritch Blast" &&
+            caster_stats.character_class == CharacterClass::Warlock &&
+            caster_stats.hasInvocation(1)) {
+            int moved = bm.forceMoveAgent(tgt_idx, caster_pa.origin, 10);
+            if (moved > 0)
+                log_("Repelling Blast: {} pushed {} ft", agentName(bm, tgt_idx), moved * 5);
+        }
+
         // TASK A: Dark One's Blessing tracking
         if (tr.target_down) any_kill = true;
 
@@ -2929,16 +3045,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         // Calculate cells based on spell geometry
         if (sp.geometry == Spell::Sphere) {
-            int radius_cells = (sp.radius + 4) / 5;  // Convert feet to cells (5ft/cell)
-            for (int c = action.aoe_col - radius_cells; c <= action.aoe_col + radius_cells; ++c) {
-                for (int r = action.aoe_row - radius_cells; r <= action.aoe_row + radius_cells; ++r) {
-                    int dc = c - action.aoe_col;
-                    int dr = r - action.aoe_row;
-                    if (dc * dc + dr * dr <= radius_cells * radius_cells) {
-                        effect_cells.push_back(Cell{c, r});
-                    }
-                }
-            }
+            // For a moving Sphere, center_col/center_row are the caster's origin.
+            effect_cells = sphereCellsAround(center_col, center_row, sp.radius);
         } else if (sp.geometry == Spell::Rectangle) {
             // Treat aoe_col/aoe_row as center, like Python's _aoe_cells does
             double w_cells = sp.width / 5.0;
@@ -2994,6 +3102,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             effect.cells = effect_cells;
             effect.turns_remaining = sp.duration;
             effect.effect_id = -1;  // Will be assigned by addSpellEffect
+            effect.anchor_agent_idx = moving_sphere ? action.caster_idx : -1;
             [[maybe_unused]] int effect_id = bm.addSpellEffect(effect);
         }
     }
@@ -3413,6 +3522,8 @@ const std::vector<ActiveEffect>& CombatEngine::activeEffects() const noexcept
 void CombatEngine::clearEffects() noexcept
 {
     activeEffects_.clear();
+    zoneAppliedTurn_.clear();
+    turnCounter_ = 0;
 }
 
 ConcentrationSaveResult CombatEngine::concentrationSave(
@@ -3428,6 +3539,11 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
 
     // Apply advantage/disadvantage from agent conditions
     bool has_adv = cond.has_advantage;
+    {
+        Agent::Stats cs = bm.getAgentStats(agent_idx);
+        if (cs.character_class == CharacterClass::Warlock && cs.hasInvocation(3))
+            has_adv = true;  // Eldritch Mind
+    }
     bool has_dis = cond.has_disadvantage;
     int save_d20;
     if (has_adv && has_dis) {
@@ -5167,8 +5283,18 @@ std::vector<int> CombatEngine::availableCastableSpells(
 //  getNumTargetsForSpell – calculate target count for Multiple geometry spells
 // ─────────────────────────────────────────────────────────────────────────────
 
-int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept
+int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level,
+                                        int caster_level) const noexcept
 {
+    // Eldritch Blast beams scale with CHARACTER level (cantrip), not slot level.
+    if (sp.name == "Eldritch Blast" && caster_level >= 0) {
+        int beams = 1;
+        if (caster_level >= 5)  ++beams;
+        if (caster_level >= 11) ++beams;
+        if (caster_level >= 17) ++beams;
+        return beams;
+    }
+
     // For Multiple geometry spells, calculate targets based on upcast level
     if (sp.geometry != Spell::Multiple) {
         return (sp.geometry == Spell::Single) ? 1 : 0;
@@ -5189,44 +5315,94 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         return;
 
     Agent::Stats target_stats = bm.getAgentStats(target_idx);
+    const Spell& sp = effect.spell;
 
-    // Calculate total damage by rolling all damage types and applying multipliers
-    int total_damage = 0;
+    // Save-for-half: a damaging zone with a Save attack type lets the target make a
+    // saving throw each time the effect is applied (half damage on success).
+    const bool do_save = (sp.attack_type == Spell::Save && sp.type != Spell::Heal);
+    bool saved = false;
+    if (do_save) {
+        const Agent& tgt = *agents[static_cast<std::size_t>(target_idx)].agent;
+        const Agent::Conditions& tc = tgt.getConditions();
 
-    // Magic damage
-    for (const auto& roll_info : effect.spell.magic_damage_rolls) {
+        // Auto-fail STR/DEX saves while paralyzed/stunned/unconscious.
+        const bool auto_fail = (tc.paralyzed || tc.stunned || tc.unconscious) &&
+                               (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
+
+        bool adv = tgt.hasAdvantage();
+        bool dis = tgt.hasDisadvantage();
+        // Barbarian Danger Sense (L2+): advantage on DEX saves unless incapacitated.
+        if (sp.save_ability == SaveDex && !tc.incapacitated &&
+            target_stats.character_class == CharacterClass::Barbarian && target_stats.char_level >= 2)
+            adv = true;
+
+        int save_d20;
+        if (auto_fail)       save_d20 = 1;
+        else if (adv && dis) save_d20 = roll(20);
+        else if (adv)        save_d20 = rollAdvantage(20);
+        else if (dis)        save_d20 = rollDisadvantage(20);
+        else                 save_d20 = roll(20);
+
+        auto saveMod = [&](SaveAbility_t ab) -> int {
+            int score = 0; bool prof = false;
+            switch (ab) {
+                case SaveStr: score = target_stats.str;   prof = target_stats.save_prof_str;   break;
+                case SaveDex: score = target_stats.dex;   prof = target_stats.save_prof_dex;   break;
+                case SaveCon: score = target_stats.con;   prof = target_stats.save_prof_con;   break;
+                case SaveInt: score = target_stats.intel; prof = target_stats.save_prof_intel; break;
+                case SaveWis: score = target_stats.wis;   prof = target_stats.save_prof_wis;   break;
+                default:      score = target_stats.cha;   prof = target_stats.save_prof_cha;   break;
+            }
+            int m = (score - 10) / 2;
+            if (score < 10 && (score - 10) % 2 != 0) --m;
+            return m + (prof ? target_stats.prof_bonus : 0);
+        };
+
+        int dc = 0;
+        if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
+            dc = spellSaveDcFromAbility(bm.getAgentStats(effect.caster_idx), sp.save_ability);
+        saved = !auto_fail && (save_d20 + saveMod(sp.save_ability) >= dc);
+    }
+
+    // Calculate total by rolling all damage types and applying multipliers (then halving on a save).
+    int total = 0;
+    for (const auto& roll_info : sp.magic_damage_rolls) {
         int type_damage = 0;
-        for (int i = 0; i < roll_info.num_dice; ++i) {
-            type_damage += roll(roll_info.die_size);
-        }
+        for (int i = 0; i < roll_info.num_dice; ++i) type_damage += roll(roll_info.die_size);
         type_damage += roll_info.bonus;
         float multiplier = target_stats.magic_damage_multipliers[roll_info.type];
         int modified = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-        total_damage += modified;
+        if (saved) modified /= 2;
+        total += modified;
     }
-
-    // Physical damage
-    for (const auto& roll_info : effect.spell.physical_damage_rolls) {
+    for (const auto& roll_info : sp.physical_damage_rolls) {
         int type_damage = 0;
-        for (int i = 0; i < roll_info.num_dice; ++i) {
-            type_damage += roll(roll_info.die_size);
-        }
+        for (int i = 0; i < roll_info.num_dice; ++i) type_damage += roll(roll_info.die_size);
         type_damage += roll_info.bonus;
         float multiplier = target_stats.physical_damage_multipliers[roll_info.type];
         int modified = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-        total_damage += modified;
+        if (saved) modified /= 2;
+        total += modified;
+    }
+
+    // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
+    if (do_save && sp.save_ability == SaveDex &&
+        target_stats.character_class == CharacterClass::Rogue && target_stats.char_level >= 7 &&
+        !agents[static_cast<std::size_t>(target_idx)].agent->getConditions().incapacitated) {
+        total = saved ? 0 : (total / 2);
     }
 
     // Log the effect
-    std::string action = (effect.spell.type == Spell::Heal) ? "healed" : "took";
-    log_("{} {} {} from {}", agents[static_cast<std::size_t>(target_idx)].agent->name(), action, total_damage, effect.spell.name);
+    const char* verb = (sp.type == Spell::Heal) ? "healed" : "took";
+    if (do_save)
+        log_("{} {} {} from {} ({} save)", agents[static_cast<std::size_t>(target_idx)].agent->name(),
+             verb, total, sp.name, saved ? "made" : "failed");
+    else
+        log_("{} {} {} from {}", agents[static_cast<std::size_t>(target_idx)].agent->name(), verb, total, sp.name);
 
     // Apply damage or healing
-    if (effect.spell.type == Spell::Heal) {
-        healAgent(bm, target_idx, total_damage);
-    } else {
-        damageAgent(bm, target_idx, total_damage);
-    }
+    if (sp.type == Spell::Heal) healAgent(bm, target_idx, total);
+    else                        damageAgent(bm, target_idx, total);
 }
 
 void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept

@@ -48,6 +48,9 @@ namespace rpg {
       int slip_distance_feet{5};  // Slipping terrain: feet moved before a save is required
 
       bool requires_concentration{false};  // Caster must maintain concentration; breaks on damage
+      // Sphere whose center follows the caster (D&D 2024 "Emanation"). The persistent
+      // effect re-centers on the caster each turn / whenever the caster moves.
+      bool moves_with_caster{false};
       bool requires_los{false};            // Spell requires line of sight to target/area
       bool check_los_on_center{true};      // If true, only the spell center needs LOS (user configurable)
       bool requires_sight{false};          // Spell requires target to be visible (not blocked/heavily obscured)

@@ -114,6 +114,7 @@ struct ActiveSpellEffect {
     std::vector<Cell> cells;               // cells occupied by this effect
     int          turns_remaining = 0;      // decremented per turn; effect expires when 0
     int          effect_id      = -1;      // unique ID for removal
+    int          anchor_agent_idx = -1;    // if >=0, cells re-center on this agent (moving Sphere)
 };
 
 // ── Active spell-applied condition on an agent ──────────────────────────────
@@ -371,6 +372,8 @@ public:
     void removeSpellEffect(int effect_id) noexcept;
     // Get all active spell effects (for Python to render overlay).
     [[nodiscard]] const std::vector<ActiveSpellEffect>& activeSpellEffects() const noexcept;
+    // Replace the cells of an existing spell effect (used to re-center a moving Sphere).
+    void setSpellEffectCells(int effect_id, std::vector<Cell> cells) noexcept;
     // Decrement turns_remaining for effects sourced from the given agent.
     // Removes expired effects. Returns list of removed effect ids.
     [[nodiscard]] std::vector<int> tickSpellEffects(int source_agent_idx) noexcept;

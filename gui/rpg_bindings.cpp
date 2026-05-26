@@ -329,6 +329,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Warlock patron subclass (only valid when character_class == Warlock)")
         .def_readwrite("rogue_subclass", &Agent::Stats::rogue_subclass,
              "Rogue subclass (only valid when character_class == Rogue)")
+        .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,
+             "Warlock eldritch invocations (list of invocation codes)")
+        .def("has_invocation", &Agent::Stats::hasInvocation,
+             "Check if warlock has a specific invocation code")
         .def_readwrite("fiendish_resilience_type", &Agent::Stats::fiendish_resilience_type,
              "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
@@ -758,6 +762,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Slipping terrain: feet moved before a save is required.")
         .def_readwrite("requires_concentration", &Spell::requires_concentration,
              "If true, caster must maintain concentration; breaks on damage (CON save).")
+        .def_readwrite("moves_with_caster", &Spell::moves_with_caster,
+             "Sphere only: the area's center follows the caster (D&D 2024 'Emanation').\n"
+             "The persistent effect re-centers on the caster each turn and whenever the caster moves.")
         .def_readwrite("requires_los", &Spell::requires_los,
              "If true, spell requires line of sight to the target or area origin.")
         .def_readwrite("check_los_on_center", &Spell::check_los_on_center,
@@ -1486,10 +1493,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Cantrips (level 0) always included.")
         .def("get_num_targets_for_spell",
              &CombatEngine::getNumTargetsForSpell,
-             py::arg("spell"), py::arg("slot_level"),
+             py::arg("spell"), py::arg("slot_level"), py::arg("caster_level") = -1,
              "Calculate the number of targets for a Multiple geometry spell when cast at given slot level.\n"
              "Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level\n"
-             "For Single geometry: returns 1. For AoE: returns 0.")
+             "For Single geometry: returns 1. For AoE: returns 0.\n"
+             "caster_level: character level for special cases like Eldritch Blast (default -1 uses slot level formula)")
 
         // ── Agent stat and equipment management ─────────────────────────────
         .def("add_agent_config",

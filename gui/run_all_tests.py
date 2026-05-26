@@ -28,6 +28,7 @@ test_scripts = [
     "test_resource.py",
     "test_terrain_concentration.py",
     "test_evoker_safe_targets.py",
+    "test_emanation.py",
     "test_replay_roundtrip.py",
 
     # Barbarian features
@@ -46,6 +47,7 @@ test_scripts = [
     # Warlock features
     "test_warlock_l1_5.py",
     "test_warlock_phase2.py",
+    "test_warlock_phase3.py",
 
     # Rogue features
     "test_rogue_l1_18.py",

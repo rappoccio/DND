@@ -52,6 +52,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -136,6 +137,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         4,
@@ -216,6 +218,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -292,6 +295,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -372,6 +376,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -412,7 +417,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 150,
+        "speed_walk": 170,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -448,6 +453,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -531,6 +537,7 @@
       "agent_wizard_subclass": "Diviner",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         4,
@@ -613,6 +620,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "Fiend",
       "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -689,6 +697,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "ArcaneTrickster",
+      "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
         0,
@@ -706,6 +715,85 @@
         0,
         0,
         0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Aodhan",
+      "sprite_path": "",
+      "size": 1,
+      "col": 14,
+      "row": 6,
+      "stats": {
+        "str": 10,
+        "dex": 15,
+        "con": 16,
+        "intel": 8,
+        "wis": 20,
+        "cha": 8,
+        "hp_max": 65,
+        "hp_cur": 65,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "cha"
+      },
+      "weapons": {
+        "main_hand": "Unnamed",
+        "off_hand": "Unnamed",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [
+        "Spirit Guardians"
+      ],
+      "agent_class": "Cleric",
+      "agent_char_level": 9,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_eldritch_invocations": [],
+      "agent_fiendish_resilience_type": -1,
+      "spell_slots_max": [
+        4,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        4,
+        3,
+        3,
+        1,
         0,
         0,
         0,

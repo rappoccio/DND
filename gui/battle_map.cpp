@@ -1518,6 +1518,13 @@ const std::vector<ActiveSpellEffect>& BattleMap::activeSpellEffects() const noex
     return activeSpellEffects_;
 }
 
+void BattleMap::setSpellEffectCells(int effect_id, std::vector<Cell> cells) noexcept {
+    auto it = std::find_if(activeSpellEffects_.begin(), activeSpellEffects_.end(),
+        [effect_id](const ActiveSpellEffect& e) { return e.effect_id == effect_id; });
+    if (it != activeSpellEffects_.end())
+        it->cells = std::move(cells);
+}
+
 std::vector<int> BattleMap::tickSpellEffects(int source_agent_idx) noexcept {
     std::vector<int> removed_ids;
     std::vector<ActiveSpellEffect> remaining;

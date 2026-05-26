@@ -776,7 +776,9 @@ public:
     // Calculate the number of targets for a Multiple geometry spell when cast at a given slot level.
     // Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level
     // For non-Multiple geometries, returns 1 (Single geometry) or 0 (AoE spells).
-    [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level) const noexcept;
+    // caster_level: character level for special cases like Eldritch Blast (default -1 means use normal formula)
+    [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level,
+                                            int caster_level = -1) const noexcept;
 
     // ── RL observation vector ─────────────────────────────────────────────
     //
@@ -845,6 +847,11 @@ private:
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 
+    // Persistent-zone "once per turn" tracking. turnCounter_ increments on each beginTurn;
+    // zoneAppliedTurn_ maps (effect_id, agent_idx) -> the turnCounter_ value when last applied.
+    int turnCounter_{0};
+    std::unordered_map<int64_t, int> zoneAppliedTurn_;
+
     // Emit a message to the logger (if attached).
     template<typename... Args>
     void log_(std::format_string<Args...> fmt, Args&&... args) {
@@ -858,6 +865,13 @@ private:
 
     // Apply a persistent spell effect (damage) to a target agent.
     void applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;
+
+    // Re-center persistent Sphere effects anchored to this agent (moving Emanation).
+    void recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexcept;
+
+    // Apply a persistent zone effect to a target at most once per turn (D&D "a creature makes
+    // this save only once per turn"). Returns true if applied, false if already applied this turn.
+    bool applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;
 
     // Check for slipping terrain (ice/grease) and trigger saves/prone as needed.
     void checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept;

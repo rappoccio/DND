@@ -1039,7 +1039,7 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE"):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1080,6 +1080,10 @@ class App:
             stats.warlock_subclass = getattr(rpg.WarlockSubclass, subclass_name)
         elif class_name == "Rogue" and subclass_name != "NONE":
             stats.rogue_subclass = getattr(rpg.RogueSubclass, subclass_name)
+
+        # Set Warlock invocations
+        if class_name == "Warlock" and eldritch_invocations:
+            stats.eldritch_invocations = list(eldritch_invocations)
 
         # Initialize class resources (Rage, Ki, Portent Dice, etc.)
         # This must come AFTER setting subclass since resource creation checks subclass
@@ -2275,13 +2279,27 @@ class App:
 
         def _activate(s, si_, slot_level_=0):
             sp_ = spells[si_]
+
+            # Emanation (a moves_with_caster Sphere) is always centered on the caster,
+            # so there is no placement to choose — cast immediately on the caster's cell.
+            if getattr(sp_, "moves_with_caster", False) and sp_.geometry == rpg.SpellGeometry.Sphere:
+                self.pending_spell_slot       = s
+                self.pending_spell_idx        = si_
+                self.pending_spell_slot_level = slot_level_
+                ci = self._current_agent_idx()
+                origin = self.bm.placed_agents[ci].origin
+                self._combat_log_add(f"Casting {sp_.name} — centered on caster.")
+                self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
+                return
+
             if sp_.geometry == rpg.SpellGeometry.Single:
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []
                 hint = "click a target"
             elif sp_.geometry == rpg.SpellGeometry.Multiple:
                 # Multiple geometry: collect N independent targets
-                num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_)
+                caster_level_ = self.combat.get_agent_stats(self.bm, caster_idx_).char_level
+                num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_)
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []  # Will collect targets sequentially
                 self.pending_spell_num_targets = num_targets
@@ -2952,6 +2970,13 @@ class App:
         ax = float(center_cell.col)
         ay = float(center_cell.row)
 
+        # Emanation: a Sphere whose center follows the caster — preview it on the caster.
+        if getattr(spell, "moves_with_caster", False) and geo == rpg.SpellGeometry.Sphere:
+            caster_idx = self._current_agent_idx()
+            if caster_idx >= 0:
+                cp = self.bm.placed_agents[caster_idx].origin
+                ax, ay = float(cp.col), float(cp.row)
+
         if geo == rpg.SpellGeometry.Sphere:
             r_cells = spell.radius / 5.0
             for c in range(cols):
@@ -3164,6 +3189,7 @@ class App:
             "level":                 s.level,
             "upcast_dice_bonus":     s.upcast_dice_bonus,
             "requires_concentration": s.requires_concentration,
+            "moves_with_caster":     s.moves_with_caster,
             "conditions":            conditions,
         }
 
@@ -3231,6 +3257,7 @@ class App:
         s.physical_damage_rolls = phys_rolls
 
         s.requires_concentration = d.get("requires_concentration", False)
+        s.moves_with_caster = d.get("moves_with_caster", False)
         s.requires_los = d.get("requires_los", False)
         s.check_los_on_center = d.get("check_los_on_center", True)
         s.level = int(d.get("level", 0))
@@ -3350,6 +3377,7 @@ class App:
                 "agent_wizard_subclass": s.wizard_subclass.name,
                 "agent_warlock_subclass": s.warlock_subclass.name,
                 "agent_rogue_subclass": s.rogue_subclass.name,
+                "agent_eldritch_invocations": list(s.eldritch_invocations),
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
@@ -3643,6 +3671,7 @@ class App:
             rogue_subclass_name = t.get("agent_rogue_subclass", "NONE")
             if rogue_subclass_name != "NONE":
                 stats.rogue_subclass = getattr(rpg.RogueSubclass, rogue_subclass_name)
+            stats.eldritch_invocations = list(t.get("agent_eldritch_invocations", []))
             # Fiend L10 Fiendish Resilience: chosen damage type must be restored BEFORE
             # initialize_class_resources so the resistance multiplier re-applies.
             stats.fiendish_resilience_type = int(t.get("agent_fiendish_resilience_type", -1))

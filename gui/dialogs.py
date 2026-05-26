@@ -463,6 +463,8 @@ class StatsDialog:
         self._npc_spell_groups   = {}    # {N: [spell_names]}
         self._npc_add_group_rect = None
         self._spell_selection_dialog = None
+        self._eldritch_invocations = []  # Warlock eldritch invocations (list of int codes)
+        self._invocation_rects = {}      # invocation code -> pygame.Rect for checkboxes
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE"):
@@ -476,6 +478,7 @@ class StatsDialog:
         self._is_npc            = is_npc
         self._npc_spell_groups  = dict(npc_spell_groups) if npc_spell_groups else {}
         self._armor_list        = armor_list or []
+        self._eldritch_invocations = list(stats.eldritch_invocations) if hasattr(stats, 'eldritch_invocations') else []
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._build_steppers(self._dlg(screen), stats)
 
@@ -655,6 +658,16 @@ class StatsDialog:
             for flag_key, rect in self._prof_rects.items():
                 if rect.collidepoint(event.pos):
                     self.prof_flags[flag_key] = not self.prof_flags[flag_key]
+
+            # Invocation checkboxes (Warlock only)
+            for invocation_code, rect in self._invocation_rects.items():
+                if rect.collidepoint(event.pos):
+                    if invocation_code in self._eldritch_invocations:
+                        self._eldritch_invocations.remove(invocation_code)
+                    else:
+                        self._eldritch_invocations.append(invocation_code)
+                    return True
+
             if self._ok_rect(dlg).collidepoint(event.pos):
                 # Update character level from stepper before confirming
                 if self._char_level_stepper:
@@ -682,7 +695,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -871,6 +884,41 @@ class StatsDialog:
             self._class_rects = {}
             self._subclass_rects = {}
             npc_checkbox_y = dlg.y + self.HDR_H + self.PAD + 300
+
+        # ── Warlock Eldritch Invocations ──────────────────────────────────
+        self._invocation_rects = {}
+        if self._class_name == "Warlock":
+            inv_y = (subclass_y + 24 if 'subclass_y' in locals() else class_y + 24) if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
+            inv_lbl = self.font_sm.render("Invocations:", True, self.C_LABEL)
+            screen.blit(inv_lbl, (dlg.x + self.PAD, inv_y))
+
+            # Invocation codes: 0=Agonizing Blast, 1=Repelling Blast, 2=Eldritch Spear, 3=Eldritch Mind
+            invocations = [
+                (3, "Eldritch Mind", 1),        # L1+
+                (0, "Agonizing Blast", 2),     # L2+
+                (1, "Repelling Blast", 2),     # L2+
+                (2, "Eldritch Spear", 2),      # L2+
+            ]
+            cb_h = 14
+            inv_base_y = inv_y + 18
+            for idx, (code, name, min_level) in enumerate(invocations):
+                if self._char_level >= min_level:
+                    inv_y_pos = inv_base_y + idx * (cb_h + 4)
+                    inv_r = pygame.Rect(dlg.x + self.PAD, inv_y_pos, cb_h, cb_h)
+                    checked = code in self._eldritch_invocations
+                    box_col = (45, 110, 55) if checked else (60, 60, 80)
+                    bdr_col = (80, 200, 90) if checked else self.C_BORDER
+                    pygame.draw.rect(screen, box_col, inv_r, border_radius=2)
+                    pygame.draw.rect(screen, bdr_col, inv_r, 1, border_radius=2)
+                    if checked:
+                        pts = [(inv_r.x + 2, inv_r.centery),
+                               (inv_r.centerx - 1, inv_r.bottom - 2),
+                               (inv_r.right - 2, inv_r.y + 2)]
+                        pygame.draw.lines(screen, (110, 240, 110), False, pts, 1)
+                    inv_txt = self.font_sm.render(name, True, self.C_LABEL)
+                    screen.blit(inv_txt, (inv_r.right + 6, inv_y_pos))
+                    self._invocation_rects[code] = inv_r
+            npc_checkbox_y = inv_base_y + len([i for i in invocations if self._char_level >= i[2]]) * (cb_h + 4) + 10
 
         # ── NPC Spells Section ────────────────────────────────────────────
         npc_checkbox_y = npc_checkbox_y if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300

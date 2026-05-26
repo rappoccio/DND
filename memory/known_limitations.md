@@ -280,10 +280,17 @@ deferred. Scope is combat-only — flavor / out-of-combat utility is intentional
   Combatant); Archfey (Steps of the Fey misty-step uses, Beguiling Defenses charm immunity + psychic
   reflect, Misty Escape). These are specializations of existing engine pieces (temp HP, resistances,
   +CHA damage, condition immunities, healing pools).
-- **Phase 3 — combat-relevant Eldritch Invocations**: Agonizing Blast (+CHA to cantrip damage),
-  Repelling Blast (push), Eldritch Spear (range), Devil's Sight, Eldritch Mind (advantage on
-  concentration saves), Pact of the Blade (CHA finesse pact weapon + conjure), Thirsting Blade /
-  Devouring Blade (extra attacks), Eldritch Smite, Lifedrinker.
+- **Phase 3a (2026-05-24) — Eldritch Blast invocations ✅**:
+  - **Implemented**: Eldritch Blast multi-beam (character-level scaling: 1 beam at L1, 2 at L5, 3 at L11, 4 at L17),
+    Agonizing Blast (+CHA/beam), Repelling Blast (10 ft push/beam hit), Eldritch Mind (advantage on concentration saves).
+    GUI invocation picker (checkboxes, gated by character level).
+  - **Deferred (Phase 3b)**: Eldritch Spear range extension (not GUI-enforced), Devil's Sight, Pact of the Blade line
+    (Thirsting Blade, Devouring Blade, Eldritch Smite, Lifedrinker — all require Pact-of-the-Blade weapon primitive).
+    Invocation codes 4–9 reserved.
+  - **Note on Eldritch Spear range**: GUI target selection does not currently validate spell range for Multiple geometry,
+    so range extension requires inventing a range-enforcement system (deferred per spec).
+  - **Tests**: `test_warlock_phase3.py`.
+- **Phase 3b — remaining Eldritch Invocations** (deferred): Pact of the Blade weapon line (needs primitive), Devil's Sight.
 - **Phase 4**: Mystic Arcanum (free 6th–9th-level cast/long rest), Eldritch Master.
 - **Phase 5**: backfill missing Warlock/patron spells into `spells.json` (e.g. Hunger of Hadar,
   Witch Bolt) — many subclass "always-prepared" spells are absent.
