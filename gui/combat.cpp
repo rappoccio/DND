@@ -370,6 +370,14 @@ void CombatEngine::applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept
         }
     }
 
+    // War Domain — Avatar of Battle (L17+): Resistance to Bludgeoning/Piercing/Slashing.
+    if (s.character_class == CharacterClass::Cleric && s.cleric_subclass == WarDomain && s.char_level >= 17) {
+        for (auto t : {PhysicalDamage_t::Bludgeoning, PhysicalDamage_t::Piercing, PhysicalDamage_t::Slashing}) {
+            float& cur = s.physical_damage_multipliers[static_cast<std::size_t>(t)];
+            if (cur > 0.5f && cur != 2.0f) cur = 0.5f;  // resist, but don't override vuln/immunity
+        }
+    }
+
     bm.setAgentStats(agent_idx, s);
 }
 
@@ -1760,6 +1768,42 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
+    // ── Cleric Blessed Strikes — Divine Strike eligibility ────────────────
+    // L7+ Clerics who chose Divine Strike can, once per turn, add Necrotic/Radiant to a weapon
+    // hit. Like Brutal/Cunning Strike, the extra die is applied out of band (applyDivineStrikeEffect).
+    if (r.hit && atk_stats.character_class == CharacterClass::Cleric &&
+        atk_stats.char_level >= 7 &&
+        atk_stats.blessed_strike == BlessedStrikeDivineStrike &&
+        !atk_cond.divine_strike_used) {
+        updated_atk_cond.divine_strike_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── War Domain — Guided Strike eligibility (on a miss) ────────────────
+    // A missed attack (not a natural 1) can be nudged to a hit by a War Cleric L3+ spending Channel
+    // Divinity — the attacker themselves, or an ally within 30 ft (who pays a Reaction). Flag it; the
+    // GUI offers the choice and calls applyGuidedStrike.
+    if (!r.hit && !r.fumble) {
+        bool eligible = false;
+        for (int c = 0; c < static_cast<int>(agents.size()) && !eligible; ++c) {
+            Agent::Stats cs = bm.getAgentStats(c);
+            if (cs.character_class != CharacterClass::Cleric ||
+                cs.cleric_subclass != WarDomain || cs.char_level < 3) continue;
+            const Resource* cd = cs.getResource("Channel Divinity");
+            if (!cd || cd->current <= 0) continue;
+            if (c == action.attacker_idx) { eligible = true; break; }
+            if (bm.getAgentConditions(c).reaction_used) continue;
+            const Cell co = agents[static_cast<std::size_t>(c)].origin;
+            const Cell ao = agents[static_cast<std::size_t>(action.attacker_idx)].origin;
+            const double dx = co.col - ao.col, dy = co.row - ao.row;
+            if (std::sqrt(dx * dx + dy * dy) * 5.0 <= 30.0) eligible = true;
+        }
+        if (eligible) {
+            updated_atk_cond.guided_strike_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
     // ── Rogue Uncanny Dodge (L5+) ─────────────────────────────────────────
     // Reaction: halve the attack's damage (round down). Consumes the target's reaction.
     if (r.hit && r.total_damage > 0 &&
@@ -1887,6 +1931,13 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     }
 
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
+
+    if (r.hit && r.total_damage > 0) {
+        // Taking weapon damage forces a concentration save on the target (DC = max(10, dmg/2)).
+        checkConcentrationOnDamage(bm, action.target_idx, r.total_damage);
+        // ...and ends/triggers on-damage conditions (Sleep, Hypnotic Pattern, Tasha's).
+        processDamageTaken(bm, action.target_idx, r.total_damage);
+    }
 
     // Auto-trigger Unconscious if HP drops to 0 or below
     bool just_knocked_unconscious = (r.hp_after <= 0 && !tgt_cond.unconscious && !tgt_cond.dead);
@@ -2814,6 +2865,22 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             }
         }
 
+        // Cleric Blessed Strikes — Potent Spellcasting (L7+): add WIS mod to Cleric cantrip damage.
+        if (tr.total_damage > 0 && sp.type != Spell::Heal && sp.level == 0 &&
+            caster_stats.character_class == CharacterClass::Cleric &&
+            caster_stats.char_level >= 7 &&
+            caster_stats.blessed_strike == BlessedStrikePotentSpellcasting) {
+            int wisMod = (caster_stats.wis - 10) / 2;
+            if (caster_stats.wis < 10 && (caster_stats.wis - 10) % 2 != 0) --wisMod;
+            if (wisMod > 0) {
+                int overflow = std::max(0, wisMod - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - wisMod);
+                tgt_stats.hp_cur  = std::max(0, tgt_stats.hp_cur - overflow);
+                tr.total_damage += wisMod;
+                log_("{}: Potent Spellcasting adds {} damage to {}", agentName(bm, action.caster_idx), wisMod, sp.name);
+            }
+        }
+
         tr.hp_after    = tgt_stats.hp_cur;
         tr.target_down = (tgt_stats.hp_cur <= 0);
         bm.setAgentStats(tgt_idx, tgt_stats);
@@ -2863,6 +2930,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 tr.concentration_checked = true;
             }
         }
+
+        // On-damage condition behavior (Sleep/Hypnotic Pattern end; Tasha's re-saves) for
+        // any pre-existing condition on this target. Runs before this spell's own conditions
+        // are applied, so a damaging spell can't instantly cancel the condition it just set.
+        processDamageTaken(bm, tgt_idx, tr.total_damage);
 
         // Apply spell-based conditions (e.g., Hold Person applies Paralyzed)
         if (!sp.conditions.empty()) {
@@ -2944,6 +3016,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     cond.spell_idx   = action.spell_idx;
                     cond.condition_name = spell_cond.condition_name;
                     cond.save_ability = spell_cond.save_ability;
+                    cond.on_damage = spell_cond.on_damage;
 
                     // Condition duration: if condition_duration is 0, use spell duration
                     cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
@@ -3173,7 +3246,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             stats.markLeveledSpellCast(sp.level);
         }
 
-        if (stats.is_npc) {
+        if (!spell_mut.resource_name.empty()) {
+            // Class feature: spend its named resource (e.g. Channel Divinity) instead of a slot.
+            int cost = std::max(1, spell_mut.resource_cost);
+            Resource* res = stats.getResource(spell_mut.resource_name);
+            if (res) res->spend(cost);
+            log_("{} spends {} {}", agentName(bm, action.caster_idx), cost, spell_mut.resource_name);
+        } else if (stats.is_npc) {
             log_("[DEBUG execute_spell] NPC branch taken for agent {}", action.caster_idx);
             // NPC: decrement N/day uses
             if (spell_mut.uses_max > 0) {
@@ -3506,6 +3585,8 @@ void CombatEngine::tickEffects(BattleMap& bm)
         }
 
         bm.setAgentStats(fx.target_idx, s);
+        if (fx.spell.type != Spell::Heal)
+            processDamageTaken(bm, fx.target_idx, std::max(0, total));
     }
 
     auto expired = [](const ActiveEffect& fx) { return fx.turns_remaining <= 0; };
@@ -3866,6 +3947,89 @@ int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx,
 
     log_("{}: Healing Light: {} d6 = {} healing to {}", agentName(bm, healer_idx), num_dice, total_healing, agentName(bm, target_idx));
     return healed;
+}
+
+TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
+{
+    TurnUndeadResult result;
+    auto agents = bm.placedAgents();
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return result;
+
+    Agent::Stats caster = bm.getAgentStats(caster_idx);
+    if (caster.character_class != CharacterClass::Cleric || caster.char_level < 2) return result;
+
+    Resource* cd = caster.getResource("Channel Divinity");
+    if (!cd || cd->current <= 0) return result;
+
+    result.valid   = true;
+    result.save_dc = spellSaveDcFromAbility(caster, SaveWis);
+
+    int wisMod = (caster.wis - 10) / 2;
+    if (caster.wis < 10 && (caster.wis - 10) % 2 != 0) --wisMod;
+
+    // Sear Undead (L5+): roll WIS-mod d8 (minimum 1d8) ONCE; each failed undead takes that total.
+    int sear_total = 0;
+    if (caster.char_level >= 5) {
+        int sear_dice = std::max(1, wisMod);
+        for (int i = 0; i < sear_dice; ++i) sear_total += roll(8);
+        result.sear_damage = sear_total;
+    }
+
+    // Expend one Channel Divinity use (cd points into caster.resources; persist below).
+    cd->spend(1);
+    bm.setAgentStats(caster_idx, caster);
+    log_("{} uses Turn Undead (DC {})", agentName(bm, caster_idx), result.save_dc);
+
+    const Cell c_origin = agents[static_cast<std::size_t>(caster_idx)].origin;
+
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == caster_idx) continue;
+        Agent::Stats tgt = bm.getAgentStats(i);
+        if (!tgt.is_undead) continue;
+
+        // Within 30 ft (Euclidean cell distance × 5 ft), matching Sphere targeting.
+        const Cell o = agents[static_cast<std::size_t>(i)].origin;
+        const double dx = o.col - c_origin.col, dy = o.row - c_origin.row;
+        if (std::sqrt(dx * dx + dy * dy) * 5.0 > 30.0) continue;
+
+        int mod = (tgt.wis - 10) / 2;
+        if (tgt.wis < 10 && (tgt.wis - 10) % 2 != 0) --mod;
+        if (tgt.save_prof_wis) mod += tgt.prof_bonus;
+        const int save_total = roll(20) + mod;
+
+        if (save_total >= result.save_dc) {
+            result.resisted.push_back(i);
+            log_("Turn Undead: {} resists ({} vs DC {})", agentName(bm, i), save_total, result.save_dc);
+            continue;
+        }
+
+        // Sear damage is dealt BEFORE the conditions are applied, so the on-damage "ends" rule
+        // doesn't immediately cancel the Frightened/Incapacitated we're about to add.
+        if (sear_total > 0) {
+            damageAgent(bm, i, sear_total);
+            checkConcentrationOnDamage(bm, i, sear_total);
+            processDamageTaken(bm, i, sear_total);
+        }
+
+        // Frightened + Incapacitated for 1 minute; ends early if the undead takes damage.
+        for (const char* cname : {"Frightened", "Incapacitated"}) {
+            ActiveAgentCondition cond;
+            cond.agent_idx        = i;
+            cond.caster_idx       = caster_idx;   // fear source (used by Frightened movement rule)
+            cond.condition_name   = cname;
+            cond.save_ability     = SaveWis;
+            cond.save_dc          = result.save_dc;
+            cond.save_repeat_turns = -1;          // no per-turn save; ends on damage / after 1 min
+            cond.turns_remaining  = 10;           // 1 minute
+            cond.on_damage        = OnDamage_t::End;
+            cond.next_save_turn   = 0;
+            (void)addAgentCondition(bm, cond);
+        }
+        result.turned.push_back(i);
+        log_("Turn Undead: {} is Turned ({} vs DC {})", agentName(bm, i), save_total, result.save_dc);
+    }
+
+    return result;
 }
 
 void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
@@ -4310,6 +4474,112 @@ void CombatEngine::applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int 
     bm.setAgentConditions(attacker_idx, atk_cond);
     bm.setAgentStats(target_idx, tgt_stats);
     bm.setAgentConditions(target_idx, tgt_cond);
+}
+
+void CombatEngine::applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                           bool radiant, AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (atk_cond.divine_strike_used) return;  // once per turn
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+
+    // L7: 1d8; L14 (Improved Blessed Strikes): 2d8.
+    const int dice = (atk_stats.char_level >= 14) ? 2 : 1;
+    const MagicDamage_t dtype = radiant ? MagicDamage_t::Radiant : MagicDamage_t::Necrotic;
+    int raw = 0;
+    for (int i = 0; i < dice; ++i) raw += roll(8);
+
+    const float mult = tgt_stats.magic_damage_multipliers[dtype];
+    const int ds_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"divine strike", ds_damage});
+    result.total_damage += ds_damage;
+    result.magic_damage_types.push_back(dtype);
+
+    int overflow = std::max(0, ds_damage - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ds_damage);
+    tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+
+    atk_cond.divine_strike_used = true;
+    atk_cond.divine_strike_available = false;
+
+    bm.setAgentConditions(attacker_idx, atk_cond);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    log_("{} adds Divine Strike: +{} {} damage", agentName(bm, attacker_idx), ds_damage,
+         radiant ? "Radiant" : "Necrotic");
+
+    // The extra damage can break concentration and trigger on-damage conditions.
+    if (ds_damage > 0) {
+        checkConcentrationOnDamage(bm, target_idx, ds_damage);
+        processDamageTaken(bm, target_idx, ds_damage);
+    }
+}
+
+void CombatEngine::applyGuidedStrike(BattleMap& bm, const Attack& action, int cleric_idx, AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx, tgt = action.target_idx;
+    if (atk < 0 || atk >= n || tgt < 0 || tgt >= n || cleric_idx < 0 || cleric_idx >= n) return;
+
+    Agent::Stats cleric = bm.getAgentStats(cleric_idx);
+    if (cleric.character_class != CharacterClass::Cleric ||
+        cleric.cleric_subclass != WarDomain || cleric.char_level < 3) return;
+    Resource* cd = cleric.getResource("Channel Divinity");
+    if (!cd || cd->current <= 0) return;
+
+    // An ally cleric (not the attacker) also spends a Reaction and must be within 30 ft.
+    if (cleric_idx != atk) {
+        Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
+        if (cc.reaction_used) return;
+        const Cell co = agents[static_cast<std::size_t>(cleric_idx)].origin;
+        const Cell ao = agents[static_cast<std::size_t>(atk)].origin;
+        const double dx = co.col - ao.col, dy = co.row - ao.row;
+        if (std::sqrt(dx * dx + dy * dy) * 5.0 > 30.0) return;
+        cc.reaction_used = true;
+        bm.setAgentConditions(cleric_idx, cc);
+    }
+
+    cd->spend(1);
+    bm.setAgentStats(cleric_idx, cleric);
+
+    result.total_roll += 10;
+    log_("{}: Guided Strike +10 -> {} vs AC {}", agentName(bm, cleric_idx), result.total_roll, result.target_ac);
+
+    Agent::Conditions atk_cond_g = bm.getAgentConditions(atk);
+    atk_cond_g.guided_strike_available = false;
+    bm.setAgentConditions(atk, atk_cond_g);
+
+    // Still a miss (or already a hit) — only the +10 is recorded.
+    if (result.hit || result.fumble || result.total_roll < result.target_ac) return;
+
+    // Now meets AC — turn it into a hit and roll/apply weapon damage.
+    result.hit = true;
+    Agent::Stats atk_stats_g = bm.getAgentStats(atk);
+    Agent::Stats tgt_stats_g = bm.getAgentStats(tgt);
+    auto weapons = bm.getAgentWeapons(atk);
+    const Weapon& w = weapons[static_cast<std::size_t>(std::clamp(action.weapon_idx, 0, 2))];
+    rollDamage(w, atk_stats_g, tgt_stats_g, result);   // miss was not a crit → normal damage
+    result.hp_before = tgt_stats_g.hp_cur;
+    const int dmg = result.total_damage;
+    const int overflow = std::max(0, dmg - tgt_stats_g.temp_hp);
+    tgt_stats_g.temp_hp = std::max(0, tgt_stats_g.temp_hp - dmg);
+    tgt_stats_g.hp_cur  = std::clamp(tgt_stats_g.hp_cur - overflow, 0, tgt_stats_g.hp_max);
+    result.hp_after = tgt_stats_g.hp_cur;
+    result.target_down = (tgt_stats_g.hp_cur <= 0);
+    bm.setAgentStats(tgt, tgt_stats_g);
+    log_("Guided Strike turns a miss into a hit: {} damage to {}", dmg, agentName(bm, tgt));
+    if (dmg > 0) {
+        checkConcentrationOnDamage(bm, tgt, dmg);
+        processDamageTaken(bm, tgt, dmg);
+    }
 }
 
 void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
@@ -5044,6 +5314,69 @@ void CombatEngine::removeAgentCondition(int condition_id) noexcept
     }
 }
 
+void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (cond.agent_idx < 0 || cond.agent_idx >= static_cast<int>(agents.size())) return;
+    Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
+    const std::string& n = cond.condition_name;
+    if      (n == "Paralyzed")     { ac.paralyzed = false; ac.incapacitated = false; }
+    else if (n == "Blinded")       { ac.blinded = false; }
+    else if (n == "Incapacitated") { ac.incapacitated = false; }
+    else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; }
+    else if (n == "Charmed")       { ac.charmed = false; }
+    else if (n == "Frightened")    { ac.frightened = false; }
+    else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
+    else if (n == "Prone")         { ac.prone = false; }
+    bm.setAgentConditions(cond.agent_idx, ac);
+}
+
+void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount) noexcept
+{
+    if (amount <= 0) return;  // taking 0 damage is not "taking damage"
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    std::vector<int> to_remove;
+    for (const auto& cond : activeAgentConditions_) {
+        if (cond.agent_idx != idx) continue;
+
+        if (cond.on_damage == OnDamage_t::End) {
+            clearSpellConditionEffect(bm, cond);
+            to_remove.push_back(cond.condition_id);
+            log_("{} takes damage — {} ends.", agentName(bm, idx), cond.condition_name);
+        } else if (cond.on_damage == OnDamage_t::RepeatSave) {
+            Agent::Stats s = bm.getAgentStats(idx);
+            auto saveMod = [&](SaveAbility_t ab) -> int {
+                int score = 0; bool prof = false;
+                switch (ab) {
+                    case SaveStr: score = s.str;   prof = s.save_prof_str;   break;
+                    case SaveDex: score = s.dex;   prof = s.save_prof_dex;   break;
+                    case SaveCon: score = s.con;   prof = s.save_prof_con;   break;
+                    case SaveInt: score = s.intel; prof = s.save_prof_intel; break;
+                    case SaveWis: score = s.wis;   prof = s.save_prof_wis;   break;
+                    default:      score = s.cha;   prof = s.save_prof_cha;   break;
+                }
+                int m = (score - 10) / 2;
+                if (score < 10 && (score - 10) % 2 != 0) --m;
+                return m + (prof ? s.prof_bonus : 0);
+            };
+            // Damage-triggered save is made at Advantage (Tasha's Hideous Laughter).
+            int total = rollAdvantage(20) + saveMod(cond.save_ability);
+            if (total >= cond.save_dc) {
+                clearSpellConditionEffect(bm, cond);
+                to_remove.push_back(cond.condition_id);
+                log_("{} shakes off {} after taking damage ({} vs DC {}).",
+                     agentName(bm, idx), cond.condition_name, total, cond.save_dc);
+            } else {
+                log_("{} fails the on-damage save vs {} ({} vs DC {}).",
+                     agentName(bm, idx), cond.condition_name, total, cond.save_dc);
+            }
+        }
+    }
+    for (int cid : to_remove) removeAgentCondition(cid);
+}
+
 std::array<Weapon, 3> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept
 {
     return bm.getAgentWeapons(idx);
@@ -5203,25 +5536,8 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
     log_("Concentration save: {} rolled {} + {} = {} vs DC {} — BROKEN",
          pa.agent->name(), save_roll, con_mod, save_total, dc);
 
-    // Concentration lost - clear it and remove spell effects
-    std::string spell_name = cond.concentrating_on;
-    Agent::Conditions new_cond = cond;
-    new_cond.concentrating = false;
-    new_cond.concentrating_on = "";
-    bm.setAgentConditions(target_idx, new_cond);
-
-    // Remove spell effects from this agent's concentration spell
-    const auto& effects = bm.activeSpellEffects();
-    std::vector<int> to_remove;
-    for (const auto& effect : effects) {
-        if (effect.caster_idx == target_idx && effect.spell.name == spell_name) {
-            to_remove.push_back(effect.effect_id);
-        }
-    }
-    for (int effect_id : to_remove) {
-        bm.removeSpellEffect(effect_id);
-    }
-
+    // Concentration lost — fully drop it (terrain + spell effects + spell-applied conditions + flags).
+    (void)dropConcentration(bm, target_idx);
     return true;  // Concentration was lost
 }
 
@@ -5244,6 +5560,14 @@ std::vector<int> CombatEngine::availableCastableSpells(
 
     for (size_t i = 0; i < spells.size(); ++i) {
         const Spell& spell = spells[i];
+
+        // Class feature: castable iff its named resource has enough charges.
+        if (!spell.resource_name.empty()) {
+            const Resource* res = stats.getResource(spell.resource_name);
+            if (res && res->current >= std::max(1, spell.resource_cost))
+                result.push_back(static_cast<int>(i));
+            continue;
+        }
 
         // Cantrips (level 0) are always available
         if (spell.level == 0) {
@@ -5401,8 +5725,12 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         log_("{} {} {} from {}", agents[static_cast<std::size_t>(target_idx)].agent->name(), verb, total, sp.name);
 
     // Apply damage or healing
-    if (sp.type == Spell::Heal) healAgent(bm, target_idx, total);
-    else                        damageAgent(bm, target_idx, total);
+    if (sp.type == Spell::Heal) {
+        healAgent(bm, target_idx, total);
+    } else {
+        damageAgent(bm, target_idx, total);
+        processDamageTaken(bm, target_idx, total);  // zone damage ends/triggers on-damage conditions
+    }
 }
 
 void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept
@@ -5547,12 +5875,22 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
     }
 
     case Cleric: {
-      // Channel Divinity: uses per rest = 1 + WIS mod (minimum 1)
-      int cd_uses = std::max(1, 1 + _mod(wis));
+      // Channel Divinity (2024): 2 uses at L2, 3 at L6, 4 at L18 (none before L2).
+      // Regain one use on a Short Rest, all on a Long Rest.
+      int cd_uses = (level >= 18) ? 4 : (level >= 6) ? 3 : (level >= 2) ? 2 : 0;
       Resource cd("Channel Divinity", cd_uses, 0);
-      cd.short_rest_regen = 0;
-      cd.long_rest_regen = cd_uses;
+      cd.short_rest_regen = 1;       // regain one use on a short rest
+      cd.long_rest_regen = cd_uses;  // full on a long rest
       resources["Channel Divinity"] = cd;
+
+      // War Domain — War Priest (L3+): WIS-mod (min 1) bonus-action weapon attacks per Short/Long Rest.
+      if (cleric_subclass == WarDomain && level >= 3) {
+        int wp = std::max(1, _mod(wis));
+        Resource war_priest("War Priest", wp, 0);
+        war_priest.short_rest_regen = wp;  // regained on a Short or Long Rest
+        war_priest.long_rest_regen = wp;
+        resources["War Priest"] = war_priest;
+      }
       break;
     }
 

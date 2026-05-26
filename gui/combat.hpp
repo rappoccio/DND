@@ -163,6 +163,17 @@ struct DropConcentrationResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Result of Cleric Turn Undead (Channel Divinity)
+// ─────────────────────────────────────────────────────────────────────────────
+struct TurnUndeadResult {
+    bool valid = false;            // caster was a Cleric L2+ with Channel Divinity available
+    int  save_dc = 0;              // WIS save DC the undead rolled against
+    int  sear_damage = 0;          // Radiant dealt to each failed undead (Sear Undead, L5+; 0 otherwise)
+    std::vector<int> turned;       // undead that failed → Frightened + Incapacitated (ends on damage)
+    std::vector<int> resisted;     // undead that made the save
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Result of ticking an agent's terrain at the start of their turn
 // ─────────────────────────────────────────────────────────────────────────────
 struct TerrainTickResult {
@@ -633,6 +644,18 @@ public:
     void applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                   const std::vector<int>& effects, AttackResult& result) noexcept;
 
+    // Cleric Blessed Strikes — Divine Strike: out-of-band rider after a qualifying weapon hit
+    // (divine_strike_available). Rolls 1d8 (2d8 at L14) Radiant or Necrotic (radiant flag), adds it
+    // to result/damage and the target's HP, marks Divine Strike used for the turn. Mirrors
+    // applyBrutalStrikeEffect / applyCunningStrikeEffect.
+    void applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                 bool radiant, AttackResult& result) noexcept;
+
+    // War Domain — Guided Strike: a War Cleric L3+ (the attacker, or an ally within 30 ft who also
+    // spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll (result), turning
+    // it into a hit when it now meets AC — in which case weapon damage is rolled and applied here.
+    void applyGuidedStrike(BattleMap& bm, const Attack& action, int cleric_idx, AttackResult& result) noexcept;
+
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
     bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
@@ -725,6 +748,12 @@ public:
     // Validates healer is Celestial L3+, clamps num_dice, spends from resource, rolls and heals target.
     // Returns HP healed (0 if invalid).
     int useHealingLight(BattleMap& bm, int healer_idx, int target_idx, int num_dice);
+
+    // Cleric Turn Undead (Channel Divinity, L2+): each Undead within 30 ft makes a WIS save;
+    // on a failure it is Frightened + Incapacitated for 1 minute (ends if it takes damage).
+    // Sear Undead (L5+) also deals WIS-mod d8 Radiant (rolled once) to each undead that fails.
+    // Spends one Channel Divinity use.
+    TurnUndeadResult useTurnUndead(BattleMap& bm, int caster_idx);
 
     // Tick the given agent's terrain at the start of their turn. Decrements durations,
     // removes expired effects, and clears concentration if a concentration terrain expired.
@@ -872,6 +901,14 @@ private:
     // Apply a persistent zone effect to a target at most once per turn (D&D "a creature makes
     // this save only once per turn"). Returns true if applied, false if already applied this turn.
     bool applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;
+
+    // Post-damage hook: call after an agent takes > 0 damage from any source. Resolves
+    // on-damage condition behavior — ends conditions flagged End, and re-rolls the save (at
+    // Advantage) for those flagged RepeatSave, ending them on success.
+    void processDamageTaken(BattleMap& bm, int idx, int amount) noexcept;
+
+    // Clear the Agent::Conditions flag(s) that a spell-applied condition set (Charmed, Stunned, …).
+    void clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
 
     // Check for slipping terrain (ice/grease) and trigger saves/prone as needed.
     void checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept;

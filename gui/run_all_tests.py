@@ -29,6 +29,9 @@ test_scripts = [
     "test_terrain_concentration.py",
     "test_evoker_safe_targets.py",
     "test_emanation.py",
+    "test_class_features.py",
+    "test_on_damage.py",
+    "test_cleric.py",
     "test_replay_roundtrip.py",
 
     # Barbarian features

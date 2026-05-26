@@ -2717,7 +2717,7 @@
   "radius": 15,
   "width": 0,
   "length": 0,
-  "duration": 1,
+  "duration": 10,
   "magic_damage_types": [],
   "physical_damage_types": [],
   "level": 3,
@@ -3941,7 +3941,16 @@
   "requires_concentration": true,
   "requires_los": true,
   "check_los_on_center": true,
-  "school": "enchantment"
+  "school": "enchantment",
+  "conditions": [
+   {
+    "condition_name": "Incapacitated",
+    "condition_duration": 0,
+    "save_repeat_turns": 1,
+    "save_dc_ability": "SaveSpellcasterMod",
+    "on_damage": "repeat_save"
+   }
+  ]
  },
  {
   "name": "Hold Monster",
@@ -4113,7 +4122,8 @@
     "condition_name": "Incapacitated",
     "condition_duration": 0,
     "save_repeat_turns": 1,
-    "save_dc_ability": "SaveSpellcasterMod"
+    "save_dc_ability": "SaveSpellcasterMod",
+    "on_damage": "end"
    }
   ],
   "requires_concentration": true,
@@ -6675,7 +6685,7 @@
   "radius": 15,
   "width": 0,
   "length": 0,
-  "duration": 1,
+  "duration": 10,
   "magic_damage_types": [],
   "physical_damage_types": [],
   "level": 1,
@@ -6688,7 +6698,8 @@
     "condition_name": "Unconscious",
     "condition_duration": 0,
     "save_repeat_turns": -1,
-    "save_dc_ability": "SaveSpellcasterMod"
+    "save_dc_ability": "SaveSpellcasterMod",
+    "on_damage": "end"
    }
   ],
   "school": "enchantment"

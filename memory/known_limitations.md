@@ -388,3 +388,47 @@ out-of-combat utility are deferred. Combat-sim scope only.
   application (Divine Fury/Frenzy), and the auto-crit re-roll path (paralyzed/unconscious target)
   rebuilds the breakdown from the weapon only, dropping Sneak Attack — same pre-existing pattern as
   Divine Fury. Acceptable for Phase 1.
+
+## Cleric
+
+### Not modeled — Divine Order (L1) 🚫
+- **Protector** (Martial weapon + Heavy armor training) grants nothing the engine models: weapons
+  carry a per-weapon `proficient` flag with no class gate, and `canEquipArmor` only checks the STR
+  requirement, not light/medium/heavy *training*. Would require real weapon/armor-training
+  enforcement (separate infra) to mean anything.
+- **Thaumaturge** (one extra cantrip + WIS-mod bonus to Intelligence (Arcana/Religion) checks) is an
+  out-of-combat skill/known-spells feature.
+
+### Deferred — Trickery Domain
+- **Invoke Duplicity** (illusory duplicate: cast-from-illusion's-space, Distract advantage, move the
+  illusion), **Trickster's Transposition** (teleport-swap with the illusion), **Improved Duplicity**
+  (shared-distraction advantage, healing on dismiss). Needs an illusion/secondary-entity concept the
+  engine doesn't have. **Blessing of the Trickster** (advantage on DEX (Stealth)) is out-of-combat.
+  Trickery domain prepared-spell list can still load as data.
+
+### Turn Undead — minor fidelity gaps
+- Undead with **Frightened immunity** aren't spared (no creature condition-immunity system on Stats).
+- "Ends early if the **caster is Incapacitated or dies**" isn't cascaded — only the 1-minute duration
+  and the on-damage end (Infra B) are modeled.
+
+### Deferred — Light Domain (beyond Radiance of the Dawn)
+- **Warding Flare** (L3) / **Improved Warding Flare** (L6): a Reaction that imposes Disadvantage on an
+  incoming attack roll (+ temp HP at L6). Needs a pre-roll reaction hook in `executeAction` (the
+  engine's reactions, e.g. Uncanny Dodge, act *after* the hit). Resource is easy; the trigger is the work.
+- **Corona of Light** (L17): aura granting Disadvantage on enemy saves vs the caster's Radiant/Fire
+  spells — needs an aura/aura-save-modifier concept.
+- **Radiance of the Dawn**: the "dispels magical Darkness in the area" clause is not applied (the
+  damage + CON save + emanation targeting are). Light/darkness effect removal is out of combat-damage scope.
+- **"Creatures of your choice" ally-exclusion**: Radiance (and AoE features with the same wording)
+  currently affect *every* creature in range, not a chosen subset. The per-caster `safeTargets_`
+  machinery (Evoker) can exclude specific allies manually, but auto-exclusion is deferred until a
+  red/blue team (faction) system exists — at which point allies can be excluded by team.
+
+### Deferred — War Domain spells (mechanics not modeled)
+- **Crusader's Mantle** (L5 domain spell): a 30-ft aura granting allies +1d4 Radiant on their hits —
+  needs an ally-buff aura that adds bonus damage to *other creatures'* attacks. Listed in the
+  domain table; granting skips it until it's added to `spells.json` and the aura is modeled.
+- **Steel Wind Strike** (L9 domain spell): teleport + attack up to five creatures — needs
+  multi-target teleport/attack. Also listed-but-skipped until modeled.
+- (War Priest, War God's Blessing, Guided Strike are implemented in the engine; War God's Blessing
+  and the GUI prompts/buttons are the next work chunk, not permanent limitations.)

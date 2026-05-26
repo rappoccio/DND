@@ -63,6 +63,12 @@ namespace rpg {
       int uses_max{0};           // maximum uses per day (0 = use slot system)
       int uses_remaining{0};     // current remaining uses
 
+      // Class-feature casting: if non-empty, casting this "spell" spends the named
+      // resource (e.g. "Channel Divinity") instead of a spell slot / N/day use.
+      // Used by classfeatures.json entries (Divine Spark, Radiance of the Dawn, …).
+      std::string resource_name{};
+      int resource_cost{1};
+
       // Persistent AoE spell effect timing
       // Apply effects to agents in this spell's area at the START of their turn
       bool effects_on_begin_turn{true};

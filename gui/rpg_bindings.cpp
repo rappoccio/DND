@@ -329,6 +329,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Warlock patron subclass (only valid when character_class == Warlock)")
         .def_readwrite("rogue_subclass", &Agent::Stats::rogue_subclass,
              "Rogue subclass (only valid when character_class == Rogue)")
+        .def_readwrite("cleric_subclass", &Agent::Stats::cleric_subclass,
+             "Cleric divine domain (only valid when character_class == Cleric)")
+        .def_readwrite("blessed_strike", &Agent::Stats::blessed_strike,
+             "Cleric L7 Blessed Strikes choice: DivineStrike or PotentSpellcasting.")
+        .def_readwrite("is_undead", &Agent::Stats::is_undead,
+             "Creature type is Undead (a valid Turn Undead target).")
         .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,
              "Warlock eldritch invocations (list of invocation codes)")
         .def("has_invocation", &Agent::Stats::hasInvocation,
@@ -392,6 +398,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
+        .def_readwrite("divine_strike_available", &Agent::Conditions::divine_strike_available)
+        .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
+        .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
         .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
         .def_readwrite("sundering_target_idx", &Agent::Conditions::sundering_target_idx)
         .def_readwrite("staggered_next_save", &Agent::Conditions::staggered_next_save)
@@ -451,7 +460,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_ability",       &AttackCondition::save_ability)
         .def_readwrite("save_dc_ability",    &AttackCondition::save_dc_ability)
         .def_readwrite("requires_save",      &AttackCondition::requires_save,
-             "If true, target gets a save to negate the condition; if false, condition applies automatically.");
+             "If true, target gets a save to negate the condition; if false, condition applies automatically.")
+        .def_readwrite("on_damage",          &AttackCondition::on_damage,
+             "What happens to this condition when the affected creature takes damage:\n"
+             "OnDamage.None (default), OnDamage.End (ends immediately), or\n"
+             "OnDamage.RepeatSave (repeat the save at Advantage; success ends it).");
+
+    py::enum_<OnDamage_t>(m, "OnDamage")
+        .value("None", OnDamage_t::None)
+        .value("End", OnDamage_t::End)
+        .value("RepeatSave", OnDamage_t::RepeatSave);
 
     // ── Weapon ────────────────────────────────────────────────────────────────
     py::class_<Weapon>(m, "Weapon")
@@ -678,6 +696,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Thief", ThiefPath)
         .export_values();
 
+    py::enum_<ClericSubclass>(m, "ClericSubclass")
+        .value("NONE", ClericSubclassNone)
+        .value("LifeDomain", LifeDomain)
+        .value("LightDomain", LightDomain)
+        .value("TrickeryDomain", TrickeryDomain)
+        .value("WarDomain", WarDomain)
+        .export_values();
+
+    py::enum_<BlessedStrike>(m, "BlessedStrike")
+        .value("NONE", BlessedStrikeNone)
+        .value("DivineStrike", BlessedStrikeDivineStrike)
+        .value("PotentSpellcasting", BlessedStrikePotentSpellcasting)
+        .export_values();
+
     // ── Origin Struct ────────────────────────────────────────────────────────
     py::class_<Origin>(m, "Origin")
         .def(py::init<>())
@@ -781,6 +813,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Maximum uses per day for NPCs. 0 = unlimited (use slot system); > 0 = N/day uses.")
         .def_readwrite("uses_remaining", &Spell::uses_remaining,
              "Current remaining uses for the day (for N/day spells).")
+        .def_readwrite("resource_name", &Spell::resource_name,
+             "Class-feature casting: if non-empty, casting spends this named resource\n"
+             "(e.g. 'Channel Divinity') instead of a spell slot. Used by classfeatures.json.")
+        .def_readwrite("resource_cost", &Spell::resource_cost,
+             "Amount of resource_name spent per cast (default 1).")
         .def_readwrite("num_targets", &Spell::num_targets,
              "For Multiple geometry: base number of targets/projectiles at spell level.")
         .def_readwrite("targets_per_upcast_level", &Spell::targets_per_upcast_level,
@@ -863,6 +900,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("removed_terrain_ids",       &DropConcentrationResult::removed_terrain_ids)
         .def_readonly("removed_spell_effect_ids",  &DropConcentrationResult::removed_spell_effect_ids)
         .def_readonly("removed_condition_ids",     &DropConcentrationResult::removed_condition_ids);
+
+    // ── TurnUndeadResult ─────────────────────────────────────────────────────
+    py::class_<TurnUndeadResult>(m, "TurnUndeadResult")
+        .def_readonly("valid",       &TurnUndeadResult::valid)
+        .def_readonly("save_dc",     &TurnUndeadResult::save_dc)
+        .def_readonly("sear_damage", &TurnUndeadResult::sear_damage)
+        .def_readonly("turned",      &TurnUndeadResult::turned)
+        .def_readonly("resisted",    &TurnUndeadResult::resisted);
 
     // ── TerrainTickResult ────────────────────────────────────────────────────
     py::class_<TerrainTickResult>(m, "TerrainTickResult")
@@ -1382,6 +1427,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Validates healer is Celestial L3+, clamps num_dice to min(num_dice, current, chaMod).\n"
              "Spends dice from resource, rolls that many d6, heals target.\n"
              "Returns HP healed (0 if invalid).")
+        .def("use_turn_undead",
+             &CombatEngine::useTurnUndead,
+             py::arg("battle_map"), py::arg("caster_idx"),
+             "Cleric Turn Undead (Channel Divinity, L2+): each Undead within 30 ft makes a WIS save;\n"
+             "failures are Frightened + Incapacitated for 1 minute (ends if the undead takes damage).\n"
+             "Sear Undead (L5+) deals WIS-mod d8 Radiant (rolled once) to each failed undead.\n"
+             "Spends one Channel Divinity use. Returns a TurnUndeadResult.")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),
@@ -1426,6 +1478,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "(conditions.cunning_strike_available). effects: rider codes (0=Poison, 1=Trip, 2=Withdraw,\n"
              "4=KnockOut, 5=Obscure); empty = full Sneak Attack with no rider. Rolls (sneak dice − cost)d6,\n"
              "folds it into the AttackResult and target HP, then applies any rider conditions.")
+        .def("apply_divine_strike_effect",
+             &CombatEngine::applyDivineStrikeEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("radiant"), py::arg("result"),
+             "Cleric Blessed Strikes — Divine Strike: after a qualifying weapon hit\n"
+             "(conditions.divine_strike_available), add 1d8 (2d8 at L14) Radiant (radiant=True) or\n"
+             "Necrotic (False) to the AttackResult and target HP; once per turn.")
+        .def("apply_guided_strike_effect",
+             &CombatEngine::applyGuidedStrike,
+             py::arg("battle_map"), py::arg("action"), py::arg("cleric_idx"), py::arg("result"),
+             "War Domain — Guided Strike: a War Cleric L3+ (the attacker, or an ally within 30 ft who\n"
+             "also spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll\n"
+             "(conditions.guided_strike_available). If it now meets AC, the miss becomes a hit and\n"
+             "weapon damage is rolled and applied. Pass the Attack that missed and its AttackResult.")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),

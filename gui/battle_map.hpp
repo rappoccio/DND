@@ -129,6 +129,7 @@ struct ActiveAgentCondition {
     int              save_dc              = 0;    // DC for saving throws (must be set when condition created)
     int              save_repeat_turns    = 1;    // repeat save check every N turns (1 = every turn)
     int              condition_id         = -1;   // unique ID for tracking/removal
+    OnDamage_t       on_damage            = OnDamage_t::None;  // End / RepeatSave on taking damage
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────

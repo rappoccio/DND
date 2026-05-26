@@ -111,6 +111,23 @@ class App:
         # Create spell lookup: spell_name -> index
         self.spell_name_to_idx = {s.get("name"): i for i, s in enumerate(self.all_spells)}
 
+        # ── Load class features from classfeatures.json ───────────────────
+        # "Spells that aren't technically spells" — Channel Divinity options, etc.
+        # Same schema as spells.json plus resource_name/resource_cost; cast via the
+        # spell pipeline but spend a class resource instead of a spell slot.
+        self.all_class_features = []
+        for cf_path in (os.path.join(script_dir, "classfeatures.json"),
+                        os.path.join(map_dir, "classfeatures.json"),
+                        "classfeatures.json"):
+            if os.path.exists(cf_path):
+                try:
+                    with open(cf_path) as f:
+                        self.all_class_features = json.load(f)
+                    print(f"✓ Loaded {len(self.all_class_features)} class features from {cf_path}")
+                    break
+                except (json.JSONDecodeError, IOError):
+                    continue
+
         # ── Load weapons from weapons.json ──────────────────────────────────
         self.all_weapons = []  # list of weapon dicts from weapons.json
         possible_weapon_paths = [
@@ -663,6 +680,12 @@ class App:
         self.btn_cbt_steady_aim = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Steady Aim",
                                           (90, 140, 190), (120, 170, 220), self.font_md)
+        self.btn_cbt_turn_undead = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Turn Undead",
+                                          (190, 190, 220), (220, 220, 250), self.font_md)
+        self.btn_cbt_radiance = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Radiance of the Dawn",
+                                          (230, 200, 90), (255, 225, 120), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1080,6 +1103,8 @@ class App:
             stats.warlock_subclass = getattr(rpg.WarlockSubclass, subclass_name)
         elif class_name == "Rogue" and subclass_name != "NONE":
             stats.rogue_subclass = getattr(rpg.RogueSubclass, subclass_name)
+        elif class_name == "Cleric" and subclass_name != "NONE":
+            stats.cleric_subclass = getattr(rpg.ClericSubclass, subclass_name)
 
         # Set Warlock invocations
         if class_name == "Warlock" and eldritch_invocations:
@@ -1101,6 +1126,13 @@ class App:
                 self.combat.init_npc_spell_groups(self.bm, agent_idx, groups_dict)
         elif agent_idx in self._agent_meta:
             del self._agent_meta[agent_idx]
+
+        # Always-prepared class features (Divine Spark, Radiance of the Dawn, domain spells) follow
+        # from class/level/subclass — re-grant onto the agent's current spells so they show up
+        # without needing to reopen the spell picker.
+        cpp_spells = list(self.combat.get_agent_spells(self.bm, agent_idx))
+        self._grant_class_features(agent_idx, cpp_spells)
+        self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
 
         if agent_idx == self.selected_idx:
             self._update_reach()
@@ -1793,27 +1825,11 @@ class App:
         else:
             self._combat_log_add(atk_msg)
 
-        # FLAG: Move to C++
-        # Check concentration save if damage was dealt
+        # Concentration on weapon damage is rolled inside execute_action (C++ owns the CON save and,
+        # on a failure, fully drops the spell's terrain/effects/conditions). Surface the log + sync caches.
         if result.hit and result.total_damage > 0:
-            csave = self.combat.concentration_save(self.bm, target_idx, result.total_damage)
             self._flush_combat_log()
-            if csave.checked:
-                result_str = "HELD" if csave.passed else "BROKEN"
-                self._combat_log_add(
-                    f"{tgt_name}: CON concentration save — "
-                    f"rolled {csave.save_d20} + {csave.con_mod} = {csave.save_d20 + csave.con_mod} "
-                    f"vs DC {csave.save_dc} — {result_str}"
-                )
-                if csave.concentration_lost:
-                    spell_name = csave.spell_name or "spell"
-                    agent_name = tgt_name
-                    # Remove terrain for the dropped spell
-                    self._terrain_regions = [r for r in self._terrain_regions
-                                              if not (r.get("source", {}).get("agent") == agent_name and
-                                                      r.get("source", {}).get("spell") == spell_name)]
-                    self._apply_terrain_to_battle_map()
-                    self._combat_log_add(f"{agent_name} drops concentration on {spell_name}.")
+            self._sync_spell_effect_cache()
 
         # FLAG: Move to C++
         # If target is down, drop their concentration
@@ -2254,7 +2270,100 @@ class App:
                 "upcast_dice_bonus": d.get("upcast_dice_bonus", 0),
             }
             self._spell_metadata[(agent_idx, j)] = meta
+        self._grant_class_features(agent_idx, cpp_spells)
         self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
+
+    def _grant_class_features(self, agent_idx: int, cpp_spells: list):
+        """Append always-prepared class features (Channel Divinity options, etc.) from
+        classfeatures.json that match this agent's class and level, baking scaling dice
+        from level. Mutates and returns cpp_spells; skips any already present by name."""
+        if not self.all_class_features:
+            return cpp_spells
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        class_name = stats.character_class.name
+        level = stats.char_level
+        existing = {sp.name for sp in cpp_spells}
+        for feat in self.all_class_features:
+            if feat.get("class") != class_name:
+                continue
+            if level < int(feat.get("min_level", 1)):
+                continue
+            # Subclass-gated features (e.g. Radiance of the Dawn) only for the matching domain.
+            sub = feat.get("subclass")
+            if sub and (class_name != "Cleric" or stats.cleric_subclass.name != sub):
+                continue
+            name = feat.get("name")
+            if name in existing:
+                continue
+            sp = self._dict_to_spell(agent_idx, feat)
+            self._apply_feature_scaling(sp, feat, level, stats)
+            cpp_spells.append(sp)
+            existing.add(name)
+
+        # Always-prepared divine domain spells (regular spells from spells.json).
+        if class_name == "Cleric":
+            domain_table = self._DOMAIN_SPELLS.get(stats.cleric_subclass.name, {})
+            for min_lvl, names in domain_table.items():
+                if level < min_lvl:
+                    continue
+                for name in names:
+                    if name in existing:
+                        continue
+                    idx = self.spell_name_to_idx.get(name)
+                    if idx is None:
+                        continue  # not in spells.json — skip gracefully
+                    cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
+                    existing.add(name)
+        return cpp_spells
+
+    # Always-prepared Cleric domain spells by domain and Cleric level (2024 PHB).
+    _DOMAIN_SPELLS = {
+        "LightDomain": {
+            3: ["Burning Hands", "Faerie Fire", "Scorching Ray", "See Invisibility"],
+            5: ["Daylight", "Fireball"],
+            7: ["Arcane Eye", "Wall of Fire"],
+            9: ["Flame Strike", "Scrying"],
+        },
+        "WarDomain": {
+            3: ["Guiding Bolt", "Magic Weapon", "Shield of Faith", "Spiritual Weapon"],
+            5: ["Crusader's Mantle", "Spirit Guardians"],
+            7: ["Fire Shield", "Freedom of Movement"],
+            9: ["Hold Monster", "Steel Wind Strike"],
+        },
+    }
+
+    def _apply_feature_scaling(self, sp, feat: dict, level: int, stats):
+        """Bake a feature's level-scaled dice count and ability-mod bonus into its damage
+        rolls (e.g. Divine Spark 1d8->4d8 + WIS mod at levels 1/7/13/18)."""
+        scaling = feat.get("scaling")
+        if not scaling:
+            return
+        num_dice = None
+        for lvl_str, n in sorted((scaling.get("dice_by_level") or {}).items(), key=lambda kv: int(kv[0])):
+            if level >= int(lvl_str):
+                num_dice = int(n)
+        bonus = 0
+        ab = (scaling.get("ability_bonus") or "").upper()
+        if ab:
+            score = {"STR": stats.str, "DEX": stats.dex, "CON": stats.con,
+                     "INT": stats.intel, "WIS": stats.wis, "CHA": stats.cha}.get(ab, 10)
+            bonus = (score - 10) // 2
+        if scaling.get("level_bonus"):
+            bonus = level  # flat bonus equal to character level (e.g. Radiance of the Dawn: 2d10 + level)
+
+        def _rescale(rolls, factory):
+            out = []
+            for r in rolls:
+                nr = factory()
+                nr.type = r.type
+                nr.die_size = r.die_size
+                nr.num_dice = num_dice if num_dice is not None else r.num_dice
+                nr.bonus = bonus
+                out.append(nr)
+            return out
+
+        sp.magic_damage_rolls = _rescale(sp.magic_damage_rolls, rpg.MagicDamageRoll)
+        sp.physical_damage_rolls = _rescale(sp.physical_damage_rolls, rpg.PhysicalDamageRoll)
 
     # FLAG: Move to C++
     def _start_cast_spell(self, slot: str):
@@ -2298,7 +2407,7 @@ class App:
                 hint = "click a target"
             elif sp_.geometry == rpg.SpellGeometry.Multiple:
                 # Multiple geometry: collect N independent targets
-                caster_level_ = self.combat.get_agent_stats(self.bm, caster_idx_).char_level
+                caster_level_ = self.combat.get_agent_stats(self.bm, idx).char_level
                 num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_)
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []  # Will collect targets sequentially
@@ -2768,25 +2877,11 @@ class App:
 
     # FLAG: Move to C++
     def _check_concentration_after_oa(self, tgt_idx: int, result):
-        """Check concentration save after OA damage (weapon only)."""
+        """The concentration save on OA weapon damage is rolled and resolved inside execute_action
+        (C++ owns it). Just surface the log and sync the render caches here."""
         if result.hit and result.total_damage > 0:
-            agents = self.bm.placed_agents
-            tgt_name = agents[tgt_idx].name if tgt_idx < len(agents) else "?"
-            csave = self.combat.concentration_save(self.bm, tgt_idx, result.total_damage)
             self._flush_combat_log()
-            if csave.checked:
-                result_str = "HELD" if csave.passed else "BROKEN"
-                self._combat_log_add(
-                    f"{tgt_name}: CON concentration save — "
-                    f"rolled {csave.save_d20} + {csave.con_mod} = {csave.save_d20 + csave.con_mod} "
-                    f"vs DC {csave.save_dc} — {result_str}")
-                if csave.concentration_lost:
-                    spell_name = csave.spell_name or "spell"
-                    self._terrain_regions = [r for r in self._terrain_regions
-                                             if not (r.get("source", {}).get("agent") == tgt_name and
-                                                     r.get("source", {}).get("spell") == spell_name)]
-                    self._apply_terrain_to_battle_map()
-                    self._combat_log_add(f"{tgt_name} drops concentration on {spell_name}.")
+            self._sync_spell_effect_cache()
 
     def _sync_spell_effect_cache(self):
         """Remove cache entries for spell effects that have been removed in C++."""
@@ -3161,6 +3256,7 @@ class App:
 
         # Convert conditions to dict format
         conditions = []
+        _on_dmg_name = {rpg.OnDamage.End: "end", rpg.OnDamage.RepeatSave: "repeat_save"}
         for cond in s.conditions:
             conditions.append({
                 "condition_name": cond.condition_name,
@@ -3168,6 +3264,7 @@ class App:
                 "save_repeat_turns": cond.save_repeat_turns,
                 "save_ability": cond.save_ability.name,
                 "save_dc_ability": cond.save_dc_ability.name,
+                "on_damage": _on_dmg_name.get(cond.on_damage),
             })
 
         return {
@@ -3190,6 +3287,8 @@ class App:
             "upcast_dice_bonus":     s.upcast_dice_bonus,
             "requires_concentration": s.requires_concentration,
             "moves_with_caster":     s.moves_with_caster,
+            "resource_name":         s.resource_name or None,
+            "resource_cost":         s.resource_cost,
             "conditions":            conditions,
         }
 
@@ -3258,6 +3357,8 @@ class App:
 
         s.requires_concentration = d.get("requires_concentration", False)
         s.moves_with_caster = d.get("moves_with_caster", False)
+        s.resource_name = d.get("resource_name", "") or ""
+        s.resource_cost = int(d.get("resource_cost", 1))
         s.requires_los = d.get("requires_los", False)
         s.check_los_on_center = d.get("check_los_on_center", True)
         s.level = int(d.get("level", 0))
@@ -3306,6 +3407,12 @@ class App:
                     c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
                 except AttributeError:
                     c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
+                # on_damage: "end" ends the condition on any damage; "repeat_save" re-rolls at advantage
+                od = str(cond_entry.get("on_damage", "") or "").lower()
+                if od == "end":
+                    c.on_damage = rpg.OnDamage.End
+                elif od in ("repeat_save", "repeatsave", "repeat-save"):
+                    c.on_damage = rpg.OnDamage.RepeatSave
                 conditions.append(c)
             else:
                 # Simple string: just the condition name (legacy support)
@@ -3377,15 +3484,17 @@ class App:
                 "agent_wizard_subclass": s.wizard_subclass.name,
                 "agent_warlock_subclass": s.warlock_subclass.name,
                 "agent_rogue_subclass": s.rogue_subclass.name,
+                "agent_cleric_subclass": s.cleric_subclass.name,
                 "agent_eldritch_invocations": list(s.eldritch_invocations),
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
             })
-            # Add NPC data if this agent is an NPC
-            if i in self._agent_meta:
-                meta = self._agent_meta[i]
-                data[-1]["is_npc"] = meta.get("is_npc", False)
+            # Add NPC data if this agent is an NPC. is_npc comes from the authoritative C++ stats
+            # flag (set by init_npc_spell_groups) so it can't silently flip to false on a round-trip.
+            if s.is_npc or i in self._agent_meta:
+                meta = self._agent_meta.get(i, {})
+                data[-1]["is_npc"] = bool(s.is_npc) or bool(meta.get("is_npc", False))
                 data[-1]["npc_spell_groups"] = meta.get("npc_spell_groups", {})
                 # Save current uses_remaining from each spell
                 npc_uses = {}
@@ -3671,6 +3780,9 @@ class App:
             rogue_subclass_name = t.get("agent_rogue_subclass", "NONE")
             if rogue_subclass_name != "NONE":
                 stats.rogue_subclass = getattr(rpg.RogueSubclass, rogue_subclass_name)
+            cleric_subclass_name = t.get("agent_cleric_subclass", "NONE")
+            if cleric_subclass_name != "NONE":
+                stats.cleric_subclass = getattr(rpg.ClericSubclass, cleric_subclass_name)
             stats.eldritch_invocations = list(t.get("agent_eldritch_invocations", []))
             # Fiend L10 Fiendish Resilience: chosen damage type must be restored BEFORE
             # initialize_class_resources so the resistance multiplier re-applies.
@@ -3696,7 +3808,7 @@ class App:
                     groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
                     self.combat.init_npc_spell_groups(self.bm, i, groups_dict)
                 # Keep in _agent_meta for stats dialog to access
-                self._agent_meta[i] = {"npc_spell_groups": npc_spell_groups}
+                self._agent_meta[i] = {"is_npc": True, "npc_spell_groups": npc_spell_groups}
 
         # Restore map items
         self.bm.clear_items()
@@ -5062,6 +5174,25 @@ class App:
                         self.btn_cbt_healing_light.draw(self.screen)
                         y += B + gap
 
+            # Channel Divinity (Magic action) buttons — Cleric (L2+) with a use remaining
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Cleric and stats.char_level >= 2:
+                    cd = stats.get_resource("Channel Divinity")
+                    if cd and cd.current > 0:
+                        self.btn_cbt_turn_undead.rect.x = lx
+                        self.btn_cbt_turn_undead.rect.y = y
+                        self.btn_cbt_turn_undead.rect.w = W
+                        self.btn_cbt_turn_undead.draw(self.screen)
+                        y += B + gap
+                        if (stats.cleric_subclass == rpg.ClericSubclass.LightDomain and
+                                stats.char_level >= 3):
+                            self.btn_cbt_radiance.rect.x = lx
+                            self.btn_cbt_radiance.rect.y = y
+                            self.btn_cbt_radiance.rect.w = W
+                            self.btn_cbt_radiance.draw(self.screen)
+                            y += B + gap
+
             # Steady Aim button - Rogue (L3+): advantage on next attack, but speed drops to 0
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -5606,6 +5737,10 @@ class App:
                                 subclass_name = stats.wizard_subclass.name
                             elif class_name == "Warlock":
                                 subclass_name = stats.warlock_subclass.name
+                            elif class_name == "Rogue":
+                                subclass_name = stats.rogue_subclass.name
+                            elif class_name == "Cleric":
+                                subclass_name = stats.cleric_subclass.name
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
@@ -6167,6 +6302,32 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_heal_light = True
                             self._combat_log_add("Healing Light — click an ally (or self) to heal.")
+                    if self.btn_cbt_turn_undead.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            res = self.combat.use_turn_undead(self.bm, idx)
+                            self._flush_combat_log()
+                            if res.valid:
+                                self._combat_log_add(
+                                    f"Turn Undead (DC {res.save_dc}): {len(list(res.turned))} turned"
+                                    + (f", {res.sear_damage} Radiant each" if res.sear_damage else ""))
+                                self.action_used = True
+                            else:
+                                self._combat_log_add("Turn Undead unavailable.")
+                    if self.btn_cbt_radiance.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            spells = self.combat.get_agent_spells(self.bm, idx)
+                            ridx = next((i for i, sp in enumerate(spells)
+                                         if sp.name == "Radiance of the Dawn"), -1)
+                            if ridx >= 0:
+                                self.pending_spell_slot = "action"
+                                self.pending_spell_idx = ridx
+                                self.pending_spell_slot_level = 0
+                                origin = self.bm.placed_agents[idx].origin
+                                self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
+                            else:
+                                self._combat_log_add("Radiance of the Dawn is not prepared.")
                     if self.btn_cbt_steady_aim.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

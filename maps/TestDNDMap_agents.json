@@ -52,6 +52,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -137,6 +138,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -218,6 +220,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -241,7 +244,17 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": true,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile",
+          "Grease"
+        ],
+        "1": [
+          "Fireball"
+        ]
+      }
     },
     {
       "name": "Fire Elemental",
@@ -295,6 +308,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -334,7 +348,7 @@
         "wis": 11,
         "cha": 10,
         "hp_max": 27,
-        "hp_cur": 27,
+        "hp_cur": 20,
         "ac": 12,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -376,8 +390,18 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "is_npc": true,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile"
+        ],
+        "1": [
+          "Cone of Cold"
+        ]
+      },
       "spell_slots_max": [
         0,
         0,
@@ -417,7 +441,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 170,
+        "speed_walk": 200,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -453,6 +477,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -491,8 +516,8 @@
         "intel": 20,
         "wis": 10,
         "cha": 8,
-        "hp_max": 8,
-        "hp_cur": 8,
+        "hp_max": 65,
+        "hp_cur": 65,
         "ac": 12,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -537,6 +562,7 @@
       "agent_wizard_subclass": "Diviner",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -620,6 +646,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "Fiend",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -697,6 +724,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "ArcaneTrickster",
+      "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [
@@ -768,7 +796,17 @@
         "cloak": ""
       },
       "spell_indices": [
-        "Spirit Guardians"
+        "Spirit Guardians",
+        "Burning Hands",
+        "Faerie Fire",
+        "Scorching Ray",
+        "See Invisibility",
+        "Daylight",
+        "Fireball",
+        "Arcane Eye",
+        "Wall of Fire",
+        "Flame Strike",
+        "Scrying"
       ],
       "agent_class": "Cleric",
       "agent_char_level": 9,
@@ -776,6 +814,7 @@
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
       "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "LightDomain",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
       "spell_slots_max": [

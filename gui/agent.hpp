@@ -370,6 +370,9 @@ namespace rpg {
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
       WarlockSubclass warlock_subclass{WarlockSubclassNone};     // Warlock patron choice
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
+      ClericSubclass cleric_subclass{ClericSubclassNone};        // Cleric divine domain choice
+      BlessedStrike blessed_strike{BlessedStrikeNone};           // Cleric L7 Blessed Strikes choice
+      bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)
@@ -482,6 +485,9 @@ namespace rpg {
       bool sneak_attack_used{false};        // Rogue: Sneak Attack already applied this turn (once per turn)
       bool cunning_strike_available{false}; // Rogue: a qualifying hit can apply Sneak Attack / Cunning Strike this attack
       bool steady_aim{false};               // Rogue L3: Steady Aim grants advantage on the next attack this turn
+      bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
+      bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
+      bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -541,6 +547,9 @@ namespace rpg {
       conditions_.sneak_attack_used            = false;
       conditions_.cunning_strike_available     = false;
       conditions_.steady_aim                   = false;
+      conditions_.divine_strike_available      = false;
+      conditions_.divine_strike_used           = false;
+      conditions_.guided_strike_available      = false;
       takeTurn();
     }
 

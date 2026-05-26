@@ -210,6 +210,21 @@ enum RogueSubclass {
     NumRogueSubclass
 };
 
+// ── Cleric Subclass (Divine Domain) Enum (2024 D&D) ──────────────────
+enum ClericSubclass {
+    ClericSubclassNone = 0,
+    LifeDomain, LightDomain, TrickeryDomain, WarDomain,
+    NumClericSubclass
+};
+
+// ── Cleric Blessed Strikes choice (L7): Divine Strike or Potent Spellcasting ──
+enum BlessedStrike {
+    BlessedStrikeNone = 0,
+    BlessedStrikeDivineStrike,
+    BlessedStrikePotentSpellcasting,
+    NumBlessedStrike
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;
