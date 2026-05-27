@@ -4,8 +4,8 @@
       "name": "Davian Martikov",
       "sprite_path": "davian-martikov.png",
       "size": 1,
-      "col": 12,
-      "row": 10,
+      "col": 8,
+      "row": 12,
       "stats": {
         "str": 10,
         "dex": 18,
@@ -83,7 +83,7 @@
       "sprite_path": "baba-lysaga.png",
       "size": 1,
       "col": 9,
-      "row": 7,
+      "row": 4,
       "stats": {
         "str": 18,
         "dex": 10,
@@ -168,8 +168,8 @@
       "name": "Cult Mage",
       "sprite_path": "cult-mage.png",
       "size": 1,
-      "col": 15,
-      "row": 12,
+      "col": 8,
+      "row": 6,
       "stats": {
         "str": 10,
         "dex": 14,
@@ -254,14 +254,19 @@
         "1": [
           "Fireball"
         ]
+      },
+      "npc_spell_uses_cur": {
+        "Grease": 3,
+        "Magic Missile": 3,
+        "Fireball": 1
       }
     },
     {
       "name": "Fire Elemental",
       "sprite_path": "fire-elemental.png",
       "size": 1,
-      "col": 8,
-      "row": 10,
+      "col": 9,
+      "row": 6,
       "stats": {
         "str": 8,
         "dex": 16,
@@ -338,8 +343,8 @@
       "name": "Frost Mage",
       "sprite_path": "frost-mage.png",
       "size": 1,
-      "col": 15,
-      "row": 8,
+      "col": 14,
+      "row": 5,
       "stats": {
         "str": 9,
         "dex": 15,
@@ -393,15 +398,6 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
-      "is_npc": true,
-      "npc_spell_groups": {
-        "3": [
-          "Magic Missile"
-        ],
-        "1": [
-          "Cone of Cold"
-        ]
-      },
       "spell_slots_max": [
         0,
         0,
@@ -423,7 +419,20 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": true,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile"
+        ],
+        "1": [
+          "Cone of Cold"
+        ]
+      },
+      "npc_spell_uses_cur": {
+        "Magic Missile": 3,
+        "Cone of Cold": 1
+      }
     },
     {
       "name": "The Menacing Shadow",
@@ -441,7 +450,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 200,
+        "speed_walk": 220,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -593,7 +602,7 @@
       "sprite_path": "",
       "size": 1,
       "col": 5,
-      "row": 8,
+      "row": 9,
       "stats": {
         "str": 8,
         "dex": 14,
@@ -676,8 +685,8 @@
       "name": "Keef Girgo",
       "sprite_path": "",
       "size": 1,
-      "col": 8,
-      "row": 6,
+      "col": 7,
+      "row": 10,
       "stats": {
         "str": 1,
         "dex": 20,
@@ -754,8 +763,8 @@
       "name": "Aodhan",
       "sprite_path": "",
       "size": 1,
-      "col": 14,
-      "row": 6,
+      "col": 11,
+      "row": 9,
       "stats": {
         "str": 10,
         "dex": 15,
@@ -833,6 +842,102 @@
         3,
         3,
         1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Vampire Infernalist",
+      "sprite_path": "vampire-infernalist.png",
+      "size": 1,
+      "col": 6,
+      "row": 2,
+      "stats": {
+        "str": 18,
+        "dex": 16,
+        "con": 16,
+        "intel": 20,
+        "wis": 16,
+        "cha": 18,
+        "hp_max": 172,
+        "hp_cur": 172,
+        "ac": 16,
+        "speed_walk": 40,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 5,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": true,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 3,
+        "has_cunning_action": false,
+        "has_offhand_attack": true,
+        "spellcasting_ability": "cha"
+      },
+      "weapons": {
+        "main_hand": "UnarmedStunningFire",
+        "off_hand": "Dagger",
+        "ranged": "Unnamed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [
+        "Fireball",
+	"Wall of Fire",
+	"Magic Missile"
+      ],
+      "is_npc": true,
+      "npc_spell_groups": {
+        "3": [
+          "Magic Missile"
+        ],
+        "1": [
+          "Wall of Fire"
+        ]
+      },
+      "npc_spell_uses_cur": {
+        "Magic Missile": 3,
+        "Wall of Fire": 1
+      },
+      "magic_resistances":[ "Necrotic", "Fire", "Poison"],
+      "agent_class": "None",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
+      "agent_eldritch_invocations": [],
+      "agent_fiendish_resilience_type": -1,
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
         0,
         0,
         0,

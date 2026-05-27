@@ -3949,6 +3949,19 @@ int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx,
     return healed;
 }
 
+bool CombatEngine::spendResource(BattleMap& bm, int idx, const std::string& name, int amount) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    Resource* r = s.getResource(name);
+    if (!r || r->current < amount) return false;
+    r->spend(amount);
+    bm.setAgentStats(idx, s);
+    log_("{} spends {} {}.", agentName(bm, idx), amount, name);
+    return true;
+}
+
 TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
 {
     TurnUndeadResult result;

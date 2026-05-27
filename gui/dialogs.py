@@ -451,6 +451,8 @@ class StatsDialog:
         self._agent_name         = ""
         self._class_name         = "None"
         self._subclass_name      = "None"
+        self._blessed_strike_name = "NONE"   # Cleric L7 Blessed Strikes choice
+        self._blessed_strike_rects: dict = {}
         self._char_level         = 1
         self._cb                 = None
         self.steppers: dict      = {}   # populated in open()
@@ -467,12 +469,13 @@ class StatsDialog:
         self._invocation_rects = {}      # invocation code -> pygame.Rect for checkboxes
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE"):
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE"):
         self.active             = True
         self._agent_idx         = agent_idx
         self._agent_name        = agent_name
         self._class_name        = class_name
         self._subclass_name     = subclass_name
+        self._blessed_strike_name = blessed_strike_name
         self._char_level        = char_level
         self._cb                = callback
         self._is_npc            = is_npc
@@ -655,6 +658,20 @@ class StatsDialog:
                     self._subclass_name = available[(idx + 1) % len(available)]
                     return True
 
+            # Blessed Strikes cycle buttons (Cleric L7+)
+            if self._blessed_strike_rects:
+                available = self._blessed_strike_rects.get("available", [])
+                left_rect = self._blessed_strike_rects.get("left")
+                right_rect = self._blessed_strike_rects.get("right")
+                if available and left_rect and left_rect.collidepoint(event.pos):
+                    idx = available.index(self._blessed_strike_name) if self._blessed_strike_name in available else 0
+                    self._blessed_strike_name = available[(idx - 1) % len(available)]
+                    return True
+                if available and right_rect and right_rect.collidepoint(event.pos):
+                    idx = available.index(self._blessed_strike_name) if self._blessed_strike_name in available else 0
+                    self._blessed_strike_name = available[(idx + 1) % len(available)]
+                    return True
+
             # Proficiency checkboxes
             for flag_key, rect in self._prof_rects.items():
                 if rect.collidepoint(event.pos):
@@ -696,7 +713,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -877,13 +894,39 @@ class StatsDialog:
                 screen.blit(right_sub_txt, right_sub_txt.get_rect(center=right_sub_r.center))
 
                 self._subclass_rects = {"left": left_sub_r, "right": right_sub_r, "available": available_subclasses}
-                npc_checkbox_y = subclass_y + 24
+
+                # Blessed Strikes picker (Cleric L7+): Divine Strike vs Potent Spellcasting
+                lvl = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+                if self._class_name == "Cleric" and lvl >= 7:
+                    bs_y = subclass_y + 24
+                    screen.blit(self.font_sm.render("Blessed:", True, self.C_LABEL), (dlg.x + PAD, bs_y))
+                    left_bs_r = pygame.Rect(dlg.x + PAD + 75, bs_y, 20, 16)
+                    right_bs_r = pygame.Rect(dlg.right - PAD - 20, bs_y, 20, 16)
+                    bs_txt_r = pygame.Rect(left_bs_r.right + 4, bs_y, right_bs_r.left - left_bs_r.right - 8, 16)
+                    pygame.draw.rect(screen, (60, 55, 80), left_bs_r, border_radius=2)
+                    pygame.draw.rect(screen, (120, 100, 150), left_bs_r, 1, border_radius=2)
+                    _lt = self.font_sm.render("<", True, (220, 210, 240)); screen.blit(_lt, _lt.get_rect(center=left_bs_r.center))
+                    pygame.draw.rect(screen, (60, 55, 80), bs_txt_r, border_radius=2)
+                    pygame.draw.rect(screen, (120, 100, 150), bs_txt_r, 1, border_radius=2)
+                    _bs_disp = "None" if self._blessed_strike_name == "NONE" else self._blessed_strike_name
+                    _bt = self.font_sm.render(_bs_disp, True, (220, 210, 240)); screen.blit(_bt, _bt.get_rect(center=bs_txt_r.center))
+                    pygame.draw.rect(screen, (60, 55, 80), right_bs_r, border_radius=2)
+                    pygame.draw.rect(screen, (120, 100, 150), right_bs_r, 1, border_radius=2)
+                    _rt = self.font_sm.render(">", True, (220, 210, 240)); screen.blit(_rt, _rt.get_rect(center=right_bs_r.center))
+                    self._blessed_strike_rects = {"left": left_bs_r, "right": right_bs_r,
+                                                  "available": ["NONE", "DivineStrike", "PotentSpellcasting"]}
+                    npc_checkbox_y = bs_y + 24
+                else:
+                    self._blessed_strike_rects = {}
+                    npc_checkbox_y = subclass_y + 24
             else:
                 self._subclass_rects = {}
+                self._blessed_strike_rects = {}
                 npc_checkbox_y = class_y + 24
         else:
             self._class_rects = {}
             self._subclass_rects = {}
+            self._blessed_strike_rects = {}
             npc_checkbox_y = dlg.y + self.HDR_H + self.PAD + 300
 
         # ── Warlock Eldritch Invocations ──────────────────────────────────

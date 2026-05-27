@@ -333,6 +333,9 @@ class App:
         self.bonus_used           = False
         self.pending_attack_slot      = ""    # "" | "action" | "bonus"
         self.pending_weapon_idx       = 0
+        # Generic extra-attack knobs (War Priest, Great Weapon Master, Nick, …). Reset per attack.
+        self.pending_attack_offhand   = None  # None = derive from slot; True/False overrides proficiency
+        self.pending_attack_resource  = None  # resource name to spend on a valid attack (e.g. "War Priest")
         self.attacks_remaining        = 0     # attacks left in current pending slot
         self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
         self.pending_spell_slot        = ""    # "" | "action" | "bonus"
@@ -686,6 +689,9 @@ class App:
         self.btn_cbt_radiance = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Radiance of the Dawn",
                                           (230, 200, 90), (255, 225, 120), self.font_md)
+        self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "War Priest (Bonus Attack)",
+                                          (200, 120, 90), (235, 150, 115), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1062,7 +1068,7 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE"):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1105,6 +1111,10 @@ class App:
             stats.rogue_subclass = getattr(rpg.RogueSubclass, subclass_name)
         elif class_name == "Cleric" and subclass_name != "NONE":
             stats.cleric_subclass = getattr(rpg.ClericSubclass, subclass_name)
+
+        # Cleric Blessed Strikes choice (L7+)
+        if class_name == "Cleric" and blessed_strike_name != "NONE":
+            stats.blessed_strike = getattr(rpg.BlessedStrike, blessed_strike_name)
 
         # Set Warlock invocations
         if class_name == "Warlock" and eldritch_invocations:
@@ -1702,6 +1712,9 @@ class App:
             # Fresh start
             self.attacks_remaining = stats.num_attacks if slot == "action" else 1
             self._attack_sequence_slot = slot
+            # A normal attack uses default (slot-derived) proficiency and no resource cost.
+            self.pending_attack_offhand = None
+            self.pending_attack_resource = None
         elif slot != self._attack_sequence_slot:
             # Can't start a different slot while attacks are pending
             return
@@ -1748,6 +1761,22 @@ class App:
             return ""
         return " [" + " + ".join(f"{amt} ({label})" for label, amt in bd) + "]"
 
+    def _start_extra_attack(self, weapon_idx=0, offhand=False, resource=None, label="Extra attack"):
+        """Generic 'make one extra weapon attack' setup — reused by War Priest, Great Weapon Master,
+        Nick, etc. Configures the pending-attack knobs and enters target selection; the shared
+        target-click → _resolve_combat_attack does the attack, spends `resource` (if any), and
+        consumes the bonus action."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        self.attacks_remaining = 1
+        self._attack_sequence_slot = "bonus"
+        self.pending_attack_slot = "bonus"
+        self.pending_weapon_idx = weapon_idx
+        self.pending_attack_offhand = offhand     # proficient (not an off-hand strike) when False
+        self.pending_attack_resource = resource   # spent on a valid attack (e.g. "War Priest")
+        self._combat_log_add(f"{label} — click a target.")
+
     def _resolve_combat_attack(self, target_idx: int):
         """Resolve the pending attack against target_idx."""
         atk_idx = self._current_agent_idx()
@@ -1757,9 +1786,14 @@ class App:
             # print(f"[DEBUG _resolve_combat_attack] early return (atk_idx<0 or no slot)")
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
-        action.is_offhand = (slot == "bonus")
+        action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
 
         result = self.combat.execute_action(self.bm, action)
+
+        # Generic extra-attack cost (War Priest, etc.): spend the resource once, only on a valid attack.
+        if result.valid and self.pending_attack_resource:
+            self.combat.spend_resource(self.bm, atk_idx, self.pending_attack_resource)
+            self.pending_attack_resource = None
         # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
         self._flush_combat_log()
@@ -1794,12 +1828,18 @@ class App:
         # Check for a post-hit rider menu (Cunning Strike or Brutal Strike) before logging.
         has_brutal_strike = False
         has_cunning_strike = False
-        if result.hit and result.valid:
+        has_divine_strike = False
+        has_guided_strike = False
+        if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
-            if atk_cond and atk_cond.cunning_strike_available:
+            if result.hit and atk_cond and atk_cond.cunning_strike_available:
                 has_cunning_strike = True
-            elif atk_cond and atk_cond.brutal_strike_available:
+            elif result.hit and atk_cond and atk_cond.brutal_strike_available:
                 has_brutal_strike = True
+            elif result.hit and atk_cond and atk_cond.divine_strike_available:
+                has_divine_strike = True
+            elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
+                has_guided_strike = True
 
         # FLAG: Move to C++
         # Format attack message
@@ -1822,6 +1862,10 @@ class App:
             self._offer_cunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_brutal_strike:
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_divine_strike:
+            self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_guided_strike:
+            self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         else:
             self._combat_log_add(atk_msg)
 
@@ -1847,6 +1891,9 @@ class App:
             # Attacks exhausted — mark action used and clear sequence state
             self.pending_attack_slot = ""
             self._attack_sequence_slot = ""
+            # Clear the generic extra-attack knobs so they don't leak to the next attack.
+            self.pending_attack_offhand = None
+            self.pending_attack_resource = None
 
             # Restore original weapons if this was an unarmed strike
             if self._unarmed_strike_original_weapons:
@@ -1907,6 +1954,87 @@ class App:
             ]
         options.append(("Skip Brutal Strike", lambda: _apply([])))
 
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a qualifying weapon hit, offer Cleric Divine Strike (Radiant or Necrotic).
+        Mirrors _offer_brutal_strike; the extra die is applied in C++ via apply_divine_strike_effect."""
+        def _apply(radiant):
+            if radiant is not None:
+                self.combat.apply_divine_strike_effect(self.bm, atk_idx, target_idx, radiant, result)
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: HIT {result.total_damage}{self._damage_breakdown_str(result)} "
+                    f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+        options = [
+            ("Divine Strike: Radiant", lambda: _apply(True)),
+            ("Divine Strike: Necrotic", lambda: _apply(False)),
+            ("Skip Divine Strike", lambda: _apply(None)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _eligible_guided_clerics(self, atk_idx):
+        """War Clerics (L3+, Channel Divinity left) who can Guide a missed attack: the attacker, or an
+        ally within 30 ft who still has a reaction. apply_guided_strike_effect re-validates in C++."""
+        agents = self.bm.placed_agents
+        out = []
+        if not (0 <= atk_idx < len(agents)):
+            return out
+        ao = agents[atk_idx].origin
+        for ci in range(len(agents)):
+            s = self.combat.get_agent_stats(self.bm, ci)
+            if (s.character_class != rpg.CharacterClass.Cleric or
+                    s.cleric_subclass != rpg.ClericSubclass.WarDomain or s.char_level < 3):
+                continue
+            cd = s.get_resource("Channel Divinity")
+            if not cd or cd.current <= 0:
+                continue
+            if ci == atk_idx:
+                out.append(ci)
+                continue
+            if self.combat.get_agent_conditions(self.bm, ci).reaction_used:
+                continue
+            co = agents[ci].origin
+            if ((co.col - ao.col) ** 2 + (co.row - ao.row) ** 2) ** 0.5 * 5 <= 30:
+                out.append(ci)
+        return out
+
+    def _offer_guided_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a miss, offer War Domain Guided Strike (+10) via an eligible War Cleric. The +10 and
+        any resulting hit/damage are applied in C++ via apply_guided_strike_effect."""
+        agents = self.bm.placed_agents
+        eligible = self._eligible_guided_clerics(atk_idx)
+
+        def _apply(cleric_idx):
+            if cleric_idx is not None:
+                self.combat.apply_guided_strike_effect(self.bm, action, cleric_idx, result)
+                if result.hit:
+                    dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                    dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Guided Strike → HIT {result.total_damage}"
+                        f"{self._damage_breakdown_str(result)} {dmg_type_str}{' — DOWN' if result.target_down else ''}")
+                else:
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Guided Strike +10 → still misses "
+                        f"(roll {result.total_roll} vs AC {result.target_ac})")
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        options = []
+        for ci in eligible:
+            label = "Guided Strike (+10)" if ci == atk_idx else f"Guided Strike: {agents[ci].name} reacts (+10)"
+            options.append((label, (lambda c=ci: _apply(c))))
+        options.append(("Skip Guided Strike", lambda: _apply(None)))
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -5205,6 +5333,19 @@ class App:
                     self.btn_cbt_steady_aim.draw(self.screen)
                     y += B + gap
 
+            # War Priest button — War Cleric (L3+) with a War Priest use, bonus-action weapon attack
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Cleric and
+                        stats.cleric_subclass == rpg.ClericSubclass.WarDomain and stats.char_level >= 3):
+                    wp = stats.get_resource("War Priest")
+                    if wp and wp.current > 0:
+                        self.btn_cbt_war_priest.rect.x = lx
+                        self.btn_cbt_war_priest.rect.y = y
+                        self.btn_cbt_war_priest.rect.w = W
+                        self.btn_cbt_war_priest.draw(self.screen)
+                        y += B + gap
+
 
         y += section_gap
 
@@ -5741,6 +5882,7 @@ class App:
                                 subclass_name = stats.rogue_subclass.name
                             elif class_name == "Cleric":
                                 subclass_name = stats.cleric_subclass.name
+                            blessed_strike_name = stats.blessed_strike.name if class_name == "Cleric" else "NONE"
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
@@ -5748,7 +5890,8 @@ class App:
                                 is_npc=is_npc,
                                 npc_spell_groups=npc_spell_groups,
                                 armor_list=armor,
-                                subclass_name=subclass_name)
+                                subclass_name=subclass_name,
+                                blessed_strike_name=blessed_strike_name)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             weapon_array = self.combat.get_agent_weapons(self.bm, h)
@@ -6343,6 +6486,11 @@ class App:
                             self.bonus_used = True
                             self._combat_log_add(
                                 f"{self.bm.placed_agents[idx].name}: Steady Aim — advantage on next attack (Speed 0).")
+                    if self.btn_cbt_war_priest.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._start_extra_attack(weapon_idx=0, offhand=False,
+                                                     resource="War Priest", label="War Priest")
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

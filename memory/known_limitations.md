@@ -16,6 +16,11 @@ metadata:
 - **Why deferred**: Full Reckless Attack system would allow player choice to opt-in/opt-out per attack. Current auto-trigger avoids menu complexity.
 - **Future**: Add toggle button or per-attack menu for player control
 
+### Spell mechanics
+- **Wall of Fire** any "wall" spells are only able to be in one orientation. Needs to be updated. 
+
+### Agent 
+
 ### Implemented Features ✅
 - Barbarian L1-3: All core mechanics and subclass features
 - Barbarian L5: Extra Attack, Fast Movement
@@ -430,5 +435,10 @@ out-of-combat utility are deferred. Combat-sim scope only.
   domain table; granting skips it until it's added to `spells.json` and the aura is modeled.
 - **Steel Wind Strike** (L9 domain spell): teleport + attack up to five creatures — needs
   multi-target teleport/attack. Also listed-but-skipped until modeled.
+- **War God's Blessing** (L6): would CD-cast Shield of Faith or Spiritual Weapon without concentration.
+  Deferred because both underlying spells are hollow in the engine: **Shield of Faith** has no +2 AC
+  effect modeled (no condition/AC buff), and **Spiritual Weapon** is a one-shot 1d8 on cast, not the
+  recurring bonus-action summoned weapon. The CD-cast wrapper is trivial; it's the spells that need
+  modeling (an AC-buff condition, and a summoned recurring attacker) before this is worth wiring.
 - (War Priest, War God's Blessing, Guided Strike are implemented in the engine; War God's Blessing
   and the GUI prompts/buttons are the next work chunk, not permanent limitations.)

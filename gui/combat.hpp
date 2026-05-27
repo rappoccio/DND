@@ -755,6 +755,11 @@ public:
     // Spends one Channel Divinity use.
     TurnUndeadResult useTurnUndead(BattleMap& bm, int caster_idx);
 
+    // Spend a named class resource (e.g. "War Priest", "Superiority Dice"). Returns true if the
+    // agent had >= amount and it was spent. Generic so any feature (War Priest bonus attack, Battle
+    // Master maneuvers, …) can pay its cost; the actual attack goes through executeAction.
+    bool spendResource(BattleMap& bm, int idx, const std::string& name, int amount = 1) noexcept;
+
     // Tick the given agent's terrain at the start of their turn. Decrements durations,
     // removes expired effects, and clears concentration if a concentration terrain expired.
     [[nodiscard]] TerrainTickResult tickTerrainForTurn(BattleMap& bm, int agent_idx);

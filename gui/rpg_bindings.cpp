@@ -1427,6 +1427,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Validates healer is Celestial L3+, clamps num_dice to min(num_dice, current, chaMod).\n"
              "Spends dice from resource, rolls that many d6, heals target.\n"
              "Returns HP healed (0 if invalid).")
+        .def("spend_resource",
+             &CombatEngine::spendResource,
+             py::arg("battle_map"), py::arg("idx"), py::arg("name"), py::arg("amount") = 1,
+             "Spend a named class resource (e.g. 'War Priest', 'Superiority Dice'); returns True if\n"
+             "the agent had >= amount and it was spent. Generic cost helper for extra-attack/maneuver\n"
+             "features (the attack itself goes through execute_action).")
         .def("use_turn_undead",
              &CombatEngine::useTurnUndead,
              py::arg("battle_map"), py::arg("caster_idx"),
