@@ -12,9 +12,10 @@ namespace rpg {
 
     struct Spell {
       enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Rectangle, Multiple, NumGeometry_t };
-      enum SpellType_t  { Harm=0, Heal, NumSpellType_t };
+      enum SpellType_t  { Harm=0, Heal, Transport, NumSpellType_t };
       enum SpellAttack_t{ AttackRoll=0, Save, Automatic, NumSpellAttack_t };
       enum SpellSchool_t{ SchoolNone=0, Abjuration, Conjuration, Divination, Enchantment, Evocation, Illusion, Necromancy, Transmutation, NumSpellSchool_t };
+      enum CastingTime_t{ Action=0, BonusAction, Reaction, NumCastingTime_t };
 
       // String -> enum maps for JSON input (e.g., "Multiple" -> Multiple, "evocation" -> Evocation)
       static const std::unordered_map<std::string, Geometry_t> geometryNameMap;
@@ -26,6 +27,7 @@ namespace rpg {
       SpellAttack_t  attack_type{AttackRoll};
       SaveAbility_t  save_ability{SaveDex};
       SpellSchool_t  school{SchoolNone};
+      CastingTime_t  casting_time{Action};  // Action, BonusAction, or Reaction
 
       int range{30};    // range in feet to the target or area origin
       int radius{10};   // radius in feet (Cone, Sphere)
@@ -68,6 +70,11 @@ namespace rpg {
       // Used by classfeatures.json entries (Divine Spark, Radiance of the Dawn, …).
       std::string resource_name{};
       int resource_cost{1};
+
+      // Teleportation spell (Misty Step, Dimension Door, Teleport)
+      bool teleportation_spell{false};     // spell enables teleporting agents
+      int max_teleport_targets{0};         // max number of agents (incl. caster) that can teleport (0 = not a teleport spell)
+      int teleport_range_ft{0};            // range in feet for teleportation destination
 
       // Persistent AoE spell effect timing
       // Apply effects to agents in this spell's area at the START of their turn

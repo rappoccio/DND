@@ -2767,6 +2767,17 @@ class App:
                 self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
                 return
 
+            # Teleportation spells: select a destination, then optionally select additional targets
+            if getattr(sp_, "teleportation_spell", False):
+                self.pending_spell_is_aoe = True
+                self.pending_spell_slot       = s
+                self.pending_spell_idx        = si_
+                self.pending_spell_slot_level = slot_level_
+                self.pending_spell_targets    = []
+                hint = f"click a destination ({sp_.teleport_range_ft} ft away)"
+                self._combat_log_add(f"Casting {sp_.name} — {hint}.")
+                return
+
             if sp_.geometry == rpg.SpellGeometry.Single:
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []
@@ -3378,6 +3389,11 @@ class App:
         spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells_orig[self.pending_spell_idx]
 
+        # Handle teleportation spells separately
+        if getattr(sp, "teleportation_spell", False):
+            self._resolve_teleport_spell(cell)
+            return
+
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
         action.spell_idx      = self.pending_spell_idx
@@ -3415,6 +3431,51 @@ class App:
         # Terrain placement (incl. slipping DEX saves) is handled in C++ executeSpell;
         # spell terrain renders from bm.active_terrain_effects via _draw_temp_terrain_overlays.
 
+        if slot == "action":
+            self.action_used = True
+        else:
+            self.bonus_used = True
+
+    def _resolve_teleport_spell(self, destination_cell):
+        """Handle teleportation spell casting. Teleports caster + additional targets to destination."""
+        caster_idx = self._current_agent_idx()
+        slot       = self.pending_spell_slot
+        if caster_idx < 0 or not slot:
+            return
+
+        spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
+        sp = spells_orig[self.pending_spell_idx]
+
+        # Validate destination is in range and not blocked
+        if not self.combat.is_valid_teleport_destination(self.bm, destination_cell.col, destination_cell.row):
+            self._combat_log_add("Cannot teleport there — destination is blocked or out of range.")
+            return
+
+        # For now, teleport only the caster. In Phase 3B, add multi-target support.
+        agents_to_teleport = [caster_idx]
+
+        # Place teleported agents
+        placed_count = self.combat.place_teleported_agents(
+            self.bm, agents_to_teleport, destination_cell.col, destination_cell.row
+        )
+
+        if placed_count == 0:
+            self._combat_log_add("Failed to teleport — no valid destination.")
+            return
+
+        # Log successful teleportation
+        agents = self.bm.placed_agents
+        cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
+        self._combat_log_add(f"{cast_name} casts {sp.name} and teleports to ({destination_cell.col}, {destination_cell.row}).")
+
+        # Clean up pending spell state
+        self.pending_spell_slot        = ""
+        self.pending_spell_is_aoe      = False
+        self.pending_spell_num_targets = 0
+        self.pending_spell_targets     = []
+        self.spell_hover_cell          = None
+
+        # Mark action/bonus as used
         if slot == "action":
             self.action_used = True
         else:
@@ -3639,6 +3700,8 @@ class App:
             "geometry":              geo,
             "attack_type":           s.attack_type.name,
             "save_ability":          s.save_ability.name if s.attack_type == rpg.SpellAttack.Save else None,
+            "school":                s.school.name,
+            "casting_time":          s.casting_time.name,
             "range":                 s.range,
             "radius":                s.radius if uses_radius else None,
             "width":                 s.width  if uses_line   else None,
@@ -3652,9 +3715,15 @@ class App:
             "level":                 s.level,
             "upcast_dice_bonus":     s.upcast_dice_bonus,
             "requires_concentration": s.requires_concentration,
+            "requires_los":          s.requires_los,
+            "check_los_on_center":   s.check_los_on_center,
+            "requires_sight":        s.requires_sight,
             "moves_with_caster":     s.moves_with_caster,
             "resource_name":         s.resource_name or None,
             "resource_cost":         s.resource_cost,
+            "teleportation_spell":   s.teleportation_spell,
+            "max_teleport_targets":  s.max_teleport_targets,
+            "teleport_range_ft":     s.teleport_range_ft,
             "conditions":            conditions,
         }
 
@@ -3792,6 +3861,15 @@ class App:
                 c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
                 conditions.append(c)
         s.conditions = conditions
+
+        # Parse teleportation spell fields
+        s.teleportation_spell = d.get("teleportation_spell", False)
+        s.max_teleport_targets = int(d.get("max_teleport_targets", 0))
+        s.teleport_range_ft = int(d.get("teleport_range_ft", 0))
+
+        # Parse casting time
+        casting_time_str = d.get("casting_time", "Action")
+        s.casting_time = getattr(rpg.CastingTime, casting_time_str, rpg.CastingTime.Action)
 
         return s
 

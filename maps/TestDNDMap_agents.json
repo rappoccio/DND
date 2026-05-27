@@ -241,7 +241,8 @@
       "spell_indices": [
         "Grease",
         "Magic Missile",
-        "Fireball"
+        "Fireball",
+        "Misty Step"
       ],
       "agent_class": "None",
       "agent_char_level": 1,
@@ -288,11 +289,7 @@
           "Fireball"
         ]
       },
-      "npc_spell_uses_cur": {
-        "Grease": 3,
-        "Magic Missile": 3,
-        "Fireball": 1
-      }
+      "npc_spell_uses_cur": {}
     },
     {
       "name": "Fire Elemental",
@@ -507,7 +504,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 260,
+        "speed_walk": 270,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -638,7 +635,8 @@
         "Hold Person",
         "Ice Storm",
         "Sleet Storm",
-        "Magic Missile"
+        "Magic Missile",
+        "Misty Step"
       ],
       "agent_class": "Wizard",
       "agent_char_level": 9,

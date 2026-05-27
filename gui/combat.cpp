@@ -1107,10 +1107,8 @@ bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int tar
         return false;
 
     // Check bounds
-    if (target_col < 0 || target_row < 0 || target_col >= bm.cols() || target_row >= bm.rows())
+    if (target_col < 0 || target_row < 0 || target_col >= bm.gridCols() || target_row >= bm.gridRows())
         return false;
-
-    Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
 
     // Set the new position
     if (!bm.setAgentPosition(idx, targetCell))
@@ -1129,6 +1127,70 @@ bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int tar
     updateDarknessBlinding(bm, idx);
 
     return true;
+}
+
+bool CombatEngine::isValidTeleportDestination(const BattleMap& bm, int col, int row) const noexcept
+{
+    // Check bounds
+    if (col < 0 || row < 0 || col >= bm.gridCols() || row >= bm.gridRows())
+        return false;
+
+    // Check if blocked by terrain
+    Cell destination{col, row};
+    const CellSet& disallowed = bm.disallowedCells();
+    if (disallowed.count(destination))
+        return false;
+
+    return true;
+}
+
+int CombatEngine::placeTeleportedAgents(BattleMap& bm, const std::vector<int>& agent_indices,
+                                        int dest_col, int dest_row) noexcept
+{
+    if (agent_indices.empty())
+        return 0;
+
+    // Validate destination
+    if (!isValidTeleportDestination(bm, dest_col, dest_row))
+        return 0;
+
+    int placed_count = 0;
+
+    // Place the first agent at the destination
+    if (!agent_indices.empty()) {
+        if (teleportAgent(bm, agent_indices[0], dest_col, dest_row))
+            placed_count++;
+    }
+
+    // Place remaining agents in expanding circles around the destination
+    // Check cells at Manhattan distance 1, 2, 3, ... until all agents are placed
+    for (int radius = 1; radius <= 20 && placed_count < static_cast<int>(agent_indices.size()); ++radius) {
+        // For each radius, check cells in a square ring around the destination
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                // Only check cells at this radius (on the ring, not inside)
+                if (std::abs(dy) != radius && std::abs(dx) != radius)
+                    continue;
+
+                int candidate_col = dest_col + dx;
+                int candidate_row = dest_row + dy;
+
+                // Check if this cell is valid
+                if (isValidTeleportDestination(bm, candidate_col, candidate_row)) {
+                    // Try to place the next agent
+                    int agent_idx = agent_indices[placed_count];
+                    if (teleportAgent(bm, agent_idx, candidate_col, candidate_row))
+                        placed_count++;
+
+                    // Stop if all agents are placed
+                    if (placed_count >= static_cast<int>(agent_indices.size()))
+                        return placed_count;
+                }
+            }
+        }
+    }
+
+    return placed_count;
 }
 
 int CombatEngine::getWalkRemaining(int agent_idx) const noexcept

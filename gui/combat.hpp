@@ -448,6 +448,17 @@ public:
     // Returns true if successful, false if destination is blocked or out of bounds.
     bool teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
 
+    // Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).
+    // Returns true if the cell is valid, false if out of bounds or blocked.
+    [[nodiscard]] bool isValidTeleportDestination(const BattleMap& bm, int col, int row) const noexcept;
+
+    // Teleport multiple agents and place them in a circular pattern around the destination.
+    // Places the first agent at dest_col, dest_row; subsequent agents are placed in expanding
+    // circles around the destination (respecting terrain and bounds). Agents that can't fit
+    // are skipped. Returns the number of agents successfully teleported.
+    int placeTeleportedAgents(BattleMap& bm, const std::vector<int>& agent_indices,
+                              int dest_col, int dest_row) noexcept;
+
     // ── Turn lifecycle (begin/execute/end) ─────────────────────────────────
     //
     // beginTurn() and endTurn() check which persistent spell effects an agent

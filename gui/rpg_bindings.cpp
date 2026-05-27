@@ -587,6 +587,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
     py::enum_<Spell::SpellType_t>(m, "SpellType")
         .value("Harm", Spell::Harm)
         .value("Heal", Spell::Heal)
+        .value("Transport", Spell::Transport)
+    ;
+
+    py::enum_<Spell::CastingTime_t>(m, "CastingTime")
+        .value("Action", Spell::Action)
+        .value("BonusAction", Spell::BonusAction)
+        .value("Reaction", Spell::Reaction)
         .export_values();
 
     py::enum_<Spell::SpellAttack_t>(m, "SpellAttack")
@@ -847,6 +854,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_ability",         &Spell::save_ability)
         .def_readwrite("school",               &Spell::school,
              "Spell school: Abjuration, Conjuration, Divination, Enchantment, Evocation, Illusion, Necromancy, Transmutation.")
+        .def_readwrite("casting_time",         &Spell::casting_time,
+             "Casting time: Action, BonusAction, or Reaction.")
         .def_readwrite("range",                &Spell::range)
         .def_readwrite("radius",               &Spell::radius)
         .def_readwrite("width",                &Spell::width)
@@ -887,6 +896,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "(e.g. 'Channel Divinity') instead of a spell slot. Used by classfeatures.json.")
         .def_readwrite("resource_cost", &Spell::resource_cost,
              "Amount of resource_name spent per cast (default 1).")
+        .def_readwrite("teleportation_spell", &Spell::teleportation_spell,
+             "If true, this spell enables teleporting agents (Misty Step, Dimension Door, Teleport).")
+        .def_readwrite("max_teleport_targets", &Spell::max_teleport_targets,
+             "Max number of agents (incl. caster) that can teleport (0 = not a teleport spell).\n"
+             "Misty Step=1, Dimension Door=2, Teleport=9.")
+        .def_readwrite("teleport_range_ft", &Spell::teleport_range_ft,
+             "Range in feet for teleportation destination.\n"
+             "Misty Step=30, Dimension Door=500, Teleport=3000.")
         .def_readwrite("num_targets", &Spell::num_targets,
              "For Multiple geometry: base number of targets/projectiles at spell level.")
         .def_readwrite("targets_per_upcast_level", &Spell::targets_per_upcast_level,
@@ -1448,6 +1465,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Teleport agent to a new location (col, row). Only checks that destination is not blocked by terrain.\n"
              "Returns false if destination is blocked, out of bounds, or agent index invalid.\n"
              "On successful teleport, checks for spell effects at destination and applies them.")
+        .def("is_valid_teleport_destination",
+             &CombatEngine::isValidTeleportDestination,
+             py::arg("battle_map"), py::arg("col"), py::arg("row"),
+             "Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).\n"
+             "Returns true if valid, false if out of bounds or blocked.")
+        .def("place_teleported_agents",
+             &CombatEngine::placeTeleportedAgents,
+             py::arg("battle_map"), py::arg("agent_indices"), py::arg("dest_col"), py::arg("dest_row"),
+             "Teleport multiple agents and place them in a circular pattern around the destination.\n"
+             "Places the first agent at dest_col, dest_row; subsequent agents in expanding circles.\n"
+             "Returns the number of agents successfully teleported.")
 
         .def("set_logger",
              &CombatEngine::setLogger,
