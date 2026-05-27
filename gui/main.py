@@ -63,10 +63,10 @@ class App:
         map_dir = os.path.dirname(os.path.abspath(map_path))
         # Try multiple possible locations for the CSV file
         possible_paths = [
-            os.path.join(script_dir, "sprites", "DND2024_MonsterStats.csv"),
-            os.path.join(script_dir, "..", "sprites", "DND2024_MonsterStats.csv"),
-            os.path.join(map_dir, "..", "sprites", "DND2024_MonsterStats.csv"),
-            "sprites/DND2024_MonsterStats.csv",
+            os.path.join(script_dir, "gui", "DND2024_MonsterStats.csv"),
+            os.path.join(script_dir, "..", "gui", "DND2024_MonsterStats.csv"),
+            os.path.join(map_dir, "..", "gui", "DND2024_MonsterStats.csv"),
+            "gui/DND2024_MonsterStats.csv",
         ]
         csv_path = None
         for path in possible_paths:
@@ -336,6 +336,10 @@ class App:
         # Generic extra-attack knobs (War Priest, Great Weapon Master, Nick, …). Reset per attack.
         self.pending_attack_offhand   = None  # None = derive from slot; True/False overrides proficiency
         self.pending_attack_resource  = None  # resource name to spend on a valid attack (e.g. "War Priest")
+        # Cleave weapon mastery: awaiting a 2nd-target click. {"attacker","first","weapon"} or None.
+        # Resolved out-of-band (no attacks_remaining / bonus-action accounting): Cleave is part of
+        # the Attack action, not a bonus action.
+        self.pending_cleave           = None
         self.attacks_remaining        = 0     # attacks left in current pending slot
         self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
         self.pending_spell_slot        = ""    # "" | "action" | "bonus"
@@ -1349,6 +1353,7 @@ class App:
         self.bonus_used           = False
         self.pending_attack_slot       = ""
         self.attacks_remaining         = 0
+        self.pending_cleave            = None
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -1403,6 +1408,7 @@ class App:
         self.bonus_used           = False
         self.pending_attack_slot       = ""
         self.attacks_remaining         = 0
+        self.pending_cleave            = None
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -1830,6 +1836,9 @@ class App:
         has_cunning_strike = False
         has_divine_strike = False
         has_guided_strike = False
+        has_push = False
+        has_topple = False
+        has_cleave = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
@@ -1840,6 +1849,12 @@ class App:
                 has_divine_strike = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
                 has_guided_strike = True
+            elif result.hit and atk_cond and atk_cond.push_available:
+                has_push = True
+            elif result.hit and atk_cond and atk_cond.topple_available:
+                has_topple = True
+            elif result.hit and atk_cond and atk_cond.cleave_available:
+                has_cleave = True
 
         # FLAG: Move to C++
         # Format attack message
@@ -1866,6 +1881,12 @@ class App:
             self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_push:
+            self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_topple:
+            self._offer_topple(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
+        elif has_cleave:
+            self._offer_cleave(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         else:
             self._combat_log_add(atk_msg)
 
@@ -1956,6 +1977,121 @@ class App:
 
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Push weapon mastery: optionally shove the target 10 ft straight away (Large or smaller).
+        The shove itself is applied in C++ via apply_push, which clears the availability flag."""
+        def _apply(do):
+            self._combat_log_add(atk_msg)
+            if do:
+                feet = self.combat.apply_push(self.bm, atk_idx, target_idx)
+                if feet > 0:
+                    self._combat_log_add(f"{atk_name} pushes {tgt_name} {feet} ft (Push).")
+                else:
+                    self._combat_log_add(f"{atk_name}: Push had no effect.")
+            self._flush_combat_log()
+            self._update_attack_overlay()
+        options = [
+            ("Push 10 ft (away)", lambda: _apply(True)),
+            ("Skip Push", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+        """Topple weapon mastery: optionally force a CON save or knock the target Prone.
+        The save + prone are resolved in C++ via apply_topple, which clears the flag."""
+        def _apply(do):
+            self._combat_log_add(atk_msg)
+            if do:
+                res = self.combat.apply_topple(self.bm, atk_idx, target_idx, weapon_idx)
+                if res.toppled:
+                    self._combat_log_add(
+                        f"{tgt_name} is knocked Prone (Topple — save {res.save_roll} vs DC {res.save_dc}).")
+                else:
+                    self._combat_log_add(
+                        f"{tgt_name} resists Topple (save {res.save_roll} vs DC {res.save_dc}).")
+            self._flush_combat_log()
+            self._update_attack_overlay()
+        options = [
+            ("Topple (CON save or Prone)", lambda: _apply(True)),
+            ("Skip Topple", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+        """Cleave weapon mastery: optionally make one extra attack vs a 2nd creature within 5 ft of
+        the first target, with no ability modifier on damage (once per turn). Cleave is part of the
+        Attack action, so it is resolved out-of-band (see _resolve_cleave) — it does not consume the
+        bonus action or a sequence attack."""
+        def _apply(do):
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            if do:
+                # Mark Cleave spent for the turn so the engine won't re-offer it (and a chained
+                # Cleave hit can't recurse). Then await the 2nd-target click.
+                c = self.combat.get_agent_conditions(self.bm, atk_idx)
+                c.cleave_used_this_turn = True
+                c.cleave_available = False
+                self.combat.set_agent_conditions(self.bm, atk_idx, c)
+                self.pending_cleave = {"attacker": atk_idx, "first": target_idx, "weapon": weapon_idx}
+                self._combat_log_add(f"Cleave — click a 2nd creature within 5 ft of {tgt_name}.")
+                self._flush_combat_log()
+            self._update_attack_overlay()
+        options = [
+            ("Cleave: extra attack (no ability mod)", lambda: _apply(True)),
+            ("Skip Cleave", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _resolve_cleave(self, second_target: int):
+        """Resolve a pending Cleave attack against the clicked 2nd creature. One weapon attack with
+        no positive ability modifier on damage; validates the RAW 'within 5 ft of the first target'
+        rule (reach to the attacker is enforced by execute_action). No action/bonus is consumed."""
+        info = self.pending_cleave
+        self.pending_cleave = None
+        if not info:
+            return
+        atk, first, wi = info["attacker"], info["first"], info["weapon"]
+        agents = self.bm.placed_agents
+        if not (0 <= second_target < len(agents)):
+            return
+        if second_target in (atk, first):
+            self._combat_log_add("Cleave: must target a different creature.")
+            self._flush_combat_log()
+            return
+        # Within 5 ft of the first target (adjacent on the grid, including diagonals).
+        fo, so = agents[first].origin, agents[second_target].origin
+        if max(abs(fo.col - so.col), abs(fo.row - so.row)) > 1:
+            self._combat_log_add("Cleave: the 2nd creature must be within 5 ft of the first target.")
+            self._flush_combat_log()
+            return
+
+        action = rpg.Attack(atk, second_target, wi)
+        action.no_ability_damage = True
+        result = self.combat.execute_action(self.bm, action)
+        self._flush_combat_log()
+
+        atk_name = agents[atk].name if atk < len(agents) else "?"
+        tgt_name = agents[second_target].name
+        if not result.valid:
+            self._combat_log_add(f"Cleave: {tgt_name} is out of reach.")
+        elif result.hit:
+            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            self._combat_log_add(
+                f"Cleave {atk_name}→{tgt_name}: HIT {result.total_damage}"
+                f"{self._damage_breakdown_str(result)} {dmg_type_str}"
+                f"{' — DOWN' if result.target_down else ''}")
+            if result.target_down:
+                self._drop_concentration_for_agent(second_target)
+        else:
+            self._combat_log_add(
+                f"Cleave {atk_name}→{tgt_name}: miss (roll {result.total_roll} vs AC {result.target_ac})")
+        self._flush_combat_log()
+        self._update_attack_overlay()
 
     def _offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After a qualifying weapon hit, offer Cleric Divine Strike (Radiant or Necrotic).
@@ -5971,7 +6107,9 @@ class App:
                         self._toggle_safe_target(hit)
                     elif self.combat_active:
                         # Pending attack: resolve against the clicked agent.
-                        if self.pending_attack_slot and hit >= 0:
+                        if self.pending_cleave is not None and hit >= 0:
+                            self._resolve_cleave(hit)
+                        elif self.pending_attack_slot and hit >= 0:
                             self._resolve_combat_attack(hit)
                         elif self.pending_spell_slot:
                             if self.pending_spell_is_aoe:

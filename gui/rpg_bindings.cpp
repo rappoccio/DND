@@ -932,6 +932,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("turned",      &TurnUndeadResult::turned)
         .def_readonly("resisted",    &TurnUndeadResult::resisted);
 
+    // ── ToppleResult ─────────────────────────────────────────────────────────
+    py::class_<ToppleResult>(m, "ToppleResult")
+        .def_readonly("valid",     &ToppleResult::valid)
+        .def_readonly("save_dc",   &ToppleResult::save_dc)
+        .def_readonly("save_roll", &ToppleResult::save_roll)
+        .def_readonly("toppled",   &ToppleResult::toppled);
+
     // ── TerrainTickResult ────────────────────────────────────────────────────
     py::class_<TerrainTickResult>(m, "TerrainTickResult")
         .def_readonly("expired_terrain_ids", &TerrainTickResult::expired_terrain_ids)
@@ -1154,6 +1161,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("target_idx",   &Attack::target_idx)
         .def_readwrite("weapon_idx",   &Attack::weapon_idx)
         .def_readwrite("is_offhand",   &Attack::is_offhand)
+        .def_readwrite("no_ability_damage", &Attack::no_ability_damage)
         .def("__repr__", [](const Attack& a){
             std::string s = "<Attack atk=" + std::to_string(a.attacker_idx)
                  + " tgt=" + std::to_string(a.target_idx)
@@ -1266,8 +1274,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::resolveAttack,
              py::arg("weapon"), py::arg("attacker"), py::arg("target"),
              py::arg("advantage") = false, py::arg("disadvantage") = false,
+             py::arg("suppress_positive_mod") = false,
              "Roll to hit, roll damage, and apply damage to target. "
-             "Applies Barbarian Rage bonus, temporary HP absorption, etc.")
+             "Applies Barbarian Rage bonus, temporary HP absorption, etc. "
+             "suppress_positive_mod drops a positive ability modifier from damage (Cleave).")
 
         // High-level
         // Initiative
@@ -1520,6 +1530,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "also spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll\n"
              "(conditions.guided_strike_available). If it now meets AC, the miss becomes a hit and\n"
              "weapon damage is rolled and applied. Pass the Attack that missed and its AttackResult.")
+        .def("apply_push",
+             &CombatEngine::applyPush,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             "Weapon Mastery — Push: after a qualifying hit (conditions.push_available), shove the\n"
+             "target 10 ft straight away from the attacker. Clears the flag; returns feet moved.")
+        .def("apply_topple",
+             &CombatEngine::applyTopple,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx") = 0,
+             "Weapon Mastery — Topple: after a qualifying hit (conditions.topple_available), the target\n"
+             "makes a CON save (DC 8 + attack ability mod + prof) or is knocked Prone. Returns a ToppleResult.")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),

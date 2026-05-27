@@ -1401,7 +1401,8 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 void CombatEngine::rollDamage(const Weapon& w,
                                const Agent::Stats& attacker,
                                const Agent::Stats& target,
-                               AttackResult& result)
+                               AttackResult& result,
+                               bool suppress_positive_mod)
 {
     result.dice_results.clear();
     int raw = 0;
@@ -1438,7 +1439,9 @@ void CombatEngine::rollDamage(const Weapon& w,
         result.magic_damage_types.push_back(dmg_roll.type);
     }
 
-    result.damage_mod   = damageAbilityMod(w, attacker) + w.bonus_damage;
+    int ability_mod = damageAbilityMod(w, attacker);
+    if (suppress_positive_mod && ability_mod > 0) ability_mod = 0;  // Cleave: keep only a negative mod
+    result.damage_mod   = ability_mod + w.bonus_damage;
     result.total_damage = std::max(0, raw + result.damage_mod);
     result.damage_breakdown.clear();
     result.damage_breakdown.push_back({"weapon", result.total_damage});
@@ -1448,14 +1451,15 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           const Agent& attacker,
                                           const Agent& target,
                                           bool advantage,
-                                          bool disadvantage)
+                                          bool disadvantage,
+                                          bool suppress_positive_mod)
 {
     int target_ac = target.getStats().base_ac;
     AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage, attacker.getConditions().exhaustion_level);
     r.hp_before = target.getStats().hp_cur;
 
     if (r.hit) {
-        rollDamage(w, attacker.getStats(), target.getStats(), r);
+        rollDamage(w, attacker.getStats(), target.getStats(), r, suppress_positive_mod);
 
         // Barbarian Rage damage bonus (STR-based attacks only)
         // Applies to melee and thrown weapons (where STR is the primary damage ability)
@@ -1756,7 +1760,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Elusive: target is a L18+ Rogue — advantage negated");
     }
 
-    AttackResult r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
+    AttackResult r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage);
 
     // Set Brutal Strike flag if eligible and attack hits
     Agent::Conditions updated_atk_cond = atk_cond;
@@ -1772,7 +1776,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         updated_atk_cond.reckless_attack = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         adv = true;
-        r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis);
+        r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage);
         log_("{} uses Reckless Attack (auto-reroll on miss)", agentName(bm, action.attacker_idx));
     }
 
@@ -1947,7 +1951,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
             // Re-roll damage with crit flag set (revert HP and temp HP to pre-attack)
             tgt_stats.hp_cur  = r.hp_before;
             tgt_stats.temp_hp = temp_hp_before;
-            rollDamage(w, atk_stats, tgt_stats, r);
+            rollDamage(w, atk_stats, tgt_stats, r, action.no_ability_damage);
             int overflow = std::max(0, r.total_damage - tgt_stats.temp_hp);
             tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - r.total_damage);
             tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow,
@@ -4214,6 +4218,68 @@ void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
     bm.setAgentConditions(idx, cond);
 
     log_("Agent is now prone: movement costs doubled (triple in difficult terrain), disadvantage on attack rolls");
+}
+
+int CombatEngine::applyPush(BattleMap& bm, int attacker_idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
+        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.push_available) return 0;          // only after a qualifying Push hit
+    ac.push_available = false;
+    bm.setAgentConditions(attacker_idx, ac);
+
+    const Cell origin = agents[static_cast<std::size_t>(attacker_idx)].origin;
+    int feet = bm.forceMoveAgent(target_idx, origin, 10) * 5;
+    if (feet > 0)
+        log_("{} pushes {} {} ft (Push mastery)",
+             agentName(bm, attacker_idx), agentName(bm, target_idx), feet);
+    return feet;
+}
+
+ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept
+{
+    ToppleResult res;
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
+        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return res;
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.topple_available) return res;      // only after a qualifying Topple hit
+    ac.topple_available = false;
+    bm.setAgentConditions(attacker_idx, ac);
+    res.valid = true;
+
+    Agent::Stats as = bm.getAgentStats(attacker_idx);
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+
+    // Save DC = 8 + the attacker's attack-ability modifier + proficiency bonus.
+    int dc = 8 + as.prof_bonus;
+    const auto& weapons = agents[static_cast<std::size_t>(attacker_idx)].weapons;
+    if (!weapons.empty()) {
+        int wi = std::clamp(weapon_idx, 0, static_cast<int>(weapons.size()) - 1);
+        dc += damageAbilityMod(weapons[static_cast<std::size_t>(wi)], as);
+    }
+    res.save_dc = dc;
+
+    // Target CON save (with proficiency), floored correctly for odd negative scores.
+    int mod = (ts.con - 10) / 2;
+    if (ts.con < 10 && (ts.con - 10) % 2 != 0) --mod;
+    if (ts.save_prof_con) mod += ts.prof_bonus;
+    res.save_roll = roll(20) + mod;
+
+    if (res.save_roll < dc) {
+        applyProne(bm, target_idx);
+        res.toppled = true;
+        log_("{} is knocked Prone (Topple — save {} vs DC {})",
+             agentName(bm, target_idx), res.save_roll, dc);
+    } else {
+        log_("{} resists Topple (save {} vs DC {})",
+             agentName(bm, target_idx), res.save_roll, dc);
+    }
+    return res;
 }
 
 void CombatEngine::applyHidden(BattleMap& bm, int idx) noexcept

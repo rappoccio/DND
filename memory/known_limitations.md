@@ -442,3 +442,15 @@ out-of-combat utility are deferred. Combat-sim scope only.
   modeling (an AC-buff condition, and a summoned recurring attacker) before this is worth wiring.
 - (War Priest, War God's Blessing, Guided Strike are implemented in the engine; War God's Blessing
   and the GUI prompts/buttons are the next work chunk, not permanent limitations.)
+
+### Deferred — Weapon Mastery: Nick (action economy)
+- All eight 2024 masteries are implemented except the **Nick** action-economy benefit. Auto masteries
+  (Sap/Slow/Vex/Graze) and the prompted ones (Push/Topple/Cleave) are wired end to end (engine + GUI).
+- **Nick** ("the extra attack from the Light property is part of the Attack action, and you can still
+  take a separate Bonus Action") is *not* modeled in the turn economy. Doing it correctly needs three
+  coupled pieces: (1) the off-hand Light attack must not consume the Bonus Action, (2) it must be tied
+  to having taken the Attack action with a Light weapon, and (3) a once-per-turn gate so the freed
+  Bonus Action can't be used to spam the Nick attack. The current TWF flow routes the off-hand attack
+  through the Bonus button (`_start_attack("bonus")` → consumes `bonus_used`); Nick would need a
+  dedicated "part of the Attack action" path + gate. Deferred until the turn-economy refactor; until
+  then a Nick weapon's off-hand attack behaves like a normal Bonus-Action TWF attack.

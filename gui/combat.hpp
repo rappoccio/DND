@@ -106,6 +106,7 @@ struct Attack {
     int  target_idx   = -1;
     int  weapon_idx   =  0;    // index into attacker's weapons list
     bool is_offhand   = false; // off-hand attack: proficiency bonus not added to hit
+    bool no_ability_damage = false; // Cleave: do not add a positive ability modifier to damage
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +172,14 @@ struct TurnUndeadResult {
     int  sear_damage = 0;          // Radiant dealt to each failed undead (Sear Undead, L5+; 0 otherwise)
     std::vector<int> turned;       // undead that failed → Frightened + Incapacitated (ends on damage)
     std::vector<int> resisted;     // undead that made the save
+};
+
+// Result of the Topple weapon-mastery prone save.
+struct ToppleResult {
+    bool valid = false;   // topple_available was set on the attacker (a qualifying hit had occurred)
+    int  save_dc = 0;     // CON save DC = 8 + attacker's attack ability mod + prof bonus
+    int  save_roll = 0;   // target's d20 + CON save mod
+    bool toppled = false; // target failed the save and is now Prone
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -597,10 +606,13 @@ public:
     // Roll damage dice and populate the damage fields of an existing result.
     // Applies target's damage multipliers (resistance/vulnerability/immunity).
     // Call only when result.hit == true.
+    // suppress_positive_mod: drop a positive ability modifier from damage (Cleave mastery —
+    // "don't add your ability modifier unless it is negative"). A negative mod still applies.
     void rollDamage(const Weapon& w,
                     const Agent::Stats& attacker,
                     const Agent::Stats& target,
-                    AttackResult& result);
+                    AttackResult& result,
+                    bool suppress_positive_mod = false);
 
     // Resolve a complete attack (roll to hit, roll damage, compute result).
     // Pure with respect to the target: computes total_damage / hp_after but does
@@ -610,7 +622,8 @@ public:
                                               const Agent& attacker,
                                               const Agent& target,
                                               bool advantage = false,
-                                              bool disadvantage = false);
+                                              bool disadvantage = false,
+                                              bool suppress_positive_mod = false);
 
     // ── Class feature helpers ────────────────────────────────────────────
 
@@ -655,6 +668,15 @@ public:
     // spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll (result), turning
     // it into a hit when it now meets AC — in which case weapon damage is rolled and applied here.
     void applyGuidedStrike(BattleMap& bm, const Attack& action, int cleric_idx, AttackResult& result) noexcept;
+
+    // Weapon Mastery — Push: a qualifying hit (push_available) shoves the target 10 ft straight
+    // away from the attacker (Large or smaller). Clears the flag. Returns feet actually moved.
+    int applyPush(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
+
+    // Weapon Mastery — Topple: a qualifying hit (topple_available) forces the target to make a
+    // CON save (DC 8 + attacker's attack ability mod + prof bonus) or be knocked Prone. Clears
+    // the flag. weapon_idx identifies the striking weapon (for the save DC's ability).
+    ToppleResult applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept;
 
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"

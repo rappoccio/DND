@@ -257,6 +257,115 @@ def test_not_proficient_no_mastery():
     print("✅ test_not_proficient_no_mastery passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Prompted resolvers (called by the GUI after the player confirms)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_apply_push_moves_target():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Atk", 5, 5)
+    t = _place(engine, bm, "Tgt", 6, 5)
+    _arm_attacker(engine, bm, a, [_mk_weapon("Pusher", rpg.WeaponMastery.Push)])
+    _set_target(engine, bm, t)
+
+    _land_hit(engine, bm, a, t)
+    assert _cond(engine, bm, a).push_available
+    feet = engine.apply_push(bm, a, t)
+    assert feet == 10, f"Push should move the target 10 ft on open ground, got {feet}"
+    assert not _cond(engine, bm, a).push_available, "apply_push must clear the availability flag"
+    assert engine.apply_push(bm, a, t) == 0, "a second apply_push does nothing once the flag is cleared"
+    print("✅ test_apply_push_moves_target passed")
+
+
+def test_apply_topple_knocks_prone_on_failed_save():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Atk", 5, 5)
+    t = _place(engine, bm, "Tgt", 6, 5)
+    _arm_attacker(engine, bm, a, [_mk_weapon("Toppler", rpg.WeaponMastery.Topple)])
+    _set_target(engine, bm, t)
+    # Make the save impossible: DC = 8 + STR(+10) + prof(6) = 24; target CON 1 (-5) tops out at 15.
+    s = engine.get_agent_stats(bm, a); s.str = 30; s.prof_bonus = 6; engine.set_agent_stats(bm, a, s)
+    ts = engine.get_agent_stats(bm, t); ts.con = 1; engine.set_agent_stats(bm, t, ts)
+
+    _land_hit(engine, bm, a, t)
+    assert _cond(engine, bm, a).topple_available
+    res = engine.apply_topple(bm, a, t, 0)
+    assert res.valid and res.save_dc == 24, f"Topple DC should be 24, got {res.save_dc}"
+    assert res.toppled, "an impossible save must topple the target"
+    assert _cond(engine, bm, t).prone, "a toppled target is Prone"
+    assert not _cond(engine, bm, a).topple_available, "apply_topple must clear the flag"
+    print("✅ test_apply_topple_knocks_prone_on_failed_save passed")
+
+
+def test_apply_topple_outcome_matches_save():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Atk", 5, 5)
+    t = _place(engine, bm, "Tgt", 6, 5)
+    _arm_attacker(engine, bm, a, [_mk_weapon("Toppler", rpg.WeaponMastery.Topple)])
+    _set_target(engine, bm, t)
+
+    _land_hit(engine, bm, a, t)
+    res = engine.apply_topple(bm, a, t, 0)
+    assert res.valid
+    assert res.toppled == (res.save_roll < res.save_dc), "prone iff the CON save failed"
+    assert _cond(engine, bm, t).prone == res.toppled, "prone state must match the save outcome"
+    print("✅ test_apply_topple_outcome_matches_save passed")
+
+
+def _fixed_weapon(name, num_dice, mastery=None):
+    w = rpg.Weapon()
+    w.name = name
+    w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5
+    w.range_short_feet = 5
+    w.range_long_feet = 5
+    w.proficient = True
+    w.mastery = mastery if mastery is not None else _NO_MASTERY
+    w.attack_bonus = 30
+    pr = rpg.PhysicalDamageRoll()
+    pr.type = rpg.PhysicalDamage.Slashing
+    pr.num_dice = num_dice
+    pr.die_size = 1           # every die rolls exactly 1 -> deterministic base damage
+    w.physical_damage_types = [pr]
+    return w
+
+
+def _hit_damage(engine, bm, a, t, no_ability=False, tries=20):
+    for _ in range(tries):
+        atk = rpg.Attack(a, t, 0)
+        atk.no_ability_damage = no_ability
+        r = engine.execute_action(bm, atk)
+        if r.hit:
+            return r.total_damage
+    raise AssertionError("attack never landed")
+
+
+def test_no_ability_damage_suppresses_positive_mod():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Atk", 5, 5)
+    t = _place(engine, bm, "Tgt", 6, 5)
+    _arm_attacker(engine, bm, a, [_fixed_weapon("Chopper", 10)], strv=20)  # base 10, STR +5
+    _set_target(engine, bm, t, hp=100000)
+
+    normal = _hit_damage(engine, bm, a, t, no_ability=False)
+    assert normal == 15, f"normal hit = base 10 + STR 5 = 15, got {normal}"
+    cleave = _hit_damage(engine, bm, a, t, no_ability=True)
+    assert cleave == 10, f"Cleave drops the +5 mod -> base 10, got {cleave}"
+    print("✅ test_no_ability_damage_suppresses_positive_mod passed")
+
+
+def test_no_ability_damage_keeps_negative_mod():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Atk", 5, 5)
+    t = _place(engine, bm, "Tgt", 6, 5)
+    _arm_attacker(engine, bm, a, [_fixed_weapon("Chopper", 10)], strv=6)   # base 10, STR -2
+    _set_target(engine, bm, t, hp=100000)
+
+    cleave = _hit_damage(engine, bm, a, t, no_ability=True)
+    assert cleave == 8, f"a negative mod is kept: 10 + (-2) = 8, got {cleave}"
+    print("✅ test_no_ability_damage_keeps_negative_mod passed")
+
+
 if __name__ == "__main__":
     test_vex_sets_then_consumes_advantage()
     test_sap_imposes_then_consumes_disadvantage()
@@ -267,4 +376,9 @@ if __name__ == "__main__":
     test_cleave_respects_once_per_turn()
     test_no_feature_no_mastery()
     test_not_proficient_no_mastery()
-    print("\n✅ All Weapon Mastery (2a/2b) tests passed!")
+    test_apply_push_moves_target()
+    test_apply_topple_knocks_prone_on_failed_save()
+    test_apply_topple_outcome_matches_save()
+    test_no_ability_damage_suppresses_positive_mod()
+    test_no_ability_damage_keeps_negative_mod()
+    print("\n✅ All Weapon Mastery (2a/2b/2c) tests passed!")
