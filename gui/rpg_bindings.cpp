@@ -1442,6 +1442,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Jump agent to a location (ignores walls, deducts from walk budget).\n"
              "Returns false if distance exceeds jump range.\n"
              "On successful move, checks for spell effects at destination and applies them.")
+        .def("teleport_agent",
+             &CombatEngine::teleportAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             "Teleport agent to a new location (col, row). Only checks that destination is not blocked by terrain.\n"
+             "Returns false if destination is blocked, out of bounds, or agent index invalid.\n"
+             "On successful teleport, checks for spell effects at destination and applies them.")
 
         .def("set_logger",
              &CombatEngine::setLogger,

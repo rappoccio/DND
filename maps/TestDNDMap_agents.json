@@ -30,7 +30,14 @@
         "num_attacks": 2,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Rapier",
@@ -112,7 +119,14 @@
         "num_attacks": 1,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "int"
+        "spellcasting_ability": "int",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Unnamed",
@@ -202,7 +216,14 @@
         "num_attacks": 1,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Unnamed",
@@ -303,7 +324,16 @@
         "num_attacks": 2,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [
+          "Fire"
+        ],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "UnarmedStunningFire",
@@ -385,7 +415,14 @@
         "num_attacks": 1,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Unnamed",
@@ -470,7 +507,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 250,
+        "speed_walk": 260,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -484,7 +521,14 @@
         "num_attacks": 2,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Greataxe",
@@ -566,7 +610,14 @@
         "num_attacks": 1,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "int"
+        "spellcasting_ability": "int",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Unnamed",
@@ -655,7 +706,14 @@
         "num_attacks": 1,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Dagger",
@@ -743,7 +801,14 @@
         "num_attacks": 1,
         "has_cunning_action": true,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Shortsword",
@@ -825,7 +890,14 @@
         "num_attacks": 1,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "Unnamed",
@@ -919,7 +991,14 @@
         "num_attacks": 3,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
         "main_hand": "UnarmedStunningFire",
@@ -1018,11 +1097,18 @@
         "num_attacks": 2,
         "has_cunning_action": false,
         "has_offhand_attack": false,
-        "spellcasting_ability": "cha"
+        "spellcasting_ability": "cha",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Greatsword",
-        "off_hand": "Unnamed",
+        "main_hand": "Warhammer",
+        "off_hand": "Battleaxe",
         "ranged": "Sling"
       },
       "armor": {

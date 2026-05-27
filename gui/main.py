@@ -3828,6 +3828,31 @@ class App:
                     "has_cunning_action": s.has_cunning_action,
                     "has_offhand_attack": s.has_offhand_attack,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
+                    "temp_hp": s.temp_hp,
+                    "magic_resistances": [
+                        name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
+                        if s.get_magic_damage_multiplier(idx) == 0.5
+                    ],
+                    "magic_immunities": [
+                        name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
+                        if s.get_magic_damage_multiplier(idx) == 0.0
+                    ],
+                    "magic_vulnerabilities": [
+                        name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
+                        if s.get_magic_damage_multiplier(idx) == 2.0
+                    ],
+                    "physical_resistances": [
+                        name for idx, name in enumerate(["Bludgeoning", "Piercing", "Slashing"])
+                        if s.get_physical_damage_multiplier(idx) == 0.5
+                    ],
+                    "physical_immunities": [
+                        name for idx, name in enumerate(["Bludgeoning", "Piercing", "Slashing"])
+                        if s.get_physical_damage_multiplier(idx) == 0.0
+                    ],
+                    "physical_vulnerabilities": [
+                        name for idx, name in enumerate(["Bludgeoning", "Piercing", "Slashing"])
+                        if s.get_physical_damage_multiplier(idx) == 2.0
+                    ],
                 },
                 "weapons": {
                     "main_hand": self.combat.get_agent_weapons(self.bm, i)[0].name or "",
@@ -5612,8 +5637,8 @@ class App:
                         self.btn_cbt_second_wind.draw(self.screen)
                         y += B + gap
 
-            # Action Surge button — Fighter (L1+), resets action_used
-            if 0 <= cur_idx < len(agents) and not self.action_used:
+            # Action Surge button — Fighter (L1+), resets action_used (available anytime)
+            if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
                 if stats.character_class == rpg.CharacterClass.Fighter:
                     as_res = stats.get_resource("Action Surge")

@@ -444,6 +444,10 @@ public:
     // is_running: true for running jump (full strength), false for standing jump (half strength).
     bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
 
+    // Teleport an agent to a new location (checks that destination is not blocked by terrain).
+    // Returns true if successful, false if destination is blocked or out of bounds.
+    bool teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
     // ── Turn lifecycle (begin/execute/end) ─────────────────────────────────
     //
     // beginTurn() and endTurn() check which persistent spell effects an agent

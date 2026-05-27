@@ -1093,6 +1093,44 @@ bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_run
     return true;
 }
 
+bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+
+    Cell targetCell{target_col, target_row};
+
+    // Check if target cell is blocked by terrain (walls, chasms, etc.)
+    const CellSet& disallowed = bm.disallowedCells();
+    if (disallowed.count(targetCell))
+        return false;
+
+    // Check bounds
+    if (target_col < 0 || target_row < 0 || target_col >= bm.cols() || target_row >= bm.rows())
+        return false;
+
+    Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Set the new position
+    if (!bm.setAgentPosition(idx, targetCell))
+        return false;
+
+    // Check for spell effects at the destination
+    for (const auto& effect : bm.activeSpellEffects()) {
+        if (effect.caster_idx == idx) continue;
+        auto it = std::find(effect.cells.begin(), effect.cells.end(), targetCell);
+        if (it != effect.cells.end()) {
+            applySpellEffect(bm, effect, idx);
+        }
+    }
+
+    // Update darkness-based blinding after teleport
+    updateDarknessBlinding(bm, idx);
+
+    return true;
+}
+
 int CombatEngine::getWalkRemaining(int agent_idx) const noexcept
 {
     auto it = walkRemaining_.find(agent_idx);
