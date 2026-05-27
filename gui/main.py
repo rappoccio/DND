@@ -626,6 +626,12 @@ class App:
         self.btn_cbt_disengage_bonus = Button(pygame.Rect(px,   dummy_y, HW, B),
                                           "Disengage",
                                           COL_BTN_DISENG, COL_BTN_DISENG_HOV, self.font_md)
+        self.btn_cbt_patient_defense = Button(pygame.Rect(px,   dummy_y, HW, B),
+                                          "Patient Defense",
+                                          (180, 150, 200), (210, 180, 230), self.font_md)
+        self.btn_cbt_step_of_wind = Button(pygame.Rect(px,   dummy_y, HW, B),
+                                          "Step of the Wind",
+                                          (160, 180, 200), (190, 210, 230), self.font_md)
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
@@ -710,6 +716,12 @@ class App:
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
+        self.btn_cbt_martial_arts = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Martial Arts (Bonus Attack)",
+                                          (180, 110, 200), (210, 140, 230), self.font_md)
+        self.btn_cbt_flurry_of_blows = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Flurry of Blows (2 Attacks)",
+                                          (180, 110, 200), (210, 140, 230), self.font_md)
         self.btn_cbt_second_wind = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Second Wind (Bonus Action)",
                                           (180, 150, 100), (220, 190, 130), self.font_md)
@@ -913,7 +925,7 @@ class App:
         stats.num_attacks = 1
         # Set class and level (this also sets can_cast_spell and spell slots)
         stats.set_class_level(getattr(rpg.CharacterClass, class_name), 1)
-        # Initialize class resources (Rage, Ki, etc.)
+        # Initialize class resources (Rage, Focus Points, etc.)
         stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), 1)
 
         # Store for use in placement handler
@@ -1155,11 +1167,19 @@ class App:
         if class_name == "Warlock" and eldritch_invocations:
             stats.eldritch_invocations = list(eldritch_invocations)
 
-        # Initialize class resources (Rage, Ki, Portent Dice, etc.)
+        # Initialize class resources (Rage, Focus Points, Portent Dice, etc.)
         # This must come AFTER setting subclass since resource creation checks subclass
         stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
+
+        # For Monks, replace default "Unarmed" weapon with "MonkUnarmed" (1d8)
+        if class_name == "Monk":
+            current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+            # Replace the first weapon (default) with MonkUnarmed if it's named "Unarmed"
+            if current_weapons and current_weapons[0].name == "Unarmed":
+                current_weapons[0] = self._create_monk_unarmed_weapon()
+                self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
 
         # Store NPC metadata if provided, and initialize spell uses via C++
         if npc_data:
@@ -2266,6 +2286,23 @@ class App:
         unarmed.physical_damage_types = [dmg_roll]
         return unarmed
 
+    def _create_monk_unarmed_weapon(self):
+        """Create Monk unarmed strike weapon (1d8 + DEX bludgeoning)."""
+        unarmed = rpg.Weapon()
+        unarmed.name = "MonkUnarmed"
+        unarmed.type = rpg.WeaponType.Melee
+        unarmed.proficient = True
+        unarmed.finesse = True
+        unarmed.reach_ft = 5
+        unarmed.bonus_hit = 0
+        dmg_roll = rpg.PhysicalDamageRoll()
+        dmg_roll.type = rpg.PhysicalDamage.Bludgeoning
+        dmg_roll.num_dice = 1
+        dmg_roll.die_size = 8
+        dmg_roll.bonus = 0
+        unarmed.physical_damage_types = [dmg_roll]
+        return unarmed
+
     def _show_portent_dice_menu(self):
         """Show available portent dice for selection."""
         idx = self._current_agent_idx()
@@ -3153,7 +3190,7 @@ class App:
         self._report_celestial_resilience()
 
     def _on_short_rest(self):
-        """Restore short-rest resources (Warlock Pact Magic slots, Monk Ki, etc.)."""
+        """Restore short-rest resources (Warlock Pact Magic slots, Monk Focus Points, etc.)."""
         self.combat.apply_short_rest(self.bm)
         self._combat_log_add("Short rest — short-rest resources restored (e.g. Pact Magic slots).")
         self._report_celestial_resilience()
@@ -4136,6 +4173,11 @@ class App:
                                 break
                             cpp_weapons[slot_idx] = _dict_to_weapon(w_dict)
 
+            # For Monks, replace "Unarmed" with "MonkUnarmed" (1d8)
+            stats = self.combat.get_agent_stats(self.bm, i)
+            if stats.character_class == rpg.CharacterClass.Monk and cpp_weapons[0].name == "Unarmed":
+                cpp_weapons[0] = self._create_monk_unarmed_weapon()
+
             self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
 
         # Restore spells — load from spell_indices or legacy "spells" field
@@ -4272,7 +4314,7 @@ class App:
             # Fiend L10 Fiendish Resilience: chosen damage type must be restored BEFORE
             # initialize_class_resources so the resistance multiplier re-applies.
             stats.fiendish_resilience_type = int(t.get("agent_fiendish_resilience_type", -1))
-            # Initialize class resources (Rage, Ki, etc.)
+            # Initialize class resources (Rage, Focus Points, etc.)
             # This must come AFTER setting subclass since resource init may check subclass
             stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
             # Restore remaining spell slots if they were saved
@@ -5620,6 +5662,30 @@ class App:
                     self.btn_cbt_disengage_bonus.draw(self.screen)
                     y += B + gap
 
+            # Patient Defense (Dodge) button - Monk (L1+) with Focus Points, bonus action
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Monk:
+                    fp = stats.get_resource("Focus Points")
+                    if fp and fp.current > 0:
+                        self.btn_cbt_patient_defense.rect.x = lx
+                        self.btn_cbt_patient_defense.rect.y = y
+                        self.btn_cbt_patient_defense.rect.w = W
+                        self.btn_cbt_patient_defense.draw(self.screen)
+                        y += B + gap
+
+            # Step of the Wind button - Monk (L1+) with Focus Points, bonus action (Disengage + Dash)
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Monk:
+                    fp = stats.get_resource("Focus Points")
+                    if fp and fp.current > 0:
+                        self.btn_cbt_step_of_wind.rect.x = lx
+                        self.btn_cbt_step_of_wind.rect.y = y
+                        self.btn_cbt_step_of_wind.rect.w = W
+                        self.btn_cbt_step_of_wind.draw(self.screen)
+                        y += B + gap
+
             # Rage button - only if agent is Barbarian, not raging, and has uses
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -5701,6 +5767,28 @@ class App:
                         self.btn_cbt_war_priest.rect.y = y
                         self.btn_cbt_war_priest.rect.w = W
                         self.btn_cbt_war_priest.draw(self.screen)
+                        y += B + gap
+
+            # Martial Arts button — Monk (L1+), bonus-action unarmed strike (always available)
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Monk:
+                    self.btn_cbt_martial_arts.rect.x = lx
+                    self.btn_cbt_martial_arts.rect.y = y
+                    self.btn_cbt_martial_arts.rect.w = W
+                    self.btn_cbt_martial_arts.draw(self.screen)
+                    y += B + gap
+
+            # Flurry of Blows button — Monk (L1+) with Focus Points, two bonus-action unarmed strikes
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Monk:
+                    fp = stats.get_resource("Focus Points")
+                    if fp and fp.current > 0:
+                        self.btn_cbt_flurry_of_blows.rect.x = lx
+                        self.btn_cbt_flurry_of_blows.rect.y = y
+                        self.btn_cbt_flurry_of_blows.rect.w = W
+                        self.btn_cbt_flurry_of_blows.draw(self.screen)
                         y += B + gap
 
             # Second Wind button — Fighter (L1+) with a Second Wind use, bonus-action self-heal
@@ -6641,7 +6729,7 @@ class App:
                 if self.btn_long_rest.clicked(event):
                     self._on_long_rest()
 
-                # Short Rest — restore short-rest resources (Warlock pact slots, Monk Ki, …)
+                # Short Rest — restore short-rest resources (Warlock pact slots, Monk Focus Points, …)
                 if self.btn_short_rest.clicked(event):
                     self._on_short_rest()
 
@@ -6813,6 +6901,33 @@ class App:
                             self.bm.placed_agents[idx].disengage()
                             self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging (Cunning Action)")
                         self.bonus_used = True
+                    if self.btn_cbt_patient_defense.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            fp = stats.get_resource("Focus Points")
+                            if fp and fp.current > 0:
+                                self.combat.spend_resource(self.bm, idx, "Focus Points")
+                                self.bm.placed_agents[idx].dodge()
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Patient Defense (dodging)")
+                            self.bonus_used = True
+                    if self.btn_cbt_step_of_wind.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            fp = stats.get_resource("Focus Points")
+                            if fp and fp.current > 0:
+                                self.combat.spend_resource(self.bm, idx, "Focus Points")
+                                agent = self.bm.placed_agents[idx]
+                                agent.disengage()
+                                self.bm.apply_dash(idx)
+                                self.move_remaining_walk   = agent.walk_remaining
+                                self.move_remaining_fly    = agent.fly_remaining
+                                self.move_remaining_swim   = agent.swim_remaining
+                                self.move_remaining_burrow = agent.burrow_remaining
+                                self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
+                                self._update_reach()
+                            self.bonus_used = True
                     if self.btn_cbt_rage.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -6888,6 +7003,21 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_extra_attack(weapon_idx=0, offhand=False,
                                                      resource="War Priest", label="War Priest")
+                    if self.btn_cbt_martial_arts.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._start_extra_attack(weapon_idx=0, offhand=False,
+                                                     resource=None, label="Martial Arts")
+                    if self.btn_cbt_flurry_of_blows.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            fp = stats.get_resource("Focus Points")
+                            if fp and fp.current > 0:
+                                self.combat.spend_resource(self.bm, idx, "Focus Points")
+                                self.attacks_remaining = 2
+                                self._start_extra_attack(weapon_idx=0, offhand=False,
+                                                         resource=None, label="Flurry of Blows (Attack 1/2)")
                     if self.btn_cbt_second_wind.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

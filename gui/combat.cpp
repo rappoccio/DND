@@ -278,7 +278,26 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         return ac;
     }
 
-    // Standard AC calculation (non-Barbarian or wearing armor)
+    // Monk Unarmored Defense: AC = 10 + DEX + WIS (no armor worn)
+    if (pa.agent->getStats().character_class == CharacterClass::Monk && !has_armor) {
+        int dex_mod = (pa.agent->getStats().dex - 10) / 2;
+        int wis_mod = (pa.agent->getStats().wis - 10) / 2;
+        int ac = 10 + dex_mod + wis_mod;
+
+        // Add shield bonus (off-hand weapon with ac_bonus)
+        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
+            const Weapon& shield = pa.weapons.back();
+            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+                ac += shield.ac_bonus;
+            }
+        }
+
+        // Add temporary modifications
+        ac += pa.agent->getStats().ac_temporary_modifications;
+        return ac;
+    }
+
+    // Standard AC calculation (non-Barbarian/Monk or wearing armor)
     int ac = pa.agent->getStats().base_ac;
 
     // Calculate DEX modifier and determine cap from equipped armor
@@ -6132,11 +6151,11 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       save_prof_dex = true;
       save_prof_wis = true;
 
-      // Ki: number of ki points = character level
-      Resource ki("Ki", level, 0);  // no duration
-      ki.short_rest_regen = level;  // fully restored on short rest
-      ki.long_rest_regen = level;
-      resources["Ki"] = ki;
+      // Focus Points: number of focus points = character level
+      Resource focus_points("Focus Points", level, 0);  // no duration
+      focus_points.short_rest_regen = level;  // fully restored on short rest
+      focus_points.long_rest_regen = level;
+      resources["Focus Points"] = focus_points;
 
       // Extra Attack (L5+): 2 attacks per action
       if (level >= 5) {

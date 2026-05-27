@@ -31,7 +31,7 @@ enum class WeaponMastery {
 };
 
 struct Weapon {
-    std::string  name            = "Unnamed";
+    std::string  name            = "Unarmed";
 
     WeaponType   type            = WeaponType::Melee;
 

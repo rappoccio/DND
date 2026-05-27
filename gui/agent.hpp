@@ -357,7 +357,7 @@ namespace rpg {
         return 1.0f;
       }
 
-      // ── Class Resources (Rage, Ki, Sorcery Points, etc.) ──────────────────
+      // ── Class Resources (Rage, Focus Points, Sorcery Points, etc.) ───────
       std::map<std::string, Resource> resources{};
 
       // ── Character Identity & Background ──────────────────────────────────
@@ -411,7 +411,7 @@ namespace rpg {
         }
       }
 
-      // Short rest: restore some resources (e.g., Ki for Monk)
+      // Short rest: restore some resources (e.g., Focus Points for Monk)
       void restore_resources_short_rest() {
         // Warlock Pact Magic slots recharge on a short rest as well as a long rest.
         if (get_caster_type(character_class) == CasterPact)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test Resource system for class abilities (Rage, Ki, Sorcery Points, Channel Divinity, etc.)
+Test Resource system for class abilities (Rage, Focus Points, Sorcery Points, Channel Divinity, etc.)
 """
 
 import sys
@@ -22,7 +22,7 @@ def test_resource_spend():
 
 def test_resource_gain():
     """Test gaining a resource"""
-    res = rpg.Resource("Ki", 10, 0)
+    res = rpg.Resource("Focus Points", 10, 0)
     res.short_rest_regen = 5
     res.spend(3)
     assert res.current == 7, f"Expected 7 after spending 3, got {res.current}"
@@ -44,7 +44,7 @@ def test_resource_long_rest():
 
 def test_resource_short_rest():
     """Test partial restoration on short rest"""
-    res = rpg.Resource("Ki", 10, 0)
+    res = rpg.Resource("Focus Points", 10, 0)
     res.short_rest_regen = 4
     res.spend(6)
     assert res.current == 4, f"Expected 4 after spend, got {res.current}"
@@ -116,7 +116,7 @@ def test_barbarian_resources_level_17():
     print("✅ test_barbarian_resources_level_17 passed")
 
 def test_monk_resources():
-    """Test Monk Ki resources"""
+    """Test Monk Focus Points resources"""
     bm = setup_battle_map()
     engine = setup_combat_engine()
     config = create_test_agent("Monk", 5, 5)
@@ -127,11 +127,11 @@ def test_monk_resources():
     stats.initialize_class_resources(rpg.CharacterClass.Monk, 5)
     engine.set_agent_stats(bm, idx, stats)
 
-    ki = stats.get_resource("Ki")
-    assert ki is not None, "Ki resource not found"
-    assert ki.current == 5, f"Expected current=5, got {ki.current}"
-    assert ki.max == 5, f"Expected max=5, got {ki.max}"
-    assert ki.short_rest_regen == 5, f"Expected short_rest_regen=5, got {ki.short_rest_regen}"
+    fp = stats.get_resource("Focus Points")
+    assert fp is not None, "Focus Points resource not found"
+    assert fp.current == 5, f"Expected current=5, got {fp.current}"
+    assert fp.max == 5, f"Expected max=5, got {fp.max}"
+    assert fp.short_rest_regen == 5, f"Expected short_rest_regen=5, got {fp.short_rest_regen}"
     print("✅ test_monk_resources passed")
 
 def test_sorcerer_resources():
