@@ -16,6 +16,20 @@ namespace rpg {
 
 enum class WeaponType { Melee, Ranged };
 
+// 2024 Weapon Mastery properties. A creature with the Weapon Mastery feature
+// applies its weapon's mastery property when attacking with that weapon.
+enum class WeaponMastery {
+    None = 0,
+    Cleave,   // hit → one extra attack vs a 2nd creature within 5 ft (no ability mod), 1/turn
+    Graze,    // miss → deal damage equal to the attack ability modifier
+    Nick,     // the light-weapon extra attack is part of the Attack action (frees the bonus action)
+    Push,     // hit → push a Large-or-smaller target 10 ft straight away
+    Sap,       // hit → target has disadvantage on its next attack roll
+    Slow,     // hit + damage → target's Speed -10 ft until the start of your next turn
+    Topple,   // hit → force a CON save or the target is knocked Prone
+    Vex       // hit + damage → you have advantage on your next attack vs that target
+};
+
 struct Weapon {
     std::string  name            = "Unnamed";
 
@@ -36,6 +50,7 @@ struct Weapon {
     bool         proficient      = false;       // add proficiency bonus to hit
     bool         off_hand        = false;       // designated off-hand weapon (TWF)
     bool         two_handed      = false;       // requires both hands (main hand only, no off-hand)
+    WeaponMastery mastery        = WeaponMastery::None;  // 2024 Weapon Mastery property
 
     std::vector<MagicDamageRoll>    magicDamageRolls;
     std::vector<PhysicalDamageRoll> physicalDamageRolls;

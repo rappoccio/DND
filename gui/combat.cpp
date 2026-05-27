@@ -734,10 +734,16 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Seed movement budgets from current stats, applying exhaustion penalty (5 ft per level)
     cond = bm.getAgentConditions(agent_idx);
     int exhaustion_penalty = 5 * cond.exhaustion_level;
-    walkRemaining_[agent_idx] = std::max(0, stats.speed_walk - exhaustion_penalty);
-    flyRemaining_ [agent_idx] = std::max(0, stats.speed_fly - exhaustion_penalty);
-    swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - exhaustion_penalty);
-    burrowRemaining_[agent_idx] = std::max(0, stats.speed_burrow - exhaustion_penalty);
+    // Movement debuffs: Brutal Strike's Hamstring Blow (-15) and the Slow weapon
+    // mastery (-10). These are consumed (cleared) in Agent::turn(), which runs
+    // just after this seeding — so they reduce Speed for exactly this one turn.
+    int move_penalty = exhaustion_penalty
+                     + (cond.hamstrung ? 15 : 0)
+                     + (cond.slowed    ? 10 : 0);
+    walkRemaining_[agent_idx] = std::max(0, stats.speed_walk - move_penalty);
+    flyRemaining_ [agent_idx] = std::max(0, stats.speed_fly - move_penalty);
+    swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - move_penalty);
+    burrowRemaining_[agent_idx] = std::max(0, stats.speed_burrow - move_penalty);
 
     // Reset per-turn conditions
     agent.agent->turn();
@@ -1210,6 +1216,14 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.hamstrung = false;
         cond.sundering_target_idx = -1;
         cond.staggered_next_save = false;
+        // Weapon Mastery fallback resets (also consumed on-use / in Agent::turn()).
+        cond.sapped = false;
+        cond.slowed = false;
+        cond.vex_target_idx = -1;
+        cond.push_available = false;
+        cond.topple_available = false;
+        cond.cleave_available = false;
+        cond.cleave_used_this_turn = false;
         bm.setAgentConditions(i, cond);
     }
 
@@ -1707,6 +1721,19 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     if (atk_pt.agent->hasAdvantage())
         log_("Advantage: condition");
 
+    // ── Weapon Mastery: Vex (advantage) / Sap (disadvantage) carried from a prior hit ──
+    // These were set on a previous attack and are consumed here (cleared after the roll
+    // via updated_atk_cond), independent of the weapon used for this attack.
+    bool consume_vex = false, consume_sap = false;
+    if (atk_cond.vex_target_idx == action.target_idx) {
+        adv = true; consume_vex = true;
+        log_("Advantage: Vex (your last hit on this target)");
+    }
+    if (atk_cond.sapped) {
+        dis = true; consume_sap = true;
+        log_("Disadvantage: attacker was Sapped");
+    }
+
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
     log_("[ATTACK START] {} - unconscious={}, hp={}", agentName(bm, action.target_idx), tgt_cond.unconscious, tgt_stats.hp_cur);
@@ -1930,9 +1957,88 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         }
     }
 
+    // ════ Weapon Mastery ════════════════════════════════════════════════════
+    // Consume any Vex/Sap this attack used (set adv/dis above), then apply the
+    // wielded weapon's mastery if the attacker has the Weapon Mastery feature.
+    // Auto: Sap/Slow/Vex (on hit), Graze (on miss). Prompted (flag only — the GUI
+    // offers the choice and calls the resolver): Push/Topple/Cleave.
+    int graze_damage = 0;
+    {
+        bool dirty_atk = false;
+        if (consume_vex) { updated_atk_cond.vex_target_idx = -1; dirty_atk = true; }
+        if (consume_sap) { updated_atk_cond.sapped = false;       dirty_atk = true; }
+
+        if (atk_stats.weapon_mastery > 0 && w.proficient &&
+            w.mastery != WeaponMastery::None) {
+            if (r.hit) {
+                switch (w.mastery) {
+                case WeaponMastery::Sap: {
+                    Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+                    tc.sapped = true;
+                    bm.setAgentConditions(action.target_idx, tc);
+                    log_("{} is Sapped (disadvantage on its next attack)",
+                         agentName(bm, action.target_idx));
+                    break;
+                }
+                case WeaponMastery::Slow: {
+                    if (r.total_damage > 0) {
+                        Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+                        tc.slowed = true;
+                        bm.setAgentConditions(action.target_idx, tc);
+                        log_("{} is Slowed (Speed -10 ft until your next turn)",
+                             agentName(bm, action.target_idx));
+                    }
+                    break;
+                }
+                case WeaponMastery::Vex: {
+                    if (r.total_damage > 0) {
+                        updated_atk_cond.vex_target_idx = action.target_idx;
+                        dirty_atk = true;
+                        log_("{} gains Vex (advantage on next attack vs {})",
+                             agentName(bm, action.attacker_idx),
+                             agentName(bm, action.target_idx));
+                    }
+                    break;
+                }
+                case WeaponMastery::Push: {
+                    if (tgt_sz <= 2) { updated_atk_cond.push_available = true; dirty_atk = true; }
+                    break;
+                }
+                case WeaponMastery::Topple: {
+                    updated_atk_cond.topple_available = true; dirty_atk = true;
+                    break;
+                }
+                case WeaponMastery::Cleave: {
+                    if (!atk_cond.cleave_used_this_turn) {
+                        updated_atk_cond.cleave_available = true; dirty_atk = true;
+                    }
+                    break;
+                }
+                default: break;  // Graze handled on miss; Nick is an action-economy property
+                }
+            } else if (w.mastery == WeaponMastery::Graze) {
+                // A miss (including a natural 1) still deals the attack ability modifier.
+                int graze = std::max(0, damageAbilityMod(w, atk_stats));
+                if (graze > 0) {
+                    int overflow = std::max(0, graze - tgt_stats.temp_hp);
+                    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - graze);
+                    tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+                    r.hp_after    = tgt_stats.hp_cur;
+                    r.target_down = (r.hp_after <= 0);
+                    r.total_damage += graze;
+                    r.damage_breakdown.push_back({"graze", graze});
+                    graze_damage = graze;
+                    log_("Graze: {} takes {} damage despite the miss",
+                         agentName(bm, action.target_idx), graze);
+                }
+            }
+        }
+        if (dirty_atk) bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
 
-    if (r.hit && r.total_damage > 0) {
+    if (r.total_damage > 0 && (r.hit || graze_damage > 0)) {
         // Taking weapon damage forces a concentration save on the target (DC = max(10, dmg/2)).
         checkConcentrationOnDamage(bm, action.target_idx, r.total_damage);
         // ...and ends/triggers on-damage conditions (Sleep, Hypnotic Pattern, Tasha's).

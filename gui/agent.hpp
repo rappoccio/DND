@@ -373,6 +373,7 @@ namespace rpg {
       ClericSubclass cleric_subclass{ClericSubclassNone};        // Cleric divine domain choice
       BlessedStrike blessed_strike{BlessedStrikeNone};           // Cleric L7 Blessed Strikes choice
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
+      int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)
@@ -488,6 +489,14 @@ namespace rpg {
       bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
+      // ── Weapon Mastery (2024) ──────────────────────────────────────────────
+      bool sapped{false};                   // Sap: disadvantage on this creature's next attack roll
+      bool slowed{false};                   // Slow: speed -10 ft (consumed at this creature's next turn)
+      int  vex_target_idx{-1};              // Vex: advantage on this attacker's next attack vs this target
+      bool push_available{false};           // Push: a hit this attack can push the target 10 ft (GUI prompt)
+      bool topple_available{false};         // Topple: a hit this attack can force a Prone save (GUI prompt)
+      bool cleave_available{false};         // Cleave: a hit this attack can grant an extra attack (GUI prompt)
+      bool cleave_used_this_turn{false};    // Cleave: once per turn
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -550,6 +559,17 @@ namespace rpg {
       conditions_.divine_strike_available      = false;
       conditions_.divine_strike_used           = false;
       conditions_.guided_strike_available      = false;
+      // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
+      // they are consumed on the next qualifying attack roll (and survive into this
+      // turn so a sapped creature's attack still suffers disadvantage). slowed and
+      // hamstrung are read by CombatEngine::beginTurn's movement seeding (which runs
+      // before this) and cleared here so they apply for exactly one turn.
+      conditions_.slowed                       = false;
+      conditions_.hamstrung                    = false;
+      conditions_.push_available               = false;
+      conditions_.topple_available             = false;
+      conditions_.cleave_available             = false;
+      conditions_.cleave_used_this_turn        = false;
       takeTurn();
     }
 

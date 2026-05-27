@@ -55,6 +55,9 @@ test_scripts = [
     # Rogue features
     "test_rogue_l1_18.py",
     "test_rogue_phase2.py",
+
+    # Fighter features
+    "test_weapon_mastery.py",
 ]
 
 def run_tests():

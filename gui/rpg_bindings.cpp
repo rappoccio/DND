@@ -335,6 +335,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Cleric L7 Blessed Strikes choice: DivineStrike or PotentSpellcasting.")
         .def_readwrite("is_undead", &Agent::Stats::is_undead,
              "Creature type is Undead (a valid Turn Undead target).")
+        .def_readwrite("weapon_mastery", &Agent::Stats::weapon_mastery,
+             "Number of Weapon Mastery properties known (>0 = the feature is active).")
         .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,
              "Warlock eldritch invocations (list of invocation codes)")
         .def("has_invocation", &Agent::Stats::hasInvocation,
@@ -404,6 +406,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
         .def_readwrite("sundering_target_idx", &Agent::Conditions::sundering_target_idx)
         .def_readwrite("staggered_next_save", &Agent::Conditions::staggered_next_save)
+        .def_readwrite("sapped", &Agent::Conditions::sapped)
+        .def_readwrite("slowed", &Agent::Conditions::slowed)
+        .def_readwrite("vex_target_idx", &Agent::Conditions::vex_target_idx)
+        .def_readwrite("push_available", &Agent::Conditions::push_available)
+        .def_readwrite("topple_available", &Agent::Conditions::topple_available)
+        .def_readwrite("cleave_available", &Agent::Conditions::cleave_available)
+        .def_readwrite("cleave_used_this_turn", &Agent::Conditions::cleave_used_this_turn)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -450,6 +459,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Ranged", WeaponType::Ranged, "Projectile weapon.")
         .export_values();
 
+    // ── WeaponMastery (2024) ────────────────────────────────────────────────────
+    py::enum_<WeaponMastery>(m, "WeaponMastery")
+        .value("None",   WeaponMastery::None)
+        .value("Cleave", WeaponMastery::Cleave)
+        .value("Graze",  WeaponMastery::Graze)
+        .value("Nick",   WeaponMastery::Nick)
+        .value("Push",   WeaponMastery::Push)
+        .value("Sap",    WeaponMastery::Sap)
+        .value("Slow",   WeaponMastery::Slow)
+        .value("Topple", WeaponMastery::Topple)
+        .value("Vex",    WeaponMastery::Vex)
+        .export_values();
+
     // ── Attack Condition ──────────────────────────────────────────────────────
     py::class_<AttackCondition>(m, "AttackCondition")
         .def(py::init<>())
@@ -484,6 +506,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("proficient",       &Weapon::proficient)
         .def_readwrite("off_hand",         &Weapon::off_hand)
         .def_readwrite("two_handed",       &Weapon::two_handed)
+        .def_readwrite("mastery",          &Weapon::mastery)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
         .def_readwrite("magic_damage_types",    &Weapon::magicDamageRolls)

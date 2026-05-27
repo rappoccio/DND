@@ -87,6 +87,17 @@ def _parse_magic_damage(v):
         return getattr(rpg.MagicDamage, v)
     return rpg.MagicDamage(int(v))
 
+def _parse_mastery(v):
+    """Accept a 2024 Weapon Mastery name (or int ordinal), return rpg.WeaponMastery.
+
+    Note: the enum value is named "None"; since that is a Python keyword it can only
+    be reached via getattr, never as rpg.WeaponMastery.None (a syntax error)."""
+    if v is None or v == "":
+        return getattr(rpg.WeaponMastery, "None")
+    if isinstance(v, str):
+        return getattr(rpg.WeaponMastery, v)
+    return rpg.WeaponMastery(int(v))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Weapon serialization helpers
@@ -123,6 +134,7 @@ def _weapon_to_dict(w) -> dict:
         "proficient":       w.proficient,
         "off_hand":         w.off_hand,
         "two_handed":       w.two_handed,
+        "mastery":          w.mastery.name,
         "bonus_hit":        w.bonus_hit,
         "bonus_damage":     w.bonus_damage,
         "physical_damage_types": [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
@@ -147,6 +159,7 @@ def _dict_to_weapon(d: dict):
     w.proficient      = bool(d.get("proficient",      True))
     w.off_hand        = bool(d.get("off_hand",        False))
     w.two_handed      = bool(d.get("two_handed",      False))
+    w.mastery         = _parse_mastery(d.get("mastery", ""))
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
 
