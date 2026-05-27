@@ -1390,7 +1390,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
         r.d20 = pending_portent;
     }
 
-    r.critical   = (r.d20 == 20);
+    r.critical   = (r.d20 >= attacker.crit_threshold);
     r.fumble     = (r.d20 == 1);
     r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level);
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
@@ -2708,7 +2708,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             tr.attack_mod = mod;
             tr.total_roll = total;
             tr.target_ac  = calculateAC(bm, tgt_idx);
-            tr.critical   = (d20_val == 20);
+            tr.critical   = (d20_val >= caster_stats.crit_threshold);
             tr.hit        = tr.critical || (d20_val != 1 && total >= tr.target_ac);
 
             if (tr.hit) {
@@ -6028,11 +6028,23 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
     }
 
     case Monk: {
+      // Chassis: Dexterity + Wisdom save proficiencies
+      save_prof_dex = true;
+      save_prof_wis = true;
+
       // Ki: number of ki points = character level
       Resource ki("Ki", level, 0);  // no duration
       ki.short_rest_regen = level;  // fully restored on short rest
       ki.long_rest_regen = level;
       resources["Ki"] = ki;
+
+      // Extra Attack (L5+): 2 attacks per action
+      if (level >= 5) {
+        num_attacks = 2;
+      }
+
+      // Unarmored Defense (L1+): AC = 10 + DEX + WIS (note: not implemented yet, see known_limitations.md)
+      // This would need special AC calculation logic in combat.cpp
       break;
     }
 
@@ -6056,6 +6068,65 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       sp.short_rest_regen = 0;
       sp.long_rest_regen = level;
       resources["Sorcery Points"] = sp;
+      break;
+    }
+
+    case Fighter: {
+      // Extra Attack (L5+): 2 at L5, 3 at L11, 4 at L20
+      if (level >= 20) {
+        num_attacks = 4;
+      } else if (level >= 11) {
+        num_attacks = 3;
+      } else if (level >= 5) {
+        num_attacks = 2;
+      }
+
+      // Second Wind (L1+): 1d10 + level, regains on short/long rest
+      int sw_uses = 1;
+      Resource sw("Second Wind", sw_uses, 0);
+      sw.short_rest_regen = 1;
+      sw.long_rest_regen = 1;
+      resources["Second Wind"] = sw;
+
+      // Action Surge (L1+): 1 use at L1, 2 at L17, regains on long rest
+      int as_uses = (level >= 17) ? 2 : 1;
+      Resource as("Action Surge", as_uses, 0);
+      as.long_rest_regen = as_uses;
+      resources["Action Surge"] = as;
+
+      // Weapon Mastery (L1+): activate the mastery system
+      weapon_mastery = 1;
+
+      // Champion: lower crit threshold
+      if (fighter_subclass == ChampionPath) {
+        if (level >= 15) {
+          crit_threshold = 18;  // L15: critical on 18-20
+        } else if (level >= 3) {
+          crit_threshold = 19;  // L3: critical on 19-20
+        }
+      }
+      break;
+    }
+
+    case Druid: {
+      // Druid: WIS full caster (like Cleric)
+      spellcasting_ability = 4;  // 4 = WIS (SaveAbility_t::SaveWis)
+      can_cast_spell = true;
+      save_prof_intel = true;
+      save_prof_wis = true;
+
+      // Wild Shape (L2+): uses scale with level
+      // L2-4: 2 uses, L5-6: 3 uses, L7-8: 4 uses, L9+: 4 uses
+      int ws_uses = 0;
+      if (level >= 2) ws_uses = 2;
+      if (level >= 5) ws_uses = 3;
+      if (level >= 7) ws_uses = 4;
+      // Note: Wild Shape can be used unlimited times at L20, but that's handled separately
+
+      Resource ws("Wild Shape", ws_uses, 0);
+      ws.short_rest_regen = 1;  // regain one use on short rest
+      ws.long_rest_regen = ws_uses;  // full on long rest
+      resources["Wild Shape"] = ws;
       break;
     }
 
@@ -6152,7 +6223,32 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       break;
     }
 
-    // Other classes without resources (Fighter, Rogue, Ranger, Paladin, Bard, Druid)
+    case Paladin: {
+      // Paladin: CHA half-caster (spell slots already set via set_class_level using kHalf column)
+      spellcasting_ability = 5;  // 5 = CHA (SaveAbility_t::SaveCha)
+      can_cast_spell = true;
+      save_prof_wis = true;
+
+      // Extra Attack (L5+): 2 attacks per action
+      if (level >= 5) {
+        num_attacks = 2;
+      }
+
+      // Channel Oath (L1+): 2 uses at L1, 3 at L6, 4 at L18 (like Channel Divinity)
+      int co_uses = (level >= 18) ? 4 : (level >= 6) ? 3 : 2;
+      Resource co("Channel Oath", co_uses, 0);
+      co.short_rest_regen = 1;       // regain one use on a short rest
+      co.long_rest_regen = co_uses;  // full on a long rest
+      resources["Channel Oath"] = co;
+
+      // Lay on Hands (L1+): pool of 5 × level HP to heal
+      Resource loh("Lay on Hands", 5 * level, 5 * level);
+      loh.long_rest_regen = 5 * level;
+      resources["Lay on Hands"] = loh;
+      break;
+    }
+
+    // Other classes without resources (Rogue, Ranger, Bard)
     // have no custom resources
     default:
       break;

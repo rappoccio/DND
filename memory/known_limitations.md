@@ -454,3 +454,141 @@ out-of-combat utility are deferred. Combat-sim scope only.
   through the Bonus button (`_start_attack("bonus")` → consumes `bonus_used`); Nick would need a
   dedicated "part of the Attack action" path + gate. Deferred until the turn-economy refactor; until
   then a Nick weapon's off-hand attack behaves like a normal Bonus-Action TWF attack.
+
+---
+
+## Fighter (added 2026-05-27)
+
+Phased implementation. **Phase 1 (base features + Champion) is implemented**; subclass features and deferred items below.
+
+### Implemented (Phase 1) ✅
+- **Chassis**: Extra Attack (2 at L5, 3 at L11, 4 at L20), Weapon Mastery system activation
+- **Crit threshold**: Added `Stats.crit_threshold` field (default 20) and updated weapon/spell attack critical hit checks to use it
+- **Second Wind** resource (L1+): 1 use per resource, short/long-rest recharge
+- **Action Surge** resource (L1+): 1 use (2 at L17), long-rest recharge
+- **Champion subclass** (L3+): lowers crit_threshold to 19 (L3), 18 (L15)
+- **FighterSubclass** enum (Champion, BattleMaster, PsiWarrior, EldritchKnight) + GUI subclass picker + save/load
+
+### Implemented — Second Wind / Action Surge GUI ✅
+- **Second Wind**: bonus-action self-heal (1d10 + level), GUI button, resource regains on short/long rest
+- **Action Surge**: bonus-action reset of `action_used` flag, GUI button, resource regains on long rest (2 uses at L17)
+
+### Deferred — Battle Master (subclass features)
+- **Superiority Dice** resource (d8s) would mirror Focus Points/Sorcery Points
+- **Maneuvers**: on-hit riders (Cunning Strike pattern) — Trip/Menacing/Pushing/Riposte/Precision and others
+- Needs extensive GUI rider-chain wiring similar to Rogue Phase 2 + test file
+
+### Deferred — Psi Warrior (subclass features)
+- **Psionic Energy Dice** resource (d8s)
+- **Protective Field** (reaction damage reduction, mirror Uncanny Dodge)
+- **Psionic Strike** (bonus force damage on hit, mirror Divine Strike rider)
+- **Telekinetic Movement** (forceMoveAgent, mirror applyPush)
+
+### Deferred — Champion subclass features (L3+)
+- **Remarkable Athlete** (bonus to non-proficient STR/DEX/CON checks) — requires check-modification hook
+- **Second Fighting Style** (L3: gain second Fighting Style option) — needs GUI fighter-style picker for second slot
+
+### NOT IMPLEMENTED (Model boundary)
+- **[OPUS] Eldritch Knight**: War Magic (replace one Attack-action attack with a cantrip) — turn-economy interleave too complex for Haiku
+- **[DEFER] Indomitable** (L9): save-reroll resource → later mirrors Zealot Fanatical Focus / Portent
+- **[DEFER] Studied Attacks** (L13): advantage on next attack vs missed creature → reuses existing `vex_target_idx` flag
+
+---
+
+## Druid (added 2026-05-27)
+
+**Phase 1 (chassis + Wild Shape framework) is implemented**; subclass features and full Wild Shape mechanics are deferred.
+
+### Implemented (Phase 1) ✅
+- **Chassis**: WIS full caster, INT+WIS save proficiencies, `can_cast_spell` = true
+- **Wild Shape** resource (L2+): 2 uses at L2, 3 at L5, 4 at L7; short-rest regen 1, long-rest regen to max
+- **DruidCircle** enum (CircleOfMoon, CircleOfLand, CircleOfSpores, CircleOfWildfire) + GUI subclass picker + save/load
+
+### Deferred — Wild Shape mechanics
+- **Beast form stat swapping**: activating Wild Shape should swap agent AC/attacks/stats to a chosen beast form
+- **Temp HP on activation**: grant temp HP when entering Wild Shape (based on Druid level)
+- **Reversion**: exit Wild Shape on 0 temp HP or when ended manually
+- **Beast forms data**: JSON file with beast stat blocks (wolf, bear, eagle, etc.)
+- **Circle of the Moon L2 features**: bonus-action shift to beast form (needs turn-economy wiring)
+- **Circle of the Moon L6+ features**: increased beast form durability, better damage
+
+These require a beast-form-swap system (stat override + reversion) and full on-activation/reversion mechanics, beyond pure resource system.
+
+### NOT MODELED
+- Circle of the Moon's movement speed increases and bonus-action shift (turn-economy features deferred)
+- Circle of Wildfire's Wildfire Spirit summon (needs summoning system)
+- Circle of Spores' Symbiotic Entity (passive aura-like stacking feature)
+- Circle of Land's Land Circle Spells and Preserve Life (circle-specific spells/abilities deferred)
+
+---
+
+## Monk (added 2026-05-27)
+
+**Phase 1 (chassis + resources) is implemented**; martial arts mechanics and subclass features are deferred.
+
+### Implemented (Phase 1) ✅
+- **Chassis**: DEX+WIS save proficiencies, Ki resource (= level, short-rest regen), Extra Attack at L5
+- **MonkSubclass** enum (WarriorOfTheOpenHand, WarriorOfMercy, WarriorOfShadow, WarriorOfFourElements) + GUI picker + save/load
+
+### Deferred — Unarmored Defense
+- **Mechanic**: AC = 10 + DEX + WIS when not wearing armor (L1+)
+- **Why deferred**: Requires special AC calculation in `calculateAC()` that checks `character_class == Monk` and armor worn state
+- **Implementation when ready**: Add `unarmored_ac_active` flag to Stats, check in `calculateAC()` before applying base_ac
+
+### Deferred — Martial Arts
+- **Unarmed strike die**: scales by level (1d4 at L1-4, 1d6 at L5-10, etc.)
+- **DEX for unarmed attacks**: already uses DEX as fallback, but martial arts special handling needed
+- **Bonus-action unarmed strike**: via `_start_extra_attack()` (pattern exists)
+
+### Deferred — Focus / Movement features
+- **Patient Defense** (spend 1 Ki → Dodge action) + **Step of the Wind** (spend 1 Ki → Disengage+Dash)
+- **Flurry of Blows** (spend 1 Ki → two bonus-action unarmed strikes)
+- These are resource-to-action-effect patterns; need GUI button wiring similar to Second Wind/Action Surge
+
+### Deferred — Stunning Strike
+- **Mechanic**: spend 1 Ki on hit → target CON save or Stunned
+- **Pattern**: on-hit rider (Divine Strike/Cunning Strike shape); needs test file + GUI prompt
+- **Complexity**: save-or-condition riders are implemented for Rogue; Monk's version just uses different resource
+
+### Deferred — Subclass features
+- **Warrior of the Open Hand** (L3+): bonus rider effects on Flurry (Knock Prone/Push/Deny Reaction)
+- **Warrior of Mercy** (L3+): Healing Hands pool (channel Ki into healing)
+- **Warrior of Shadow** (L3+): Shadow Arts (cast spells using Ki)
+- **Warrior of Four Elements** (L3+): Elemental Attunement (fire/ice/lightning effects on attacks)
+
+### NOT MODELED
+- Martial Arts bonus-action unarmed damage scaling (would need unarmed weapon variant system)
+- Ki-point swimming/climbing speed bumps (L9 feature)
+- Evasion (shared with Rogue, already implemented)
+
+---
+
+## Paladin (added 2026-05-27)
+
+**Phase 1 (chassis + resources) is implemented**; subclass features, Channel Oath effects, and Divine Smite are deferred.
+
+### Implemented (Phase 1) ✅
+- **Chassis**: CHA half-caster (spell slots via kHalf), WIS save proficiency, Extra Attack at L5
+- **Channel Oath** resource (L1+): 2 uses (3 at L6, 4 at L18), short-rest regen 1, long-rest regen to max
+- **Lay on Hands** resource (L1+): 5 × level HP pool, long-rest regen to max
+- **PaladinOath** enum (OathOfDevotion, OathOftheMountedWarrior, OathOfRedemption, OathOfVengeance) + GUI picker + save/load
+
+### Deferred — Channel Oath effects
+- **Resource** exists and recharges correctly
+- **No GUI button** to activate Channel Oath options (Sacred Weapon, Abjure Foes, etc.)
+- **No mechanics** to apply oath-specific effects (attack buff, Frightened condition, etc.)
+
+### Implemented — Lay on Hands GUI ✅
+- **Resource** exists and tracks pool (5 × level HP)
+- **GUI button** to activate, then target-click to heal up to target's missing HP
+- **Turn economy**: counts as bonus action
+
+### Deferred — Oath of Devotion subclass
+- **Sacred Weapon** (Channel Oath L1 option): spend 1 Channel Oath for temporary attack buff
+- **Abjure Foes** (Channel Oath L3+ option): spend 1 Channel Oath for Frightened save-or-effect
+- Both require on-activation effects wired to Channel Oath spending (not yet implemented)
+
+### NOT IMPLEMENTED (Model boundary)
+- **[OPUS] Divine Smite**: spell cast as Bonus Action triggered by melee weapon hit, consumes hit + bonus action + spell slot → radiant damage scaling by slot level. Triple turn-economy coupling deferred for later phases.
+- **Auras** (Aura of Protection, etc.): need red/blue team/faction system; deferred (same as Evoker Sculpt, Cleric Crusader's Mantle)
+- Other Oath options (Oath of Vengeance's Vow of Enmity turn-economy coupling, Oath of Redemption's passive Emissary of Peace, etc.)

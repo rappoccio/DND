@@ -323,6 +323,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wild Heart L6 Aspect choice (Owl/Panther/Salmon); set before combat or at long rest")
         .def_readwrite("brutal_strike_damage_dice", &Agent::Stats::brutal_strike_damage_dice,
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
+        .def_readwrite("crit_threshold", &Agent::Stats::crit_threshold,
+             "d20 roll >= this is a critical hit (default 20, Champion lowers it to 19/18)")
+        .def_readwrite("fighter_subclass", &Agent::Stats::fighter_subclass,
+             "Fighter subclass (only valid when character_class == Fighter)")
+        .def_readwrite("druid_circle", &Agent::Stats::druid_circle,
+             "Druid circle choice (only valid when character_class == Druid)")
+        .def_readwrite("monk_subclass", &Agent::Stats::monk_subclass,
+             "Monk subclass (only valid when character_class == Monk)")
+        .def_readwrite("paladin_oath", &Agent::Stats::paladin_oath,
+             "Paladin oath choice (only valid when character_class == Paladin)")
         .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
              "Wizard subclass (only valid when character_class == Wizard)")
         .def_readwrite("warlock_subclass", &Agent::Stats::warlock_subclass,
@@ -691,6 +701,42 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Owl", OwlAspect)
         .value("Panther", PantherAspect)
         .value("Salmon", SalmonAspect)
+        .export_values();
+
+    // ── Fighter Subclass Enum (2024 D&D) ──────────────────────────────────
+    py::enum_<FighterSubclass>(m, "FighterSubclass")
+        .value("NONE", FighterSubclassNone)
+        .value("Champion", ChampionPath)
+        .value("BattleMaster", BattleMasterPath)
+        .value("PsiWarrior", PsiWarriorPath)
+        .value("EldritchKnight", EldritchKnightPath)
+        .export_values();
+
+    // ── Druid Circle Enum (2024 D&D) ────────────────────────────────────
+    py::enum_<DruidCircle>(m, "DruidCircle")
+        .value("NONE", DruidCircleNone)
+        .value("CircleOfMoon", CircleOfMoon)
+        .value("CircleOfLand", CircleOfLand)
+        .value("CircleOfSpores", CircleOfSpores)
+        .value("CircleOfWildfire", CircleOfWildfire)
+        .export_values();
+
+    // ── Monk Subclass Enum (2024 D&D) ────────────────────────────────────
+    py::enum_<MonkSubclass>(m, "MonkSubclass")
+        .value("NONE", MonkSubclassNone)
+        .value("WarriorOfTheOpenHand", WarriorOfTheOpenHandPath)
+        .value("WarriorOfMercy", WarriorOfMercyPath)
+        .value("WarriorOfShadow", WarriorOfShadowPath)
+        .value("WarriorOfFourElements", WarriorOfFourElementsPath)
+        .export_values();
+
+    // ── Paladin Oath Enum (2024 D&D) ────────────────────────────────────
+    py::enum_<PaladinOath>(m, "PaladinOath")
+        .value("NONE", PaladinOathNone)
+        .value("OathOfDevotion", OathOfDevotionPath)
+        .value("OathOftheMountedWarrior", OathOftheMountedWarriorPath)
+        .value("OathOfRedemption", OathOfRedemptionPath)
+        .value("OathOfVengeance", OathOfVengeancePath)
         .export_values();
 
     // ── Wizard Subclass Enum (2024 D&D) ──────────────────────────────────────

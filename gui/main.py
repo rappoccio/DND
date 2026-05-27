@@ -82,7 +82,20 @@ class App:
             json_path = read_stats_from_csv.save_stats_as_json(csv_path, json_path)
         self.mob_stats_json = read_stats_from_csv.load_stats_from_json(json_path)
         self.all_mobs = self.mob_stats_json
-        self.sprites_dir = os.path.dirname(csv_path)  # Store for later use
+
+        # Determine sprites directory (CSV moved to gui, but sprites may be in sprites/ or ../sprites/)
+        possible_sprite_dirs = [
+            os.path.join(script_dir, "sprites"),
+            os.path.join(script_dir, "..", "sprites"),
+        ]
+        self.sprites_dir = None
+        for sprite_dir in possible_sprite_dirs:
+            if os.path.exists(sprite_dir):
+                self.sprites_dir = sprite_dir
+                break
+        if not self.sprites_dir:
+            # Fallback to CSV directory if sprites directory not found
+            self.sprites_dir = os.path.dirname(csv_path)
 
         # ── Load spells from spells.json ──────────────────────────────────
         self.all_spells = []  # list of spell dicts from spells.json
@@ -352,6 +365,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
+        self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
@@ -696,6 +710,15 @@ class App:
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
+        self.btn_cbt_second_wind = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Second Wind (Bonus Action)",
+                                          (180, 150, 100), (220, 190, 130), self.font_md)
+        self.btn_cbt_action_surge = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Action Surge",
+                                          (220, 140, 90), (255, 170, 120), self.font_md)
+        self.btn_cbt_lay_on_hands = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Lay on Hands",
+                                          (180, 200, 150), (220, 240, 190), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1107,6 +1130,14 @@ class App:
         # Set subclass BEFORE initializing resources (resource init may check subclass)
         if class_name == "Barbarian" and subclass_name != "NONE":
             stats.barbarian_subclass = getattr(rpg.BarbianSubclass, subclass_name)
+        elif class_name == "Fighter" and subclass_name != "NONE":
+            stats.fighter_subclass = getattr(rpg.FighterSubclass, subclass_name)
+        elif class_name == "Druid" and subclass_name != "NONE":
+            stats.druid_circle = getattr(rpg.DruidCircle, subclass_name)
+        elif class_name == "Monk" and subclass_name != "NONE":
+            stats.monk_subclass = getattr(rpg.MonkSubclass, subclass_name)
+        elif class_name == "Paladin" and subclass_name != "NONE":
+            stats.paladin_oath = getattr(rpg.PaladinOath, subclass_name)
         elif class_name == "Wizard" and subclass_name != "NONE":
             stats.wizard_subclass = getattr(rpg.WizardSubclass, subclass_name)
         elif class_name == "Warlock" and subclass_name != "NONE":
@@ -2393,6 +2424,77 @@ class App:
             self._flush_combat_log()
         else:
             self._combat_log_add("Healing Light unavailable (no dice left or invalid target).")
+        self.bonus_used = True
+
+    def _use_second_wind(self, agent_idx: int):
+        """Fighter Second Wind: spend resource, roll 1d10 + level, heal self."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        sw = stats.get_resource("Second Wind")
+        if not (sw and sw.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: No Second Wind uses left.")
+            return
+        # Roll 1d10 + level
+        roll = self.combat.roll(10)
+        healing = roll + stats.char_level
+        # Apply healing
+        old_hp = stats.hp_cur
+        stats.hp_cur = min(stats.hp_cur + healing, stats.hp_max)
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
+        # Log and spend resource
+        sw.spend(1)
+        stats.resources["Second Wind"] = sw
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
+        self._combat_log_add(
+            f"{self.bm.placed_agents[agent_idx].name}: Second Wind! Rolled {roll} + {stats.char_level} level = {healing} HP restored ({old_hp} → {stats.hp_cur}).")
+        self.bonus_used = True
+
+    def _use_action_surge(self, agent_idx: int):
+        """Fighter Action Surge: spend resource, regain an Action this turn."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        as_res = stats.get_resource("Action Surge")
+        if not (as_res and as_res.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: No Action Surge uses left.")
+            return
+        # Spend the resource
+        as_res.spend(1)
+        stats.resources["Action Surge"] = as_res
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
+        # Reset action_used to allow another action
+        self.action_used = False
+        self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: Action Surge! You can take another Action this turn.")
+
+    def _resolve_lay_on_hands(self, target_idx: int):
+        """Paladin Lay on Hands: spend from pool, heal target."""
+        self.pending_lay_on_hands = False
+        healer_idx = self._current_agent_idx()
+        if not (0 <= healer_idx < len(self.bm.placed_agents)):
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, healer_idx)
+        loh = stats.get_resource("Lay on Hands")
+        if not (loh and loh.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[healer_idx].name}: Lay on Hands pool is empty.")
+            return
+        # Determine healing amount (up to the pool)
+        target_stats = self.combat.get_agent_stats(self.bm, target_idx)
+        heal_needed = target_stats.hp_max - target_stats.hp_cur
+        healing = min(loh.current, heal_needed)
+        # Apply healing
+        target_stats.hp_cur = min(target_stats.hp_cur + healing, target_stats.hp_max)
+        self.combat.set_agent_stats(self.bm, target_idx, target_stats)
+        # Spend from pool
+        loh.spend(healing)
+        stats.resources["Lay on Hands"] = loh
+        self.combat.set_agent_stats(self.bm, healer_idx, stats)
+        # Log the action
+        tgt_name = self.bm.placed_agents[target_idx].name
+        self._combat_log_add(
+            f"{self.bm.placed_agents[healer_idx].name}: Lay on Hands restores {healing} HP to {tgt_name} ({loh.current} pool remaining).")
         self.bonus_used = True
 
     def _set_fiendish_resilience(self, agent_idx: int, dmg_idx: int):
@@ -3745,6 +3847,10 @@ class App:
                 "agent_class":      s.character_class.name,
                 "agent_char_level": s.char_level,
                 "agent_barbarian_subclass": s.barbarian_subclass.name,
+                "agent_fighter_subclass": s.fighter_subclass.name,
+                "agent_druid_circle": s.druid_circle.name,
+                "agent_monk_subclass": s.monk_subclass.name,
+                "agent_paladin_oath": s.paladin_oath.name,
                 "agent_wizard_subclass": s.wizard_subclass.name,
                 "agent_warlock_subclass": s.warlock_subclass.name,
                 "agent_rogue_subclass": s.rogue_subclass.name,
@@ -4038,6 +4144,18 @@ class App:
             wiz_subclass_name = t.get("agent_wizard_subclass", "NONE")
             if wiz_subclass_name != "NONE":
                 stats.wizard_subclass = getattr(rpg.WizardSubclass, wiz_subclass_name)
+            fighter_subclass_name = t.get("agent_fighter_subclass", "NONE")
+            if fighter_subclass_name != "NONE":
+                stats.fighter_subclass = getattr(rpg.FighterSubclass, fighter_subclass_name)
+            druid_circle_name = t.get("agent_druid_circle", "NONE")
+            if druid_circle_name != "NONE":
+                stats.druid_circle = getattr(rpg.DruidCircle, druid_circle_name)
+            monk_subclass_name = t.get("agent_monk_subclass", "NONE")
+            if monk_subclass_name != "NONE":
+                stats.monk_subclass = getattr(rpg.MonkSubclass, monk_subclass_name)
+            paladin_oath_name = t.get("agent_paladin_oath", "NONE")
+            if paladin_oath_name != "NONE":
+                stats.paladin_oath = getattr(rpg.PaladinOath, paladin_oath_name)
             warlock_subclass_name = t.get("agent_warlock_subclass", "NONE")
             if warlock_subclass_name != "NONE":
                 stats.warlock_subclass = getattr(rpg.WarlockSubclass, warlock_subclass_name)
@@ -5482,6 +5600,42 @@ class App:
                         self.btn_cbt_war_priest.draw(self.screen)
                         y += B + gap
 
+            # Second Wind button — Fighter (L1+) with a Second Wind use, bonus-action self-heal
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Fighter:
+                    sw = stats.get_resource("Second Wind")
+                    if sw and sw.current > 0:
+                        self.btn_cbt_second_wind.rect.x = lx
+                        self.btn_cbt_second_wind.rect.y = y
+                        self.btn_cbt_second_wind.rect.w = W
+                        self.btn_cbt_second_wind.draw(self.screen)
+                        y += B + gap
+
+            # Action Surge button — Fighter (L1+), resets action_used
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Fighter:
+                    as_res = stats.get_resource("Action Surge")
+                    if as_res and as_res.current > 0:
+                        self.btn_cbt_action_surge.rect.x = lx
+                        self.btn_cbt_action_surge.rect.y = y
+                        self.btn_cbt_action_surge.rect.w = W
+                        self.btn_cbt_action_surge.draw(self.screen)
+                        y += B + gap
+
+            # Lay on Hands button — Paladin (L1+), requires target selection for healing
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Paladin:
+                    loh = stats.get_resource("Lay on Hands")
+                    if loh and loh.current > 0:
+                        self.btn_cbt_lay_on_hands.rect.x = lx
+                        self.btn_cbt_lay_on_hands.rect.y = y
+                        self.btn_cbt_lay_on_hands.rect.w = W
+                        self.btn_cbt_lay_on_hands.draw(self.screen)
+                        y += B + gap
+
 
         y += section_gap
 
@@ -6134,6 +6288,8 @@ class App:
                             self._resolve_unarmed_option(hit)
                         elif self.pending_heal_light and hit >= 0:
                             self._resolve_healing_light(hit)
+                        elif self.pending_lay_on_hands and hit >= 0:
+                            self._resolve_lay_on_hands(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -6629,6 +6785,17 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_extra_attack(weapon_idx=0, offhand=False,
                                                      resource="War Priest", label="War Priest")
+                    if self.btn_cbt_second_wind.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_second_wind(idx)
+                    if self.btn_cbt_action_surge.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_action_surge(idx)
+                    if self.btn_cbt_lay_on_hands.clicked(event):
+                        self.pending_lay_on_hands = True
+                        self.hint = "Click target for Lay on Hands healing"
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

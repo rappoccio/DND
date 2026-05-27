@@ -225,6 +225,34 @@ enum BlessedStrike {
     NumBlessedStrike
 };
 
+// ── Fighter Subclass Enum (2024 D&D) ─────────────────────────────────────
+enum FighterSubclass {
+    FighterSubclassNone = 0,
+    ChampionPath, BattleMasterPath, PsiWarriorPath, EldritchKnightPath,
+    NumFighterSubclass
+};
+
+// ── Druid Circle Enum (2024 D&D) ──────────────────────────────────────
+enum DruidCircle {
+    DruidCircleNone = 0,
+    CircleOfMoon, CircleOfLand, CircleOfSpores, CircleOfWildfire,
+    NumDruidCircle
+};
+
+// ── Monk Subclass Enum (2024 D&D) ────────────────────────────────────
+enum MonkSubclass {
+    MonkSubclassNone = 0,
+    WarriorOfTheOpenHandPath, WarriorOfMercyPath, WarriorOfShadowPath, WarriorOfFourElementsPath,
+    NumMonkSubclass
+};
+
+// ── Paladin Oath Enum (2024 D&D) ────────────────────────────────────
+enum PaladinOath {
+    PaladinOathNone = 0,
+    OathOfDevotionPath, OathOftheMountedWarriorPath, OathOfRedemptionPath, OathOfVengeancePath,
+    NumPaladinOath
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;

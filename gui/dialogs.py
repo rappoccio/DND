@@ -489,6 +489,10 @@ class StatsDialog:
         """Return list of available subclasses for a given class (using enum names)."""
         subclasses = {
             "Barbarian": ["NONE", "Berserker", "WildHeart", "WorldTree", "Zealot"],
+            "Fighter": ["NONE", "Champion", "BattleMaster", "PsiWarrior", "EldritchKnight"],
+            "Druid": ["NONE", "CircleOfMoon", "CircleOfLand", "CircleOfSpores", "CircleOfWildfire"],
+            "Monk": ["NONE", "WarriorOfTheOpenHand", "WarriorOfMercy", "WarriorOfShadow", "WarriorOfFourElements"],
+            "Paladin": ["NONE", "OathOfDevotion", "OathOftheMountedWarrior", "OathOfRedemption", "OathOfVengeance"],
             "Wizard": ["NONE", "Abjurer", "Diviner", "Evoker", "Illusionist"],
             "Warlock": ["NONE", "Archfey", "Celestial", "Fiend", "GreatOldOne"],
             "Rogue": ["NONE", "ArcaneTrickster", "Assassin", "Soulknife", "Thief"],

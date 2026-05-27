@@ -367,6 +367,10 @@ namespace rpg {
       WildHeartRageChoice wild_heart_rage_choice{WildHeartNone};  // Which animal form for Rage of the Wilds
       WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
       int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
+      FighterSubclass fighter_subclass{FighterSubclassNone};     // Fighter subclass choice
+      DruidCircle druid_circle{DruidCircleNone};                 // Druid circle choice
+      MonkSubclass monk_subclass{MonkSubclassNone};              // Monk subclass choice
+      PaladinOath paladin_oath{PaladinOathNone};                 // Paladin oath choice
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
       WarlockSubclass warlock_subclass{WarlockSubclassNone};     // Warlock patron choice
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
@@ -374,6 +378,7 @@ namespace rpg {
       BlessedStrike blessed_strike{BlessedStrikeNone};           // Cleric L7 Blessed Strikes choice
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
+      int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)
