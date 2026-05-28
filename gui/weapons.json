@@ -685,5 +685,22 @@
         "save_dc_ability": "SaveDex"
       }
     ]
+  },
+  {
+    "name": "MonkUnarmed",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 0,
+    "long_range_ft": 0,
+    "finesse": true,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "mastery": "None",
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Bludgeoning", "num_dice": 1, "die_size": 8}],
+    "magic_damage_types": [],
+    "sprite_path": ""
   }
 ]

@@ -233,6 +233,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("passive_perception",  &Agent::Stats::passivePerception)
         // Class-feature capability flags
         .def_readwrite("num_attacks",          &Agent::Stats::num_attacks)
+        .def_readwrite("bonus_attacks_remaining", &Agent::Stats::bonus_attacks_remaining)
         .def_readwrite("has_cunning_action",   &Agent::Stats::has_cunning_action)
         .def_readwrite("has_offhand_attack",   &Agent::Stats::has_offhand_attack)
         .def_readwrite("can_cast_spell",       &Agent::Stats::can_cast_spell)
@@ -408,6 +409,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
         .def_readwrite("cunning_strike_available", &Agent::Conditions::cunning_strike_available)
         .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
+        .def_readwrite("stunning_strike_available", &Agent::Conditions::stunning_strike_available)
+        .def_readwrite("stunning_strike_used", &Agent::Conditions::stunning_strike_used)
+        .def_readwrite("open_hand_rider_available", &Agent::Conditions::open_hand_rider_available)
+        .def_readwrite("open_hand_rider_used", &Agent::Conditions::open_hand_rider_used)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
         .def_readwrite("divine_strike_available", &Agent::Conditions::divine_strike_available)
@@ -1002,6 +1007,30 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("save_roll", &ToppleResult::save_roll)
         .def_readonly("toppled",   &ToppleResult::toppled);
 
+    // ── StunningStrikeResult ──────────────────────────────────────────────────
+    py::class_<StunningStrikeResult>(m, "StunningStrikeResult")
+        .def_readonly("valid",     &StunningStrikeResult::valid)
+        .def_readonly("save_dc",   &StunningStrikeResult::save_dc)
+        .def_readonly("save_roll", &StunningStrikeResult::save_roll)
+        .def_readonly("stunned",   &StunningStrikeResult::stunned);
+
+    // ── OpenHandRiderResult ───────────────────────────────────────────────────
+    py::class_<OpenHandRiderResult>(m, "OpenHandRiderResult")
+        .def_readonly("valid",                   &OpenHandRiderResult::valid)
+        .def_readonly("option",                  &OpenHandRiderResult::option)
+        .def_readonly("knockdown_save_dc",       &OpenHandRiderResult::knockdown_save_dc)
+        .def_readonly("knockdown_save_roll",     &OpenHandRiderResult::knockdown_save_roll)
+        .def_readonly("target_knocked_prone",    &OpenHandRiderResult::target_knocked_prone)
+        .def_readonly("push_distance",           &OpenHandRiderResult::push_distance)
+        .def_readonly("reaction_denied",         &OpenHandRiderResult::reaction_denied);
+
+    // ── FlurryResult (Monk Flurry of Blows) ──────────────────────────────────
+    py::class_<FlurryResult>(m, "FlurryResult")
+        .def_readonly("attack1",  &FlurryResult::attack1)
+        .def_readonly("attack2",  &FlurryResult::attack2)
+        .def_readonly("rider1",   &FlurryResult::rider1)
+        .def_readonly("rider2",   &FlurryResult::rider2);
+
     // ── TerrainTickResult ────────────────────────────────────────────────────
     py::class_<TerrainTickResult>(m, "TerrainTickResult")
         .def_readonly("expired_terrain_ids", &TerrainTickResult::expired_terrain_ids)
@@ -1225,6 +1254,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("weapon_idx",   &Attack::weapon_idx)
         .def_readwrite("is_offhand",   &Attack::is_offhand)
         .def_readwrite("no_ability_damage", &Attack::no_ability_damage)
+        .def_readwrite("attack_slot",  &Attack::attack_slot)
         .def("__repr__", [](const Attack& a){
             std::string s = "<Attack atk=" + std::to_string(a.attacker_idx)
                  + " tgt=" + std::to_string(a.target_idx)
@@ -1620,6 +1650,30 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx") = 0,
              "Weapon Mastery — Topple: after a qualifying hit (conditions.topple_available), the target\n"
              "makes a CON save (DC 8 + attack ability mod + prof) or is knocked Prone. Returns a ToppleResult.")
+        .def("apply_stunning_strike",
+             &CombatEngine::applyStunningStrike,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             "Monk Stunning Strike: after a qualifying unarmed hit (conditions.stunning_strike_available),\n"
+             "spend 1 Focus Point and force a CON save (DC 8 + DEX mod + prof) or the target is Stunned.\n"
+             "Returns a StunningStrikeResult.")
+        .def("apply_open_hand_rider",
+             &CombatEngine::applyOpenHandRider,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("option"),
+             "Monk Warrior of the Open Hand: after a qualifying Flurry hit (conditions.open_hand_rider_available),\n"
+             "spend 1 Focus Point and apply one of three riders: 0=Knockdown (STR save or Prone),\n"
+             "1=Push (5 feet), 2=Deny Reaction. Returns an OpenHandRiderResult.")
+        .def("execute_flurry_of_blows",
+             &CombatEngine::executeFlurryOfBlows,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("rider_option"),
+             "Monk Flurry of Blows: spend 1 Focus Point to make two bonus-action unarmed strikes\n"
+             "against the same target, optionally applying an Open Hand rider on each hit.\n"
+             "rider_option: -1=None, 0=Knockdown, 1=Push, 2=DenyReaction.\n"
+             "Returns a FlurryResult containing both attack results and rider results.")
+        .def("consume_bonus_attack",
+             &CombatEngine::consumeBonusAttack,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Decrement bonus_attacks_remaining for an agent (Flurry of Blows, Martial Arts, etc).\n"
+             "Returns true if more attacks are queued, false if sequence is exhausted.")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),

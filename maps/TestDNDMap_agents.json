@@ -1198,9 +1198,9 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "main_hand": "MonkUnarmed",
+        "off_hand": "MonkUnarmed",
+        "ranged": "Crossbow"
       },
       "armor": {
         "helmet": "",

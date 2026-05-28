@@ -56,6 +56,9 @@ test_scripts = [
     "test_rogue_l1_18.py",
     "test_rogue_phase2.py",
 
+    # Monk features
+    "test_monk.py",
+
     # Fighter features
     "test_weapon_mastery.py",
 ]

@@ -1332,6 +1332,10 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.zealot_divine_fury_used = false;
         cond.brutal_strike_available = false;
         cond.brutal_strike_used_this_turn = false;
+        cond.stunning_strike_available = false;
+        cond.stunning_strike_used = false;
+        cond.open_hand_rider_available = false;
+        cond.open_hand_rider_used = false;
         cond.hamstrung = false;
         cond.sundering_target_idx = -1;
         cond.staggered_next_save = false;
@@ -1915,6 +1919,28 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         (w.finesse || w.type == WeaponType::Ranged) &&
         adv && !dis && !atk_cond.sneak_attack_used) {
         updated_atk_cond.cunning_strike_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Monk Stunning Strike eligibility ────────────────────────────────────
+    // Monks can, once per turn, spend 1 Focus Point to force a CON save (Stunned on fail)
+    // The save is applied out of band via applyStunningStrikeEffect.
+    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+        (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
+        !atk_cond.stunning_strike_used) {
+        updated_atk_cond.stunning_strike_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Monk Warrior of the Open Hand rider eligibility ──────────────────────
+    // Monks with Warrior of the Open Hand subclass can apply one of three riders to a
+    // bonus-action Flurry of Blows hit (only on bonus-action attacks, not action attacks).
+    // Riders: Knockdown (STR save or Prone), Push (5 ft), or Deny Reaction (1 FP each).
+    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+        atk_stats.monk_subclass == WarriorOfTheOpenHandPath &&
+        (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
+        action.attack_slot == "bonus") {
+        updated_atk_cond.open_hand_rider_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
@@ -4309,7 +4335,7 @@ void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
     // Get mutable reference and drop all non-empty weapons
     PlacedAgent& pa = const_cast<PlacedAgent&>(agents[idx]);
     for (auto& w : pa.weapons) {
-        if (!w.name.empty() && w.name != "Unnamed") {
+        if (!w.name.empty() && w.name != "Unarmed" && w.name != "MonkUnarmed") {
 	    log_("{} dropped weapon {}", agentName(bm, idx), w.name);
             (void)bm.placeItem(pa.origin, w, "");
             w = Weapon{};
@@ -4399,6 +4425,188 @@ ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int targ
              agentName(bm, target_idx), res.save_roll, dc);
     }
     return res;
+}
+
+StunningStrikeResult CombatEngine::applyStunningStrike(BattleMap& bm, int attacker_idx, int target_idx) noexcept
+{
+    StunningStrikeResult res;
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
+        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return res;
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.stunning_strike_available) return res;
+    ac.stunning_strike_available = false;
+    ac.stunning_strike_used = true;
+    bm.setAgentConditions(attacker_idx, ac);
+    res.valid = true;
+
+    // Spend 1 Focus Point
+    Agent::Stats as = bm.getAgentStats(attacker_idx);
+    auto fp = as.getResource("Focus Points");
+    if (fp && fp->current > 0) {
+        spendResource(bm, attacker_idx, "Focus Points", 1);
+    }
+
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+
+    // Save DC = 8 + attacker's DEX mod + proficiency bonus
+    int dex_mod = (as.dex - 10) / 2;
+    if (as.dex < 10 && (as.dex - 10) % 2 != 0) --dex_mod;
+    int dc = 8 + dex_mod + as.prof_bonus;
+    res.save_dc = dc;
+
+    // Target CON save (with proficiency), floored correctly for odd negative scores
+    int con_mod = (ts.con - 10) / 2;
+    if (ts.con < 10 && (ts.con - 10) % 2 != 0) --con_mod;
+    if (ts.save_prof_con) con_mod += ts.prof_bonus;
+    res.save_roll = roll(20) + con_mod;
+
+    if (res.save_roll < dc) {
+        // Apply Stunned condition for 1 turn
+        ActiveAgentCondition cond;
+        cond.agent_idx = target_idx;
+        cond.caster_idx = attacker_idx;
+        cond.condition_name = "Stunned";
+        cond.turns_remaining = 1;
+        [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
+        res.stunned = true;
+        log_("{} is Stunned (Stunning Strike — save {} vs DC {})",
+             agentName(bm, target_idx), res.save_roll, dc);
+    } else {
+        log_("{} resists Stunning Strike (save {} vs DC {})",
+             agentName(bm, target_idx), res.save_roll, dc);
+    }
+    return res;
+}
+
+OpenHandRiderResult CombatEngine::applyOpenHandRider(BattleMap& bm, int attacker_idx, int target_idx, int option) noexcept
+{
+    OpenHandRiderResult res;
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
+        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return res;
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.open_hand_rider_available) return res;
+
+    bm.setAgentConditions(attacker_idx, ac);
+    res.valid = true;
+    res.option = option;
+
+    // Spend 1 Focus Point
+    Agent::Stats as = bm.getAgentStats(attacker_idx);
+    auto fp = as.getResource("Focus Points");
+    if (fp && fp->current > 0) {
+        spendResource(bm, attacker_idx, "Focus Points", 1);
+    }
+
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+
+    if (option == 0) {
+        // Knockdown: STR save DC = 8 + attacker's DEX mod + prof, on failure apply Prone
+        int dex_mod = (as.dex - 10) / 2;
+        if (as.dex < 10 && (as.dex - 10) % 2 != 0) --dex_mod;
+        int dc = 8 + dex_mod + as.prof_bonus;
+        res.knockdown_save_dc = dc;
+
+        // Target STR save (with proficiency)
+        int str_mod = (ts.str - 10) / 2;
+        if (ts.str < 10 && (ts.str - 10) % 2 != 0) --str_mod;
+        if (ts.save_prof_str) str_mod += ts.prof_bonus;
+        res.knockdown_save_roll = roll(20) + str_mod;
+
+        if (res.knockdown_save_roll < dc) {
+            // Apply Prone condition for 1 turn
+            ActiveAgentCondition cond;
+            cond.agent_idx = target_idx;
+            cond.caster_idx = attacker_idx;
+            cond.condition_name = "Prone";
+            cond.turns_remaining = 1;
+            [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
+            res.target_knocked_prone = true;
+            log_("{} is knocked Prone (Open Hand Knockdown — save {} vs DC {})",
+                 agentName(bm, target_idx), res.knockdown_save_roll, dc);
+        } else {
+            log_("{} resists Open Hand Knockdown (save {} vs DC {})",
+                 agentName(bm, target_idx), res.knockdown_save_roll, dc);
+        }
+    } else if (option == 1) {
+        // Push: forceMoveAgent for 5 feet
+        const Cell origin = agents[static_cast<std::size_t>(attacker_idx)].origin;
+        int cells_moved = bm.forceMoveAgent(target_idx, origin, 5);
+        res.push_distance = cells_moved * 5;  // Convert cells to feet
+        log_("{} is pushed back {} feet (Open Hand Push)",
+             agentName(bm, target_idx), res.push_distance);
+    } else if (option == 2) {
+        // Deny Reaction: set reaction_used on target
+        Agent::Conditions tc = bm.getAgentConditions(target_idx);
+        tc.reaction_used = true;
+        bm.setAgentConditions(target_idx, tc);
+        res.reaction_denied = true;
+        log_("{} cannot use a reaction (Open Hand Deny Reaction)",
+             agentName(bm, target_idx));
+    }
+
+    return res;
+}
+
+FlurryResult CombatEngine::executeFlurryOfBlows(BattleMap& bm, int attacker_idx, int target_idx, int rider_option) noexcept
+{
+    FlurryResult result;
+
+    // Execute first attack
+    Attack atk1(attacker_idx, target_idx, 0);  // weapon 0 = unarmed
+    atk1.is_offhand = true;
+    atk1.attack_slot = "bonus";
+    result.attack1 = executeAction(bm, atk1);
+
+    // Apply Open Hand rider on first hit if applicable
+    if (result.attack1.valid && result.attack1.hit && rider_option >= 0 && rider_option <= 2) {
+        Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+        if (ac.open_hand_rider_available) {
+            result.rider1 = applyOpenHandRider(bm, attacker_idx, target_idx, rider_option);
+        }
+    }
+
+    // Execute second attack
+    Attack atk2(attacker_idx, target_idx, 0);  // weapon 0 = unarmed
+    atk2.is_offhand = true;
+    atk2.attack_slot = "bonus";
+    result.attack2 = executeAction(bm, atk2);
+
+    // Apply Open Hand rider on second hit if applicable
+    if (result.attack2.valid && result.attack2.hit && rider_option >= 0 && rider_option <= 2) {
+        Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+        if (ac.open_hand_rider_available) {
+            result.rider2 = applyOpenHandRider(bm, attacker_idx, target_idx, rider_option);
+        }
+    }
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    ac.open_hand_rider_available = false;
+    bm.setAgentConditions(attacker_idx, ac); 
+    return result;
+}
+
+bool CombatEngine::consumeBonusAttack(BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    if (stats.bonus_attacks_remaining <= 0) return false;
+
+    stats.bonus_attacks_remaining--;
+    bm.setAgentStats(agent_idx, stats);
+
+    if (stats.bonus_attacks_remaining > 0) {
+        log_("{} has {} bonus attack{} remaining",
+             agentName(bm, agent_idx), stats.bonus_attacks_remaining,
+             stats.bonus_attacks_remaining == 1 ? "" : "s");
+        return true;
+    }
+    return false;
 }
 
 void CombatEngine::applyHidden(BattleMap& bm, int idx) noexcept

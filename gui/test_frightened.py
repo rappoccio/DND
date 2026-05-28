@@ -171,7 +171,8 @@ def test_fear_spell_setup():
     """Test that Fear spell is properly configured."""
     # Load spells from JSON (this tests the spell is in the JSON)
     import json
-    with open("spells.json", "r") as f:
+    spells_path = os.path.join(os.path.dirname(__file__), "spells.json")
+    with open(spells_path, "r") as f:
         spells_data = json.load(f)
 
     fear_spell = None

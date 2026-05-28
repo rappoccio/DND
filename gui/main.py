@@ -366,6 +366,9 @@ class App:
         self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
+        self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
+        self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
+        self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
         self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
         self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
@@ -1733,6 +1736,41 @@ class App:
         # Continue with weapon selection
         self._start_attack(slot)
 
+    def _continue_attack_sequence_after_rider(self, atk_idx: int):
+        """After a rider effect (Stunning Strike, etc.) is applied, check if more attacks remain
+        and either re-prompt or end the attack sequence. Called from rider callbacks."""
+        # Determine if more attacks remain
+        has_more_attacks = False
+        if self.pending_attack_slot == "bonus":
+            stats = self.combat.get_agent_stats(self.bm, atk_idx)
+            has_more_attacks = stats.bonus_attacks_remaining > 0
+        elif self.pending_attack_slot == "action":
+            has_more_attacks = self.attacks_remaining > 0
+
+        if has_more_attacks:
+            # Re-prompt for next attack
+            if self.pending_attack_slot == "bonus":
+                stats = self.combat.get_agent_stats(self.bm, atk_idx)
+                rem = stats.bonus_attacks_remaining
+                label = f"Extra attack ({rem} remaining)"
+            else:
+                rem = self.attacks_remaining
+                label = f"Attack ({rem} remaining)"
+
+            atk_name = self.bm.placed_agents[atk_idx].name
+            self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
+            self._start_attack(self._attack_sequence_slot)
+            self._combat_log_add(
+                f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
+        else:
+            # Attacks exhausted
+            self.pending_attack_slot = ""
+            self._attack_sequence_slot = ""
+            self.pending_attack_offhand = None
+            self.pending_attack_resource = None
+
+        self._update_attack_overlay()
+
     def _start_attack(self, slot: str):
         """Begin target-selection for an attack in the given slot."""
         idx = self._current_agent_idx()
@@ -1767,7 +1805,11 @@ class App:
         # If mid-sequence and same slot, don't reset. If mid-sequence and different slot, reject.
         if self.attacks_remaining == 0:
             # Fresh start
-            self.attacks_remaining = stats.num_attacks if slot == "action" else 1
+            if slot == "action":
+                self.attacks_remaining = stats.num_attacks
+            else:
+                # Bonus slot: check C++ bonus_attacks_remaining (Flurry, Martial Arts, etc.)
+                self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
             self._attack_sequence_slot = slot
             # A normal attack uses default (slot-derived) proficiency and no resource cost.
             self.pending_attack_offhand = None
@@ -1781,7 +1823,6 @@ class App:
             self.pending_attack_slot = s
             self.pending_weapon_idx  = wi_
             rem = self.attacks_remaining
-            # print(f"[DEBUG _activate] slot={s} weapon_idx={wi_} attacks_remaining={rem}")
             suffix = f" ({rem} attack{'s' if rem != 1 else ''} remaining)"
             self._combat_log_add(f"Click a target on the map.{suffix}")
 
@@ -1826,8 +1867,11 @@ class App:
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        self.attacks_remaining = 1
         self._attack_sequence_slot = "bonus"
+        # Only set attacks_remaining if not already set (e.g., by Flurry of Blows which queues multiple)
+        if self.attacks_remaining == 0:
+            stats = self.combat.get_agent_stats(self.bm, idx)
+            self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
         self.pending_attack_slot = "bonus"
         self.pending_weapon_idx = weapon_idx
         self.pending_attack_offhand = offhand     # proficient (not an off-hand strike) when False
@@ -1844,6 +1888,7 @@ class App:
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
+        action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
 
         result = self.combat.execute_action(self.bm, action)
 
@@ -1890,12 +1935,18 @@ class App:
         has_push = False
         has_topple = False
         has_cleave = False
+        has_stunning_strike = False
+        has_open_hand_rider = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
                 has_cunning_strike = True
             elif result.hit and atk_cond and atk_cond.brutal_strike_available:
                 has_brutal_strike = True
+            elif result.hit and atk_cond and atk_cond.stunning_strike_available and self.pending_attack_slot == "action":
+                has_stunning_strike = True
+            elif result.hit and atk_cond and atk_cond.open_hand_rider_available:
+                has_open_hand_rider = True
             elif result.hit and atk_cond and atk_cond.divine_strike_available:
                 has_divine_strike = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
@@ -1922,10 +1973,23 @@ class App:
                        f"miss (roll {result.total_roll} vs AC {result.target_ac})"
                        f"{exh_note}")
 
+        # Decrement attack counter: action attacks use Python attacks_remaining,
+        # bonus-action attacks use C++ bonus_attacks_remaining
+        has_more_attacks = False
+        if self.pending_attack_slot == "bonus":
+            has_more_attacks = self.combat.consume_bonus_attack(self.bm, atk_idx)
+        elif self.pending_attack_slot == "action":
+            self.attacks_remaining -= 1
+            has_more_attacks = self.attacks_remaining > 0
+
         # FLAG: Move to C++
         # Defer logging until the rider effect is chosen; otherwise log immediately.
         if has_cunning_strike:
             self._offer_cunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_stunning_strike:
+            self._offer_stunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_open_hand_rider:
+            self._offer_open_hand_rider(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_brutal_strike:
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_strike:
@@ -1951,21 +2015,35 @@ class App:
         # If target is down, drop their concentration
         if result.target_down:
             self._drop_concentration_for_agent(target_idx)
-        # FLAG: Move to C++
-        self.attacks_remaining -= 1
-        if self.attacks_remaining > 0:
-            # More attacks left — clear pending slot so user can move or pick another weapon
-            self.pending_attack_slot = ""
-            rem = self.attacks_remaining
-            self._combat_log_add(
-                f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — move or click Attack to continue.")
-        else:
-            # Attacks exhausted — mark action used and clear sequence state
-            self.pending_attack_slot = ""
-            self._attack_sequence_slot = ""
-            # Clear the generic extra-attack knobs so they don't leak to the next attack.
-            self.pending_attack_offhand = None
-            self.pending_attack_resource = None
+
+        # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
+        # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_guided_strike or has_push or has_topple or has_cleave
+        if not has_rider:
+            # Check if more attacks are queued (action or bonus)
+            if has_more_attacks:
+                # More attacks left in this sequence — re-setup for the next attack
+                if self.pending_attack_slot == "bonus":
+                    # Bonus-action attack: get count from C++
+                    stats = self.combat.get_agent_stats(self.bm, atk_idx)
+                    rem = stats.bonus_attacks_remaining
+                    label = f"Extra attack ({rem} remaining)"
+                else:
+                    # Action attack: use Python counter
+                    rem = self.attacks_remaining
+                    label = f"Attack ({rem} remaining)"
+
+                self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
+                self._start_attack(self.pending_attack_slot if self.pending_attack_slot else "action")
+                self._combat_log_add(
+                    f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
+            else:
+                # Attacks exhausted — mark action used and clear sequence state
+                self.pending_attack_slot = ""
+                self._attack_sequence_slot = ""
+                # Clear the generic extra-attack knobs so they don't leak to the next attack.
+                self.pending_attack_offhand = None
+                self.pending_attack_resource = None
 
             # Restore original weapons if this was an unarmed strike
             if self._unarmed_strike_original_weapons:
@@ -2266,6 +2344,190 @@ class App:
             ]
         options.append(("Sneak Attack only", lambda: _apply([])))
 
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _show_flurry_rider_menu(self, atk_idx):
+        """Show Open Hand rider menu when Flurry of Blows is activated (Way of the Open Hand only)."""
+        options = [
+            ("Knockdown", lambda: self._execute_flurry(atk_idx, 0)),
+            ("Push", lambda: self._execute_flurry(atk_idx, 1)),
+            ("Deny Reaction", lambda: self._execute_flurry(atk_idx, 2)),
+            ("No Rider", lambda: self._execute_flurry(atk_idx, -1)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _execute_flurry(self, atk_idx, rider_option):
+        """Execute Flurry of Blows with the chosen rider option."""
+        agents = self.bm.placed_agents
+        if atk_idx < 0 or atk_idx >= len(agents):
+            return
+
+        # Prompt for target selection
+        self.pending_flurry_atk_idx = atk_idx
+        self.pending_flurry_rider_option = rider_option
+        self.pending_flurry_target = True
+        self.hint = "Click target for Flurry of Blows"
+
+    def _resolve_flurry_target(self, target_idx):
+        """Resolve Flurry of Blows target selection and execute."""
+        if not hasattr(self, 'pending_flurry_atk_idx') or not self.pending_flurry_target:
+            return
+
+        atk_idx = self.pending_flurry_atk_idx
+        rider_option = self.pending_flurry_rider_option
+        self.pending_flurry_target = False
+
+        # Execute Flurry in C++
+        result = self.combat.execute_flurry_of_blows(
+            self.bm, atk_idx, target_idx, rider_option
+        )
+
+        agents = self.bm.placed_agents
+        atk_name = agents[atk_idx].name if atk_idx < len(agents) else "?"
+        tgt_name = agents[target_idx].name if target_idx < len(agents) else "?"
+
+        # Log both attacks
+        if result.attack1.valid:
+            msg1 = f"{atk_name}→{tgt_name}: "
+            if result.attack1.hit:
+                msg1 += f"HIT {result.attack1.total_damage} Bludgeoning"
+            else:
+                msg1 += "MISS"
+            self._combat_log_add(msg1)
+
+        if result.attack2.valid:
+            msg2 = f"{atk_name}→{tgt_name}: "
+            if result.attack2.hit:
+                msg2 += f"HIT {result.attack2.total_damage} Bludgeoning"
+            else:
+                msg2 += "MISS"
+            self._combat_log_add(msg2)
+
+        # Log rider results if applicable
+        if result.rider1.valid and result.attack1.hit:
+            if result.rider1.option == 0:
+                self._combat_log_add(
+                    f"  → Knockdown (STR save DC {result.rider1.knockdown_save_dc}: rolled {result.rider1.knockdown_save_roll}) "
+                    f"— {'Prone!' if result.rider1.target_knocked_prone else 'Resisted'}")
+            elif result.rider1.option == 1:
+                self._combat_log_add(f"  → Push: {tgt_name} pushed back {result.rider1.push_distance} feet")
+            elif result.rider1.option == 2:
+                self._combat_log_add(f"  → Deny Reaction: {tgt_name} cannot use a reaction")
+
+        if result.rider2.valid and result.attack2.hit:
+            if result.rider2.option == 0:
+                self._combat_log_add(
+                    f"  → Knockdown (STR save DC {result.rider2.knockdown_save_dc}: rolled {result.rider2.knockdown_save_roll}) "
+                    f"— {'Prone!' if result.rider2.target_knocked_prone else 'Resisted'}")
+            elif result.rider2.option == 1:
+                self._combat_log_add(f"  → Push: {tgt_name} pushed back {result.rider2.push_distance} feet")
+            elif result.rider2.option == 2:
+                self._combat_log_add(f"  → Deny Reaction: {tgt_name} cannot use a reaction")
+
+        self._flush_combat_log()
+        self.bonus_used = True
+
+    def _offer_stunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show Stunning Strike menu after a qualifying unarmed hit.
+        Monk can spend 1 Focus Point to force a CON save or the target is Stunned.
+        """
+        atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        tgt_stats = self.combat.get_agent_stats(self.bm, target_idx)
+        fp = atk_stats.get_resource("Focus Points")
+
+        # Can't use Stunning Strike if no Focus Points
+        if not fp or fp.current <= 0:
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            return
+
+        def _apply_stunning_strike():
+            # Apply Stunning Strike in C++ (spends resource, rolls save, applies condition)
+            res = self.combat.apply_stunning_strike(self.bm, atk_idx, target_idx)
+
+            if res.valid:
+                if res.stunned:
+                    self._combat_log_add(
+                        f"  → CON save DC {res.save_dc}: rolled {res.save_roll} vs DC {res.save_dc} — Stunned!")
+                else:
+                    self._combat_log_add(
+                        f"  → CON save DC {res.save_dc}: rolled {res.save_roll} vs DC {res.save_dc} — Resisted")
+
+            # Log original attack
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        def _skip_stunning_strike():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+
+        options = [
+            (f"Stunning Strike (1 FP)", _apply_stunning_strike),
+            ("Don't use", _skip_stunning_strike),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_open_hand_rider(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show Open Hand rider menu after a qualifying Flurry hit.
+        Warrior of the Open Hand can spend 1 Focus Point to apply one of three riders:
+        0=Knockdown (STR save or Prone), 1=Push (5 ft), 2=Deny Reaction.
+        """
+        atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        fp = atk_stats.get_resource("Focus Points")
+
+        # Can't use Open Hand rider if no Focus Points
+        if not fp or fp.current <= 0:
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            return
+
+        def _apply_knockdown():
+            # Knockdown: STR save DC = 8 + DEX mod + prof, on fail apply Prone
+            res = self.combat.apply_open_hand_rider(self.bm, atk_idx, target_idx, 0)
+            if res.valid:
+                if res.target_knocked_prone:
+                    self._combat_log_add(
+                        f"  → Knockdown (STR save DC {res.knockdown_save_dc}: rolled {res.knockdown_save_roll}) — Prone!")
+                else:
+                    self._combat_log_add(
+                        f"  → Knockdown (STR save DC {res.knockdown_save_dc}: rolled {res.knockdown_save_roll}) — Resisted")
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _apply_push():
+            # Push: 5 feet
+            res = self.combat.apply_open_hand_rider(self.bm, atk_idx, target_idx, 1)
+            if res.valid:
+                self._combat_log_add(f"  → Push: {tgt_name} pushed back {res.push_distance} feet")
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _apply_deny_reaction():
+            # Deny Reaction: set reaction_used on target
+            res = self.combat.apply_open_hand_rider(self.bm, atk_idx, target_idx, 2)
+            if res.valid:
+                self._combat_log_add(f"  → Deny Reaction: {tgt_name} cannot use a reaction this turn")
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip_open_hand():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            (f"Knockdown (1 FP, STR save)", _apply_knockdown),
+            (f"Push (1 FP, 5 ft)", _apply_push),
+            (f"Deny Reaction (1 FP)", _apply_deny_reaction),
+            ("Don't use", _skip_open_hand),
+        ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -5303,6 +5565,19 @@ class App:
                 txt(f"HP {stats.hp_cur}/{stats.hp_max}", lx + W//2 - 22, y - 1)
             y += 12
 
+            # ── Focus Points display (Monk) ────────────────────────────────────
+            if stats.character_class == rpg.CharacterClass.Monk:
+                fp = stats.get_resource("Focus Points")
+                if fp:
+                    # Draw Focus Points bar
+                    fp_bar_width = W * (fp.current / max(fp.max, 1)) if fp.max > 0 else 0
+                    pygame.draw.rect(self.screen, (50, 50, 50),
+                                     pygame.Rect(lx, y, W, 12), border_radius=3)
+                    pygame.draw.rect(self.screen, (150, 180, 255),
+                                     pygame.Rect(lx, y, int(fp_bar_width), 12), border_radius=3)
+                    txt(f"Focus Pts {fp.current}/{fp.max}", lx + W//2 - 45, y - 1)
+                    y += 12
+
             # ── Exhaustion display ─────────────────────────────────────────────
             cond = self.combat.get_agent_conditions(self.bm, cur_idx)
             if cond.exhaustion_level >= 1:
@@ -6481,6 +6756,8 @@ class App:
                             self._resolve_healing_light(hit)
                         elif self.pending_lay_on_hands and hit >= 0:
                             self._resolve_lay_on_hands(hit)
+                        elif self.pending_flurry_target and hit >= 0:
+                            self._resolve_flurry_target(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()
@@ -6883,7 +7160,7 @@ class App:
                             else:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
                         self.bonus_used = True
-                    if self.btn_cbt_dash_bonus.clicked(event):
+                    if self.btn_cbt_dash_bonus.clicked(event) and not self.context_menu.visible:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             agent = self.bm.placed_agents[idx]
@@ -7014,10 +7291,12 @@ class App:
                             stats = self.combat.get_agent_stats(self.bm, idx)
                             fp = stats.get_resource("Focus Points")
                             if fp and fp.current > 0:
-                                self.combat.spend_resource(self.bm, idx, "Focus Points")
-                                self.attacks_remaining = 2
-                                self._start_extra_attack(weapon_idx=0, offhand=False,
-                                                         resource=None, label="Flurry of Blows (Attack 1/2)")
+                                # Show Open Hand rider menu if Way of the Open Hand
+                                if stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand:
+                                    self._show_flurry_rider_menu(idx)
+                                else:
+                                    # No rider options, execute with no rider
+                                    self._execute_flurry(idx, -1)
                     if self.btn_cbt_second_wind.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

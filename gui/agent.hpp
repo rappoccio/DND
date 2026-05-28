@@ -115,6 +115,7 @@ namespace rpg {
       // ── Class-feature capability flags ───────────────────────────────
       // Controls which action/bonus-action buttons are shown in the GUI.
       int  num_attacks{1};             // weapon attacks per Action (Extra Attack feature)
+      int  bonus_attacks_remaining{0}; // bonus-action attacks queued (Flurry, Martial Arts, etc.)
       bool has_cunning_action{false};  // Rogue: Dash/Disengage/Hide as bonus action
       bool has_offhand_attack{false};  // TWF / light weapon: off-hand bonus attack
       bool can_cast_spell{false};      // spellcaster: Cast Spell action/bonus action
@@ -491,6 +492,10 @@ namespace rpg {
       bool sneak_attack_used{false};        // Rogue: Sneak Attack already applied this turn (once per turn)
       bool cunning_strike_available{false}; // Rogue: a qualifying hit can apply Sneak Attack / Cunning Strike this attack
       bool steady_aim{false};               // Rogue L3: Steady Aim grants advantage on the next attack this turn
+      bool stunning_strike_available{false}; // Monk: a qualifying unarmed hit can apply Stunning Strike this attack
+      bool stunning_strike_used{false};     // Monk: Stunning Strike already applied this turn (once per turn)
+      bool open_hand_rider_available{false}; // Monk Open Hand: a Flurry hit can apply a rider (Knockdown/Push/Deny Reaction)
+      bool open_hand_rider_used{false};     // Monk Open Hand: rider already applied this turn (once per turn)
       bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)

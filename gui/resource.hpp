@@ -7,7 +7,7 @@ namespace rpg {
 
 struct Resource {
   // Identity
-  std::string name;  // e.g., "Rage", "Ki", "Sorcery Points", "Channel Divinity"
+  std::string name;  // e.g., "Rage", "Focus Points", "Sorcery Points", "Channel Divinity"
 
   // Current state
   int current{0};     // current amount available

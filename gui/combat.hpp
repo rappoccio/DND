@@ -107,6 +107,7 @@ struct Attack {
     int  weapon_idx   =  0;    // index into attacker's weapons list
     bool is_offhand   = false; // off-hand attack: proficiency bonus not added to hit
     bool no_ability_damage = false; // Cleave: do not add a positive ability modifier to damage
+    std::string attack_slot = "";   // "action" or "bonus" — set by Python to indicate attack type
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,6 +181,42 @@ struct ToppleResult {
     int  save_dc = 0;     // CON save DC = 8 + attacker's attack ability mod + prof bonus
     int  save_roll = 0;   // target's d20 + CON save mod
     bool toppled = false; // target failed the save and is now Prone
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of Monk Stunning Strike: CON save or Stunned
+// ─────────────────────────────────────────────────────────────────────────────
+struct StunningStrikeResult {
+    bool valid = false;     // stunning_strike_available was set on the attacker
+    int  save_dc = 0;       // CON save DC = 8 + attacker's DEX mod + prof bonus
+    int  save_roll = 0;     // target's d20 + CON save mod
+    bool stunned = false;   // target failed the save and is now Stunned
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of Monk Warrior of the Open Hand rider (Knockdown, Push, or Deny Reaction)
+// ─────────────────────────────────────────────────────────────────────────────
+struct OpenHandRiderResult {
+    bool valid = false;        // open_hand_rider_available was set on the attacker
+    int  option = -1;          // 0=Knockdown, 1=Push, 2=DenyReaction
+    // Knockdown fields
+    int  knockdown_save_dc = 0;   // STR save DC for Knockdown
+    int  knockdown_save_roll = 0; // target's d20 + STR save mod
+    bool target_knocked_prone = false;
+    // Push fields
+    int  push_distance = 0;       // feet pushed (depends on implementation)
+    // Deny Reaction field
+    bool reaction_denied = false; // reaction_used was set on target
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Flurry of Blows result (Monk: two bonus attacks with optional Open Hand rider)
+// ─────────────────────────────────────────────────────────────────────────────
+struct FlurryResult {
+    AttackResult attack1;              // first unarmed strike
+    AttackResult attack2;              // second unarmed strike
+    OpenHandRiderResult rider1;        // rider applied on first hit (if Way of Open Hand)
+    OpenHandRiderResult rider2;        // rider applied on second hit (if Way of Open Hand)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -692,6 +729,26 @@ public:
     // CON save (DC 8 + attacker's attack ability mod + prof bonus) or be knocked Prone. Clears
     // the flag. weapon_idx identifies the striking weapon (for the save DC's ability).
     ToppleResult applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept;
+
+    // Monk Stunning Strike: a qualifying unarmed hit (stunning_strike_available) forces the target to
+    // make a CON save (DC 8 + attacker's DEX mod + prof bonus) or be Stunned for 1 turn. Spends
+    // 1 Focus Point. Clears the flag and sets stunning_strike_used.
+    StunningStrikeResult applyStunningStrike(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
+
+    // Monk Warrior of the Open Hand: a qualifying Flurry hit (open_hand_rider_available) applies one of
+    // three riders: Knockdown (STR save or Prone), Push (forceMoveAgent), or Deny Reaction (set reaction_used).
+    // Spends 1 Focus Point. Clears the flag and sets open_hand_rider_used.
+    OpenHandRiderResult applyOpenHandRider(BattleMap& bm, int attacker_idx, int target_idx, int option) noexcept;
+
+    // Monk Flurry of Blows: executes two bonus-action unarmed strikes against the same target,
+    // optionally applying an Open Hand rider on each hit (option: 0=Knockdown, 1=Push, 2=DenyReaction, -1=None).
+    // Spends 1 Focus Point. Returns both attack results and rider results.
+    FlurryResult executeFlurryOfBlows(BattleMap& bm, int attacker_idx, int target_idx, int rider_option) noexcept;
+
+    // Bonus-action attack sequence management: decrements bonus_attacks_remaining for an agent.
+    // Returns true if more attacks are queued, false if sequence is exhausted.
+    // Used by Flurry of Blows, Martial Arts, and other bonus-action multi-attacks.
+    bool consumeBonusAttack(BattleMap& bm, int agent_idx) noexcept;
 
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
