@@ -568,6 +568,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("bonus_hit",        &Weapon::bonus_hit)
         .def_readwrite("bonus_damage",     &Weapon::bonus_damage)
         .def_readwrite("conditions",       &Weapon::conditions)
+        .def_readwrite("condition_rider",  &Weapon::condition_rider)
         .def("__repr__", [](const Weapon& w){
             std::string dmg_str;
             if (!w.physicalDamageRolls.empty()) {

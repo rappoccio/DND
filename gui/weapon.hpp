@@ -71,6 +71,7 @@ struct Weapon {
 
     // ── Conditions applied on hit ─────────────────────────────────────────────
     std::vector<AttackCondition> conditions;  // conditions applied when attack hits
+    std::string condition_rider = "";         // simple condition name from beast form (e.g., "Poisoned")
 
 };
 
