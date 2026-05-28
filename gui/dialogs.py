@@ -490,7 +490,7 @@ class StatsDialog:
         subclasses = {
             "Barbarian": ["NONE", "Berserker", "WildHeart", "WorldTree", "Zealot"],
             "Fighter": ["NONE", "Champion", "BattleMaster", "PsiWarrior", "EldritchKnight"],
-            "Druid": ["NONE", "CircleOfMoon", "CircleOfLand", "CircleOfSpores", "CircleOfWildfire"],
+            "Druid": ["NONE", "CircleOfMoon", "CircleOfLand", "CircleOfSea", "CircleOfStars", "CircleOfSpores", "CircleOfWildfire"],
             "Monk": ["NONE", "WarriorOfTheOpenHand", "WarriorOfMercy", "WarriorOfShadow", "WarriorOfFourElements"],
             "Paladin": ["NONE", "OathOfDevotion", "OathOftheMountedWarrior", "OathOfRedemption", "OathOfVengeance"],
             "Wizard": ["NONE", "Abjurer", "Diviner", "Evoker", "Illusionist"],

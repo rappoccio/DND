@@ -52,6 +52,7 @@ from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
 from lighting_dialogs import LightingEditorDialog
+from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
 
 class App:
     def __init__(self, map_path: str):
@@ -662,6 +663,9 @@ class App:
         self.btn_cbt_charge_arcane_ward = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "🔮 Ward",
                                           (120, 100, 180), (150, 130, 210), self.font_md)
+        self.btn_cbt_wild_shape = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "🐺 Wild",
+                                          (100, 150, 100), (130, 180, 130), self.font_md)
         self.btn_cbt_long_jump   = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Long Jump",
                                           (100, 150, 200), (120, 170, 220), self.font_md)
@@ -1937,6 +1941,8 @@ class App:
         has_cleave = False
         has_stunning_strike = False
         has_open_hand_rider = False
+        has_maneuver = False
+        has_precision = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
@@ -1949,8 +1955,12 @@ class App:
                 has_open_hand_rider = True
             elif result.hit and atk_cond and atk_cond.divine_strike_available:
                 has_divine_strike = True
+            elif result.hit and atk_cond and atk_cond.maneuver_available:
+                has_maneuver = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
                 has_guided_strike = True
+            elif (not result.hit) and atk_cond and atk_cond.maneuver_precision_available:
+                has_precision = True
             elif result.hit and atk_cond and atk_cond.push_available:
                 has_push = True
             elif result.hit and atk_cond and atk_cond.topple_available:
@@ -1996,6 +2006,10 @@ class App:
             self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_maneuver:
+            self._offer_maneuver(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_precision:
+            self._offer_precision_attack(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
@@ -2118,6 +2132,11 @@ class App:
                     self._combat_log_add(f"{atk_name} pushes {tgt_name} {feet} ft (Push).")
                 else:
                     self._combat_log_add(f"{atk_name}: Push had no effect.")
+            else:
+                # Skip push: mark as used this turn so it won't be offered again
+                c = self.combat.get_agent_conditions(self.bm, atk_idx)
+                c.push_used_this_turn = True
+                self.combat.set_agent_conditions(self.bm, atk_idx, c)
             self._flush_combat_log()
             self._update_attack_overlay()
         options = [
@@ -2140,6 +2159,11 @@ class App:
                 else:
                     self._combat_log_add(
                         f"{tgt_name} resists Topple (save {res.save_roll} vs DC {res.save_dc}).")
+            else:
+                # Skip topple: mark as used this turn so it won't be offered again
+                c = self.combat.get_agent_conditions(self.bm, atk_idx)
+                c.topple_used_this_turn = True
+                self.combat.set_agent_conditions(self.bm, atk_idx, c)
             self._flush_combat_log()
             self._update_attack_overlay()
         options = [
@@ -2531,6 +2555,104 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _offer_maneuver(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show Battle Master Maneuver menu after a qualifying hit.
+        Spend 1 Superiority Die for Trip (Prone), Menacing (Frightened), or Pushing (15 ft).
+        Mirrors _offer_open_hand_rider: log original attack, then note the rider outcome.
+        Calls _continue_attack_sequence_after_rider to preserve the Extra Attack chain.
+        """
+        def _apply_trip():
+            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 0)
+            if res.valid:
+                if res.condition_applied:
+                    self._combat_log_add(
+                        f"  → Tripping Attack (STR save DC {res.save_dc}: rolled {res.save_roll}) — Prone!")
+                else:
+                    self._combat_log_add(
+                        f"  → Tripping Attack (STR save DC {res.save_dc}: rolled {res.save_roll}) — Resisted")
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            if result.target_down:
+                self._drop_concentration_for_agent(target_idx)
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _apply_menacing():
+            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 1)
+            if res.valid:
+                if res.condition_applied:
+                    self._combat_log_add(
+                        f"  → Menacing Attack (WIS save DC {res.save_dc}: rolled {res.save_roll}) — Frightened!")
+                else:
+                    self._combat_log_add(
+                        f"  → Menacing Attack (WIS save DC {res.save_dc}: rolled {res.save_roll}) — Resisted")
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            if result.target_down:
+                self._drop_concentration_for_agent(target_idx)
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _apply_pushing():
+            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 2)
+            if res.valid:
+                self._combat_log_add(f"  → Pushing Attack: {tgt_name} pushed {res.push_distance} feet")
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            if result.target_down:
+                self._drop_concentration_for_agent(target_idx)
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip_maneuver():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Trip (1 die, STR save → Prone)", _apply_trip),
+            ("Menacing (1 die, WIS save → Frightened)", _apply_menacing),
+            ("Pushing (1 die, 15 ft push)", _apply_pushing),
+            ("Skip", _skip_maneuver),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_precision_attack(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show Battle Master Precision Attack menu after a non-fumble miss.
+        Spend 1 Superiority Die to add 1d8/d10 to the roll, potentially converting the miss to a hit.
+        Mirrors _offer_guided_strike.
+        """
+        def _apply():
+            self.combat.apply_precision_attack_effect(self.bm, action, result)
+            if result.hit:
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: Precision Attack → HIT {result.total_damage}"
+                    f"{self._damage_breakdown_str(result)} {dmg_type_str}{' — DOWN' if result.target_down else ''}")
+                if result.target_down:
+                    self._drop_concentration_for_agent(target_idx)
+            else:
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: Precision Attack +die → still misses "
+                    f"(roll {result.total_roll} vs AC {result.target_ac})")
+            self._flush_combat_log()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Precision Attack (spend 1 Superiority Die)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _create_unarmed_punch_weapon(self):
         """Create a synthetic unarmed punch weapon (1 + STR bludgeoning)."""
         unarmed = rpg.Weapon()
@@ -2648,6 +2770,119 @@ class App:
             self.bonus_used = True
         else:
             self._combat_log_add("Failed to expend spell slot for Arcane Ward!")
+
+    def _show_wild_shape_menu(self):
+        """Show Wild Shape form options or end Wild Shape if already active."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        if stats.character_class != rpg.CharacterClass.Druid or stats.char_level < 2:
+            self._combat_log_add("Cannot use Wild Shape!")
+            return
+
+        if stats.wild_shape_active:
+            self.combat.deactivate_wild_shape(self.bm, idx)
+            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Exits Wild Shape")
+            self.bonus_used = True
+            return
+
+        ws_resource = stats.get_resource("Wild Shape")
+        if ws_resource is None or ws_resource.current <= 0:
+            self._combat_log_add("No Wild Shape uses remaining!")
+            return
+
+        import json
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        beast_path = os.path.join(script_dir, "beast_forms.json")
+
+        try:
+            with open(beast_path, 'r') as f:
+                beasts = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self._combat_log_add("Error loading beast forms!")
+            return
+
+        # Determine CR cap and fly restriction based on level and circle
+        level = stats.char_level
+        allow_fly = level >= 8
+
+        if stats.druid_circle == rpg.DruidCircle.CircleOfMoon:
+            cr_cap = level / 3
+        else:
+            if level < 4:
+                cr_cap = 0.25
+            elif level < 8:
+                cr_cap = 0.5
+            else:
+                cr_cap = 1.0
+
+        # Filter available beasts
+        available = []
+        for beast in beasts:
+            if beast['cr'] <= cr_cap and (allow_fly or not beast['fly_speed']):
+                available.append(beast)
+
+        if not available:
+            self._combat_log_add("No valid wild shapes available!")
+            return
+
+        # Create menu items
+        items = []
+        for beast in available:
+            label = f"🐺 {beast['name']} (CR {beast['cr']})"
+            items.append((label, lambda b=beast['name']: self._activate_wild_shape(idx, b)))
+
+        mouse_pos = pygame.mouse.get_pos()
+        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+
+    def _activate_wild_shape(self, idx: int, beast_name: str):
+        """Activate Wild Shape with the given beast form."""
+        import os
+        import json
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        beast_path = os.path.join(script_dir, "beast_forms.json")
+        weapons_path = os.path.join(script_dir, "weapons.json")
+
+        # Mapping from beast name to weapon name (for the beast's primary attack)
+        beast_to_weapon = {
+            "Brown Bear": "BrownBearBite",
+            "Giant Spider": "GiantSpiderBite",
+        }
+
+        try:
+            # Load weapons from weapons.json
+            with open(weapons_path, 'r') as f:
+                all_weapons = json.load(f)
+
+            # Find the weapon for this beast
+            weapon_name = beast_to_weapon.get(beast_name)
+            if not weapon_name:
+                self._combat_log_add(f"No weapon mapping for beast {beast_name}!")
+                return
+
+            weapon_dict = next((w for w in all_weapons if w['name'] == weapon_name), None)
+            if not weapon_dict:
+                self._combat_log_add(f"Weapon {weapon_name} not found in weapons.json!")
+                return
+
+            # Convert dict to rpg.Weapon
+            main_weapon = _dict_to_weapon(weapon_dict)
+
+            # Create 3-weapon array: [main, offhand, ranged]
+            weapons_array = [main_weapon, rpg.Weapon(), rpg.Weapon()]
+
+            # Activate Wild Shape in C++ (which now sets the weapons)
+            success = self.combat.activate_wild_shape(self.bm, idx, beast_name, weapons_array, beast_path)
+            if success:
+                agent_name = self.bm.placed_agents[idx].name if idx < len(self.bm.placed_agents) else "Unknown"
+                self._combat_log_add(f"{agent_name}: Transforms into {beast_name}!")
+                self.bonus_used = True
+            else:
+                self._combat_log_add(f"Failed to activate {beast_name}!")
+        except Exception as e:
+            self._combat_log_add(f"Error activating Wild Shape: {e}")
 
     def _show_unarmed_menu(self, mouse_pos):
         """Show the unarmed strike options menu at mouse position."""
@@ -4259,6 +4494,13 @@ class App:
                 "agent_cleric_subclass": s.cleric_subclass.name,
                 "agent_eldritch_invocations": list(s.eldritch_invocations),
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
+                # Druid state
+                "druid_wild_shape_active": s.wild_shape_active,
+                "druid_wild_shape_form_name": s.wild_shape_form_name,
+                "druid_starry_form_active": s.starry_form_active,
+                "druid_starry_constellation": s.starry_constellation,
+                "druid_land_type": s.land_type,
+                "druid_wrath_of_sea_active": s.wrath_of_sea_active,
                 "spell_slots_max":  list(s.spell_slots_max),
                 "spell_slots_cur":  list(s.spell_slots_remaining),
             })
@@ -4330,38 +4572,20 @@ class App:
             sd = t.get("stats")
             if not sd:
                 continue
-            s = rpg.Stats()
-            s.str = int(sd.get("str", 10))
-            s.dex = int(sd.get("dex", 10))
-            s.con = int(sd.get("con", 10))
-            s.intel = int(sd.get("intel", 10))
-            s.wis = int(sd.get("wis", 10))
-            s.cha = int(sd.get("cha", 10))
-            s.hp_max = int(sd.get("hp_max", 10))
-            s.hp_cur = int(sd.get("hp_cur", s.hp_max))
-            s.base_ac = int(sd.get("ac", 10))
-            s.speed_walk = int(sd.get("speed_walk", 30))
-            s.speed_fly = int(sd.get("speed_fly", 0))
-            s.speed_swim = int(sd.get("speed_swim", 0))
-            s.speed_burrow = int(sd.get("speed_burrow", 0))
-            s.prof_bonus = int(sd.get("prof_bonus", 2))
-            s.num_attacks = int(sd.get("num_attacks", 1))
-            s.save_prof_str = bool(sd.get("save_prof_str", False))
-            s.save_prof_dex = bool(sd.get("save_prof_dex", False))
-            s.save_prof_con = bool(sd.get("save_prof_con", False))
-            s.save_prof_intel = bool(sd.get("save_prof_intel", False))
-            s.save_prof_wis = bool(sd.get("save_prof_wis", False))
-            s.save_prof_cha = bool(sd.get("save_prof_cha", False))
-            if "spellcasting_ability" in sd:
-                ability_val = sd["spellcasting_ability"]
-                if isinstance(ability_val, str):
-                    ability_map = {"str": 0, "dex": 1, "con": 2, "intel": 3, "wis": 4, "cha": 5}
-                    s.spellcasting_ability = ability_map.get(ability_val, 5)
-                else:
-                    s.spellcasting_ability = int(ability_val) if ability_val else 5
+            s = dict_to_stats(sd)
 
-            # Load temporary HP and damage multipliers
-            s.temp_hp = int(sd.get("temp_hp", 0))
+            # Restore character class and subclasses BEFORE committing stats to engine
+            restore_class_resources(s, t)
+
+            # Restore Druid state if present
+            if t.get("druid_wild_shape_active"):
+                s.wild_shape_active = t.get("druid_wild_shape_active", False)
+                s.wild_shape_form_name = t.get("druid_wild_shape_form_name", "")
+            if t.get("druid_starry_form_active"):
+                s.starry_form_active = t.get("druid_starry_form_active", False)
+                s.starry_constellation = t.get("druid_starry_constellation", 0)
+            s.land_type = t.get("druid_land_type", 0)
+            s.wrath_of_sea_active = t.get("druid_wrath_of_sea_active", False)
 
             # Load magic damage multipliers (resistances/immunities/vulnerabilities)
             magic_damage_names = ["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"]
@@ -4535,55 +4759,6 @@ class App:
             for piece in cpp_armor:
                 if piece.name and not self.combat.can_equip_armor(self.bm, i, piece):
                     print(f"⚠ {self.bm.placed_agents[i].name} wearing {piece.name} (requires STR {piece.str_requirement}, has {agent_stats.str})")
-
-        # Restore character class, level, and spell slots to C++ Stats objects
-        for i, t in enumerate(agent_data):
-            if i >= len(self.bm.placed_agents):
-                break
-            stats = self.combat.get_agent_stats(self.bm, i)
-            class_name = t.get("agent_class", "None")
-            char_level = int(t.get("agent_char_level", 1))
-            stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
-            # Restore subclass BEFORE initializing resources (resource init may check subclass)
-            barb_subclass_name = t.get("agent_barbarian_subclass", "NONE")
-            if barb_subclass_name != "NONE":
-                stats.barbarian_subclass = getattr(rpg.BarbianSubclass, barb_subclass_name)
-            wiz_subclass_name = t.get("agent_wizard_subclass", "NONE")
-            if wiz_subclass_name != "NONE":
-                stats.wizard_subclass = getattr(rpg.WizardSubclass, wiz_subclass_name)
-            fighter_subclass_name = t.get("agent_fighter_subclass", "NONE")
-            if fighter_subclass_name != "NONE":
-                stats.fighter_subclass = getattr(rpg.FighterSubclass, fighter_subclass_name)
-            druid_circle_name = t.get("agent_druid_circle", "NONE")
-            if druid_circle_name != "NONE":
-                stats.druid_circle = getattr(rpg.DruidCircle, druid_circle_name)
-            monk_subclass_name = t.get("agent_monk_subclass", "NONE")
-            if monk_subclass_name != "NONE":
-                stats.monk_subclass = getattr(rpg.MonkSubclass, monk_subclass_name)
-            paladin_oath_name = t.get("agent_paladin_oath", "NONE")
-            if paladin_oath_name != "NONE":
-                stats.paladin_oath = getattr(rpg.PaladinOath, paladin_oath_name)
-            warlock_subclass_name = t.get("agent_warlock_subclass", "NONE")
-            if warlock_subclass_name != "NONE":
-                stats.warlock_subclass = getattr(rpg.WarlockSubclass, warlock_subclass_name)
-            rogue_subclass_name = t.get("agent_rogue_subclass", "NONE")
-            if rogue_subclass_name != "NONE":
-                stats.rogue_subclass = getattr(rpg.RogueSubclass, rogue_subclass_name)
-            cleric_subclass_name = t.get("agent_cleric_subclass", "NONE")
-            if cleric_subclass_name != "NONE":
-                stats.cleric_subclass = getattr(rpg.ClericSubclass, cleric_subclass_name)
-            stats.eldritch_invocations = list(t.get("agent_eldritch_invocations", []))
-            # Fiend L10 Fiendish Resilience: chosen damage type must be restored BEFORE
-            # initialize_class_resources so the resistance multiplier re-applies.
-            stats.fiendish_resilience_type = int(t.get("agent_fiendish_resilience_type", -1))
-            # Initialize class resources (Rage, Focus Points, etc.)
-            # This must come AFTER setting subclass since resource init may check subclass
-            stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
-            # Restore remaining spell slots if they were saved
-            slots_cur = t.get("spell_slots_cur")
-            if slots_cur:
-                stats.spell_slots_remaining = list(slots_cur)
-            self.combat.set_agent_stats(self.bm, i, stats)
 
         # Restore NPC spell mechanics if present
         for i, t in enumerate(agent_data):
@@ -5869,6 +6044,23 @@ class App:
                 self.btn_cbt_charge_arcane_ward.draw(self.screen)
                 y += B + gap
 
+        # Wild Shape button (Druid L2+)
+        if not self.bonus_used and 0 <= cur_idx < len(agents):
+            cur_stats = self.bm.placed_agents[cur_idx].stats
+            if (cur_stats.character_class == rpg.CharacterClass.Druid and
+                cur_stats.char_level >= 2):
+                if cur_stats.wild_shape_active:
+                    txt(f"🐺 {cur_stats.wild_shape_form_name}", lx, y, COL_LABEL)
+                    y += 12
+                    self.btn_cbt_wild_shape.text = "Exit Wild Shape"
+                else:
+                    self.btn_cbt_wild_shape.text = "🐺 Wild Shape"
+                self.btn_cbt_wild_shape.rect.x = lx
+                self.btn_cbt_wild_shape.rect.y = y
+                self.btn_cbt_wild_shape.rect.w = W
+                self.btn_cbt_wild_shape.draw(self.screen)
+                y += B + gap
+
         # Shove buttons (only if there are adjacent enemies, outside the spell layout logic)
         if not self.bonus_used:
             _has_adjacent = False
@@ -6632,6 +6824,14 @@ class App:
                                 subclass_name = stats.barbarian_subclass.name
                             elif class_name == "Wizard":
                                 subclass_name = stats.wizard_subclass.name
+                            elif class_name == "Fighter":
+                                subclass_name = stats.fighter_subclass.name
+                            elif class_name == "Druid":
+                                subclass_name = stats.druid_circle.name
+                            elif class_name == "Monk":
+                                subclass_name = stats.monk_subclass.name
+                            elif class_name == "Paladin":
+                                subclass_name = stats.paladin_oath.name
                             elif class_name == "Warlock":
                                 subclass_name = stats.warlock_subclass.name
                             elif class_name == "Rogue":
@@ -7312,6 +7512,8 @@ class App:
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):
                         self._show_arcane_ward_menu()
+                    if self.btn_cbt_wild_shape.clicked(event):
+                        self._show_wild_shape_menu()
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for mv_mt, mv_rect in self._move_type_btns.items():
                         if mv_rect.collidepoint(event.pos):

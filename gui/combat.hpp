@@ -210,6 +210,18 @@ struct OpenHandRiderResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Result of a Battle Master Maneuver (Trip, Menacing, Pushing)
+// ─────────────────────────────────────────────────────────────────────────────
+struct ManeuverResult {
+    bool valid = false;             // maneuver_available was set on the attacker
+    int  maneuver_type = -1;        // 0=Trip, 1=Menacing, 2=Pushing
+    int  save_dc = 0;               // save DC for Trip/Menacing
+    int  save_roll = 0;             // target's d20 + save modifier
+    bool condition_applied = false; // true if save failed (Prone/Frightened applied)
+    int  push_distance = 0;         // feet pushed (Pushing maneuver only)
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Flurry of Blows result (Monk: two bonus attacks with optional Open Hand rider)
 // ─────────────────────────────────────────────────────────────────────────────
 struct FlurryResult {
@@ -740,6 +752,16 @@ public:
     // Spends 1 Focus Point. Clears the flag and sets open_hand_rider_used.
     OpenHandRiderResult applyOpenHandRider(BattleMap& bm, int attacker_idx, int target_idx, int option) noexcept;
 
+    // Battle Master Maneuver (on-hit): spend 1 Superiority Die and apply one of three riders:
+    // 0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft).
+    // Clears maneuver_available. Returns a ManeuverResult with save details / push distance.
+    ManeuverResult applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept;
+
+    // Battle Master Precision Attack (on-miss): spend 1 Superiority Die, add 1d8/d10 to the
+    // attack roll, and recompute the hit (may convert a miss to a hit with full damage).
+    // Clears maneuver_precision_available. Mutates result in place (mirrors applyGuidedStrike).
+    void applyPrecisionAttackEffect(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
+
     // Monk Flurry of Blows: executes two bonus-action unarmed strikes against the same target,
     // optionally applying an Open Hand rider on each hit (option: 0=Knockdown, 1=Push, 2=DenyReaction, -1=None).
     // Spends 1 Focus Point. Returns both attack results and rider results.
@@ -937,6 +959,15 @@ public:
     // ── RNG control ───────────────────────────────────────────────────────
     void reseed(uint32_t seed);
 
+    // ── Druid Wild Shape & Starry Form ────────────────────────────────────────
+    bool activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::array<Weapon,3> weapons, const std::string& beast_forms_path = "") noexcept;
+    bool deactivateWildShape(BattleMap& bm, int idx) noexcept;
+    bool activateStarryForm(BattleMap& bm, int idx, int constellation) noexcept;
+    bool deactivateStarryForm(BattleMap& bm, int idx) noexcept;
+    bool activateWrathOfSea(BattleMap& bm, int idx) noexcept;
+    bool deactivateWrathOfSea(BattleMap& bm, int idx) noexcept;
+    int  applyDragonMinRoll(BattleMap& bm, int idx, int d20_roll) noexcept;
+
 private:
     std::mt19937 rng_;
 
@@ -982,7 +1013,7 @@ private:
 
     // Emit a message to the logger (if attached).
     template<typename... Args>
-    void log_(std::format_string<Args...> fmt, Args&&... args) {
+    void log_(std::format_string<Args...> fmt, Args&&... args) const {
         if (logger_) logger_->log(std::format(fmt, std::forward<Args>(args)...));
     }
 

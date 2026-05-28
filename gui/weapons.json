@@ -702,5 +702,39 @@
     "physical_damage_types": [{"type": "Bludgeoning", "num_dice": 1, "die_size": 8}],
     "magic_damage_types": [],
     "sprite_path": ""
+  },
+  {
+    "name": "BrownBearBite",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 0,
+    "long_range_ft": 0,
+    "finesse": false,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "mastery": "Topple",
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 8}],
+    "magic_damage_types": [],
+    "sprite_path": ""
+  },
+  {
+    "name": "GiantSpiderBite",
+    "type": "melee",
+    "reach_ft": 5,
+    "normal_range_ft": 0,
+    "long_range_ft": 0,
+    "finesse": false,
+    "thrown": false,
+    "proficient": true,
+    "off_hand": false,
+    "mastery": "Poison",
+    "bonus_hit": 0,
+    "bonus_damage": 0,
+    "physical_damage_types": [{"type": "Piercing", "num_dice": 1, "die_size": 8}],
+    "magic_damage_types": [],
+    "sprite_path": ""
   }
 ]

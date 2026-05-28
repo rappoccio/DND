@@ -23,6 +23,7 @@ enum class WeaponMastery {
     Cleave,   // hit → one extra attack vs a 2nd creature within 5 ft (no ability mod), 1/turn
     Graze,    // miss → deal damage equal to the attack ability modifier
     Nick,     // the light-weapon extra attack is part of the Attack action (frees the bonus action)
+    Poison,   // hit → target is Poisoned (disadvantage on attacks/checks), 1/turn
     Push,     // hit → push a Large-or-smaller target 10 ft straight away
     Sap,       // hit → target has disadvantage on its next attack roll
     Slow,     // hit + damage → target's Speed -10 ft until the start of your next turn

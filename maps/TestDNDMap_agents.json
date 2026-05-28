@@ -66,6 +66,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -129,9 +135,9 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "main_hand": "Unarmed",
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -163,6 +169,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         4,
         3,
@@ -226,9 +238,9 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "main_hand": "Unarmed",
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -257,6 +269,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -338,8 +356,8 @@
       },
       "weapons": {
         "main_hand": "UnarmedStunningFire",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -363,6 +381,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -426,9 +450,9 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "main_hand": "Unarmed",
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -456,6 +480,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -508,7 +538,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 280,
+        "speed_walk": 320,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -558,6 +588,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -621,9 +657,9 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "main_hand": "Unarmed",
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -655,6 +691,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         4,
         3,
@@ -719,7 +761,7 @@
       },
       "weapons": {
         "main_hand": "Dagger",
-        "off_hand": "Unnamed",
+        "off_hand": "Unarmed",
         "ranged": "Longbow"
       },
       "armor": {
@@ -750,6 +792,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -839,6 +887,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -902,9 +956,9 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unnamed",
-        "off_hand": "Unnamed",
-        "ranged": "Unnamed"
+        "main_hand": "Unarmed",
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -940,6 +994,12 @@
       "agent_cleric_subclass": "LightDomain",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         4,
         3,
@@ -1005,7 +1065,7 @@
       "weapons": {
         "main_hand": "UnarmedStunningFire",
         "off_hand": "Dagger",
-        "ranged": "Unnamed"
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -1033,6 +1093,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -1084,7 +1150,7 @@
         "cha": 8,
         "hp_max": 95,
         "hp_cur": 95,
-        "ac": 18,
+        "ac": 10,
         "speed_walk": 30,
         "speed_swim": 0,
         "speed_fly": 0,
@@ -1115,7 +1181,7 @@
       },
       "armor": {
         "helmet": "",
-        "chest": "",
+        "chest": "Plate",
         "leggings": "",
         "boots": "",
         "gloves": "",
@@ -1125,7 +1191,7 @@
       "agent_class": "Fighter",
       "agent_char_level": 9,
       "agent_barbarian_subclass": "NONE",
-      "agent_fighter_subclass": "NONE",
+      "agent_fighter_subclass": "BattleMaster",
       "agent_druid_circle": "NONE",
       "agent_monk_subclass": "NONE",
       "agent_paladin_oath": "NONE",
@@ -1135,6 +1201,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -1200,7 +1272,7 @@
       "weapons": {
         "main_hand": "MonkUnarmed",
         "off_hand": "MonkUnarmed",
-        "ranged": "Crossbow"
+        "ranged": "Unarmed"
       },
       "armor": {
         "helmet": "",
@@ -1224,6 +1296,12 @@
       "agent_cleric_subclass": "NONE",
       "agent_eldritch_invocations": [],
       "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
         0,
         0,
@@ -1240,6 +1318,101 @@
         0,
         0,
         0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Varrah",
+      "sprite_path": "",
+      "size": 1,
+      "col": 7,
+      "row": 7,
+      "stats": {
+        "str": 10,
+        "dex": 14,
+        "con": 16,
+        "intel": 8,
+        "wis": 20,
+        "cha": 8,
+        "hp_max": 65,
+        "hp_cur": 65,
+        "ac": 10,
+        "speed_walk": 30,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 2,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": false,
+        "save_prof_intel": true,
+        "save_prof_wis": true,
+        "save_prof_cha": false,
+        "num_attacks": 1,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "spellcasting_ability": "wis",
+        "temp_hp": 0,
+        "magic_resistances": [],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
+      },
+      "weapons": {
+        "main_hand": "Unarmed",
+        "off_hand": "Unarmed",
+        "ranged": "Unarmed"
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [],
+      "agent_class": "Druid",
+      "agent_char_level": 9,
+      "agent_barbarian_subclass": "NONE",
+      "agent_fighter_subclass": "NONE",
+      "agent_druid_circle": "CircleOfMoon",
+      "agent_monk_subclass": "NONE",
+      "agent_paladin_oath": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
+      "agent_eldritch_invocations": [],
+      "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
+      "spell_slots_max": [
+        4,
+        3,
+        3,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        4,
+        3,
+        3,
+        1,
         0,
         0,
         0,

@@ -55,6 +55,46 @@ def dict_to_stats(stats_dict):
     return stats
 
 
+def restore_class_resources(stats, agent_dict, rpg_module=None):
+    """Restore character class, subclass, and resources from a saved agent dict."""
+    if rpg_module is None:
+        rpg_module = rpg
+    class_name = agent_dict.get("agent_class", "None")
+    char_level = int(agent_dict.get("agent_char_level", 1))
+    stats.set_class_level(getattr(rpg_module.CharacterClass, class_name), char_level)
+    barb = agent_dict.get("agent_barbarian_subclass", "NONE")
+    if barb != "NONE":
+        stats.barbarian_subclass = getattr(rpg_module.BarbianSubclass, barb)
+    wiz = agent_dict.get("agent_wizard_subclass", "NONE")
+    if wiz != "NONE":
+        stats.wizard_subclass = getattr(rpg_module.WizardSubclass, wiz)
+    ftr = agent_dict.get("agent_fighter_subclass", "NONE")
+    if ftr != "NONE":
+        stats.fighter_subclass = getattr(rpg_module.FighterSubclass, ftr)
+    drd = agent_dict.get("agent_druid_circle", "NONE")
+    if drd != "NONE":
+        stats.druid_circle = getattr(rpg_module.DruidCircle, drd)
+    mnk = agent_dict.get("agent_monk_subclass", "NONE")
+    if mnk != "NONE":
+        stats.monk_subclass = getattr(rpg_module.MonkSubclass, mnk)
+    pal = agent_dict.get("agent_paladin_oath", "NONE")
+    if pal != "NONE":
+        stats.paladin_oath = getattr(rpg_module.PaladinOath, pal)
+    wlk = agent_dict.get("agent_warlock_subclass", "NONE")
+    if wlk != "NONE":
+        stats.warlock_subclass = getattr(rpg_module.WarlockSubclass, wlk)
+    rog = agent_dict.get("agent_rogue_subclass", "NONE")
+    if rog != "NONE":
+        stats.rogue_subclass = getattr(rpg_module.RogueSubclass, rog)
+    clr = agent_dict.get("agent_cleric_subclass", "NONE")
+    if clr != "NONE":
+        stats.cleric_subclass = getattr(rpg_module.ClericSubclass, clr)
+    stats.eldritch_invocations = list(agent_dict.get("agent_eldritch_invocations", []))
+    stats.fiendish_resilience_type = int(agent_dict.get("agent_fiendish_resilience_type", -1))
+    stats.initialize_class_resources(getattr(rpg_module.CharacterClass, class_name), char_level)
+    slots_cur = agent_dict.get("spell_slots_cur")
+    if slots_cur:
+        stats.spell_slots_remaining = list(slots_cur)
 
 
 def load_agents_from_json(json_path, bm, combat, sprites_dir="sprites"):
@@ -164,28 +204,12 @@ def load_agents_from_json(json_path, bm, combat, sprites_dir="sprites"):
 
         combat.set_agent_weapons(bm, i, cpp_weapons)
 
-    # Restore character class and level
+    # Restore character class, level, and all subclasses
     for i, t in enumerate(agent_data):
         if i >= len(bm.placed_agents):
             break
         stats = combat.get_agent_stats(bm, i)
-        class_name = t.get("agent_class", "None")
-        char_level = int(t.get("agent_char_level", 1))
-        stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
-
-        barb_subclass_name = t.get("agent_barbarian_subclass", "NONE")
-        if barb_subclass_name != "NONE":
-            stats.barbarian_subclass = getattr(rpg.BarbianSubclass, barb_subclass_name)
-        wiz_subclass_name = t.get("agent_wizard_subclass", "NONE")
-        if wiz_subclass_name != "NONE":
-            stats.wizard_subclass = getattr(rpg.WizardSubclass, wiz_subclass_name)
-
-        stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
-
-        slots_cur = t.get("spell_slots_cur")
-        if slots_cur:
-            stats.spell_slots_remaining = list(slots_cur)
-
+        restore_class_resources(stats, t)
         combat.set_agent_stats(bm, i, stats)
 
     return True

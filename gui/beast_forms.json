@@ -1,0 +1,137 @@
+[
+  {
+    "name": "Wolf",
+    "cr": 0.25,
+    "hp": 11,
+    "ac": 13,
+    "str": 12,
+    "dex": 15,
+    "con": 12,
+    "fly_speed": false,
+    "attacks": [
+      {
+        "name": "Bite",
+        "attack_bonus": 4,
+        "num_dice": 2,
+        "die_size": 4,
+        "bonus": 2,
+        "damage_type": "Piercing",
+        "condition_rider": null
+      }
+    ]
+  },
+  {
+    "name": "Spider",
+    "cr": 0.25,
+    "hp": 10,
+    "ac": 14,
+    "str": 10,
+    "dex": 16,
+    "con": 11,
+    "fly_speed": false,
+    "attacks": [
+      {
+        "name": "Bite",
+        "attack_bonus": 4,
+        "num_dice": 1,
+        "die_size": 6,
+        "bonus": 2,
+        "damage_type": "Piercing",
+        "condition_rider": "Poisoned"
+      }
+    ]
+  },
+  {
+    "name": "Riding Horse",
+    "cr": 0.125,
+    "hp": 13,
+    "ac": 10,
+    "str": 18,
+    "dex": 12,
+    "con": 12,
+    "fly_speed": false,
+    "attacks": [
+      {
+        "name": "Hooves",
+        "attack_bonus": 4,
+        "num_dice": 2,
+        "die_size": 4,
+        "bonus": 4,
+        "damage_type": "Bludgeoning",
+        "condition_rider": null
+      }
+    ]
+  },
+  {
+    "name": "Brown Bear",
+    "cr": 1.0,
+    "hp": 22,
+    "ac": 11,
+    "str": 17,
+    "dex": 12,
+    "con": 15,
+    "fly_speed": false,
+    "attacks": [
+      {
+        "name": "Bite",
+        "attack_bonus": 5,
+        "num_dice": 1,
+        "die_size": 8,
+        "bonus": 3,
+        "damage_type": "Piercing",
+        "condition_rider": null
+      }
+    ]
+  },
+  {
+    "name": "Giant Eagle",
+    "cr": 1.0,
+    "hp": 26,
+    "ac": 13,
+    "str": 16,
+    "dex": 17,
+    "con": 13,
+    "fly_speed": true,
+    "attacks": [
+      {
+        "name": "Talons",
+        "attack_bonus": 5,
+        "num_dice": 2,
+        "die_size": 6,
+        "bonus": 3,
+        "damage_type": "Slashing",
+        "condition_rider": null
+      },
+      {
+        "name": "Beak",
+        "attack_bonus": 5,
+        "num_dice": 1,
+        "die_size": 6,
+        "bonus": 3,
+        "damage_type": "Piercing",
+        "condition_rider": null
+      }
+    ]
+  },
+  {
+    "name": "Giant Spider",
+    "cr": 1.0,
+    "hp": 26,
+    "ac": 14,
+    "str": 14,
+    "dex": 16,
+    "con": 12,
+    "fly_speed": false,
+    "attacks": [
+      {
+        "name": "Bite",
+        "attack_bonus": 5,
+        "num_dice": 1,
+        "die_size": 8,
+        "bonus": 3,
+        "damage_type": "Piercing",
+        "condition_rider": "Poisoned"
+      }
+    ]
+  }
+]

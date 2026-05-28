@@ -235,7 +235,7 @@ enum FighterSubclass {
 // ── Druid Circle Enum (2024 D&D) ──────────────────────────────────────
 enum DruidCircle {
     DruidCircleNone = 0,
-    CircleOfMoon, CircleOfLand, CircleOfSpores, CircleOfWildfire,
+    CircleOfMoon, CircleOfLand, CircleOfSea, CircleOfStars, CircleOfSpores, CircleOfWildfire,
     NumDruidCircle
 };
 

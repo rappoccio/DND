@@ -326,6 +326,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
         .def_readwrite("crit_threshold", &Agent::Stats::crit_threshold,
              "d20 roll >= this is a critical hit (default 20, Champion lowers it to 19/18)")
+        .def_readwrite("superiority_die_size", &Agent::Stats::superiority_die_size,
+             "Battle Master: superiority die size (8 at L3-9, 10 at L10+)")
         .def_readwrite("fighter_subclass", &Agent::Stats::fighter_subclass,
              "Fighter subclass (only valid when character_class == Fighter)")
         .def_readwrite("druid_circle", &Agent::Stats::druid_circle,
@@ -344,6 +346,35 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Cleric divine domain (only valid when character_class == Cleric)")
         .def_readwrite("blessed_strike", &Agent::Stats::blessed_strike,
              "Cleric L7 Blessed Strikes choice: DivineStrike or PotentSpellcasting.")
+        // Druid Features
+        .def_readwrite("wild_shape_active", &Agent::Stats::wild_shape_active,
+             "True when Druid is in an active Wild Shape form.")
+        .def_readwrite("wild_shape_form_name", &Agent::Stats::wild_shape_form_name,
+             "Beast form name (e.g., 'Brown Bear') when wild_shape_active is true.")
+        .def_readwrite("wild_shape_saved_ac", &Agent::Stats::wild_shape_saved_ac,
+             "Saved AC before entering Wild Shape (to restore on exit).")
+        .def_readwrite("wild_shape_saved_str", &Agent::Stats::wild_shape_saved_str,
+             "Saved STR before entering Wild Shape.")
+        .def_readwrite("wild_shape_saved_dex", &Agent::Stats::wild_shape_saved_dex,
+             "Saved DEX before entering Wild Shape.")
+        .def_readwrite("wild_shape_saved_con", &Agent::Stats::wild_shape_saved_con,
+             "Saved CON before entering Wild Shape.")
+        .def_readwrite("starry_form_active", &Agent::Stats::starry_form_active,
+             "True when Circle of the Stars Druid is in Starry Form.")
+        .def_readwrite("starry_constellation", &Agent::Stats::starry_constellation,
+             "Starry Form constellation choice: 0=none, 1=Archer, 2=Chalice, 3=Dragon.")
+        .def_readwrite("land_type", &Agent::Stats::land_type,
+             "Circle of the Land type: 0=none, 1=Arid, 2=Polar, 3=Temperate, 4=Tropical.")
+        .def_readwrite("wrath_of_sea_active", &Agent::Stats::wrath_of_sea_active,
+             "True when Circle of the Sea Wrath of the Sea is active.")
+        .def_readwrite("lunar_radiance_available", &Agent::Stats::lunar_radiance_available,
+             "Circle of the Moon L6+ feature: Wild Shape attacks can deal Radiant damage.")
+        .def_readwrite("improved_lunar_radiance_available", &Agent::Stats::improved_lunar_radiance_available,
+             "Circle of the Moon L14+ feature: Improved Lunar Radiance rider available.")
+        .def_readwrite("primal_strike_active", &Agent::Stats::primal_strike_active,
+             "Druid L7 Primal Strike rider is active.")
+        .def_readwrite("primal_strike_damage_type", &Agent::Stats::primal_strike_damage_type,
+             "Primal Strike elemental damage type choice.")
         .def_readwrite("is_undead", &Agent::Stats::is_undead,
              "Creature type is Undead (a valid Turn Undead target).")
         .def_readwrite("weapon_mastery", &Agent::Stats::weapon_mastery,
@@ -418,6 +449,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("divine_strike_available", &Agent::Conditions::divine_strike_available)
         .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
+        .def_readwrite("maneuver_available", &Agent::Conditions::maneuver_available)
+        .def_readwrite("maneuver_precision_available", &Agent::Conditions::maneuver_precision_available)
         .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
         .def_readwrite("sundering_target_idx", &Agent::Conditions::sundering_target_idx)
         .def_readwrite("staggered_next_save", &Agent::Conditions::staggered_next_save)
@@ -729,6 +762,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("NONE", DruidCircleNone)
         .value("CircleOfMoon", CircleOfMoon)
         .value("CircleOfLand", CircleOfLand)
+        .value("CircleOfSea", CircleOfSea)
+        .value("CircleOfStars", CircleOfStars)
         .value("CircleOfSpores", CircleOfSpores)
         .value("CircleOfWildfire", CircleOfWildfire)
         .export_values();
@@ -1013,6 +1048,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("save_dc",   &StunningStrikeResult::save_dc)
         .def_readonly("save_roll", &StunningStrikeResult::save_roll)
         .def_readonly("stunned",   &StunningStrikeResult::stunned);
+
+    // ── ManeuverResult (Battle Master Maneuvers) ─────────────────────────────
+    py::class_<ManeuverResult>(m, "ManeuverResult")
+        .def_readonly("valid",              &ManeuverResult::valid)
+        .def_readonly("maneuver_type",      &ManeuverResult::maneuver_type)
+        .def_readonly("save_dc",            &ManeuverResult::save_dc)
+        .def_readonly("save_roll",          &ManeuverResult::save_roll)
+        .def_readonly("condition_applied",  &ManeuverResult::condition_applied)
+        .def_readonly("push_distance",      &ManeuverResult::push_distance);
 
     // ── OpenHandRiderResult ───────────────────────────────────────────────────
     py::class_<OpenHandRiderResult>(m, "OpenHandRiderResult")
@@ -1662,6 +1706,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Monk Warrior of the Open Hand: after a qualifying Flurry hit (conditions.open_hand_rider_available),\n"
              "spend 1 Focus Point and apply one of three riders: 0=Knockdown (STR save or Prone),\n"
              "1=Push (5 feet), 2=Deny Reaction. Returns an OpenHandRiderResult.")
+        .def("apply_maneuver_effect",
+             &CombatEngine::applyManeuverEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("maneuver_type"),
+             "Battle Master Maneuver: after a qualifying hit (conditions.maneuver_available),\n"
+             "spend 1 Superiority Die and apply one of three riders:\n"
+             "0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft).\n"
+             "Returns a ManeuverResult with save details / push distance.")
+        .def("apply_precision_attack_effect",
+             &CombatEngine::applyPrecisionAttackEffect,
+             py::arg("battle_map"), py::arg("action"), py::arg("result"),
+             "Battle Master Precision Attack: after a non-fumble miss (conditions.maneuver_precision_available),\n"
+             "spend 1 Superiority Die, add 1d8/d10 to the roll, and recompute the hit.\n"
+             "May convert a miss to a hit with full weapon damage. Mutates result in place.")
         .def("execute_flurry_of_blows",
              &CombatEngine::executeFlurryOfBlows,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("rider_option"),
@@ -1901,7 +1958,38 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Call compute_visibility() first to populate the cache.")
 
         // RNG
-        .def("reseed", &CombatEngine::reseed, py::arg("seed"));
+        .def("reseed", &CombatEngine::reseed, py::arg("seed"))
+
+        // ── Druid Wild Shape & Starry Form ──────────────────────────────────
+        .def("activate_wild_shape", &CombatEngine::activateWildShape,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("beast_name"), py::arg("weapons"), py::arg("beast_forms_path") = "",
+             "Activate Druid Wild Shape: spend 1 use, swap to beast form stats, grant Temp HP.\n"
+             "For Circle of the Moon: Temp HP = 3×level, AC = max(beast_ac, 13+WIS).\n"
+             "For other circles: Temp HP = 1×level, AC = beast_ac.\n"
+             "weapons: array of 3 Weapon objects for the beast form.\n"
+             "Optional beast_forms_path: if provided, use this path to load beast_forms.json; otherwise try standard locations.")
+        .def("deactivate_wild_shape", &CombatEngine::deactivateWildShape,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Deactivate Druid Wild Shape: restore original AC, STR, DEX, CON, and weapons.")
+        .def("activate_starry_form", &CombatEngine::activateStarryForm,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("constellation"),
+             "Activate Druid Starry Form (Circle of the Stars): spend 1 Wild Shape use.\n"
+             "constellation: 1=Archer, 2=Chalice, 3=Dragon.\n"
+             "Dragon at L10+: add fly speed. L14+: add B/P/S resistance.")
+        .def("deactivate_starry_form", &CombatEngine::deactivateStarryForm,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Deactivate Druid Starry Form: restore fly speed and resistances.")
+        .def("activate_wrath_of_sea", &CombatEngine::activateWrathOfSea,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Activate Druid Wrath of the Sea (Circle of the Sea): spend 1 Wild Shape use.\n"
+             "At L10+: add fly speed and resistances to Cold/Lightning/Thunder.")
+        .def("deactivate_wrath_of_sea", &CombatEngine::deactivateWrathOfSea,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Deactivate Druid Wrath of the Sea: restore fly speed and resistances.")
+        .def("apply_dragon_min_roll", &CombatEngine::applyDragonMinRoll,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("d20_roll"),
+             "Apply Dragon Constellation min-roll-10 for CON concentration saves.\n"
+             "Returns max(d20_roll, 10) if conditions met, else returns d20_roll unchanged.");
 
     // ── MovementType ─────────────────────────────────────────────────────────
     py::enum_<MovementType>(m, "MovementType")

@@ -1341,10 +1341,16 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.staggered_next_save = false;
         // Weapon Mastery fallback resets (also consumed on-use / in Agent::turn()).
         cond.sapped = false;
+        cond.sap_used_this_turn = false;
         cond.slowed = false;
+        cond.slow_used_this_turn = false;
         cond.vex_target_idx = -1;
+        cond.vex_used_this_turn = false;
         cond.push_available = false;
+        cond.push_used_this_turn = false;
+        cond.poison_used_this_turn = false;
         cond.topple_available = false;
+        cond.topple_used_this_turn = false;
         cond.cleave_available = false;
         cond.cleave_used_this_turn = false;
         bm.setAgentConditions(i, cond);
@@ -1944,6 +1950,30 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
+    // ── Battle Master Maneuver eligibility (on-hit) ───────────────────────────
+    // On any hit, a Battle Master with Superiority Dice remaining can spend one die
+    // for a Maneuver rider (Trip/Menacing/Pushing). Flagged here; applied out-of-band.
+    if (r.hit && atk_stats.character_class == CharacterClass::Fighter &&
+        atk_stats.fighter_subclass == BattleMasterPath) {
+        const Resource* sd = atk_stats.getResource("Superiority Dice");
+        if (sd && sd->current > 0) {
+            updated_atk_cond.maneuver_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
+    // ── Battle Master Precision Attack eligibility (on-miss) ─────────────────
+    // On a non-fumble miss, a Battle Master with Superiority Dice can spend one die
+    // to add 1d8/d10 to the roll and potentially convert the miss to a hit.
+    if (!r.hit && !r.fumble && atk_stats.character_class == CharacterClass::Fighter &&
+        atk_stats.fighter_subclass == BattleMasterPath) {
+        const Resource* sd = atk_stats.getResource("Superiority Dice");
+        if (sd && sd->current > 0) {
+            updated_atk_cond.maneuver_precision_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
     // ── Cleric Blessed Strikes — Divine Strike eligibility ────────────────
     // L7+ Clerics who chose Divine Strike can, once per turn, add Necrotic/Radiant to a weapon
     // hit. Like Brutal/Cunning Strike, the extra die is applied out of band (applyDivineStrikeEffect).
@@ -2122,27 +2152,31 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
             if (r.hit) {
                 switch (w.mastery) {
                 case WeaponMastery::Sap: {
-                    Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
-                    tc.sapped = true;
-                    bm.setAgentConditions(action.target_idx, tc);
-                    log_("{} is Sapped (disadvantage on its next attack)",
-                         agentName(bm, action.target_idx));
+                    if (!atk_cond.sap_used_this_turn) {
+                        Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+                        tc.sapped = true;
+                        bm.setAgentConditions(action.target_idx, tc);
+                        updated_atk_cond.sap_used_this_turn = true; dirty_atk = true;
+                        log_("{} is Sapped (disadvantage on its next attack)",
+                             agentName(bm, action.target_idx));
+                    }
                     break;
                 }
                 case WeaponMastery::Slow: {
-                    if (r.total_damage > 0) {
+                    if (!atk_cond.slow_used_this_turn && r.total_damage > 0) {
                         Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
                         tc.slowed = true;
                         bm.setAgentConditions(action.target_idx, tc);
+                        updated_atk_cond.slow_used_this_turn = true; dirty_atk = true;
                         log_("{} is Slowed (Speed -10 ft until your next turn)",
                              agentName(bm, action.target_idx));
                     }
                     break;
                 }
                 case WeaponMastery::Vex: {
-                    if (r.total_damage > 0) {
+                    if (!atk_cond.vex_used_this_turn && r.total_damage > 0) {
                         updated_atk_cond.vex_target_idx = action.target_idx;
-                        dirty_atk = true;
+                        updated_atk_cond.vex_used_this_turn = true; dirty_atk = true;
                         log_("{} gains Vex (advantage on next attack vs {})",
                              agentName(bm, action.attacker_idx),
                              agentName(bm, action.target_idx));
@@ -2150,11 +2184,27 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                     break;
                 }
                 case WeaponMastery::Push: {
-                    if (tgt_sz <= 2) { updated_atk_cond.push_available = true; dirty_atk = true; }
+                    if (!atk_cond.push_used_this_turn && tgt_sz <= 2) {
+                        updated_atk_cond.push_available = true;
+                        updated_atk_cond.push_used_this_turn = true; dirty_atk = true;
+                    }
                     break;
                 }
                 case WeaponMastery::Topple: {
-                    updated_atk_cond.topple_available = true; dirty_atk = true;
+                    if (!atk_cond.topple_used_this_turn) {
+                        updated_atk_cond.topple_available = true; dirty_atk = true;
+                    }
+                    break;
+                }
+                case WeaponMastery::Poison: {
+                    if (!atk_cond.poison_used_this_turn) {
+                        Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+                        tc.poisoned = true;
+                        bm.setAgentConditions(action.target_idx, tc);
+                        updated_atk_cond.poison_used_this_turn = true; dirty_atk = true;
+                        log_("{} is Poisoned (disadvantage on attacks and ability checks)",
+                             agentName(bm, action.target_idx));
+                    }
                     break;
                 }
                 case WeaponMastery::Cleave: {
@@ -2376,6 +2426,12 @@ std::vector<Attack> CombatEngine::availableAttacks(
     const PlacedAgent& atk = agents[static_cast<std::size_t>(attacker_idx)];
     int atk_sz = atk.agent->getSize();
 
+    Agent::Stats stats = bm.getAgentStats(attacker_idx);
+    log_("[AVAILABLE_ATTACKS] Agent {} has {} weapons, has_offhand_attack={}", attacker_idx, atk.weapons.size(), stats.has_offhand_attack);
+    for (std::size_t i = 0; i < atk.weapons.size(); ++i) {
+        log_("[AVAILABLE_ATTACKS] Weapon {}: '{}' off_hand={}", i, atk.weapons[i].name, atk.weapons[i].off_hand);
+    }
+
     for (int ti = 0; ti < n; ++ti) {
         if (ti == attacker_idx) continue;
         const PlacedAgent& tgt = agents[static_cast<std::size_t>(ti)];
@@ -2383,8 +2439,10 @@ std::vector<Attack> CombatEngine::availableAttacks(
 
         for (int wi = 0; wi < static_cast<int>(atk.weapons.size()); ++wi) {
             const Weapon& w = atk.weapons[static_cast<std::size_t>(wi)];
-            if (canAttack(w, bm, atk.origin, atk_sz, tgt.origin, tgt_sz))
+            if (canAttack(w, bm, atk.origin, atk_sz, tgt.origin, tgt_sz)) {
+                log_("[AVAILABLE_ATTACKS] Can attack with weapon {}: '{}'", wi, w.name);
                 result.push_back({attacker_idx, ti, wi});
+            }
         }
     }
     return result;
@@ -2872,9 +2930,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     // Apply target's resistance/vulnerability/immunity multiplier
                     float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
                     int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                    std::cerr << "[DAMAGE] Spell attack: type=" << static_cast<int>(roll_info.type)
-                              << " base=" << type_damage << " mult=" << multiplier
-                              << " result=" << modified_damage << std::endl;
+                    log_("[DAMAGE] Spell attack: type={} base={} mult={} result={}", static_cast<int>(roll_info.type), type_damage, multiplier, modified_damage);
                     dmg += modified_damage;
                 }
                 for (const auto& roll_info : sp.physical_damage_rolls) {
@@ -4374,6 +4430,7 @@ int CombatEngine::applyPush(BattleMap& bm, int attacker_idx, int target_idx) noe
     Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
     if (!ac.push_available) return 0;          // only after a qualifying Push hit
     ac.push_available = false;
+    ac.push_used_this_turn = true;             // mark as used (once per turn)
     bm.setAgentConditions(attacker_idx, ac);
 
     const Cell origin = agents[static_cast<std::size_t>(attacker_idx)].origin;
@@ -4394,6 +4451,7 @@ ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int targ
     Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
     if (!ac.topple_available) return res;      // only after a qualifying Topple hit
     ac.topple_available = false;
+    ac.topple_used_this_turn = true;           // mark as used (once per turn)
     bm.setAgentConditions(attacker_idx, ac);
     res.valid = true;
 
@@ -5031,6 +5089,146 @@ void CombatEngine::applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int 
     if (ds_damage > 0) {
         checkConcentrationOnDamage(bm, target_idx, ds_damage);
         processDamageTaken(bm, target_idx, ds_damage);
+    }
+}
+
+ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept
+{
+    ManeuverResult res;
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
+        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return res;
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.maneuver_available) return res;
+
+    res.valid = true;
+    res.maneuver_type = maneuver_type;
+
+    // Spend 1 Superiority Die and clear the flag
+    spendResource(bm, attacker_idx, "Superiority Dice", 1);
+    ac.maneuver_available = false;
+    bm.setAgentConditions(attacker_idx, ac);
+
+    Agent::Stats as = bm.getAgentStats(attacker_idx);
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+
+    // Save DC = 8 + prof + STR mod (melee Battle Master)
+    int str_atk_mod = (as.str - 10) / 2;
+    if (as.str < 10 && (as.str - 10) % 2 != 0) --str_atk_mod;
+    int dc = 8 + as.prof_bonus + str_atk_mod;
+    res.save_dc = dc;
+
+    auto saveMod = [](const Agent::Stats& s, SaveAbility_t ab) -> int {
+        int score = 0; bool prof = false;
+        switch (ab) {
+            case SaveStr: score = s.str; prof = s.save_prof_str; break;
+            case SaveWis: score = s.wis; prof = s.save_prof_wis; break;
+            default:      score = s.str; prof = s.save_prof_str; break;
+        }
+        int m = (score - 10) / 2;
+        if (score < 10 && (score - 10) % 2 != 0) --m;
+        return m + (prof ? s.prof_bonus : 0);
+    };
+
+    if (maneuver_type == 0) {
+        // Trip: STR save or Prone for 1 turn
+        res.save_roll = roll(20) + saveMod(ts, SaveStr);
+        if (res.save_roll < dc) {
+            Agent::Conditions tc = bm.getAgentConditions(target_idx);
+            tc.prone = true;
+            bm.setAgentConditions(target_idx, tc);
+            ActiveAgentCondition cond;
+            cond.agent_idx       = target_idx;
+            cond.caster_idx      = attacker_idx;
+            cond.condition_name  = "Prone";
+            cond.turns_remaining = 1;
+            (void)addAgentCondition(bm, cond);
+            res.condition_applied = true;
+            log_("{} is tripped Prone (Battle Master Tripping Attack — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        } else {
+            log_("{} resists Tripping Attack (Battle Master — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        }
+    } else if (maneuver_type == 1) {
+        // Menacing: WIS save or Frightened for 1 turn
+        res.save_roll = roll(20) + saveMod(ts, SaveWis);
+        if (res.save_roll < dc) {
+            Agent::Conditions tc = bm.getAgentConditions(target_idx);
+            tc.frightened = true;
+            bm.setAgentConditions(target_idx, tc);
+            ActiveAgentCondition cond;
+            cond.agent_idx       = target_idx;
+            cond.caster_idx      = attacker_idx;
+            cond.condition_name  = "Frightened";
+            cond.turns_remaining = 1;
+            (void)addAgentCondition(bm, cond);
+            res.condition_applied = true;
+            log_("{} is Frightened (Battle Master Menacing Attack — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        } else {
+            log_("{} resists Menacing Attack (Battle Master — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        }
+    } else if (maneuver_type == 2) {
+        // Pushing: forceMoveAgent 15 feet
+        const Cell origin = agents[static_cast<std::size_t>(attacker_idx)].origin;
+        int cells_moved = bm.forceMoveAgent(target_idx, origin, 15);
+        res.push_distance = cells_moved * 5;
+        log_("{} is pushed back {} feet (Battle Master Pushing Attack)",
+             agentName(bm, target_idx), res.push_distance);
+    }
+
+    return res;
+}
+
+void CombatEngine::applyPrecisionAttackEffect(BattleMap& bm, const Attack& action, AttackResult& result) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int atk = action.attacker_idx, tgt = action.target_idx;
+    if (atk < 0 || atk >= static_cast<int>(agents.size()) ||
+        tgt < 0 || tgt >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions ac = bm.getAgentConditions(atk);
+    if (!ac.maneuver_precision_available) return;
+
+    Agent::Stats as = bm.getAgentStats(atk);
+    Resource* sd = as.getResource("Superiority Dice");
+    if (!sd || sd->current <= 0) return;
+
+    // Spend 1 die and roll it
+    int die_roll = roll(as.superiority_die_size);
+    sd->spend(1);
+    bm.setAgentStats(atk, as);
+
+    result.total_roll += die_roll;
+    log_("{}: Precision Attack +{} -> {} vs AC {}", agentName(bm, atk), die_roll, result.total_roll, result.target_ac);
+
+    ac.maneuver_precision_available = false;
+    bm.setAgentConditions(atk, ac);
+
+    if (result.hit || result.fumble || result.total_roll < result.target_ac) return;
+
+    // Miss becomes a hit — roll and apply weapon damage (mirrors applyGuidedStrike)
+    result.hit = true;
+    Agent::Stats atk_g = bm.getAgentStats(atk);
+    Agent::Stats tgt_g = bm.getAgentStats(tgt);
+    auto weapons = bm.getAgentWeapons(atk);
+    const Weapon& w = weapons[static_cast<std::size_t>(std::clamp(action.weapon_idx, 0, 2))];
+    rollDamage(w, atk_g, tgt_g, result);
+    result.hp_before = tgt_g.hp_cur;
+    const int dmg = result.total_damage;
+    const int overflow = std::max(0, dmg - tgt_g.temp_hp);
+    tgt_g.temp_hp = std::max(0, tgt_g.temp_hp - dmg);
+    tgt_g.hp_cur  = std::clamp(tgt_g.hp_cur - overflow, 0, tgt_g.hp_max);
+    result.hp_after  = tgt_g.hp_cur;
+    result.target_down = (tgt_g.hp_cur <= 0);
+    bm.setAgentStats(tgt, tgt_g);
+    log_("Precision Attack turns a miss into a hit: {} damage to {}", dmg, agentName(bm, tgt));
+    if (dmg > 0) {
+        checkConcentrationOnDamage(bm, tgt, dmg);
+        processDamageTaken(bm, tgt, dmg);
     }
 }
 
@@ -6432,6 +6630,23 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
           crit_threshold = 19;  // L3: critical on 19-20
         }
       }
+
+      // Battle Master: Superiority Dice resource (4 at L3, 5 at L7, 6 at L10, 7 at L15, 8 at L18)
+      if (fighter_subclass == BattleMasterPath) {
+        int sd_count = 0;
+        if (level >= 18)      sd_count = 8;
+        else if (level >= 15) sd_count = 7;
+        else if (level >= 10) sd_count = 6;
+        else if (level >= 7)  sd_count = 5;
+        else if (level >= 3)  sd_count = 4;
+        if (sd_count > 0) {
+          Resource sd("Superiority Dice", sd_count, 0);
+          sd.short_rest_regen = sd_count;
+          sd.long_rest_regen  = sd_count;
+          resources["Superiority Dice"] = sd;
+          superiority_die_size = (level >= 10) ? 10 : 8;
+        }
+      }
       break;
     }
 
@@ -6442,12 +6657,15 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       save_prof_intel = true;
       save_prof_wis = true;
 
+      // Weapon Mastery (L1+): activate the mastery system for beast form attacks
+      weapon_mastery = 1;
+
       // Wild Shape (L2+): uses scale with level
-      // L2-4: 2 uses, L5-6: 3 uses, L7-8: 4 uses, L9+: 4 uses
+      // L2-5: 2 uses, L6-16: 3 uses, L17+: 4 uses
       int ws_uses = 0;
       if (level >= 2) ws_uses = 2;
-      if (level >= 5) ws_uses = 3;
-      if (level >= 7) ws_uses = 4;
+      if (level >= 6) ws_uses = 3;
+      if (level >= 17) ws_uses = 4;
       // Note: Wild Shape can be used unlimited times at L20, but that's handled separately
 
       Resource ws("Wild Shape", ws_uses, 0);
@@ -6580,6 +6798,249 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
     default:
       break;
   }
+}
+
+// ── Wild Shape Activation / Deactivation ──────────────────────────────────
+bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::array<Weapon,3> weapons, const std::string& beast_forms_path) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+
+  // Check and spend Wild Shape resource
+  Resource* ws = stats.getResource("Wild Shape");
+  if (!ws || !ws->spend(1)) return false;
+
+  // Load beast form from JSON to get stats
+  nlohmann::json beasts;
+  std::vector<std::string> paths;
+  if (!beast_forms_path.empty()) paths.push_back(beast_forms_path);
+  paths.insert(paths.end(), {"beast_forms.json", "./beast_forms.json", "../gui/beast_forms.json"});
+
+  bool loaded = false;
+  for (const auto& path : paths) {
+    try {
+      std::ifstream f(path);
+      if (f.is_open()) {
+        f >> beasts;
+        loaded = true;
+        break;
+      }
+    } catch (...) {}
+  }
+  if (!loaded) return false;
+
+  // Find beast
+  nlohmann::json beast_data;
+  for (const auto& b : beasts) {
+    if (b.value("name", "") == beast_name) {
+      beast_data = b;
+      break;
+    }
+  }
+  if (beast_data.empty()) return false;
+
+  // Save original weapons, stats, and ability scores
+  stats.wild_shape_saved_weapons = getAgentWeapons(bm, idx);
+  stats.wild_shape_saved_ac = stats.base_ac;
+  stats.wild_shape_saved_str = stats.str;
+  stats.wild_shape_saved_dex = stats.dex;
+  stats.wild_shape_saved_con = stats.con;
+
+  stats.str = beast_data.value("str", 10);
+  stats.dex = beast_data.value("dex", 10);
+  stats.con = beast_data.value("con", 10);
+  stats.base_ac = beast_data.value("ac", 10);
+  if (stats.druid_circle == CircleOfMoon) {
+    stats.base_ac = std::max(stats.base_ac, 13 + (stats.wis - 10) / 2);
+  }
+
+  int temp_hp = stats.char_level * (stats.druid_circle == CircleOfMoon ? 3 : 1);
+  stats.temp_hp += temp_hp;
+
+  stats.wild_shape_active = true;
+  stats.wild_shape_form_name = beast_name;
+  stats.num_attacks = 2;
+
+  bm.setAgentStats(idx, stats);
+
+  // Set the beast form weapons on the agent
+  bm.setAgentWeapons(idx, weapons);
+
+  return true;
+}
+
+bool CombatEngine::deactivateWildShape(BattleMap& bm, int idx) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) {
+    log_("[WILD_SHAPE] ERROR: Invalid agent index {} in deactivate", idx);
+    return false;
+  }
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+
+  // Restore saved AC and ability scores
+  if (stats.base_ac > 0 && stats.wild_shape_saved_ac > 0) {
+    stats.base_ac = stats.wild_shape_saved_ac;
+  }
+  if (stats.wild_shape_saved_str > 0) stats.str = stats.wild_shape_saved_str;
+  if (stats.wild_shape_saved_dex > 0) stats.dex = stats.wild_shape_saved_dex;
+  if (stats.wild_shape_saved_con > 0) stats.con = stats.wild_shape_saved_con;
+
+  log_("[WILD_SHAPE] Restored stats: AC={}, STR={}, DEX={}, CON={}", stats.base_ac, stats.str, stats.dex, stats.con);
+
+  // Restore original weapons
+  bm.setAgentWeapons(idx, stats.wild_shape_saved_weapons);
+
+  stats.wild_shape_active = false;
+  stats.wild_shape_form_name = "";
+  stats.lunar_radiance_available = false;
+
+  bm.setAgentStats(idx, stats);
+  log_("[WILD_SHAPE] Deactivated Wild Shape");
+  return true;
+}
+
+// ── Starry Form Activation (Circle of the Stars) ────────────────────────────
+bool CombatEngine::activateStarryForm(BattleMap& bm, int idx, int constellation) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) {
+    log_("[STARRY_FORM] ERROR: Invalid agent index {}", idx);
+    return false;
+  }
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+  log_("[STARRY_FORM] Activating constellation {}", constellation);
+
+  // Check and spend Wild Shape resource
+  Resource* ws = stats.getResource("Wild Shape");
+  if (!ws || !ws->spend(1)) {
+    log_("[STARRY_FORM] ERROR: Could not spend Wild Shape resource");
+    return false;
+  }
+
+  stats.starry_form_active = true;
+  stats.starry_constellation = constellation;
+
+  // Dragon constellation: add fly speed at L10+
+  if (constellation == 3 && stats.char_level >= 10) {  // 3 = Dragon
+    stats.speed_fly = stats.speed_walk;
+    log_("[STARRY_FORM] Added fly speed for Dragon constellation");
+  }
+
+  // Full of Stars (L14): add resistances to B/P/S
+  if (stats.char_level >= 14) {
+    stats.set_physical_damage_multiplier(0, 0.5f);  // Bludgeoning
+    stats.set_physical_damage_multiplier(1, 0.5f);  // Piercing
+    stats.set_physical_damage_multiplier(2, 0.5f);  // Slashing
+    log_("[STARRY_FORM] Added B/P/S resistances at level 14+");
+  }
+
+  bm.setAgentStats(idx, stats);
+  log_("[STARRY_FORM] SUCCESS: Activated constellation {}", constellation);
+  return true;
+}
+
+bool CombatEngine::deactivateStarryForm(BattleMap& bm, int idx) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) {
+    log_("[STARRY_FORM] ERROR: Invalid agent index {} in deactivate", idx);
+    return false;
+  }
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+
+  // Restore fly speed
+  stats.speed_fly = 0;
+
+  // Clear resistances
+  stats.set_physical_damage_multiplier(0, 1.0f);  // Bludgeoning
+  stats.set_physical_damage_multiplier(1, 1.0f);  // Piercing
+  stats.set_physical_damage_multiplier(2, 1.0f);  // Slashing
+
+  stats.starry_form_active = false;
+  stats.starry_constellation = 0;
+
+  bm.setAgentStats(idx, stats);
+  log_("[STARRY_FORM] Deactivated Starry Form");
+  return true;
+}
+
+// ── Wrath of the Sea Activation (Circle of the Sea) ────────────────────────
+bool CombatEngine::activateWrathOfSea(BattleMap& bm, int idx) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) {
+    log_("[WRATH_OF_SEA] ERROR: Invalid agent index {}", idx);
+    return false;
+  }
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+  log_("[WRATH_OF_SEA] Activating Wrath of the Sea");
+
+  // Check and spend Wild Shape resource
+  Resource* ws = stats.getResource("Wild Shape");
+  if (!ws || !ws->spend(1)) {
+    log_("[WRATH_OF_SEA] ERROR: Could not spend Wild Shape resource");
+    return false;
+  }
+
+  stats.wrath_of_sea_active = true;
+
+  // Stormborn (L10): add fly speed and resistances
+  if (stats.char_level >= 10) {
+    stats.speed_fly = stats.speed_walk;
+    // Cold, Lightning, Thunder
+    stats.set_magic_damage_multiplier(1, 0.5f);   // Cold
+    stats.set_magic_damage_multiplier(4, 0.5f);   // Lightning
+    stats.set_magic_damage_multiplier(9, 0.5f);   // Thunder
+    log_("[WRATH_OF_SEA] Added fly speed and resistances at level 10+");
+  }
+
+  bm.setAgentStats(idx, stats);
+  log_("[WRATH_OF_SEA] SUCCESS: Activated Wrath of the Sea");
+  return true;
+}
+
+bool CombatEngine::deactivateWrathOfSea(BattleMap& bm, int idx) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) {
+    log_("[WRATH_OF_SEA] ERROR: Invalid agent index {} in deactivate", idx);
+    return false;
+  }
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+
+  stats.speed_fly = 0;
+  stats.set_magic_damage_multiplier(1, 1.0f);   // Cold
+  stats.set_magic_damage_multiplier(4, 1.0f);   // Lightning
+  stats.set_magic_damage_multiplier(9, 1.0f);   // Thunder
+
+  stats.wrath_of_sea_active = false;
+
+  bm.setAgentStats(idx, stats);
+  log_("[WRATH_OF_SEA] Deactivated Wrath of the Sea");
+  return true;
+}
+
+// ── Dragon Min Roll (Starry Form, Dragon constellation) ──────────────────────
+int CombatEngine::applyDragonMinRoll(BattleMap& bm, int idx, int d20_roll) noexcept {
+  auto agents = bm.placedAgents();
+  if (idx < 0 || idx >= static_cast<int>(agents.size())) {
+    return d20_roll;
+  }
+
+  Agent::Stats stats = bm.getAgentStats(idx);
+
+  // Dragon constellation (value 3) with level 10+ gets min-roll-10
+  if (stats.starry_form_active && stats.starry_constellation == 3 && stats.char_level >= 10) {
+    int result = std::max(d20_roll, 10);
+    if (result > d20_roll) {
+      log_("[DRAGON_MIN_ROLL] Applied min-10: rolled {} -> {}", d20_roll, result);
+    }
+    return result;
+  }
+
+  return d20_roll;
 }
 
 } // namespace rpg

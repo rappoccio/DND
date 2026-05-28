@@ -377,9 +377,40 @@ namespace rpg {
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
       ClericSubclass cleric_subclass{ClericSubclassNone};        // Cleric divine domain choice
       BlessedStrike blessed_strike{BlessedStrikeNone};           // Cleric L7 Blessed Strikes choice
+
+      // ── Druid Features ────────────────────────────────────────────────
+      // Wild Shape / Starry Form state
+      bool wild_shape_active{false};
+      std::string wild_shape_form_name{};                        // beast name, e.g. "Brown Bear"
+      int wild_shape_saved_ac{0};
+      int wild_shape_saved_str{0};
+      int wild_shape_saved_dex{0};
+      int wild_shape_saved_con{0};
+      std::array<Weapon,3> wild_shape_saved_weapons{};          // original weapons to restore on deactivate
+
+      bool starry_form_active{false};
+      int starry_constellation{0};                               // 0=none, 1=Archer, 2=Chalice, 3=Dragon
+
+      // Circle of the Land
+      int land_type{0};                                          // 0=none, 1=Arid, 2=Polar, 3=Temperate, 4=Tropical
+
+      // Wrath of the Sea (Circle of the Sea)
+      bool wrath_of_sea_active{false};
+
+      // Lunar Radiance (Moon L6): Wild Shape attacks can deal Radiant
+      bool lunar_radiance_available{false};                      // set while wild_shape_active + Moon L6+
+
+      // Improved Lunar Radiance (Moon L14): 2d10 Radiant rider once/turn
+      bool improved_lunar_radiance_available{false};
+
+      // Primal Strike (Druid L7 Elemental Fury choice)
+      bool primal_strike_active{false};
+      int primal_strike_damage_type{0};                          // element choice (Cold/Fire/Lightning/Thunder)
+
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
+      int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)
@@ -499,12 +530,20 @@ namespace rpg {
       bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
+      bool maneuver_available{false};           // Battle Master: a qualifying hit can apply a Maneuver this attack
+      bool maneuver_precision_available{false}; // Battle Master: this missed attack can apply Precision Attack
       // ── Weapon Mastery (2024) ──────────────────────────────────────────────
       bool sapped{false};                   // Sap: disadvantage on this creature's next attack roll
+      bool sap_used_this_turn{false};       // Sap: once per turn
       bool slowed{false};                   // Slow: speed -10 ft (consumed at this creature's next turn)
+      bool slow_used_this_turn{false};      // Slow: once per turn
       int  vex_target_idx{-1};              // Vex: advantage on this attacker's next attack vs this target
+      bool vex_used_this_turn{false};       // Vex: once per turn
       bool push_available{false};           // Push: a hit this attack can push the target 10 ft (GUI prompt)
+      bool push_used_this_turn{false};      // Push: once per turn
+      bool poison_used_this_turn{false};    // Poison mastery: once per turn
       bool topple_available{false};         // Topple: a hit this attack can force a Prone save (GUI prompt)
+      bool topple_used_this_turn{false};    // Topple: once per turn
       bool cleave_available{false};         // Cleave: a hit this attack can grant an extra attack (GUI prompt)
       bool cleave_used_this_turn{false};    // Cleave: once per turn
     };
@@ -569,6 +608,8 @@ namespace rpg {
       conditions_.divine_strike_available      = false;
       conditions_.divine_strike_used           = false;
       conditions_.guided_strike_available      = false;
+      conditions_.maneuver_available           = false;
+      conditions_.maneuver_precision_available = false;
       // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
       // they are consumed on the next qualifying attack roll (and survive into this
       // turn so a sapped creature's attack still suffers disadvantage). slowed and
