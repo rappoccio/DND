@@ -886,6 +886,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("bonus", &PhysicalDamageRoll::bonus,
              "Fixed damage bonus added after rolling dice");
 
+    // ── HealingRoll ────────────────────────────────────────────────────────────
+    py::class_<HealingRoll>(m, "HealingRoll")
+        .def(py::init<>())
+        .def_readwrite("num_dice", &HealingRoll::num_dice)
+        .def_readwrite("die_size", &HealingRoll::die_size)
+        .def_readwrite("bonus", &HealingRoll::bonus,
+             "Fixed healing bonus added after rolling dice (e.g., 1d4+1 has bonus=1)");
+
     // ── Spell ─────────────────────────────────────────────────────────────────
     py::class_<Spell>(m, "Spell")
         .def(py::init<>())
@@ -905,6 +913,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("duration",             &Spell::duration)
         .def_readwrite("magic_damage_rolls",   &Spell::magic_damage_rolls)
         .def_readwrite("physical_damage_rolls",&Spell::physical_damage_rolls)
+        .def_readwrite("healing_type",         &Spell::healing_type,
+             "Healing dice: num_dice d die_size + bonus (for Heal-type spells).")
         .def_readwrite("terrain_difficulty",   &Spell::terrain_difficulty,
              "Terrain difficulty applied by this spell (Normal = no terrain effect).\n"
              "The duration is the same as spell.duration (in rounds).")
@@ -1392,6 +1402,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     py::arg("battle_map"), py::arg("idx"), py::arg("amount"),
                     "Raise hp_cur of agent[idx] by amount (clamped to hp_max). "
                     "Returns new hp_cur.")
+        .def_static("lay_on_hands",
+                    &CombatEngine::layOnHands,
+                    py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"), py::arg("amount"),
+                    "Paladin Lay on Hands: spend from caster's pool to heal target. "
+                    "Clamps spend to min(pool_remaining, target_hp_deficit). "
+                    "Returns actual HP healed (0 if nothing to heal, -1 if invalid).")
         .def_static("get_rage_damage_bonus",
                     &CombatEngine::getRageDamageBonus,
                     py::arg("level"),

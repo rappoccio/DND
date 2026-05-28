@@ -432,6 +432,11 @@ public:
     static int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
     static int healAgent  (BattleMap& bm, int idx, int amount) noexcept;
 
+    // Lay on Hands (Paladin): spends from the "Lay on Hands" pool resource to heal a target.
+    // Clamps the spent amount to the min of (pool remaining, target's HP deficit).
+    // Returns actual HP healed (0 if nothing to heal, -1 if no pool remaining).
+    static int layOnHands (BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept;
+
     // ── Per-agent turn count ──────────────────────────────────────────────
     //
     // The common case is exactly 1 turn per round; only store overrides.

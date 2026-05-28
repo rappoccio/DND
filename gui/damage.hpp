@@ -21,4 +21,11 @@ namespace rpg {
         int bonus{0};  // Fixed damage bonus
     };
 
+    // Healing dice (for spells like Healing Word, Cure Wounds, etc.)
+    struct HealingRoll {
+        int num_dice{1};
+        int die_size{6};
+        int bonus{0};  // Fixed healing bonus
+    };
+
 }  // namespace rpg

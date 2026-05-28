@@ -345,7 +345,13 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 - **Patient Defense** (spend 1 Ki → Dodge)
 - **Step of the Wind** (spend 1 Ki → Disengage+Dash)
 - **Stunning Strike** (spend 1 Ki on hit → CON save or Stunned)
-- **Subclass mechanics**: Warrior of Mercy healing, Shadow Arts, Four Elements
+- **Subclass mechanics**: Shadow Arts, Four Elements
+
+### Deferred — Warrior of Mercy [OPUS]
+- **Hand of Healing** (L3): classfeature.json entry created with Focus Points cost, but bonus-action casting needs wiring
+- **Hand of Harm** (L3): deferred on-hit rider pattern with necrotic damage + Poisoned save. Requires chained-rider logic to work alongside Stunning Strike (two riders on same unarmed hit).
+- **Physician's Touch** (L6): Hand of Harm adds Stunned on failed save (L6 enhancement)
+- **Deferred because**: Hand of Harm's chained-rider logic (one rider triggering another) is not yet established in the engine. Establishing the pattern in Battle Master maneuvers is lower risk.
 
 ---
 

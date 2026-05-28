@@ -41,6 +41,7 @@ namespace rpg {
 
       std::vector<MagicDamageRoll>    magic_damage_rolls;
       std::vector<PhysicalDamageRoll> physical_damage_rolls;
+      HealingRoll                     healing_type{};  // Healing dice (for Heal spells)
 
       // Terrain effect created by this spell (e.g., Grease, Web, Spike Growth)
       // If terrain_difficulty is Normal (0), no terrain effect is created.

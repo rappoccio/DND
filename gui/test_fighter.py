@@ -236,6 +236,86 @@ def test_precision_attack_no_dice_no_flag():
     print("✅ test_precision_attack_no_dice_no_flag passed (no miss encountered, skipped)")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Second Wind Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_second_wind_resource():
+    """Fighter L1: Second Wind resource exists with 1 use, restores on short rest."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    fighter_idx = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 5))
+
+    s = engine.get_agent_stats(bm, fighter_idx)
+    s.set_class_level(rpg.CharacterClass.Fighter, 1)
+    s.initialize_class_resources(rpg.CharacterClass.Fighter, 1)
+    engine.set_agent_stats(bm, fighter_idx, s)
+
+    s = engine.get_agent_stats(bm, fighter_idx)
+    sw = s.get_resource("Second Wind")
+    assert sw is not None, "Fighter should have Second Wind resource"
+    assert sw.max == 1, f"L1 Fighter should have 1 Second Wind use, got {sw.max}"
+    assert sw.current == 1, f"L1 Fighter should start with 1 use, got {sw.current}"
+    print("✅ test_second_wind_resource passed")
+
+
+def test_second_wind_heal_range():
+    """Fighter Second Wind heals 1d10 + level (range [1+level, 10+level])."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    fighter_idx = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 5))
+
+    s = engine.get_agent_stats(bm, fighter_idx)
+    s.set_class_level(rpg.CharacterClass.Fighter, 5)
+    s.con = 14
+    s.hp_max = 50
+    s.hp_cur = 30  # Damage the fighter
+    s.initialize_class_resources(rpg.CharacterClass.Fighter, 5)
+    engine.set_agent_stats(bm, fighter_idx, s)
+
+    # Roll multiple times to verify range
+    for _ in range(10):
+        s = engine.get_agent_stats(bm, fighter_idx)
+        s.hp_cur = 30  # Reset HP
+        engine.set_agent_stats(bm, fighter_idx, s)
+
+        roll = engine.roll(10)
+        healing = roll + 5  # 1d10 + level (5)
+        assert 6 <= healing <= 15, f"Second Wind L5 should heal 6-15, got {healing}"
+    print("✅ test_second_wind_heal_range passed")
+
+
+def test_second_wind_restore_short_rest():
+    """Fighter Second Wind restores on short rest."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    fighter_idx = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 5))
+
+    s = engine.get_agent_stats(bm, fighter_idx)
+    s.set_class_level(rpg.CharacterClass.Fighter, 1)
+    s.initialize_class_resources(rpg.CharacterClass.Fighter, 1)
+    engine.set_agent_stats(bm, fighter_idx, s)
+
+    # Spend the resource
+    s = engine.get_agent_stats(bm, fighter_idx)
+    sw = s.get_resource("Second Wind")
+    sw.current = 0
+    s.resources["Second Wind"] = sw
+    engine.set_agent_stats(bm, fighter_idx, s)
+
+    # Short rest restores it
+    s = engine.get_agent_stats(bm, fighter_idx)
+    sw = s.get_resource("Second Wind")
+    sw.restore_short_rest()
+    s.resources["Second Wind"] = sw
+    engine.set_agent_stats(bm, fighter_idx, s)
+
+    s = engine.get_agent_stats(bm, fighter_idx)
+    sw = s.get_resource("Second Wind")
+    assert sw.current == sw.max, f"After short rest, Second Wind should be at max, got {sw.current}/{sw.max}"
+    print("✅ test_second_wind_restore_short_rest passed")
+
+
 if __name__ == "__main__":
     test_superiority_dice_l3()
     test_superiority_dice_l10()
@@ -243,4 +323,7 @@ if __name__ == "__main__":
     test_menacing_sets_frightened()
     test_pushing_moves_target()
     test_precision_attack_no_dice_no_flag()
-    print("\n✅ All Battle Master Fighter tests passed!")
+    test_second_wind_resource()
+    test_second_wind_heal_range()
+    test_second_wind_restore_short_rest()
+    print("\n✅ All Fighter tests passed!")

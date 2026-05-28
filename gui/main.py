@@ -3023,27 +3023,40 @@ class App:
             return
         if not (0 <= target_idx < len(self.bm.placed_agents)):
             return
-        stats = self.combat.get_agent_stats(self.bm, healer_idx)
-        loh = stats.get_resource("Lay on Hands")
+
+        # Check healer has Lay on Hands
+        healer_stats = self.combat.get_agent_stats(self.bm, healer_idx)
+        loh = healer_stats.get_resource("Lay on Hands")
         if not (loh and loh.current > 0):
             self._combat_log_add(f"{self.bm.placed_agents[healer_idx].name}: Lay on Hands pool is empty.")
             return
-        # Determine healing amount (up to the pool)
+
+        # Determine max healable
         target_stats = self.combat.get_agent_stats(self.bm, target_idx)
         heal_needed = target_stats.hp_max - target_stats.hp_cur
-        healing = min(loh.current, heal_needed)
-        # Apply healing
-        target_stats.hp_cur = min(target_stats.hp_cur + healing, target_stats.hp_max)
-        self.combat.set_agent_stats(self.bm, target_idx, target_stats)
-        # Spend from pool
-        loh.spend(healing)
-        stats.resources["Lay on Hands"] = loh
-        self.combat.set_agent_stats(self.bm, healer_idx, stats)
-        # Log the action
+        max_healing = min(loh.current, heal_needed)
+
+        # For now, heal the full amount (can add a dialog for partial healing later)
+        healing = max_healing
+        if healing <= 0:
+            self._combat_log_add(f"{self.bm.placed_agents[target_idx].name}: Already at full HP.")
+            return
+
+        # Call C++ lay_on_hands method
+        actual_healed = self.combat.lay_on_hands(self.bm, healer_idx, target_idx, healing)
+        if actual_healed <= 0:
+            self._combat_log_add(f"Lay on Hands failed (pool error).")
+            return
+
+        # Fetch updated stats for logging
+        healer_stats = self.combat.get_agent_stats(self.bm, healer_idx)
+        loh = healer_stats.get_resource("Lay on Hands")
+        pool_remaining = loh.current if loh else 0
         tgt_name = self.bm.placed_agents[target_idx].name
+        healer_name = self.bm.placed_agents[healer_idx].name
         self._combat_log_add(
-            f"{self.bm.placed_agents[healer_idx].name}: Lay on Hands restores {healing} HP to {tgt_name} ({loh.current} pool remaining).")
-        self.bonus_used = True
+            f"{healer_name}: Lay on Hands restores {actual_healed} HP to {tgt_name} ({pool_remaining} pool remaining).")
+        self.action_used = True
 
     def _set_fiendish_resilience(self, agent_idx: int, dmg_idx: int):
         """Fiend Warlock L10: set the chosen damage resistance (0.5x), clearing any prior choice."""
@@ -3356,6 +3369,12 @@ class App:
         for si in available_indices:
             sp = spells[si]
             sp_level = sp.level
+
+            # Filter by casting_time based on which action button was clicked
+            if slot == "action" and sp.casting_time == rpg.CastingTime.BonusAction:
+                continue  # Skip bonus-action spells from the action menu
+            elif slot == "bonus" and sp.casting_time != rpg.CastingTime.BonusAction:
+                continue  # Skip non-bonus-action spells from the bonus menu
 
             if sp_level == 0:
                 # Cantrip - always available
@@ -4337,6 +4356,15 @@ class App:
                 roll.bonus = int(d.get("bonus", 0))
                 phys_rolls.append(roll)
         s.physical_damage_rolls = phys_rolls
+
+        # Parse healing type (for Heal spells)
+        healing_raw = d.get("healing_type")
+        if healing_raw and isinstance(healing_raw, dict):
+            healing = rpg.HealingRoll()
+            healing.num_dice = int(healing_raw.get("num_dice", 1))
+            healing.die_size = int(healing_raw.get("die_size", 6))
+            healing.bonus = int(healing_raw.get("bonus", 0))
+            s.healing_type = healing
 
         s.requires_concentration = d.get("requires_concentration", False)
         s.moves_with_caster = d.get("moves_with_caster", False)

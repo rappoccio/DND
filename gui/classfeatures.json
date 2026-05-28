@@ -32,8 +32,9 @@
   "level": 0,
   "resource_name": "Channel Divinity",
   "resource_cost": 1,
-  "magic_damage_types": [{"type": "Radiant", "num_dice": 1, "die_size": 8, "bonus": 0}],
+  "magic_damage_types": [],
   "physical_damage_types": [],
+  "healing_type": {"num_dice": 1, "die_size": 8, "bonus": 0},
   "scaling": {"ability_bonus": "WIS", "dice_by_level": {"1": 1, "7": 2, "13": 3, "18": 4}}
  },
  {
@@ -56,6 +57,26 @@
   "resource_cost": 1,
   "magic_damage_types": [{"type": "Radiant", "num_dice": 2, "die_size": 10, "bonus": 0}],
   "physical_damage_types": [],
+  "scaling": {"level_bonus": true}
+ },
+ {
+  "name": "Second Wind",
+  "class": "Fighter",
+  "min_level": 1,
+  "description": "Bonus Action: you regain Hit Points equal to 1d10 + your Fighter level. You can use this feature a number of times equal to your proficiency bonus, and you regain all expended uses when you finish a long rest.",
+  "type": "Heal",
+  "geometry": "Single",
+  "attack_type": "Automatic",
+  "casting_time": "BonusAction",
+  "school": "abjuration",
+  "range": 0,
+  "duration": 1,
+  "level": 0,
+  "resource_name": "Second Wind",
+  "resource_cost": 1,
+  "magic_damage_types": [],
+  "physical_damage_types": [],
+  "healing_type": {"num_dice": 1, "die_size": 10, "bonus": 0},
   "scaling": {"level_bonus": true}
  }
 ]

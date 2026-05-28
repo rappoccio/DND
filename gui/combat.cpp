@@ -10,6 +10,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <numeric>
 
 namespace rpg {
 
@@ -216,6 +217,37 @@ int CombatEngine::healAgent(BattleMap& bm, int idx, int amount) noexcept
     s.hp_cur = std::min(s.hp_max, s.hp_cur + amount);
     bm.setAgentStats(idx, s);
     return s.hp_cur;
+}
+
+int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept
+{
+    // Fetch caster's Lay on Hands pool
+    Agent::Stats caster_stats = bm.getAgentStats(caster_idx);
+    if (caster_stats.hp_max == 0 && caster_stats.hp_cur == 0) return -1;  // invalid caster idx
+
+    Resource* pool = caster_stats.getResource("Lay on Hands");
+    if (!pool) return -1;  // No Lay on Hands resource
+    if (pool->current <= 0) return -1;  // Pool depleted
+
+    // Fetch target stats
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+    if (tgt_stats.hp_max == 0 && tgt_stats.hp_cur == 0) return -1;  // invalid target idx
+
+    // Clamp amount to: min(pool remaining, target HP deficit)
+    int hp_deficit = tgt_stats.hp_max - tgt_stats.hp_cur;
+    int clamped = std::min(amount, std::min(pool->current, hp_deficit));
+
+    if (clamped <= 0) return 0;  // Nothing to heal
+
+    // Apply healing to target
+    healAgent(bm, target_idx, clamped);
+
+    // Decrement pool
+    pool->current = std::max(0, pool->current - clamped);
+    caster_stats.resources["Lay on Hands"] = *pool;
+    bm.setAgentStats(caster_idx, caster_stats);
+
+    return clamped;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2918,47 +2950,72 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 std::vector<int> dice;
                 int dmg = 0;
 
-                // Roll per-damage-type damage and apply target's multipliers
-                for (const auto& roll_info : sp.magic_damage_rolls) {
-                    int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
-                    int type_damage = 0;
+                if (sp.type == Spell::Heal) {
+                    // Healing spell: roll healing_type dice + add spellcasting ability modifier
+                    int n_dice = sp.healing_type.num_dice;
+                    int die_size = sp.healing_type.die_size;
                     for (int i = 0; i < n_dice; ++i) {
-                        int d = roll(roll_info.die_size);
+                        int d = roll(die_size);
                         dice.push_back(d);
-                        type_damage += d;
+                        dmg += d;
                     }
-                    // Apply target's resistance/vulnerability/immunity multiplier
-                    float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
-                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                    log_("[DAMAGE] Spell attack: type={} base={} mult={} result={}", static_cast<int>(roll_info.type), type_damage, multiplier, modified_damage);
-                    dmg += modified_damage;
-                }
-                for (const auto& roll_info : sp.physical_damage_rolls) {
-                    int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
-                    int type_damage = 0;
-                    for (int i = 0; i < n_dice; ++i) {
-                        int d = roll(roll_info.die_size);
-                        dice.push_back(d);
-                        type_damage += d;
+                    dmg += sp.healing_type.bonus;
+                    // Add spellcasting ability modifier
+                    int ability_score = 10;  // default
+                    if (caster_stats.spellcasting_ability == 0) ability_score = caster_stats.str;
+                    else if (caster_stats.spellcasting_ability == 1) ability_score = caster_stats.dex;
+                    else if (caster_stats.spellcasting_ability == 2) ability_score = caster_stats.con;
+                    else if (caster_stats.spellcasting_ability == 3) ability_score = caster_stats.intel;
+                    else if (caster_stats.spellcasting_ability == 4) ability_score = caster_stats.wis;
+                    else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
+                    int ability_mod = abilityMod(ability_score);
+                    dmg += ability_mod;
+                    log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
+                         n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
+                         sp.healing_type.bonus, ability_mod, dmg);
+                } else {
+                    // Damage spell: roll per-damage-type damage and apply target's multipliers
+                    for (const auto& roll_info : sp.magic_damage_rolls) {
+                        int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
+                        int type_damage = 0;
+                        for (int i = 0; i < n_dice; ++i) {
+                            int d = roll(roll_info.die_size);
+                            dice.push_back(d);
+                            type_damage += d;
+                        }
+                        // Apply target's resistance/vulnerability/immunity multiplier
+                        float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                        int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                        log_("[DAMAGE] Spell attack: type={} base={} mult={} result={}", static_cast<int>(roll_info.type), type_damage, multiplier, modified_damage);
+                        dmg += modified_damage;
                     }
-                    // Apply target's resistance/vulnerability/immunity multiplier
-                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
-                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                    dmg += modified_damage;
+                    for (const auto& roll_info : sp.physical_damage_rolls) {
+                        int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
+                        int type_damage = 0;
+                        for (int i = 0; i < n_dice; ++i) {
+                            int d = roll(roll_info.die_size);
+                            dice.push_back(d);
+                            type_damage += d;
+                        }
+                        // Apply target's resistance/vulnerability/immunity multiplier
+                        float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                        int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                        dmg += modified_damage;
+                    }
+
+                    // Agonizing Blast: add CHA modifier to each Eldritch Blast beam's damage.
+                    if (sp.name == "Eldritch Blast" &&
+                        caster_stats.character_class == CharacterClass::Warlock &&
+                        caster_stats.hasInvocation(0)) {
+                        int chaMod = abilityMod(caster_stats.cha);
+                        if (chaMod > 0) {
+                            dmg += chaMod;
+                            log_("Agonizing Blast: +{} damage", chaMod);
+                        }
+                    }
                 }
 
                 tr.dice_results = dice;
-
-                // Agonizing Blast: add CHA modifier to each Eldritch Blast beam's damage.
-                if (sp.name == "Eldritch Blast" &&
-                    caster_stats.character_class == CharacterClass::Warlock &&
-                    caster_stats.hasInvocation(0)) {
-                    int chaMod = abilityMod(caster_stats.cha);
-                    if (chaMod > 0) {
-                        dmg += chaMod;
-                        log_("Agonizing Blast: +{} damage", chaMod);
-                    }
-                }
 
                 if (sp.type == Spell::Heal) {
                     tr.total_healing = std::max(0, dmg);
@@ -3045,46 +3102,71 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             std::vector<int> dice;
             int dmg = 0;
 
-            // Roll per-damage-type damage and apply target's multipliers
-            for (const auto& roll_info : sp.magic_damage_rolls) {
-                int type_damage = 0;
-                for (int i = 0; i < roll_info.num_dice; ++i) {
-                    int d = roll(roll_info.die_size);
+            if (sp.type == Spell::Heal) {
+                // Healing spell: roll healing_type dice + add spellcasting ability modifier
+                int n_dice = sp.healing_type.num_dice;
+                int die_size = sp.healing_type.die_size;
+                for (int i = 0; i < n_dice; ++i) {
+                    int d = roll(die_size);
                     dice.push_back(d);
-                    type_damage += d;
+                    dmg += d;
                 }
-                type_damage += roll_info.bonus;
-                // Apply target's resistance/vulnerability/immunity multiplier first
-                float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
-                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                // Then apply half damage on successful save
-                if (tr.saved) modified_damage /= 2;
-                dmg += modified_damage;
-            }
-            for (const auto& roll_info : sp.physical_damage_rolls) {
-                int type_damage = 0;
-                for (int i = 0; i < roll_info.num_dice; ++i) {
-                    int d = roll(roll_info.die_size);
-                    dice.push_back(d);
-                    type_damage += d;
+                dmg += sp.healing_type.bonus;
+                // Add spellcasting ability modifier
+                int ability_score = 10;  // default
+                if (caster_stats.spellcasting_ability == 0) ability_score = caster_stats.str;
+                else if (caster_stats.spellcasting_ability == 1) ability_score = caster_stats.dex;
+                else if (caster_stats.spellcasting_ability == 2) ability_score = caster_stats.con;
+                else if (caster_stats.spellcasting_ability == 3) ability_score = caster_stats.intel;
+                else if (caster_stats.spellcasting_ability == 4) ability_score = caster_stats.wis;
+                else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
+                int ability_mod = abilityMod(ability_score);
+                dmg += ability_mod;
+                log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
+                     n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
+                     sp.healing_type.bonus, ability_mod, dmg);
+            } else {
+                // Damage spell: roll per-damage-type damage and apply target's multipliers
+                for (const auto& roll_info : sp.magic_damage_rolls) {
+                    int type_damage = 0;
+                    for (int i = 0; i < roll_info.num_dice; ++i) {
+                        int d = roll(roll_info.die_size);
+                        dice.push_back(d);
+                        type_damage += d;
+                    }
+                    type_damage += roll_info.bonus;
+                    // Apply target's resistance/vulnerability/immunity multiplier first
+                    float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                    // Then apply half damage on successful save
+                    if (tr.saved) modified_damage /= 2;
+                    dmg += modified_damage;
                 }
-                type_damage += roll_info.bonus;
-                // Apply target's resistance/vulnerability/immunity multiplier first
-                float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
-                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                // Then apply half damage on successful save
-                if (tr.saved) modified_damage /= 2;
-                dmg += modified_damage;
-            }
+                for (const auto& roll_info : sp.physical_damage_rolls) {
+                    int type_damage = 0;
+                    for (int i = 0; i < roll_info.num_dice; ++i) {
+                        int d = roll(roll_info.die_size);
+                        dice.push_back(d);
+                        type_damage += d;
+                    }
+                    type_damage += roll_info.bonus;
+                    // Apply target's resistance/vulnerability/immunity multiplier first
+                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                    // Then apply half damage on successful save
+                    if (tr.saved) modified_damage /= 2;
+                    dmg += modified_damage;
+                }
 
-            // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
-            // A successful save already halved per-roll above; override to the Evasion outcome.
-            if (sp.save_ability == SaveDex && sp.type != Spell::Heal &&
-                tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 7 &&
-                !target_cond.incapacitated) {
-                dmg = tr.saved ? 0 : (dmg / 2);
-                log_("Evasion: {} {} damage on a DEX save", agentName(bm, tgt_idx),
-                     tr.saved ? "takes no" : "halves");
+                // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
+                // A successful save already halved per-roll above; override to the Evasion outcome.
+                if (sp.save_ability == SaveDex &&
+                    tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 7 &&
+                    !target_cond.incapacitated) {
+                    dmg = tr.saved ? 0 : (dmg / 2);
+                    log_("Evasion: {} {} damage on a DEX save", agentName(bm, tgt_idx),
+                         tr.saved ? "takes no" : "halves");
+                }
             }
 
             tr.dice_results = dice;
@@ -3108,32 +3190,57 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             std::vector<int> dice;
             int total = 0;
 
-            // Roll per-damage-type damage and apply target's multipliers
-            for (const auto& roll_info : sp.magic_damage_rolls) {
-                int type_damage = 0;
-                for (int i = 0; i < roll_info.num_dice; ++i) {
-                    int d = roll(roll_info.die_size);
+            if (sp.type == Spell::Heal) {
+                // Healing spell: roll healing_type dice + add spellcasting ability modifier
+                int n_dice = sp.healing_type.num_dice;
+                int die_size = sp.healing_type.die_size;
+                for (int i = 0; i < n_dice; ++i) {
+                    int d = roll(die_size);
                     dice.push_back(d);
-                    type_damage += d;
+                    total += d;
                 }
-                type_damage += roll_info.bonus;
-                // Apply target's resistance/vulnerability/immunity multiplier
-                float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
-                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                total += modified_damage;
-            }
-            for (const auto& roll_info : sp.physical_damage_rolls) {
-                int type_damage = 0;
-                for (int i = 0; i < roll_info.num_dice; ++i) {
-                    int d = roll(roll_info.die_size);
-                    dice.push_back(d);
-                    type_damage += d;
+                total += sp.healing_type.bonus;
+                // Add spellcasting ability modifier
+                int ability_score = 10;  // default
+                if (caster_stats.spellcasting_ability == 0) ability_score = caster_stats.str;
+                else if (caster_stats.spellcasting_ability == 1) ability_score = caster_stats.dex;
+                else if (caster_stats.spellcasting_ability == 2) ability_score = caster_stats.con;
+                else if (caster_stats.spellcasting_ability == 3) ability_score = caster_stats.intel;
+                else if (caster_stats.spellcasting_ability == 4) ability_score = caster_stats.wis;
+                else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
+                int ability_mod = abilityMod(ability_score);
+                total += ability_mod;
+                log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
+                     n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
+                     sp.healing_type.bonus, ability_mod, total);
+            } else {
+                // Damage spell: roll per-damage-type damage and apply target's multipliers
+                for (const auto& roll_info : sp.magic_damage_rolls) {
+                    int type_damage = 0;
+                    for (int i = 0; i < roll_info.num_dice; ++i) {
+                        int d = roll(roll_info.die_size);
+                        dice.push_back(d);
+                        type_damage += d;
+                    }
+                    type_damage += roll_info.bonus;
+                    // Apply target's resistance/vulnerability/immunity multiplier
+                    float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                    total += modified_damage;
                 }
-                type_damage += roll_info.bonus;
-                // Apply target's resistance/vulnerability/immunity multiplier
-                float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
-                int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-                total += modified_damage;
+                for (const auto& roll_info : sp.physical_damage_rolls) {
+                    int type_damage = 0;
+                    for (int i = 0; i < roll_info.num_dice; ++i) {
+                        int d = roll(roll_info.die_size);
+                        dice.push_back(d);
+                        type_damage += d;
+                    }
+                    type_damage += roll_info.bonus;
+                    // Apply target's resistance/vulnerability/immunity multiplier
+                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                    total += modified_damage;
+                }
             }
 
             tr.dice_results = dice;
