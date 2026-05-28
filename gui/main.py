@@ -2870,6 +2870,20 @@ class App:
             # Convert dict to rpg.Weapon
             main_weapon = _dict_to_weapon(weapon_dict)
 
+            # Load beast_forms.json to get condition_rider from the beast's attacks
+            with open(beast_path, 'r') as f:
+                beasts = json.load(f)
+
+            # Find the beast and get its condition_rider
+            for beast_data in beasts:
+                if beast_data.get('name') == beast_name:
+                    attacks = beast_data.get('attacks', [])
+                    if attacks and len(attacks) > 0:
+                        condition_rider = attacks[0].get('condition_rider')
+                        if condition_rider:
+                            main_weapon.condition_rider = condition_rider
+                    break
+
             # Create 3-weapon array: [main, offhand, ranged]
             weapons_array = [main_weapon, rpg.Weapon(), rpg.Weapon()]
 
