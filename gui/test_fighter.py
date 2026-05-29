@@ -316,6 +316,122 @@ def test_second_wind_restore_short_rest():
     print("✅ test_second_wind_restore_short_rest passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Psi Warrior
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _psi_warrior(engine, bm, idx, level, intel=16):
+    """Configure agent as a Psi Warrior Fighter of the given level."""
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Fighter, level)
+    s.str = 16
+    s.intel = intel
+    s.fighter_subclass = rpg.FighterSubclass.PsiWarrior
+    s.initialize_class_resources(rpg.CharacterClass.Fighter, level)
+    engine.set_agent_stats(bm, idx, s)
+    return engine.get_agent_stats(bm, idx)
+
+
+def _psi_setup(level, intel=16):
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("PsiWarrior", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Dummy", 6, 5))
+    _psi_warrior(engine, bm, atk, level, intel=intel)
+    _soft_target(engine, bm, tgt)
+    engine.set_agent_weapons(bm, atk, _longsword())
+    return bm, engine, atk, tgt
+
+
+def test_psionic_energy_dice():
+    """Psionic Energy Dice = 2 × proficiency bonus; die size scales d6/d8/d10/d12 by level."""
+    # (level, expected dice, expected die size)
+    for level, dice, die in [(3, 4, 6), (5, 6, 8), (11, 8, 10), (17, 12, 12)]:
+        bm, engine, atk, _ = _psi_setup(level)
+        s = engine.get_agent_stats(bm, atk)
+        ped = s.get_resource("Psionic Energy")
+        assert ped is not None, f"L{level} Psi Warrior should have Psionic Energy dice"
+        assert ped.current == dice, f"L{level} should have {dice} dice, got {ped.current}"
+        assert s.psionic_die_size == die, f"L{level} die size should be d{die}, got d{s.psionic_die_size}"
+    print("✅ test_psionic_energy_dice passed")
+
+
+def test_psionic_strike_adds_force_damage():
+    """Psionic Strike: adds Force damage to a hit, spends 1 die, once-per-turn flag set."""
+    bm, engine, atk, tgt = _psi_setup(5, intel=16)  # d8 die, INT +3
+
+    result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert result.hit, "attack_bonus=50 should guarantee a hit"
+    base_damage = result.total_damage
+
+    ped_before = engine.get_agent_stats(bm, atk).get_resource("Psionic Energy").current
+
+    # Set the on-hit eligibility flag and apply the effect.
+    cond = engine.get_agent_conditions(bm, atk)
+    cond.psionic_strike_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+
+    engine.apply_psionic_strike_effect(bm, atk, tgt, result)
+
+    # Force damage = 1d8 + INT(+3) → between 4 and 11 added.
+    added = result.total_damage - base_damage
+    assert 4 <= added <= 11, f"Psionic Strike should add 1d8+3 (4-11) Force, got {added}"
+
+    ped_after = engine.get_agent_stats(bm, atk).get_resource("Psionic Energy").current
+    assert ped_after == ped_before - 1, f"should spend 1 Psionic Energy die ({ped_before}->{ped_after})"
+    atk_cond = engine.get_agent_conditions(bm, atk)
+    assert atk_cond.psionic_strike_used, "psionic_strike_used should be set after applying"
+    assert not atk_cond.psionic_strike_available, "available flag should be cleared after applying"
+    print("✅ test_psionic_strike_adds_force_damage passed")
+
+
+def test_protective_field_reduces_damage():
+    """Protective Field: prevents (die + INT mod) damage capped at the hit, spends 1 die + reaction."""
+    bm, engine, _atk, _tgt = _psi_setup(5)
+    # Use the Psi Warrior as the defender; give it a known HP deficit to heal back into.
+    defender = _atk
+    s = engine.get_agent_stats(bm, defender)
+    s.hp_max = 100
+    s.hp_cur = 50  # took 50 damage already this fight
+    engine.set_agent_stats(bm, defender, s)
+
+    ped_before = engine.get_agent_stats(bm, defender).get_resource("Psionic Energy").current
+
+    prevented = engine.apply_protective_field(bm, defender, 30)  # this hit dealt 30
+    assert prevented >= 1, f"should prevent at least 1 damage, got {prevented}"
+    assert prevented <= 30, f"prevented amount should be capped at damage_taken (30), got {prevented}"
+
+    s = engine.get_agent_stats(bm, defender)
+    assert s.hp_cur == 50 + prevented, f"HP should rise by prevented amount, got {s.hp_cur}"
+    ped_after = s.get_resource("Psionic Energy").current
+    assert ped_after == ped_before - 1, f"should spend 1 Psionic Energy die ({ped_before}->{ped_after})"
+    assert engine.get_agent_conditions(bm, defender).reaction_used, "reaction should be consumed"
+
+    # A second use this turn fails: the reaction is already spent.
+    again = engine.apply_protective_field(bm, defender, 30)
+    assert again == -1, f"second Protective Field should fail (reaction used), got {again}"
+    print("✅ test_protective_field_reduces_damage passed")
+
+
+def test_telekinetic_movement_pushes_and_depletes():
+    """Telekinetic Movement: pushes a creature away once per rest, then the resource is depleted."""
+    bm, engine, atk, tgt = _psi_setup(5)
+
+    tk_before = engine.get_agent_stats(bm, atk).get_resource("Telekinetic Movement").current
+    assert tk_before == 1, "Telekinetic Movement should start with 1 use"
+
+    feet = engine.apply_telekinetic_movement(bm, atk, tgt)
+    assert feet >= 0, f"telekinetic movement should return feet moved (>=0), got {feet}"
+
+    tk_after = engine.get_agent_stats(bm, atk).get_resource("Telekinetic Movement").current
+    assert tk_after == 0, f"the once-per-rest use should be spent, got {tk_after}"
+
+    # No uses left → returns -1.
+    again = engine.apply_telekinetic_movement(bm, atk, tgt)
+    assert again == -1, f"with no uses left it should return -1, got {again}"
+    print("✅ test_telekinetic_movement_pushes_and_depletes passed")
+
+
 if __name__ == "__main__":
     test_superiority_dice_l3()
     test_superiority_dice_l10()
@@ -326,4 +442,8 @@ if __name__ == "__main__":
     test_second_wind_resource()
     test_second_wind_heal_range()
     test_second_wind_restore_short_rest()
+    test_psionic_energy_dice()
+    test_psionic_strike_adds_force_damage()
+    test_protective_field_reduces_damage()
+    test_telekinetic_movement_pushes_and_depletes()
     print("\n✅ All Fighter tests passed!")

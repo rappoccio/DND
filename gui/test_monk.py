@@ -147,15 +147,100 @@ def test_unarmed_strike_damage():
     raise AssertionError("attack never landed")
 
 
-def test_stunning_strike_setup():
-    """Monk has Stunning Strike available (on-hit rider, CON save or Stunned)."""
+def test_stunning_strike_eligibility():
+    """Monk has Focus Points available to fuel Stunning Strike."""
     bm, engine, atk, tgt = _setup(1)
     s = engine.get_agent_stats(bm, atk)
 
     fp = s.get_resource("Focus Points")
     assert fp is not None, "Monk should have Focus Points to spend on Stunning Strike"
     assert fp.current >= 1, "Monk should have at least 1 Focus Point"
-    print("✅ test_stunning_strike_setup passed")
+    print("✅ test_stunning_strike_eligibility passed")
+
+
+def test_stunning_strike_applies_stunned():
+    """Stunning Strike on a low-CON target: target fails the save and is Stunned, 1 Focus spent.
+
+    DC = 8 + DEX mod + prof. With DEX 20 (+5) and prof +6 → DC 19. A CON-1 target
+    (mod -5, no save prof) maxes its save at 20-5 = 15 < 19, so it is always Stunned.
+    (prof_bonus is set explicitly: set_class_level does not derive it from level.)
+    """
+    bm, engine, atk, tgt = _setup(17, dex=20)
+
+    # Pin the attacker's proficiency bonus so the save DC is deterministic.
+    a = engine.get_agent_stats(bm, atk)
+    a.prof_bonus = 6
+    engine.set_agent_stats(bm, atk, a)
+
+    # Make the target's CON save impossible to pass against this DC.
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.con = 1
+    ts.save_prof_con = False
+    engine.set_agent_stats(bm, tgt, ts)
+
+    fp_before = engine.get_agent_stats(bm, atk).get_resource("Focus Points").current
+
+    # Set the on-hit eligibility flag (normally set by a qualifying unarmed hit).
+    cond = engine.get_agent_conditions(bm, atk)
+    cond.stunning_strike_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+
+    res = engine.apply_stunning_strike(bm, atk, tgt)
+    assert res.valid, "StunningStrikeResult should be valid"
+    assert res.save_dc == 8 + 5 + 6, f"DC should be 19 (8+5+6), got {res.save_dc}"
+    assert res.save_roll < res.save_dc, f"save {res.save_roll} should fail vs DC {res.save_dc}"
+    assert res.stunned, "target should be Stunned on a failed save"
+
+    # The actual Stunned condition must be applied to the target.
+    tgt_cond = engine.get_agent_conditions(bm, tgt)
+    assert tgt_cond.stunned, "target's Stunned condition flag should be set"
+    assert res.stunned == tgt_cond.stunned, "result.stunned must match the target's condition"
+
+    # Exactly 1 Focus Point spent, and the once-per-turn flag is now set.
+    fp_after = engine.get_agent_stats(bm, atk).get_resource("Focus Points").current
+    assert fp_after == fp_before - 1, f"should spend 1 Focus Point ({fp_before}->{fp_after})"
+    atk_cond = engine.get_agent_conditions(bm, atk)
+    assert atk_cond.stunning_strike_used, "stunning_strike_used should be set after applying"
+    assert not atk_cond.stunning_strike_available, "available flag should be cleared after applying"
+    print("✅ test_stunning_strike_applies_stunned passed")
+
+
+def test_stunning_strike_resisted():
+    """Stunning Strike on a high-CON target: target makes the save, no Stun, but 1 Focus is still spent.
+
+    L1 monk with DEX 10 → DC 8+0+2 = 10. A CON-30 target with save proficiency
+    (mod +10, +2 prof) mins its save at 1+12 = 13 >= 10, so it always resists.
+    """
+    bm, engine, atk, tgt = _setup(1, dex=10)
+
+    # Pin the attacker's proficiency bonus so the save DC is deterministic (8+0+2 = 10).
+    a = engine.get_agent_stats(bm, atk)
+    a.prof_bonus = 2
+    engine.set_agent_stats(bm, atk, a)
+
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.con = 30
+    ts.save_prof_con = True
+    engine.set_agent_stats(bm, tgt, ts)
+
+    fp_before = engine.get_agent_stats(bm, atk).get_resource("Focus Points").current
+
+    cond = engine.get_agent_conditions(bm, atk)
+    cond.stunning_strike_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+
+    res = engine.apply_stunning_strike(bm, atk, tgt)
+    assert res.valid, "StunningStrikeResult should be valid even when resisted"
+    assert res.save_roll >= res.save_dc, f"save {res.save_roll} should pass vs DC {res.save_dc}"
+    assert not res.stunned, "target should NOT be Stunned on a successful save"
+
+    tgt_cond = engine.get_agent_conditions(bm, tgt)
+    assert not tgt_cond.stunned, "target should not have the Stunned condition"
+
+    # Focus Point is consumed regardless of save outcome.
+    fp_after = engine.get_agent_stats(bm, atk).get_resource("Focus Points").current
+    assert fp_after == fp_before - 1, f"should spend 1 Focus Point even on resist ({fp_before}->{fp_after})"
+    print("✅ test_stunning_strike_resisted passed")
 
 
 def test_martial_arts_scaling():
@@ -210,7 +295,9 @@ if __name__ == "__main__":
     test_focus_points_resource()
     test_focus_points_short_rest()
     test_unarmed_strike_damage()
-    test_stunning_strike_setup()
+    test_stunning_strike_eligibility()
+    test_stunning_strike_applies_stunned()
+    test_stunning_strike_resisted()
     test_martial_arts_scaling()
     test_extra_attack_l5()
     test_flurry_of_blows_setup()

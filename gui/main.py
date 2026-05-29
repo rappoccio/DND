@@ -367,6 +367,7 @@ class App:
         self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
+        self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
@@ -738,6 +739,12 @@ class App:
         self.btn_cbt_lay_on_hands = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Lay on Hands",
                                           (180, 200, 150), (220, 240, 190), self.font_md)
+        self.btn_cbt_sacred_weapon = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Sacred Weapon (Bonus Action)",
+                                          (200, 180, 110), (240, 220, 150), self.font_md)
+        self.btn_cbt_telekinetic = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Telekinetic Movement",
+                                          (140, 160, 210), (170, 190, 240), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1943,6 +1950,7 @@ class App:
         has_open_hand_rider = False
         has_maneuver = False
         has_precision = False
+        has_psionic_strike = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
@@ -1955,6 +1963,8 @@ class App:
                 has_open_hand_rider = True
             elif result.hit and atk_cond and atk_cond.divine_strike_available:
                 has_divine_strike = True
+            elif result.hit and atk_cond and atk_cond.psionic_strike_available:
+                has_psionic_strike = True
             elif result.hit and atk_cond and atk_cond.maneuver_available:
                 has_maneuver = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
@@ -2004,6 +2014,8 @@ class App:
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_strike:
             self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_psionic_strike:
+            self._offer_psionic_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_maneuver:
@@ -2032,7 +2044,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_guided_strike or has_push or has_topple or has_cleave
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -2265,6 +2277,28 @@ class App:
             ("Divine Strike: Radiant", lambda: _apply(True)),
             ("Divine Strike: Necrotic", lambda: _apply(False)),
             ("Skip Divine Strike", lambda: _apply(None)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a qualifying hit, offer Psi Warrior Psionic Strike (spend 1 Psionic Energy die → Force).
+        Mirrors _offer_divine_strike; the extra die is applied in C++ via apply_psionic_strike_effect."""
+        def _apply(use_it):
+            if use_it:
+                self.combat.apply_psionic_strike_effect(self.bm, atk_idx, target_idx, result)
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: HIT {result.total_damage}{self._damage_breakdown_str(result)} "
+                    f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+        options = [
+            ("Psionic Strike (1 die → Force)", lambda: _apply(True)),
+            ("Skip Psionic Strike", lambda: _apply(False)),
         ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
@@ -3014,6 +3048,33 @@ class App:
         # Reset action_used to allow another action
         self.action_used = False
         self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: Action Surge! You can take another Action this turn.")
+
+    def _use_sacred_weapon(self, agent_idx: int):
+        """Paladin Oath of Devotion Sacred Weapon: spend 1 Channel Oath, +CHA to weapon attacks for 1 min."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        bonus = self.combat.activate_sacred_weapon(self.bm, agent_idx)
+        name = self.bm.placed_agents[agent_idx].name
+        if bonus < 0:
+            self._combat_log_add(f"{name}: Cannot use Sacred Weapon (needs Oath of Devotion and a Channel Oath use).")
+            return
+        self.bonus_used = True
+        self._combat_log_add(f"{name}: Sacred Weapon! +{bonus} to weapon attack rolls for 1 minute.")
+
+    def _resolve_telekinetic(self, target_idx: int):
+        """Psi Warrior Telekinetic Movement: push the clicked target up to 30 ft away (once per rest)."""
+        self.pending_telekinetic = False
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        feet = self.combat.apply_telekinetic_movement(self.bm, idx, target_idx)
+        name = self.bm.placed_agents[idx].name
+        tgt_name = self.bm.placed_agents[target_idx].name
+        if feet < 0:
+            self._combat_log_add(f"{name}: Telekinetic Movement unavailable (no uses left).")
+        else:
+            self._combat_log_add(f"{name}: Telekinetic Movement pushes {tgt_name} {feet} ft.")
+        self._flush_combat_log()
 
     def _resolve_lay_on_hands(self, target_idx: int):
         """Paladin Lay on Hands: spend from pool, heal target."""
@@ -6336,6 +6397,32 @@ class App:
                         self.btn_cbt_lay_on_hands.draw(self.screen)
                         y += B + gap
 
+            # Sacred Weapon button — Paladin Oath of Devotion (bonus action), spend a Channel Oath use
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Paladin and
+                        stats.paladin_oath == rpg.PaladinOath.OathOfDevotion):
+                    co = stats.get_resource("Channel Oath")
+                    if co and co.current > 0 and stats.sacred_weapon_turns == 0:
+                        self.btn_cbt_sacred_weapon.rect.x = lx
+                        self.btn_cbt_sacred_weapon.rect.y = y
+                        self.btn_cbt_sacred_weapon.rect.w = W
+                        self.btn_cbt_sacred_weapon.draw(self.screen)
+                        y += B + gap
+
+            # Telekinetic Movement button — Psi Warrior (L3+), once per rest, push a creature 30 ft
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Fighter and
+                        stats.fighter_subclass == rpg.FighterSubclass.PsiWarrior):
+                    tk = stats.get_resource("Telekinetic Movement")
+                    if tk and tk.current > 0:
+                        self.btn_cbt_telekinetic.rect.x = lx
+                        self.btn_cbt_telekinetic.rect.y = y
+                        self.btn_cbt_telekinetic.rect.w = W
+                        self.btn_cbt_telekinetic.draw(self.screen)
+                        y += B + gap
+
 
         y += section_gap
 
@@ -6998,6 +7085,8 @@ class App:
                             self._resolve_healing_light(hit)
                         elif self.pending_lay_on_hands and hit >= 0:
                             self._resolve_lay_on_hands(hit)
+                        elif self.pending_telekinetic and hit >= 0:
+                            self._resolve_telekinetic(hit)
                         elif self.pending_flurry_target and hit >= 0:
                             self._resolve_flurry_target(hit)
                         else:
@@ -7550,6 +7639,13 @@ class App:
                     if self.btn_cbt_lay_on_hands.clicked(event):
                         self.pending_lay_on_hands = True
                         self.hint = "Click target for Lay on Hands healing"
+                    if self.btn_cbt_sacred_weapon.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_sacred_weapon(idx)
+                    if self.btn_cbt_telekinetic.clicked(event):
+                        self.pending_telekinetic = True
+                        self.hint = "Click a creature to move with Telekinetic Movement"
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

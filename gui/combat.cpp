@@ -250,6 +250,111 @@ int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int 
     return clamped;
 }
 
+int CombatEngine::activateSacredWeapon(BattleMap& bm, int idx) noexcept
+{
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.hp_max == 0 && stats.hp_cur == 0) return -1;  // invalid idx
+
+    // Requires a Paladin who has taken the Oath of Devotion.
+    if (stats.character_class != CharacterClass::Paladin ||
+        stats.paladin_oath != OathOfDevotionPath) return -1;
+
+    // Needs an available Channel Oath use.
+    Resource* co = stats.getResource("Channel Oath");
+    if (!co || co->current <= 0) return -1;
+
+    // Bonus = CHA modifier (minimum +1), floored correctly for odd negative scores.
+    int cha_mod = (stats.cha - 10) / 2;
+    if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --cha_mod;
+    int bonus = std::max(1, cha_mod);
+
+    // Spend 1 Channel Oath use, then re-fetch so we keep that decrement.
+    spendResource(bm, idx, "Channel Oath", 1);
+    stats = bm.getAgentStats(idx);
+    stats.sacred_weapon_bonus = bonus;
+    stats.sacred_weapon_turns = 10;  // 1 minute = 10 rounds
+    bm.setAgentStats(idx, stats);
+
+    log_("{} activates Sacred Weapon: +{} to weapon attack rolls for 1 minute",
+         agentName(bm, idx), bonus);
+    return bonus;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Sorcerer lifecycle methods (Innate Sorcery, Font of Magic)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer) return false;
+
+    // Requires an available Innate Sorcery use (Bonus Action; 2 uses per long rest).
+    Resource* innate = stats.getResource("Innate Sorcery");
+    if (!innate || innate->current <= 0) return false;
+
+    innate->spend(1);
+    stats.innate_sorcery_turns = 10;  // 1 minute = 10 rounds
+    bm.setAgentStats(idx, stats);
+
+    log_("{} activates Innate Sorcery: +1 spell save DC and advantage on spell attacks for 1 minute",
+         agentName(bm, idx));
+    return true;
+}
+
+int CombatEngine::convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 1 || slot_level > 9) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer) return -1;
+
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    if (stats.spell_slots_remaining[si] <= 0) return -1;   // no slot of that level to spend
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp) return -1;
+
+    stats.spell_slots_remaining[si] -= 1;
+    sp->gain(slot_level);  // gain SP equal to the slot level (capped at max by Resource::gain)
+    bm.setAgentStats(idx, stats);
+
+    log_("{} converts a level-{} slot into Sorcery Points (now {}/{})",
+         agentName(bm, idx), slot_level, sp->current, sp->max);
+    return sp->current;
+}
+
+int CombatEngine::createSpellSlot(BattleMap& bm, int idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    // Font of Magic creates only level 1-5 slots.
+    if (slot_level < 1 || slot_level > 5) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer) return -1;
+
+    static const int cost_by_level[6] = {0, 2, 3, 5, 6, 7};  // SP cost; index = slot level
+    int cost = cost_by_level[slot_level];
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp || sp->current < cost) return -1;
+
+    sp->spend(cost);
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    stats.spell_slots_remaining[si] += 1;  // temporary slot; cleared at the next long rest
+    bm.setAgentStats(idx, stats);
+
+    log_("{} spends {} Sorcery Points to create a level-{} slot",
+         agentName(bm, idx), cost, slot_level);
+    return sp->current;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Per-agent turn count
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,6 +573,20 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     auto stats = agent.agent->getStats();
+
+    // Paladin Oath of Devotion — Sacred Weapon: tick down its 1-minute (10-round) duration.
+    // Persisted immediately so the rest of this turn (and the GUI) sees the updated count.
+    if (stats.sacred_weapon_turns > 0) {
+        --stats.sacred_weapon_turns;
+        if (stats.sacred_weapon_turns == 0) stats.sacred_weapon_bonus = 0;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
+    // Sorcerer Innate Sorcery: tick down its 1-minute (10-round) duration.
+    if (stats.innate_sorcery_turns > 0) {
+        --stats.innate_sorcery_turns;
+        bm.setAgentStats(agent_idx, stats);
+    }
 
     // Death from Exhaustion: agent dies at exhaustion level 6
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
@@ -1366,6 +1485,8 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.brutal_strike_used_this_turn = false;
         cond.stunning_strike_available = false;
         cond.stunning_strike_used = false;
+        cond.psionic_strike_available = false;
+        cond.psionic_strike_used = false;
         cond.open_hand_rider_available = false;
         cond.open_hand_rider_used = false;
         cond.hamstrung = false;
@@ -1520,6 +1641,9 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     AttackResult r;
     r.disadvantage = disadvantage;
     r.attack_mod   = attackModifier(w, attacker) + w.bonus_hit;
+    // Paladin Oath of Devotion — Sacred Weapon: while active, add the stored CHA bonus to weapon attack rolls.
+    if (attacker.character_class == CharacterClass::Paladin && attacker.sacred_weapon_turns > 0)
+        r.attack_mod += attacker.sacred_weapon_bonus;
     r.target_ac    = target_ac;
 
     // Check if portent die is pending (need to apply after advantage/disadvantage logic)
@@ -2015,6 +2139,19 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         !atk_cond.divine_strike_used) {
         updated_atk_cond.divine_strike_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Psi Warrior Psionic Strike eligibility (on-hit) ───────────────────
+    // L3+ Psi Warriors can, once per turn, spend one Psionic Energy die to add Force damage to a
+    // hit (die roll + INT mod). Applied out of band via applyPsionicStrikeEffect.
+    if (r.hit && atk_stats.character_class == CharacterClass::Fighter &&
+        atk_stats.fighter_subclass == PsiWarriorPath && atk_stats.char_level >= 3 &&
+        !atk_cond.psionic_strike_used) {
+        const Resource* ped = atk_stats.getResource("Psionic Energy");
+        if (ped && ped->current > 0) {
+            updated_atk_cond.psionic_strike_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
     }
 
     // ── War Domain — Guided Strike eligibility (on a miss) ────────────────
@@ -2604,7 +2741,9 @@ int CombatEngine::spellAttackMod(const Agent::Stats& s) noexcept
 
 int CombatEngine::spellSaveDc(const Agent::Stats& s) noexcept
 {
-    return 8 + spellAttackMod(s);
+    // Sorcerer Innate Sorcery: +1 to spell save DC while active.
+    int innate = (s.innate_sorcery_turns > 0) ? 1 : 0;
+    return 8 + spellAttackMod(s) + innate;
 }
 
 int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept
@@ -2621,7 +2760,27 @@ int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ab
     }();
     int m = (abilityScore - 10) / 2;
     if (abilityScore < 10 && (abilityScore - 10) % 2 != 0) --m;
-    return 8 + s.prof_bonus + m;
+    // Sorcerer Innate Sorcery: +1 to spell save DC while active.
+    int innate = (s.innate_sorcery_turns > 0) ? 1 : 0;
+    return 8 + s.prof_bonus + m + innate;
+}
+
+// Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
+int CombatEngine::metamagicSpCost(MetamagicOption opt) noexcept
+{
+    switch (opt) {
+        case MetamagicHeightened:
+        case MetamagicQuickened:   return 2;
+        case MetamagicCareful:
+        case MetamagicDistant:
+        case MetamagicEmpowered:
+        case MetamagicExtended:
+        case MetamagicSeeking:
+        case MetamagicSubtle:
+        case MetamagicTransmuted:
+        case MetamagicTwinned:     return 1;
+        default:                   return 0;  // MetamagicNone
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2781,6 +2940,25 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     const Agent::Stats& caster_stats = caster_pa.agent->getStats();
 
+    // ── Sorcerer Metamagic ────────────────────────────────────────────────────
+    // Deduct Sorcery Points for the chosen Metamagic up front. Only options whose
+    // effect is implemented in the engine are honored; the rest are logged and
+    // ignored (no SP spent) — see known_limitations.md. applied_metamagic drives
+    // the per-target effects in the AttackRoll/Save branches below.
+    MetamagicOption applied_metamagic = MetamagicNone;
+    if (action.metamagic == MetamagicHeightened || action.metamagic == MetamagicSeeking) {
+        int cost = metamagicSpCost(action.metamagic);
+        if (spendResource(bm, action.caster_idx, "Sorcery Points", cost)) {
+            applied_metamagic = action.metamagic;
+            log_("Metamagic: {} ({} SP)",
+                 action.metamagic == MetamagicHeightened ? "Heightened Spell" : "Seeking Spell", cost);
+        } else {
+            log_("Metamagic not applied: not enough Sorcery Points");
+        }
+    } else if (action.metamagic != MetamagicNone) {
+        log_("Metamagic not applied: option not yet implemented in the combat engine");
+    }
+
     // Concentration management: check if casting a concentration spell
     if (sp.requires_concentration) {
         Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
@@ -2913,6 +3091,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (caster_pa.agent->hasAdvantage())
                 log_("Advantage: condition");
 
+            // Sorcerer Innate Sorcery: advantage on the caster's spell attack rolls while active.
+            if (caster_stats.innate_sorcery_turns > 0) {
+                caster_adv = true;
+                log_("Advantage: Innate Sorcery");
+            }
+
             // Target blinded: attacker has advantage
             bool target_blinded = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().blinded;
             if (target_blinded) {
@@ -2945,6 +3129,22 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             tr.target_ac  = calculateAC(bm, tgt_idx);
             tr.critical   = (d20_val >= caster_stats.crit_threshold);
             tr.hit        = tr.critical || (d20_val != 1 && total >= tr.target_ac);
+
+            // Metamagic — Seeking Spell: reroll a missed spell attack once, keep the new roll.
+            if (applied_metamagic == MetamagicSeeking && !tr.hit) {
+                int reroll;
+                if (caster_adv && caster_dis)      reroll = roll(20);
+                else if (caster_adv)               reroll = rollAdvantage(20);
+                else if (caster_dis)               reroll = rollDisadvantage(20);
+                else                               reroll = roll(20);
+                log_("Metamagic Seeking: reroll {} (was {})", reroll, d20_val);
+                d20_val       = reroll;
+                total         = d20_val + mod;
+                tr.d20        = d20_val;
+                tr.total_roll = total;
+                tr.critical   = (d20_val >= caster_stats.crit_threshold);
+                tr.hit        = tr.critical || (d20_val != 1 && total >= tr.target_ac);
+            }
 
             if (tr.hit) {
                 std::vector<int> dice;
@@ -3054,6 +3254,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             const Agent::Conditions& target_cond = target_pa.agent->getConditions();
             bool target_adv = target_pa.agent->hasAdvantage();
             bool target_dis = target_pa.agent->hasDisadvantage();
+
+            // Metamagic — Heightened Spell: one target has disadvantage on its save.
+            if (applied_metamagic == MetamagicHeightened && !targets.empty() && tgt_idx == targets.front()) {
+                target_dis = true;
+                log_("Metamagic Heightened: {} has disadvantage on the save", agentName(bm, tgt_idx));
+            }
 
             // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
             bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
@@ -5199,6 +5405,110 @@ void CombatEngine::applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int 
     }
 }
 
+void CombatEngine::applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                            AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.psionic_strike_available || atk_cond.psionic_strike_used) return;  // once per turn
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    const Resource* ped = atk_stats.getResource("Psionic Energy");
+    if (!ped || ped->current <= 0) return;
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+
+    // Force damage = one Psionic Energy die + INT mod (floored for odd negative scores).
+    int int_mod = (atk_stats.intel - 10) / 2;
+    if (atk_stats.intel < 10 && (atk_stats.intel - 10) % 2 != 0) --int_mod;
+    int raw = std::max(0, roll(atk_stats.psionic_die_size) + int_mod);
+
+    const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Force];
+    const int ps_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"psionic strike", ps_damage});
+    result.total_damage += ps_damage;
+    result.magic_damage_types.push_back(MagicDamage_t::Force);
+
+    int overflow = std::max(0, ps_damage - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ps_damage);
+    tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+
+    // Spend one Psionic Energy die and mark Psionic Strike used for the turn.
+    spendResource(bm, attacker_idx, "Psionic Energy", 1);
+    atk_cond.psionic_strike_used = true;
+    atk_cond.psionic_strike_available = false;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    log_("{} adds Psionic Strike: +{} Force damage", agentName(bm, attacker_idx), ps_damage);
+
+    if (ps_damage > 0) {
+        checkConcentrationOnDamage(bm, target_idx, ps_damage);
+        processDamageTaken(bm, target_idx, ps_damage);
+    }
+}
+
+int CombatEngine::applyProtectiveField(BattleMap& bm, int defender_idx, int damage_taken) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (defender_idx < 0 || defender_idx >= static_cast<int>(agents.size())) return -1;
+    if (damage_taken <= 0) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(defender_idx);
+    if (stats.character_class != CharacterClass::Fighter ||
+        stats.fighter_subclass != PsiWarriorPath || stats.char_level < 3) return -1;
+
+    Agent::Conditions cond = bm.getAgentConditions(defender_idx);
+    if (cond.reaction_used || cond.incapacitated) return -1;
+
+    const Resource* ped = stats.getResource("Psionic Energy");
+    if (!ped || ped->current <= 0) return -1;
+
+    // Reduction = one Psionic Energy die + INT mod (the mod never reduces below the die roll).
+    int int_mod = (stats.intel - 10) / 2;
+    if (stats.intel < 10 && (stats.intel - 10) % 2 != 0) --int_mod;
+    int reduction = roll(stats.psionic_die_size) + std::max(0, int_mod);
+    int healed = std::min(reduction, damage_taken);  // only restore what this hit actually cost
+
+    // Spend the die + the reaction, then heal back the prevented damage.
+    spendResource(bm, defender_idx, "Psionic Energy", 1);
+    cond.reaction_used = true;
+    bm.setAgentConditions(defender_idx, cond);
+    healAgent(bm, defender_idx, healed);
+
+    log_("{} uses Protective Field: prevents {} damage (rolled reduction {})",
+         agentName(bm, defender_idx), healed, reduction);
+    return healed;
+}
+
+int CombatEngine::applyTelekineticMovement(BattleMap& bm, int idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()) ||
+        target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Fighter ||
+        stats.fighter_subclass != PsiWarriorPath || stats.char_level < 3) return -1;
+
+    const Resource* tk = stats.getResource("Telekinetic Movement");
+    if (!tk || tk->current <= 0) return -1;
+
+    // Push the target up to 30 ft straight away from the Psi Warrior.
+    const Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+    int feet = bm.forceMoveAgent(target_idx, origin, 30) * 5;
+
+    spendResource(bm, idx, "Telekinetic Movement", 1);
+    if (feet > 0)
+        log_("{} telekinetically moves {} {} ft",
+             agentName(bm, idx), agentName(bm, target_idx), feet);
+    return feet;
+}
+
 ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept
 {
     ManeuverResult res;
@@ -6675,8 +6985,8 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         num_attacks = 2;
       }
 
-      // Unarmored Defense (L1+): AC = 10 + DEX + WIS (note: not implemented yet, see known_limitations.md)
-      // This would need special AC calculation logic in combat.cpp
+      // Unarmored Defense (L1+): AC = 10 + DEX + WIS is applied in the AC calculation
+      // (see the Monk branch in computeAC ~combat.cpp:313), so nothing to grant here.
       break;
     }
 
@@ -6695,11 +7005,23 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
     }
 
     case Sorcerer: {
+      // Chassis: Constitution + Charisma saving-throw proficiencies (2024 PHB)
+      save_prof_con = true;
+      save_prof_cha = true;
+
+      // TODO [OPUS]: Sorcerer subclass features (Aberrant/Clockwork/Draconic/Wild Magic)
+
       // Sorcery Points: equal to sorcerer level
       Resource sp("Sorcery Points", level, 0);
       sp.short_rest_regen = 0;
       sp.long_rest_regen = level;
       resources["Sorcery Points"] = sp;
+
+      // Innate Sorcery (L1): Bonus Action self-buff, 2 uses, regain on long rest.
+      Resource innate("Innate Sorcery", 2, 0);
+      innate.short_rest_regen = 0;
+      innate.long_rest_regen = 2;
+      resources["Innate Sorcery"] = innate;
       break;
     }
 
@@ -6753,6 +7075,23 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
           resources["Superiority Dice"] = sd;
           superiority_die_size = (level >= 10) ? 10 : 8;
         }
+      }
+
+      // Psi Warrior (L3+): Psionic Energy Dice = 2 × proficiency bonus; die size scales by level.
+      // Also grants Telekinetic Movement (once per short/long rest).
+      if (fighter_subclass == PsiWarriorPath && level >= 3) {
+        int prof = 2 + (level - 1) / 4;          // PHB proficiency bonus by level
+        int ped_count = 2 * prof;
+        Resource ped("Psionic Energy", ped_count, 0);
+        ped.short_rest_regen = 1;                // regain one die on a short rest
+        ped.long_rest_regen  = ped_count;        // all dice on a long rest
+        resources["Psionic Energy"] = ped;
+        psionic_die_size = (level >= 17) ? 12 : (level >= 11) ? 10 : (level >= 5) ? 8 : 6;
+
+        Resource tk("Telekinetic Movement", 1, 0);
+        tk.short_rest_regen = 1;
+        tk.long_rest_regen  = 1;
+        resources["Telekinetic Movement"] = tk;
       }
       break;
     }

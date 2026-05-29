@@ -79,6 +79,13 @@ Will reuse the existing `vex_target_idx` flag — trivial but out of scope for t
 
 ## Paladin
 
+### Implemented ✅
+- **Chassis**: CHA half-caster, Extra Attack (L5), WIS save proficiency
+- **Channel Oath** resource (2/3/4 uses by level), **Lay on Hands** pool (5×level, `layOnHands`)
+- **Oath of Devotion — Sacred Weapon**: Bonus Action, spend 1 Channel Oath → +CHA mod (min +1)
+  to weapon attack rolls for 1 minute (10 rounds). Engine `activateSacredWeapon` (`combat.cpp`),
+  applied in `rollToHit`, duration decremented in `beginTurn`. GUI button + `test_paladin.py` coverage.
+
 ### Divine Smite [OPUS]
 **Rule**: Spell cast as a Bonus Action triggered by a melee weapon hit, consuming the Attack-action
 hit + bonus action + a spell slot, with radiant damage scaling by slot level.
@@ -331,20 +338,16 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 ## Monk (Phase 1 implemented)
 
 ### Implemented (Phase 1) ✅
-- **Chassis**: DEX+WIS saves, Ki resource (= level, short-rest regen)
+- **Chassis**: DEX+WIS saves, Ki/Focus Points resource (= level, short-rest regen)
 - **Extra Attack** at L5
 - **MonkSubclass** enum, GUI picker, save/load
 - **Way of the Open Hand**: Flurry of Blows (2 bonus unarmed strikes via `_start_extra_attack`)
-- **Unarmed Martial Arts**: 1d8 strike (configurable per subclass) with bonus-action extra attack
-
-### Deferred — Unarmored Defense
-- **Mechanic**: AC = 10 + DEX + WIS when not armored (L1+)
-- **Why deferred**: Requires special AC calculation logic
+- **Unarmed Martial Arts**: strike die scales by level (configurable per subclass) with bonus-action extra attack
+- **Unarmored Defense**: AC = 10 + DEX + WIS when not armored — implemented in the AC calc (`combat.cpp:313-330`), mirrors the Barbarian formula
+- **Patient Defense** (spend 1 Focus → Dodge) and **Step of the Wind** (spend 1 Focus → Disengage+Dash) — GUI buttons + click handlers in `main.py`
+- **Stunning Strike** (spend 1 Focus on a qualifying unarmed hit → CON save or Stunned) — on-hit rider: eligibility flag set in `executeAction` (`combat.cpp:1963`), applied out-of-band via `applyStunningStrike` (`combat.cpp:4595`)
 
 ### Deferred — Monk features
-- **Patient Defense** (spend 1 Ki → Dodge)
-- **Step of the Wind** (spend 1 Ki → Disengage+Dash)
-- **Stunning Strike** (spend 1 Ki on hit → CON save or Stunned)
 - **Subclass mechanics**: Shadow Arts, Four Elements
 
 ### Deferred — Warrior of Mercy [OPUS]
@@ -364,15 +367,22 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 - **Action Surge** (L1+): reset `action_used` flag, 1 use (2 at L17), long-rest regen
 - **Champion subclass** (L3+): crit threshold reduction
 - **FighterSubclass** enum + GUI picker + save/load
+- **Battle Master**: Superiority Dice resource (`combat.cpp:6742`) + Maneuvers via `applyManeuverEffect` (`combat.cpp:5202`) — Trip→Prone, Menacing→Frightened, Pushing→forced move, Precision Attack (on-miss). Tested in `test_fighter.py`.
+- **Psi Warrior** (L3+): Psionic Energy Dice resource (= 2 × prof, die d6/d8/d10/d12 by level) + Telekinetic Movement use.
+  - **Psionic Strike** (on-hit rider): spend 1 die → Force damage (die + INT mod), once/turn. `applyPsionicStrikeEffect` + GUI rider chain (`_offer_psionic_strike`).
+  - **Protective Field** (reaction): spend 1 die → prevent (die + INT mod) damage. `applyProtectiveField` (modeled as post-hit heal-back). Engine + binding + test done.
+  - **Telekinetic Movement**: push a creature 30 ft, once/rest. `applyTelekineticMovement` + GUI button (target-click).
+  - All tested in `test_fighter.py`.
 
-### Deferred — Battle Master
-- **Superiority Dice** resource
-- **Maneuvers**: on-hit riders (Trip/Menacing/Pushing/etc.)
+### Deferred — Psi Warrior (GUI only)
+- **Protective Field reaction prompt**: the mechanic is complete and callable via `apply_protective_field`,
+  but the GUI does not yet *offer* it to a Psi Warrior when they are hit (no "defender reaction on being
+  hit" prompt pattern exists yet — Uncanny Dodge auto-applies; this needs a player choice because it costs
+  a die). Wire alongside a general defender-reaction prompt later.
 
-### Deferred — Psi Warrior
-- **Psionic Energy Dice** resource
-- **Protective Field** (reaction damage reduction)
-- **Psionic Strike** (bonus force damage)
+### Deferred — Battle Master (remaining)
+- **Riposte** (reaction-on-miss, flags the defender — no engine pattern yet)
+- **Additional maneuvers** beyond the starter set (Disarming, Feinting, Lunging, etc. — dispatch via `applyManeuverEffect` once needed)
 
 ### Deferred — Champion extras
 - **Remarkable Athlete** (bonus to non-proficient checks)
@@ -382,3 +392,36 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 - **[OPUS] Eldritch Knight**: War Magic (turn-economy interleave)
 - **[DEFER] Indomitable** (L9): save-reroll resource
 - **[DEFER] Studied Attacks** (L13): advantage on next attack vs missed creature
+
+---
+
+## Sorcerer (Phase 1 + Phase 2 implemented)
+
+**Implemented:** Chassis (CON/CHA save proficiency), full-caster table-B slots, Sorcery
+Points, Innate Sorcery (L1: +1 spell save DC + advantage on spell attacks, 10-round buff,
+2 uses), Font of Magic (slot↔SP conversion both directions), and Metamagic foundation
+(`SorcererSubclass`/`MetamagicOption` enums, `SpellAction.metamagic`, `metamagic_sp_cost`).
+
+### Metamagic — implemented options
+- **Heightened Spell** (2 SP): one target rolls its save with disadvantage.
+- **Seeking Spell** (1 SP): reroll a missed spell attack once.
+
+### Metamagic — deferred (need new infrastructure, not yet honored)
+The cast is still resolved, but the SP is **not** spent and the effect is **not** applied
+(logged as "not yet implemented"):
+- **[DEFER] Empowered** (1 SP): reroll up to CHA-mod damage dice — needs the per-type damage
+  loop restructured to capture dice before multipliers are applied.
+- **[DEFER] Twinned** (1 SP): add a second target — needs target-list plumbing.
+- **[DEFER] Quickened** (2 SP): cast as a Bonus Action — needs turn-economy support.
+- **[DEFER] Careful** (1 SP): chosen creatures auto-succeed — needs per-target exclusion params.
+- **[DEFER] Distant** (1 SP): double range — range is enforced GUI-side, no engine effect.
+- **[DEFER] Transmuted** (1 SP): change damage type — needs per-roll type override.
+- **[DEFER] Extended** (1 SP): double duration + advantage on concentration — needs duration plumbing.
+- **[KNOWN LIMITATION] Subtle** (1 SP): cast without V/S components — purely out-of-combat
+  flavor (no combat-sim effect); will not be implemented.
+
+### NOT IMPLEMENTED (Model boundary)
+- **[OPUS] Subclasses** (Aberrant / Clockwork / Draconic / Wild Magic): enums are bound and
+  stubbed; all L3/L6/L14/L18 features deferred. Notable hard pieces: Aberrant psionic spells
+  cast via SP; Clockwork persistent ward dice; Draconic 3rd unarmored-AC formula
+  (10 + DEX + CHA); Wild Magic 100-entry surge table + Tides-of-Chaos state.

@@ -68,6 +68,9 @@ test_scripts = [
 
     # Paladin features
     "test_paladin.py",
+
+    # Sorcerer features
+    "test_sorcerer.py",
 ]
 
 def run_tests():

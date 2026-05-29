@@ -124,6 +124,9 @@ struct SpellAction {
     // Ignored for Single geometry.
     int  aoe_col = 0;
     int  aoe_row = 0;
+    // Sorcerer Metamagic applied to this cast (MetamagicNone = none). The SP cost is
+    // deducted in executeSpell. Currently applied: Heightened, Seeking (see metamagicSpCost).
+    MetamagicOption metamagic = MetamagicNone;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -437,6 +440,31 @@ public:
     // Returns actual HP healed (0 if nothing to heal, -1 if no pool remaining).
     static int layOnHands (BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept;
 
+    // Sacred Weapon (Paladin Oath of Devotion): Bonus Action, spend 1 Channel Oath use to add
+    // +CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires Oath of Devotion
+    // and an available Channel Oath use. Returns the attack bonus granted, or -1 if it could not
+    // be activated (wrong oath, no resource, or already active).
+    int activateSacredWeapon(BattleMap& bm, int idx) noexcept;
+
+    // ── Sorcerer ──────────────────────────────────────────────────────────
+    // Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save DC and
+    // advantage on spell attack rolls for 1 minute (10 rounds). Returns true if
+    // activated, false otherwise (not a Sorcerer / no uses left).
+    bool activateInnateSorcery(BattleMap& bm, int idx) noexcept;
+
+    // Font of Magic (L2): convert a remaining spell slot of slot_level (1-9) into
+    // slot_level Sorcery Points (capped at max). Returns new SP total, or -1 if it
+    // could not be done (not a Sorcerer / no such slot).
+    int convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_level) noexcept;
+
+    // Font of Magic (L2): spend Sorcery Points to create a temporary spell slot of
+    // slot_level (1-5; cost 2/3/5/6/7). The slot is cleared at the next long rest.
+    // Returns remaining SP, or -1 if it could not be done (not a Sorcerer / not enough SP).
+    int createSpellSlot(BattleMap& bm, int idx, int slot_level) noexcept;
+
+    // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
+    static int metamagicSpCost(MetamagicOption opt) noexcept;
+
     // ── Per-agent turn count ──────────────────────────────────────────────
     //
     // The common case is exactly 1 turn per round; only store overrides.
@@ -732,6 +760,20 @@ public:
     // applyBrutalStrikeEffect / applyCunningStrikeEffect.
     void applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                  bool radiant, AttackResult& result) noexcept;
+
+    // Psi Warrior Psionic Strike (on-hit): spend one Psionic Energy die to add Force damage
+    // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
+    // psionic_strike_available; clears it and sets psionic_strike_used.
+    void applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
+
+    // Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's reaction
+    // to reduce incoming damage by (die roll + INT mod), capped at damage_taken. Modeled as a post-hit
+    // heal-back of the prevented amount. Returns the damage prevented, or -1 if it could not be used.
+    int applyProtectiveField(BattleMap& bm, int defender_idx, int damage_taken) noexcept;
+
+    // Psi Warrior Telekinetic Movement: spend the once-per-rest "Telekinetic Movement" use to push a
+    // creature up to 30 ft straight away from the Psi Warrior. Returns feet moved, or -1 if unavailable.
+    int applyTelekineticMovement(BattleMap& bm, int idx, int target_idx) noexcept;
 
     // War Domain — Guided Strike: a War Cleric L3+ (the attacker, or an ally within 30 ft who also
     // spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll (result), turning

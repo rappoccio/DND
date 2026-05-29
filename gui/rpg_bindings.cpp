@@ -328,6 +328,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "d20 roll >= this is a critical hit (default 20, Champion lowers it to 19/18)")
         .def_readwrite("superiority_die_size", &Agent::Stats::superiority_die_size,
              "Battle Master: superiority die size (8 at L3-9, 10 at L10+)")
+        .def_readwrite("psionic_die_size", &Agent::Stats::psionic_die_size,
+             "Psi Warrior: Psionic Energy die size (d6 L3, d8 L5, d10 L11, d12 L17)")
+        .def_readwrite("sacred_weapon_bonus", &Agent::Stats::sacred_weapon_bonus,
+             "Paladin Oath of Devotion: Sacred Weapon attack-roll bonus (0 = inactive)")
+        .def_readwrite("sacred_weapon_turns", &Agent::Stats::sacred_weapon_turns,
+             "Sacred Weapon remaining duration in rounds (decrements at turn start)")
+        .def_readwrite("innate_sorcery_turns", &Agent::Stats::innate_sorcery_turns,
+             "Sorcerer Innate Sorcery remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)")
         .def_readwrite("fighter_subclass", &Agent::Stats::fighter_subclass,
              "Fighter subclass (only valid when character_class == Fighter)")
         .def_readwrite("druid_circle", &Agent::Stats::druid_circle,
@@ -338,6 +346,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Paladin oath choice (only valid when character_class == Paladin)")
         .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
              "Wizard subclass (only valid when character_class == Wizard)")
+        .def_readwrite("sorcerer_subclass", &Agent::Stats::sorcerer_subclass,
+             "Sorcerer subclass (only valid when character_class == Sorcerer)")
+        .def_readwrite("metamagic_options", &Agent::Stats::metamagic_options,
+             "Sorcerer Metamagic options chosen (2 @ L2, 4 @ L10, 6 @ L17)")
         .def_readwrite("warlock_subclass", &Agent::Stats::warlock_subclass,
              "Warlock patron subclass (only valid when character_class == Warlock)")
         .def_readwrite("rogue_subclass", &Agent::Stats::rogue_subclass,
@@ -448,6 +460,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
         .def_readwrite("divine_strike_available", &Agent::Conditions::divine_strike_available)
         .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
+        .def_readwrite("psionic_strike_available", &Agent::Conditions::psionic_strike_available)
+        .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
         .def_readwrite("maneuver_available", &Agent::Conditions::maneuver_available)
         .def_readwrite("maneuver_precision_available", &Agent::Conditions::maneuver_precision_available)
@@ -797,6 +811,30 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Illusionist", IllusionistPath)
         .export_values();
 
+    // ── Sorcerer Subclass Enum (2024 D&D) ────────────────────────────────────
+    py::enum_<SorcererSubclass>(m, "SorcererSubclass")
+        .value("NONE", SorcererSubclassNone)
+        .value("Aberrant", AberrantPath)
+        .value("Clockwork", ClockworkPath)
+        .value("Draconic", DraconicPath)
+        .value("WildMagic", WildMagicPath)
+        .export_values();
+
+    // ── Sorcerer Metamagic Options (2024 D&D) ────────────────────────────────
+    py::enum_<MetamagicOption>(m, "MetamagicOption")
+        .value("NONE", MetamagicNone)
+        .value("Careful", MetamagicCareful)
+        .value("Distant", MetamagicDistant)
+        .value("Empowered", MetamagicEmpowered)
+        .value("Extended", MetamagicExtended)
+        .value("Heightened", MetamagicHeightened)
+        .value("Quickened", MetamagicQuickened)
+        .value("Seeking", MetamagicSeeking)
+        .value("Subtle", MetamagicSubtle)
+        .value("Transmuted", MetamagicTransmuted)
+        .value("Twinned", MetamagicTwinned)
+        .export_values();
+
     // ── Warlock Subclass (Patron) Enum (2024 D&D) ────────────────────────────
     py::enum_<WarlockSubclass>(m, "WarlockSubclass")
         .value("NONE", WarlockSubclassNone)
@@ -979,6 +1017,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("target_indices", &SpellAction::target_indices)
         .def_readwrite("aoe_col",        &SpellAction::aoe_col)
         .def_readwrite("aoe_row",        &SpellAction::aoe_row)
+        .def_readwrite("metamagic",      &SpellAction::metamagic,
+             "Sorcerer Metamagic applied to this cast (MetamagicOption; NONE = none).\n"
+             "SP cost is deducted in execute_spell. Applied: Heightened, Seeking.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
@@ -1408,6 +1449,35 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     "Paladin Lay on Hands: spend from caster's pool to heal target. "
                     "Clamps spend to min(pool_remaining, target_hp_deficit). "
                     "Returns actual HP healed (0 if nothing to heal, -1 if invalid).")
+        .def("activate_sacred_weapon",
+             &CombatEngine::activateSacredWeapon,
+             py::arg("battle_map"), py::arg("idx"),
+             "Paladin Oath of Devotion — Sacred Weapon: spend 1 Channel Oath use to add\n"
+             "+CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires\n"
+             "Oath of Devotion and an available Channel Oath use. Returns the bonus granted,\n"
+             "or -1 if it could not be activated.")
+        .def("activate_innate_sorcery",
+             &CombatEngine::activateInnateSorcery,
+             py::arg("battle_map"), py::arg("idx"),
+             "Sorcerer Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save\n"
+             "DC and advantage on spell attack rolls for 1 minute (10 rounds). Returns True if\n"
+             "activated, False otherwise (not a Sorcerer, or no uses left).")
+        .def("convert_slot_to_sorcery_points",
+             &CombatEngine::convertSlotToSorceryPoints,
+             py::arg("battle_map"), py::arg("idx"), py::arg("slot_level"),
+             "Font of Magic (L2): convert a remaining spell slot (level 1-9) into that many\n"
+             "Sorcery Points (capped at max). Returns the new SP total, or -1 if it could not\n"
+             "be done (not a Sorcerer, or no slot of that level).")
+        .def("create_spell_slot",
+             &CombatEngine::createSpellSlot,
+             py::arg("battle_map"), py::arg("idx"), py::arg("slot_level"),
+             "Font of Magic (L2): spend Sorcery Points to create a temporary spell slot of\n"
+             "level 1-5 (cost 2/3/5/6/7). The slot is cleared at the next long rest. Returns\n"
+             "remaining SP, or -1 if it could not be done (not a Sorcerer, or not enough SP).")
+        .def_static("metamagic_sp_cost",
+                    &CombatEngine::metamagicSpCost,
+                    py::arg("option"),
+                    "Sorcery Point cost for a Metamagic option (2024 PHB).")
         .def_static("get_rage_damage_bonus",
                     &CombatEngine::getRageDamageBonus,
                     py::arg("level"),
@@ -1718,6 +1788,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Monk Stunning Strike: after a qualifying unarmed hit (conditions.stunning_strike_available),\n"
              "spend 1 Focus Point and force a CON save (DC 8 + DEX mod + prof) or the target is Stunned.\n"
              "Returns a StunningStrikeResult.")
+        .def("apply_psionic_strike_effect",
+             &CombatEngine::applyPsionicStrikeEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("result"),
+             "Psi Warrior Psionic Strike: after a qualifying hit (conditions.psionic_strike_available),\n"
+             "spend one Psionic Energy die and add Force damage (die roll + INT mod) to the AttackResult\n"
+             "and the target's HP. Once per turn.")
+        .def("apply_protective_field",
+             &CombatEngine::applyProtectiveField,
+             py::arg("battle_map"), py::arg("defender_idx"), py::arg("damage_taken"),
+             "Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's\n"
+             "reaction to prevent (die roll + INT mod) damage, capped at damage_taken (modeled as a\n"
+             "heal-back). Returns the damage prevented, or -1 if it could not be used.")
+        .def("apply_telekinetic_movement",
+             &CombatEngine::applyTelekineticMovement,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_idx"),
+             "Psi Warrior Telekinetic Movement: spend the once-per-rest use to push a creature up to\n"
+             "30 ft straight away from the Psi Warrior. Returns feet moved, or -1 if unavailable.")
         .def("apply_open_hand_rider",
              &CombatEngine::applyOpenHandRider,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("option"),

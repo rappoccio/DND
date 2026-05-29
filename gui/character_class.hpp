@@ -196,6 +196,22 @@ enum WizardSubclass {
     NumWizardSubclass
 };
 
+// ── Sorcerer Subclass Enum (2024 D&D) ────────────────────────────────
+enum SorcererSubclass {
+    SorcererSubclassNone = 0,
+    AberrantPath, ClockworkPath, DraconicPath, WildMagicPath,
+    NumSorcererSubclass
+};
+
+// ── Sorcerer Metamagic Options (2024 D&D) ────────────────────────────
+enum MetamagicOption {
+    MetamagicNone = 0,
+    MetamagicCareful, MetamagicDistant, MetamagicEmpowered, MetamagicExtended,
+    MetamagicHeightened, MetamagicQuickened, MetamagicSeeking, MetamagicSubtle,
+    MetamagicTransmuted, MetamagicTwinned,
+    NumMetamagicOption
+};
+
 // ── Warlock Subclass (Patron) Enum (2024 D&D) ────────────────────────
 enum WarlockSubclass {
     WarlockSubclassNone = 0,

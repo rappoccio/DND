@@ -373,6 +373,8 @@ namespace rpg {
       MonkSubclass monk_subclass{MonkSubclassNone};              // Monk subclass choice
       PaladinOath paladin_oath{PaladinOathNone};                 // Paladin oath choice
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
+      SorcererSubclass sorcerer_subclass{SorcererSubclassNone};  // Sorcerer subclass choice
+      std::vector<MetamagicOption> metamagic_options;            // 2 @ L2, 4 @ L10, 6 @ L17
       WarlockSubclass warlock_subclass{WarlockSubclassNone};     // Warlock patron choice
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
       ClericSubclass cleric_subclass{ClericSubclassNone};        // Cleric divine domain choice
@@ -411,6 +413,10 @@ namespace rpg {
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+
+      int  psionic_die_size{6};                                  // Psi Warrior: Psionic Energy die size (d6/d8/d10/d12 by level)
+      int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
+      int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
+      int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)
@@ -529,6 +535,8 @@ namespace rpg {
       bool open_hand_rider_used{false};     // Monk Open Hand: rider already applied this turn (once per turn)
       bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
+      bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
+      bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
       bool maneuver_available{false};           // Battle Master: a qualifying hit can apply a Maneuver this attack
       bool maneuver_precision_available{false}; // Battle Master: this missed attack can apply Precision Attack
@@ -607,6 +615,8 @@ namespace rpg {
       conditions_.steady_aim                   = false;
       conditions_.divine_strike_available      = false;
       conditions_.divine_strike_used           = false;
+      conditions_.psionic_strike_available     = false;
+      conditions_.psionic_strike_used          = false;
       conditions_.guided_strike_available      = false;
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;
