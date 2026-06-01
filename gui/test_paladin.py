@@ -262,6 +262,203 @@ def test_sacred_weapon_duration_expires():
     print("✅ test_sacred_weapon_duration_expires passed")
 
 
+# ── Divine Smite ─────────────────────────────────────────────────────────────
+
+def _smite_weapon():
+    """Guaranteed-hit proficient melee weapon (1d8 slashing) for Divine Smite tests."""
+    w = rpg.Weapon()
+    w.name = "Longsword"
+    w.type = rpg.WeaponType.Melee
+    w.proficient = True
+    w.reach_ft = 5
+    w.range_short_feet = 5
+    w.range_long_feet = 5
+    w.attack_bonus = 50  # guaranteed hit
+    roll = rpg.PhysicalDamageRoll()
+    roll.type = rpg.PhysicalDamage.Slashing
+    roll.num_dice = 1
+    roll.die_size = 8
+    w.physical_damage_types = [roll]
+    return [w, rpg.Weapon(), rpg.Weapon()]
+
+
+def _smite_ranged_weapon():
+    """Guaranteed-hit ranged weapon — Divine Smite must NOT trigger on this."""
+    w = rpg.Weapon()
+    w.name = "Longbow"
+    w.type = rpg.WeaponType.Ranged
+    w.proficient = True
+    w.range_short_feet = 150
+    w.range_long_feet = 600
+    w.attack_bonus = 50
+    roll = rpg.PhysicalDamageRoll()
+    roll.type = rpg.PhysicalDamage.Piercing
+    roll.num_dice = 1
+    roll.die_size = 8
+    w.physical_damage_types = [roll]
+    return [w, rpg.Weapon(), rpg.Weapon()]
+
+
+def _smite_setup(level=5, slots=None, ranged=False, undead=False, fiend=False, tgt_hp=500):
+    """Paladin (guaranteed-hit weapon) + a tanky target that survives many smites.
+    `slots` overrides spell_slots_remaining directly for deterministic slot-level tests."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    pal = add_agent_to_battle(engine, bm, create_test_agent("Paladin", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 6, 5))
+    _paladin(engine, bm, pal, level)
+    s = engine.get_agent_stats(bm, tgt)
+    s.set_class_level(rpg.CharacterClass.Fighter, 1)
+    s.hp_max = tgt_hp
+    s.hp_cur = tgt_hp
+    s.is_undead = undead
+    s.is_fiend = fiend
+    engine.set_agent_stats(bm, tgt, s)
+    ps = engine.get_agent_stats(bm, pal)
+    if slots is not None:
+        ps.spell_slots_remaining = slots
+    engine.set_agent_stats(bm, pal, ps)
+    engine.set_agent_weapons(bm, pal, _smite_ranged_weapon() if ranged else _smite_weapon())
+    return bm, engine, pal, tgt
+
+
+def _land_smite_hit(engine, bm, pal, tgt):
+    attack = rpg.Attack(pal, tgt, 0)
+    for _ in range(12):
+        r = engine.execute_action(bm, attack)
+        if r.hit:
+            return r
+    return None
+
+
+def _has_smite_breakdown(result):
+    return any(name == "divine smite" for name, _ in result.damage_breakdown)
+
+
+def test_divine_smite_base_damage():
+    """1st-level slot → 2d8 Radiant; spends the slot, the bonus action, and the leveled-spell interlock."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[2, 0, 0, 0, 0, 0, 0, 0, 0])
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    assert r is not None and r.hit, "attack should land"
+    assert engine.get_agent_conditions(bm, pal).divine_smite_available, \
+        "Divine Smite should be available after a melee hit"
+    assert engine.has_bonus_action(bm, pal), "bonus action should be available before smiting"
+    base = r.total_damage
+    hp_before = engine.get_agent_stats(bm, tgt).hp_cur
+    dmg = engine.apply_divine_smite_effect(bm, pal, tgt, 1, r)
+    assert 2 <= dmg <= 16, f"1st-level Divine Smite should be 2d8 (2-16), got {dmg}"
+    assert r.total_damage - base == dmg, "result total should rise by exactly the smite damage"
+    assert hp_before - engine.get_agent_stats(bm, tgt).hp_cur == dmg, "target HP should drop by the smite damage"
+    assert rpg.MagicDamage.Radiant in list(r.magic_damage_types), "Divine Smite deals Radiant"
+    assert _has_smite_breakdown(r), "damage_breakdown should include a 'divine smite' entry"
+    ps = engine.get_agent_stats(bm, pal)
+    assert ps.spell_slots_remaining[0] == 1, "one 1st-level slot consumed"
+    assert ps.leveled_spell_cast_this_turn, "leveled-spell interlock should be set"
+    assert not engine.has_bonus_action(bm, pal), "bonus action should be consumed"
+    assert engine.get_agent_conditions(bm, pal).divine_smite_used, "Divine Smite marked used this turn"
+    print("✅ test_divine_smite_base_damage passed")
+
+
+def test_divine_smite_upcast_scaling():
+    """Each slot level above 1st adds 1d8, capped at a 5th-level slot (6d8)."""
+    for slot_level, lo, hi in [(2, 3, 24), (3, 4, 32), (5, 6, 48)]:
+        slots = [0] * 9
+        slots[slot_level - 1] = 1
+        bm, engine, pal, tgt = _smite_setup(level=17, slots=slots)
+        r = _land_smite_hit(engine, bm, pal, tgt)
+        assert r is not None and r.hit
+        dmg = engine.apply_divine_smite_effect(bm, pal, tgt, slot_level, r)
+        assert lo <= dmg <= hi, f"level-{slot_level} slot should be {lo//1}..{hi} ({lo}d8 band), got {dmg}"
+        assert engine.get_agent_stats(bm, pal).spell_slots_remaining[slot_level - 1] == 0, \
+            f"the level-{slot_level} slot should be consumed"
+    print("✅ test_divine_smite_upcast_scaling passed")
+
+
+def test_divine_smite_undead_fiend_bonus():
+    """+1d8 against an Undead or a Fiend (1st-level slot → 3d8)."""
+    for kind in ("undead", "fiend"):
+        bm, engine, pal, tgt = _smite_setup(level=5, slots=[1, 0, 0, 0, 0, 0, 0, 0, 0],
+                                            undead=(kind == "undead"), fiend=(kind == "fiend"))
+        r = _land_smite_hit(engine, bm, pal, tgt)
+        assert r is not None and r.hit
+        dmg = engine.apply_divine_smite_effect(bm, pal, tgt, 1, r)
+        assert 3 <= dmg <= 24, f"1st-level smite vs {kind} should be 3d8 (3-24), got {dmg}"
+    print("✅ test_divine_smite_undead_fiend_bonus passed")
+
+
+def test_divine_smite_once_per_turn():
+    """A second smite the same turn is rejected (returns -1, no extra damage)."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[3, 0, 0, 0, 0, 0, 0, 0, 0])
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    engine.apply_divine_smite_effect(bm, pal, tgt, 1, r)
+    total_after_first = r.total_damage
+    slots_after_first = engine.get_agent_stats(bm, pal).spell_slots_remaining[0]
+    again = engine.apply_divine_smite_effect(bm, pal, tgt, 1, r)
+    assert again == -1, f"second smite this turn should be rejected, got {again}"
+    assert r.total_damage == total_after_first, "no extra damage on the rejected second smite"
+    assert engine.get_agent_stats(bm, pal).spell_slots_remaining[0] == slots_after_first, "no extra slot spent"
+    print("✅ test_divine_smite_once_per_turn passed")
+
+
+def test_divine_smite_blocked_without_slot():
+    """With no spell slots, the hit grants no Divine Smite availability and apply is rejected."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[0] * 9)
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    assert r is not None and r.hit
+    assert not engine.get_agent_conditions(bm, pal).divine_smite_available, \
+        "no slot → Divine Smite must not be offered"
+    assert engine.apply_divine_smite_effect(bm, pal, tgt, 1, r) == -1, "apply should fail with no slot"
+    print("✅ test_divine_smite_blocked_without_slot passed")
+
+
+def test_divine_smite_blocked_without_bonus_action():
+    """A spent bonus action means a fresh melee hit does not offer Divine Smite."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[2, 0, 0, 0, 0, 0, 0, 0, 0])
+    engine.spend_bonus_action(bm, pal)  # e.g. already used the bonus action this turn
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    assert r is not None and r.hit
+    assert not engine.get_agent_conditions(bm, pal).divine_smite_available, \
+        "no bonus action → Divine Smite must not be offered"
+    print("✅ test_divine_smite_blocked_without_bonus_action passed")
+
+
+def test_divine_smite_ranged_excluded():
+    """Divine Smite requires a melee/unarmed hit — a ranged hit does not qualify."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[2, 0, 0, 0, 0, 0, 0, 0, 0], ranged=True)
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    assert r is not None and r.hit, "ranged attack should land"
+    assert not engine.get_agent_conditions(bm, pal).divine_smite_available, \
+        "a ranged hit must not enable Divine Smite"
+    print("✅ test_divine_smite_ranged_excluded passed")
+
+
+def test_divine_smite_leveled_spell_interlock():
+    """If a leveled spell was already cast this turn, the bonus-action smite is not offered."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[2, 0, 0, 0, 0, 0, 0, 0, 0])
+    ps = engine.get_agent_stats(bm, pal)
+    ps.leveled_spell_cast_this_turn = True
+    engine.set_agent_stats(bm, pal, ps)
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    assert r is not None and r.hit
+    assert not engine.get_agent_conditions(bm, pal).divine_smite_available, \
+        "leveled spell already cast → no bonus-action Divine Smite"
+    print("✅ test_divine_smite_leveled_spell_interlock passed")
+
+
+def test_divine_smite_resets_next_turn():
+    """divine_smite_used clears at the start of the Paladin's next turn (begin_turn)."""
+    bm, engine, pal, tgt = _smite_setup(level=5, slots=[3, 0, 0, 0, 0, 0, 0, 0, 0])
+    r = _land_smite_hit(engine, bm, pal, tgt)
+    engine.apply_divine_smite_effect(bm, pal, tgt, 1, r)
+    assert engine.get_agent_conditions(bm, pal).divine_smite_used, "used this turn"
+    engine.begin_turn(bm, pal)
+    cond = engine.get_agent_conditions(bm, pal)
+    assert not cond.divine_smite_used, "begin_turn should clear divine_smite_used"
+    assert not cond.divine_smite_available, "availability is set fresh on the next qualifying hit, not carried"
+    assert engine.has_bonus_action(bm, pal), "begin_turn should refill the bonus action"
+    print("✅ test_divine_smite_resets_next_turn passed")
+
+
 if __name__ == "__main__":
     test_lay_on_hands_resource()
     test_lay_on_hands_partial_spend()
@@ -274,4 +471,13 @@ if __name__ == "__main__":
     test_sacred_weapon_no_resource()
     test_sacred_weapon_attack_bonus_applied()
     test_sacred_weapon_duration_expires()
+    test_divine_smite_base_damage()
+    test_divine_smite_upcast_scaling()
+    test_divine_smite_undead_fiend_bonus()
+    test_divine_smite_once_per_turn()
+    test_divine_smite_blocked_without_slot()
+    test_divine_smite_blocked_without_bonus_action()
+    test_divine_smite_ranged_excluded()
+    test_divine_smite_leveled_spell_interlock()
+    test_divine_smite_resets_next_turn()
     print("\n✅ All Paladin tests passed!")

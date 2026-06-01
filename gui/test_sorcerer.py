@@ -332,19 +332,225 @@ def test_metamagic_insufficient_sp_not_applied():
     print("✅ test_metamagic_insufficient_sp_not_applied passed")
 
 
-def test_metamagic_unimplemented_no_spend():
-    """An option without engine support is logged and ignored (no SP spent)."""
+def test_metamagic_empowered_deferred_no_spend():
+    """Empowered is deferred: it is logged and ignored, spending no SP."""
     bm, engine, sorc, tgt = _setup(5)  # 5 SP
     engine.set_agent_spells(bm, sorc, [_save_spell()])
     action = rpg.SpellAction()
     action.caster_idx = sorc
     action.spell_idx = 0
     action.target_indices = [tgt]
-    action.metamagic = rpg.MetamagicOption.Twinned  # not yet implemented
+    action.metamagic = rpg.MetamagicOption.Empowered  # deferred
     engine.execute_spell(bm, action)
     assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
-        "unimplemented metamagic must not spend SP"
-    print("✅ test_metamagic_unimplemented_no_spend passed")
+        "deferred metamagic must not spend SP"
+    print("✅ test_metamagic_empowered_deferred_no_spend passed")
+
+
+def test_metamagic_subtle_no_spend():
+    """Subtle is flavor only: no engine effect, no SP spent."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_save_spell()])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Subtle
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
+        "Subtle Spell must not spend SP"
+    print("✅ test_metamagic_subtle_no_spend passed")
+
+
+def test_metamagic_distant_spends_sp():
+    """Distant spends 1 SP (it temporarily doubles the spell's range)."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_save_spell()])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Distant
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Distant should spend 1 SP (5 -> 4)"
+    print("✅ test_metamagic_distant_spends_sp passed")
+
+
+def test_metamagic_twinned_spends_sp():
+    """Twinned spends 1 SP (it bumps the spell's targets-per-upcast-level)."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_save_spell()])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Twinned
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Twinned should spend 1 SP (5 -> 4)"
+    print("✅ test_metamagic_twinned_spends_sp passed")
+
+
+def test_metamagic_extended_spends_sp():
+    """Extended spends 1 SP on a lasting spell (it doubles the duration)."""
+    bm, engine, sorc, tgt = _setup(5)
+    sp = _save_spell()
+    sp.duration = 10  # 1 minute
+    engine.set_agent_spells(bm, sorc, [sp])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Extended
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Extended should spend 1 SP on a lasting spell (5 -> 4)"
+    print("✅ test_metamagic_extended_spends_sp passed")
+
+
+def test_metamagic_extended_instantaneous_no_spend():
+    """Extended is inapplicable to an instantaneous spell, so no SP is spent."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_save_spell()])  # duration defaults to 1
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Extended
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
+        "Extended on an instantaneous spell must not spend SP"
+    print("✅ test_metamagic_extended_instantaneous_no_spend passed")
+
+
+def test_metamagic_quickened_casts_as_bonus_action():
+    """Quickened makes an Action-cast spell a Bonus Action and spends 2 SP."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_save_spell()])  # casting_time defaults to Action
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Quickened
+    res = engine.execute_spell(bm, action)
+    assert res.cast_as_bonus_action, "Quickened should flag the cast as a Bonus Action"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 3, \
+        "Quickened should spend 2 SP (5 -> 3)"
+    print("✅ test_metamagic_quickened_casts_as_bonus_action passed")
+
+
+def test_metamagic_quickened_already_bonus_no_spend():
+    """Quickened is inapplicable to a spell already cast as a Bonus Action."""
+    bm, engine, sorc, tgt = _setup(5)
+    sp = _save_spell()
+    sp.casting_time = rpg.CastingTime.BonusAction
+    engine.set_agent_spells(bm, sorc, [sp])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Quickened
+    res = engine.execute_spell(bm, action)
+    assert not res.cast_as_bonus_action
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
+        "Quickened on a bonus-action spell must not spend SP"
+    print("✅ test_metamagic_quickened_already_bonus_no_spend passed")
+
+
+def test_metamagic_transmuted_changes_damage_type():
+    """Transmuted retypes the spell's elemental damage (Cold -> Fire here)."""
+    bm, engine, sorc, tgt = _setup(5)
+    sp = rpg.Spell()
+    sp.name = "Cold Snap"
+    sp.type = rpg.SpellType.Harm
+    sp.geometry = rpg.SpellGeometry.Single
+    sp.attack_type = rpg.SpellAttack.Automatic  # no save: isolate the damage-type effect
+    sp.range = 60
+    sp.level = 0
+    roll = rpg.MagicDamageRoll()
+    roll.type = rpg.MagicDamage.Cold
+    roll.num_dice = 4
+    roll.die_size = 6
+    sp.magic_damage_rolls = [roll]
+    engine.set_agent_spells(bm, sorc, [sp])
+
+    # Target is immune to Cold but takes Fire normally.
+    t = engine.get_agent_stats(bm, tgt)
+    mult = list(t.magic_damage_multipliers)
+    mult[int(rpg.MagicDamage.Cold)] = 0.0
+    mult[int(rpg.MagicDamage.Fire)] = 1.0
+    t.magic_damage_multipliers = mult
+    engine.set_agent_stats(bm, tgt, t)
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+
+    base = engine.execute_spell(bm, action)
+    assert base.target_results[0].total_damage == 0, "cold immunity should null the base damage"
+
+    action.metamagic = rpg.MetamagicOption.Transmuted
+    action.transmuted_damage_type = int(rpg.MagicDamage.Fire)
+    res = engine.execute_spell(bm, action)
+    assert res.target_results[0].total_damage > 0, "transmuted fire damage should land"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Transmuted should spend 1 SP (5 -> 4)"
+    print("✅ test_metamagic_transmuted_changes_damage_type passed")
+
+
+def test_metamagic_transmuted_non_elemental_no_spend():
+    """Transmuted is inapplicable to a spell with no elemental damage; no SP spent."""
+    bm, engine, sorc, tgt = _setup(5)
+    sp = _save_spell()
+    sp.magic_damage_rolls[0].type = rpg.MagicDamage.Force  # not in the elemental list
+    engine.set_agent_spells(bm, sorc, [sp])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Transmuted
+    action.transmuted_damage_type = int(rpg.MagicDamage.Fire)
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
+        "Transmuted on a non-elemental spell must not spend SP"
+    print("✅ test_metamagic_transmuted_non_elemental_no_spend passed")
+
+
+def test_metamagic_careful_shields_ally():
+    """Careful excludes chosen allies from the spell's area, just like Evoker safe targets."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    sorc = add_agent_to_battle(engine, bm, create_test_agent("Sorcerer", 2, 2))
+    ally = add_agent_to_battle(engine, bm, create_test_agent("Ally", 8, 8), hp=100)
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Enemy", 8, 9), hp=100)
+    _sorcerer(engine, bm, sorc, 5)
+
+    spell = rpg.Spell()
+    spell.name = "Fireball"
+    spell.level = 0
+    spell.attack_type = rpg.SpellAttack.Save
+    spell.save_ability = rpg.SaveAbility.Dexterity
+    spell.geometry = rpg.SpellGeometry.Sphere
+    spell.radius = 20
+    spell.range = 120
+    engine.set_agent_spells(bm, sorc, [spell])
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.aoe_col = 8
+    action.aoe_row = 8
+    action.metamagic = rpg.MetamagicOption.Careful
+    action.careful_targets = [ally]
+    res = engine.execute_spell(bm, action)
+    hit = {tr.target_idx for tr in res.target_results}
+    assert enemy in hit, "enemy should still be caught in the AoE"
+    assert ally not in hit, "Careful should shield the chosen ally from the area"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Careful should spend 1 SP (5 -> 4)"
+    print("✅ test_metamagic_careful_shields_ally passed")
 
 
 if __name__ == "__main__":
@@ -368,5 +574,15 @@ if __name__ == "__main__":
     test_metamagic_heightened_spends_sp()
     test_metamagic_seeking_spends_sp()
     test_metamagic_insufficient_sp_not_applied()
-    test_metamagic_unimplemented_no_spend()
+    test_metamagic_empowered_deferred_no_spend()
+    test_metamagic_subtle_no_spend()
+    test_metamagic_distant_spends_sp()
+    test_metamagic_twinned_spends_sp()
+    test_metamagic_extended_spends_sp()
+    test_metamagic_extended_instantaneous_no_spend()
+    test_metamagic_quickened_casts_as_bonus_action()
+    test_metamagic_quickened_already_bonus_no_spend()
+    test_metamagic_transmuted_changes_damage_type()
+    test_metamagic_transmuted_non_elemental_no_spend()
+    test_metamagic_careful_shields_ally()
     print("\n✅ All Sorcerer tests passed!")

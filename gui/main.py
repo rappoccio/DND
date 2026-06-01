@@ -55,6 +55,40 @@ from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
 
 class App:
+    # ── Bonus-action economy: a thin view over the C++ engine budget ──────────
+    # `self.bonus_used` is NOT a plain flag — it reads/writes the active combatant's
+    # bonus-action budget in the engine (Agent::Stats.bonus_actions_remaining/max via
+    # has_bonus_action / spend_bonus_action / reset_bonus_actions). Reading answers
+    # "has the current combatant spent their bonus action(s) this turn?"; assigning
+    # True spends one, False refills to max. Keeping the rule in C++ (not a Python
+    # bool) makes it the single source of truth and lets feats grant extra bonus
+    # actions (bonus_actions_max > 1). Before combat / with no active combatant it
+    # falls back to a plain attribute so early __init__ assignments are harmless.
+    def _bonus_economy_idx(self) -> int:
+        """Active combatant index for the bonus-action budget, or -1 if the engine
+        isn't ready / no one is acting (pre-combat __init__, between combats)."""
+        if getattr(self, "combat", None) is None or getattr(self, "bm", None) is None:
+            return -1
+        return self._current_agent_idx()
+
+    @property
+    def bonus_used(self) -> bool:
+        idx = self._bonus_economy_idx()
+        if idx < 0:
+            return getattr(self, "_bonus_used_fallback", False)
+        return not self.combat.has_bonus_action(self.bm, idx)
+
+    @bonus_used.setter
+    def bonus_used(self, value: bool) -> None:
+        idx = self._bonus_economy_idx()
+        if idx < 0:
+            self._bonus_used_fallback = bool(value)
+            return
+        if value:
+            self.combat.spend_bonus_action(self.bm, idx)
+        else:
+            self.combat.reset_bonus_actions(self.bm, idx)
+
     def __init__(self, map_path: str):
         pygame.init()
         pygame.display.set_caption("RPG Battle Map")
@@ -1951,6 +1985,7 @@ class App:
         has_maneuver = False
         has_precision = False
         has_psionic_strike = False
+        has_divine_smite = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
@@ -1965,6 +2000,8 @@ class App:
                 has_divine_strike = True
             elif result.hit and atk_cond and atk_cond.psionic_strike_available:
                 has_psionic_strike = True
+            elif result.hit and atk_cond and atk_cond.divine_smite_available:
+                has_divine_smite = True
             elif result.hit and atk_cond and atk_cond.maneuver_available:
                 has_maneuver = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
@@ -2016,6 +2053,8 @@ class App:
             self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_psionic_strike:
             self._offer_psionic_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_divine_smite:
+            self._offer_divine_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_maneuver:
@@ -2300,6 +2339,40 @@ class App:
             ("Psionic Strike (1 die → Force)", lambda: _apply(True)),
             ("Skip Psionic Strike", lambda: _apply(False)),
         ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_divine_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a melee/unarmed hit, offer Paladin Divine Smite with one entry per available
+        spell-slot level (1st→2d8 … 5th→6d8, +1d8 vs Undead/Fiend). The Radiant damage and the
+        slot + bonus-action spend happen in C++ via apply_divine_smite_effect. Mirrors
+        _offer_divine_strike."""
+        def _apply(slot_level):
+            if slot_level is not None:
+                self.combat.apply_divine_smite_effect(self.bm, atk_idx, target_idx, slot_level, result)
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: HIT {result.total_damage}{self._damage_breakdown_str(result)} "
+                    f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        def _ordinal(n):
+            return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
+
+        stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        tgt_stats = self.combat.get_agent_stats(self.bm, target_idx)
+        bonus = 1 if (tgt_stats.is_undead or tgt_stats.is_fiend) else 0
+        options = []
+        for lvl in range(1, 10):
+            if stats.spell_slots_remaining[lvl - 1] > 0:
+                dice = 1 + min(lvl, 5) + bonus
+                options.append((f"Divine Smite ({_ordinal(lvl)} slot → {dice}d8 Radiant)",
+                                lambda l=lvl: _apply(l)))
+        options.append(("Skip Divine Smite", lambda: _apply(None)))
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -5153,6 +5226,45 @@ class App:
                 # Draw inner circle (bright yellow)
                 pygame.draw.circle(self.screen, (255, 255, 100), (center_x, center_y), radius - 2, 1)
 
+    def _draw_hp_bar(self, screen_x, screen_y, size_px, stats):
+        """Draw a thin at-a-glance HP bar along the bottom edge of an agent's sprite.
+
+        Reuses the panel's HP color convention (COL_HP_HIGH/MID/LOW at 66%/33%).
+        Temp HP, if any, is shown as a cyan segment appended at the current-HP end.
+        """
+        hp_max = stats.hp_max
+        if hp_max <= 0:
+            return  # unknown/uninitialized HP — nothing meaningful to show
+        hp_cur = max(0, stats.hp_cur)
+        frac   = min(1.0, hp_cur / hp_max)
+
+        inset = 2
+        bar_h = max(3, size_px // 12)
+        bar_w = size_px - 2 * inset
+        bar_x = screen_x + inset
+        bar_y = screen_y + size_px - bar_h - inset
+
+        # Track (missing-HP background)
+        pygame.draw.rect(self.screen, (40, 40, 40), (bar_x, bar_y, bar_w, bar_h))
+
+        # Current-HP fill, colored by fraction
+        hp_col = (COL_HP_HIGH if frac > 0.66 else
+                  COL_HP_MID  if frac > 0.33 else
+                  COL_HP_LOW)
+        fill_w = int(round(bar_w * frac))
+        if fill_w > 0:
+            pygame.draw.rect(self.screen, hp_col, (bar_x, bar_y, fill_w, bar_h))
+
+        # Temp HP overlay (cyan), clamped to the remaining bar width
+        if stats.temp_hp > 0:
+            temp_w = min(bar_w - fill_w, int(round(bar_w * (stats.temp_hp / hp_max))))
+            if temp_w > 0:
+                pygame.draw.rect(self.screen, (80, 200, 230),
+                                 (bar_x + fill_w, bar_y, temp_w, bar_h))
+
+        # Outline for contrast over varied sprite art
+        pygame.draw.rect(self.screen, (10, 10, 10), (bar_x, bar_y, bar_w, bar_h), 1)
+
     def _draw_one_agent(self, pt, screen_x, screen_y, cpx, alpha=255, tint=None, agent_idx=-1):
         """Draw a single agent (sprite or placeholder) at the given screen coords."""
         size_px = cpx * pt.size
@@ -5183,6 +5295,10 @@ class App:
                 pygame.draw.line(hatch, col, (offset, 0), (offset + size_px, size_px), 2)
                 pygame.draw.line(hatch, col, (offset + size_px, 0), (offset, size_px), 2)
             self.screen.blit(hatch, (screen_x, screen_y))
+
+        # HP bar (skip translucent previews, e.g. movement ghosts)
+        if alpha == 255:
+            self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats)
 
         # Name label
         lbl = self.font_sm.render(pt.name, True, (255, 255, 255))
@@ -6696,13 +6812,31 @@ class App:
     def _panel_rect(self):
         return pygame.Rect(self._panel_x(), 0, PANEL_W, self.screen.get_height())
 
+    def _modal_active(self) -> bool:
+        """True if any scroll-capturing dialog/menu is open. Used to suppress
+        map-level input (wheel/arrow panning) so scrolling a menu doesn't also
+        pan the map underneath it."""
+        return (self.stats_dialog.active or self.spell_dialog.active or
+                self.weapon_dialog.active or self.armor_dialog.active or
+                self.weapons_dialog.active or self.conditions_dialog.active or
+                self.file_browser.active or self.terrain_placement_dialog.active or
+                self.terrain_editor.active or self.lighting_editor.active or
+                self.weapon_selection_dialog.visible or
+                self.armor_selection_dialog.visible or
+                self.spell_selection_dialog.visible or
+                self.mob_dialog.visible or self.context_menu.visible)
+
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
 
+            # Map-level pan input (wheel / arrow keys) is suppressed while any
+            # menu is open, so scrolling a dialog doesn't also pan the map.
+            map_input_allowed = not self._modal_active()
+
             # ── Mouse wheel for map panning ───────────────────────────────
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            if map_input_allowed and event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:  # Scroll up
                     if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                         self.pan_x += 30
@@ -6714,14 +6848,14 @@ class App:
                     else:
                         self.pan_y -= 30
             # Newer pygame versions use MOUSEWHEEL event
-            elif hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+            elif map_input_allowed and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
                 if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                     self.pan_x += event.x * 30
                 else:
                     self.pan_y += event.y * 30
 
             # ── Keyboard panning (arrow keys) ─────────────────────────────
-            if event.type == pygame.KEYDOWN:
+            if map_input_allowed and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
                     self.pan_y += 30
                 elif event.key == pygame.K_DOWN:

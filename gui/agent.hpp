@@ -116,6 +116,13 @@ namespace rpg {
       // Controls which action/bonus-action buttons are shown in the GUI.
       int  num_attacks{1};             // weapon attacks per Action (Extra Attack feature)
       int  bonus_attacks_remaining{0}; // bonus-action attacks queued (Flurry, Martial Arts, etc.)
+      // Bonus-action budget (general action economy). Distinct from bonus_attacks_remaining,
+      // which sequences multiple attacks WITHIN a single bonus action. A turn grants
+      // bonus_actions_max bonus actions (base 1; feats may raise it); the engine refills
+      // bonus_actions_remaining to max at the start of each turn and decrements on each use
+      // (off-hand attack, Cunning Action, Rage, Healing Word, Divine Smite, etc.).
+      int  bonus_actions_max{1};       // bonus actions granted per turn (feats can raise)
+      int  bonus_actions_remaining{1}; // refilled to max each turn; spent on each bonus action
       bool has_cunning_action{false};  // Rogue: Dash/Disengage/Hide as bonus action
       bool has_offhand_attack{false};  // TWF / light weapon: off-hand bonus attack
       bool can_cast_spell{false};      // spellcaster: Cast Spell action/bonus action
@@ -410,6 +417,7 @@ namespace rpg {
       int primal_strike_damage_type{0};                          // element choice (Cold/Fire/Lightning/Thunder)
 
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
+      bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+
@@ -537,6 +545,8 @@ namespace rpg {
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
+      bool divine_smite_available{false};   // Paladin: a melee/unarmed hit can apply Divine Smite this attack
+      bool divine_smite_used{false};        // Paladin: Divine Smite already used this turn (bonus action, once per turn)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
       bool maneuver_available{false};           // Battle Master: a qualifying hit can apply a Maneuver this attack
       bool maneuver_precision_available{false}; // Battle Master: this missed attack can apply Precision Attack
@@ -617,6 +627,8 @@ namespace rpg {
       conditions_.divine_strike_used           = false;
       conditions_.psionic_strike_available     = false;
       conditions_.psionic_strike_used          = false;
+      conditions_.divine_smite_available       = false;
+      conditions_.divine_smite_used            = false;
       conditions_.guided_strike_available      = false;
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;

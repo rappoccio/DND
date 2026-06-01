@@ -125,8 +125,14 @@ struct SpellAction {
     int  aoe_col = 0;
     int  aoe_row = 0;
     // Sorcerer Metamagic applied to this cast (MetamagicNone = none). The SP cost is
-    // deducted in executeSpell. Currently applied: Heightened, Seeking (see metamagicSpCost).
+    // deducted in executeSpell. Implemented: Careful, Distant, Extended, Heightened,
+    // Quickened, Seeking, Transmuted, Twinned. Deferred: Empowered. Subtle = flavor only.
     MetamagicOption metamagic = MetamagicNone;
+    // Metamagic parameter data — only read for the matching option:
+    std::vector<int> careful_targets;     // Careful: allies excluded from this spell's area, Sculpt-style
+                                          // (honored up to the caster's CHA modifier).
+    int transmuted_damage_type = -1;      // Transmuted: MagicDamage_t to convert the spell's elemental
+                                          // damage into (Acid/Cold/Fire/Lightning/Poison/Thunder); -1 = none.
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,6 +260,7 @@ struct SpellResult {
     bool        concentration_replaced     = false;   // caster dropped previous concentration
     std::string prev_concentration_spell   = {};      // name of dropped spell
     std::vector<int> terrain_effect_ids    = {};      // ids of new terrain effects placed by this spell
+    bool cast_as_bonus_action              = false;   // Metamagic Quickened: cast as a Bonus Action this turn
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -677,9 +684,9 @@ public:
     }
 
     // ── Dice rollers ──────────────────────────────────────────────────────
-    int roll(int sides);            // 1dN  (result 1…sides)
-    int rollAdvantage(int sides);   // 2dN, keep higher
-    int rollDisadvantage(int sides); // 2dN, keep lower
+    int roll(int sides, int modifier = 0);            // 1dN + modifier
+    int rollAdvantage(int sides, int modifier = 0);   // max(2dN) + modifier
+    int rollDisadvantage(int sides, int modifier = 0);// min(2dN) + modifier
 
     // ── Core attack mechanics ─────────────────────────────────────────────
 
@@ -761,6 +768,14 @@ public:
     void applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                  bool radiant, AttackResult& result) noexcept;
 
+    // Paladin Divine Smite (on a melee/unarmed hit): spend a level-slot_level spell slot as a
+    // Bonus Action to add (1 + min(slot_level,5))d8 Radiant, +1d8 vs Undead/Fiend. Requires
+    // divine_smite_available, a free bonus action, the chosen slot, and no leveled spell cast
+    // this turn; spends the slot + bonus action, sets leveled_spell_cast_this_turn and
+    // divine_smite_used. Returns the Radiant damage dealt, or -1 if not allowed.
+    int applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                               int slot_level, AttackResult& result) noexcept;
+
     // Psi Warrior Psionic Strike (on-hit): spend one Psionic Energy die to add Force damage
     // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
     // psionic_strike_available; clears it and sets psionic_strike_used.
@@ -818,6 +833,16 @@ public:
     // Returns true if more attacks are queued, false if sequence is exhausted.
     // Used by Flurry of Blows, Martial Arts, and other bonus-action multi-attacks.
     bool consumeBonusAttack(BattleMap& bm, int agent_idx) noexcept;
+
+    // ── Bonus-action budget (general action economy) ─────────────────────
+    // Every feature with a Bonus Action cost goes through these. The budget refills to
+    // bonus_actions_max at the start of each turn (beginTurn + runRound). A feat that
+    // grants an extra bonus action simply raises bonus_actions_max.
+    [[nodiscard]] bool hasBonusAction(const BattleMap& bm, int agent_idx) const noexcept;
+    // Spend one bonus action if available; returns true if spent, false if none remained.
+    bool spendBonusAction(BattleMap& bm, int agent_idx) noexcept;
+    // Refill bonus_actions_remaining = bonus_actions_max for the agent (start of turn).
+    void resetBonusActions(BattleMap& bm, int agent_idx) noexcept;
 
     // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
     // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"

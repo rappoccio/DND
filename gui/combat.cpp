@@ -28,19 +28,19 @@ void CombatEngine::reseed(uint32_t seed)
     rng_.seed(seed);
 }
 
-int CombatEngine::roll(int sides)
+int CombatEngine::roll(int sides, int modifier)
 {
     assert(sides >= 2 && "Die must have at least 2 sides");
     // Portent Dice: if pending, return it instead of rolling (and clear)
     if (pending_portent_die_ >= 0) {
         int result = pending_portent_die_;
         pending_portent_die_ = -1;
-        return result;
+        return result + modifier;
     }
-    return std::uniform_int_distribution<int>{1, sides}(rng_);
+    return std::uniform_int_distribution<int>{1, sides}(rng_) + modifier;
 }
 
-int CombatEngine::rollAdvantage(int sides)
+int CombatEngine::rollAdvantage(int sides, int modifier)
 {
     // Check if portent die is pending (need to apply after advantage logic)
     int pending_portent = pending_portent_die_;
@@ -56,10 +56,11 @@ int CombatEngine::rollAdvantage(int sides)
         result = pending_portent;
     }
 
-    return result;
+    // Flat modifier is added once, after die selection / portent replacement.
+    return result + modifier;
 }
 
-int CombatEngine::rollDisadvantage(int sides)
+int CombatEngine::rollDisadvantage(int sides, int modifier)
 {
     // Check if portent die is pending (need to apply after disadvantage logic)
     int pending_portent = pending_portent_die_;
@@ -75,7 +76,8 @@ int CombatEngine::rollDisadvantage(int sides)
         result = pending_portent;
     }
 
-    return result;
+    // Flat modifier is added once, after die selection / portent replacement.
+    return result + modifier;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -923,6 +925,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     new_stats.resetLeveledSpellCastFlag();
     bm.setAgentStats(agent_idx, new_stats);
 
+    // Refill the bonus-action budget for the new turn (general action economy).
+    resetBonusActions(bm, agent_idx);
+
     // Keep any Emanation anchored to this agent centered on them (e.g. after a forced move).
     recomputeAnchoredEffects(bm, agent_idx);
 
@@ -1477,6 +1482,9 @@ std::vector<AttackResult> CombatEngine::runRound(
     for (int i = 0; i < n; ++i) {
         bm.placedAgents()[static_cast<std::size_t>(i)].agent->setReactionUsed(false);
 
+        // Refill the bonus-action budget (RL/headless path; beginTurn covers the GUI path).
+        resetBonusActions(bm, i);
+
         // Reset per-round Barbarian flags (per-turn flags reset in beginTurn)
         Agent::Conditions cond = bm.getAgentConditions(i);
         cond.berserker_frenzy_used = false;
@@ -1487,6 +1495,8 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.stunning_strike_used = false;
         cond.psionic_strike_available = false;
         cond.psionic_strike_used = false;
+        cond.divine_smite_available = false;
+        cond.divine_smite_used = false;
         cond.open_hand_rider_available = false;
         cond.open_hand_rider_used = false;
         cond.hamstrung = false;
@@ -1540,6 +1550,11 @@ std::vector<AttackResult> CombatEngine::runRound(
 
         // ── Bonus action ──────────────────────────────────────────────────
         actor.agent->bonusAction();
+        // Keep the bonus-action budget honest in the batch path. A bonus_attacks list is
+        // ONE bonus action's worth of strikes (e.g. an off-hand attack, or a Flurry's two
+        // hits), so spend once for the whole block; likewise one per bonus spell. Execution
+        // is not blocked here — availableAttacks() is responsible for action-space legality.
+        if (!t.bonus_attacks.empty()) (void)spendBonusAction(bm, t.agent_idx);
         for (const Attack& atk : t.bonus_attacks) {
             AttackResult r = executeAction(bm, atk);
             if (r.valid) {
@@ -1555,6 +1570,7 @@ std::vector<AttackResult> CombatEngine::runRound(
             results.push_back(std::move(r));
         }
         for (const SpellAction& sa : t.bonus_spells) {
+            (void)spendBonusAction(bm, t.agent_idx);
             (void)executeSpell(bm, sa);
         }
 
@@ -2150,6 +2166,26 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         const Resource* ped = atk_stats.getResource("Psionic Energy");
         if (ped && ped->current > 0) {
             updated_atk_cond.psionic_strike_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
+    // ── Paladin Divine Smite eligibility (on a melee/unarmed hit) ─────────
+    // After hitting with a melee weapon or Unarmed Strike, a Paladin may spend a spell slot as
+    // a Bonus Action to add Radiant damage (applied out of band via applyDivineSmiteEffect; the
+    // GUI offers a slot-level choice). Gated on: a free bonus action, no leveled spell already
+    // cast this turn (the bonus-action-spell interlock), not already smited this turn, and at
+    // least one spell slot available. (A L1 Paladin has no slots, so the slot check gates it.)
+    if (r.hit && atk_stats.character_class == CharacterClass::Paladin &&
+        (w.type == WeaponType::Melee || w.name == "Unarmed" || w.name == "MonkUnarmed") &&
+        !atk_cond.divine_smite_used && !atk_stats.leveled_spell_cast_this_turn &&
+        hasBonusAction(bm, action.attacker_idx)) {
+        bool has_slot = false;
+        for (int lvl = 1; lvl <= 9 && !has_slot; ++lvl)
+            if (atk_stats.spell_slots_remaining[static_cast<std::size_t>(lvl - 1)] > 0)
+                has_slot = true;
+        if (has_slot) {
+            updated_atk_cond.divine_smite_available = true;
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         }
     }
@@ -2931,7 +2967,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     const auto& spells = bm.getAgentSpells(action.caster_idx);
     if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size()))
         return result;
-    const Spell& sp = spells[static_cast<std::size_t>(action.spell_idx)];
+    // Mutable copy: some Metamagic options modify the spell for this cast only
+    // (Distant doubles range, Extended doubles duration, Transmuted changes the
+    // damage type, Quickened changes the casting time). The agent's stored spell
+    // is untouched, and persistent effects copy this (already-modified) sp below.
+    Spell sp = spells[static_cast<std::size_t>(action.spell_idx)];
 
     result.valid       = true;
     result.spell_idx   = action.spell_idx;
@@ -2941,22 +2981,100 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     const Agent::Stats& caster_stats = caster_pa.agent->getStats();
 
     // ── Sorcerer Metamagic ────────────────────────────────────────────────────
-    // Deduct Sorcery Points for the chosen Metamagic up front. Only options whose
-    // effect is implemented in the engine are honored; the rest are logged and
-    // ignored (no SP spent) — see known_limitations.md. applied_metamagic drives
-    // the per-target effects in the AttackRoll/Save branches below.
+    // Validate applicability, then deduct Sorcery Points up front and apply the
+    // option by temporarily mutating the local `sp` copy (Distant/Extended/Quickened/
+    // Transmuted) or, for Careful, building a per-cast safe-target set used in the AoE
+    // exclusion below. Heightened/Seeking are resolved per target in the AttackRoll/
+    // Save branches via applied_metamagic. Empowered is deferred and Subtle is flavor
+    // only — both log and spend no SP. See known_limitations.md.
     MetamagicOption applied_metamagic = MetamagicNone;
-    if (action.metamagic == MetamagicHeightened || action.metamagic == MetamagicSeeking) {
-        int cost = metamagicSpCost(action.metamagic);
-        if (spendResource(bm, action.caster_idx, "Sorcery Points", cost)) {
-            applied_metamagic = action.metamagic;
-            log_("Metamagic: {} ({} SP)",
-                 action.metamagic == MetamagicHeightened ? "Heightened Spell" : "Seeking Spell", cost);
-        } else {
-            log_("Metamagic not applied: not enough Sorcery Points");
-        }
+    std::vector<int> careful_set;          // Careful: allies excluded from this spell's area (capped at CHA mod)
+    const int cha_mod = abilityMod(caster_stats.cha);
+
+    auto isElemental = [](MagicDamage_t t) {
+        return t == Acid || t == Cold || t == Fire || t == Lightning || t == Poison || t == Thunder;
+    };
+
+    if (action.metamagic == MetamagicEmpowered) {
+        log_("Metamagic not applied: Empowered Spell not yet implemented in the combat engine");
+    } else if (action.metamagic == MetamagicSubtle) {
+        log_("Metamagic not applied: Subtle Spell has no effect in the combat engine");
     } else if (action.metamagic != MetamagicNone) {
-        log_("Metamagic not applied: option not yet implemented in the combat engine");
+        // Decide whether the option is applicable to THIS spell before spending SP.
+        bool applicable = true;
+        std::string why;
+        switch (action.metamagic) {
+            case MetamagicTransmuted: {
+                bool valid_type = action.transmuted_damage_type >= 0 &&
+                                  action.transmuted_damage_type < NumMagicDamage_t &&
+                                  isElemental(static_cast<MagicDamage_t>(action.transmuted_damage_type));
+                bool has_elem = std::any_of(sp.magic_damage_rolls.begin(), sp.magic_damage_rolls.end(),
+                                            [&](const MagicDamageRoll& r){ return isElemental(r.type); });
+                if (!valid_type)    { applicable = false; why = "no valid replacement damage type"; }
+                else if (!has_elem) { applicable = false; why = "spell deals no Acid/Cold/Fire/Lightning/Poison/Thunder damage"; }
+                break;
+            }
+            case MetamagicCareful:
+                if (sp.attack_type != Spell::Save) { applicable = false; why = "Careful only affects saving-throw spells"; }
+                break;
+            case MetamagicExtended:
+                if (sp.duration < 2) { applicable = false; why = "Extended needs a lasting (non-instantaneous) spell"; }
+                break;
+            case MetamagicQuickened:
+                if (sp.casting_time != Spell::Action) { applicable = false; why = "Quickened needs an Action-cast spell"; }
+                break;
+            default: break;  // Distant / Heightened / Seeking / Twinned always apply
+        }
+
+        if (!applicable) {
+            log_("Metamagic not applied: {}", why);
+        } else if (!spendResource(bm, action.caster_idx, "Sorcery Points", metamagicSpCost(action.metamagic))) {
+            log_("Metamagic not applied: not enough Sorcery Points");
+        } else {
+            const int cost = metamagicSpCost(action.metamagic);
+            applied_metamagic = action.metamagic;
+            switch (action.metamagic) {
+                case MetamagicCareful:
+                    // Same effect as the Evoker's safe targets: chosen allies are excluded from the area.
+                    for (int t : action.careful_targets) {
+                        if (static_cast<int>(careful_set.size()) >= std::max(1, cha_mod)) break;
+                        careful_set.push_back(t);
+                    }
+                    log_("Metamagic: Careful Spell ({} SP) — {} creature(s) shielded from the area", cost, careful_set.size());
+                    break;
+                case MetamagicDistant:
+                    sp.range = (sp.range >= 5) ? sp.range * 2 : 30;
+                    log_("Metamagic: Distant Spell ({} SP) — range now {} ft", cost, sp.range);
+                    break;
+                case MetamagicExtended:
+                    sp.duration *= 2;
+                    log_("Metamagic: Extended Spell ({} SP) — duration now {} rounds", cost, sp.duration);
+                    break;
+                case MetamagicHeightened:
+                    log_("Metamagic: Heightened Spell ({} SP)", cost);
+                    break;
+                case MetamagicQuickened:
+                    sp.casting_time = Spell::BonusAction;
+                    result.cast_as_bonus_action = true;
+                    log_("Metamagic: Quickened Spell ({} SP) — cast as a Bonus Action", cost);
+                    break;
+                case MetamagicSeeking:
+                    log_("Metamagic: Seeking Spell ({} SP)", cost);
+                    break;
+                case MetamagicTransmuted: {
+                    auto new_type = static_cast<MagicDamage_t>(action.transmuted_damage_type);
+                    for (auto& r : sp.magic_damage_rolls)
+                        if (isElemental(r.type)) r.type = new_type;
+                    log_("Metamagic: Transmuted Spell ({} SP) — elemental damage changed type", cost);
+                    break;
+                }
+                case MetamagicTwinned:
+                    sp.targets_per_upcast_level += 1;
+                    log_("Metamagic: Twinned Spell ({} SP) — +1 target per upcast level", cost);
+                    break;
+                default: break;
+            }
+        }
     }
 
     // Concentration management: check if casting a concentration spell
@@ -2988,12 +3106,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         ? action.target_indices
         : resolveAoeTargets(agents, sp, action.caster_idx, center_col, center_row);
 
-    // Evoker safe targets: fully exclude the caster's protected allies from AoE spells
-    // (no save, no damage, no conditions). Single/Multiple are directly targeted, so untouched.
+    // Evoker safe targets fully exclude the caster's protected allies from AoE spells
+    // (no save, no damage, no conditions). Metamagic Careful protects the chosen
+    // creatures the same way for this one cast. Single/Multiple are directly targeted,
+    // so they are untouched.
     if (sp.geometry != Spell::Single && sp.geometry != Spell::Multiple) {
         auto it = safeTargets_.find(action.caster_idx);
-        if (it != safeTargets_.end() && !it->second.empty()) {
-            const std::vector<int>& safe = it->second;
+        std::vector<int> safe = (it != safeTargets_.end()) ? it->second : std::vector<int>{};
+        safe.insert(safe.end(), careful_set.begin(), careful_set.end());
+        if (!safe.empty()) {
             std::erase_if(targets, [&safe](int t) {
                 return std::find(safe.begin(), safe.end(), t) != safe.end();
             });
@@ -3833,6 +3954,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         if (!in_aoe) continue;
                         auto stats = getAgentStats(bm, i);
                         int dex_mod = (stats.dex - 10) / 2;
+                        if (stats.dex < 10 && (stats.dex - 10) % 2 != 0) --dex_mod;  // floor for odd negative scores
+                        if (stats.save_prof_dex) dex_mod += stats.prof_bonus;        // DEX save proficiency
                         int d20 = roll(20);
                         if (d20 + dex_mod < sp.slip_save_dc) {
                             Agent::Conditions cond_i = bm.getAgentConditions(i);
@@ -4632,7 +4755,7 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
         int mod = (tgt.wis - 10) / 2;
         if (tgt.wis < 10 && (tgt.wis - 10) % 2 != 0) --mod;
         if (tgt.save_prof_wis) mod += tgt.prof_bonus;
-        const int save_total = roll(20) + mod;
+        const int save_total = roll(20, mod);
 
         if (save_total >= result.save_dc) {
             result.resisted.push_back(i);
@@ -4784,7 +4907,7 @@ ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int targ
     int mod = (ts.con - 10) / 2;
     if (ts.con < 10 && (ts.con - 10) % 2 != 0) --mod;
     if (ts.save_prof_con) mod += ts.prof_bonus;
-    res.save_roll = roll(20) + mod;
+    res.save_roll = roll(20, mod);
 
     if (res.save_roll < dc) {
         applyProne(bm, target_idx);
@@ -4831,7 +4954,7 @@ StunningStrikeResult CombatEngine::applyStunningStrike(BattleMap& bm, int attack
     int con_mod = (ts.con - 10) / 2;
     if (ts.con < 10 && (ts.con - 10) % 2 != 0) --con_mod;
     if (ts.save_prof_con) con_mod += ts.prof_bonus;
-    res.save_roll = roll(20) + con_mod;
+    res.save_roll = roll(20, con_mod);
 
     if (res.save_roll < dc) {
         // Apply Stunned condition for 1 turn
@@ -4885,7 +5008,7 @@ OpenHandRiderResult CombatEngine::applyOpenHandRider(BattleMap& bm, int attacker
         int str_mod = (ts.str - 10) / 2;
         if (ts.str < 10 && (ts.str - 10) % 2 != 0) --str_mod;
         if (ts.save_prof_str) str_mod += ts.prof_bonus;
-        res.knockdown_save_roll = roll(20) + str_mod;
+        res.knockdown_save_roll = roll(20, str_mod);
 
         if (res.knockdown_save_roll < dc) {
             // Apply Prone condition for 1 turn
@@ -4980,6 +5103,39 @@ bool CombatEngine::consumeBonusAttack(BattleMap& bm, int agent_idx) noexcept
     return false;
 }
 
+// ── Bonus-action budget (general action economy) ─────────────────────────────
+bool CombatEngine::hasBonusAction(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+    return bm.getAgentStats(agent_idx).bonus_actions_remaining > 0;
+}
+
+bool CombatEngine::spendBonusAction(BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    if (stats.bonus_actions_remaining <= 0) return false;
+
+    stats.bonus_actions_remaining--;
+    bm.setAgentStats(agent_idx, stats);
+    log_("{} uses a bonus action ({} remaining)", agentName(bm, agent_idx),
+         stats.bonus_actions_remaining);
+    return true;
+}
+
+void CombatEngine::resetBonusActions(BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    stats.bonus_actions_remaining = stats.bonus_actions_max;
+    bm.setAgentStats(agent_idx, stats);
+}
+
 void CombatEngine::applyHidden(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -5002,6 +5158,16 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     cond.unconscious = true;
     cond.incapacitated = true;
     cond.prone = true;
+
+    // NPCs do not make death saves: they die outright at 0 HP. Only player
+    // characters fall unconscious and roll death saves on their turns.
+    if (bm.getAgentStats(idx).is_npc) {
+        cond.dead = true;
+        bm.setAgentConditions(idx, cond);
+        log_("{} drops to 0 HP and dies (NPC — no death saves)", agents[static_cast<std::size_t>(idx)].agent->name());
+        return;
+    }
+
     bm.setAgentConditions(idx, cond);
 
     log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
@@ -5405,6 +5571,67 @@ void CombatEngine::applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int 
     }
 }
 
+int CombatEngine::applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                         int slot_level, AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return -1;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 1 || slot_level > 9) return -1;
+
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.divine_smite_available || atk_cond.divine_smite_used) return -1;  // once per turn
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    // Must still have a bonus action, the chosen slot, and no leveled spell already this turn.
+    if (!hasBonusAction(bm, attacker_idx)) return -1;
+    if (atk_stats.leveled_spell_cast_this_turn) return -1;
+    const auto si = static_cast<std::size_t>(slot_level - 1);
+    if (atk_stats.spell_slots_remaining[si] <= 0) return -1;
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+
+    // 2d8 base, +1d8 per slot level above 1st (capped at a 5th-level slot → 6d8),
+    // +1d8 if the target is an Undead or a Fiend.
+    int dice = 1 + std::min(slot_level, 5);
+    if (tgt_stats.is_undead || tgt_stats.is_fiend) dice += 1;
+    int raw = 0;
+    for (int i = 0; i < dice; ++i) raw += roll(8);
+
+    const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Radiant];
+    const int smite_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"divine smite", smite_damage});
+    result.total_damage += smite_damage;
+    result.magic_damage_types.push_back(MagicDamage_t::Radiant);
+
+    int overflow = std::max(0, smite_damage - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - smite_damage);
+    tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    // Spend the slot, the bonus action, and mark the leveled-spell + once-per-turn interlocks.
+    atk_stats.spell_slots_remaining[si] -= 1;
+    atk_stats.leveled_spell_cast_this_turn = true;
+    bm.setAgentStats(attacker_idx, atk_stats);
+    (void)spendBonusAction(bm, attacker_idx);
+
+    atk_cond.divine_smite_used = true;
+    atk_cond.divine_smite_available = false;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    log_("{} casts Divine Smite (level {} slot): +{} Radiant damage{}",
+         agentName(bm, attacker_idx), slot_level, smite_damage,
+         (tgt_stats.is_undead || tgt_stats.is_fiend) ? " (+1d8 vs Undead/Fiend)" : "");
+
+    // The extra damage can break concentration and trigger on-damage conditions.
+    if (smite_damage > 0) {
+        checkConcentrationOnDamage(bm, target_idx, smite_damage);
+        processDamageTaken(bm, target_idx, smite_damage);
+    }
+    return smite_damage;
+}
+
 void CombatEngine::applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                             AttackResult& result) noexcept
 {
@@ -5550,7 +5777,7 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
 
     if (maneuver_type == 0) {
         // Trip: STR save or Prone for 1 turn
-        res.save_roll = roll(20) + saveMod(ts, SaveStr);
+        res.save_roll = roll(20, saveMod(ts, SaveStr));
         if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.prone = true;
@@ -5570,7 +5797,7 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         }
     } else if (maneuver_type == 1) {
         // Menacing: WIS save or Frightened for 1 turn
-        res.save_roll = roll(20) + saveMod(ts, SaveWis);
+        res.save_roll = roll(20, saveMod(ts, SaveWis));
         if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.frightened = true;
@@ -5998,6 +6225,23 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
 
         // Restore spell slots and all resources
         stats.restore_resources_long_rest();
+
+        // Long rest restores all Hit Points. The dead stay dead (not revived).
+        Agent::Conditions rest_cond = bm.getAgentConditions(agent_idx);
+        if (!rest_cond.dead) {
+            stats.hp_cur = stats.hp_max;
+            // If the agent was downed but survived the rest, clear the downed /
+            // death-save state so they aren't left flagged unconscious at full HP.
+            if (rest_cond.unconscious) {
+                rest_cond.unconscious        = false;
+                rest_cond.incapacitated      = false;
+                rest_cond.prone              = false;
+                rest_cond.stabilized         = false;
+                rest_cond.death_save_successes = 0;
+                rest_cond.death_save_failures  = 0;
+                bm.setAgentConditions(agent_idx, rest_cond);
+            }
+        }
 
         // Initialize Arcane Ward for Abjurers at L3+
         if (stats.character_class == Wizard && stats.wizard_subclass == AbjurerPath && stats.char_level >= 3) {
@@ -6489,7 +6733,7 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount) noexce
                 return m + (prof ? s.prof_bonus : 0);
             };
             // Damage-triggered save is made at Advantage (Tasha's Hideous Laughter).
-            int total = rollAdvantage(20) + saveMod(cond.save_ability);
+            int total = rollAdvantage(20, saveMod(cond.save_ability));
             if (total >= cond.save_dc) {
                 clearSpellConditionEffect(bm, cond);
                 to_remove.push_back(cond.condition_id);
@@ -6650,7 +6894,10 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
 
     // DC is 10 or half damage, whichever is higher
     int dc = std::max(10, damage / 2);
-    int con_mod = (pa.agent->getStats().con - 10) / 2;
+    const Agent::Stats& cstats = pa.agent->getStats();
+    int con_mod = (cstats.con - 10) / 2;
+    if (cstats.con < 10 && (cstats.con - 10) % 2 != 0) --con_mod;  // floor for odd negative scores
+    if (cstats.save_prof_con) con_mod += cstats.prof_bonus;       // CON save proficiency
     int save_roll = roll(20);
     int save_total = save_roll + con_mod;
 
@@ -6900,6 +7147,8 @@ void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOr
             Agent::Stats target_stats = bm.getAgentStats(agent_idx);
             int save_d20 = roll(20);
             int save_mod = (target_stats.dex - 10) / 2;
+            if (target_stats.dex < 10 && (target_stats.dex - 10) % 2 != 0) --save_mod;  // floor for odd negative scores
+            if (target_stats.save_prof_dex) save_mod += target_stats.prof_bonus;        // DEX save proficiency
             int total_save = save_d20 + save_mod;
 
             log_("{} attempts DEX save ({}) vs DC {} - d20={}, mod={}, total={}",

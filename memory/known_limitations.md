@@ -403,20 +403,26 @@ Points, Innate Sorcery (L1: +1 spell save DC + advantage on spell attacks, 10-ro
 (`SorcererSubclass`/`MetamagicOption` enums, `SpellAction.metamagic`, `metamagic_sp_cost`).
 
 ### Metamagic — implemented options
+Each applies for one cast by temporarily mutating a copy of the spell (the agent's stored
+spell is untouched), and SP is spent only when the option is actually applicable:
 - **Heightened Spell** (2 SP): one target rolls its save with disadvantage.
 - **Seeking Spell** (1 SP): reroll a missed spell attack once.
+- **Careful Spell** (1 SP): chosen allies (`SpellAction.careful_targets`, up to CHA mod) are
+  excluded from the spell's area — reuses the Evoker safe-target exclusion. Save spells only.
+- **Distant Spell** (1 SP): doubles the spell's range (touch → 30 ft).
+- **Extended Spell** (1 SP): doubles a lasting spell's duration. (Advantage on concentration
+  saves is **not** modeled.) Inapplicable to instantaneous spells (duration < 2).
+- **Quickened Spell** (2 SP): an Action-cast spell becomes a Bonus Action; the engine reports
+  `SpellResult.cast_as_bonus_action` so the GUI/turn-economy layer can charge the bonus action.
+- **Transmuted Spell** (1 SP): retypes the spell's elemental damage to
+  `SpellAction.transmuted_damage_type`. 2024 elemental set only (Acid/Cold/Fire/Lightning/
+  Poison/Thunder); inapplicable if the spell deals none of those.
+- **Twinned Spell** (1 SP): increments `targets_per_upcast_level` by 1 for the cast (adds a
+  target on upcast Multiple-geometry spells); single-target plumbing handled GUI-side.
 
-### Metamagic — deferred (need new infrastructure, not yet honored)
-The cast is still resolved, but the SP is **not** spent and the effect is **not** applied
-(logged as "not yet implemented"):
+### Metamagic — deferred / flavor
 - **[DEFER] Empowered** (1 SP): reroll up to CHA-mod damage dice — needs the per-type damage
-  loop restructured to capture dice before multipliers are applied.
-- **[DEFER] Twinned** (1 SP): add a second target — needs target-list plumbing.
-- **[DEFER] Quickened** (2 SP): cast as a Bonus Action — needs turn-economy support.
-- **[DEFER] Careful** (1 SP): chosen creatures auto-succeed — needs per-target exclusion params.
-- **[DEFER] Distant** (1 SP): double range — range is enforced GUI-side, no engine effect.
-- **[DEFER] Transmuted** (1 SP): change damage type — needs per-roll type override.
-- **[DEFER] Extended** (1 SP): double duration + advantage on concentration — needs duration plumbing.
+  loop restructured to capture dice before multipliers are applied. Logged, no SP spent.
 - **[KNOWN LIMITATION] Subtle** (1 SP): cast without V/S components — purely out-of-combat
   flavor (no combat-sim effect); will not be implemented.
 

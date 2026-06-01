@@ -234,6 +234,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Class-feature capability flags
         .def_readwrite("num_attacks",          &Agent::Stats::num_attacks)
         .def_readwrite("bonus_attacks_remaining", &Agent::Stats::bonus_attacks_remaining)
+        .def_readwrite("bonus_actions_max",       &Agent::Stats::bonus_actions_max)
+        .def_readwrite("bonus_actions_remaining", &Agent::Stats::bonus_actions_remaining)
         .def_readwrite("has_cunning_action",   &Agent::Stats::has_cunning_action)
         .def_readwrite("has_offhand_attack",   &Agent::Stats::has_offhand_attack)
         .def_readwrite("can_cast_spell",       &Agent::Stats::can_cast_spell)
@@ -389,6 +391,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Primal Strike elemental damage type choice.")
         .def_readwrite("is_undead", &Agent::Stats::is_undead,
              "Creature type is Undead (a valid Turn Undead target).")
+        .def_readwrite("is_fiend", &Agent::Stats::is_fiend,
+             "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
         .def_readwrite("weapon_mastery", &Agent::Stats::weapon_mastery,
              "Number of Weapon Mastery properties known (>0 = the feature is active).")
         .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,
@@ -462,6 +466,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
         .def_readwrite("psionic_strike_available", &Agent::Conditions::psionic_strike_available)
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
+        .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
+        .def_readwrite("divine_smite_used", &Agent::Conditions::divine_smite_used)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
         .def_readwrite("maneuver_available", &Agent::Conditions::maneuver_available)
         .def_readwrite("maneuver_precision_available", &Agent::Conditions::maneuver_precision_available)
@@ -1019,7 +1025,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("aoe_row",        &SpellAction::aoe_row)
         .def_readwrite("metamagic",      &SpellAction::metamagic,
              "Sorcerer Metamagic applied to this cast (MetamagicOption; NONE = none).\n"
-             "SP cost is deducted in execute_spell. Applied: Heightened, Seeking.")
+             "SP cost is deducted in execute_spell. Applied: Careful, Distant, Extended,\n"
+             "Heightened, Quickened, Seeking, Transmuted, Twinned. Deferred: Empowered.")
+        .def_readwrite("careful_targets", &SpellAction::careful_targets,
+             "Careful Spell: allies excluded from this spell's area (up to the caster's CHA mod).")
+        .def_readwrite("transmuted_damage_type", &SpellAction::transmuted_damage_type,
+             "Transmuted Spell: MagicDamage value to convert the spell's elemental damage into (-1 = none).")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
@@ -1067,6 +1078,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("prev_concentration_spell",   &SpellResult::prev_concentration_spell)
         .def_readonly("terrain_effect_ids",         &SpellResult::terrain_effect_ids,
              "IDs of terrain effects placed by this spell (for Python render cache).")
+        .def_readonly("cast_as_bonus_action",       &SpellResult::cast_as_bonus_action,
+             "Metamagic Quickened: this cast was made as a Bonus Action.")
         .def("__repr__", [](const SpellResult& r){
             if (!r.valid) return std::string("<SpellResult invalid>");
             return "<SpellResult '" + r.spell_name + "' "
@@ -1484,9 +1497,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     "Get Barbarian Rage damage bonus for a given level.")
 
         // Dice rollers
-        .def("roll",              &CombatEngine::roll,            py::arg("sides"))
-        .def("roll_advantage",    &CombatEngine::rollAdvantage,   py::arg("sides"))
-        .def("roll_disadvantage", &CombatEngine::rollDisadvantage,py::arg("sides"))
+        .def("roll",              &CombatEngine::roll,            py::arg("sides"), py::arg("modifier") = 0)
+        .def("roll_advantage",    &CombatEngine::rollAdvantage,   py::arg("sides"), py::arg("modifier") = 0)
+        .def("roll_disadvantage", &CombatEngine::rollDisadvantage,py::arg("sides"), py::arg("modifier") = 0)
 
         // Core mechanics
         .def("roll_to_hit",
@@ -1765,6 +1778,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Cleric Blessed Strikes — Divine Strike: after a qualifying weapon hit\n"
              "(conditions.divine_strike_available), add 1d8 (2d8 at L14) Radiant (radiant=True) or\n"
              "Necrotic (False) to the AttackResult and target HP; once per turn.")
+        .def("apply_divine_smite_effect",
+             &CombatEngine::applyDivineSmiteEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             py::arg("slot_level"), py::arg("result"),
+             "Paladin Divine Smite: after a melee/unarmed hit (conditions.divine_smite_available),\n"
+             "spend a level-slot_level spell slot as a Bonus Action to add (1+min(slot_level,5))d8\n"
+             "Radiant, +1d8 vs Undead/Fiend, to the AttackResult and target HP. Spends the slot +\n"
+             "bonus action, sets the leveled-spell + once-per-turn interlocks. Returns Radiant dealt,\n"
+             "or -1 if not allowed (no slot/bonus action, already smited, leveled spell already cast).")
         .def("apply_guided_strike_effect",
              &CombatEngine::applyGuidedStrike,
              py::arg("battle_map"), py::arg("action"), py::arg("cleric_idx"), py::arg("result"),
@@ -1836,6 +1858,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Decrement bonus_attacks_remaining for an agent (Flurry of Blows, Martial Arts, etc).\n"
              "Returns true if more attacks are queued, false if sequence is exhausted.")
+        .def("has_bonus_action",
+             &CombatEngine::hasBonusAction,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "True if the agent still has a bonus action this turn (bonus_actions_remaining > 0).\n"
+             "Gate every Bonus Action feature (off-hand attack, Cunning Action, Rage, Healing\n"
+             "Word, Divine Smite, etc.) on this before offering it.")
+        .def("spend_bonus_action",
+             &CombatEngine::spendBonusAction,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Spend one bonus action if available; returns true if spent, false if none remained.")
+        .def("reset_bonus_actions",
+             &CombatEngine::resetBonusActions,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Refill bonus_actions_remaining = bonus_actions_max (done automatically each turn).")
         .def("can_use_primal_knowledge",
              &CombatEngine::canUsePrimalKnowledge,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("skill_name"),
