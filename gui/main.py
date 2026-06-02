@@ -402,6 +402,7 @@ class App:
         self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
+        self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
@@ -775,6 +776,12 @@ class App:
         self.btn_cbt_lay_on_hands = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Lay on Hands",
                                           (180, 200, 150), (220, 240, 190), self.font_md)
+        self.btn_cbt_grant_inspiration = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Grant Inspiration (Bonus Action)",
+                                          (200, 160, 220), (230, 195, 250), self.font_md)
+        self.btn_cbt_use_inspiration = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Use Inspiration Die",
+                                          (180, 150, 220), (215, 185, 250), self.font_md)
         self.btn_cbt_sacred_weapon = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Sacred Weapon (Bonus Action)",
                                           (200, 180, 110), (240, 220, 150), self.font_md)
@@ -1208,6 +1215,8 @@ class App:
             stats.rogue_subclass = getattr(rpg.RogueSubclass, subclass_name)
         elif class_name == "Cleric" and subclass_name != "NONE":
             stats.cleric_subclass = getattr(rpg.ClericSubclass, subclass_name)
+        elif class_name == "Bard" and subclass_name != "NONE":
+            stats.bard_subclass = getattr(rpg.BardCollege, subclass_name)
 
         # Cleric Blessed Strikes choice (L7+)
         if class_name == "Cleric" and blessed_strike_name != "NONE":
@@ -1445,6 +1454,10 @@ class App:
         order = list(self.combat.roll_initiative(self.bm))
         if not order:
             return
+        # Superior Inspiration (Bard L18+): top up Bardic Inspiration to 2 at combat start.
+        # RNG-free, so it doesn't perturb the dice stream; applied before recording begins
+        # (replay.py mirrors this) so checked replays stay in sync.
+        self.combat.apply_superior_inspiration(self.bm)
         self.initiative_order    = order
         self.combat_active       = True
         self.safe_target_edit_idx = -1  # exit any safe-target editing when combat starts
@@ -3194,6 +3207,53 @@ class App:
             f"{healer_name}: Lay on Hands restores {actual_healed} HP to {tgt_name} ({pool_remaining} pool remaining).")
         self.action_used = True
 
+    def _resolve_grant_inspiration(self, target_idx: int):
+        """Bard Grant Inspiration (bonus action): spend a Bardic Inspiration use to give
+        an ally a Bardic Inspiration die of the bard's current size."""
+        self.pending_grant_inspiration = False
+        bard_idx = self._current_agent_idx()
+        if not (0 <= bard_idx < len(self.bm.placed_agents)):
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        if target_idx == bard_idx:
+            self._combat_log_add("Bardic Inspiration must be granted to another creature.")
+            return
+
+        bard_stats = self.combat.get_agent_stats(self.bm, bard_idx)
+        bi = bard_stats.get_resource("Bardic Inspiration")
+        if not (bi and bi.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[bard_idx].name}: no Bardic Inspiration uses left.")
+            return
+
+        die = bard_stats.bardic_inspiration_die_size
+        if not self.combat.spend_resource(self.bm, bard_idx, "Bardic Inspiration", 1):
+            self._combat_log_add("Grant Inspiration failed (resource error).")
+            return
+        self.combat.grant_bardic_die(self.bm, target_idx, die)
+        self._flush_combat_log()
+
+        bi = self.combat.get_agent_stats(self.bm, bard_idx).get_resource("Bardic Inspiration")
+        remaining = bi.current if bi else 0
+        bard_name = self.bm.placed_agents[bard_idx].name
+        tgt_name = self.bm.placed_agents[target_idx].name
+        self._combat_log_add(
+            f"{bard_name}: grants a Bardic Inspiration d{die} to {tgt_name} ({remaining} uses left).")
+        self.bonus_used = True
+
+    def _use_inspiration_die(self, agent_idx: int):
+        """Spend a held Bardic Inspiration die (free): primes a +die bonus on the holder's
+        next d20 Test."""
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        if stats.bardic_inspiration_die <= 0:
+            self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: no Bardic Inspiration die held.")
+            return
+        value = self.combat.use_bardic_die(self.bm, agent_idx)
+        self._flush_combat_log()
+        name = self.bm.placed_agents[agent_idx].name
+        if value > 0:
+            self._combat_log_add(f"{name}: Bardic Inspiration (+{value}) will apply to the next D20 Test.")
+
     def _set_fiendish_resilience(self, agent_idx: int, dmg_idx: int):
         """Fiend Warlock L10: set the chosen damage resistance (0.5x), clearing any prior choice."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -4728,6 +4788,7 @@ class App:
                 "agent_warlock_subclass": s.warlock_subclass.name,
                 "agent_rogue_subclass": s.rogue_subclass.name,
                 "agent_cleric_subclass": s.cleric_subclass.name,
+                "agent_bard_subclass": s.bard_subclass.name,
                 "agent_eldritch_invocations": list(s.eldritch_invocations),
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 # Druid state
@@ -5928,6 +5989,15 @@ class App:
 
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active."""
+        # Stale-rect guard: every combat-action button below is (re)positioned only on the
+        # frame it is actually drawn. Park them all off-screen first so a button that is NOT
+        # drawn this frame can't capture clicks at a stale location — e.g. one agent's
+        # grapple/dash button overlapping a Bard's Grant Inspiration button. (All btn_cbt_*
+        # buttons are drawn exclusively within this method, so this is safe.)
+        for _bname, _btn in vars(self).items():
+            if _bname.startswith("btn_cbt_") and isinstance(_btn, Button):
+                _btn.rect.x = -10000
+
         sw, sh = self.screen.get_size()
         px = self._panel_x()
         lx = px + self._PANEL_PAD
@@ -6573,6 +6643,29 @@ class App:
                         self.btn_cbt_lay_on_hands.draw(self.screen)
                         y += B + gap
 
+            # Grant Inspiration button — Bard (bonus action), spend a Bardic Inspiration use
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Bard:
+                    bi = stats.get_resource("Bardic Inspiration")
+                    if bi and bi.current > 0:
+                        self.btn_cbt_grant_inspiration.rect.x = lx
+                        self.btn_cbt_grant_inspiration.rect.y = y
+                        self.btn_cbt_grant_inspiration.rect.w = W
+                        self.btn_cbt_grant_inspiration.draw(self.screen)
+                        y += B + gap
+
+            # Use Inspiration Die button — any creature currently holding a granted die
+            # (free, no action). Primes a +die bonus on the holder's next d20 Test.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.bardic_inspiration_die > 0:
+                    self.btn_cbt_use_inspiration.rect.x = lx
+                    self.btn_cbt_use_inspiration.rect.y = y
+                    self.btn_cbt_use_inspiration.rect.w = W
+                    self.btn_cbt_use_inspiration.draw(self.screen)
+                    y += B + gap
+
             # Sacred Weapon button — Paladin Oath of Devotion (bonus action), spend a Channel Oath use
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -7181,6 +7274,8 @@ class App:
                                 subclass_name = stats.rogue_subclass.name
                             elif class_name == "Cleric":
                                 subclass_name = stats.cleric_subclass.name
+                            elif class_name == "Bard":
+                                subclass_name = stats.bard_subclass.name
                             blessed_strike_name = stats.blessed_strike.name if class_name == "Cleric" else "NONE"
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
@@ -7311,6 +7406,8 @@ class App:
                             self._resolve_healing_light(hit)
                         elif self.pending_lay_on_hands and hit >= 0:
                             self._resolve_lay_on_hands(hit)
+                        elif self.pending_grant_inspiration and hit >= 0:
+                            self._resolve_grant_inspiration(hit)
                         elif self.pending_telekinetic and hit >= 0:
                             self._resolve_telekinetic(hit)
                         elif self.pending_flurry_target and hit >= 0:
@@ -7865,6 +7962,13 @@ class App:
                     if self.btn_cbt_lay_on_hands.clicked(event):
                         self.pending_lay_on_hands = True
                         self.hint = "Click target for Lay on Hands healing"
+                    if self.btn_cbt_grant_inspiration.clicked(event):
+                        self.pending_grant_inspiration = True
+                        self.hint = "Click an ally to grant a Bardic Inspiration die"
+                    if self.btn_cbt_use_inspiration.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_inspiration_die(idx)
                     if self.btn_cbt_sacred_weapon.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

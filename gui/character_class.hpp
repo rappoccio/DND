@@ -203,6 +203,13 @@ enum SorcererSubclass {
     NumSorcererSubclass
 };
 
+// ── Bard College (Subclass) Enum (2024 D&D) ──────────────────────────
+enum BardCollege {
+    BardCollegeNone = 0,
+    DancePath, GlamourPath, LorePath, ValorPath,
+    NumBardCollege
+};
+
 // ── Sorcerer Metamagic Options (2024 D&D) ────────────────────────────
 enum MetamagicOption {
     MetamagicNone = 0,

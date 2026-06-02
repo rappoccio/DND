@@ -157,6 +157,9 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     if (pending_portent >= 0) {
         pending_portent_die_ = -1;  // Consume it now
     }
+    // Bardic Inspiration adds to the d20 Test total (not the natural die, so it never
+    // creates/removes a crit). Capture it before the inner rolls so they don't consume it.
+    int roll_bonus = consumePendingRollBonus();
 
     // If both advantage and disadvantage: they cancel out (roll normally)
     if (advantage && disadvantage) {
@@ -183,7 +186,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 
     r.critical   = (r.d20 >= attacker.crit_threshold);
     r.fumble     = (r.d20 == 1);
-    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level);
+    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus;
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
 
     return r;

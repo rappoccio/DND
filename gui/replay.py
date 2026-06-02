@@ -76,6 +76,8 @@ class CheckedReplayer:
             return False
         # Match the recording: initiative is rolled (consuming RNG) before recording starts.
         self.combat.roll_initiative(self.bm)
+        # Mirror _start_combat's RNG-free Bard Superior Inspiration top-up so replay state matches.
+        self.combat.apply_superior_inspiration(self.bm)
         self.log(f"[REPLAY] loaded {len(self.bm.placed_agents)} agents; initiative rolled")
         return True
 

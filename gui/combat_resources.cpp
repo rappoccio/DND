@@ -659,6 +659,112 @@ bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, in
     return true;
 }
 
+bool CombatEngine::grantBardicDie(BattleMap& bm, int agent_idx, int d) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    // RAW: a creature holds only one Bardic Inspiration die at a time; overwrite.
+    stats.bardic_inspiration_die = d;
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("{} gains a Bardic Inspiration d{}", agentName(bm, agent_idx), d);
+    return true;
+}
+
+int CombatEngine::useBardicDie(BattleMap& bm, int agent_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    int d = stats.bardic_inspiration_die;
+    if (d <= 0) {
+        log_("{} has no Bardic Inspiration die to spend", agentName(bm, agent_idx));
+        return 0;
+    }
+
+    int value = roll(d);            // roll the held die (1..d)
+    pending_roll_bonus_ = value;    // fold into the agent's NEXT d20 Test
+    stats.bardic_inspiration_die = 0;  // consumed
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("{} spends Bardic Inspiration d{}: +{} to the next D20 Test",
+         agentName(bm, agent_idx), d, value);
+    return value;
+}
+
+int CombatEngine::bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 1 || slot_level > 9) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    if (stats.character_class != CharacterClass::Bard || stats.char_level < 5) return -1;
+
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    if (stats.spell_slots_remaining[si] <= 0) return -1;  // no slot of that level to spend
+
+    Resource* bi = stats.getResource("Bardic Inspiration");
+    if (!bi || bi->current >= bi->max) return -1;          // nothing to regain → don't waste a slot
+
+    stats.spell_slots_remaining[si] -= 1;
+    bi->gain(1);
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("{} expends a level-{} slot (Font of Inspiration): Bardic Inspiration now {}/{}",
+         agentName(bm, agent_idx), slot_level, bi->current, bi->max);
+    return bi->current;
+}
+
+void CombatEngine::applySuperiorInspiration(BattleMap& bm) noexcept
+{
+    auto agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    for (int i = 0; i < n; ++i) {
+        Agent::Stats stats = bm.getAgentStats(i);
+        if (stats.character_class != CharacterClass::Bard || stats.char_level < 18) continue;
+
+        Resource* bi = stats.getResource("Bardic Inspiration");
+        if (!bi || bi->current >= 2) continue;
+
+        bi->current = std::min(bi->max, 2);  // regain up to 2 (never above the resource max)
+        bm.setAgentStats(i, stats);
+        log_("{} regains Bardic Inspiration to {} (Superior Inspiration)",
+             agentName(bm, i), bi->current);
+    }
+}
+
+int CombatEngine::bardCuttingWords(BattleMap& bm, int bard_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats stats = bm.getAgentStats(bard_idx);
+    if (stats.character_class != CharacterClass::Bard ||
+        stats.bard_subclass != BardCollege::LorePath || stats.char_level < 3) {
+        log_("{} cannot use Cutting Words (not a L3+ College of Lore Bard)", agentName(bm, bard_idx));
+        return 0;
+    }
+
+    Resource* bi = stats.getResource("Bardic Inspiration");
+    if (!bi || bi->current <= 0) {
+        log_("{} has no Bardic Inspiration use for Cutting Words", agentName(bm, bard_idx));
+        return 0;
+    }
+
+    bi->current -= 1;
+    int value = roll(stats.bardic_inspiration_die_size);
+    pending_roll_bonus_ = -value;   // SUBTRACT from the next D20 Test (the target's roll)
+    bm.setAgentStats(bard_idx, stats);
+
+    log_("{} uses Cutting Words: -{} to the next D20 Test ({} Bardic Inspiration left)",
+         agentName(bm, bard_idx), value, bi->current);
+    return value;
+}
+
 void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
 {
     auto agents = bm.placedAgents();

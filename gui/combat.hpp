@@ -866,6 +866,33 @@ public:
     // Rolls count d20s and populates agent's portent_dice deque.
     void regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept;
 
+    // ── Bardic Inspiration ────────────────────────────────────────────────
+    // Grant a Bardic Inspiration die of size d (6/8/10/12) to a creature. Overwrites
+    // any die it already holds (RAW: one Bardic Inspiration die at a time). The bard's
+    // "Bardic Inspiration" resource is spent separately by the bonus-action caller.
+    bool grantBardicDie(BattleMap& bm, int agent_idx, int d = 8) noexcept;
+
+    // Spend the held Bardic Inspiration die: roll it, stash the result in
+    // pending_roll_bonus_ so the NEXT d20 Test for that agent adds it, then clear the
+    // held die. Returns the rolled value (0 if the agent holds no die).
+    int useBardicDie(BattleMap& bm, int agent_idx) noexcept;
+
+    // Font of Inspiration (Bard L5+): expend a spell slot of slot_level (no action) to
+    // regain one expended use of Bardic Inspiration. Returns the new Bardic Inspiration
+    // count, or -1 on failure (not a L5+ Bard, no such slot, or already at max).
+    int bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept;
+
+    // Superior Inspiration (Bard L18+): at combat start, every qualifying Bard regains
+    // Bardic Inspiration up to 2 if it has fewer. RNG-free; call once after rolling
+    // initiative (mirrored in replay.py so checked replays stay in sync).
+    void applySuperiorInspiration(BattleMap& bm) noexcept;
+
+    // College of Lore — Cutting Words (Bard L3+): reaction that expends one use of Bardic
+    // Inspiration to SUBTRACT the die from a creature's next D20 Test (the negative sibling
+    // of useBardicDie — it primes pending_roll_bonus_ with -value). Returns the rolled
+    // amount subtracted, or 0 on failure (not a L3+ Lore Bard, or no use left).
+    int bardCuttingWords(BattleMap& bm, int bard_idx) noexcept;
+
     // ── Abjurer Wizard Arcane Ward ────────────────────────────────────────
     // Expend a spell slot as a bonus action to charge Arcane Ward (L3+).
     // Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).
@@ -1078,6 +1105,11 @@ private:
     // Portent Dice system (Diviner Wizard L3+)
     int pending_portent_die_{-1};    // d20 value to use on next roll (-1 = none pending)
     std::unordered_map<int, int> agent_portent_round_used_;  // track which round each agent last used portent
+
+    // Bardic Inspiration: a flat bonus folded into the NEXT d20 Test (0 = none).
+    // Unlike Portent (which replaces the d20), this is additive. Set by useBardicDie.
+    int pending_roll_bonus_{0};
+    int consumePendingRollBonus() noexcept { int b = pending_roll_bonus_; pending_roll_bonus_ = 0; return b; }
 
     MessageLogger* logger_{nullptr};
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)

@@ -381,6 +381,7 @@ namespace rpg {
       PaladinOath paladin_oath{PaladinOathNone};                 // Paladin oath choice
       WizardSubclass wizard_subclass{WizardSubclassNone};        // Wizard subclass choice
       SorcererSubclass sorcerer_subclass{SorcererSubclassNone};  // Sorcerer subclass choice
+      BardCollege bard_subclass{BardCollegeNone};                // Bard college choice
       std::vector<MetamagicOption> metamagic_options;            // 2 @ L2, 4 @ L10, 6 @ L17
       WarlockSubclass warlock_subclass{WarlockSubclassNone};     // Warlock patron choice
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
@@ -422,6 +423,8 @@ namespace rpg {
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+
       int  psionic_die_size{6};                                  // Psi Warrior: Psionic Energy die size (d6/d8/d10/d12 by level)
+      int  bardic_inspiration_die{0};                            // Bard: SIZE of the held Bardic Inspiration die (0 = none; 6/8/10/12). One at a time; persists across turns until used or long rest.
+      int  bardic_inspiration_die_size{6};                       // Bard: the die size this bard GRANTS (d6/d8/d10/d12 by level), set in initializeClassResources
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)

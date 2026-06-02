@@ -45,9 +45,9 @@ int CombatEngine::roll(int sides, int modifier)
     if (pending_portent_die_ >= 0) {
         int result = pending_portent_die_;
         pending_portent_die_ = -1;
-        return result + modifier;
+        return result + modifier + consumePendingRollBonus();
     }
-    return std::uniform_int_distribution<int>{1, sides}(rng_) + modifier;
+    return std::uniform_int_distribution<int>{1, sides}(rng_) + modifier + consumePendingRollBonus();
 }
 
 int CombatEngine::rollAdvantage(int sides, int modifier)
@@ -57,6 +57,9 @@ int CombatEngine::rollAdvantage(int sides, int modifier)
     if (pending_portent >= 0) {
         pending_portent_die_ = -1;  // Consume it now
     }
+    // Capture the Bardic bonus before the inner rolls so they don't consume it
+    // mid-selection; it is added once after max().
+    int roll_bonus = consumePendingRollBonus();
 
     int result = std::max(roll(sides), roll(sides));
 
@@ -66,8 +69,8 @@ int CombatEngine::rollAdvantage(int sides, int modifier)
         result = pending_portent;
     }
 
-    // Flat modifier is added once, after die selection / portent replacement.
-    return result + modifier;
+    // Flat modifier + Bardic bonus added once, after die selection / portent replacement.
+    return result + modifier + roll_bonus;
 }
 
 int CombatEngine::rollDisadvantage(int sides, int modifier)
@@ -77,6 +80,9 @@ int CombatEngine::rollDisadvantage(int sides, int modifier)
     if (pending_portent >= 0) {
         pending_portent_die_ = -1;  // Consume it now
     }
+    // Capture the Bardic bonus before the inner rolls so they don't consume it
+    // mid-selection; it is added once after min().
+    int roll_bonus = consumePendingRollBonus();
 
     int result = std::min(roll(sides), roll(sides));
 
@@ -86,8 +92,8 @@ int CombatEngine::rollDisadvantage(int sides, int modifier)
         result = pending_portent;
     }
 
-    // Flat modifier is added once, after die selection / portent replacement.
-    return result + modifier;
+    // Flat modifier + Bardic bonus added once, after die selection / portent replacement.
+    return result + modifier + roll_bonus;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,6 +212,27 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int wis_mod = (pa.agent->getStats().wis - 10) / 2;
         int ac = 10 + dex_mod + wis_mod;
+
+        // Add shield bonus (off-hand weapon with ac_bonus)
+        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
+            const Weapon& shield = pa.weapons.back();
+            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+                ac += shield.ac_bonus;
+            }
+        }
+
+        // Add temporary modifications
+        ac += pa.agent->getStats().ac_temporary_modifications;
+        return ac;
+    }
+
+    // College of Dance Bard (L3+) Unarmored Defense: AC = 10 + DEX + CHA (no armor worn)
+    if (pa.agent->getStats().character_class == CharacterClass::Bard &&
+        pa.agent->getStats().bard_subclass == BardCollege::DancePath &&
+        pa.agent->getStats().char_level >= 3 && !has_armor) {
+        int dex_mod = (pa.agent->getStats().dex - 10) / 2;
+        int cha_mod = (pa.agent->getStats().cha - 10) / 2;
+        int ac = 10 + dex_mod + cha_mod;
 
         // Add shield bonus (off-hand weapon with ac_bonus)
         if (!pa.weapons.empty() && pa.weapons.size() > 1) {

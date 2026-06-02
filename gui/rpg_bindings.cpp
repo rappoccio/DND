@@ -350,6 +350,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wizard subclass (only valid when character_class == Wizard)")
         .def_readwrite("sorcerer_subclass", &Agent::Stats::sorcerer_subclass,
              "Sorcerer subclass (only valid when character_class == Sorcerer)")
+        .def_readwrite("bard_subclass", &Agent::Stats::bard_subclass,
+             "Bard college (only valid when character_class == Bard)")
         .def_readwrite("metamagic_options", &Agent::Stats::metamagic_options,
              "Sorcerer Metamagic options chosen (2 @ L2, 4 @ L10, 6 @ L17)")
         .def_readwrite("warlock_subclass", &Agent::Stats::warlock_subclass,
@@ -403,6 +405,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
              "Diviner Wizard: deque of d20 portent rolls (regenerated on long rest, used with use_portent_die)")
+        .def_readwrite("bardic_inspiration_die", &Agent::Stats::bardic_inspiration_die,
+             "Bard: SIZE of the held Bardic Inspiration die (0 = none; 6/8/10/12). "
+             "Granted with grant_bardic_die, spent with use_bardic_die.")
+        .def_readwrite("bardic_inspiration_die_size", &Agent::Stats::bardic_inspiration_die_size,
+             "Bard: the die size this bard GRANTS (d6/d8/d10/d12), set by level in initialize_class_resources.")
         .def("__repr__", [](const Agent::Stats& s){
             return "<Stats STR=" + std::to_string(s.str)
                  + " DEX=" + std::to_string(s.dex)
@@ -824,6 +831,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Clockwork", ClockworkPath)
         .value("Draconic", DraconicPath)
         .value("WildMagic", WildMagicPath)
+        .export_values();
+
+    // ── Bard College (Subclass) Enum (2024 D&D) ──────────────────────────────
+    py::enum_<BardCollege>(m, "BardCollege")
+        .value("NONE", BardCollegeNone)
+        .value("Dance", DancePath)
+        .value("Glamour", GlamourPath)
+        .value("Lore", LorePath)
+        .value("Valor", ValorPath)
         .export_values();
 
     // ── Sorcerer Metamagic Options (2024 D&D) ────────────────────────────────
@@ -1898,6 +1914,35 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Regenerate Portent Dice pool after long rest (for Diviner Wizards).\n"
              "Rolls new d20s and populates agent's portent_dice deque.")
+        .def("grant_bardic_die",
+             &CombatEngine::grantBardicDie,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("d") = 8,
+             "Grant a Bardic Inspiration die of size d (6/8/10/12) to a creature.\n"
+             "Overwrites any die it already holds (one at a time, per RAW).\n"
+             "Returns true on success, false if the agent index is invalid.")
+        .def("use_bardic_die",
+             &CombatEngine::useBardicDie,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Spend the held Bardic Inspiration die: rolls it, folds the result into the\n"
+             "agent's NEXT d20 Test (roll / roll_advantage / roll_disadvantage / roll_to_hit),\n"
+             "then clears the held die. Returns the rolled value (0 if none held).")
+        .def("bard_regain_inspiration_from_slot",
+             &CombatEngine::bardRegainInspirationFromSlot,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("slot_level"),
+             "Font of Inspiration (Bard L5+): expend a spell slot of slot_level to regain\n"
+             "one use of Bardic Inspiration. Returns the new count, or -1 on failure\n"
+             "(not a L5+ Bard, no such slot, or already at max).")
+        .def("apply_superior_inspiration",
+             &CombatEngine::applySuperiorInspiration,
+             py::arg("battle_map"),
+             "Superior Inspiration (Bard L18+): every qualifying Bard regains Bardic\n"
+             "Inspiration up to 2 if it has fewer. RNG-free; call once at combat start.")
+        .def("bard_cutting_words",
+             &CombatEngine::bardCuttingWords,
+             py::arg("battle_map"), py::arg("bard_idx"),
+             "Cutting Words (College of Lore, L3+): reaction that expends one Bardic\n"
+             "Inspiration use to SUBTRACT the die from the next D20 Test (the target's roll).\n"
+             "Returns the amount subtracted, or 0 on failure.")
         .def("expend_arcane_ward_slot",
              &CombatEngine::expendArcaneWardSlot,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("slot_level"),

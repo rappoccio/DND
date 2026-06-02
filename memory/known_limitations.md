@@ -35,6 +35,36 @@ metadata:
 
 ---
 
+### Post-hoc reaction interrupts ("react after seeing the roll/cast") [OPUS]
+**Status:** Missing engine mechanism — several features are simplified to a *pre-roll* model.
+
+**Problem:** The engine resolves a d20 Test (and a spell cast) **atomically** — it rolls, applies, and
+returns in one call. There is no way to *pause mid-resolution*, hand control to another creature's
+decider so it can see the rolled number (or the declared spell) and choose to spend a reaction that
+modifies or cancels the outcome, then resume. The only reaction hooks today are *pre-roll* (the
+actor primes a pending modifier before its own next roll, e.g. Portent, Bardic Inspiration `use`,
+Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity attacks on movement).
+
+**Features simplified or blocked by this:**
+- **Lore Cutting Words** (implemented): RAW the Lore Bard reacts *after* seeing an enemy's attack
+  roll / ability check / damage roll and subtracts the die. Currently primed *before* the target's
+  roll (negative `pending_roll_bonus_`) — the decider/player must decide ahead of time. Same
+  simplification as Bardic Inspiration `use_bardic_die` and Portent's pre-roll model.
+- **Counterspell** (not implemented): reaction *when you see a creature casting a spell*, to cancel
+  the cast. Needs the caster to yield to other creatures' reactions between "spell declared" and
+  "spell resolved."
+- **Bard Countercharm** (deferred): reaction to reroll an ally's just-failed charm/frighten save —
+  needs the post-save interrupt at the (many, inline) save sites.
+- **Use Inspiration Die** GUI: RAW the holder decides *after* a failed roll; the button primes it
+  before instead.
+
+**When ready:** Introduce a general "pending decision / interrupt" mechanism — the engine yields a
+*decision point* object (roll value or declared-spell info + the set of creatures who may react),
+collects reaction choices from the decider, applies modifiers/cancellation, then resumes. Cutting
+Words, Counterspell, Countercharm, and the Use-Inspiration prompt all become consumers of it.
+
+---
+
 # Known Limitations
 
 ## Battle Master Fighter
@@ -431,3 +461,53 @@ spell is untouched), and SP is spent only when the option is actually applicable
   stubbed; all L3/L6/L14/L18 features deferred. Notable hard pieces: Aberrant psionic spells
   cast via SP; Clockwork persistent ward dice; Draconic 3rd unarmored-AC formula
   (10 + DEX + CHA); Wild Magic 100-entry surge table + Tides-of-Chaos state.
+
+## Bard (Phase 1 + core Bardic Inspiration implemented)
+
+**Implemented:** Roll-API flat modifier (`roll`/`rollAdvantage`/`rollDisadvantage`/`rollToHit`
+take an additive bonus, applied after die selection / Portent replacement, never altering the
+natural d20's crit/fumble). Bardic Inspiration die as an additive `pending_roll_bonus_` (portent-
+style plumbing): `grant_bardic_die` / `use_bardic_die`. Chassis `case Bard:` (CHA full caster,
+DEX+CHA save profs, "Bardic Inspiration" resource = max(1, CHA mod), die-size scaling
+6/8/10/12 at L1/5/10/15). `BardCollege` enum + `Stats::bard_subclass` /
+`bardic_inspiration_die_size`. Font of Inspiration (L5: short-rest regen + `bard_regain_inspiration_from_slot`
+slot-spend). Superior Inspiration (L18: `apply_superior_inspiration`, tops to 2 at combat start).
+Tests in `gui/test_bard.py`.
+
+### Deferred
+- **[DEFER] Countercharm (L7)**: reaction to reroll (with advantage) an ally's just-failed save
+  that would apply Charmed/Frightened. Deferred by request — needs a reaction hook at the
+  charm/frighten save sites (no single save chokepoint; saves are computed inline at many sites).
+  Revisit alongside the same out-of-band reaction plumbing planned for Lore Cutting Words.
+
+### College subclasses (Phase 3 — combat-core slice implemented)
+**Implemented:**
+- **Dance L3** — Unarmored Defense (AC = 10 + DEX + CHA, unarmored), in `computeAC` (`combat_core.cpp`).
+- **Lore L3** — Cutting Words: `bard_cutting_words` reaction expends a Bardic Inspiration use to
+  SUBTRACT the die from the next D20 Test (negative `pending_roll_bonus_`).
+- **Valor L6** — Extra Attack (`num_attacks = 2`) in the `case Bard:` chassis.
+
+**Deferred (per scope / size):**
+- **Dance**: Bardic Damage unarmed strike, Agile Strikes, L6 Inspiring Movement, L14 Leading Evasion.
+- **Glamour** (entire college): Mantle of Inspiration (multi-target temp HP — reuse temp-HP path),
+  Beguiling Magic, L6 Mantle of Majesty, L14 Unbreakable Majesty.
+- **Lore**: L14 Peerless Skill (re-add die on the bard's own fail).
+- **Valor**: Combat Inspiration (+AC / +damage modes — the natural next reuse of the held die,
+  needs a `pending_damage_bonus_` and an incoming-attack AC hook), Martial Training, L14 Battle Magic.
+- **[KNOWN LIMITATION] Out-of-combat / flavor**: Jack of All Trades, Expertise, Magical Secrets,
+  Words of Creation — no combat-sim path; not implemented (per scope rule).
+
+### GUI notes for subclasses
+- Cutting Words has **no GUI button yet** (it's a reaction during another creature's turn; the
+  engine model primes the negative bonus before that creature's roll). Engine fn + binding + tests
+  exist; wire a reaction prompt when the out-of-band reaction UI is built (shared with Countercharm).
+- **RAW timing simplification:** Cutting Words should trigger *after* a Lore Bard sees the roll, not
+  before. This is the same missing mechanism as Counterspell/Countercharm — see
+  **Architecture / Infrastructure → "Post-hoc reaction interrupts"**.
+
+### GUI notes (Phase 4 implemented)
+- College selectable in the stats dialog; `bard_subclass` saved/loaded (`agent_bard_subclass`).
+- "Grant Inspiration" bonus-action button (targets an ally) and "Use Inspiration Die" button
+  (any die-holder). **Use Inspiration Die primes the bonus BEFORE the next d20** (engine model),
+  not RAW's post-hoc "spend after seeing a failed roll" prompt. No separate resource bar; the
+  button only appears when a use/die is available (mirrors Lay on Hands).

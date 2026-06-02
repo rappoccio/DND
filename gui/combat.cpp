@@ -330,7 +330,39 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       break;
     }
 
-    // Other classes without resources (Rogue, Ranger, Bard)
+    case Bard: {
+      // 2024 Bard: Charisma full caster (table A slots already set via set_class_level);
+      // Dexterity + Charisma saving-throw proficiencies.
+      spellcasting_ability = 5;  // 5 = CHA
+      can_cast_spell = true;
+      save_prof_dex = true;
+      save_prof_cha = true;
+
+      // Bardic Inspiration: max(1, CHA mod) uses. Long-rest regain now; short-rest
+      // regain added at L5 (Font of Inspiration).
+      int bi_uses = std::max(1, _mod(cha));
+      Resource bi("Bardic Inspiration", bi_uses, 0);
+      bi.long_rest_regen = bi_uses;
+      if (level >= 5) bi.short_rest_regen = bi_uses;  // Font of Inspiration
+      resources["Bardic Inspiration"] = bi;
+
+      // Die size the bard grants: d6 (L1) → d8 (L5) → d10 (L10) → d12 (L15).
+      bardic_inspiration_die_size =
+          (level >= 15) ? 12 : (level >= 10) ? 10 : (level >= 5) ? 8 : 6;
+
+      // ── College subclass features (Phase 3) ──
+      // Dance L3: Unarmored Defense (AC = 10 + DEX + CHA) — applied in computeAC.
+      // Lore L3: Cutting Words — see bardCuttingWords (reaction, negative die).
+      // Valor L6: Extra Attack.
+      if (bard_subclass == ValorPath && level >= 6) {
+        num_attacks = 2;
+      }
+      // Other college features (Glamour, Dance L6/L14, Lore Peerless Skill,
+      // Valor Combat Inspiration / Battle Magic) are deferred — see known_limitations.md.
+      break;
+    }
+
+    // Other classes without resources (Rogue, Ranger)
     // have no custom resources
     default:
       break;
