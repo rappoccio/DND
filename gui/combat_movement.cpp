@@ -1,0 +1,552 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  combat_movement.cpp  –  CombatEngine movement, teleport, terrain slip
+// ─────────────────────────────────────────────────────────────────────────────
+//
+//  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
+//  Sections:
+//    · Move budgets   — get*/spend* Walk/Fly/Swim/Burrow, clearMovement
+//    · Movement       — canAgentMove, moveAgent (with spell-effect checking)
+//    · Jump & teleport— jumpAgent, teleportAgent, isValidTeleportDestination,
+//                       placeTeleportedAgents
+//    · Terrain        — checkSlippingTerrain
+//    · Stand up       — standup
+//
+#include "combat.hpp"
+#include "battle_map.hpp"
+#include "combat_internal.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+namespace rpg {
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Move budgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::getWalkRemaining(int agent_idx) const noexcept
+{
+    auto it = walkRemaining_.find(agent_idx);
+    return (it != walkRemaining_.end()) ? it->second : 0;
+}
+
+int CombatEngine::getFlyRemaining(int agent_idx) const noexcept
+{
+    auto it = flyRemaining_.find(agent_idx);
+    return (it != flyRemaining_.end()) ? it->second : 0;
+}
+
+int CombatEngine::getSwimRemaining(int agent_idx) const noexcept
+{
+    auto it = swimRemaining_.find(agent_idx);
+    return (it != swimRemaining_.end()) ? it->second : 0;
+}
+
+int CombatEngine::getBurrowRemaining(int agent_idx) const noexcept
+{
+    auto it = burrowRemaining_.find(agent_idx);
+    return (it != burrowRemaining_.end()) ? it->second : 0;
+}
+
+int CombatEngine::spendWalk(int agent_idx, int feet) noexcept
+{
+    auto& rem  = walkRemaining_[agent_idx];  // inserts 0 if absent
+    int   spent = std::min(feet, rem);
+    rem -= spent;
+    return spent;
+}
+
+int CombatEngine::spendFly(int agent_idx, int feet) noexcept
+{
+    auto& rem  = flyRemaining_[agent_idx];
+    int   spent = std::min(feet, rem);
+    rem -= spent;
+    return spent;
+}
+
+int CombatEngine::spendSwim(int agent_idx, int feet) noexcept
+{
+    auto& rem  = swimRemaining_[agent_idx];
+    int   spent = std::min(feet, rem);
+    rem -= spent;
+    return spent;
+}
+
+int CombatEngine::spendBurrow(int agent_idx, int feet) noexcept
+{
+    auto& rem  = burrowRemaining_[agent_idx];
+    int   spent = std::min(feet, rem);
+    rem -= spent;
+    return spent;
+}
+
+void CombatEngine::clearMovement() noexcept
+{
+    walkRemaining_.clear();
+    flyRemaining_.clear();
+    swimRemaining_.clear();
+    burrowRemaining_.clear();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Movement (with spell effect checking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    // Check for any condition that reduces speed to 0
+    if (cond.incapacitated || cond.unconscious || cond.grappled || cond.paralyzed) {
+        return false;
+    }
+    return true;
+}
+
+bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementType type) noexcept
+{
+    // Get old position before moving
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+
+    // Check if agent is incapacitated or unconscious - cannot move
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.incapacitated || cond.unconscious) {
+        log_("Movement blocked: agent is incapacitated or unconscious");
+        return false;
+    }
+
+    // Check if agent is grappled - cannot move (Speed = 0)
+    if (cond.grappled) {
+        log_("Movement blocked: grappled creature cannot move (Speed = 0)");
+        return false;
+    }
+
+    // Check if grapple should auto-end (grappler incapacitated or out of range)
+    if (cond.grappler_idx >= 0 && cond.grappler_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions grappler_cond = bm.getAgentConditions(cond.grappler_idx);
+        if (grappler_cond.incapacitated) {
+            cond.grappled = false;
+            cond.grappler_idx = -1;
+            bm.setAgentConditions(idx, cond);
+            log_("Grapple ended: grappler is incapacitated");
+            // Continue with movement now that grapple is broken
+        } else {
+            // Check distance
+            Cell grappler_pos = agents[cond.grappler_idx].origin;
+            Cell my_pos = agents[idx].origin;
+            int dist_cells = std::max(std::abs(my_pos.col - grappler_pos.col),
+                                     std::abs(my_pos.row - grappler_pos.row));
+            if (dist_cells * 5 > cond.grapple_range_ft) {
+                cond.grappled = false;
+                cond.grappler_idx = -1;
+                bm.setAgentConditions(idx, cond);
+                log_("Grapple ended: distance exceeds grapple range");
+                // Continue with movement now that grapple is broken
+            }
+        }
+    }
+
+    Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Check if agent is grappling someone - double movement cost
+    int move_dist_ft = std::max(std::abs(newOrigin.col - oldOrigin.col),
+                                std::abs(newOrigin.row - oldOrigin.row)) * 5;
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx) continue;
+        Agent::Conditions target_cond = bm.getAgentConditions(i);
+        if (target_cond.grappled && target_cond.grappler_idx == idx) {
+            // Grappler paying extra movement cost to drag (same as movement type being used)
+            int extra_cost = move_dist_ft;
+            int remaining = 0;
+
+            if (type == MovementType::Walk) {
+                remaining = getWalkRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendWalk(idx, extra_cost);
+            } else if (type == MovementType::Fly) {
+                remaining = getFlyRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendFly(idx, extra_cost);
+            } else if (type == MovementType::Swim) {
+                remaining = getSwimRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendSwim(idx, extra_cost);
+            } else if (type == MovementType::Burrow) {
+                remaining = getBurrowRemaining(idx);
+                if (remaining < extra_cost) {
+                    log_("Not enough movement to drag grappled creature");
+                    return false;
+                }
+                spendBurrow(idx, extra_cost);
+            }
+            break;
+        }
+    }
+
+    // Check if agent is Frightened and would move toward fear source
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.agent_idx == idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
+            Cell src  = bm.placedAgents()[ac.caster_idx].origin;
+            int cur_d = std::max(std::abs(oldOrigin.col - src.col), std::abs(oldOrigin.row - src.row));
+            int new_d = std::max(std::abs(newOrigin.col - src.col), std::abs(newOrigin.row - src.row));
+            if (new_d < cur_d) {
+                log_("Movement blocked: Frightened cannot move closer to fear source");
+                return false;
+            }
+            break;
+        }
+    }
+
+    // Delegate to BattleMap for pathfinding and movement budget logic
+    if (!bm.moveAgent(idx, newOrigin, type))
+        return false;
+
+    // Check for spell effects along the path from old to new position. A creature that
+    // enters a zone is affected at most once per turn (see applyZoneIfNewThisTurn).
+    std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
+    for (const auto& pathCell : pathCells) {
+        for (const auto& effect : bm.activeSpellEffects()) {
+            if (effect.caster_idx == idx) continue;  // don't damage self
+            if (std::find(effect.cells.begin(), effect.cells.end(), pathCell) != effect.cells.end())
+                applyZoneIfNewThisTurn(bm, effect, idx);
+        }
+    }
+
+    // A moving Sphere (Emanation) anchored to this agent follows them as they move.
+    // Snapshot each anchored zone's footprint, re-center it, then affect creatures the
+    // zone newly swept onto — "whenever the Emanation enters a creature's space" (once/turn).
+    std::vector<std::pair<int, std::vector<Cell>>> oldAnchoredCells;  // (effect_id, cells before move)
+    for (const auto& effect : bm.activeSpellEffects())
+        if (effect.anchor_agent_idx == idx)
+            oldAnchoredCells.emplace_back(effect.effect_id, effect.cells);
+
+    recomputeAnchoredEffects(bm, idx);
+
+    for (const auto& [eff_id, oldCells] : oldAnchoredCells) {
+        const ActiveSpellEffect* eff = nullptr;
+        for (const auto& e : bm.activeSpellEffects())
+            if (e.effect_id == eff_id) { eff = &e; break; }
+        if (!eff) continue;
+        for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
+            if (j == idx) continue;  // the anchor is never affected by its own Emanation
+            const PlacedAgent& other = agents[static_cast<std::size_t>(j)];
+            if (footprintOverlapsCells(other, eff->cells) && !footprintOverlapsCells(other, oldCells))
+                applyZoneIfNewThisTurn(bm, *eff, j);
+        }
+    }
+
+    // Check for slipping terrain (ice/grease) along the path
+    checkSlippingTerrain(bm, idx, oldOrigin, newOrigin);
+
+    // Update darkness-based blinding after movement
+    updateDarknessBlinding(bm, idx);
+
+    // If grappling someone, drag them along maintaining relative position
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx) continue;
+        Agent::Conditions grappled_cond = bm.getAgentConditions(i);
+        if (grappled_cond.grappled && grappled_cond.grappler_idx == idx) {
+            // Calculate relative offset of grappled creature from grappler
+            int offset_col = agents[i].origin.col - oldOrigin.col;
+            int offset_row = agents[i].origin.row - oldOrigin.row;
+
+            // Try to maintain the same relative position
+            Cell preferred = Cell(newOrigin.col + offset_col, newOrigin.row + offset_row);
+            Cell drag_dest = preferred;
+
+            // Check if preferred position is valid
+            bool position_valid = bm.setAgentPosition(i, preferred);
+
+            // If preferred position blocked, find adjacent unoccupied cell
+            if (!position_valid) {
+                bool found = false;
+                // Try all 8 adjacent cells
+                const int deltas[][2] = {{0,1}, {0,-1}, {1,0}, {-1,0}, {1,1}, {-1,-1}, {1,-1}, {-1,1}};
+                for (const auto& delta : deltas) {
+                    Cell candidate = Cell(newOrigin.col + delta[0], newOrigin.row + delta[1]);
+                    if (bm.setAgentPosition(i, candidate)) {
+                        drag_dest = candidate;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    // No valid position found, leave creature at current position
+                    continue;
+                }
+            } else {
+                drag_dest = preferred;
+            }
+
+            log_("Grappled creature dragged");
+        }
+    }
+
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Jump & teleport
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept
+{
+    // Get old position before jumping
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+    Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
+
+    // Delegate to BattleMap for jump logic
+    if (!bm.jumpAgent(idx, newOrigin, is_running))
+        return false;
+
+    // Check for spell effects along the jump path
+    std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
+
+    // Track which effects we've already applied
+    std::unordered_set<int> appliedEffects;
+
+    for (const auto& pathCell : pathCells) {
+        for (const auto& effect : bm.activeSpellEffects()) {
+            if (appliedEffects.count(effect.effect_id)) continue;
+            if (effect.caster_idx == idx) continue;
+
+            auto it = std::find(effect.cells.begin(), effect.cells.end(), pathCell);
+            if (it != effect.cells.end()) {
+                applySpellEffect(bm, effect, idx);
+                appliedEffects.insert(effect.effect_id);
+            }
+        }
+    }
+
+    // Update darkness-based blinding after jump
+    updateDarknessBlinding(bm, idx);
+
+    return true;
+}
+
+bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()))
+        return false;
+
+    Cell targetCell{target_col, target_row};
+
+    // Check if target cell is blocked by terrain (walls, chasms, etc.)
+    const CellSet& disallowed = bm.disallowedCells();
+    if (disallowed.count(targetCell))
+        return false;
+
+    // Check bounds
+    if (target_col < 0 || target_row < 0 || target_col >= bm.gridCols() || target_row >= bm.gridRows())
+        return false;
+
+    // Set the new position
+    if (!bm.setAgentPosition(idx, targetCell))
+        return false;
+
+    // Check for spell effects at the destination
+    for (const auto& effect : bm.activeSpellEffects()) {
+        if (effect.caster_idx == idx) continue;
+        auto it = std::find(effect.cells.begin(), effect.cells.end(), targetCell);
+        if (it != effect.cells.end()) {
+            applySpellEffect(bm, effect, idx);
+        }
+    }
+
+    // Update darkness-based blinding after teleport
+    updateDarknessBlinding(bm, idx);
+
+    return true;
+}
+
+bool CombatEngine::isValidTeleportDestination(const BattleMap& bm, int col, int row) const noexcept
+{
+    // Check bounds
+    if (col < 0 || row < 0 || col >= bm.gridCols() || row >= bm.gridRows())
+        return false;
+
+    // Check if blocked by terrain
+    Cell destination{col, row};
+    const CellSet& disallowed = bm.disallowedCells();
+    if (disallowed.count(destination))
+        return false;
+
+    return true;
+}
+
+int CombatEngine::placeTeleportedAgents(BattleMap& bm, const std::vector<int>& agent_indices,
+                                        int dest_col, int dest_row) noexcept
+{
+    if (agent_indices.empty())
+        return 0;
+
+    // Validate destination
+    if (!isValidTeleportDestination(bm, dest_col, dest_row))
+        return 0;
+
+    int placed_count = 0;
+
+    // Place the first agent at the destination
+    if (!agent_indices.empty()) {
+        if (teleportAgent(bm, agent_indices[0], dest_col, dest_row))
+            placed_count++;
+    }
+
+    // Place remaining agents in expanding circles around the destination
+    // Check cells at Manhattan distance 1, 2, 3, ... until all agents are placed
+    for (int radius = 1; radius <= 20 && placed_count < static_cast<int>(agent_indices.size()); ++radius) {
+        // For each radius, check cells in a square ring around the destination
+        for (int dy = -radius; dy <= radius; ++dy) {
+            for (int dx = -radius; dx <= radius; ++dx) {
+                // Only check cells at this radius (on the ring, not inside)
+                if (std::abs(dy) != radius && std::abs(dx) != radius)
+                    continue;
+
+                int candidate_col = dest_col + dx;
+                int candidate_row = dest_row + dy;
+
+                // Check if this cell is valid
+                if (isValidTeleportDestination(bm, candidate_col, candidate_row)) {
+                    // Try to place the next agent
+                    int agent_idx = agent_indices[placed_count];
+                    if (teleportAgent(bm, agent_idx, candidate_col, candidate_row))
+                        placed_count++;
+
+                    // Stop if all agents are placed
+                    if (placed_count >= static_cast<int>(agent_indices.size()))
+                        return placed_count;
+                }
+            }
+        }
+    }
+
+    return placed_count;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Terrain
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size()))
+        return;
+
+    // Check all terrain effects to see if any are slipping terrain
+    for (const auto& terrain : bm.activeTerrainEffects()) {
+        if (terrain.difficulty != TerrainDifficulty::Slipping)
+            continue;
+
+        // Check if the agent moved into a cell with this slipping terrain
+        std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
+        bool on_slipping_terrain = false;
+        for (const auto& cell : pathCells) {
+            int cell_idx = cell.row * bm.gridCols() + cell.col;
+            if (std::find(terrain.cell_indices.begin(), terrain.cell_indices.end(), cell_idx) != terrain.cell_indices.end()) {
+                on_slipping_terrain = true;
+                break;
+            }
+        }
+
+        if (!on_slipping_terrain)
+            continue;
+
+        // Agent is on slipping terrain; add distance moved to slip counter
+        int distance_moved = std::max({
+            std::abs(newOrigin.col - oldOrigin.col),
+            std::abs(newOrigin.row - oldOrigin.row)
+        }) * 5;  // Each cell is 5 feet
+
+        int& slip_counter = slipDistanceMoved_[agent_idx];
+        slip_counter += distance_moved;
+
+        // Check if they've moved enough feet to trigger a save
+        if (slip_counter >= terrain.slip_distance_feet) {
+            // Roll DEX save
+            Agent::Stats target_stats = bm.getAgentStats(agent_idx);
+            int save_d20 = roll(20);
+            int save_mod = (target_stats.dex - 10) / 2;
+            if (target_stats.dex < 10 && (target_stats.dex - 10) % 2 != 0) --save_mod;  // floor for odd negative scores
+            if (target_stats.save_prof_dex) save_mod += target_stats.prof_bonus;        // DEX save proficiency
+            int total_save = save_d20 + save_mod;
+
+            log_("{} attempts DEX save ({}) vs DC {} - d20={}, mod={}, total={}",
+                 agents[static_cast<std::size_t>(agent_idx)].agent->name(),
+                 terrain.name,
+                 terrain.slip_save_dc,
+                 save_d20, save_mod, total_save);
+
+            if (total_save < terrain.slip_save_dc) {
+                // Save failed — apply prone condition and skip turn
+                log_("{} slipped on {} and fell prone", agents[static_cast<std::size_t>(agent_idx)].agent->name(), terrain.name);
+                applyProne(bm, agent_idx);
+                agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(true);
+            } else {
+                // Save succeeded — stay upright
+                log_("{} maintained footing on {}", agents[static_cast<std::size_t>(agent_idx)].agent->name(), terrain.name);
+            }
+
+            // Reset slip counter after save check
+            slip_counter = 0;
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stand up
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::standup(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Check if agent is prone
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (!cond.prone) {
+        log_("Agent is not prone");
+        return;
+    }
+
+    // Cost to stand up: half of walk speed
+    int walk_speed = agents[idx].agent->getStats().speed_walk;
+    int standup_cost = walk_speed / 2;
+
+    // Check if agent has enough movement
+    auto it = walkRemaining_.find(idx);
+    int remaining = (it != walkRemaining_.end()) ? it->second : 0;
+    if (remaining < standup_cost) {
+        log_("Agent lacks sufficient movement to stand up (needs {}, has {})", standup_cost, remaining);
+        return;
+    }
+
+    // Deduct cost and remove prone condition
+    spendWalk(idx, standup_cost);
+    cond.prone = false;
+    bm.setAgentConditions(idx, cond);
+
+    log_("{} stands up, spending {} feet of movement", agentName(bm, idx), standup_cost);
+}
+
+} // namespace rpg

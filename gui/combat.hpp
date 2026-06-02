@@ -124,6 +124,11 @@ struct SpellAction {
     // Ignored for Single geometry.
     int  aoe_col = 0;
     int  aoe_row = 0;
+    // Second aim point for oriented Rectangle "wall" spells (e.g. Wall of Fire):
+    // the wall runs from (aoe_col,aoe_row) toward this endpoint, clamped to the
+    // spell's length. -1 = unset → engine falls back to a centered box.
+    int  aoe_col2 = -1;
+    int  aoe_row2 = -1;
     // Sorcerer Metamagic applied to this cast (MetamagicNone = none). The SP cost is
     // deducted in executeSpell. Implemented: Careful, Distant, Extended, Heightened,
     // Quickened, Seeking, Transmuted, Twinned. Deferred: Empowered. Subtle = flavor only.

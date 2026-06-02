@@ -852,8 +852,42 @@ std::vector<Cell> BattleMap::attackTargetCells(Cell origin, int tokenSize,
     return result;
 }
 
+std::vector<Cell> BattleMap::wallCells(Cell anchor, Cell endpoint,
+                                       int widthFt, int maxLenFt) const {
+    std::vector<Cell> cells;
+    const double ax = static_cast<double>(anchor.col);
+    const double ay = static_cast<double>(anchor.row);
+    const double half_w = (widthFt / 5.0) / 2.0;   // half-thickness in cells
+
+    const double dx = endpoint.col - ax, dy = endpoint.row - ay;
+    const double len = std::sqrt(dx * dx + dy * dy);
+
+    // Degenerate fallback: no aim vector → centered box (legacy behavior).
+    if (endpoint.col < 0 || len < 0.001) {
+        const double half_l = (maxLenFt / 5.0) / 2.0;
+        for (int c = 0; c < cols_; ++c)
+            for (int rr = 0; rr < rows_; ++rr) {
+                const double bx = std::abs(c - ax), by = std::abs(rr - ay);
+                if (bx <= half_w && by <= half_l) cells.push_back(Cell{c, rr});
+            }
+        return cells;
+    }
+
+    const double ux = dx / len, uy = dy / len;
+    const double max_along = std::min(len, maxLenFt / 5.0);
+    for (int c = 0; c < cols_; ++c)
+        for (int rr = 0; rr < rows_; ++rr) {
+            const double px = c - ax, py = rr - ay;
+            const double along = px * ux + py * uy;
+            const double perp = std::abs(-py * ux + px * uy);
+            if (along >= 0.0 && along <= max_along && perp <= half_w)
+                cells.push_back(Cell{c, rr});
+        }
+    return cells;
+}
+
 std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
-                                      Cell casterOrigin) const {
+                                      Cell casterOrigin, Cell endpoint) const {
     std::vector<Cell> cells;
     const double ax = static_cast<double>(center.col);
     const double ay = static_cast<double>(center.row);
@@ -904,8 +938,13 @@ std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
             }
         break;
     }
-    case Spell::Square:
     case Spell::Rectangle: {
+        // Oriented wall: thick segment from `center` toward `endpoint`, clamped
+        // to spell.length. Falls back to a centered box when unaimed.
+        cells = wallCells(center, endpoint, spell.width, spell.length);
+        break;
+    }
+    case Spell::Square: {
         const double wcells = spell.width / 5.0;
         const double lcells = spell.length / 5.0;
         for (int c = 0; c < cols_; ++c)

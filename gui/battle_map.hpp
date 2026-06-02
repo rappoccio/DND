@@ -268,8 +268,18 @@ public:
 
     // Compute the grid cells covered by a spell's AoE geometry (1 cell = 5 ft).
     // Cone/Line use casterOrigin as the apex/source. Single/Multiple return {}.
+    // For Rectangle (oriented wall), `endpoint` aims the wall from `center`; when
+    // it is unset ({-1,-1}) or equals `center`, a centered box is produced instead.
     [[nodiscard]] std::vector<Cell> aoeCells(Cell center, const Spell& spell,
-                                             Cell casterOrigin) const;
+                                             Cell casterOrigin,
+                                             Cell endpoint = Cell{-1, -1}) const;
+
+    // Cells covered by an oriented "wall": the thick segment running from `anchor`
+    // toward `endpoint`, clamped to maxLenFt (1 cell = 5 ft), thickness widthFt
+    // centered on the line. If anchor == endpoint, returns a single-thickness box
+    // centered on anchor (degenerate fallback for non-interactive callers).
+    [[nodiscard]] std::vector<Cell> wallCells(Cell anchor, Cell endpoint,
+                                              int widthFt, int maxLenFt) const;
 
     // ── Terrain multipliers ───────────────────────────────────────────────
     // Movement cost multiplier for each cell (default 1.0).

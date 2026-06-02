@@ -1023,6 +1023,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("target_indices", &SpellAction::target_indices)
         .def_readwrite("aoe_col",        &SpellAction::aoe_col)
         .def_readwrite("aoe_row",        &SpellAction::aoe_row)
+        .def_readwrite("aoe_col2",       &SpellAction::aoe_col2,
+             "Endpoint column for oriented Rectangle 'wall' spells (-1 = unset).")
+        .def_readwrite("aoe_row2",       &SpellAction::aoe_row2,
+             "Endpoint row for oriented Rectangle 'wall' spells (-1 = unset).")
         .def_readwrite("metamagic",      &SpellAction::metamagic,
              "Sorcerer Metamagic applied to this cast (MetamagicOption; NONE = none).\n"
              "SP cost is deducted in execute_spell. Applied: Careful, Distant, Extended,\n"
@@ -2309,7 +2313,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
         .def("aoe_cells", &BattleMap::aoeCells,
              py::arg("center"), py::arg("spell"), py::arg("caster_origin"),
-             "Cells covered by a spell's AoE geometry (Cone/Line use caster_origin as apex).")
+             py::arg("endpoint") = Cell{-1, -1},
+             "Cells covered by a spell's AoE geometry (Cone/Line use caster_origin as apex).\n"
+             "For Rectangle walls, `endpoint` aims the wall from `center`.")
+
+        .def("wall_cells", &BattleMap::wallCells,
+             py::arg("anchor"), py::arg("endpoint"),
+             py::arg("width_ft"), py::arg("max_len_ft"),
+             "Cells of an oriented wall: thick segment from anchor toward endpoint,\n"
+             "clamped to max_len_ft, thickness width_ft centered on the line.\n"
+             "If anchor == endpoint, returns a centered box (degenerate fallback).")
 
         // Attack target cells (melee reach or ranged range, with LoS filter)
         .def("attack_target_cells",

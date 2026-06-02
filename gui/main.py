@@ -11,6 +11,7 @@ Right panel – agent configuration GUI (add / remove / place agents)
 import sys
 import os
 import json
+import math
 import random
 
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
@@ -411,6 +412,7 @@ class App:
         self.pending_move_cell    = None  # destination cell
         self.pending_move_type    = None  # rpg.MovementType
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
+        self.spell_anchor_cell    = None  # first click of a two-click wall (Rectangle) cast
         self.combat_log           = []    # list[str], newest first
         self.move_remaining_walk   = 0     # feet remaining this turn (walk)
         self.move_remaining_fly    = 0     # feet remaining this turn (fly)
@@ -3488,7 +3490,13 @@ class App:
             else:
                 # AoE (Line, Cone, Sphere, Square, Rectangle)
                 self.pending_spell_is_aoe = True
-                hint = "click a map location"
+                self.spell_anchor_cell    = None
+                if sp_.geometry == rpg.SpellGeometry.Rectangle:
+                    # Oriented wall: click an anchor, then click again to set
+                    # direction/length (up to the spell's max length).
+                    hint = "click the wall's start point"
+                else:
+                    hint = "click a map location"
 
             self.pending_spell_slot       = s
             self.pending_spell_idx        = si_
@@ -4080,6 +4088,31 @@ class App:
         else:
             self.bonus_used = True
 
+    def _pending_spell(self):
+        """The Spell object currently being aimed, or None."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_spell_slot:
+            return None
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        if 0 <= self.pending_spell_idx < len(spells):
+            return spells[self.pending_spell_idx]
+        return None
+
+    def _pending_spell_is_wall(self) -> bool:
+        """True when the pending AoE spell is an oriented Rectangle 'wall'."""
+        sp = self._pending_spell()
+        return sp is not None and sp.geometry == rpg.SpellGeometry.Rectangle
+
+    def _wall_anchor_in_range(self, cell) -> bool:
+        """The wall's start point must lie within the spell's range of the caster."""
+        sp = self._pending_spell()
+        caster_idx = self._current_agent_idx()
+        if sp is None or caster_idx < 0:
+            return True
+        origin = self.bm.placed_agents[caster_idx].origin
+        dist_cells = math.hypot(cell.col - origin.col, cell.row - origin.row)
+        return dist_cells * 5.0 <= sp.range + 1e-6
+
     # FLAG: Move to C++
     def _resolve_spell_cast_aoe(self, cell):
         caster_idx = self._current_agent_idx()
@@ -4100,8 +4133,15 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = []
-        action.aoe_col        = cell.col
-        action.aoe_row        = cell.row
+        if sp.geometry == rpg.SpellGeometry.Rectangle and self.spell_anchor_cell is not None:
+            # Oriented wall: anchor is the first click, `cell` is the endpoint.
+            action.aoe_col  = self.spell_anchor_cell.col
+            action.aoe_row  = self.spell_anchor_cell.row
+            action.aoe_col2 = cell.col
+            action.aoe_row2 = cell.row
+        else:
+            action.aoe_col  = cell.col
+            action.aoe_row  = cell.row
         self._apply_pact_slot_level(caster_idx, sp, action)
         result = self.combat.execute_spell(self.bm, action)
 
@@ -4111,6 +4151,7 @@ class App:
         self.pending_spell_is_aoe     = False
         self.pending_spell_num_targets = 0
         self.spell_hover_cell         = None
+        self.spell_anchor_cell        = None
 
         agents    = self.bm.placed_agents
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
@@ -4251,7 +4292,7 @@ class App:
                     if 0.0 <= along <= l_cells and perp <= w_cells / 2.0:
                         cells.append(rpg.Cell(c, r))
 
-        elif geo == rpg.SpellGeometry.Square or geo == rpg.SpellGeometry.Rectangle:
+        elif geo == rpg.SpellGeometry.Square:
             w_cells = spell.width  / 5.0
             l_cells = spell.length / 5.0
             for c in range(cols):
@@ -4259,6 +4300,9 @@ class App:
                     dx, dy = abs(c - ax), abs(r - ay)
                     if dx <= w_cells / 2.0 and dy <= l_cells / 2.0:
                         cells.append(rpg.Cell(c, r))
+
+        # Rectangle (oriented wall) is previewed directly via bm.wall_cells in
+        # _draw_spell_aoe_preview, so it is intentionally not handled here.
 
         return cells
 
@@ -4286,9 +4330,18 @@ class App:
         if not (0 <= self.pending_spell_idx < len(spells)):
             return
         sp    = spells[self.pending_spell_idx]
-        aoe_cells = self._aoe_cells(self.spell_hover_cell, sp)
-        # Filter by spell range and line of sight
-        cells = self._filter_spell_cells_by_range_and_los(aoe_cells, caster_idx, sp, center_cell=self.spell_hover_cell)
+        if sp.geometry == rpg.SpellGeometry.Rectangle:
+            # Oriented wall: before the anchor is set there is nothing to preview
+            # (the hovered cell is the candidate start point). Once anchored, the
+            # wall runs from the anchor toward the cursor, clamped to its length.
+            if self.spell_anchor_cell is None:
+                return
+            cells = self.bm.wall_cells(self.spell_anchor_cell, self.spell_hover_cell,
+                                       sp.width, sp.length)
+        else:
+            aoe_cells = self._aoe_cells(self.spell_hover_cell, sp)
+            # Filter by spell range and line of sight
+            cells = self._filter_spell_cells_by_range_and_los(aoe_cells, caster_idx, sp, center_cell=self.spell_hover_cell)
 
         fill_s   = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
         fill_s.fill((160, 80, 220, 60))
@@ -4320,6 +4373,13 @@ class App:
                                       self.spell_hover_cell.row)
         pygame.draw.rect(self.screen, (255, 255, 255),
                          pygame.Rect(ax, ay, cpx, cpx), 2)
+
+        # Green marker on a wall's anchor (the committed first click)
+        if sp.geometry == rpg.SpellGeometry.Rectangle and self.spell_anchor_cell is not None:
+            gx, gy = self._cell_to_screen(self.spell_anchor_cell.col,
+                                          self.spell_anchor_cell.row)
+            pygame.draw.rect(self.screen, (60, 220, 90),
+                             pygame.Rect(gx, gy, cpx, cpx), 3)
 
         # Draw spell range circle (thin line showing max range from caster)
         caster = self.bm.placed_agents[caster_idx]
@@ -6594,7 +6654,14 @@ class App:
             txt(_atk_hint, lx, y, COL_INITIATIVE_CUR)
             y += 14
         elif self.pending_spell_slot:
-            hint = "Click a map location" if self.pending_spell_is_aoe else "Click a target"
+            if self._pending_spell_is_wall():
+                hint = ("Click the wall's end (sets direction & length)"
+                        if self.spell_anchor_cell is not None
+                        else "Click the wall's start point")
+            elif self.pending_spell_is_aoe:
+                hint = "Click a map location"
+            else:
+                hint = "Click a target"
             txt(f"→ {hint} to cast spell", lx, y, (190, 150, 255))
             y += 14
         elif self.pending_shove_slot:
@@ -7040,6 +7107,19 @@ class App:
                         f"{self.bm.placed_agents[self.safe_target_edit_idx].name}.")
                     self.safe_target_edit_idx = -1
                     continue
+                # Esc cancels a pending spell cast. For an anchored wall, the first
+                # Esc drops back to anchor selection; a second Esc cancels the cast.
+                if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
+                    if self._pending_spell_is_wall() and self.spell_anchor_cell is not None:
+                        self.spell_anchor_cell = None
+                        self._combat_log_add("Wall anchor cleared — click a new start point.")
+                    else:
+                        self.pending_spell_slot   = ""
+                        self.pending_spell_is_aoe = False
+                        self.spell_anchor_cell    = None
+                        self.spell_hover_cell     = None
+                        self._combat_log_add("Spell cast cancelled.")
+                    continue
                 # Delete / Backspace removes the selected placed agent,
                 # but ONLY when not in combat.
                 if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE) \
@@ -7196,7 +7276,19 @@ class App:
                             self._resolve_combat_attack(hit)
                         elif self.pending_spell_slot:
                             if self.pending_spell_is_aoe:
-                                self._resolve_spell_cast_aoe(cell)
+                                if self._pending_spell_is_wall():
+                                    if self.spell_anchor_cell is None:
+                                        # First click: anchor the wall (must be in range).
+                                        if self._wall_anchor_in_range(cell):
+                                            self.spell_anchor_cell = cell
+                                            self._combat_log_add("Wall anchored — click to set its direction and length.")
+                                        else:
+                                            self._combat_log_add("Out of range — pick a closer start point.")
+                                    else:
+                                        # Second click: commit the wall toward this cell.
+                                        self._resolve_spell_cast_aoe(cell)
+                                else:
+                                    self._resolve_spell_cast_aoe(cell)
                             elif hit >= 0:
                                 # Check line of sight for single-target spells
                                 caster_idx = self._current_agent_idx()

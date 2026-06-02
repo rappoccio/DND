@@ -30,6 +30,16 @@ pybind11_add_module(rpg_battle_map
     rpg_bindings.cpp
     battle_map.cpp
     combat.cpp
+    combat_visibility.cpp
+    combat_movement.cpp
+    combat_state.cpp
+    combat_core.cpp
+    combat_conditions.cpp
+    combat_riders.cpp
+    combat_turn.cpp
+    combat_resources.cpp
+    combat_spells.cpp
+    combat_attack.cpp
     map_configs.cpp
     spell.cpp
 )

@@ -124,7 +124,7 @@ layer (main.py) rather than the C++ engine. This means:
 - **Future**: Add toggle button or per-attack menu for player control
 
 ## Spell mechanics
-- **Wall of Fire** and other "wall" spells are only able to be in one orientation. Needs to be updated.
+- _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.
 
 ---
 
