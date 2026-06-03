@@ -103,6 +103,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Shield spell: the +5 AC lasts "until the start of your next turn" — remove it here.
+    if (stats.shield_active) {
+        stats.shield_active = false;
+        stats.ac_temporary_modifications -= 5;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
     // Wild Magic Surge — vitality (band 3): regain 5 HP at the start of each of your turns.
     if (stats.wild_magic_regen_turns > 0 && stats.hp_cur > 0) {
         stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 5);
@@ -127,6 +134,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // Reset per-turn Barbarian flags at start of each turn
     cond.reckless_attack = false;
+    cond.reckless_reroll_available = false;
 
     if (cond.exhaustion_level >= 6 && stats.hp_cur > 0) {
         stats.hp_cur = 0;

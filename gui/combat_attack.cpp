@@ -632,16 +632,29 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         updated_atk_cond.brutal_strike_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
-    // Reckless Attack: auto-reroll on miss for Barbarians
+    // Reckless Attack (Barbarian L2+): a missed melee/thrown attack MAY be re-rolled recklessly.
+    // It's a CHOICE — accepting grants enemies advantage vs you until your next turn — offered two
+    // ways: the auto/RL driver consults the decider inline here (and re-resolves with advantage);
+    // the GUI (no decider) instead sets a deferred flag and prompts, then calls applyRecklessReroll.
+    // (Pre-declaring Reckless before the attack is the other entry point — handled by the
+    // reckless_attack advantage at the top of resolveAttack.)
     else if (!r.hit &&
              atk_stats.character_class == CharacterClass::Barbarian &&
+             atk_stats.char_level >= 2 &&
              !atk_cond.reckless_attack &&
              (w.type == WeaponType::Melee || w.thrown)) {
-        updated_atk_cond.reckless_attack = true;
-        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
-        adv = true;
-        r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage);
-        log_("{} uses Reckless Attack (auto-reroll on miss)", agentName(bm, action.attacker_idx));
+        if (decider_ && decider_->chooseReckless(RecklessCtx{action.attacker_idx})) {
+            updated_atk_cond.reckless_attack = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+            adv = true;
+            r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage);
+            log_("{} attacks recklessly (reroll with advantage; attacks against them gain advantage)",
+                 agentName(bm, action.attacker_idx));
+        } else if (!decider_) {
+            // Interactive (GUI): defer — flag it; the GUI prompts and calls apply_reckless_reroll.
+            updated_atk_cond.reckless_reroll_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
     }
 
     // Consume Rogue Steady Aim: it grants advantage on a single attack this turn.

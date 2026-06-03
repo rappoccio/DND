@@ -250,10 +250,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         tr.target_idx = tgt_idx;
         tr.hp_before  = tgt_stats.hp_cur;
 
-        // Wild Magic Surge band 2 (spectral shield): immunity to Magic Missile.
-        if (sp.name == "Magic Missile" && tgt_stats.wild_magic_shield_turns > 0) {
+        // Immunity to Magic Missile: the Shield spell, or Wild Magic band 2 (spectral shield).
+        if (sp.name == "Magic Missile" && (tgt_stats.shield_active || tgt_stats.wild_magic_shield_turns > 0)) {
             tr.hp_after = tgt_stats.hp_cur;
-            tr.log_message = agentName(bm, tgt_idx) + " is immune to Magic Missile (spectral shield)";
+            tr.log_message = agentName(bm, tgt_idx) + " is immune to Magic Missile ("
+                           + (tgt_stats.shield_active ? "Shield" : "spectral shield") + ")";
             log_("{}", tr.log_message);
             result.target_results.push_back(tr);
             continue;
@@ -1864,6 +1865,125 @@ bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_l
          agentName(bm, agent_idx), slot_level, stats.temp_hp, max_ward);
 
     return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  OnDeclareCast window — interruptible spell casting (ONDECLARECAST_PLAN.md)
+//  beginCast wraps executeSpell with a pre-resolution reaction window. This pass: Shield vs
+//  Magic Missile (a targeted creature reacts by casting Shield → Magic Missile immunity).
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::canCastShield(const BattleMap& bm, int idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.hp_cur <= 0) return false;
+    bool has_slot = false;
+    for (int i = 0; i < 9; ++i)
+        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { has_slot = true; break; }
+    if (!has_slot) return false;
+    for (const auto& sp : bm.getAgentSpells(idx))
+        if (sp.name == "Shield") return true;
+    return false;
+}
+
+std::vector<int>
+CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action) const
+{
+    std::vector<int> reactors;
+    const auto& agents = bm.placedAgents();
+    if (action.caster_idx < 0 || action.caster_idx >= static_cast<int>(agents.size())) return reactors;
+    const auto& spells = bm.getAgentSpells(action.caster_idx);
+    if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size())) return reactors;
+
+    // This pass: only Magic Missile opens a Shield reaction (for each distinct target that can Shield).
+    if (spells[static_cast<std::size_t>(action.spell_idx)].name == "Magic Missile") {
+        for (int t : action.target_indices) {
+            if (std::find(reactors.begin(), reactors.end(), t) != reactors.end()) continue;  // dedup darts
+            if (canCastShield(bm, t)) reactors.push_back(t);
+        }
+    }
+    return reactors;
+}
+
+bool CombatEngine::applyShield(BattleMap& bm, int reactor_idx) noexcept
+{
+    if (!canCastShield(bm, reactor_idx)) return false;
+    Agent::Stats s = bm.getAgentStats(reactor_idx);
+    for (int i = 0; i < 9; ++i)                                   // spend the lowest available L1+ slot
+        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) {
+            s.spell_slots_remaining[static_cast<std::size_t>(i)] -= 1; break;
+        }
+    if (!s.shield_active) { s.shield_active = true; s.ac_temporary_modifications += 5; }
+    bm.setAgentStats(reactor_idx, s);
+    Agent::Conditions c = bm.getAgentConditions(reactor_idx);
+    c.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, c);
+    log_("{} casts Shield (+5 AC until their next turn; immune to Magic Missile)",
+         agentName(bm, reactor_idx));
+    return true;
+}
+
+void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind != ReactionOption::Feature) return;
+    if (opt.feature == "Shield") (void)applyShield(bm, ctx.reactor_idx);
+    // Counterspell (and the countered flag) arrive in step 2.
+}
+
+FlowStatus CombatEngine::advanceCast(BattleMap& bm)
+{
+    InFlightCast& c = in_flight_cast_;
+    while (c.cursor < c.reactors.size() && !c.countered) {
+        const int reactor = c.reactors[c.cursor];
+        if (!canCastShield(bm, reactor)) { ++c.cursor; continue; }   // lost eligibility since enumeration
+        ReactionCtx ctx;
+        ctx.window       = ReactionWindow::OnDeclareCast;
+        ctx.reactor_idx  = reactor;
+        ctx.source_idx   = c.action.caster_idx;
+        ctx.spell_idx    = c.action.spell_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Cast Shield (+5 AC, immune to Magic Missile)", "Shield"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        if (c.interactive) {
+            pending_decision_ = PendingDecision{true, ctx};         // suspend; GUI resumes via submitDecision
+            return FlowStatus::AwaitingDecision;
+        }
+        const ReactionResponse resp = decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{};
+        applyCastReaction(bm, ctx, resp);
+        ++c.cursor;
+    }
+    pending_decision_.active = false;
+    if (!c.countered)
+        c.result = executeSpell(bm, c.action);                      // resolve (slot spent inside, late)
+    c.active = false;
+    return FlowStatus::Completed;
+}
+
+FlowStatus CombatEngine::beginCast(BattleMap& bm, const SpellAction& action)
+{
+    in_flight_cast_             = InFlightCast{};
+    in_flight_cast_.active      = true;
+    in_flight_cast_.interactive = true;
+    in_flight_cast_.action      = action;
+    in_flight_cast_.reactors    = declareCastReactors(bm, action);
+    return advanceCast(bm);
+}
+
+SpellResult CombatEngine::resolveCast(BattleMap& bm, const SpellAction& action)
+{
+    in_flight_cast_             = InFlightCast{};
+    in_flight_cast_.active      = true;
+    in_flight_cast_.interactive = false;
+    in_flight_cast_.action      = action;
+    in_flight_cast_.reactors    = declareCastReactors(bm, action);
+    (void)advanceCast(bm);
+    return in_flight_cast_.result;
 }
 
 } // namespace rpg

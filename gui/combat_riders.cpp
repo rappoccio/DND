@@ -658,6 +658,31 @@ void CombatEngine::applyGuidedStrike(BattleMap& bm, const Attack& action, int cl
     }
 }
 
+AttackResult CombatEngine::applyRecklessReroll(BattleMap& bm, int attacker_idx,
+                                               int target_idx, int weapon_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n)
+        return AttackResult{};
+
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.reckless_reroll_available) return AttackResult{};   // only when the miss offered it
+
+    // Commit to Reckless for the round (the downside): enemies have advantage vs this Barbarian
+    // until the start of its next turn. reckless_attack is cleared at that turn's start (Agent::turn).
+    ac.reckless_attack           = true;
+    ac.reckless_reroll_available = false;
+    bm.setAgentConditions(attacker_idx, ac);
+    log_("{} attacks recklessly — rerolling with advantage (attacks against them have advantage "
+         "until the start of their next turn)", agentName(bm, attacker_idx));
+
+    // Re-resolve the same attack; reckless_attack now grants advantage on the melee roll, and
+    // executeAction applies damage/riders on a hit. The eligibility guard (!reckless_attack) is now
+    // false, so this reroll cannot itself re-trigger another reckless reroll.
+    return executeAction(bm, Attack{attacker_idx, target_idx, weapon_idx});
+}
+
 ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept
 {
     ToppleResult res;

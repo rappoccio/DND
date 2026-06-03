@@ -155,10 +155,17 @@ layer (main.py) rather than the C++ engine. This means:
 
 ---
 
-## Barbarian Reckless Attack Mechanic
-- **Limitation**: Reckless Attack is always automatically triggered on any Barbarian melee/thrown attack miss
-- **Why deferred**: Full Reckless Attack system would allow player choice to opt-in/opt-out per attack. Current auto-trigger avoids menu complexity.
-- **Future**: Add toggle button or per-attack menu for player control
+## Barbarian Reckless Attack Mechanic — RESOLVED 2026-06-03 (built + green)
+- Now a **choice** with two entry points (RECKLESS_ATTACK_PLAN.md): (1) pre-declare before attacking
+  (existing GUI button — still gated on `raging`), and (2) **post-hoc on a miss** — the engine flags
+  `reckless_reroll_available`; the GUI prompts (`_offer_reckless_reroll`) and calls
+  `apply_reckless_reroll`, the auto/RL driver consults `CombatDecider::choose_reckless` inline. Both
+  set turn-scoped `reckless_attack` (downside: enemies have advantage vs you until your next turn,
+  cleared at turn start). Replaces the old silent auto-reroll. Tests: `test_reckless.py`.
+- **Remaining minor gaps:** (a) the inline auto/RL reroll doesn't grant Brutal Strike on the rerolled
+  hit (eligibility computed before reckless is set); the GUI apply path does. (b) post-hoc activation
+  isn't logged for replay (pre-declare logs `log_event("reckless")`). (c) the post-hoc path ignores
+  `raging` while the pre-declare GUI prompt requires it — minor inconsistency.
 
 ## Spell mechanics
 - _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.

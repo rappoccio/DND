@@ -26,6 +26,8 @@ test_scripts = [
     "test_exhaustion.py",
     "test_forced_movement_oa.py",
     "test_reactions.py",
+    "test_reckless.py",
+    "test_shield.py",
     "test_resource.py",
     "test_bonus_actions.py",
     "test_terrain_concentration.py",

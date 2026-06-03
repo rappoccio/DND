@@ -429,6 +429,7 @@ namespace rpg {
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
       // Wild Magic Surge persistent effects (set by applyWildMagicSurgeEffect, tick at turn start)
+      bool shield_active{false};                                 // Shield spell: +5 AC (via ac_temporary_modifications) until start of next turn + Magic Missile immunity
       int  wild_magic_shield_turns{0};                           // Band 2 (spectral shield): +2 AC (via ac_temporary_modifications) + Magic Missile immunity, in rounds
       int  wild_magic_regen_turns{0};                            // Band 3: regain 5 HP at the start of each of your turns, in rounds
       bool wild_magic_skip_next_turn{false};                     // Band 7: skip this agent's next turn
@@ -535,6 +536,7 @@ namespace rpg {
       int exhaustion_level{0};              // exhaustion level (0-6; 6 = death)
       bool raging{false};                   // Barbarian is currently in Rage
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
+      bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
@@ -627,6 +629,7 @@ namespace rpg {
       // ends here at the start of your turn. The GUI re-prompts to declare it each turn while
       // raging, and Brutal Strike then works on any turn it is declared.
       conditions_.reckless_attack              = false;
+      conditions_.reckless_reroll_available    = false;
       conditions_.brutal_strike_used_this_turn = false;
       conditions_.brutal_strike_available      = false;
       conditions_.berserker_frenzy_used        = false;

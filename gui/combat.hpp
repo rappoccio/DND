@@ -418,9 +418,11 @@ enum class ReactionWindow {
 // legal (in range, resource available, right weapon category). The decider picks one
 // of these rather than inventing an action — cheap validation + a discrete RL space.
 struct ReactionOption {
-    enum Kind { Skip, Weapon, Spell } kind{Skip};
-    int  index{-1};        // weapon_idx or spell_idx into the reactor's loadout (-1 = Skip)
+    enum Kind { Skip, Weapon, Spell, Feature } kind{Skip};
+    int  index{-1};        // weapon_idx or spell_idx into the reactor's loadout (-1 = Skip/Feature)
     std::string label;     // human-facing menu text (e.g. "[Weapon] Longsword")
+    std::string feature;   // for Feature kind: a named reaction the engine resolves via a dedicated
+                           // apply method ("Shield", later "Counterspell"/"ProtectiveField"/"Riposte")
 };
 
 // "ctx" = the full CONTEXT of one pending reaction decision. The engine fills it and
@@ -466,6 +468,19 @@ struct PendingDecision { bool active{false}; ReactionCtx ctx; };
 // reach; `left_cell` is the last cell still within reach (the mover stands there for the OA);
 // `step` is the path index of that cell (events resolve in path order for stop-on-down).
 struct ProvokeEvent { int reactor{-1}; Cell left_cell{}; int step{0}; };
+
+// Resumable state for one in-flight spell cast that may be interrupted at the OnDeclareCast window
+// (ONDECLARECAST_PLAN.md). beginCast wraps executeSpell with this pre-resolution window: reactors
+// (this pass: Magic Missile targets that can cast Shield) react before the cast resolves.
+struct InFlightCast {
+    bool active{false};
+    bool interactive{false};        // GUI suspends at checkpoints; auto driver resolves inline
+    SpellAction action;             // the declared cast (resolved by executeSpell once the window closes)
+    std::vector<int> reactors;      // eligible OnDeclareCast reactors, in order
+    std::size_t cursor{0};
+    bool countered{false};          // set by a successful Counterspell (step 2) → cast fizzles, slot kept
+    SpellResult result;             // filled when the cast resolves
+};
 
 // Resumable state for one in-flight move that may provoke OAs (REACTION_SYSTEM_PLAN.md §6).
 struct InFlightMove {
@@ -660,6 +675,18 @@ public:
     std::vector<AttackResult> resolveMove(BattleMap& bm, int idx, Cell dest, MovementType type);
     // What the engine is parked on (active=false when not parked). GUI polls each frame.
     [[nodiscard]] const PendingDecision& pendingDecision() const noexcept { return pending_decision_; }
+
+    // Interruptible spell cast (ONDECLARECAST_PLAN.md): opens the OnDeclareCast window before the
+    // spell resolves, so reactions (this pass: Shield vs Magic Missile) can change/cancel it.
+    // beginCast is the GUI/interactive entry (suspends at a checkpoint); resolveCast is the auto/RL
+    // driver (resolves each checkpoint inline via the decider). submitDecision (above) resumes either
+    // an in-flight move or an in-flight cast. Returns the SpellResult via lastCastResult()/resolveCast.
+    FlowStatus beginCast(BattleMap& bm, const SpellAction& action);
+    SpellResult resolveCast(BattleMap& bm, const SpellAction& action);
+    [[nodiscard]] const SpellResult& lastCastResult() const noexcept { return in_flight_cast_.result; }
+    // Shield (reaction): the reactor casts Shield — spend the lowest L1+ slot + its reaction, gain
+    // +5 AC until its next turn and Magic Missile immunity. Returns false if it can't (no slot/etc.).
+    bool applyShield(BattleMap& bm, int reactor_idx) noexcept;
 
     // Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).
     // Returns true if the cell is valid, false if out of bounds or blocked.
@@ -942,6 +969,14 @@ public:
     // spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll (result), turning
     // it into a hit when it now meets AC — in which case weapon damage is rolled and applied here.
     void applyGuidedStrike(BattleMap& bm, const Attack& action, int cleric_idx, AttackResult& result) noexcept;
+
+    // Reckless Attack (Barbarian) — post-hoc entry point. After a miss the engine flags
+    // reckless_reroll_available; the GUI prompts and calls this to commit Reckless (sets
+    // reckless_attack → enemies gain advantage vs you until your next turn) and re-resolve the
+    // same attack with advantage. Returns the fresh AttackResult. No-op (invalid result) if the
+    // flag isn't set.
+    [[nodiscard]] AttackResult applyRecklessReroll(BattleMap& bm, int attacker_idx,
+                                                   int target_idx, int weapon_idx) noexcept;
 
     // Weapon Mastery — Push: a qualifying hit (push_available) shoves the target 10 ft straight
     // away from the attacker (Large or smaller). Clears the flag. Returns feet actually moved.
@@ -1281,6 +1316,18 @@ private:
     void applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
     // Drive the in-flight move: resolve provokes (inline for auto, suspend for GUI), then commit.
     FlowStatus advanceMove(BattleMap& bm);
+
+    // ── Cast interrupt internals (combat_spells.cpp) ─────────────────────────
+    InFlightCast in_flight_cast_{};
+    // OnDeclareCast reactors for a cast (this pass: Magic Missile targets that can cast Shield).
+    [[nodiscard]] std::vector<int> declareCastReactors(const BattleMap& bm, const SpellAction& action) const;
+    // True if `idx` can cast Shield as a reaction now (knows Shield, has an L1+ slot, reaction free).
+    [[nodiscard]] bool canCastShield(const BattleMap& bm, int idx) const;
+    // Apply one chosen OnDeclareCast reaction (dispatches on ReactionOption.feature, e.g. "Shield").
+    void applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
+    // Drive the in-flight cast: resolve reactions (inline for auto, suspend for GUI), then resolve
+    // the spell via executeSpell (unless countered).
+    FlowStatus advanceCast(BattleMap& bm);
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 
     // Persistent-zone "once per turn" tracking. turnCounter_ increments on each beginTurn;

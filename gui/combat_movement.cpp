@@ -617,16 +617,16 @@ CombatEngine::buildReactionCheckpoint(const BattleMap& bm, ReactionWindow window
         for (int wi = 0; wi < static_cast<int>(weapons.size()); ++wi) {
             const Weapon& w = weapons[static_cast<std::size_t>(wi)];
             if (w.name.empty() || w.type != WeaponType::Melee) continue;   // OA is a melee strike
-            ctx.options.push_back(ReactionOption{ReactionOption::Weapon, wi, "[Weapon] " + w.name});
+            ctx.options.push_back(ReactionOption{ReactionOption::Weapon, wi, "[Weapon] " + w.name, ""});
         }
         const std::vector<Spell> spells = bm.getAgentSpells(reactor_idx);
         for (int si = 0; si < static_cast<int>(spells.size()); ++si) {
             if (spells[static_cast<std::size_t>(si)].geometry != Spell::Single) continue;  // single-target only
             ctx.options.push_back(ReactionOption{ReactionOption::Spell, si,
-                                                 "[Spell] " + spells[static_cast<std::size_t>(si)].name});
+                                                 "[Spell] " + spells[static_cast<std::size_t>(si)].name, ""});
         }
     }
-    ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip"});  // always offer Skip
+    ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});  // always offer Skip
     return ctx;
 }
 
@@ -740,6 +740,13 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
     if (!pending_decision_.active) return FlowStatus::Completed;
     const ReactionCtx ctx = pending_decision_.ctx;
     pending_decision_.active = false;
+    // Dispatch to whichever interruptible flow is parked. Cast (OnDeclareCast) and move (LeftReach)
+    // share one transport; only one is active at a time (the decision stack arrives with Counterspell).
+    if (in_flight_cast_.active) {
+        applyCastReaction(bm, ctx, resp);
+        ++in_flight_cast_.cursor;
+        return advanceCast(bm);
+    }
     applyReactionResponse(bm, ctx, resp);
     ++in_flight_move_.cursor;
     return advanceMove(bm);

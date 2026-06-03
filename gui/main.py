@@ -414,6 +414,11 @@ class App:
         # post-commit GUI refresh while a reaction checkpoint is open.
         self._reaction_mover_idx  = -1    # mover whose move is parked at a reaction checkpoint
         self._reaction_dist_moved = 0     # cells*5 of that move (running-jump tracking)
+        # A reaction checkpoint can interrupt either a move (begin_move) or a spell cast (begin_cast,
+        # OnDeclareCast/Shield). _reaction_finish is the continuation run once the parked flow resolves;
+        # it's set before begin_move/begin_cast and invoked by _submit_reaction on completion.
+        self._reaction_finish     = lambda: None
+        self._cast_post           = {}    # context the parked cast needs for post-resolve logging
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
         self.spell_anchor_cell    = None  # first click of a two-click wall (Rectangle) cast
         self.combat_log           = []    # list[str], newest first
@@ -2024,6 +2029,7 @@ class App:
         has_precision = False
         has_psionic_strike = False
         has_divine_smite = False
+        has_reckless_reroll = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
@@ -2046,6 +2052,8 @@ class App:
                 has_guided_strike = True
             elif (not result.hit) and atk_cond and atk_cond.maneuver_precision_available:
                 has_precision = True
+            elif (not result.hit) and atk_cond and atk_cond.reckless_reroll_available:
+                has_reckless_reroll = True
             elif result.hit and atk_cond and atk_cond.push_available:
                 has_push = True
             elif result.hit and atk_cond and atk_cond.topple_available:
@@ -2099,6 +2107,8 @@ class App:
             self._offer_maneuver(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_precision:
             self._offer_precision_attack(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_reckless_reroll:
+            self._offer_reckless_reroll(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
@@ -2121,7 +2131,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -2793,6 +2803,42 @@ class App:
 
         options = [
             ("Precision Attack (spend 1 Superiority Die)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_reckless_reroll(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Offer a Barbarian a post-hoc Reckless Attack after a miss: reroll the SAME attack with
+        advantage, at the cost of the downside (enemies have advantage vs you until your next turn).
+        The other entry point is pre-declaring Reckless before attacking. Mirrors _offer_precision_attack."""
+        def _apply():
+            new_result = self.combat.apply_reckless_reroll(self.bm, atk_idx, target_idx, action.weapon_idx)
+            if new_result.hit:
+                dmg_parts = self._get_damage_type_names(new_result.magic_damage_types, new_result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: Reckless reroll → HIT {new_result.total_damage}"
+                    f"{self._damage_breakdown_str(new_result)} {dmg_type_str}"
+                    f"{' CRIT!' if new_result.critical else ''}{' — DOWN' if new_result.target_down else ''}")
+                if new_result.target_down:
+                    self._drop_concentration_for_agent(target_idx)
+            else:
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: Reckless reroll → still misses "
+                    f"(roll {new_result.total_roll} vs AC {new_result.target_ac})")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Reckless Attack — reroll w/ advantage (enemies gain advantage vs you)", _apply),
             ("Skip", _skip),
         ]
         px, py = self._agent_screen_pos(atk_idx)
@@ -4006,13 +4052,17 @@ class App:
         draws ctx.options at the reactor and routes the click back through submit_decision."""
         pd = self.combat.pending_decision()
         if not pd.active:
-            self._after_move_committed(self._reaction_mover_idx)
+            self._reaction_finish()
             return
         ctx = pd.ctx
         agents = self.bm.placed_agents
         if 0 <= ctx.reactor_idx < len(agents) and 0 <= ctx.source_idx < len(agents):
-            self._combat_log_add(
-                f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
+            if ctx.window == rpg.ReactionWindow.OnDeclareCast:
+                self._combat_log_add(
+                    f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name}'s spell!")
+            else:
+                self._combat_log_add(
+                    f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
         options = [(opt.label, (lambda i=i: self._submit_reaction(i)))
                    for i, opt in enumerate(ctx.options)]
         px, py = self._agent_screen_pos(ctx.reactor_idx)
@@ -4030,7 +4080,7 @@ class App:
         if status == rpg.FlowStatus.AwaitingDecision:
             self._show_pending_reaction_menu()
         else:
-            self._after_move_committed(self._reaction_mover_idx)
+            self._reaction_finish()
 
     def _sync_spell_effect_cache(self):
         """Remove cache entries for spell effects that have been removed in C++."""
@@ -4146,26 +4196,52 @@ class App:
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
         self._apply_pact_slot_level(caster_idx, sp, action)
-        result = self.combat.execute_spell(self.bm, action)
 
-        self._flush_combat_log()
+        # Cast through the OnDeclareCast window (begin_cast): a targeted creature may react before the
+        # spell resolves (Shield vs Magic Missile). begin_cast resolves inline when no reaction is
+        # offered (Completed) or parks at the reaction checkpoint (AwaitingDecision); _finish_cast does
+        # the post-resolution logging in both cases (ONDECLARECAST_PLAN.md).
+        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx, aoe=False)
+        self._reaction_finish = self._finish_cast
 
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
-        self.pending_spell_targets     = []
         self.spell_hover_cell          = None
+
+        status = self.combat.begin_cast(self.bm, action)
+        self._flush_combat_log()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()
+        else:
+            self._finish_cast()
+
+    def _finish_cast(self):
+        """Post-resolution handling once a begin_cast flow completes (immediately or after the
+        OnDeclareCast reaction window). Reads the result from last_cast_result() and logs/consumes the
+        slot using the context captured in self._cast_post."""
+        ctx        = self._cast_post
+        caster_idx = ctx["caster_idx"]
+        result     = self.combat.last_cast_result()
+        self._flush_combat_log()
 
         agents    = self.bm.placed_agents
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
         if not result.valid:
             self._combat_log_add(f"{cast_name}: spell failed (invalid)")
+            # If the agent slipped and can't act, auto-advance their turn (AoE cast path).
+            if ctx.get("aoe") and 0 <= caster_idx < len(agents) and agents[caster_idx].conditions.slipped_this_turn:
+                self._combat_log_add(f"{cast_name} slipped and cannot act — turn ends.")
+                self._advance_turn()
             return
-        self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
+        if ctx.get("aoe") and not result.target_results:
+            self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
+        else:
+            self._log_spell_results(result, cast_name, caster_idx, ctx["spell_idx"])
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
-        self._consume_cast_slot(slot, caster_idx)
+        self._consume_cast_slot(ctx["slot"], caster_idx)
 
     def _pending_spell(self):
         """The Spell object currently being aimed, or None."""
@@ -4222,9 +4298,12 @@ class App:
             action.aoe_col  = cell.col
             action.aoe_row  = cell.row
         self._apply_pact_slot_level(caster_idx, sp, action)
-        result = self.combat.execute_spell(self.bm, action)
 
-        self._flush_combat_log()
+        # Cast through the OnDeclareCast window (begin_cast) so a targeted creature can react before
+        # the spell resolves; _finish_cast does the post-resolution logging (incl. AoE no-targets and
+        # slip handling) whether the cast resolves inline or after a parked reaction.
+        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx, aoe=True)
+        self._reaction_finish = self._finish_cast
 
         self.pending_spell_slot       = ""
         self.pending_spell_is_aoe     = False
@@ -4232,27 +4311,12 @@ class App:
         self.spell_hover_cell         = None
         self.spell_anchor_cell        = None
 
-        agents    = self.bm.placed_agents
-        cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
-        if not result.valid:
-            self._combat_log_add(f"{cast_name}: spell failed (invalid)")
-            # If agent slipped and can't act, auto-advance their turn
-            if caster_idx >= 0 and caster_idx < len(agents):
-                if agents[caster_idx].conditions.slipped_this_turn:
-                    self._combat_log_add(f"{cast_name} slipped and cannot act — turn ends.")
-                    self._advance_turn()
-            return
-        if not result.target_results:
-            self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
+        status = self.combat.begin_cast(self.bm, action)
+        self._flush_combat_log()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()
         else:
-            self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
-            # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
-            self._sync_spell_effect_cache()
-
-        # Terrain placement (incl. slipping DEX saves) is handled in C++ executeSpell;
-        # spell terrain renders from bm.active_terrain_effects via _draw_temp_terrain_overlays.
-
-        self._consume_cast_slot(slot, caster_idx)
+            self._finish_cast()
 
     def _resolve_teleport_spell(self, destination_cell):
         """Handle teleportation spell casting. Teleports caster + additional targets to destination."""
@@ -7528,6 +7592,7 @@ class App:
                             # per-step provoke and commits the move itself. Out of combat, just move.
                             self._reaction_mover_idx  = self.drag_idx
                             self._reaction_dist_moved = dist_moved
+                            self._reaction_finish     = lambda: self._after_move_committed(self._reaction_mover_idx)
                             if self.combat_active:
                                 status = self.combat.begin_move(self.bm, self.drag_idx, self.drag_cell, self.move_type)
                                 self._flush_combat_log()

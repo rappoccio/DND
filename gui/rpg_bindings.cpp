@@ -341,6 +341,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Sacred Weapon remaining duration in rounds (decrements at turn start)")
         .def_readwrite("innate_sorcery_turns", &Agent::Stats::innate_sorcery_turns,
              "Sorcerer Innate Sorcery remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)")
+        .def_readwrite("shield_active", &Agent::Stats::shield_active,
+             "Shield spell active: +5 AC (in ac_temporary_modifications) until start of next turn + MM immunity")
         .def_readwrite("wild_magic_shield_turns", &Agent::Stats::wild_magic_shield_turns,
              "Wild Magic Surge band 2 (spectral shield): rounds of +2 AC + Magic Missile immunity left")
         .def_readwrite("wild_magic_regen_turns", &Agent::Stats::wild_magic_regen_turns,
@@ -472,6 +474,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("exhaustion_level",  &Agent::Conditions::exhaustion_level)
         .def_readwrite("raging",            &Agent::Conditions::raging)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
+        .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
@@ -1203,14 +1206,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("OnTurnStartNearby", ReactionWindow::OnTurnStartNearby);
 
     py::enum_<ReactionOption::Kind>(m, "ReactionOptionKind")
-        .value("Skip",   ReactionOption::Skip)
-        .value("Weapon", ReactionOption::Weapon)
-        .value("Spell",  ReactionOption::Spell);
+        .value("Skip",    ReactionOption::Skip)
+        .value("Weapon",  ReactionOption::Weapon)
+        .value("Spell",   ReactionOption::Spell)
+        .value("Feature", ReactionOption::Feature);
 
     py::class_<ReactionOption>(m, "ReactionOption")
-        .def_readonly("kind",  &ReactionOption::kind)
-        .def_readonly("index", &ReactionOption::index)
-        .def_readonly("label", &ReactionOption::label);
+        .def_readonly("kind",    &ReactionOption::kind)
+        .def_readonly("index",   &ReactionOption::index)
+        .def_readonly("label",   &ReactionOption::label)
+        .def_readonly("feature", &ReactionOption::feature);
 
     py::class_<ReactionCtx>(m, "ReactionCtx")
         .def_readonly("window",      &ReactionCtx::window)
@@ -1777,6 +1782,28 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::return_value_policy::reference_internal,
              "The decision the engine is currently parked on (PendingDecision; .active is False\n"
              "when not parked). The GUI polls this each frame.")
+        // ── OnDeclareCast: interruptible spell casting (ONDECLARECAST_PLAN.md) ─
+        .def("begin_cast",
+             &CombatEngine::beginCast,
+             py::arg("battle_map"), py::arg("action"),
+             "GUI/interactive spell cast that opens the OnDeclareCast window before resolving (this\n"
+             "pass: Shield vs Magic Missile). Returns FlowStatus: Completed (resolved) or\n"
+             "AwaitingDecision (parked — poll pending_decision(), resume via submit_decision()).\n"
+             "Read the SpellResult via last_cast_result() once Completed.")
+        .def("resolve_cast",
+             &CombatEngine::resolveCast,
+             py::arg("battle_map"), py::arg("action"),
+             "Auto/RL/test driver: run the whole cast, resolving each OnDeclareCast checkpoint inline\n"
+             "via the installed CombatDecider. Returns the SpellResult.")
+        .def("last_cast_result",
+             &CombatEngine::lastCastResult,
+             py::return_value_policy::reference_internal,
+             "The SpellResult of the most recent begin_cast/resolve_cast (valid once Completed).")
+        .def("apply_shield",
+             &CombatEngine::applyShield,
+             py::arg("battle_map"), py::arg("reactor_idx"),
+             "Shield (reaction): the reactor casts Shield — spend its lowest L1+ slot + its reaction,\n"
+             "gain +5 AC until its next turn and Magic Missile immunity. Returns False if it can't.")
         .def("place_teleported_agents",
              &CombatEngine::placeTeleportedAgents,
              py::arg("battle_map"), py::arg("agent_indices"), py::arg("dest_col"), py::arg("dest_row"),
@@ -1951,6 +1978,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "also spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll\n"
              "(conditions.guided_strike_available). If it now meets AC, the miss becomes a hit and\n"
              "weapon damage is rolled and applied. Pass the Attack that missed and its AttackResult.")
+        .def("apply_reckless_reroll",
+             &CombatEngine::applyRecklessReroll,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
+             "Reckless Attack (Barbarian), post-hoc entry: after a miss flags\n"
+             "conditions.reckless_reroll_available, commit Reckless (enemies gain advantage vs you\n"
+             "until your next turn) and re-resolve the SAME attack with advantage. Returns the fresh\n"
+             "AttackResult (invalid if the flag wasn't set).")
         .def("apply_push",
              &CombatEngine::applyPush,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
