@@ -200,6 +200,74 @@ int CombatEngine::applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int ta
     return smite_damage;
 }
 
+bool CombatEngine::canUseWarMagic(BattleMap& bm, int idx) const noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats st = bm.getAgentStats(idx);
+    if (st.character_class != CharacterClass::Fighter) return false;
+    if (st.fighter_subclass != EldritchKnightPath) return false;
+    if (st.char_level < 7) return false;                       // War Magic unlocks at L7
+    if (bm.getAgentConditions(idx).war_magic_used) return false;  // once per Attack action
+    return true;
+}
+
+void CombatEngine::markWarMagicUsed(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.war_magic_used = true;
+    bm.setAgentConditions(idx, c);
+    log_("{} uses War Magic (cast replaces a weapon attack)", agentName(bm, idx));
+}
+
+std::vector<int> CombatEngine::availableWarMagicSpells(const BattleMap& bm, int idx) const
+{
+    std::vector<int> result;
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return result;
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
+    const Agent::Stats& stats = pa.agent->getStats();
+    if (stats.character_class != CharacterClass::Fighter ||
+        stats.fighter_subclass != EldritchKnightPath || stats.char_level < 7)
+        return result;
+
+    const bool improved = stats.char_level >= 18;  // Improved War Magic also allows level 1-5 spells
+    const auto& spells = pa.spells;
+    for (int si : availableCastableSpells(bm, idx)) {
+        if (si < 0 || si >= static_cast<int>(spells.size())) continue;
+        const Spell& sp = spells[static_cast<std::size_t>(si)];
+        if (sp.casting_time != Spell::Action) continue;
+        if (sp.level == 0 || (improved && sp.level >= 1 && sp.level <= 5))
+            result.push_back(si);
+    }
+    return result;
+}
+
+int CombatEngine::applyArcaneCharge(BattleMap& bm, int idx, int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    const Agent::Stats& stats = agents[static_cast<std::size_t>(idx)].agent->getStats();
+    if (stats.character_class != CharacterClass::Fighter ||
+        stats.fighter_subclass != EldritchKnightPath || stats.char_level < 15)
+        return -1;  // not an EK L15+
+
+    const Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+    const double dx = static_cast<double>(target_col - origin.col);
+    const double dy = static_cast<double>(target_row - origin.row);
+    const double dist_ft = std::sqrt(dx * dx + dy * dy) * 5.0;
+    if (dist_ft > 30.0 + 1e-6) return -2;                              // out of range
+    if (!isValidTeleportDestination(bm, target_col, target_row)) return -3;  // blocked
+    if (!teleportAgent(bm, idx, target_col, target_row)) return -3;
+
+    const int feet = static_cast<int>(dist_ft + 0.5);
+    log_("{} uses Arcane Charge: teleports {} ft to ({}, {})",
+         agentName(bm, idx), feet, target_col, target_row);
+    return feet;
+}
+
 void CombatEngine::applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                             AttackResult& result) noexcept
 {

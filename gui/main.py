@@ -396,6 +396,7 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
+        self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
@@ -1602,6 +1603,7 @@ class App:
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
+        self.arcane_charge_pending     = False
         self._opportunity_queue.clear()
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++)
@@ -1869,6 +1871,11 @@ class App:
             # Fresh start
             if slot == "action":
                 self.attacks_remaining = stats.num_attacks
+                # War Magic gates once per Attack action; a fresh Attack action (including the
+                # second one granted by Action Surge) re-enables the substitution.
+                if conds.war_magic_used:
+                    conds.war_magic_used = False
+                    self.combat.set_agent_conditions(self.bm, idx, conds)
             else:
                 # Bonus slot: check C++ bonus_attacks_remaining (Flurry, Martial Arts, etc.)
                 self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
@@ -1896,7 +1903,18 @@ class App:
             if offhand_weapons:
                 weapons_to_use = offhand_weapons
 
-        if len(weapons_to_use) == 1:
+        # Eldritch Knight War Magic (L7+): during the Attack action, one attack may be replaced by
+        # casting a spell. Offer it only when the engine gate is open AND there is an eligible spell.
+        war_magic_option = None
+        if (slot == "action" and self.combat.can_use_war_magic(self.bm, idx)
+                and self.combat.available_war_magic_spells(self.bm, idx)):
+            def _pick_war_magic():
+                self.pending_attack_slot = ""   # leave attack-target mode; enter spell-target mode
+                self.pending_weapon_idx  = 0
+                self._start_cast_spell("war_magic")
+            war_magic_option = ("War Magic: cast spell (replaces an attack)", _pick_war_magic)
+
+        if len(weapons_to_use) == 1 and war_magic_option is None:
             # Auto-select if only one weapon (or one off-hand weapon for bonus)
             wi = next((i for i, w in enumerate(weapons) if w == weapons_to_use[0]), 0)
             _activate(slot, wi)
@@ -1907,6 +1925,8 @@ class App:
                 def _pick(s=slot, wi_=wi):
                     _activate(s, wi_)
                 options.append((w.name, _pick))
+            if war_magic_option is not None:
+                options.append(war_magic_option)
             px_popup = self._panel_x() + self._PANEL_PAD
             self.context_menu.show(
                 (px_popup, 290),
@@ -3139,6 +3159,36 @@ class App:
         self.action_used = False
         self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: Action Surge! You can take another Action this turn.")
 
+        # Eldritch Knight L15 — Arcane Charge: may teleport up to 30 ft when using Action Surge.
+        if (stats.character_class == rpg.CharacterClass.Fighter and
+                stats.fighter_subclass == rpg.FighterSubclass.EldritchKnight and
+                stats.char_level >= 15):
+            self.arcane_charge_pending = True
+            self._combat_log_add(
+                "Arcane Charge: click a destination within 30 ft to teleport (or click yourself to skip).")
+
+    def _resolve_arcane_charge(self, cell):
+        """Eldritch Knight L15 Arcane Charge: teleport the EK up to 30 ft to the clicked cell.
+        Validation + the teleport live in C++ (apply_arcane_charge); this only handles the
+        skip gesture (click your own cell) and maps the engine's status code to a message."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.arcane_charge_pending = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.arcane_charge_pending = False
+            self._combat_log_add("Arcane Charge skipped.")
+            return
+        feet = self.combat.apply_arcane_charge(self.bm, idx, cell.col, cell.row)
+        if feet >= 0:
+            self.arcane_charge_pending = False
+            self._flush_combat_log()  # surface the engine's teleport log line
+        elif feet == -2:
+            self._combat_log_add("Arcane Charge: out of range (max 30 ft) — pick a closer cell.")
+        else:  # -3 blocked (or -1 ineligible, which shouldn't reach here)
+            self._combat_log_add("Arcane Charge: destination is blocked — pick another cell.")
+
     def _use_sacred_weapon(self, agent_idx: int):
         """Paladin Oath of Devotion Sacred Weapon: spend 1 Channel Oath, +CHA to weapon attacks for 1 min."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -3498,14 +3548,19 @@ class App:
         if idx < 0:
             return
 
-        # Get castable spells from C++ layer (respects both NPC and player rules)
-        available_indices = self.combat.available_castable_spells(self.bm, idx)
+        # Get castable spells from C++ layer (respects both NPC and player rules). War Magic has
+        # its own engine-side eligibility list (action-cantrips L7+, level 1-5 action spells L18+).
+        if slot == "war_magic":
+            available_indices = self.combat.available_war_magic_spells(self.bm, idx)
+        else:
+            available_indices = self.combat.available_castable_spells(self.bm, idx)
         if not available_indices:
             self._combat_log_add("No available spells!")
             if slot == "action":
                 self.action_used = True
-            else:
+            elif slot == "bonus":
                 self.bonus_used = True
+            # "war_magic": consume nothing — the Attack action's weapon attacks remain available.
             return
 
         spells = self.combat.get_agent_spells(self.bm, idx)
@@ -3574,7 +3629,8 @@ class App:
             sp = spells[si]
             sp_level = sp.level
 
-            # Filter by casting_time based on which action button was clicked
+            # Filter by casting_time based on which action button was clicked. (War Magic's list is
+            # already filtered engine-side by available_war_magic_spells, so no extra filter here.)
             if slot == "action" and sp.casting_time == rpg.CastingTime.BonusAction:
                 continue  # Skip bonus-action spells from the action menu
             elif slot == "bonus" and sp.casting_time != rpg.CastingTime.BonusAction:
@@ -3612,8 +3668,9 @@ class App:
             self._combat_log_add("No available spells!")
             if slot == "action":
                 self.action_used = True
-            else:
+            elif slot == "bonus":
                 self.bonus_used = True
+            # "war_magic": consume nothing — the Attack action's weapon attacks remain available.
             return
 
         if len(options) == 1:
@@ -4098,6 +4155,28 @@ class App:
                 if pl > 0:
                     action.slot_level = pl
 
+    def _consume_cast_slot(self, slot: str, caster_idx: int):
+        """Charge the action economy for a resolved cast. Normally a cast consumes the whole
+        action (or bonus action). War Magic (slot=='war_magic') instead replaces ONE weapon attack
+        inside the Attack action: mark the once-per-Attack-action gate, spend one attack, and either
+        re-prompt for the remaining attack(s) or end the action."""
+        if slot == "war_magic":
+            self.combat.mark_war_magic_used(self.bm, caster_idx)
+            self.attacks_remaining -= 1
+            if self.attacks_remaining > 0:
+                # Re-enter the Attack action for the remaining attack(s). war_magic_used stays set
+                # (only a fresh Attack-action seed clears it), so the option won't reappear.
+                self.pending_attack_slot = ""
+                self._start_attack(self._attack_sequence_slot)
+            else:
+                self.attacks_remaining     = 0
+                self.action_used           = True
+                self._attack_sequence_slot = ""
+        elif slot == "action":
+            self.action_used = True
+        else:
+            self.bonus_used = True
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -4145,10 +4224,7 @@ class App:
         self._log_spell_results(result, cast_name, caster_idx, self.pending_spell_idx)
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
-        if slot == "action":
-            self.action_used = True
-        else:
-            self.bonus_used = True
+        self._consume_cast_slot(slot, caster_idx)
 
     def _pending_spell(self):
         """The Spell object currently being aimed, or None."""
@@ -4235,10 +4311,7 @@ class App:
         # Terrain placement (incl. slipping DEX saves) is handled in C++ executeSpell;
         # spell terrain renders from bm.active_terrain_effects via _draw_temp_terrain_overlays.
 
-        if slot == "action":
-            self.action_used = True
-        else:
-            self.bonus_used = True
+        self._consume_cast_slot(slot, caster_idx)
 
     def _resolve_teleport_spell(self, destination_cell):
         """Handle teleportation spell casting. Teleports caster + additional targets to destination."""
@@ -4280,10 +4353,7 @@ class App:
         self.spell_hover_cell          = None
 
         # Mark action/bonus as used
-        if slot == "action":
-            self.action_used = True
-        else:
-            self.bonus_used = True
+        self._consume_cast_slot(slot, caster_idx)
 
     # FLAG: Move to C++
     def _aoe_cells(self, center_cell, spell) -> list:
@@ -7369,8 +7439,11 @@ class App:
                         # Evoker safe-target editing: clicking an ally toggles it; empty/self finishes.
                         self._toggle_safe_target(hit)
                     elif self.combat_active:
+                        # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
+                        if self.arcane_charge_pending:
+                            self._resolve_arcane_charge(cell)
                         # Pending attack: resolve against the clicked agent.
-                        if self.pending_cleave is not None and hit >= 0:
+                        elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
                         elif self.pending_attack_slot and hit >= 0:
                             self._resolve_combat_attack(hit)

@@ -549,6 +549,7 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.psionic_strike_used = false;
         cond.divine_smite_available = false;
         cond.divine_smite_used = false;
+        cond.war_magic_used = false;
         cond.open_hand_rider_available = false;
         cond.open_hand_rider_used = false;
         cond.hamstrung = false;

@@ -487,6 +487,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
         .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
         .def_readwrite("divine_smite_used", &Agent::Conditions::divine_smite_used)
+        .def_readwrite("war_magic_used", &Agent::Conditions::war_magic_used)
+        .def_readwrite("eldritch_strike_by", &Agent::Conditions::eldritch_strike_by)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
         .def_readwrite("maneuver_available", &Agent::Conditions::maneuver_available)
         .def_readwrite("maneuver_precision_available", &Agent::Conditions::maneuver_precision_available)
@@ -1854,6 +1856,31 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Radiant, +1d8 vs Undead/Fiend, to the AttackResult and target HP. Spends the slot +\n"
              "bonus action, sets the leveled-spell + once-per-turn interlocks. Returns Radiant dealt,\n"
              "or -1 if not allowed (no slot/bonus action, already smited, leveled spell already cast).")
+        .def("can_use_war_magic",
+             &CombatEngine::canUseWarMagic,
+             py::arg("battle_map"), py::arg("idx"),
+             "Eldritch Knight War Magic (L7+): true if idx is an EK Fighter L7+ who has not yet used\n"
+             "War Magic this Attack action (conditions.war_magic_used). The GUI also requires the EK to\n"
+             "be mid Attack action with attacks left; the cast itself goes through execute_spell, then\n"
+             "decrements one attack instead of the whole action.")
+        .def("mark_war_magic_used",
+             &CombatEngine::markWarMagicUsed,
+             py::arg("battle_map"), py::arg("idx"),
+             "Set the War Magic once-per-Attack-action gate (conditions.war_magic_used). The GUI clears\n"
+             "it when a fresh action-attack sequence seeds, so Action Surge's second Attack action allows\n"
+             "another substitution.")
+        .def("available_war_magic_spells",
+             &CombatEngine::availableWarMagicSpells,
+             py::arg("battle_map"), py::arg("idx"),
+             "Spell indices an Eldritch Knight may cast via War Magic: action-casting-time cantrips\n"
+             "(L7+), plus level 1-5 action spells at L18+ (Improved War Magic). Empty for non-EK / <L7.")
+        .def("apply_arcane_charge",
+             &CombatEngine::applyArcaneCharge,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             "Eldritch Knight Arcane Charge (L15): teleport up to 30 ft (the optional rider on Action\n"
+             "Surge). Validates EK L15+, the 30-ft range, and a clear destination, then teleports.\n"
+             "Returns feet moved (>=0) on success, or negative: -1 not eligible, -2 out of range,\n"
+             "-3 destination blocked.")
         .def("apply_guided_strike_effect",
              &CombatEngine::applyGuidedStrike,
              py::arg("battle_map"), py::arg("action"), py::arg("cleric_idx"), py::arg("result"),

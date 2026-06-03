@@ -818,6 +818,25 @@ public:
     int applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                int slot_level, AttackResult& result) noexcept;
 
+    // Eldritch Knight War Magic (L7+): during the Attack action, one weapon attack may be replaced
+    // by casting a spell. canUseWarMagic owns the class/subclass/level + once-per-Attack-action gate
+    // (the "mid Attack action with attacks left" part is GUI turn-economy state); the spell itself is
+    // cast through the normal executeSpell path. markWarMagicUsed sets the once-per gate; the GUI
+    // clears war_magic_used when a fresh action-attack sequence seeds (Action Surge → another use).
+    [[nodiscard]] bool canUseWarMagic(BattleMap& bm, int idx) const noexcept;
+    void markWarMagicUsed(BattleMap& bm, int idx) noexcept;
+
+    // Spell indices an EK may cast via War Magic: action-casting-time cantrips (L7+), plus level
+    // 1-5 action spells at L18+ (Improved War Magic). Reuses availableCastableSpells, so the
+    // slot / one-leveled-spell-per-turn rules already apply to the leveled case.
+    [[nodiscard]] std::vector<int> availableWarMagicSpells(const BattleMap& bm, int idx) const;
+
+    // Eldritch Knight Arcane Charge (L15): teleport up to 30 ft (the optional rider on Action
+    // Surge). Validates EK L15+, the 30-ft range, and a clear destination, then teleports.
+    // Returns feet moved (>=0) on success, or a negative code: -1 not eligible / invalid,
+    // -2 out of range, -3 destination blocked.
+    int applyArcaneCharge(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
     // Psi Warrior Psionic Strike (on-hit): spend one Psionic Energy die to add Force damage
     // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
     // psionic_strike_available; clears it and sets psionic_strike_used.

@@ -138,6 +138,38 @@ inline std::array<int,9> compute_class_slots(CharacterClass cls, int lvl) {
     }
 }
 
+// Third-caster slot table (Eldritch Knight Fighter, Arcane Trickster Rogue — 1/3 progression,
+// keyed by the martial class level, capped at 4th-level slots). compute_class_slots can't see the
+// subclass, so the chassis (initializeClassResources) calls this explicitly for EK/AT.
+inline std::array<int,9> compute_third_caster_slots(int lvl) {
+    if (lvl < 3) return {};        // spellcasting begins at level 3
+    if (lvl > 20) lvl = 20;
+    lvl--;  // 0-indexed
+    static constexpr std::array<std::array<int,9>,20> kThird{{
+        {0,0,0,0,0,0,0,0,0},  // 1
+        {0,0,0,0,0,0,0,0,0},  // 2
+        {2,0,0,0,0,0,0,0,0},  // 3
+        {3,0,0,0,0,0,0,0,0},  // 4
+        {3,0,0,0,0,0,0,0,0},  // 5
+        {3,0,0,0,0,0,0,0,0},  // 6
+        {4,2,0,0,0,0,0,0,0},  // 7
+        {4,2,0,0,0,0,0,0,0},  // 8
+        {4,2,0,0,0,0,0,0,0},  // 9
+        {4,3,0,0,0,0,0,0,0},  // 10
+        {4,3,0,0,0,0,0,0,0},  // 11
+        {4,3,0,0,0,0,0,0,0},  // 12
+        {4,3,2,0,0,0,0,0,0},  // 13
+        {4,3,2,0,0,0,0,0,0},  // 14
+        {4,3,2,0,0,0,0,0,0},  // 15
+        {4,3,3,0,0,0,0,0,0},  // 16
+        {4,3,3,0,0,0,0,0,0},  // 17
+        {4,3,3,0,0,0,0,0,0},  // 18
+        {4,3,3,1,0,0,0,0,0},  // 19
+        {4,3,3,1,0,0,0,0,0}   // 20
+    }};
+    return kThird[lvl];
+}
+
 // ── Skill Enum (18 D&D 5e skills) ───────────────────────────────────────
 enum Skill {
     SkillNone = 0,

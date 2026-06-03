@@ -128,10 +128,17 @@ is established.
 
 ---
 
-## Eldritch Knight Fighter [OPUS]
-Replacing one Attack-action attack with a cantrip (War Magic) interleaves attack and cast
-economies. Same care needed as the Cleave/Nick economy. EldritchKnight enum value exists in
-FighterSubclass; the attack↔cast substitution is [OPUS].
+## Eldritch Knight Fighter — IMPLEMENTED ✅ (2026-06-02, awaiting build)
+The attack↔cast interleave is done. See the Fighter section below for the full breakdown.
+Remaining simplifications:
+- **Eldritch Strike (L10)** is **one-shot** (consumed by the target's next save vs a spell the EK
+  casts), not the RAW "until the end of your next turn" window — same family of timing
+  simplifications as Cutting Words. The tag has no timed expiry; it clears on consume or at the
+  EK's next turn (`_advance_turn` reset). Acceptable for combat-sim.
+- **War Bond (L3)** — weapon-bonding / anti-disarm utility — NOT modeled (out-of-combat flavor).
+- RL/headless: War Magic substitution isn't in the action space yet (`availableAttacks`); the
+  engine gate (`war_magic_used`) is reset in `runRound` for consistency, full RL support deferred
+  with the rest of RL spellcasting.
 
 ---
 
@@ -418,8 +425,30 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 - **Remarkable Athlete** (bonus to non-proficient checks)
 - **Second Fighting Style** (L3)
 
+### Eldritch Knight — IMPLEMENTED ✅ (2026-06-02, awaiting build)
+- **Spellcasting chassis (L3+)**: third-caster, INT, Wizard list. `compute_third_caster_slots`
+  (`character_class.hpp`) + override in the Fighter chassis (`combat.cpp` case Fighter) since
+  `compute_class_slots(Fighter)` can't see the subclass. Sets `spell_slots_max`,
+  `spellcasting_ability=INT`, `can_cast_spell`.
+- **War Magic (L7+)** — the attack↔cast interleave. Engine owns the gate
+  (`canUseWarMagic`/`markWarMagicUsed` + `Conditions::war_magic_used`, reset in both turn paths);
+  the cast itself goes through the normal `executeSpell`. GUI: a `slot=="war_magic"` pseudo-slot
+  (mirrors `"bonus"`) — the resolve path (`_consume_cast_slot`) decrements ONE attack instead of
+  consuming the whole action, marks the gate, and re-prompts for the remaining attack(s). Gated
+  **once per Attack action** (reset when a fresh action-attack sequence seeds → Action Surge
+  permits another).
+- **Improved War Magic (L18+)**: the War Magic spell filter widens to level 1-5 action spells
+  (`_eligible_war_magic_spells` + the `_start_cast_spell` filter), respecting the
+  one-leveled-spell-per-turn rule via `available_castable_spells`.
+- **Eldritch Strike (L10)**: on-hit rider tags the target (`Conditions::eldritch_strike_by`);
+  the spell-save site applies disadvantage and consumes the tag. One-shot (see simplification note
+  in the EK Architecture section above).
+- **Arcane Charge (L15)**: optional 30-ft teleport offered after Action Surge
+  (`_resolve_arcane_charge`, reuses `teleport_agent`).
+- Tests: `test_fighter.py` (chassis L3/L7/scaling, non-EK has no slots, War Magic gate + L7
+  requirement, Eldritch Strike tagging + L10 requirement).
+
 ### NOT IMPLEMENTED (Model boundary)
-- **[OPUS] Eldritch Knight**: War Magic (turn-economy interleave)
 - **[DEFER] Indomitable** (L9): save-reroll resource
 - **[DEFER] Studied Attacks** (L13): advantage on next attack vs missed creature
 

@@ -474,6 +474,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("Metamagic Heightened: {} has disadvantage on the save", agentName(bm, tgt_idx));
             }
 
+            // Eldritch Knight L10 — Eldritch Strike: a creature the EK hit with a weapon has
+            // disadvantage on its next save vs a spell the EK casts. One-shot: consume the tag.
+            if (target_cond.eldritch_strike_by == action.caster_idx) {
+                target_dis = true;
+                log_("Eldritch Strike: {} has disadvantage on the save", agentName(bm, tgt_idx));
+                Agent::Conditions clear_es = bm.getAgentConditions(tgt_idx);
+                clear_es.eldritch_strike_by = -1;
+                bm.setAgentConditions(tgt_idx, clear_es);
+            }
+
             // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
             bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
                             (sp.save_ability == SaveStr || sp.save_ability == SaveDex);

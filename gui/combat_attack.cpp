@@ -753,6 +753,17 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         }
     }
 
+    // ── Eldritch Knight — Eldritch Strike (on a weapon hit) ───────────────
+    // L10+ EK: hitting a creature with a weapon gives it disadvantage on its next saving throw
+    // against a spell the EK casts. Tag the target with the EK's index; the save site (executeSpell)
+    // consumes it. RAW window ("before the end of your next turn") is simplified to one-shot.
+    if (r.hit && atk_stats.character_class == CharacterClass::Fighter &&
+        atk_stats.fighter_subclass == EldritchKnightPath && atk_stats.char_level >= 10) {
+        Agent::Conditions tcond = bm.getAgentConditions(action.target_idx);
+        tcond.eldritch_strike_by = action.attacker_idx;
+        bm.setAgentConditions(action.target_idx, tcond);
+    }
+
     // ── War Domain — Guided Strike eligibility (on a miss) ────────────────
     // A missed attack (not a natural 1) can be nudged to a hit by a War Cleric L3+ spending Channel
     // Divinity — the attacker themselves, or an ally within 30 ft (who pays a Reaction). Flag it; the

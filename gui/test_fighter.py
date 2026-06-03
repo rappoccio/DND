@@ -432,6 +432,198 @@ def test_telekinetic_movement_pushes_and_depletes():
     print("✅ test_telekinetic_movement_pushes_and_depletes passed")
 
 
+# ── Eldritch Knight: spellcasting chassis + War Magic + Eldritch Strike ──────
+
+def _eldritch_knight(engine, bm, idx, level, intel=16):
+    """Configure agent as an Eldritch Knight Fighter of the given level."""
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Fighter, level)
+    s.str = 16
+    s.dex = 12
+    s.con = 14
+    s.intel = intel
+    s.fighter_subclass = rpg.FighterSubclass.EldritchKnight
+    s.initialize_class_resources(rpg.CharacterClass.Fighter, level)
+    engine.set_agent_stats(bm, idx, s)
+    return engine.get_agent_stats(bm, idx)
+
+
+def _ek_setup(level):
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("EldritchKnight", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Dummy", 6, 5))
+    _eldritch_knight(engine, bm, atk, level)
+    _soft_target(engine, bm, tgt)
+    engine.set_agent_weapons(bm, atk, _longsword())
+    return bm, engine, atk, tgt
+
+
+def test_ek_spellcasting_chassis_l3():
+    """EK L3: third-caster begins — 2× 1st-level slots, INT casting, can_cast_spell."""
+    bm, engine, atk, tgt = _ek_setup(3)
+    s = engine.get_agent_stats(bm, atk)
+    assert s.can_cast_spell, "EK L3 should be a spellcaster"
+    assert s.spellcasting_ability == 3, f"EK casts with INT (3), got {s.spellcasting_ability}"
+    assert s.spell_slots_max[0] == 2, f"EK L3 should have 2 first-level slots, got {s.spell_slots_max[0]}"
+    assert sum(s.spell_slots_max[1:]) == 0, "EK L3 should have no slots above 1st"
+    print("✅ test_ek_spellcasting_chassis_l3 passed")
+
+
+def test_ek_spellcasting_chassis_l7():
+    """EK L7: War Magic level — 4× 1st, 2× 2nd."""
+    bm, engine, atk, tgt = _ek_setup(7)
+    s = engine.get_agent_stats(bm, atk)
+    assert s.spell_slots_max[0] == 4 and s.spell_slots_max[1] == 2, \
+        f"EK L7 should have 4×1st / 2×2nd, got {list(s.spell_slots_max[:3])}"
+    assert s.spell_slots_max[2] == 0, "EK L7 should have no 3rd-level slots"
+    print("✅ test_ek_spellcasting_chassis_l7 passed")
+
+
+def test_ek_third_caster_scaling():
+    """EK L13 reaches 3rd-level slots; L20 reaches 4th (third-caster cap)."""
+    bm, engine, atk, tgt = _ek_setup(13)
+    s13 = engine.get_agent_stats(bm, atk)
+    assert s13.spell_slots_max[2] == 2, f"EK L13 should have 2×3rd, got {s13.spell_slots_max[2]}"
+    assert s13.spell_slots_max[3] == 0, "EK L13 should have no 4th-level slots"
+
+    bm, engine, atk, tgt = _ek_setup(20)
+    s20 = engine.get_agent_stats(bm, atk)
+    assert s20.spell_slots_max[3] == 1, f"EK L20 should have 1×4th, got {s20.spell_slots_max[3]}"
+    assert sum(s20.spell_slots_max[4:]) == 0, "third-caster caps at 4th-level slots"
+    print("✅ test_ek_third_caster_scaling passed")
+
+
+def test_non_ek_fighter_no_slots():
+    """A non-EK Fighter (Champion) has no spell slots and cannot cast."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Champion", 5, 5))
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Fighter, 7)
+    s.fighter_subclass = rpg.FighterSubclass.Champion
+    s.initialize_class_resources(rpg.CharacterClass.Fighter, 7)
+    engine.set_agent_stats(bm, idx, s)
+    s = engine.get_agent_stats(bm, idx)
+    assert sum(s.spell_slots_max) == 0, "non-EK Fighter should have no spell slots"
+    print("✅ test_non_ek_fighter_no_slots passed")
+
+
+def test_war_magic_gate():
+    """War Magic gate: open for EK L7+, closes after use, reopens when the flag clears."""
+    bm, engine, atk, tgt = _ek_setup(7)
+    assert engine.can_use_war_magic(bm, atk), "EK L7 should be able to use War Magic"
+
+    engine.mark_war_magic_used(bm, atk)
+    assert not engine.can_use_war_magic(bm, atk), "after use, War Magic is gated"
+    assert engine.get_agent_conditions(bm, atk).war_magic_used, "the once-per gate flag is set"
+
+    # A fresh Attack action (modeled by clearing the flag) reopens it.
+    c = engine.get_agent_conditions(bm, atk)
+    c.war_magic_used = False
+    engine.set_agent_conditions(bm, atk, c)
+    assert engine.can_use_war_magic(bm, atk), "clearing the flag reopens War Magic"
+    print("✅ test_war_magic_gate passed")
+
+
+def test_war_magic_requires_l7():
+    """War Magic is unavailable before L7 (and to non-EK Fighters)."""
+    bm, engine, atk, tgt = _ek_setup(6)
+    assert not engine.can_use_war_magic(bm, atk), "EK L6 has no War Magic yet"
+    print("✅ test_war_magic_requires_l7 passed")
+
+
+def test_eldritch_strike_tags_target():
+    """EK L10 weapon hit tags the target with the EK's index (disadvantage on next save vs EK spell)."""
+    bm, engine, atk, tgt = _ek_setup(10)
+    assert engine.get_agent_conditions(bm, tgt).eldritch_strike_by == -1, "no tag before the hit"
+
+    result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert result.hit, "attack_bonus=50 should guarantee a hit"
+    assert engine.get_agent_conditions(bm, tgt).eldritch_strike_by == atk, \
+        "Eldritch Strike should tag the target with the EK's index"
+    print("✅ test_eldritch_strike_tags_target passed")
+
+
+def test_eldritch_strike_requires_l10():
+    """Below L10, a weapon hit does NOT apply the Eldritch Strike tag."""
+    bm, engine, atk, tgt = _ek_setup(9)
+    result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert result.hit
+    assert engine.get_agent_conditions(bm, tgt).eldritch_strike_by == -1, \
+        "EK L9 should not yet apply Eldritch Strike"
+    print("✅ test_eldritch_strike_requires_l10 passed")
+
+
+def _action_cantrip(name="Fire Bolt"):
+    """A free action-casting-time spell-attack cantrip."""
+    s = rpg.Spell()
+    s.name = name
+    s.geometry = rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.AttackRoll
+    s.range = 120
+    s.level = 0
+    s.casting_time = rpg.CastingTime.Action
+    return s
+
+
+def test_available_war_magic_spells():
+    """available_war_magic_spells (rules in C++): an EK L7's action-cantrip qualifies; a
+    bonus-action cantrip does not; a non-EK / sub-L7 list is empty."""
+    bm, engine, atk, tgt = _ek_setup(7)
+    bonus_cantrip = _action_cantrip("Mind Sliver")
+    bonus_cantrip.casting_time = rpg.CastingTime.BonusAction
+    engine.set_agent_spells(bm, atk, [_action_cantrip("Fire Bolt"), bonus_cantrip])
+    wm = list(engine.available_war_magic_spells(bm, atk))
+    assert wm == [0], f"only the action-cantrip (index 0) should qualify, got {wm}"
+
+    # A leveled spell does NOT qualify before L18 (Improved War Magic).
+    bm2, engine2, atk2, _ = _ek_setup(7)
+    lvl1 = _action_cantrip("Magic Missile")
+    lvl1.level = 1
+    engine2.set_agent_spells(bm2, atk2, [lvl1])
+    assert list(engine2.available_war_magic_spells(bm2, atk2)) == [], \
+        "level-1 spell should not qualify for War Magic until L18"
+
+    # Below L7: empty.
+    bm3, engine3, atk3, _ = _ek_setup(6)
+    engine3.set_agent_spells(bm3, atk3, [_action_cantrip()])
+    assert list(engine3.available_war_magic_spells(bm3, atk3)) == [], "EK L6 has no War Magic"
+    print("✅ test_available_war_magic_spells passed")
+
+
+def test_improved_war_magic_l18():
+    """Improved War Magic (L18): a level 1-5 action spell becomes War-Magic-eligible (needs a slot)."""
+    bm, engine, atk, tgt = _ek_setup(18)
+    lvl2 = _action_cantrip("Scorching Ray")
+    lvl2.level = 2
+    engine.set_agent_spells(bm, atk, [lvl2])
+    wm = list(engine.available_war_magic_spells(bm, atk))
+    assert wm == [0], f"L18 EK should be able to War-Magic a level-2 action spell, got {wm}"
+    print("✅ test_improved_war_magic_l18 passed")
+
+
+def test_arcane_charge():
+    """Arcane Charge (validation + teleport in C++): EK L15 teleports within 30 ft; out-of-range
+    and ineligible callers are rejected by status code."""
+    bm, engine, atk, tgt = _ek_setup(15)
+    origin = bm.placed_agents[atk].origin
+
+    # In range (5,5) → (8,5) is 15 ft. Should succeed and move the agent.
+    feet = engine.apply_arcane_charge(bm, atk, 8, 5)
+    assert feet >= 0, f"in-range teleport should succeed, got {feet}"
+    moved = bm.placed_agents[atk].origin
+    assert (moved.col, moved.row) == (8, 5), f"agent should be at (8,5), got ({moved.col},{moved.row})"
+
+    # Out of range: (8,5) → (20,5) is 60 ft → -2.
+    assert engine.apply_arcane_charge(bm, atk, 20, 5) == -2, "60 ft should be out of range (-2)"
+
+    # Not eligible: an EK below L15 → -1.
+    bm2, engine2, atk2, _ = _ek_setup(14)
+    assert engine2.apply_arcane_charge(bm2, atk2, 7, 5) == -1, "EK L14 has no Arcane Charge (-1)"
+    print("✅ test_arcane_charge passed")
+
+
 if __name__ == "__main__":
     test_superiority_dice_l3()
     test_superiority_dice_l10()
@@ -446,4 +638,15 @@ if __name__ == "__main__":
     test_psionic_strike_adds_force_damage()
     test_protective_field_reduces_damage()
     test_telekinetic_movement_pushes_and_depletes()
+    test_ek_spellcasting_chassis_l3()
+    test_ek_spellcasting_chassis_l7()
+    test_ek_third_caster_scaling()
+    test_non_ek_fighter_no_slots()
+    test_war_magic_gate()
+    test_war_magic_requires_l7()
+    test_eldritch_strike_tags_target()
+    test_eldritch_strike_requires_l10()
+    test_available_war_magic_spells()
+    test_improved_war_magic_l18()
+    test_arcane_charge()
     print("\n✅ All Fighter tests passed!")

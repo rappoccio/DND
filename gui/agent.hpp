@@ -557,6 +557,8 @@ namespace rpg {
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
       bool divine_smite_available{false};   // Paladin: a melee/unarmed hit can apply Divine Smite this attack
       bool divine_smite_used{false};        // Paladin: Divine Smite already used this turn (bonus action, once per turn)
+      bool war_magic_used{false};           // Eldritch Knight: War Magic substitution already used this Attack action (once per Attack action; reset when a fresh action-attack sequence seeds — Action Surge permits another)
+      int  eldritch_strike_by{-1};          // Eldritch Knight L10: this creature (the target of an EK weapon hit) has disadvantage on its next save vs a spell cast by agent index eldritch_strike_by; -1 = none. One-shot: consumed at the save site (RAW window simplified — see known_limitations)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
       bool maneuver_available{false};           // Battle Master: a qualifying hit can apply a Maneuver this attack
       bool maneuver_precision_available{false}; // Battle Master: this missed attack can apply Precision Attack
@@ -639,6 +641,7 @@ namespace rpg {
       conditions_.psionic_strike_used          = false;
       conditions_.divine_smite_available       = false;
       conditions_.divine_smite_used            = false;
+      conditions_.war_magic_used               = false;
       conditions_.guided_strike_available      = false;
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;

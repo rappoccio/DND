@@ -189,6 +189,17 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         tk.long_rest_regen  = 1;
         resources["Telekinetic Movement"] = tk;
       }
+
+      // Eldritch Knight (L3+): third-caster, INT, Wizard spell list. compute_class_slots(Fighter)
+      // returns zeros (it can't see the subclass), so override the slot table here. This runs
+      // AFTER set_class_level and AFTER fighter_subclass is set (see main.py apply order), so the
+      // override sticks. Cantrips/spells themselves come from the normal spell-assignment UI.
+      if (fighter_subclass == EldritchKnightPath && level >= 3) {
+        spell_slots_max       = compute_third_caster_slots(level);
+        spell_slots_remaining = spell_slots_max;
+        spellcasting_ability  = 3;   // 3 = INT (SaveAbility_t::SaveInt), matches Wizard chassis
+        can_cast_spell        = true;
+      }
       break;
     }
 
