@@ -59,6 +59,15 @@ inline int chebyshevToFootprint(int tc, int tr,
     return std::max(dc, dr);
 }
 
+// Chebyshev distance between two NxN footprints (0 if adjacent/overlapping edges touch at dist 0).
+// Used by the reaction system to decide when a mover leaves a reactor's reach.
+inline int footprintDistance(Cell a, int sa, Cell b, int sb) noexcept
+{
+    int dc = std::max({a.col - (b.col + sb - 1), b.col - (a.col + sa - 1), 0});
+    int dr = std::max({a.row - (b.row + sb - 1), b.row - (a.row + sa - 1), 0});
+    return std::max(dc, dr);
+}
+
 // Helper: get all cells along a line from start to end (Bresenham-like)
 inline std::vector<Cell> getCellsAlongPath(Cell start, Cell end) noexcept
 {

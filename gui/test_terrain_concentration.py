@@ -23,7 +23,7 @@ def _set_concentrating(engine, bm, idx, spell_name):
 def test_terrain_concentration_bindings_present():
     """New types/methods are exposed to Python."""
     for name in ["TerrainTickResult", "DropConcentrationResult", "CombatDecider",
-                 "BrutalStrikeCtx", "RecklessCtx", "OACtx"]:
+                 "BrutalStrikeCtx", "RecklessCtx", "ReactionCtx", "ReactionResponse"]:
         assert hasattr(rpg, name), f"missing binding: {name}"
     engine = setup_combat_engine()
     assert hasattr(engine, "drop_concentration"), "missing combat.drop_concentration"

@@ -39,14 +39,17 @@ static std::vector<Cell> cellSetToVec(const CellSet& s) {
 // Python trampoline for CombatDecider interface
 struct PyCombatDecider : public CombatDecider {
     using CombatDecider::CombatDecider;
+    // PYBIND11_OVERRIDE_NAME (not _OVERRIDE) so the C++ camelCase methods dispatch to the
+    // snake_case Python methods the bindings expose (e.g. choose_reaction). Plain _OVERRIDE
+    // would look up the camelCase name and silently fall back to the C++ base (= no reaction).
     std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx& ctx) override {
-        PYBIND11_OVERRIDE(std::vector<int>, CombatDecider, chooseBrutalStrike, ctx);
+        PYBIND11_OVERRIDE_NAME(std::vector<int>, CombatDecider, "choose_brutal_strike", chooseBrutalStrike, ctx);
     }
     bool chooseReckless(const RecklessCtx& ctx) override {
-        PYBIND11_OVERRIDE(bool, CombatDecider, chooseReckless, ctx);
+        PYBIND11_OVERRIDE_NAME(bool, CombatDecider, "choose_reckless", chooseReckless, ctx);
     }
-    int chooseOAResponse(const OACtx& ctx) override {
-        PYBIND11_OVERRIDE(int, CombatDecider, chooseOAResponse, ctx);
+    ReactionResponse chooseReaction(const ReactionCtx& ctx) override {
+        PYBIND11_OVERRIDE_NAME(ReactionResponse, CombatDecider, "choose_reaction", chooseReaction, ctx);
     }
 };
 
@@ -1189,15 +1192,53 @@ PYBIND11_MODULE(rpg_battle_map, m)
     py::class_<RecklessCtx>(m, "RecklessCtx")
         .def_readonly("attacker_idx", &RecklessCtx::attacker_idx);
 
-    py::class_<OACtx>(m, "OACtx")
-        .def_readonly("attacker_idx", &OACtx::attacker_idx)
-        .def_readonly("target_idx",   &OACtx::target_idx);
+    // ── Reaction system (REACTION_SYSTEM_PLAN.md) ─────────────────────────────
+    py::enum_<ReactionWindow>(m, "ReactionWindow")
+        .value("LeftReach",         ReactionWindow::LeftReach)
+        .value("OnHit",             ReactionWindow::OnHit)
+        .value("OnMiss",            ReactionWindow::OnMiss)
+        .value("OnDeclareCast",     ReactionWindow::OnDeclareCast)
+        .value("OnD20Seen",         ReactionWindow::OnD20Seen)
+        .value("OnSaveFail",        ReactionWindow::OnSaveFail)
+        .value("OnTurnStartNearby", ReactionWindow::OnTurnStartNearby);
+
+    py::enum_<ReactionOption::Kind>(m, "ReactionOptionKind")
+        .value("Skip",   ReactionOption::Skip)
+        .value("Weapon", ReactionOption::Weapon)
+        .value("Spell",  ReactionOption::Spell);
+
+    py::class_<ReactionOption>(m, "ReactionOption")
+        .def_readonly("kind",  &ReactionOption::kind)
+        .def_readonly("index", &ReactionOption::index)
+        .def_readonly("label", &ReactionOption::label);
+
+    py::class_<ReactionCtx>(m, "ReactionCtx")
+        .def_readonly("window",      &ReactionCtx::window)
+        .def_readonly("reactor_idx", &ReactionCtx::reactor_idx)
+        .def_readonly("source_idx",  &ReactionCtx::source_idx)
+        .def_readonly("options",     &ReactionCtx::options)
+        .def_readonly("d20_value",   &ReactionCtx::d20_value)
+        .def_readonly("spell_idx",   &ReactionCtx::spell_idx)
+        .def_readonly("damage",      &ReactionCtx::damage);
+
+    py::class_<ReactionResponse>(m, "ReactionResponse")
+        .def(py::init<>())
+        .def_readwrite("option",     &ReactionResponse::option)
+        .def_readwrite("target_idx", &ReactionResponse::target_idx);
+
+    py::enum_<FlowStatus>(m, "FlowStatus")
+        .value("Completed",        FlowStatus::Completed)
+        .value("AwaitingDecision", FlowStatus::AwaitingDecision);
+
+    py::class_<PendingDecision>(m, "PendingDecision")
+        .def_readonly("active", &PendingDecision::active)
+        .def_readonly("ctx",    &PendingDecision::ctx);
 
     py::class_<CombatDecider, PyCombatDecider>(m, "CombatDecider")
         .def(py::init<>())
         .def("choose_brutal_strike", &CombatDecider::chooseBrutalStrike)
         .def("choose_reckless",      &CombatDecider::chooseReckless)
-        .def("choose_oa_response",   &CombatDecider::chooseOAResponse);
+        .def("choose_reaction",      &CombatDecider::chooseReaction);
 
     // ── ShoveAction / ShoveResult ────────────────────────────────────────────
     py::class_<ShoveAction>(m, "ShoveAction")
@@ -1714,6 +1755,28 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("col"), py::arg("row"),
              "Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).\n"
              "Returns true if valid, false if out of bounds or blocked.")
+        // ── Reaction system / flow checkpoints (REACTION_SYSTEM_PLAN.md) ──────
+        .def("begin_move",
+             &CombatEngine::beginMove,
+             py::arg("battle_map"), py::arg("idx"), py::arg("dest"), py::arg("type"),
+             "GUI/interactive move that may provoke Opportunity Attacks. Returns FlowStatus:\n"
+             "Completed (no decision needed) or AwaitingDecision (parked at an OA checkpoint —\n"
+             "poll pending_decision() and resume via submit_decision()).")
+        .def("submit_decision",
+             &CombatEngine::submitDecision,
+             py::arg("battle_map"), py::arg("response"),
+             "Resume a parked move with the chosen ReactionResponse (route a menu click here).\n"
+             "Returns FlowStatus (Completed or AwaitingDecision for the next checkpoint).")
+        .def("resolve_move",
+             &CombatEngine::resolveMove,
+             py::arg("battle_map"), py::arg("idx"), py::arg("dest"), py::arg("type"),
+             "Auto/RL/test driver: run the whole move, resolving each OA checkpoint inline via the\n"
+             "installed CombatDecider (no decider -> skip every reaction). Returns OA AttackResults.")
+        .def("pending_decision",
+             &CombatEngine::pendingDecision,
+             py::return_value_policy::reference_internal,
+             "The decision the engine is currently parked on (PendingDecision; .active is False\n"
+             "when not parked). The GUI polls this each frame.")
         .def("place_teleported_agents",
              &CombatEngine::placeTeleportedAgents,
              py::arg("battle_map"), py::arg("agent_indices"), py::arg("dest_col"), py::arg("dest_row"),

@@ -1,15 +1,24 @@
-- [To-Do List](TODO.md) — Tracking completed features (Portent Dice, Rage, Subclass system) and backlog
-- [Checked Combat Replay](replay_instructions.md) — record a combat + replay it headlessly asserting engine state reproduces; deterministic bug regression (`replay.py --check`)
-- [Subclass Selection, Rage, Portent Dice](session_subclass_rage_portent.md) — UI for selecting subclasses, Rage bonus button, fixed Portent Dice with advantage/disadvantage
-- [Grapple Mechanics](grapple_mechanics.md) — Complete D&D 5e grapple implementation with dragging and OA filtering
-- [Speed=0 and OA Mechanics](feedback_speed_zero_mechanics.md) — Creatures with Speed=0 can't move or make OAs; forced movement bypasses validation
-- [Architecture: Mechanics in C++](architecture_mechanics_in_cpp.md) — Game mechanics belong in C++, Python UI is rendering/interaction only
-- [Architecture: Agent as Character](architecture_agent_as_character.md) — Consolidate stats/logic into Agent toward per-class objects; virtual dispatch (not concepts); stats homogenized May 21
-- [Architecture: Decider/Flow-State](architecture_decider_flow_state.md) — Moving main.py logic to C++: mechanics in C++, decision points via CombatDecider (GUI=Python callback, RL=default policy); terrain migration is first epic
-- [Build & Test Workflow](feedback_build_handling.md) — Building/testing now ALLOWED via Docker (iCloud issue fixed); image entrypoint is /bin/bash so pass `-c`; repo at ~/Claude/DND
-- [GUI Not Tested](feedback_gui_not_tested.md) — main.py GUI isn't covered by run_all_tests.py; GUI changes need manual in-app verification
-- [Model-Split Workflow](feedback_model_split_workflow.md) — User uses Opus for analysis/specs, Haiku for mechanical coding; hand off with precise self-contained specs
-- [Fix: Thunderwave Push](fix_thunderwave_push.md) — Fixed missing push_ft/requires_save in main.py's _dict_to_spell method
-- [Exhaustion GUI Complete](exhaustion_gui_complete.md) — Interactive slider controls, combat panel display, movement integration, long rest decrement
-- [Barbarian L1-3 Complete](barbarian_l1_3_complete.md) — All 9 tasks complete: Rage lifecycle, all 4 subclass L3 features, Danger Sense, Primal Knowledge; 12 tests passing
-- [Known Limitations](known_limitations.md) — Panther Aspect (climb speed) and Branches of the Tree deferred; requires movement system and reaction system integration
+# Repo Memory Index (`./memory/`)
+
+> **The live, maintained memory is the Claude auto-memory** (`~/.claude/projects/…/memory/`),
+> not this directory. The files here are durable reference/architecture/feedback docs kept in
+> the repo. This index was rebuilt 2026-06-02 after pruning stale status files (the old index
+> linked several files that no longer exist).
+
+## Backlog & deferrals
+- [TODO.md](TODO.md) — high-level open epics; points to known_limitations for per-feature detail
+- [known_limitations.md](known_limitations.md) — **authoritative** per-class `[DEFER]` / not-modeled list
+
+## Architecture (durable direction)
+- [architecture_cpp_only.md](architecture_cpp_only.md) — all game logic in C++; Python is UI/IO only
+- [architecture_agent_as_character.md](architecture_agent_as_character.md) — toward per-class objects via virtual dispatch (incremental)
+- [architecture_decider_flow_state.md](architecture_decider_flow_state.md) — CombatDecider: GUI callback vs RL default policy
+
+## Feedback / working style
+- [feedback_model_split_workflow.md](feedback_model_split_workflow.md) — Opus designs/specs, Haiku executes mechanical coding
+- [feedback_gui_not_tested.md](feedback_gui_not_tested.md) — main.py GUI isn't in run_all_tests.py; needs manual smoke-test
+- [feedback_build_handling.md](feedback_build_handling.md) — build permission is model-gated: Opus 4.8 builds via Docker; Haiku & Sonnet never
+- [user_preferences.md](user_preferences.md) — design-discussion / build / git collaboration prefs
+
+## Reference
+- [replay_instructions.md](replay_instructions.md) — checked combat replay for deterministic bug regression

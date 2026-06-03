@@ -29,6 +29,7 @@
 #include "spell.hpp"
 #include "armor.hpp"
 #include "agent.hpp"
+#include "cell.hpp"            // Cell — stored by value in the reaction-system structs below
 #include "message_logger.hpp"
 
 #include <cstdint>
@@ -400,13 +401,85 @@ struct TurnStartResult {
 // ─────────────────────────────────────────────────────────────────────────────
 struct BrutalStrikeCtx { int attacker_idx; int target_idx; int level; };
 struct RecklessCtx     { int attacker_idx; };
-struct OACtx           { int attacker_idx; int target_idx; };
+
+// ── Reaction system (see REACTION_SYSTEM_PLAN.md) ────────────────────────────
+// A "window" is WHEN in resolution a reaction may fire. This pass wires only
+// LeftReach (Opportunity Attacks); the rest are reserved for future consumers.
+enum class ReactionWindow {
+    LeftReach,          // a creature moved out of this reactor's reach (Opportunity Attack)
+    OnHit, OnMiss,      // an attack resolved (future)
+    OnDeclareCast,      // a spell was declared, not yet resolved (future, Counterspell)
+    OnD20Seen,          // a d20 Test is visible pre-commit (future)
+    OnSaveFail,         // a saving throw just failed (future, Countercharm)
+    OnTurnStartNearby   // a creature started its turn within range (future)
+};
+
+// One legal thing the reactor may do, ENUMERATED BY THE ENGINE so it is guaranteed
+// legal (in range, resource available, right weapon category). The decider picks one
+// of these rather than inventing an action — cheap validation + a discrete RL space.
+struct ReactionOption {
+    enum Kind { Skip, Weapon, Spell } kind{Skip};
+    int  index{-1};        // weapon_idx or spell_idx into the reactor's loadout (-1 = Skip)
+    std::string label;     // human-facing menu text (e.g. "[Weapon] Longsword")
+};
+
+// "ctx" = the full CONTEXT of one pending reaction decision. The engine fills it and
+// hands it to the decider (auto path) or exposes it via pendingDecision() (GUI path).
+// Generalizes the old OA-only ctx; window-specific payload fields stay default when unused.
+struct ReactionCtx {
+    ReactionWindow window{ReactionWindow::LeftReach};
+    int reactor_idx{-1};   // who is being asked to spend their reaction
+    int source_idx{-1};    // who triggered the window (the mover, for an OA)
+    std::vector<ReactionOption> options;   // engine-vetted legal choices (always incl. Skip)
+    Cell source_cell{};    // LeftReach: the cell the source is leaving (mover stands here for the OA)
+    int  d20_value{-1};    // OnD20Seen payload (future)
+    int  spell_idx{-1};    // OnDeclareCast payload (future)
+    int  damage{0};        // OnHit payload (future)
+};
+
+// The decider's answer: an intent struct (not a bare index) so it can carry parameters
+// (sub-target, slot level, die) as richer reactions arrive. For an OA it is just
+// {option = picked index}. The engine re-validates before applying.
+struct ReactionResponse {
+    int option{-1};        // index into ctx.options; -1 (or the Skip option) = no reaction
+    int target_idx{-1};    // sub-target when needed (OA: leave -1 → defaults to source_idx)
+};
 
 struct CombatDecider {
     virtual ~CombatDecider() = default;
     virtual std::vector<int> chooseBrutalStrike(const BrutalStrikeCtx&) { return {}; }
     virtual bool             chooseReckless(const RecklessCtx&)          { return false; }
-    virtual int              chooseOAResponse(const OACtx&)              { return -1; }
+    // The general reaction decision. Default = no reaction (correct headless fallback
+    // until a real policy is provided). Replaces the old chooseOAResponse/OACtx.
+    virtual ReactionResponse chooseReaction(const ReactionCtx&)          { return {}; }
+};
+
+// Flow-checkpoint transport (REACTION_SYSTEM_PLAN.md §6): interactive flows (e.g. a move
+// that provokes OAs) suspend at a decision point instead of blocking. The GUI polls
+// pendingDecision(), draws the menu async, and routes the click back via submitDecision().
+enum class FlowStatus { Completed, AwaitingDecision };
+
+// What the engine is currently parked on. active=false when not parked.
+struct PendingDecision { bool active{false}; ReactionCtx ctx; };
+
+// One detected OA trigger along a move: `reactor` provokes because the mover leaves its
+// reach; `left_cell` is the last cell still within reach (the mover stands there for the OA);
+// `step` is the path index of that cell (events resolve in path order for stop-on-down).
+struct ProvokeEvent { int reactor{-1}; Cell left_cell{}; int step{0}; };
+
+// Resumable state for one in-flight move that may provoke OAs (REACTION_SYSTEM_PLAN.md §6).
+struct InFlightMove {
+    bool active{false};
+    bool interactive{false};        // true = GUI (suspend at checkpoints); false = auto driver
+    int  mover_idx{-1};
+    Cell origin{};                  // where the mover started (restored before the real move)
+    Cell dest{};
+    MovementType type{};            // value-init (0 = Walk); set in beginMove/resolveMove. Enumerator
+                                    // names aren't visible here (MovementType is only fwd-declared).
+    std::vector<ProvokeEvent> provokes;
+    std::size_t cursor{0};          // next provoke to resolve
+    bool mover_down{false};         // an OA dropped the mover → stop where it fell
+    std::vector<AttackResult> results;
 };
 
 // ── Wild Magic Surge (College of Wild Magic) ─────────────────────────────────
@@ -573,6 +646,20 @@ public:
     // Teleport an agent to a new location (checks that destination is not blocked by terrain).
     // Returns true if successful, false if destination is blocked or out of bounds.
     bool teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // ── Reaction system / flow checkpoints (REACTION_SYSTEM_PLAN.md) ──────────
+    // Start a (potentially) provoking move on the GUI/interactive path. Returns
+    // Completed if no decision is needed, or AwaitingDecision if it parked at an OA
+    // checkpoint — the GUI then polls pendingDecision() and resumes via submitDecision().
+    FlowStatus beginMove(BattleMap& bm, int idx, Cell dest, MovementType type);
+    // Resume a parked move with the chosen reaction (GUI routes a menu click here).
+    FlowStatus submitDecision(BattleMap& bm, const ReactionResponse& resp);
+    // Auto driver (RL/tests): run the whole move, resolving each checkpoint inline via the
+    // installed CombatDecider (no decider → skip every reaction). Never suspends. Returns
+    // the OA AttackResults produced along the way.
+    std::vector<AttackResult> resolveMove(BattleMap& bm, int idx, Cell dest, MovementType type);
+    // What the engine is parked on (active=false when not parked). GUI polls each frame.
+    [[nodiscard]] const PendingDecision& pendingDecision() const noexcept { return pending_decision_; }
 
     // Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).
     // Returns true if the cell is valid, false if out of bounds or blocked.
@@ -1176,6 +1263,24 @@ private:
 
     MessageLogger* logger_{nullptr};
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
+
+    // ── Reaction system internals (combat_movement.cpp) ──────────────────────
+    PendingDecision pending_decision_{};   // what the engine is parked on (GUI polls it)
+    InFlightMove    in_flight_move_{};      // resumable state of a provoking move
+    // Detect which creatures the mover leaves the reach of along origin→dest (per-creature,
+    // per-step via the straight-line path). Returns events ordered by path step.
+    [[nodiscard]] std::vector<ProvokeEvent> detectProvokes(const BattleMap& bm, int mover_idx,
+                                                           Cell origin, Cell dest,
+                                                           MovementType type) const;
+    // Build the checkpoint ctx for one reactor: enumerate its legal melee weapons +
+    // single-target spells + Skip.
+    [[nodiscard]] ReactionCtx buildReactionCheckpoint(const BattleMap& bm, ReactionWindow window,
+                                                      int reactor_idx, int source_idx,
+                                                      Cell source_cell) const;
+    // Validate + execute a chosen reaction; consume the reactor's reaction; note stop-on-down.
+    void applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
+    // Drive the in-flight move: resolve provokes (inline for auto, suspend for GUI), then commit.
+    FlowStatus advanceMove(BattleMap& bm);
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 
     // Persistent-zone "once per turn" tracking. turnCounter_ increments on each beginTurn;

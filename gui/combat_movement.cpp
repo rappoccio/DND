@@ -549,4 +549,206 @@ void CombatEngine::standup(BattleMap& bm, int idx) noexcept
     log_("{} stands up, spending {} feet of movement", agentName(bm, idx), standup_cost);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Reaction system — Opportunity Attacks via flow checkpoints
+//  (see REACTION_SYSTEM_PLAN.md). The OA rule used to live in main.py; it now lives
+//  here. detectProvokes finds per-creature / per-step leavers along the path;
+//  beginMove/submitDecision (GUI) and resolveMove (auto/RL) drive the checkpoints.
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::vector<ProvokeEvent>
+CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
+                             Cell origin, Cell dest, MovementType /*type*/) const
+{
+    std::vector<ProvokeEvent> events;
+    const auto& agents = bm.placedAgents();
+    if (mover_idx < 0 || mover_idx >= static_cast<int>(agents.size())) return events;
+
+    // Disengage suppresses all opportunity attacks for this move.
+    if (bm.getAgentConditions(mover_idx).disengaging) return events;
+
+    const int moverSize = agents[static_cast<std::size_t>(mover_idx)].agent->getSize();
+    const std::vector<Cell> path = getCellsAlongPath(origin, dest);  // straight-line (interim; plan §11)
+    const int reach = 1;  // 5-ft melee reach, in cells
+
+    for (int r = 0; r < static_cast<int>(agents.size()); ++r) {
+        if (r == mover_idx) continue;
+        const PlacedAgent& ra = agents[static_cast<std::size_t>(r)];
+        if (ra.agent->getConditions().incapacitated) continue;
+        if (ra.agent->getStats().hp_cur <= 0) continue;
+        if (bm.getAgentConditions(r).reaction_used) continue;
+        if (!canAgentMove(bm, r)) continue;  // Speed 0 cannot make an OA
+
+        const int rSize = ra.agent->getSize();
+        bool wasIn = footprintDistance(ra.origin, rSize, path.front(), moverSize) <= reach;
+        bool provoked = false;
+        Cell leftCell = path.front();
+        int  leftStep = 0;
+        for (std::size_t i = 1; i < path.size(); ++i) {
+            const bool nowIn = footprintDistance(ra.origin, rSize, path[i], moverSize) <= reach;
+            if (wasIn && !nowIn) {                       // left this reactor's reach on this step
+                leftCell = path[i - 1];
+                leftStep = static_cast<int>(i - 1);
+                provoked = true;
+                break;                                    // one OA per reactor per move
+            }
+            wasIn = nowIn;
+        }
+        if (provoked) events.push_back(ProvokeEvent{r, leftCell, leftStep});
+    }
+    std::sort(events.begin(), events.end(),
+              [](const ProvokeEvent& a, const ProvokeEvent& b){ return a.step < b.step; });
+    return events;
+}
+
+ReactionCtx
+CombatEngine::buildReactionCheckpoint(const BattleMap& bm, ReactionWindow window,
+                                      int reactor_idx, int source_idx, Cell source_cell) const
+{
+    ReactionCtx ctx;
+    ctx.window      = window;
+    ctx.reactor_idx = reactor_idx;
+    ctx.source_idx  = source_idx;
+    ctx.source_cell = source_cell;
+
+    const auto& agents = bm.placedAgents();
+    if (reactor_idx >= 0 && reactor_idx < static_cast<int>(agents.size())) {
+        const std::array<Weapon, 3> weapons = bm.getAgentWeapons(reactor_idx);
+        for (int wi = 0; wi < static_cast<int>(weapons.size()); ++wi) {
+            const Weapon& w = weapons[static_cast<std::size_t>(wi)];
+            if (w.name.empty() || w.type != WeaponType::Melee) continue;   // OA is a melee strike
+            ctx.options.push_back(ReactionOption{ReactionOption::Weapon, wi, "[Weapon] " + w.name});
+        }
+        const std::vector<Spell> spells = bm.getAgentSpells(reactor_idx);
+        for (int si = 0; si < static_cast<int>(spells.size()); ++si) {
+            if (spells[static_cast<std::size_t>(si)].geometry != Spell::Single) continue;  // single-target only
+            ctx.options.push_back(ReactionOption{ReactionOption::Spell, si,
+                                                 "[Spell] " + spells[static_cast<std::size_t>(si)].name});
+        }
+    }
+    ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip"});  // always offer Skip
+    return ctx;
+}
+
+void
+CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind == ReactionOption::Skip) return;
+
+    const auto& agents = bm.placedAgents();
+    if (ctx.source_idx < 0 || ctx.source_idx >= static_cast<int>(agents.size())) return;
+    const int reactor = ctx.reactor_idx;
+    const int target  = (resp.target_idx >= 0) ? resp.target_idx : ctx.source_idx;
+
+    // Place the mover on the cell it is leaving so the OA's melee range check is correct.
+    const Cell saved = agents[static_cast<std::size_t>(ctx.source_idx)].origin;
+    bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
+
+    if (opt.kind == ReactionOption::Weapon) {
+        AttackResult r = executeAction(bm, Attack{reactor, target, opt.index});
+        in_flight_move_.results.push_back(r);
+    } else {  // Spell
+        SpellAction sa;
+        sa.caster_idx     = reactor;
+        sa.spell_idx      = opt.index;
+        sa.target_indices = {target};
+        (void)executeSpell(bm, sa);
+    }
+
+    // Consume the reactor's reaction for the round.
+    Agent::Conditions rc = bm.getAgentConditions(reactor);
+    rc.reaction_used = true;
+    bm.setAgentConditions(reactor, rc);
+
+    // Stop-on-down: if the OA dropped the mover, leave it where it fell; otherwise restore it to
+    // its starting cell so the final committed move runs from the true origin.
+    if (bm.getAgentStats(ctx.source_idx).hp_cur <= 0) {
+        in_flight_move_.mover_down = true;
+        bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
+    } else {
+        bm.setAgentPosition(ctx.source_idx, saved);
+    }
+}
+
+FlowStatus
+CombatEngine::advanceMove(BattleMap& bm)
+{
+    InFlightMove& m = in_flight_move_;
+    while (m.cursor < m.provokes.size() && !m.mover_down) {
+        const ProvokeEvent ev = m.provokes[m.cursor];
+        // The reactor may have lost eligibility since detection (downed/used by a prior OA).
+        if (ev.reactor < 0 ||
+            bm.getAgentConditions(ev.reactor).reaction_used ||
+            bm.getAgentConditions(ev.reactor).incapacitated ||
+            bm.getAgentStats(ev.reactor).hp_cur <= 0) {
+            ++m.cursor;
+            continue;
+        }
+        ReactionCtx ctx = buildReactionCheckpoint(bm, ReactionWindow::LeftReach,
+                                                  ev.reactor, m.mover_idx, ev.left_cell);
+        if (m.interactive) {
+            pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+            return FlowStatus::AwaitingDecision;
+        }
+        const ReactionResponse resp = decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{};
+        applyReactionResponse(bm, ctx, resp);
+        ++m.cursor;
+    }
+
+    // All provokes resolved (or the mover went down) — commit.
+    pending_decision_.active = false;
+    if (!m.mover_down)
+        (void)moveAgent(bm, m.mover_idx, m.dest, m.type);   // real budgeted move + terrain/zone checks
+    m.active = false;
+    return FlowStatus::Completed;
+}
+
+FlowStatus
+CombatEngine::beginMove(BattleMap& bm, int idx, Cell dest, MovementType type)
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return FlowStatus::Completed;
+
+    in_flight_move_             = InFlightMove{};
+    in_flight_move_.active      = true;
+    in_flight_move_.interactive = true;
+    in_flight_move_.mover_idx   = idx;
+    in_flight_move_.origin      = agents[static_cast<std::size_t>(idx)].origin;
+    in_flight_move_.dest        = dest;
+    in_flight_move_.type        = type;
+    in_flight_move_.provokes    = detectProvokes(bm, idx, in_flight_move_.origin, dest, type);
+    return advanceMove(bm);
+}
+
+FlowStatus
+CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
+{
+    if (!pending_decision_.active) return FlowStatus::Completed;
+    const ReactionCtx ctx = pending_decision_.ctx;
+    pending_decision_.active = false;
+    applyReactionResponse(bm, ctx, resp);
+    ++in_flight_move_.cursor;
+    return advanceMove(bm);
+}
+
+std::vector<AttackResult>
+CombatEngine::resolveMove(BattleMap& bm, int idx, Cell dest, MovementType type)
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return {};
+
+    in_flight_move_             = InFlightMove{};
+    in_flight_move_.active      = true;
+    in_flight_move_.interactive = false;
+    in_flight_move_.mover_idx   = idx;
+    in_flight_move_.origin      = agents[static_cast<std::size_t>(idx)].origin;
+    in_flight_move_.dest        = dest;
+    in_flight_move_.type        = type;
+    in_flight_move_.provokes    = detectProvokes(bm, idx, in_flight_move_.origin, dest, type);
+    (void)advanceMove(bm);
+    return in_flight_move_.results;
+}
+
 } // namespace rpg
