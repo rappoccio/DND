@@ -9,16 +9,20 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
-from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
+from test_helpers import (setup_battle_map, setup_combat_engine, create_test_agent,
+                          add_agent_to_battle, create_melee_weapon)
 
 
-def _sorcerer(engine, bm, idx, level, cha=16, prof=2):
-    """Configure agent idx as a Sorcerer of the given level."""
+def _sorcerer(engine, bm, idx, level, cha=16, prof=2, subclass=None, dex=10):
+    """Configure agent idx as a Sorcerer of the given level/subclass."""
     s = engine.get_agent_stats(bm, idx)
     s.set_class_level(rpg.CharacterClass.Sorcerer, level)
     s.cha = cha
+    s.dex = dex
     s.prof_bonus = prof
     s.can_cast_spell = True
+    if subclass is not None:
+        s.sorcerer_subclass = subclass  # set BEFORE init so subclass level-gates apply
     s.initialize_class_resources(rpg.CharacterClass.Sorcerer, level)
     s.restore_spell_slots()
     engine.set_agent_stats(bm, idx, s)
@@ -553,6 +557,306 @@ def test_metamagic_careful_shields_ally():
     print("✅ test_metamagic_careful_shields_ally passed")
 
 
+# ── Phase 3: subclass features (combat-core slice) ───────────────────────────
+
+def test_draconic_resilience_ac():
+    """Draconic Sorcerer (L3+): unarmored AC = 10 + DEX + CHA; not before L3."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("DracSorc", 5, 5))
+
+    _sorcerer(engine, bm, idx, 3, cha=14, dex=16, subclass=rpg.SorcererSubclass.Draconic)
+    ac = engine.calculate_ac(bm, idx)
+    assert ac == 10 + 3 + 2, f"Draconic Resilience AC should be 15, got {ac}"
+
+    _sorcerer(engine, bm, idx, 2, cha=14, dex=16, subclass=rpg.SorcererSubclass.Draconic)
+    ac2 = engine.calculate_ac(bm, idx)
+    assert ac2 == 10 + 3, f"pre-L3 Draconic sorc should be 13 (no Resilience AC), got {ac2}"
+    print("✅ test_draconic_resilience_ac passed")
+
+
+def test_bend_luck_bonus_and_penalty():
+    """Wild Magic Bend Luck adds (+) or subtracts (-) 1d4 from the next D20 Test.
+
+    Twin seeded engines: Bend Luck's internal 1d4 consumes the same draw as the control's
+    explicit roll(4), keeping the subsequent d20 aligned.
+    """
+    for boost, sign in [(True, +1), (False, -1)]:
+        bm_c = setup_battle_map(); ctrl = setup_combat_engine()
+        idx_c = add_agent_to_battle(ctrl, bm_c, create_test_agent("WildSorc", 5, 5))
+        _sorcerer(ctrl, bm_c, idx_c, 6, subclass=rpg.SorcererSubclass.WildMagic)
+        die = ctrl.roll(4)
+        base = ctrl.roll(20)
+
+        bm_t = setup_battle_map(); test = setup_combat_engine()
+        idx_t = add_agent_to_battle(test, bm_t, create_test_agent("WildSorc", 5, 5))
+        _sorcerer(test, bm_t, idx_t, 6, subclass=rpg.SorcererSubclass.WildMagic)
+        sp_before = test.get_agent_stats(bm_t, idx_t).resources["Sorcery Points"].current
+
+        v = test.sorcerer_bend_luck(bm_t, idx_t, boost)
+        assert v == die, f"internal 1d4 diverged: {v} != {die}"
+        sp_after = test.get_agent_stats(bm_t, idx_t).resources["Sorcery Points"].current
+        assert sp_after == sp_before - 1, "Bend Luck should spend 1 Sorcery Point"
+
+        rolled = test.roll(20)
+        assert rolled == base + sign * v, f"boost={boost}: expected {base}+{sign*v}, got {rolled}"
+    print("✅ test_bend_luck_bonus_and_penalty passed")
+
+
+def test_bend_luck_gating():
+    """Bend Luck rejected for non-Wild-Magic, pre-L6, and with no Sorcery Points."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Sorc", 5, 5))
+
+    _sorcerer(engine, bm, idx, 6, subclass=rpg.SorcererSubclass.Draconic)
+    assert engine.sorcerer_bend_luck(bm, idx, True) == 0, "wrong subclass → no Bend Luck"
+
+    _sorcerer(engine, bm, idx, 5, subclass=rpg.SorcererSubclass.WildMagic)
+    assert engine.sorcerer_bend_luck(bm, idx, True) == 0, "pre-L6 → no Bend Luck"
+
+    _sorcerer(engine, bm, idx, 6, subclass=rpg.SorcererSubclass.WildMagic)
+    cur = engine.get_agent_stats(bm, idx).resources["Sorcery Points"].current
+    engine.spend_resource(bm, idx, "Sorcery Points", cur)
+    assert engine.sorcerer_bend_luck(bm, idx, True) == 0, "no Sorcery Point → no Bend Luck"
+    print("✅ test_bend_luck_gating passed")
+
+
+def test_wild_magic_surge_description_table():
+    """The curated surge table has text for every band 1-10 and nothing outside it."""
+    for effect in range(1, 11):
+        desc = rpg.CombatEngine.wild_magic_surge_description(effect)
+        assert desc, f"band {effect} should have description text"
+    assert rpg.CombatEngine.wild_magic_surge_description(0) == ""
+    assert rpg.CombatEngine.wild_magic_surge_description(11) == ""
+    print("✅ test_wild_magic_surge_description_table passed")
+
+
+def test_wild_magic_surge_roll_classification():
+    """A L3+ Wild Magic Sorcerer rolls d100 → an effect band 1-10 matching the band math."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(engine, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+
+    for _ in range(40):  # sample the RNG across many surges
+        res = engine.roll_wild_magic_surge(bm, idx)
+        assert 1 <= res.d100_roll <= 100, f"d100 out of range: {res.d100_roll}"
+        assert res.effect == (res.d100_roll - 1) // 10 + 1, \
+            f"band math: d100={res.d100_roll} → effect {res.effect}"
+        assert 1 <= res.effect <= 10
+        assert res.description == rpg.CombatEngine.wild_magic_surge_description(res.effect)
+    print("✅ test_wild_magic_surge_roll_classification passed")
+
+
+def _magic_missile():
+    """A minimal Magic Missile (name-matched for immunity), auto-hit Force damage, cantrip-level
+    so the test caster needs no spell slot."""
+    s = rpg.Spell()
+    s.name = "Magic Missile"
+    s.type = rpg.SpellType.Harm
+    s.geometry = rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.Automatic
+    s.range = 120
+    s.level = 0
+    roll = rpg.MagicDamageRoll()
+    roll.type = rpg.MagicDamage.Force
+    roll.num_dice = 1
+    roll.die_size = 4
+    roll.bonus = 1
+    s.magic_damage_rolls = [roll]
+    return s
+
+
+def test_wild_magic_surge_band2_shield():
+    """Band 2 spectral shield: +2 AC + Magic Missile immunity for 1 minute, then expires."""
+    bm, engine, sorc, tgt = _setup(3)
+    s = engine.get_agent_stats(bm, sorc)
+    s.hp_max = 100; s.hp_cur = 100
+    engine.set_agent_stats(bm, sorc, s)
+
+    ac_before = engine.calculate_ac(bm, sorc)
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 2) is True
+    assert engine.calculate_ac(bm, sorc) == ac_before + 2, "spectral shield grants +2 AC"
+    assert engine.get_agent_stats(bm, sorc).wild_magic_shield_turns == 10
+
+    # Magic Missile does nothing to the shielded sorcerer.
+    engine.set_agent_spells(bm, tgt, [_magic_missile()])
+    action = rpg.SpellAction()
+    action.caster_idx = tgt
+    action.spell_idx = 0
+    action.target_indices = [sorc]
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).hp_cur == 100, "shield grants Magic Missile immunity"
+
+    # Expires after 10 turn-starts: AC returns to base.
+    for _ in range(10):
+        engine.begin_turn(bm, sorc)
+    assert engine.get_agent_stats(bm, sorc).wild_magic_shield_turns == 0
+    assert engine.calculate_ac(bm, sorc) == ac_before, "AC returns to base after the shield expires"
+
+    # Non-vacuous: with the shield gone, Magic Missile now deals damage.
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).hp_cur < 100, "Magic Missile hits once the shield is gone"
+    print("✅ test_wild_magic_surge_band2_shield passed")
+
+
+def test_wild_magic_surge_band3_regen():
+    """Band 3: regain 5 HP at the start of each turn for 1 minute."""
+    bm, engine, sorc, tgt = _setup(3)
+    s = engine.get_agent_stats(bm, sorc)
+    s.hp_max = 100; s.hp_cur = 50
+    engine.set_agent_stats(bm, sorc, s)
+
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 3) is True
+    assert engine.get_agent_stats(bm, sorc).wild_magic_regen_turns == 10
+
+    engine.begin_turn(bm, sorc)
+    s2 = engine.get_agent_stats(bm, sorc)
+    assert s2.hp_cur == 55, f"should regain 5 HP at turn start, got {s2.hp_cur}"
+    assert s2.wild_magic_regen_turns == 9
+    print("✅ test_wild_magic_surge_band3_regen passed")
+
+
+def test_wild_magic_surge_band7_skip_turn():
+    """Band 7: the surge skips the agent's next turn (once)."""
+    bm, engine, sorc, tgt = _setup(3)
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 7) is True
+    assert engine.get_agent_stats(bm, sorc).wild_magic_skip_next_turn is True
+
+    res = engine.begin_turn(bm, sorc)
+    assert res.turn_skipped is True and "Wild Magic" in res.skip_reason
+    assert engine.get_agent_stats(bm, sorc).wild_magic_skip_next_turn is False, "skip is one-shot"
+
+    res2 = engine.begin_turn(bm, sorc)
+    assert res2.turn_skipped is False, "the following turn proceeds normally"
+    print("✅ test_wild_magic_surge_band7_skip_turn passed")
+
+
+def test_wild_magic_surge_band8_extra_action():
+    """Band 8: sets the extra-action flag (GUI turn economy enforces the actual extra action)."""
+    bm, engine, sorc, tgt = _setup(3)
+    assert engine.get_agent_stats(bm, sorc).wild_magic_extra_action is False
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 8) is True
+    assert engine.get_agent_stats(bm, sorc).wild_magic_extra_action is True
+    print("✅ test_wild_magic_surge_band8_extra_action passed")
+
+
+def test_wild_magic_surge_band6_bonus_casting():
+    """Band 6: a 1-minute window for action-cast spells as a Bonus Action (ticks down each turn)."""
+    bm, engine, sorc, tgt = _setup(3)
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 6) is True
+    assert engine.get_agent_stats(bm, sorc).wild_magic_bonus_cast_turns == 10
+    engine.begin_turn(bm, sorc)
+    assert engine.get_agent_stats(bm, sorc).wild_magic_bonus_cast_turns == 9
+    print("✅ test_wild_magic_surge_band6_bonus_casting passed")
+
+
+def test_wild_magic_surge_band10_teleport_bonus():
+    """Band 10: a 1-minute window to teleport 20 ft as a Bonus Action (ticks down each turn)."""
+    bm, engine, sorc, tgt = _setup(3)
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 10) is True
+    assert engine.get_agent_stats(bm, sorc).wild_magic_teleport_bonus_turns == 10
+    engine.begin_turn(bm, sorc)
+    assert engine.get_agent_stats(bm, sorc).wild_magic_teleport_bonus_turns == 9
+    print("✅ test_wild_magic_surge_band10_teleport_bonus passed")
+
+
+def test_wild_magic_surge_band9_drop_weapons():
+    """Band 9 drops the caster's equipped weapons onto the ground."""
+    bm, engine, sorc, tgt = _setup(3)
+    weapons = list(engine.get_agent_weapons(bm, sorc))
+    weapons[0] = create_melee_weapon()
+    engine.set_agent_weapons(bm, sorc, weapons)
+    assert engine.get_agent_weapons(bm, sorc)[0].name == "Longsword"
+
+    items_before = len(bm.get_all_items())
+    assert engine.apply_wild_magic_surge_effect(bm, sorc, 9) is True
+
+    after = engine.get_agent_weapons(bm, sorc)
+    assert after[0].name == "Unarmed", "weapon slot should be cleared back to the default (Unarmed)"
+    assert len(bm.get_all_items()) == items_before + 1, "a weapon should be on the ground"
+    print("✅ test_wild_magic_surge_band9_drop_weapons passed")
+
+
+def test_wild_magic_surge_band1_plant_growth():
+    """Band 1 application casts Plant Growth — difficult terrain around the caster."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(engine, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+
+    assert not bm.has_active_terrain_effects()
+    assert engine.apply_wild_magic_surge_effect(bm, idx, 1) is True
+    assert bm.has_active_terrain_effects(), "Plant Growth should place difficult terrain"
+
+    # The caster's own cell sits in the sphere → its movement cost is no longer normal.
+    origin = bm.placed_agents[idx].origin
+    assert bm.get_terrain_multiplier(origin) != 1.0, "caster's cell should be difficult terrain"
+
+    # An unhandled band (band 4 not yet wired) is not engine-applied (caller handles it).
+    assert engine.apply_wild_magic_surge_effect(bm, idx, 4) is False
+    print("✅ test_wild_magic_surge_band1_plant_growth passed")
+
+
+def test_wild_magic_surge_gating():
+    """Surge yields effect 0 for non-Wild-Magic and pre-L3 sorcerers."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Sorc", 5, 5))
+
+    _sorcerer(engine, bm, idx, 3, subclass=rpg.SorcererSubclass.Draconic)
+    assert engine.roll_wild_magic_surge(bm, idx).effect == 0, "wrong subclass → no surge"
+
+    _sorcerer(engine, bm, idx, 2, subclass=rpg.SorcererSubclass.WildMagic)
+    res = engine.roll_wild_magic_surge(bm, idx)
+    assert res.effect == 0 and res.d100_roll == 0, "pre-L3 → no surge"
+    print("✅ test_wild_magic_surge_gating passed")
+
+
+def test_sorcerer_subclass_save_load_roundtrip():
+    """A saved Sorcerer's subclass + chassis restore via restore_class_resources."""
+    from agent_loader import restore_class_resources
+    saved = {
+        "agent_class": "Sorcerer",
+        "agent_char_level": 6,
+        "agent_sorcerer_subclass": "WildMagic",
+    }
+    s = rpg.Stats()
+    s.cha = 16
+    restore_class_resources(s, saved, rpg)
+    assert s.character_class == rpg.CharacterClass.Sorcerer
+    assert s.sorcerer_subclass == rpg.SorcererSubclass.WildMagic, f"got {s.sorcerer_subclass}"
+    assert "Sorcery Points" in s.resources, "chassis resource should be restored"
+    print("✅ test_sorcerer_subclass_save_load_roundtrip passed")
+
+
+# ── Pending-advantage (one-shot; foundation for Tides of Chaos) ──────────────
+
+def test_pending_advantage_on_d20():
+    """grant_pending_advantage makes the next d20 roll with advantage (max) / disadvantage (min)."""
+    ctrl = rpg.CombatEngine(42); a, b = ctrl.roll(20), ctrl.roll(20)
+    eng = rpg.CombatEngine(42); eng.grant_pending_advantage(True)
+    assert eng.roll(20) == max(a, b), "advantage should keep the higher of two d20s"
+
+    ctrl = rpg.CombatEngine(42); a, b = ctrl.roll(20), ctrl.roll(20)
+    eng = rpg.CombatEngine(42); eng.grant_pending_advantage(False)
+    assert eng.roll(20) == min(a, b), "disadvantage should keep the lower of two d20s"
+    print("✅ test_pending_advantage_on_d20 passed")
+
+
+def test_pending_advantage_one_shot_and_d20_only():
+    """The pending advantage applies to exactly the next d20, and damage dice don't consume it."""
+    ctrl = rpg.CombatEngine(42)
+    d1, d2, d3 = ctrl.roll(20), ctrl.roll(20), ctrl.roll(20)
+    eng = rpg.CombatEngine(42); eng.grant_pending_advantage(True)
+    assert eng.roll(20) == max(d1, d2), "advantage on the first d20"
+    assert eng.roll(20) == d3, "cleared after one roll"
+
+    # A non-d20 (damage) roll must NOT consume the pending advantage.
+    ctrl = rpg.CombatEngine(42)
+    dmg, e1, e2 = ctrl.roll(8), ctrl.roll(20), ctrl.roll(20)
+    eng = rpg.CombatEngine(42); eng.grant_pending_advantage(True)
+    assert eng.roll(8) == dmg, "damage roll is unaffected"
+    assert eng.roll(20) == max(e1, e2), "advantage still applies to the next d20"
+    print("✅ test_pending_advantage_one_shot_and_d20_only passed")
+
+
 if __name__ == "__main__":
     test_sorcerer_spell_slots()
     test_sorcery_points_allocation()
@@ -585,4 +889,21 @@ if __name__ == "__main__":
     test_metamagic_transmuted_changes_damage_type()
     test_metamagic_transmuted_non_elemental_no_spend()
     test_metamagic_careful_shields_ally()
+    test_draconic_resilience_ac()
+    test_bend_luck_bonus_and_penalty()
+    test_bend_luck_gating()
+    test_wild_magic_surge_description_table()
+    test_wild_magic_surge_roll_classification()
+    test_wild_magic_surge_band1_plant_growth()
+    test_wild_magic_surge_band2_shield()
+    test_wild_magic_surge_band3_regen()
+    test_wild_magic_surge_band7_skip_turn()
+    test_wild_magic_surge_band8_extra_action()
+    test_wild_magic_surge_band6_bonus_casting()
+    test_wild_magic_surge_band10_teleport_bonus()
+    test_wild_magic_surge_band9_drop_weapons()
+    test_wild_magic_surge_gating()
+    test_pending_advantage_on_d20()
+    test_pending_advantage_one_shot_and_d20_only()
+    test_sorcerer_subclass_save_load_roundtrip()
     print("\n✅ All Sorcerer tests passed!")

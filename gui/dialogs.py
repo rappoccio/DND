@@ -498,6 +498,7 @@ class StatsDialog:
             "Rogue": ["NONE", "ArcaneTrickster", "Assassin", "Soulknife", "Thief"],
             "Cleric": ["NONE", "LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain"],
             "Bard": ["NONE", "Dance", "Glamour", "Lore", "Valor"],
+            "Sorcerer": ["NONE", "Aberrant", "Clockwork", "Draconic", "WildMagic"],
         }
         return subclasses.get(class_name, ["NONE"])
 

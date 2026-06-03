@@ -1217,6 +1217,8 @@ class App:
             stats.cleric_subclass = getattr(rpg.ClericSubclass, subclass_name)
         elif class_name == "Bard" and subclass_name != "NONE":
             stats.bard_subclass = getattr(rpg.BardCollege, subclass_name)
+        elif class_name == "Sorcerer" and subclass_name != "NONE":
+            stats.sorcerer_subclass = getattr(rpg.SorcererSubclass, subclass_name)
 
         # Cleric Blessed Strikes choice (L7+)
         if class_name == "Cleric" and blessed_strike_name != "NONE":
@@ -4789,6 +4791,7 @@ class App:
                 "agent_rogue_subclass": s.rogue_subclass.name,
                 "agent_cleric_subclass": s.cleric_subclass.name,
                 "agent_bard_subclass": s.bard_subclass.name,
+                "agent_sorcerer_subclass": s.sorcerer_subclass.name,
                 "agent_eldritch_invocations": list(s.eldritch_invocations),
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 # Druid state
@@ -7276,6 +7279,8 @@ class App:
                                 subclass_name = stats.cleric_subclass.name
                             elif class_name == "Bard":
                                 subclass_name = stats.bard_subclass.name
+                            elif class_name == "Sorcerer":
+                                subclass_name = stats.sorcerer_subclass.name
                             blessed_strike_name = stats.blessed_strike.name if class_name == "Cleric" else "NONE"
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,

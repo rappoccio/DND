@@ -161,6 +161,12 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     // creates/removes a crit). Capture it before the inner rolls so they don't consume it.
     int roll_bonus = consumePendingRollBonus();
 
+    // Fold in any one-shot pending advantage/disadvantage (Tides of Chaos, etc.). Consumed
+    // here so the inner roll(20) calls don't re-trigger it.
+    const int pa = consumePendingAdvantage();
+    advantage    = advantage    || pa > 0;
+    disadvantage = disadvantage || pa < 0;
+
     // If both advantage and disadvantage: they cancel out (roll normally)
     if (advantage && disadvantage) {
         int d1 = roll(20), d2 = roll(20);

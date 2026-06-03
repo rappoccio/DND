@@ -409,6 +409,17 @@ struct CombatDecider {
     virtual int              chooseOAResponse(const OACtx&)              { return -1; }
 };
 
+// ── Wild Magic Surge (College of Wild Magic) ─────────────────────────────────
+// The engine ROLLS d100 on the curated surge table and classifies the effect band
+// (1-10); applying the effect is the caller's job (effects range from a simple heal
+// to harder cases — see known_limitations.md). effect == 0 means no surge happened
+// (the caller was not a L3+ Wild Magic Sorcerer).
+struct WildMagicSurgeResult {
+    int d100_roll = 0;   // 1-100 rolled (0 = no surge)
+    int effect    = 0;   // 1-10 table band (0 = no surge)
+    std::string description;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -476,6 +487,27 @@ public:
 
     // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
     static int metamagicSpCost(MetamagicOption opt) noexcept;
+
+    // Wild Magic — Bend Luck (Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply it
+    // as a bonus (boost=true) or penalty (boost=false) to the next D20 Test, via the additive
+    // pending_roll_bonus_ path. Returns the 1d4 value rolled, or 0 on failure (not a L6+ Wild
+    // Magic Sorcerer, or not enough Sorcery Points).
+    int sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept;
+
+    // Wild Magic Surge (Sorcerer L3+, College of Wild Magic): roll d100 on the curated surge
+    // table and return the classified effect band (1-10) + description. The effect itself is
+    // applied by the caller (see known_limitations.md). effect == 0 if the agent is not a
+    // L3+ Wild Magic Sorcerer.
+    WildMagicSurgeResult rollWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
+    // Curated Wild Magic Surge table text for an effect band (1-10); "" if out of range.
+    static std::string wildMagicSurgeDescription(int effect) noexcept;
+
+    // Apply the engine-handled portion of a Wild Magic Surge effect band. Currently only
+    // band 1 (Plant Growth — Quartered difficult terrain in a sphere on the caster) is applied
+    // here; other bands return false (their application is handled by the caller / not yet
+    // wired). Returns true if the engine applied the effect.
+    bool applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect) noexcept;
 
     // ── Per-agent turn count ──────────────────────────────────────────────
     //
@@ -692,6 +724,11 @@ public:
     int roll(int sides, int modifier = 0);            // 1dN + modifier
     int rollAdvantage(int sides, int modifier = 0);   // max(2dN) + modifier
     int rollDisadvantage(int sides, int modifier = 0);// min(2dN) + modifier
+
+    // Grant one-shot advantage (adv=true) or disadvantage (adv=false) on the NEXT D20 Test,
+    // via pending_advantage_. General "advantage on your next roll" hook (Tides of Chaos, etc.);
+    // it reaches attacks, saves, and checks because they all bottom out in roll(20)/rollToHit.
+    void grantPendingAdvantage(bool adv = true) noexcept { pending_advantage_ = adv ? 1 : -1; }
 
     // ── Core attack mechanics ─────────────────────────────────────────────
 
@@ -1110,6 +1147,13 @@ private:
     // Unlike Portent (which replaces the d20), this is additive. Set by useBardicDie.
     int pending_roll_bonus_{0};
     int consumePendingRollBonus() noexcept { int b = pending_roll_bonus_; pending_roll_bonus_ = 0; return b; }
+
+    // One-shot advantage/disadvantage on the NEXT D20 Test (+1 = advantage, -1 = disadvantage,
+    // 0 = none). General mechanism for "advantage on your next roll" (Tides of Chaos, etc.);
+    // consumed by roll(20)/rollAdvantage/rollDisadvantage/rollToHit. If the roll already has the
+    // opposite, the two cancel (5e rule). Only d20 Tests consume it (damage dice ignore it).
+    int pending_advantage_{0};
+    int consumePendingAdvantage() noexcept { int a = pending_advantage_; pending_advantage_ = 0; return a; }
 
     MessageLogger* logger_{nullptr};
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)

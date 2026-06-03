@@ -428,6 +428,13 @@ namespace rpg {
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
+      // Wild Magic Surge persistent effects (set by applyWildMagicSurgeEffect, tick at turn start)
+      int  wild_magic_shield_turns{0};                           // Band 2 (spectral shield): +2 AC (via ac_temporary_modifications) + Magic Missile immunity, in rounds
+      int  wild_magic_regen_turns{0};                            // Band 3: regain 5 HP at the start of each of your turns, in rounds
+      bool wild_magic_skip_next_turn{false};                     // Band 7: skip this agent's next turn
+      bool wild_magic_extra_action{false};                       // Band 8: GUI grants one extra action this turn
+      int  wild_magic_bonus_cast_turns{0};                       // Band 6: action-cast spells may be cast as a Bonus Action (GUI-enforced), in rounds
+      int  wild_magic_teleport_bonus_turns{0};                   // Band 10: may teleport 20 ft as a Bonus Action each turn (GUI-enforced), in rounds
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)

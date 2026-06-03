@@ -100,7 +100,12 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       save_prof_con = true;
       save_prof_cha = true;
 
-      // TODO [OPUS]: Sorcerer subclass features (Aberrant/Clockwork/Draconic/Wild Magic)
+      // Subclass features (Phase 3, combat-core slice):
+      //   Draconic L3 — Draconic Resilience: AC = 10 + DEX + CHA (applied in computeAC).
+      //   Wild Magic L6 — Bend Luck: see sorcererBendLuck (spends Sorcery Points).
+      // Deferred (see known_limitations.md): Draconic Elemental Affinity + HP bonus,
+      // Wild Magic Surge table / Tides of Chaos, Clockwork (reaction interrupt), Aberrant
+      // (psionic spell list cast via SP).
 
       // Sorcery Points: equal to sorcerer level
       Resource sp("Sorcery Points", level, 0);

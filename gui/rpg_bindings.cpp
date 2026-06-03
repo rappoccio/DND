@@ -338,6 +338,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Sacred Weapon remaining duration in rounds (decrements at turn start)")
         .def_readwrite("innate_sorcery_turns", &Agent::Stats::innate_sorcery_turns,
              "Sorcerer Innate Sorcery remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)")
+        .def_readwrite("wild_magic_shield_turns", &Agent::Stats::wild_magic_shield_turns,
+             "Wild Magic Surge band 2 (spectral shield): rounds of +2 AC + Magic Missile immunity left")
+        .def_readwrite("wild_magic_regen_turns", &Agent::Stats::wild_magic_regen_turns,
+             "Wild Magic Surge band 3: rounds of 'regain 5 HP at the start of your turn' left")
+        .def_readwrite("wild_magic_skip_next_turn", &Agent::Stats::wild_magic_skip_next_turn,
+             "Wild Magic Surge band 7: this agent's next turn is skipped")
+        .def_readwrite("wild_magic_extra_action", &Agent::Stats::wild_magic_extra_action,
+             "Wild Magic Surge band 8: GUI grants one extra action this turn")
+        .def_readwrite("wild_magic_bonus_cast_turns", &Agent::Stats::wild_magic_bonus_cast_turns,
+             "Wild Magic Surge band 6: rounds left where action-cast spells may be cast as a Bonus Action (GUI-enforced)")
+        .def_readwrite("wild_magic_teleport_bonus_turns", &Agent::Stats::wild_magic_teleport_bonus_turns,
+             "Wild Magic Surge band 10: rounds left where the agent may teleport 20 ft as a Bonus Action (GUI-enforced)")
         .def_readwrite("fighter_subclass", &Agent::Stats::fighter_subclass,
              "Fighter subclass (only valid when character_class == Fighter)")
         .def_readwrite("druid_circle", &Agent::Stats::druid_circle,
@@ -1329,6 +1341,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + "] turns=" + std::to_string(c.turns_remaining) + ">"; });
 
     // ── AttackResult ─────────────────────────────────────────────────────────
+    py::class_<WildMagicSurgeResult>(m, "WildMagicSurgeResult")
+        .def(py::init<>())
+        .def_readonly("d100_roll",   &WildMagicSurgeResult::d100_roll)
+        .def_readonly("effect",      &WildMagicSurgeResult::effect,
+             "Surge table band 1-10 (0 = no surge / not a L3+ Wild Magic Sorcerer).")
+        .def_readonly("description", &WildMagicSurgeResult::description)
+        .def("__repr__", [](const WildMagicSurgeResult& r){
+            return "<WildMagicSurge d100=" + std::to_string(r.d100_roll)
+                 + " effect=" + std::to_string(r.effect) + ">";
+        });
+
     py::class_<AttackResult>(m, "AttackResult")
         .def(py::init<>())
         .def_readonly("valid",        &AttackResult::valid)
@@ -1511,6 +1534,27 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     &CombatEngine::metamagicSpCost,
                     py::arg("option"),
                     "Sorcery Point cost for a Metamagic option (2024 PHB).")
+        .def("sorcerer_bend_luck",
+             &CombatEngine::sorcererBendLuck,
+             py::arg("battle_map"), py::arg("idx"), py::arg("boost"),
+             "Bend Luck (Wild Magic Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply\n"
+             "it as a bonus (boost=True) or penalty (boost=False) to the next D20 Test. Returns\n"
+             "the 1d4 value, or 0 on failure (not a L6+ Wild Magic Sorcerer, or no Sorcery Point).")
+        .def("roll_wild_magic_surge",
+             &CombatEngine::rollWildMagicSurge,
+             py::arg("battle_map"), py::arg("idx"),
+             "Wild Magic Surge (Wild Magic Sorcerer L3+): roll d100 on the curated surge table\n"
+             "and return a WildMagicSurgeResult (d100_roll, effect band 1-10, description). The\n"
+             "effect is applied by the caller. effect == 0 if not a L3+ Wild Magic Sorcerer.")
+        .def_static("wild_magic_surge_description",
+                    &CombatEngine::wildMagicSurgeDescription,
+                    py::arg("effect"),
+                    "Curated Wild Magic Surge table text for an effect band (1-10); '' if out of range.")
+        .def("apply_wild_magic_surge_effect",
+             &CombatEngine::applyWildMagicSurgeEffect,
+             py::arg("battle_map"), py::arg("idx"), py::arg("effect"),
+             "Apply the engine-handled part of a surge band. Currently band 1 (Plant Growth —\n"
+             "Quartered difficult terrain in a sphere on the caster); other bands return False.")
         .def_static("get_rage_damage_bonus",
                     &CombatEngine::getRageDamageBonus,
                     py::arg("level"),
@@ -1520,6 +1564,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("roll",              &CombatEngine::roll,            py::arg("sides"), py::arg("modifier") = 0)
         .def("roll_advantage",    &CombatEngine::rollAdvantage,   py::arg("sides"), py::arg("modifier") = 0)
         .def("roll_disadvantage", &CombatEngine::rollDisadvantage,py::arg("sides"), py::arg("modifier") = 0)
+        .def("grant_pending_advantage", &CombatEngine::grantPendingAdvantage, py::arg("advantage") = true,
+             "Grant one-shot advantage (advantage=True) or disadvantage on the NEXT D20 Test\n"
+             "(attack, save, or check). General hook for 'advantage on your next roll' (Tides of Chaos).")
 
         // Core mechanics
         .def("roll_to_hit",

@@ -96,6 +96,32 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Wild Magic Surge — spectral shield (band 2): tick down; remove the +2 AC on expiry.
+    if (stats.wild_magic_shield_turns > 0) {
+        --stats.wild_magic_shield_turns;
+        if (stats.wild_magic_shield_turns == 0) stats.ac_temporary_modifications -= 2;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
+    // Wild Magic Surge — vitality (band 3): regain 5 HP at the start of each of your turns.
+    if (stats.wild_magic_regen_turns > 0 && stats.hp_cur > 0) {
+        stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 5);
+        --stats.wild_magic_regen_turns;
+        bm.setAgentStats(agent_idx, stats);
+        log_("{} regains 5 HP (Wild Magic vitality) → {}/{}", agent_name, stats.hp_cur, stats.hp_max);
+    }
+
+    // Wild Magic Surge — bonus-action casting (band 6) and teleport-as-bonus (band 10):
+    // tick down their 1-minute (10-round) windows (the GUI enforces the actual benefit).
+    if (stats.wild_magic_bonus_cast_turns > 0) {
+        --stats.wild_magic_bonus_cast_turns;
+        bm.setAgentStats(agent_idx, stats);
+    }
+    if (stats.wild_magic_teleport_bonus_turns > 0) {
+        --stats.wild_magic_teleport_bonus_turns;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
     // Death from Exhaustion: agent dies at exhaustion level 6
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
 
@@ -171,6 +197,16 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         result.turn_skipped = true;
         result.skip_reason = "Unconscious";
         log_("{} cannot act, skipping turn", agent_name);
+        return result;
+    }
+
+    // Wild Magic Surge (band 7): the surge skips this agent's next turn (once).
+    if (stats.wild_magic_skip_next_turn) {
+        stats.wild_magic_skip_next_turn = false;
+        bm.setAgentStats(agent_idx, stats);
+        result.turn_skipped = true;
+        result.skip_reason = "Wild Magic Surge";
+        log_("{} skips their turn (Wild Magic Surge)", agent_name);
         return result;
     }
 

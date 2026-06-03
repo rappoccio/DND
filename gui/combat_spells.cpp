@@ -250,6 +250,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         tr.target_idx = tgt_idx;
         tr.hp_before  = tgt_stats.hp_cur;
 
+        // Wild Magic Surge band 2 (spectral shield): immunity to Magic Missile.
+        if (sp.name == "Magic Missile" && tgt_stats.wild_magic_shield_turns > 0) {
+            tr.hp_after = tgt_stats.hp_cur;
+            tr.log_message = agentName(bm, tgt_idx) + " is immune to Magic Missile (spectral shield)";
+            log_("{}", tr.log_message);
+            result.target_results.push_back(tr);
+            continue;
+        }
+
         switch (sp.attack_type) {
 
         case Spell::AttackRoll: {
@@ -1657,6 +1666,156 @@ int CombatEngine::convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_le
     log_("{} converts a level-{} slot into Sorcery Points (now {}/{})",
          agentName(bm, idx), slot_level, sp->current, sp->max);
     return sp->current;
+}
+
+int CombatEngine::sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 6) {
+        log_("{} cannot use Bend Luck (not a L6+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return 0;
+    }
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp || sp->current < 1) {
+        log_("{} has no Sorcery Point for Bend Luck", agentName(bm, idx));
+        return 0;
+    }
+
+    sp->current -= 1;
+    int value = roll(4);                                 // 1d4
+    pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
+    bm.setAgentStats(idx, stats);
+
+    log_("{} uses Bend Luck: {}{} to the next D20 Test ({} Sorcery Points left)",
+         agentName(bm, idx), boost ? "+" : "-", value, sp->current);
+    return value;
+}
+
+std::string CombatEngine::wildMagicSurgeDescription(int effect) noexcept
+{
+    // Curated d100 surge table (bands of 10 → effect 1-10). Applying each effect is the
+    // caller's job; some bands are placeholders pending easier replacements (see notes).
+    switch (effect) {
+        case 1:  return "Plant Growth sprouts around your feet (difficult terrain in a sphere "
+                        "centered on you).";
+        case 2:  return "A spectral shield hovers near you for the next minute, granting you a "
+                        "+2 bonus to AC and immunity to Magic Missile.";
+        case 3:  return "For the next minute, you regain 5 Hit Points at the start of each of "
+                        "your turns.";
+        case 4:  return "Up to three creatures of your choice within 30 ft take 4d10 Lightning "
+                        "damage.";
+        case 5:  return "You cast Blindness on a creature you can see within range "
+                        "(Constitution save or the Blinded condition).";
+        case 6:  return "For the next minute, your spells that take an action to cast can be "
+                        "cast as a Bonus Action.";
+        case 7:  return "Your next turn is skipped.";
+        case 8:  return "You can take one extra action on this turn.";
+        case 9:  return "Your weapons are all dropped and appear on a random square you can see.";
+        case 10: return "For the next minute, you can teleport up to 20 ft as a Bonus Action on "
+                        "each of your turns.";
+        default: return "";
+    }
+}
+
+WildMagicSurgeResult CombatEngine::rollWildMagicSurge(BattleMap& bm, int idx) noexcept
+{
+    WildMagicSurgeResult res;
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return res;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
+        log_("{} cannot surge (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return res;  // effect = 0
+    }
+
+    res.d100_roll  = roll(100);                       // 1-100
+    res.effect      = (res.d100_roll - 1) / 10 + 1;   // → band 1-10
+    res.description = wildMagicSurgeDescription(res.effect);
+
+    log_("{} Wild Magic Surge (d100={}, effect {}): {}",
+         agentName(bm, idx), res.d100_roll, res.effect, res.description);
+    return res;
+}
+
+bool CombatEngine::applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    if (effect == 1) {  // "Plant Growth sprouts around your feet" — cast Plant Growth on the caster.
+        Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+        auto cells = sphereCellsAround(origin.col, origin.row, 10);  // 10-ft radius sphere
+        [[maybe_unused]] int id = bm.placeTerrainEffect(
+            "Plant Growth (Wild Magic Surge)", cells,
+            TerrainDifficulty::Quartered, 10 /* rounds ≈ 1 minute */, idx);
+        log_("{}: Plant Growth sprouts — difficult terrain over {} cells",
+             agentName(bm, idx), cells.size());
+        return true;
+    }
+
+    if (effect == 9) {  // "Your weapons are all dropped and appear on a random square you can see."
+        // Simplified: the weapons land on the caster's own cell as ground items.
+        Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+        auto weapons = bm.getAgentWeapons(idx);
+        int dropped = 0;
+        for (auto& w : weapons) {
+            // "Unarmed" is the default empty-slot weapon — only real weapons drop.
+            if (!w.name.empty() && w.name != "Unarmed") {
+                [[maybe_unused]] int item_id = bm.placeItem(origin, w);
+                w = Weapon{};  // clear the slot back to the default (Unarmed)
+                ++dropped;
+            }
+        }
+        if (dropped > 0) bm.setAgentWeapons(idx, weapons);
+        log_("{}: Wild Magic Surge drops {} weapon(s) to the ground", agentName(bm, idx), dropped);
+        return true;
+    }
+
+    // Bands 2/3/6/7/8/10 are per-agent state effects, ticked at the start of the agent's turns.
+    constexpr int kMinuteRounds = 10;
+    Agent::Stats stats = bm.getAgentStats(idx);
+    switch (effect) {
+        case 2:  // Spectral shield: +2 AC + Magic Missile immunity for 1 minute.
+            stats.ac_temporary_modifications += 2;       // removed when wild_magic_shield_turns hits 0
+            stats.wild_magic_shield_turns = kMinuteRounds;
+            log_("{}: a spectral shield grants +2 AC and Magic Missile immunity for 1 minute",
+                 agentName(bm, idx));
+            break;
+        case 3:  // Regain 5 HP at the start of each of your turns for 1 minute.
+            stats.wild_magic_regen_turns = kMinuteRounds;
+            log_("{}: surging vitality — regain 5 HP at the start of each turn for 1 minute",
+                 agentName(bm, idx));
+            break;
+        case 6:  // For 1 minute, action-cast spells can be cast as a Bonus Action (GUI-enforced).
+            stats.wild_magic_bonus_cast_turns = kMinuteRounds;
+            log_("{}: for 1 minute, spells that take an action can be cast as a Bonus Action",
+                 agentName(bm, idx));
+            break;
+        case 7:  // Your next turn is skipped.
+            stats.wild_magic_skip_next_turn = true;
+            log_("{}: the surge will skip their next turn", agentName(bm, idx));
+            break;
+        case 8:  // You can take one extra action on this turn (enforced by the GUI turn economy).
+            stats.wild_magic_extra_action = true;
+            log_("{}: the surge grants one extra action this turn", agentName(bm, idx));
+            break;
+        case 10: // For 1 minute, teleport up to 20 ft as a Bonus Action each turn (GUI-enforced).
+            stats.wild_magic_teleport_bonus_turns = kMinuteRounds;
+            log_("{}: for 1 minute, can teleport up to 20 ft as a Bonus Action each turn",
+                 agentName(bm, idx));
+            break;
+        default:
+            return false;  // applied by the caller / not yet wired
+    }
+    bm.setAgentStats(idx, stats);
+    return true;
 }
 
 bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept

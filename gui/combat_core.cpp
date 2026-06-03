@@ -41,13 +41,22 @@ void CombatEngine::reseed(uint32_t seed)
 int CombatEngine::roll(int sides, int modifier)
 {
     assert(sides >= 2 && "Die must have at least 2 sides");
+    // One-shot advantage/disadvantage applies only to d20 Tests (damage dice ignore it).
+    const int adv = (sides == 20) ? consumePendingAdvantage() : 0;
+
     // Portent Dice: if pending, return it instead of rolling (and clear)
     if (pending_portent_die_ >= 0) {
         int result = pending_portent_die_;
         pending_portent_die_ = -1;
         return result + modifier + consumePendingRollBonus();
     }
-    return std::uniform_int_distribution<int>{1, sides}(rng_) + modifier + consumePendingRollBonus();
+
+    std::uniform_int_distribution<int> d{1, sides};
+    int die;
+    if (adv > 0)      die = std::max(d(rng_), d(rng_));   // advantage
+    else if (adv < 0) die = std::min(d(rng_), d(rng_));   // disadvantage
+    else              die = d(rng_);
+    return die + modifier + consumePendingRollBonus();
 }
 
 int CombatEngine::rollAdvantage(int sides, int modifier)
@@ -60,8 +69,11 @@ int CombatEngine::rollAdvantage(int sides, int modifier)
     // Capture the Bardic bonus before the inner rolls so they don't consume it
     // mid-selection; it is added once after max().
     int roll_bonus = consumePendingRollBonus();
+    // Consume any pending one-shot advantage/disadvantage up front so the inner roll()s don't
+    // re-trigger it. A pending disadvantage cancels this explicit advantage (roll straight).
+    const int pa = (sides == 20) ? consumePendingAdvantage() : 0;
 
-    int result = std::max(roll(sides), roll(sides));
+    int result = (pa < 0) ? roll(sides) : std::max(roll(sides), roll(sides));
 
     // Apply portent die if one was pending (after advantage selection)
     if (pending_portent >= 0) {
@@ -83,8 +95,11 @@ int CombatEngine::rollDisadvantage(int sides, int modifier)
     // Capture the Bardic bonus before the inner rolls so they don't consume it
     // mid-selection; it is added once after min().
     int roll_bonus = consumePendingRollBonus();
+    // Consume any pending one-shot advantage/disadvantage up front. A pending advantage
+    // cancels this explicit disadvantage (roll straight).
+    const int pa = (sides == 20) ? consumePendingAdvantage() : 0;
 
-    int result = std::min(roll(sides), roll(sides));
+    int result = (pa > 0) ? roll(sides) : std::min(roll(sides), roll(sides));
 
     // Apply portent die if one was pending (after disadvantage selection)
     if (pending_portent >= 0) {
@@ -229,6 +244,27 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     // College of Dance Bard (L3+) Unarmored Defense: AC = 10 + DEX + CHA (no armor worn)
     if (pa.agent->getStats().character_class == CharacterClass::Bard &&
         pa.agent->getStats().bard_subclass == BardCollege::DancePath &&
+        pa.agent->getStats().char_level >= 3 && !has_armor) {
+        int dex_mod = (pa.agent->getStats().dex - 10) / 2;
+        int cha_mod = (pa.agent->getStats().cha - 10) / 2;
+        int ac = 10 + dex_mod + cha_mod;
+
+        // Add shield bonus (off-hand weapon with ac_bonus)
+        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
+            const Weapon& shield = pa.weapons.back();
+            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+                ac += shield.ac_bonus;
+            }
+        }
+
+        // Add temporary modifications
+        ac += pa.agent->getStats().ac_temporary_modifications;
+        return ac;
+    }
+
+    // Draconic Sorcerer (L3+) Draconic Resilience: AC = 10 + DEX + CHA (no armor worn)
+    if (pa.agent->getStats().character_class == CharacterClass::Sorcerer &&
+        pa.agent->getStats().sorcerer_subclass == SorcererSubclass::DraconicPath &&
         pa.agent->getStats().char_level >= 3 && !has_armor) {
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int cha_mod = (pa.agent->getStats().cha - 10) / 2;

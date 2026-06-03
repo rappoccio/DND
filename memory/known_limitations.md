@@ -425,7 +425,7 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 
 ---
 
-## Sorcerer (Phase 1 + Phase 2 implemented)
+## Sorcerer (Phase 1 + Phase 2 + Phase-3 combat-core implemented)
 
 **Implemented:** Chassis (CON/CHA save proficiency), full-caster table-B slots, Sorcery
 Points, Innate Sorcery (L1: +1 spell save DC + advantage on spell attacks, 10-round buff,
@@ -456,11 +456,62 @@ spell is untouched), and SP is spent only when the option is actually applicable
 - **[KNOWN LIMITATION] Subtle** (1 SP): cast without V/S components — purely out-of-combat
   flavor (no combat-sim effect); will not be implemented.
 
-### NOT IMPLEMENTED (Model boundary)
-- **[OPUS] Subclasses** (Aberrant / Clockwork / Draconic / Wild Magic): enums are bound and
-  stubbed; all L3/L6/L14/L18 features deferred. Notable hard pieces: Aberrant psionic spells
-  cast via SP; Clockwork persistent ward dice; Draconic 3rd unarmored-AC formula
-  (10 + DEX + CHA); Wild Magic 100-entry surge table + Tides-of-Chaos state.
+### Subclasses (Phase 3 — combat-core slice implemented)
+**Implemented:**
+- **Draconic L3** — Draconic Resilience: unarmored AC = 10 + DEX + CHA, in `computeAC`
+  (`combat_core.cpp`). GUI/save-load wired (`agent_sorcerer_subclass`).
+- **Wild Magic L6** — Bend Luck: `sorcerer_bend_luck(bm, idx, boost)` spends 1 Sorcery Point to
+  roll 1d4 and add (boost=True) / subtract (boost=False) it from the next D20 Test via
+  `pending_roll_bonus_`. (Pre-roll prime — RAW is post-hoc; see Architecture → Post-hoc reaction
+  interrupts.)
+
+**Deferred:**
+- **Draconic**: Draconic Resilience HP bonus (+1 HP/level — needs an idempotent application so
+  re-init/load doesn't double-count); L6 Elemental Affinity (add CHA to your element's damage —
+  needs a stored element/damage-type + a damage rider); L14 Dragon Wings; L18 Dragon Companion.
+- **Wild Magic Surge** — the **roll + classification + narration foundation is IMPLEMENTED**:
+  `roll_wild_magic_surge(bm, idx)` rolls d100 on the curated 10-band table and returns
+  `WildMagicSurgeResult{d100_roll, effect (1-10), description}`; `wild_magic_surge_description(effect)`
+  exposes the table text. **Per-effect APPLICATION is the follow-up** (the engine only classifies):
+  - **Application dispatch:** `applyWildMagicSurgeEffect(bm, idx, effect)` / `apply_wild_magic_surge_effect`
+    applies the engine-handled bands and returns true; unhandled bands return false (caller applies).
+  - **APPLICATION IMPLEMENTED + tested (bands 1,2,3,7,8):**
+    - Band 1 (Plant Growth): `placeTerrainEffect` — Quartered difficult terrain sphere (10-ft, 10 rounds)
+      on the caster.
+    - Band 2 (spectral shield): +2 AC (via `ac_temporary_modifications`) + Magic Missile immunity for
+      10 rounds; ticks down in `beginTurn` (removes the +2 on expiry). MM immunity = a name-matched skip
+      at the top of the executeSpell per-target loop.
+    - Band 3 (vitality): +5 HP at the start of each of your turns for 10 rounds, healed in `beginTurn`.
+    - Band 7 (skip turn): one-shot flag → `beginTurn` reports `turn_skipped` and clears it.
+    - Band 8 (extra action): sets `wild_magic_extra_action` flag (GUI turn economy enforces the action).
+    - Bands 6 / 10 (1-min windows): `wild_magic_bonus_cast_turns` (action-cast spells as a Bonus Action)
+      and `wild_magic_teleport_bonus_turns` (teleport 20 ft as a Bonus Action) — duration ticked in
+      `beginTurn`; the GUI enforces the actual benefit (like band 8).
+    - Band 9 (drop weapons): `applyWildMagicSurgeEffect` drops all equipped weapons to the caster's cell
+      as ground items via `bm.placeItem` + `bm.setAgentWeapons` ("random square" simplified to the
+      caster's cell).
+    State on `Agent::Stats` (`wild_magic_shield_turns` / `_regen_turns` / `_skip_next_turn` /
+    `_extra_action` / `_bonus_cast_turns` / `_teleport_bonus_turns`).
+  - **Bands 4 & 5 = "the surge casts a named JSON spell"** (user 2026-06-02) — handled through the
+    normal `execute_spell` cast path with target selection, NOT special engine logic:
+    - Band 4 = **Chain Lightning** (exists in spells.json; Multiple-geometry lightning at ≤3 targets).
+    - Band 5 = **Blindness/Deafness** (exists in spells.json; Multiple, CON save, applies Blinded). The
+      custom moving "blind aura" was abandoned — it needed per-turn zone condition application, which would
+      have regressed the 4 persistent condition-spells (Black Tentacles / Fear / Hypnotic Pattern / Sleep)
+      that apply their condition once; "just cast Blindness" reuses everything and avoids that.
+    These two are wired with the surge TRIGGER (the trigger flow casts the named spell). No magic numbers
+    in C++; the engine has a JSON reader (`spellFromJson`) so the spell data stays in JSON. See [[engine-reads-json]].
+  - **No big-infra bands remain.**
+  - GUI/trigger follow-ups: the surge TRIGGER (roll after a level-1+ cast, then apply the band — including
+    casting Chain Lightning / Blindness for bands 4/5) and GUI enforcement of the flag/window bands (6, 8, 10).
+  - Trigger wiring (when to surge — after casting a level 1+ spell) is also a follow-up.
+- **Wild Magic** other: Tides of Chaos (advantage grant — needs a pending-advantage mechanism),
+  L14 Controlled Chaos, L18 Spell Bombardment.
+- **Clockwork** (entire): Restore Balance (reaction to cancel adv/disadv → post-hoc interrupt,
+  see Architecture note), Bastion of Law ward dice.
+- **Aberrant** (entire): Psionic Spells + Psionic Sorcery (cast a fixed psionic list using Sorcery
+  Points instead of slots — needs subclass spell-list infra), Telepathy/Psychic Defenses (flavor).
+- **No GUI button** yet for Bend Luck (reaction timing — shares the out-of-band reaction UI).
 
 ## Bard (Phase 1 + core Bardic Inspiration implemented)
 
