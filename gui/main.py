@@ -409,10 +409,11 @@ class App:
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
-        self._opportunity_queue   = []    # list[tuple(attacker_idx, target_idx)]
-        self.pending_move_idx     = -1    # agent trying to move away from threat (-1 = none)
-        self.pending_move_cell    = None  # destination cell
-        self.pending_move_type    = None  # rpg.MovementType
+        # Reaction system (REACTION_SYSTEM_PLAN.md): OA detection/resolution lives in the C++ engine
+        # (begin_move/pending_decision/submit_decision). These just track the parked mover for the
+        # post-commit GUI refresh while a reaction checkpoint is open.
+        self._reaction_mover_idx  = -1    # mover whose move is parked at a reaction checkpoint
+        self._reaction_dist_moved = 0     # cells*5 of that move (running-jump tracking)
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
         self.spell_anchor_cell    = None  # first click of a two-click wall (Rectangle) cast
         self.combat_log           = []    # list[str], newest first
@@ -1604,7 +1605,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
         self.arcane_charge_pending     = False
-        self._opportunity_queue.clear()
+        self._reaction_mover_idx       = -1
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++)
         new_idx = self._current_agent_idx()
@@ -3997,96 +3998,39 @@ class App:
                 self._combat_log_add(f"{agents[idx].name}: Celestial Resilience — {s.temp_hp} temp HP")
 
     # FLAG: Move to C++
-    def _process_opportunity_queue(self):
-        """Process one opportunity attack from the queue, then chain to the next."""
-        if not self._opportunity_queue:
-            # Queue is empty - if there's a pending move, complete it now
-            if self.pending_move_idx >= 0:
-                self._complete_pending_move()
+    def _show_pending_reaction_menu(self):
+        """Render the menu for whatever reaction checkpoint the engine is parked on (OA, …).
+
+        The C++ engine owns OA detection + resolution via the flow-checkpoint API
+        (begin_move → pending_decision → submit_decision; REACTION_SYSTEM_PLAN.md §7g). This just
+        draws ctx.options at the reactor and routes the click back through submit_decision."""
+        pd = self.combat.pending_decision()
+        if not pd.active:
+            self._after_move_committed(self._reaction_mover_idx)
             return
-        attacker_idx, target_idx = self._opportunity_queue[0]
+        ctx = pd.ctx
         agents = self.bm.placed_agents
-        if attacker_idx >= len(agents) or target_idx >= len(agents):
-            self._opportunity_queue.pop(0)
-            self._process_opportunity_queue()
-            return
-        atk_name = agents[attacker_idx].name
-        tgt_name = agents[target_idx].name
-        self._combat_log_add(f"{atk_name} gets opportunity attack vs {tgt_name}!")
-
-        options = []
-        # Weapon options - melee only
-        for wi, w in enumerate(agents[attacker_idx].weapons):
-            if w.type != rpg.WeaponType.Melee:
-                continue
-            def _atk(ai=attacker_idx, ti=target_idx, widx=wi):
-                action = rpg.Attack(ai, ti, widx)
-                result = self.combat.execute_action(self.bm, action)
-                self._flush_combat_log()
-                self.bm.placed_agents[ai].conditions.reaction_used = True
-                self._log_opportunity_result(ai, ti, result)
-                self._check_concentration_after_oa(ti, result)
-                self._update_attack_overlay()
-                self._opportunity_queue.pop(0)
-                self._process_opportunity_queue()
-            options.append((f"[Weapon] {w.name}", _atk))
-
-        # Spell options - single-target only
-        for si, sp in enumerate(agents[attacker_idx].spells):
-            # Only offer single-target spells
-            if sp.geometry != rpg.SpellGeometry.Single:
-                continue
-            def _spl(ai=attacker_idx, ti=target_idx, sidx=si):
-                action = rpg.SpellAction()
-                action.caster_idx = ai
-                action.spell_idx = sidx
-                action.target_indices = [ti]
-                result = self.combat.execute_spell(self.bm, action)
-                self._flush_combat_log()
-                self.bm.placed_agents[ai].conditions.reaction_used = True
-                cast_name = self.bm.placed_agents[ai].name
-                self._log_spell_results(result, cast_name, ai, sidx)
-                self._update_attack_overlay()
-                self._opportunity_queue.pop(0)
-                self._process_opportunity_queue()
-            options.append((f"[Spell] {sp.name}", _spl))
-
-        # Skip option
-        def _skip():
-            self._opportunity_queue.pop(0)
-            self._process_opportunity_queue()
-        options.append(("Skip", _skip))
-
-        px, py = self._agent_screen_pos(attacker_idx)
+        if 0 <= ctx.reactor_idx < len(agents) and 0 <= ctx.source_idx < len(agents):
+            self._combat_log_add(
+                f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
+        options = [(opt.label, (lambda i=i: self._submit_reaction(i)))
+                   for i, opt in enumerate(ctx.options)]
+        px, py = self._agent_screen_pos(ctx.reactor_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    # FLAG: Move to C++
-    def _log_opportunity_result(self, atk_idx: int, tgt_idx: int, result):
-        """Log weapon-based opportunity attack result."""
-        agents = self.bm.placed_agents
-        atk_name = agents[atk_idx].name if atk_idx < len(agents) else "?"
-        tgt_name = agents[tgt_idx].name if tgt_idx < len(agents) else "?"
-        if not result.valid:
-            self._combat_log_add(f"{atk_name}: OA — out of range")
-            return
-        if result.hit:
-            dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
-            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-            self._combat_log_add(
-                f"{atk_name}→{tgt_name}: OA HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
-                f"{' CRIT!' if result.critical else ''}"
-                f"{' — DOWN' if result.target_down else ''}")
+    def _submit_reaction(self, option_index: int):
+        """Resume the parked move with the chosen reaction option, then chain to the next
+        checkpoint or finish the move."""
+        resp = rpg.ReactionResponse()
+        resp.option = option_index
+        status = self.combat.submit_decision(self.bm, resp)
+        self._flush_combat_log()
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()
         else:
-            self._combat_log_add(
-                f"{atk_name}→{tgt_name}: OA miss (roll {result.total_roll} vs AC {result.target_ac})")
-
-    # FLAG: Move to C++
-    def _check_concentration_after_oa(self, tgt_idx: int, result):
-        """The concentration save on OA weapon damage is rolled and resolved inside execute_action
-        (C++ owns it). Just surface the log and sync the render caches here."""
-        if result.hit and result.total_damage > 0:
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
+            self._after_move_committed(self._reaction_mover_idx)
 
     def _sync_spell_effect_cache(self):
         """Remove cache entries for spell effects that have been removed in C++."""
@@ -4107,42 +4051,39 @@ class App:
         return (x, y)
 
 
-    # FLAG: Move to C++
-    def _complete_pending_move(self):
-        """Complete a move that was pending while OA resolved."""
-        if self.pending_move_idx < 0:
-            return
-        move_idx = self.pending_move_idx
-        move_cell = self.pending_move_cell
-        move_type = self.pending_move_type
-        self.pending_move_idx = -1
-        self.pending_move_cell = None
-        self.pending_move_type = None
+    def _after_move_committed(self, idx: int):
+        """Refresh GUI state after the engine commits a (possibly OA-interrupted) move.
 
+        The engine (begin_move/submit_decision) has already performed the actual movement and
+        resolved any opportunity attacks; this only syncs render caches, budgets, slip/hidden,
+        and overlays. Replaces the old _complete_pending_move."""
         agents = self.bm.placed_agents
-        move_success = self.combat.move_agent(self.bm, move_idx, move_cell, move_type)
-        self._flush_combat_log()  # Flush any spell effect damage messages
-        if move_success:
-            ag = agents[move_idx]
-            self.move_remaining_walk = ag.walk_remaining
-            self.move_remaining_fly = ag.fly_remaining
-            self.move_remaining_swim = ag.swim_remaining
-            self.move_remaining_burrow = ag.burrow_remaining
-            self._combat_log_add(f"{ag.name} completes movement to ({ag.origin.col},{ag.origin.row}).")
-            # Check if hidden agent is detected after moving into LOS
-            if ag.conditions.hidden:
-                in_combat = len(self.initiative_order) > 0
-                detection_msg = self.combat.check_hidden_agent_detection(self.bm, move_idx, in_combat)
-                if detection_msg:
-                    self._combat_log_add(detection_msg)
-            # Check if agent slipped — if so, their turn ends
-            if ag.conditions.slipped_this_turn:
-                self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
-                self._advance_turn()
+        if idx < 0 or idx >= len(agents):
+            return
+        ag = agents[idx]
+        self._flush_combat_log()
+        self._sync_spell_effect_cache()
+        # Slip ends the turn (the engine sets slipped_this_turn during the committed move).
+        if ag.conditions.slipped_this_turn:
+            self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
+            self._advance_turn()
             self._update_reach()
             self._update_attack_overlay()
-        else:
-            self._combat_log_add(f"{agents[move_idx].name if move_idx < len(agents) else '?'}: movement blocked")
+            return
+        # Hidden agent detection after moving into LOS.
+        if ag.conditions.hidden:
+            in_combat = len(self.initiative_order) > 0
+            detection_msg = self.combat.check_hidden_agent_detection(self.bm, idx, in_combat)
+            if detection_msg:
+                self._combat_log_add(detection_msg)
+        self.move_remaining_walk   = ag.walk_remaining
+        self.move_remaining_fly    = ag.fly_remaining
+        self.move_remaining_swim   = ag.swim_remaining
+        self.move_remaining_burrow = ag.burrow_remaining
+        self.last_movement_dist    = getattr(self, "_reaction_dist_moved", 0)
+        self.selected_idx          = idx
+        self._update_reach()
+        self._update_attack_overlay()
 
     # FLAG: Move to C++
     def _apply_pact_slot_level(self, caster_idx: int, sp, action):
@@ -7581,90 +7522,27 @@ class App:
                             self._update_reach()
                             self._update_attack_overlay()
                         else:
-                            # Agent can move, check for opportunity attacks
-                            # Filter out creatures with Speed=0 (they can't make OAs)
-                            all_threats = set(self.combat.threatening_agents(self.bm, self.drag_idx)) if self.combat_active else set()
-                            pre_adjacent = set()
-                            for threat_idx in all_threats:
-                                if threat_idx < len(agents):
-                                    # Only include threats that have Speed > 0 (can make OAs)
-                                    if self.combat.can_agent_move(self.bm, threat_idx):
-                                        pre_adjacent.add(threat_idx)
-
-                            # Check if destination would leave all threat zones
-                            move_leaves_all_threats = False
-                            if self.combat_active and pre_adjacent and not moving_agent.conditions.disengaging:
-                                move_leaves_all_threats = True
-                                for threat_idx in pre_adjacent:
-                                    if threat_idx >= len(agents):
-                                        continue
-                                    threat_agent = agents[threat_idx]
-                                    # Calculate Chebyshev distance from threat to destination
-                                    dc = max(threat_agent.origin.col - self.drag_cell.col,
-                                            self.drag_cell.col - (threat_agent.origin.col + threat_agent.size - 1),
-                                            0)
-                                    dr = max(threat_agent.origin.row - self.drag_cell.row,
-                                            self.drag_cell.row - (threat_agent.origin.row + threat_agent.size - 1),
-                                            0)
-                                    dist = max(dc, dr)
-                                    if dist <= 1:  # Still within reach of this threat
-                                        move_leaves_all_threats = False
-                                        break
-
-                            # If move would leave all threats, trigger OA first
-                            if move_leaves_all_threats:
-                                self.pending_move_idx = self.drag_idx
-                                self.pending_move_cell = self.drag_cell
-                                self.pending_move_type = self.move_type
-                                for threat_idx in sorted(pre_adjacent):
-                                    if threat_idx >= len(agents): continue
-                                    t = agents[threat_idx]
-                                    if (not t.conditions.reaction_used
-                                            and not t.conditions.incapacitated
-                                            and t.stats.hp_cur > 0):
-                                        self._opportunity_queue.append((threat_idx, self.drag_idx))
-                                self._combat_log_add(f"{moving_agent.name} is threatened! Opportunity attacks triggered.")
-                                self._process_opportunity_queue()
+                            # In combat, the C++ engine owns Opportunity-Attack detection AND
+                            # resolution via the flow-checkpoint API (begin_move -> pending_decision
+                            # -> submit_decision; REACTION_SYSTEM_PLAN.md). It does per-creature /
+                            # per-step provoke and commits the move itself. Out of combat, just move.
+                            self._reaction_mover_idx  = self.drag_idx
+                            self._reaction_dist_moved = dist_moved
+                            if self.combat_active:
+                                status = self.combat.begin_move(self.bm, self.drag_idx, self.drag_cell, self.move_type)
+                                self._flush_combat_log()
+                                if status == rpg.FlowStatus.AwaitingDecision:
+                                    # Engine parked at an OA checkpoint — render the menu; the click
+                                    # routes back through submit_decision, which resumes the move.
+                                    self._show_pending_reaction_menu()
+                                else:
+                                    self._after_move_committed(self.drag_idx)
                             else:
-                                # Normal move - no threat violation
                                 move_success = self.combat.move_agent(self.bm, self.drag_idx, self.drag_cell, self.move_type)
                                 print(f"[Movement] Move result: {move_success}")
-                                self._flush_combat_log()  # Flush any spell effect damage messages
+                                self._flush_combat_log()
                                 if move_success:
-                                    # Read back the shared-pool budgets from C++.
-                                    ag = self.bm.placed_agents[self.drag_idx]
-                                    # Check if agent slipped — if so, their turn ends
-                                    if ag.conditions.slipped_this_turn:
-                                        self._combat_log_add(f"{ag.name} slipped and cannot act — turn ends.")
-                                        self._advance_turn()
-                                    else:
-                                        # Check if hidden agent is detected after moving into LOS
-                                        if ag.conditions.hidden:
-                                            in_combat = len(self.initiative_order) > 0
-                                            detection_msg = self.combat.check_hidden_agent_detection(self.bm, self.drag_idx, in_combat)
-                                            if detection_msg:
-                                                self._combat_log_add(detection_msg)
-
-                                        # Only update UI if agent didn't slip
-                                        self.move_remaining_walk   = ag.walk_remaining
-                                        self.move_remaining_fly    = ag.fly_remaining
-                                        self.move_remaining_swim   = ag.swim_remaining
-                                        self.move_remaining_burrow = ag.burrow_remaining
-                                        self.last_movement_dist = dist_moved  # Track most recent movement for running jump
-                                        # Log remaining movement for current movement type
-                                        remaining = 0
-                                        if self.move_type == rpg.MovementType.Walk:
-                                            remaining = self.move_remaining_walk
-                                        elif self.move_type == rpg.MovementType.Fly:
-                                            remaining = self.move_remaining_fly
-                                        elif self.move_type == rpg.MovementType.Swim:
-                                            remaining = self.move_remaining_swim
-                                        elif self.move_type == rpg.MovementType.Burrow:
-                                            remaining = self.move_remaining_burrow
-                                        print(f"[Movement] Agent successfully moved to ({ag.origin.col},{ag.origin.row}) ({remaining} feet remaining)")
-                                        self.selected_idx = self.drag_idx
-                                        self._update_reach()
-                                        self._update_attack_overlay()
+                                    self._after_move_committed(self.drag_idx)
                                 else:
                                     print(f"[Movement] Move failed - likely blocked by terrain")
                                     self.selected_idx = self.drag_idx

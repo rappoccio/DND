@@ -648,6 +648,18 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
 
     if (opt.kind == ReactionOption::Weapon) {
         AttackResult r = executeAction(bm, Attack{reactor, target, opt.index});
+        // Log the to-hit result (executeAction logs damage/conditions but not the roll). The old
+        // Python OA path logged this; it now lives here so OA hits/misses aren't silent.
+        if (!r.valid) {
+            log_("OA: {} can't reach {}", agentName(bm, reactor), agentName(bm, target));
+        } else if (r.hit) {
+            log_("OA: {} hits {} — roll {} vs AC {}{}{}",
+                 agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac,
+                 r.critical ? " (CRIT)" : "", r.target_down ? " — DOWN" : "");
+        } else {
+            log_("OA: {} misses {} — roll {} vs AC {}",
+                 agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac);
+        }
         in_flight_move_.results.push_back(r);
     } else {  // Spell
         SpellAction sa;
