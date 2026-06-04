@@ -740,8 +740,13 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
     if (!pending_decision_.active) return FlowStatus::Completed;
     const ReactionCtx ctx = pending_decision_.ctx;
     pending_decision_.active = false;
-    // Dispatch to whichever interruptible flow is parked. Cast (OnDeclareCast) and move (LeftReach)
-    // share one transport; only one is active at a time (the decision stack arrives with Counterspell).
+    // Dispatch to whichever interruptible flow is parked. Cast (OnDeclareCast), attack (OnHit) and
+    // move (LeftReach) share one transport; only one is active at a time (the decision stack that
+    // would allow a reaction-during-reaction arrives later with Counterspell-vs-Counterspell).
+    if (in_flight_attack_.active) {
+        applyAttackReaction(bm, ctx, resp);
+        return advanceAttack(bm);
+    }
     if (in_flight_cast_.active) {
         applyCastReaction(bm, ctx, resp);
         ++in_flight_cast_.cursor;

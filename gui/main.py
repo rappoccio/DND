@@ -419,6 +419,7 @@ class App:
         # it's set before begin_move/begin_cast and invoked by _submit_reaction on completion.
         self._reaction_finish     = lambda: None
         self._cast_post           = {}    # context the parked cast needs for post-resolve logging
+        self._attack_post         = {}    # context the parked attack needs for post-resolve rider chain
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
         self.spell_anchor_cell    = None  # first click of a two-click wall (Rectangle) cast
         self.combat_log           = []    # list[str], newest first
@@ -1967,24 +1968,47 @@ class App:
         self._combat_log_add(f"{label} — click a target.")
 
     def _resolve_combat_attack(self, target_idx: int):
-        """Resolve the pending attack against target_idx."""
+        """Resolve the pending attack against target_idx.
+
+        Routes through begin_attack (not execute_action) so the target can cast Shield (+5 AC) as a
+        reaction before any damage (the OnHit window, REACTION_SYSTEM_PLAN.md). begin_attack rolls the
+        attack, then either parks at the Shield checkpoint (AwaitingDecision) or resolves immediately
+        (Completed). _finish_attack runs the post-resolution rider chain + logging in both cases,
+        reading the result from last_attack_result()."""
         atk_idx = self._current_agent_idx()
         slot    = self.pending_attack_slot
-        # print(f"[DEBUG _resolve_combat_attack ENTER] atk_idx={atk_idx} target_idx={target_idx} slot={slot} pending_weapon_idx={self.pending_weapon_idx} attacks_remaining={self.attacks_remaining}")
         if atk_idx < 0 or not slot:
-            # print(f"[DEBUG _resolve_combat_attack] early return (atk_idx<0 or no slot)")
             return
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
         action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
 
-        result = self.combat.execute_action(self.bm, action)
+        # Stash what _finish_attack needs (the self.pending_* attrs stay set across the suspend) and
+        # arm it as the reaction continuation, then begin the attack.
+        self._attack_post = dict(atk_idx=atk_idx, target_idx=target_idx, slot=slot, action=action)
+        self._reaction_finish = self._finish_attack
+
+        status = self.combat.begin_attack(self.bm, action)
+        self._flush_combat_log()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()   # target's Shield menu; _submit_reaction → _finish_attack
+        else:
+            self._finish_attack()
+
+    def _finish_attack(self):
+        """Post-resolution of a begin_attack flow (immediate or after the OnHit Shield window). Reads
+        the AttackResult from last_attack_result() and runs the attacker rider-offer chain + logging."""
+        ctx        = self._attack_post
+        atk_idx    = ctx["atk_idx"]
+        target_idx = ctx["target_idx"]
+        slot       = ctx["slot"]
+        action     = ctx["action"]
+        result     = self.combat.last_attack_result()
 
         # Generic extra-attack cost (War Priest, etc.): spend the resource once, only on a valid attack.
         if result.valid and self.pending_attack_resource:
             self.combat.spend_resource(self.bm, atk_idx, self.pending_attack_resource)
             self.pending_attack_resource = None
-        # print(f"[DEBUG _resolve_combat_attack] result.valid={result.valid} result.hit={getattr(result,'hit',None)} total_damage={getattr(result,'total_damage',None)} target_down={getattr(result,'target_down',None)}")
 
         self._flush_combat_log()
 
@@ -2323,6 +2347,10 @@ class App:
 
         action = rpg.Attack(atk, second_target, wi)
         action.no_ability_damage = True
+        # FLAG: stays on execute_action (the auto Shield path) by design — a Cleave is itself a
+        # rider-spawned attack, so routing it through begin_attack would open a Shield window during
+        # another reaction (reaction-during-reaction), which the engine has no decision stack for yet.
+        # Move to begin_attack once that stack lands (REACTION_SYSTEM_PLAN.md).
         result = self.combat.execute_action(self.bm, action)
         self._flush_combat_log()
 
@@ -4060,6 +4088,9 @@ class App:
             if ctx.window == rpg.ReactionWindow.OnDeclareCast:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name}'s spell!")
+            elif ctx.window == rpg.ReactionWindow.OnHit:
+                self._combat_log_add(
+                    f"{agents[ctx.reactor_idx].name} may cast Shield vs {agents[ctx.source_idx].name}'s attack!")
             else:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")

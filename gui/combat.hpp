@@ -509,6 +509,7 @@ struct InFlightAttack {
     AttackResult r{};               // the rolled result (filled by resolveAttack between the phases)
     bool adv{false};
     bool dis{false};
+    bool shield_offered{false};     // the OnHit Shield window has been opened once (don't re-offer on resume)
     // Pre-roll snapshots applyAttackResult needs (taken before this attack's own effects mutate state):
     bool can_use_brutal_strike{false};
     bool tgt_incapacitated_at_attack{false};
@@ -709,6 +710,15 @@ public:
     [[nodiscard]] const SpellResult& lastCastResult() const noexcept { return in_flight_cast_.result; }
     // True if the most recent begin_cast/resolve_cast was countered (spell fizzled, slot retained).
     [[nodiscard]] bool lastCastCountered() const noexcept { return in_flight_cast_.countered; }
+
+    // Interruptible weapon attack (ONDECLARECAST_PLAN.md step 3b): rolls the attack, then opens the
+    // OnHit window so the target may cast Shield (+5 AC) to negate the hit before any damage. beginAttack
+    // is the GUI/interactive entry (suspends at the Shield checkpoint); the auto/RL path stays on
+    // executeAction (inline Shield via maybeDefenderShieldInline). submitDecision resumes a parked attack
+    // just like a move/cast. The finished result is read via lastAttackResult().
+    FlowStatus beginAttack(BattleMap& bm, const Attack& action);
+    [[nodiscard]] const AttackResult& lastAttackResult() const noexcept { return last_attack_result_; }
+
     // Shield (reaction): the reactor casts Shield — spend the lowest L1+ slot + its reaction, gain
     // +5 AC until its next turn and Magic Missile immunity. Returns false if it can't (no slot/etc.).
     bool applyShield(BattleMap& bm, int reactor_idx) noexcept;
@@ -1381,6 +1391,21 @@ private:
     // Drive the in-flight cast: resolve reactions (inline for auto, suspend for GUI), then resolve
     // the spell via executeSpell (unless countered).
     FlowStatus advanceCast(BattleMap& bm);
+
+    // ── Attack interrupt internals (combat_attack.cpp) ───────────────────────
+    InFlightAttack in_flight_attack_{};      // resumable state of a begin_attack flow
+    AttackResult   last_attack_result_{};    // result of the most recent begin_attack flow (read by GUI)
+    // True iff the target should be offered a Shield reaction vs this just-rolled attack: a non-crit
+    // hit whose +5 AC would flip it to a miss, and the target can cast Shield right now. Shared by the
+    // inline (maybeDefenderShieldInline) and suspendable (advanceAttack) paths so they gate identically.
+    [[nodiscard]] bool shouldOfferDefenderShield(const BattleMap& bm, const Attack& action,
+                                                 const AttackResult& r) const;
+    // Apply one chosen OnHit reaction (this pass: the target's Shield → negates the hit on r).
+    void applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
+    // Drive the in-flight attack: open the Shield window (suspend for GUI) or finalize via
+    // applyAttackResult. Stores the finished result in last_attack_result_.
+    FlowStatus advanceAttack(BattleMap& bm);
+
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 
     // Persistent-zone "once per turn" tracking. turnCounter_ increments on each beginTurn;

@@ -1645,6 +1645,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::executeAction,
              py::arg("battle_map"), py::arg("action"),
              "Validate + execute an Attack; writes HP change to BattleMap.")
+        .def("begin_attack",
+             &CombatEngine::beginAttack,
+             py::arg("battle_map"), py::arg("action"),
+             "GUI/interactive weapon attack that rolls, then opens the OnHit window so the target may\n"
+             "cast Shield (+5 AC) to negate the hit before damage. Returns FlowStatus: Completed\n"
+             "(resolved) or AwaitingDecision (parked — poll pending_decision(), resume via\n"
+             "submit_decision()). Read the AttackResult via last_attack_result() once Completed.\n"
+             "The auto/RL path stays on execute_action (inline Shield via the installed decider).")
+        .def("last_attack_result",
+             &CombatEngine::lastAttackResult,
+             py::return_value_policy::reference_internal,
+             "The AttackResult of the most recent begin_attack flow (valid once Completed).")
         .def("threatening_agents",
              &CombatEngine::threateningAgents,
              py::arg("battle_map"), py::arg("target_idx"), py::arg("reach_cells") = 1,

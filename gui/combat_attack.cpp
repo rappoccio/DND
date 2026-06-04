@@ -195,6 +195,14 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus;
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
 
+    // Always surface the to-hit math (the adv/dis dice, if any, were logged just above). total_roll
+    // folds in the attack mod, exhaustion (−2/level) and any roll bonus, so it can differ from
+    // d20+mod; we show the natural d20, the weapon mod, and the final total compared to AC.
+    const char* outcome = r.critical ? "CRITICAL HIT"
+                        : r.fumble    ? "MISS (nat 1)"
+                        : r.hit       ? "HIT" : "MISS";
+    log_("To-hit: d20 {} {:+} = {} vs AC {} → {}", r.d20, r.attack_mod, r.total_roll, target_ac, outcome);
+
     return r;
 }
 
@@ -377,15 +385,23 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     return r;
 }
 
+// Shield only matters on a non-critical hit whose +5 AC could actually flip the outcome to a miss,
+// and only if the target can cast Shield right now. Shared gate so the inline (auto/RL) and
+// suspendable (GUI) paths offer the reaction under identical conditions.
+bool CombatEngine::shouldOfferDefenderShield(const BattleMap& bm, const Attack& action,
+                                             const AttackResult& r) const
+{
+    if (!r.hit || r.critical) return false;
+    if (r.total_roll >= r.target_ac + 5) return false;
+    return canCastShield(bm, action.target_idx);
+}
+
 bool CombatEngine::maybeDefenderShieldInline(BattleMap& bm, const Attack& action, AttackResult& r)
 {
     // Auto/RL only: the GUI (no decider) gets the suspendable window via beginAttack in step 3b.
     if (!decider_) return false;
-    // Shield only matters on a non-critical hit it could actually negate (+5 AC flips the outcome).
-    if (!r.hit || r.critical) return false;
-    if (r.total_roll >= r.target_ac + 5) return false;
+    if (!shouldOfferDefenderShield(bm, action, r)) return false;
     const int target = action.target_idx;
-    if (!canCastShield(bm, target)) return false;
 
     ReactionCtx ctx;
     ctx.window      = ReactionWindow::OnHit;
@@ -406,6 +422,71 @@ bool CombatEngine::maybeDefenderShieldInline(BattleMap& bm, const Attack& action
         return true;
     }
     return false;
+}
+
+// Apply one chosen OnHit reaction to the in-flight attack (this pass: the target's Shield). Mirrors
+// applyCastReaction: on accept, spend the slot+reaction and negate the hit on in_flight_attack_.r so
+// advanceAttack's applyAttackResult rolls no damage / fires no concentration save. Per DM ruling a
+// Shield-negated hit is a genuine miss, so the attacker's miss-branch features still fire later.
+void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind != ReactionOption::Feature || opt.feature != "Shield") return;
+    if (applyShield(bm, ctx.reactor_idx)) {
+        in_flight_attack_.r.hit = false;
+        log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, ctx.reactor_idx));
+    }
+}
+
+// beginAttack — GUI/interactive entry to a weapon attack (ONDECLARECAST_PLAN.md step 3b). Runs phase A
+// (determineAdvantage) and the roll (resolveAttack) into the in-flight state, then hands off to
+// advanceAttack which opens the Shield window or finalizes. The auto/RL path stays on executeAction
+// (inline Shield). Result is read via lastAttackResult(); submitDecision resumes a parked attack.
+FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
+{
+    in_flight_attack_             = InFlightAttack{};
+    in_flight_attack_.active      = true;
+    in_flight_attack_.interactive = true;
+    in_flight_attack_.action      = action;
+    InFlightAttack& s = in_flight_attack_;
+    if (!determineAdvantage(bm, s)) {            // illegal/blocked attack (s.r stays valid == false)
+        last_attack_result_ = s.r;
+        s.active = false;
+        return FlowStatus::Completed;
+    }
+    auto agents = bm.placedAgents();
+    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
+    const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
+    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    return advanceAttack(bm);
+}
+
+// advanceAttack — drive the in-flight attack. If a defender Shield window should open (GUI path only),
+// suspend at the OnHit checkpoint; the GUI resumes via submitDecision → applyAttackReaction → here
+// again, where the gate is now false/consumed and we finalize. applyAttackResult re-fetches working
+// stats, so a Shield cast in the window (its +5 AC / slot spend) is reflected.
+FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
+{
+    InFlightAttack& s = in_flight_attack_;
+    // Offer the Shield window at most once: on resume after a Skip the hit still stands, so without
+    // this guard shouldOfferDefenderShield would stay true and re-park forever (single reactor, no cursor).
+    if (s.interactive && !s.shield_offered && shouldOfferDefenderShield(bm, s.action, s.r)) {
+        s.shield_offered = true;
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnHit;
+        ctx.reactor_idx = s.action.target_idx;
+        ctx.source_idx  = s.action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Cast Shield (+5 AC — the attack misses)", "Shield"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+        return FlowStatus::AwaitingDecision;
+    }
+    pending_decision_.active = false;
+    last_attack_result_ = applyAttackResult(bm, s);
+    s.active = false;
+    return FlowStatus::Completed;
 }
 
 // ── determineAdvantage: phase A — validate the attack and compute advantage/disadvantage + the

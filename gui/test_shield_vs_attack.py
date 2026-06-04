@@ -7,8 +7,12 @@ into a miss, the attack deals no damage and fires no concentration save — the 
 any HP changes (intercepted right after the attack roll, combat_attack.cpp), so there is no heal-back
 and the "I shielded but still dropped" surprise is structurally impossible.
 
-This exercises the auto/RL path (inline via a CombatDecider). Because the d20 is random, tests use the
-repo's retry-loop idiom and classify each attack from r.total_roll vs r.target_ac:
+The first five tests exercise the auto/RL path (inline via a CombatDecider). The last three exercise
+the GUI suspend/resume path (step 3b): begin_attack parks at the OnHit window (AwaitingDecision) with
+no decider installed, and submit_decision routes the human's choice back, exactly as main.py does.
+
+Because the d20 is random, tests use the repo's retry-loop idiom and classify each attack from
+r.total_roll vs r.target_ac:
   · marginal hit (Shield could negate): r.hit and not r.critical and r.total_roll <  r.target_ac + 5
   · solid hit    (Shield can't negate): r.hit and not r.critical and r.total_roll >= r.target_ac + 5
 """
@@ -167,13 +171,94 @@ def test_used_reaction_no_window():
     print("✅ test_used_reaction_no_window passed")
 
 
+# ── GUI suspend/resume path (begin_attack → pending_decision → submit_decision, step 3b) ──────────
+# No CombatDecider installed: the GUI expresses the human as submitted events, so begin_attack PARKS
+# at the OnHit Shield window (AwaitingDecision) and the click is routed back via submit_decision.
+
+def _shield_opt(ctx):
+    return next(i for i, o in enumerate(ctx.options)
+               if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "Shield")
+
+def _skip_opt(ctx):
+    return next(i for i, o in enumerate(ctx.options) if o.kind == rpg.ReactionOptionKind.Skip)
+
+def _submit(engine, bm, option):
+    resp = rpg.ReactionResponse(); resp.option = option
+    return engine.submit_decision(bm, resp)
+
+
+def test_begin_attack_suspend_shield_negates():
+    """begin_attack parks at the OnHit window on a marginal hit; submit_decision(Shield) negates it."""
+    bm = setup_battle_map(); engine = setup_combat_engine()   # NOTE: no set_decider — GUI path
+    atk, tgt = _setup(engine, bm)
+    for _ in range(120):
+        _reset_defender(engine, bm, tgt)
+        status = engine.begin_attack(bm, rpg.Attack(atk, tgt, 0))
+        if status == rpg.FlowStatus.AwaitingDecision:
+            pd = engine.pending_decision()
+            assert pd.active and pd.ctx.window == rpg.ReactionWindow.OnHit
+            assert pd.ctx.reactor_idx == tgt and pd.ctx.source_idx == atk
+            status2 = _submit(engine, bm, _shield_opt(pd.ctx))
+            assert status2 == rpg.FlowStatus.Completed
+            assert not engine.pending_decision().active, "the engine is no longer parked"
+            assert not engine.last_attack_result().hit, "Shield (+5 AC) turns the marginal hit into a miss"
+            assert _hp(engine, bm, tgt) == 40, "a negated hit deals no damage"
+            assert _l1(engine, bm, tgt) == 1, "Shield spends one L1 slot"
+            assert engine.get_agent_conditions(bm, tgt).reaction_used, "Shield consumes the reaction"
+            print("✅ test_begin_attack_suspend_shield_negates passed")
+            return
+    assert False, "no marginal hit parked the window in 120 begin_attack calls"
+
+
+def test_begin_attack_suspend_skip_takes_damage():
+    """Submitting Skip at the parked OnHit window lets the marginal hit land for damage, spends nothing."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, tgt = _setup(engine, bm)
+    for _ in range(120):
+        _reset_defender(engine, bm, tgt)
+        status = engine.begin_attack(bm, rpg.Attack(atk, tgt, 0))
+        if status == rpg.FlowStatus.AwaitingDecision:
+            status2 = _submit(engine, bm, _skip_opt(engine.pending_decision().ctx))
+            assert status2 == rpg.FlowStatus.Completed
+            assert engine.last_attack_result().hit, "skipping Shield → the hit lands"
+            assert _hp(engine, bm, tgt) < 40, "the hit deals damage"
+            assert _l1(engine, bm, tgt) == 2 and not engine.get_agent_conditions(bm, tgt).reaction_used, \
+                "skipping Shield spends nothing"
+            print("✅ test_begin_attack_suspend_skip_takes_damage passed")
+            return
+    assert False, "no marginal hit parked the window in 120 begin_attack calls"
+
+
+def test_begin_attack_no_window_completes_directly():
+    """A miss / solid hit / crit opens no window: begin_attack returns Completed and the result is set."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, tgt = _setup(engine, bm)
+    for _ in range(120):
+        _reset_defender(engine, bm, tgt)
+        hp_before = _hp(engine, bm, tgt)
+        status = engine.begin_attack(bm, rpg.Attack(atk, tgt, 0))
+        if status == rpg.FlowStatus.Completed:
+            r = engine.last_attack_result()
+            assert r.valid and not engine.pending_decision().active
+            if r.hit:
+                assert _hp(engine, bm, tgt) < hp_before, "a non-windowed hit applies damage"
+            # No Shield offered → the defender's slot + reaction are untouched in every Completed case.
+            assert _l1(engine, bm, tgt) == 2 and not engine.get_agent_conditions(bm, tgt).reaction_used
+            print("✅ test_begin_attack_no_window_completes_directly passed")
+            return
+    assert False, "no Completed begin_attack in 120 calls"
+
+
 def run_all():
     test_shield_negates_marginal_hit()
     test_declined_shield_takes_damage()
     test_solid_hit_not_offered_shield()
     test_no_shield_known_no_window()
     test_used_reaction_no_window()
-    print("\nAll Shield-vs-attack (OnHit, auto path) tests passed ✅")
+    test_begin_attack_suspend_shield_negates()
+    test_begin_attack_suspend_skip_takes_damage()
+    test_begin_attack_no_window_completes_directly()
+    print("\nAll Shield-vs-attack (OnHit: auto + GUI suspend/resume) tests passed ✅")
 
 
 if __name__ == "__main__":
