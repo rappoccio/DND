@@ -497,6 +497,29 @@ struct InFlightMove {
     std::vector<AttackResult> results;
 };
 
+// Resumable state for one in-flight attack that may open a defender reaction window between the
+// attack roll and damage (ONDECLARECAST_PLAN.md step 3). determineAdvantage fills the pre-roll state
+// + snapshots; the caller rolls (resolveAttack) into r; applyAttackResult finalizes (riders/damage/
+// concentration). beginAttack parks here at the OnHit Shield window and submitDecision resumes (3b).
+struct InFlightAttack {
+    bool active{false};
+    bool interactive{false};        // GUI suspends at the OnHit window; auto/RL resolves inline
+    Attack action{};                // the declared attack
+    Weapon w{};                     // resolved weapon (off-hand proficiency already applied)
+    AttackResult r{};               // the rolled result (filled by resolveAttack between the phases)
+    bool adv{false};
+    bool dis{false};
+    // Pre-roll snapshots applyAttackResult needs (taken before this attack's own effects mutate state):
+    bool can_use_brutal_strike{false};
+    bool tgt_incapacitated_at_attack{false};
+    bool tgt_unconscious_at_attack{false};
+    bool consume_vex{false};
+    bool consume_sap{false};
+    bool attacker_was_hidden{false};
+    int  atk_sz{1};
+    int  tgt_sz{1};
+};
+
 // ── Wild Magic Surge (College of Wild Magic) ─────────────────────────────────
 // The engine ROLLS d100 on the curated surge table and classifies the effect band
 // (1-10); applying the effect is the caller's job (effects range from a simple heal
@@ -684,9 +707,15 @@ public:
     FlowStatus beginCast(BattleMap& bm, const SpellAction& action);
     SpellResult resolveCast(BattleMap& bm, const SpellAction& action);
     [[nodiscard]] const SpellResult& lastCastResult() const noexcept { return in_flight_cast_.result; }
+    // True if the most recent begin_cast/resolve_cast was countered (spell fizzled, slot retained).
+    [[nodiscard]] bool lastCastCountered() const noexcept { return in_flight_cast_.countered; }
     // Shield (reaction): the reactor casts Shield — spend the lowest L1+ slot + its reaction, gain
     // +5 AC until its next turn and Magic Missile immunity. Returns false if it can't (no slot/etc.).
     bool applyShield(BattleMap& bm, int reactor_idx) noexcept;
+    // Counterspell (reaction): the counterspeller spends its lowest L3+ slot + reaction; the original
+    // caster makes a CON save vs the counterspeller's spell save DC. Returns true iff the cast is
+    // countered (save failed) → the in-flight spell fizzles but keeps its slot (2024 rules).
+    bool applyCounterspell(BattleMap& bm, int reactor_idx, int caster_idx) noexcept;
 
     // Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).
     // Returns true if the cell is valid, false if out of bounds or blocked.
@@ -1093,6 +1122,26 @@ public:
     [[nodiscard]] AttackResult executeAction(BattleMap& bm,
                                               const Attack& action);
 
+    // executeAction is split so a defender reaction (Shield) can fire between the roll and damage:
+    //   determineAdvantage → validate the attack + compute advantage/disadvantage + pre-roll snapshots
+    //     into `s` (returns false for an illegal/blocked attack; STOPS before the roll — the caller
+    //     then does s.r = resolveAttack(...)).
+    //   applyAttackResult → phase B: apply the rolled result's consequences (on-hit/on-miss riders,
+    //     damage, concentration, conditions, downstate). Re-fetches working stats fresh, so a Shield
+    //     cast in the window is reflected. Both are also the building blocks of beginAttack (3b).
+    [[nodiscard]] bool determineAdvantage(BattleMap& bm, InFlightAttack& s);
+    [[nodiscard]] AttackResult applyAttackResult(BattleMap& bm, InFlightAttack& s);
+
+    // Defender Shield reaction vs an attack (ONDECLARECAST_PLAN.md step 3). Called right after the
+    // attack roll resolves, BEFORE any damage/concentration: if the target can cast Shield and its
+    // +5 AC would turn this hit into a miss, offer the reaction; on accept, spend the slot+reaction
+    // and negate the hit (r.hit=false) so no damage is rolled and no concentration save fires. This
+    // is the auto/RL path (inline via decider_); the GUI suspend path arrives with beginAttack (3b).
+    // Per DM ruling a negated hit is a genuine miss (attacker miss-branch features still fire).
+    // Returns true iff Shield was cast (the caller must then re-fetch the target's stats, since this
+    // mutates the target's slot/AC and executeAction re-persists a pre-window snapshot otherwise).
+    bool maybeDefenderShieldInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
     // ── Initiative ────────────────────────────────────────────────────────
     //
     // Roll initiative for every living agent in the BattleMap (hp_cur > 0).
@@ -1319,10 +1368,14 @@ private:
 
     // ── Cast interrupt internals (combat_spells.cpp) ─────────────────────────
     InFlightCast in_flight_cast_{};
-    // OnDeclareCast reactors for a cast (this pass: Magic Missile targets that can cast Shield).
+    // OnDeclareCast reactors for a cast: Counterspell casters that can see the caster, plus (for
+    // Magic Missile) targets that can cast Shield. advanceCast builds each reactor's options.
     [[nodiscard]] std::vector<int> declareCastReactors(const BattleMap& bm, const SpellAction& action) const;
     // True if `idx` can cast Shield as a reaction now (knows Shield, has an L1+ slot, reaction free).
     [[nodiscard]] bool canCastShield(const BattleMap& bm, int idx) const;
+    // True if `idx` can cast Counterspell at `caster_idx` now (knows it, L3+ slot, reaction free, and
+    // can see the caster within 60 ft; not the caster itself).
+    [[nodiscard]] bool canCastCounterspell(const BattleMap& bm, int idx, int caster_idx) const;
     // Apply one chosen OnDeclareCast reaction (dispatches on ReactionOption.feature, e.g. "Shield").
     void applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
     // Drive the in-flight cast: resolve reactions (inline for auto, suspend for GUI), then resolve

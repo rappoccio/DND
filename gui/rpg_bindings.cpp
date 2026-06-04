@@ -1799,11 +1799,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::lastCastResult,
              py::return_value_policy::reference_internal,
              "The SpellResult of the most recent begin_cast/resolve_cast (valid once Completed).")
+        .def("last_cast_countered",
+             &CombatEngine::lastCastCountered,
+             "True if the most recent begin_cast/resolve_cast was countered (spell fizzled, slot kept).")
         .def("apply_shield",
              &CombatEngine::applyShield,
              py::arg("battle_map"), py::arg("reactor_idx"),
              "Shield (reaction): the reactor casts Shield — spend its lowest L1+ slot + its reaction,\n"
              "gain +5 AC until its next turn and Magic Missile immunity. Returns False if it can't.")
+        .def("apply_counterspell",
+             &CombatEngine::applyCounterspell,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("caster_idx"),
+             "Counterspell (reaction): the counterspeller spends its lowest L3+ slot + reaction; the\n"
+             "original caster makes a CON save vs the counterspeller's spell save DC. Returns True iff\n"
+             "the cast is countered (save failed) — the spell fizzles but keeps its slot (2024 rules).")
         .def("place_teleported_agents",
              &CombatEngine::placeTeleportedAgents,
              py::arg("battle_map"), py::arg("agent_indices"), py::arg("dest_col"), py::arg("dest_row"),

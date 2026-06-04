@@ -1890,6 +1890,34 @@ bool CombatEngine::canCastShield(const BattleMap& bm, int idx) const
     return false;
 }
 
+bool CombatEngine::canCastCounterspell(const BattleMap& bm, int idx, int caster_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return false;
+    if (idx == caster_idx) return false;                          // can't counter your own spell
+    const Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.hp_cur <= 0) return false;
+    bool has_slot = false;                                        // Counterspell needs an L3+ slot
+    for (int i = 2; i < 9; ++i)
+        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { has_slot = true; break; }
+    if (!has_slot) return false;
+    bool knows = false;
+    for (const auto& sp : bm.getAgentSpells(idx))
+        if (sp.name == "Counterspell") { knows = true; break; }
+    if (!knows) return false;
+    // "when you see a creature within 60 feet casting a spell": LOS + 60 ft to the caster.
+    const PlacedAgent& rpa = agents[static_cast<std::size_t>(idx)];
+    const PlacedAgent& cpa = agents[static_cast<std::size_t>(caster_idx)];
+    if (footprintDistance(rpa.origin, rpa.agent->getSize(),
+                          cpa.origin, cpa.agent->getSize()) * 5 > 60) return false;
+    if (!bm.hasLineOfSight(rpa.origin, rpa.agent->getSize(),
+                           cpa.origin, cpa.agent->getSize())) return false;
+    return true;
+}
+
 std::vector<int>
 CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action) const
 {
@@ -1898,14 +1926,23 @@ CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action
     if (action.caster_idx < 0 || action.caster_idx >= static_cast<int>(agents.size())) return reactors;
     const auto& spells = bm.getAgentSpells(action.caster_idx);
     if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size())) return reactors;
+    const std::string castName = spells[static_cast<std::size_t>(action.spell_idx)].name;
 
-    // This pass: only Magic Missile opens a Shield reaction (for each distinct target that can Shield).
-    if (spells[static_cast<std::size_t>(action.spell_idx)].name == "Magic Missile") {
+    // Counterspell reactors first — it interrupts the whole cast. Any creature (not the caster) that
+    // can see the caster within 60 ft and can cast Counterspell. A Counterspell can't itself be
+    // countered this pass (no recursive decision stack yet — see known_limitations.md).
+    if (castName != "Counterspell")
+        for (int i = 0; i < static_cast<int>(agents.size()); ++i)
+            if (i != action.caster_idx && canCastCounterspell(bm, i, action.caster_idx))
+                reactors.push_back(i);
+
+    // Then Shield: only Magic Missile opens a Shield reaction (for each distinct target that can
+    // Shield). A reactor already enrolled as a counterspeller is offered both options in advanceCast.
+    if (castName == "Magic Missile")
         for (int t : action.target_indices) {
-            if (std::find(reactors.begin(), reactors.end(), t) != reactors.end()) continue;  // dedup darts
+            if (std::find(reactors.begin(), reactors.end(), t) != reactors.end()) continue;  // dedup
             if (canCastShield(bm, t)) reactors.push_back(t);
         }
-    }
     return reactors;
 }
 
@@ -1927,28 +1964,77 @@ bool CombatEngine::applyShield(BattleMap& bm, int reactor_idx) noexcept
     return true;
 }
 
+bool CombatEngine::applyCounterspell(BattleMap& bm, int reactor_idx, int caster_idx) noexcept
+{
+    if (!canCastCounterspell(bm, reactor_idx, caster_idx)) return false;
+    // Spend the counterspeller's lowest L3+ slot + its reaction (regardless of the save outcome —
+    // Counterspell itself is cast and the slot is gone; only the *countered* spell keeps its slot).
+    Agent::Stats rs = bm.getAgentStats(reactor_idx);
+    for (int i = 2; i < 9; ++i)
+        if (rs.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) {
+            rs.spell_slots_remaining[static_cast<std::size_t>(i)] -= 1; break;
+        }
+    bm.setAgentStats(reactor_idx, rs);
+    Agent::Conditions rc = bm.getAgentConditions(reactor_idx);
+    rc.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, rc);
+    // 2024 Counterspell: the original caster makes a CON save vs the counterspeller's spell save DC.
+    const int dc = spellSaveDc(rs);
+    const Agent::Stats cs = bm.getAgentStats(caster_idx);
+    const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
+    const int d20      = roll(20);
+    const int total    = d20 + save_mod;
+    log_("{} casts Counterspell — {} must make a DC {} CON save (rolled {}{}{} = {})",
+         agentName(bm, reactor_idx), agentName(bm, caster_idx), dc,
+         d20, save_mod >= 0 ? "+" : "", save_mod, total);
+    if (total >= dc) {
+        log_("{} succeeds — the spell resolves normally", agentName(bm, caster_idx));
+        return false;
+    }
+    log_("{}'s spell is countered and fails (its slot is retained)", agentName(bm, caster_idx));
+    return true;
+}
+
 void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
 {
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
     if (opt.kind != ReactionOption::Feature) return;
     if (opt.feature == "Shield") (void)applyShield(bm, ctx.reactor_idx);
-    // Counterspell (and the countered flag) arrive in step 2.
+    else if (opt.feature == "Counterspell") {
+        if (applyCounterspell(bm, ctx.reactor_idx, ctx.source_idx))
+            in_flight_cast_.countered = true;   // skips executeSpell in advanceCast; slot kept
+    }
 }
 
 FlowStatus CombatEngine::advanceCast(BattleMap& bm)
 {
     InFlightCast& c = in_flight_cast_;
+    const auto& agents = bm.placedAgents();
+    std::string castName;                                            // the spell being cast (for option gating)
+    if (c.action.caster_idx >= 0 && c.action.caster_idx < static_cast<int>(agents.size())) {
+        const auto& spells = bm.getAgentSpells(c.action.caster_idx);
+        if (c.action.spell_idx >= 0 && c.action.spell_idx < static_cast<int>(spells.size()))
+            castName = spells[static_cast<std::size_t>(c.action.spell_idx)].name;
+    }
     while (c.cursor < c.reactors.size() && !c.countered) {
         const int reactor = c.reactors[c.cursor];
-        if (!canCastShield(bm, reactor)) { ++c.cursor; continue; }   // lost eligibility since enumeration
         ReactionCtx ctx;
         ctx.window       = ReactionWindow::OnDeclareCast;
         ctx.reactor_idx  = reactor;
         ctx.source_idx   = c.action.caster_idx;
         ctx.spell_idx    = c.action.spell_idx;
-        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                             "Cast Shield (+5 AC, immune to Magic Missile)", "Shield"});
+        // Build this reactor's options fresh (eligibility may have changed since enumeration). A
+        // reactor can be offered both Counterspell and Shield when both apply.
+        if (castName != "Counterspell" && canCastCounterspell(bm, reactor, c.action.caster_idx))
+            ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                                 "Cast Counterspell (interrupt the spell)", "Counterspell"});
+        if (castName == "Magic Missile" && canCastShield(bm, reactor) &&
+            std::find(c.action.target_indices.begin(), c.action.target_indices.end(), reactor)
+                != c.action.target_indices.end())
+            ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                                 "Cast Shield (+5 AC, immune to Magic Missile)", "Shield"});
+        if (ctx.options.empty()) { ++c.cursor; continue; }           // lost eligibility since enumeration
         ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
         if (c.interactive) {
             pending_decision_ = PendingDecision{true, ctx};         // suspend; GUI resumes via submitDecision

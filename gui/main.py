@@ -4228,6 +4228,14 @@ class App:
 
         agents    = self.bm.placed_agents
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
+        # A Counterspell fizzled the cast before it resolved: the action is still spent (wasted), but
+        # the engine never ran executeSpell, so the slot is retained (2024 rules). Report it cleanly
+        # rather than as "invalid" (the Counterspell save is already in the combat log).
+        if self.combat.last_cast_countered():
+            self._combat_log_add(f"{cast_name}'s spell was countered!")
+            self._sync_spell_effect_cache()
+            self._consume_cast_slot(ctx["slot"], caster_idx)
+            return
         if not result.valid:
             self._combat_log_add(f"{cast_name}: spell failed (invalid)")
             # If the agent slipped and can't act, auto-advance their turn (AoE cast path).

@@ -377,20 +377,56 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     return r;
 }
 
-AttackResult CombatEngine::executeAction(BattleMap& bm,
-                                          const Attack& action)
+bool CombatEngine::maybeDefenderShieldInline(BattleMap& bm, const Attack& action, AttackResult& r)
 {
-    AttackResult invalid;  // valid = false
+    // Auto/RL only: the GUI (no decider) gets the suspendable window via beginAttack in step 3b.
+    if (!decider_) return false;
+    // Shield only matters on a non-critical hit it could actually negate (+5 AC flips the outcome).
+    if (!r.hit || r.critical) return false;
+    if (r.total_roll >= r.target_ac + 5) return false;
+    const int target = action.target_idx;
+    if (!canCastShield(bm, target)) return false;
+
+    ReactionCtx ctx;
+    ctx.window      = ReactionWindow::OnHit;
+    ctx.reactor_idx = target;
+    ctx.source_idx  = action.attacker_idx;
+    ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                         "Cast Shield (+5 AC — the attack misses)", "Shield"});
+    ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+
+    const ReactionResponse resp = decider_->chooseReaction(ctx);
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return false;
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind != ReactionOption::Feature || opt.feature != "Shield") return false;
+
+    if (applyShield(bm, target)) {
+        r.hit = false;                      // DM ruling: a Shield-negated hit is a genuine miss.
+        log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, target));
+        return true;
+    }
+    return false;
+}
+
+// ── determineAdvantage: phase A — validate the attack and compute advantage/disadvantage + the
+// pre-roll snapshots applyAttackResult will need, into `s`. Returns false for an illegal/blocked
+// attack (s.r stays valid==false). STOPS before the roll: the caller does s.r = resolveAttack(...).
+bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
+{
+    const Attack& action = s.action;
 
     auto agents = bm.placedAgents();
     int  n      = static_cast<int>(agents.size());
 
-    if (action.attacker_idx < 0 || action.attacker_idx >= n) return invalid;
-    if (action.target_idx   < 0 || action.target_idx   >= n) return invalid;
-    if (action.attacker_idx == action.target_idx)             return invalid;
+    if (action.attacker_idx < 0 || action.attacker_idx >= n) return false;
+    if (action.target_idx   < 0 || action.target_idx   >= n) return false;
+    if (action.attacker_idx == action.target_idx)             return false;
 
     const PlacedAgent& atk_pt = agents[action.attacker_idx];
     const PlacedAgent& tgt_pt = agents[action.target_idx];
+
+
+    // beginning of checking if it's mechanically possible to attack this round
 
     // Check if attacker is charmed and target is the charmer
     if (atk_pt.agent->getConditions().charmed) {
@@ -399,7 +435,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
                 cond.condition_name == "Charmed" &&
                 cond.caster_idx == action.target_idx) {
                 log_("Attack blocked: attacker is charmed and cannot attack the charmer");
-                return invalid;
+                return false;
             }
         }
     }
@@ -407,12 +443,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // Check if attacker slipped this turn
     if (atk_pt.agent->hasSlippedThisTurn()) {
         log_("Attack blocked: attacker slipped and cannot act this turn");
-        return invalid;
+        return false;
     }
 
     if (action.weapon_idx < 0 ||
             action.weapon_idx >= static_cast<int>(atk_pt.weapons.size()))
-        return invalid;
+        return false;
 
     Weapon w = atk_pt.weapons[static_cast<std::size_t>(action.weapon_idx)];
     if (action.is_offhand) w.proficient = false;  // off-hand: no proficiency bonus to hit
@@ -421,8 +457,14 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     int tgt_sz = tgt_pt.agent->getSize();
 
     if (!canAttack(w, bm, atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz))
-        return invalid;
+        return false;
 
+
+    // end of checking if it's mechanically possible to attack this round
+
+
+    // beginning of determination of advantage / disadvantage
+    
     bool disadv = hasDisadvantage(w, bm,
                                    atk_pt.origin, atk_sz,
                                    tgt_pt.origin, tgt_sz);
@@ -602,10 +644,17 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Disadvantage: attacker was Sapped");
     }
 
+
+    // end of determination of advantage / disadvantage
+
+
+    
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
     log_("[ATTACK START] {} - unconscious={}, hp={}", agentName(bm, action.target_idx), tgt_cond.unconscious, tgt_stats.hp_cur);
 
+
+    
     // Check Brutal Strike eligibility (L9+: Reckless Attack + melee weapon, once per turn)
     bool can_use_brutal_strike = false;
     if (atk_stats.character_class == CharacterClass::Barbarian &&
@@ -624,7 +673,60 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
         log_("Elusive: target is a L18+ Rogue — advantage negated");
     }
 
-    AttackResult r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage);
+
+    // Phase A done — carry the pre-roll state across the (possible) defender reaction window. The
+    // caller rolls the attack (resolveAttack) and may open the Shield window before applyAttackResult.
+    s.w = w; s.adv = adv; s.dis = dis;
+    s.can_use_brutal_strike       = can_use_brutal_strike;
+    s.tgt_incapacitated_at_attack = tgt_incapacitated_at_attack;
+    s.tgt_unconscious_at_attack   = tgt_unconscious_at_attack;
+    s.consume_vex = consume_vex; s.consume_sap = consume_sap;
+    s.attacker_was_hidden = attacker_was_hidden;
+    s.atk_sz = atk_sz; s.tgt_sz = tgt_sz;
+    return true;
+}
+
+// Atomic attack entry used by internal callers (OA, multiattack, riposte) and the auto/RL path:
+// validate + advantage (determineAdvantage) → roll (resolveAttack) → inline defender Shield window →
+// apply (applyAttackResult). The GUI suspends at the Shield window via beginAttack (step 3b) instead.
+AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
+{
+    InFlightAttack s;
+    s.action = action;
+    if (!determineAdvantage(bm, s)) return s.r;          // illegal/blocked attack (valid == false)
+    auto agents = bm.placedAgents();
+    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
+    const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
+    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    // Auto/RL defender Shield window (inline via the decider). applyAttackResult re-fetches the
+    // target's stats, so Shield's slot-spend + AC are reflected (no stale-snapshot clobber).
+    maybeDefenderShieldInline(bm, action, s.r);
+    return applyAttackResult(bm, s);
+}
+
+// ── applyAttackResult: phase B — apply the rolled attack's consequences (on-hit/on-miss rider
+// eligibility, damage, concentration, conditions, downstate). Split from executeAction so a defender
+// reaction (Shield) can fire between the roll and damage (ONDECLARECAST_PLAN.md step 3). Working
+// stats/conditions are re-fetched fresh here, so a Shield cast in the window is reflected. ──────────
+AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
+{
+    const Attack& action = s.action;
+    auto agents = bm.placedAgents();
+    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
+    const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
+    Weapon w = s.w;
+    AttackResult r = s.r;
+    bool adv = s.adv, dis = s.dis;
+    bool can_use_brutal_strike = s.can_use_brutal_strike;
+    const bool tgt_incapacitated_at_attack = s.tgt_incapacitated_at_attack;
+    const bool tgt_unconscious_at_attack   = s.tgt_unconscious_at_attack;
+    bool consume_vex = s.consume_vex, consume_sap = s.consume_sap;
+    bool attacker_was_hidden = s.attacker_was_hidden;
+    int atk_sz = s.atk_sz, tgt_sz = s.tgt_sz;
+    Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
+    Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
+    const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
+    const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
 
     // Set Brutal Strike flag if eligible and attack hits
     Agent::Conditions updated_atk_cond = atk_cond;
@@ -638,6 +740,9 @@ AttackResult CombatEngine::executeAction(BattleMap& bm,
     // the GUI (no decider) instead sets a deferred flag and prompts, then calls applyRecklessReroll.
     // (Pre-declaring Reckless before the attack is the other entry point — handled by the
     // reckless_attack advantage at the top of resolveAttack.)
+    // NOTE: the *attacker* can still change this attack's state here even after the defender's
+    // window — a Reckless reroll re-resolves the attack (mutating `r` and setting reckless_attack).
+    // This is intentional: a Shield-negated hit is a genuine miss the attacker may reroll (DM ruling).
     else if (!r.hit &&
              atk_stats.character_class == CharacterClass::Barbarian &&
              atk_stats.char_level >= 2 &&

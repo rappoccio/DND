@@ -50,9 +50,14 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   roll / ability check / damage roll and subtracts the die. Currently primed *before* the target's
   roll (negative `pending_roll_bonus_`) — the decider/player must decide ahead of time. Same
   simplification as Bardic Inspiration `use_bardic_die` and Portent's pre-roll model.
-- **Counterspell** (not implemented): reaction *when you see a creature casting a spell*, to cancel
-  the cast. Needs the caster to yield to other creatures' reactions between "spell declared" and
-  "spell resolved."
+- **Counterspell** (IMPLEMENTED 2026-06-03, ONDECLARECAST_PLAN.md step 2): the OnDeclareCast window
+  *is* the "pending decision / interrupt" mechanism for the cast case — `beginCast` yields between
+  "spell declared" and "spell resolved" so any creature that sees the caster within 60 ft may cast
+  Counterspell; the caster makes a CON save vs the counterspeller's DC; on a fail the cast fizzles and
+  keeps its slot (2024 rules). *Remaining gaps:* (a) **no recursive counter-counterspell** — a
+  Counterspell can't itself be countered (no decision stack yet); (b) the 60 ft range gate is untested
+  (the 12×12 test map tops out at ~55 ft); (c) the same yield-mid-resolution mechanism is still NOT
+  wired for the d20-roll case below (Cutting Words / Countercharm remain pre-roll).
 - **Bard Countercharm** (deferred): reaction to reroll an ally's just-failed charm/frighten save —
   needs the post-save interrupt at the (many, inline) save sites.
 - **Use Inspiration Die** GUI: RAW the holder decides *after* a failed roll; the button primes it
