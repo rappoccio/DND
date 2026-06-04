@@ -24,6 +24,34 @@
 
 namespace rpg {
 
+namespace {
+    // Damage-type names for the damage-roll log line (mirrors the GUI's
+    // _get_damage_type_names so logs read the same way on every attack path).
+    const char* physicalDamageName(PhysicalDamage_t t) noexcept {
+        switch (t) {
+            case Bludgeoning: return "Bludgeoning";
+            case Piercing:    return "Piercing";
+            case Slashing:    return "Slashing";
+            default:          return "Physical";
+        }
+    }
+    const char* magicDamageName(MagicDamage_t t) noexcept {
+        switch (t) {
+            case Acid:      return "Acid";
+            case Cold:      return "Cold";
+            case Fire:      return "Fire";
+            case Force:     return "Force";
+            case Lightning: return "Lightning";
+            case Necrotic:  return "Necrotic";
+            case Poison:    return "Poison";
+            case Psychic:   return "Psychic";
+            case Radiant:   return "Radiant";
+            case Thunder:   return "Thunder";
+            default:        return "Magic";
+        }
+    }
+}  // namespace
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Reach & threat
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,13 +247,35 @@ void CombatEngine::rollDamage(const Weapon& w,
     result.dice_results.clear();
     int raw = 0;
 
+    // Build a per-type dice breakdown string for the log (mirrors the To-hit line so
+    // every attack path — GUI/OA/reroll/RL — shows the dice that produced the damage).
+    std::vector<std::string> log_parts;
+    auto format_type = [&](int num_dice, int die_size, int type_damage,
+                           float multiplier, const std::vector<int>& dice,
+                           const char* type_name) {
+        std::string dice_str;
+        for (std::size_t i = 0; i < dice.size(); ++i) {
+            if (i) dice_str += "+";
+            dice_str += std::to_string(dice[i]);
+        }
+        std::string part = std::format("{}d{} [{}]={} {}", num_dice, die_size,
+                                       dice_str, type_damage, type_name);
+        if (multiplier != 1.0f) {
+            part += std::format(" x{:g}={}", multiplier,
+                                static_cast<int>(static_cast<float>(type_damage) * multiplier));
+        }
+        log_parts.push_back(std::move(part));
+    };
+
     // Roll physical damage types and apply target's multipliers
     for (const auto& dmg_roll : w.physicalDamageRolls) {
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
         int type_damage = 0;
+        std::vector<int> type_dice;
         for (int i = 0; i < num_dice; ++i) {
             int d = roll(dmg_roll.die_size);
             result.dice_results.push_back(d);
+            type_dice.push_back(d);
             type_damage += d;
         }
         // Apply target's resistance/vulnerability/immunity multiplier
@@ -233,15 +283,19 @@ void CombatEngine::rollDamage(const Weapon& w,
         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += modified_damage;
         result.physical_damage_types.push_back(dmg_roll.type);
+        format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
+                    physicalDamageName(dmg_roll.type));
     }
 
     // Roll magic damage types and apply target's multipliers
     for (const auto& dmg_roll : w.magicDamageRolls) {
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
         int type_damage = 0;
+        std::vector<int> type_dice;
         for (int i = 0; i < num_dice; ++i) {
             int d = roll(dmg_roll.die_size);
             result.dice_results.push_back(d);
+            type_dice.push_back(d);
             type_damage += d;
         }
         // Apply target's resistance/vulnerability/immunity multiplier
@@ -249,6 +303,8 @@ void CombatEngine::rollDamage(const Weapon& w,
         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += modified_damage;
         result.magic_damage_types.push_back(dmg_roll.type);
+        format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
+                    magicDamageName(dmg_roll.type));
     }
 
     int ability_mod = damageAbilityMod(w, attacker);
@@ -257,6 +313,16 @@ void CombatEngine::rollDamage(const Weapon& w,
     result.total_damage = std::max(0, raw + result.damage_mod);
     result.damage_breakdown.clear();
     result.damage_breakdown.push_back({"weapon", result.total_damage});
+
+    // Log: "Damage: 1d8 [6]=6 Slashing +4 = 10" (crit doubles the dice count shown).
+    std::string dmg_line;
+    for (std::size_t i = 0; i < log_parts.size(); ++i) {
+        if (i) dmg_line += " + ";
+        dmg_line += log_parts[i];
+    }
+    if (dmg_line.empty()) dmg_line = "—";
+    log_("Damage: {} {:+} = {}{}", dmg_line, result.damage_mod, result.total_damage,
+         result.critical ? " (CRIT)" : "");
 }
 
 int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept

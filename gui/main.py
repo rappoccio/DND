@@ -2025,9 +2025,18 @@ class App:
                 self.attacks_remaining   = 0
                 self._advance_turn()
             else:
-                self._combat_log_add(f"{atk_name}: out of range")
+                # Out of range / invalid target: this is a misclick, NOT a spent attack. Do not
+                # decrement (the decrement is below this return) and — critically — do not zero
+                # attacks_remaining. _start_attack re-seeds the count only when it is 0, so zeroing
+                # here would let the next Attack click re-seed to num_attacks and hand out a bonus
+                # attack (e.g. after a Forceful Blow / Push knocks the target out of reach mid-
+                # sequence). Just clear pending_attack_slot so the player can reposition (drag-to-
+                # move); clicking Attack again resumes the SAME sequence with the remaining count.
+                rem = self.attacks_remaining
+                tail = (f" ({rem} attack{'s' if rem != 1 else ''} remaining)" if rem > 0 else "")
+                self._combat_log_add(
+                    f"{atk_name}: out of range — move closer or click Attack to retry{tail}")
                 self.pending_attack_slot = ""
-                self.attacks_remaining   = 0
             return
 
         # Check if attacker has exhaustion for potential penalty note
@@ -2055,6 +2064,7 @@ class App:
         has_divine_smite = False
         has_reckless_reroll = False
         has_riposte = False
+        has_protective_field = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             # Riposte is a DEFENDER reaction: the flag is set on the target, not the attacker.
@@ -2091,6 +2101,12 @@ class App:
                 has_topple = True
             elif result.hit and atk_cond and atk_cond.cleave_available:
                 has_cleave = True
+            # Protective Field is a DEFENDER on-hit reaction (the flag-less mechanic re-validates in
+            # C++). Offered LAST among on-hit options (v1): an attacker on-hit rider above shadows the
+            # defender's Protective Field this swing (see known_limitations.md). Mirrors riposte's
+            # on-miss shadowing.
+            elif self._can_protective_field(target_idx, result):
+                has_protective_field = True
 
         # FLAG: Move to C++
         # Format attack message
@@ -2142,6 +2158,8 @@ class App:
             self._offer_reckless_reroll(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_riposte:
             self._offer_riposte(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_protective_field:
+            self._offer_protective_field(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
@@ -2164,7 +2182,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -2914,6 +2932,59 @@ class App:
 
         options = [
             ("Riposte — melee attack back (reaction + 1 Superiority Die)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(target_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _can_protective_field(self, target_idx, result):
+        """Eligibility gate for the Psi Warrior Protective Field reaction (mirrors the checks in
+        applyProtectiveField). Reactor = the hit target: Fighter L3+ Psi Warrior, reaction free, not
+        incapacitated, ≥1 Psionic Energy die, and a hit that actually dealt damage. We also require the
+        target to NOT be down — the engine models Protective Field as a post-hit heal-back and rejects a
+        now-incapacitated defender, so v1 can't yet save a creature from a drop to 0 (see
+        known_limitations.md). apply_protective_field re-validates everything in C++."""
+        agents = self.bm.placed_agents
+        if not (0 <= target_idx < len(agents)):
+            return False
+        if not (result.hit and result.total_damage > 0) or result.target_down:
+            return False
+        s = self.combat.get_agent_stats(self.bm, target_idx)
+        if (s.character_class != rpg.CharacterClass.Fighter or
+                s.fighter_subclass != rpg.FighterSubclass.PsiWarrior or
+                s.char_level < 3):
+            return False
+        c = self.combat.get_agent_conditions(self.bm, target_idx)
+        if c.reaction_used or c.incapacitated:
+            return False
+        ped = s.get_resource("Psionic Energy")
+        return ped is not None and ped.current > 0
+
+    def _offer_protective_field(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Offer a Psi Warrior DEFENDER (Fighter L3+) Protective Field after they're hit: spend the
+        reaction + 1 Psionic Energy die to reduce the damage by (die + INT mod), healing back what the
+        hit actually cost. The reactor is the TARGET of the hit. apply_protective_field re-validates and
+        applies in C++. Mirrors _offer_riposte (DEFENDER reaction keyed on the target)."""
+        def _apply():
+            self._combat_log_add(atk_msg)   # the hit (and its damage) still landed
+            prevented = self.combat.apply_protective_field(self.bm, target_idx, result.total_damage)
+            if prevented > 0:
+                self._combat_log_add(
+                    f"{tgt_name}: Protective Field — prevents {prevented} damage (reaction + 1 Psionic die).")
+            else:
+                self._combat_log_add(f"{tgt_name}: Protective Field had no effect.")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Protective Field — reduce damage (reaction + 1 Psionic die)", _apply),
             ("Skip", _skip),
         ]
         px, py = self._agent_screen_pos(target_idx)

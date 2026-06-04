@@ -82,6 +82,36 @@ Words, Counterspell, Countercharm, and the Use-Inspiration prompt all become con
 
 ---
 
+### Attacker-rider → defender-reaction chaining ("rider shadows the defender's reaction") [OPUS] [DEFER]
+**Status:** v1 limitation across every defender-side on-hit/on-miss reaction — deferred (not planned).
+
+**Problem:** In the GUI, `_finish_attack`'s rider-offer chain is a single mutually-exclusive `if/elif`
+ladder. An *attacker* rider (on-hit: Cunning/Brutal/Psionic Strike/Divine Smite/Stunning/Open-Hand/
+Guided/Precision/etc.; on-miss: Precision/Guided/Reckless) is checked before the *defender's* reaction
+(Riposte on a miss, Protective Field on a hit), which is offered **last**. So whenever the attacker is
+also eligible for a rider on the same swing, the attacker rider fires and the defender's reaction is
+**shadowed** that swing — only one rider can resolve per swing.
+
+**Why this is acceptable for v1:**
+- It's a natural reading of the timing: the attacker's miss→hit (or extra on-hit) conversion resolves
+  first; if a miss converts to a hit there's no longer a miss to Riposte.
+- It only bites when *both* the attacker and the defender have a same-window reaction on one swing —
+  rare in practice.
+
+**Coupled latent bug (would be fixed by the same work):** Riposte's callback calls
+`_continue_attack_sequence_after_rider` but Riposte is **not** in the `has_rider` gate, so a synchronous
+re-prompt *and* the callback can both advance → latent **double-advance**. Masked today because Riposte
+fires on a miss, usually the last attack of the sequence. (Protective Field already uses the correct
+pattern — it IS in the `has_rider` gate.)
+
+**When ready (v2):** Offer the defender's reaction *after* the attacker's same-window rider resolves —
+i.e. re-check Riposte once the attacker's on-miss rider has run and the attack is *still* a miss, and
+re-check Protective Field after the attacker's on-hit riders. Restructure the `elif` ladder into a
+proper post-rider chaining step, and fold Riposte into the `has_rider` gate as part of the cleanup
+(retiring the double-advance above).
+
+---
+
 # Known Limitations
 
 ## Battle Master Fighter
@@ -451,11 +481,21 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
   - **Telekinetic Movement**: push a creature 30 ft, once/rest. `applyTelekineticMovement` + GUI button (target-click).
   - All tested in `test_fighter.py`.
 
-### Deferred — Psi Warrior (GUI only)
-- **Protective Field reaction prompt**: the mechanic is complete and callable via `apply_protective_field`,
-  but the GUI does not yet *offer* it to a Psi Warrior when they are hit (no "defender reaction on being
-  hit" prompt pattern exists yet — Uncanny Dodge auto-applies; this needs a player choice because it costs
-  a die). Wire alongside a general defender-reaction prompt later.
+### Psi Warrior — Protective Field GUI prompt (IMPLEMENTED 2026-06-04, GUI-only, no build)
+The GUI now *offers* Protective Field to a hit Psi Warrior. `_finish_attack` gates eligibility via
+`_can_protective_field(target_idx, result)` (Fighter L3+ Psi Warrior, reaction free, not incapacitated,
+≥1 Psionic Energy die, hit dealt damage, not down — mirrors `applyProtectiveField`'s own checks) and a
+new `has_protective_field` branch routes to `_offer_protective_field(atk_idx, target_idx, …)`, which calls
+`apply_protective_field` and logs the prevention. It's a DEFENDER on-hit reaction (reactor = target),
+modeled like `_offer_riposte` but using the **correct** sequence-continuation pattern: added to the
+`has_rider` gate so only the callback's `_continue_attack_sequence_after_rider` re-prompts (no
+double-advance). v1 limits:
+- **Attacker-rider shadowing:** offered LAST in the on-hit `elif` chain, so any *attacker* on-hit rider
+  (Cunning/Brutal/Psionic Strike/Divine Smite/…) on the same swing shadows the defender's Protective
+  Field that swing (same mutually-exclusive-`elif` constraint as Riposte; full chaining is v2).
+- **Can't save from a drop:** the engine models Protective Field as a post-hit heal-back and rejects a
+  now-incapacitated defender, so the prompt is not offered when the hit drops the target to 0 (gated on
+  `not result.target_down`). True damage-prevention-before-drop would need a pre-HP-mutation window.
 
 ### Deferred — Battle Master (remaining)
 - **Riposte** — IMPLEMENTED 2026-06-04 (see the Riposte section above + RIPOSTE_PLAN.md); v1 limits only.
