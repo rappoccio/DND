@@ -35,6 +35,123 @@ namespace rpg {
 //  Casting
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Spell-attack to-hit roller — extracted from executeSpell's AttackRoll branch so a single-target
+// attack spell can roll the to-hit ahead of the OnHit Shield window and have executeSpell consume the
+// same roll (the spell analog of resolveAttack). Re-fetches caster/target/agents from `bm`; reproduces
+// the AttackRoll branch's advantage/disadvantage conditions and the Seeking-Spell reroll verbatim.
+SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& action, int tgt_idx,
+                                         MetamagicOption applied_metamagic)
+{
+    SpellToHit th{};
+    auto agents = bm.placedAgents();
+    if (action.caster_idx < 0 || action.caster_idx >= static_cast<int>(agents.size())) return th;
+    if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) return th;
+    const PlacedAgent& caster_pa     = agents[static_cast<std::size_t>(action.caster_idx)];
+    const Agent::Stats& caster_stats = caster_pa.agent->getStats();
+
+    const auto& spells = bm.getAgentSpells(action.caster_idx);
+    if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size())) return th;
+    const Spell& sp = spells[static_cast<std::size_t>(action.spell_idx)];
+
+    // Apply advantage/disadvantage from caster conditions
+    bool caster_adv = caster_pa.agent->hasAdvantage();
+    bool caster_dis = caster_pa.agent->hasDisadvantage();
+
+    // Blinded: caster's attacks have disadvantage
+    if (caster_pa.agent->getConditions().blinded) {
+        caster_dis = true;
+        log_("Disadvantage: caster is blinded");
+    }
+
+    // Frightened: caster has disadvantage when fear source is in LOS
+    if (caster_pa.agent->getConditions().frightened) {
+        for (const auto& ac : activeAgentConditions_) {
+            if (ac.agent_idx == action.caster_idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
+                if (bm.hasLineOfSight(caster_pa.origin, caster_pa.agent->getSize(),
+                                      bm.placedAgents()[ac.caster_idx].origin, 1)) {
+                    caster_dis = true;
+                    log_("Disadvantage: caster is frightened and fear source is in LOS");
+                }
+                break;
+            }
+        }
+    }
+
+    // Grappled: caster has disadvantage on spell attacks except against the grappler
+    if (caster_pa.agent->getConditions().grappled) {
+        if (tgt_idx != caster_pa.agent->getConditions().grappler_idx) {
+            caster_dis = true;
+            log_("Disadvantage: caster is grappled");
+        }
+    }
+
+    // Apply engagement disadvantage for ranged spells
+    if (sp.range > 0 && isThreatened(bm, action.caster_idx)) {
+        caster_dis = true;
+        log_("Disadvantage: threatened (enemy within 10 ft)");
+    }
+    if (caster_pa.agent->hasDisadvantage())
+        log_("Disadvantage: condition");
+    if (caster_pa.agent->hasAdvantage())
+        log_("Advantage: condition");
+
+    // Sorcerer Innate Sorcery: advantage on the caster's spell attack rolls while active.
+    if (caster_stats.innate_sorcery_turns > 0) {
+        caster_adv = true;
+        log_("Advantage: Innate Sorcery");
+    }
+
+    // Target blinded: attacker has advantage
+    bool target_blinded = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().blinded;
+    if (target_blinded) {
+        caster_adv = true;
+        log_("Advantage: target is blinded");
+    }
+
+    // Target stunned: attacker has advantage
+    bool target_stunned = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().stunned;
+    if (target_stunned) {
+        caster_adv = true;
+        log_("Advantage: target is stunned");
+    }
+
+    int d20_val;
+    if (caster_adv && caster_dis) {
+        d20_val = roll(20);  // Cancel out
+    } else if (caster_adv) {
+        d20_val = rollAdvantage(20);
+    } else if (caster_dis) {
+        d20_val = rollDisadvantage(20);
+    } else {
+        d20_val = roll(20);
+    }
+    int mod     = spellAttackMod(caster_stats);
+    int total   = d20_val + mod;
+    th.d20        = d20_val;
+    th.attack_mod = mod;
+    th.total_roll = total;
+    th.target_ac  = calculateAC(bm, tgt_idx);
+    th.critical   = (d20_val >= caster_stats.crit_threshold);
+    th.hit        = th.critical || (d20_val != 1 && total >= th.target_ac);
+
+    // Metamagic — Seeking Spell: reroll a missed spell attack once, keep the new roll.
+    if (applied_metamagic == MetamagicSeeking && !th.hit) {
+        int reroll;
+        if (caster_adv && caster_dis)      reroll = roll(20);
+        else if (caster_adv)               reroll = rollAdvantage(20);
+        else if (caster_dis)               reroll = rollDisadvantage(20);
+        else                               reroll = roll(20);
+        log_("Metamagic Seeking: reroll {} (was {})", reroll, d20_val);
+        d20_val       = reroll;
+        total         = d20_val + mod;
+        th.d20        = d20_val;
+        th.total_roll = total;
+        th.critical   = (d20_val >= caster_stats.crit_threshold);
+        th.hit        = th.critical || (d20_val != 1 && total >= th.target_ac);
+    }
+    return th;
+}
+
 SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 {
     SpellResult result;
@@ -263,102 +380,26 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         switch (sp.attack_type) {
 
         case Spell::AttackRoll: {
-            // Apply advantage/disadvantage from caster conditions
-            bool caster_adv = caster_pa.agent->hasAdvantage();
-            bool caster_dis = caster_pa.agent->hasDisadvantage();
-
-            // Blinded: caster's attacks have disadvantage
-            if (caster_pa.agent->getConditions().blinded) {
-                caster_dis = true;
-                log_("Disadvantage: caster is blinded");
-            }
-
-            // Frightened: caster has disadvantage when fear source is in LOS
-            if (caster_pa.agent->getConditions().frightened) {
-                for (const auto& ac : activeAgentConditions_) {
-                    if (ac.agent_idx == action.caster_idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
-                        if (bm.hasLineOfSight(caster_pa.origin, caster_pa.agent->getSize(),
-                                              bm.placedAgents()[ac.caster_idx].origin, 1)) {
-                            caster_dis = true;
-                            log_("Disadvantage: caster is frightened and fear source is in LOS");
-                        }
-                        break;
-                    }
-                }
-            }
-
-            // Grappled: caster has disadvantage on spell attacks except against the grappler
-            if (caster_pa.agent->getConditions().grappled) {
-                if (action.target_indices[0] != caster_pa.agent->getConditions().grappler_idx) {
-                    caster_dis = true;
-                    log_("Disadvantage: caster is grappled");
-                }
-            }
-
-            // Apply engagement disadvantage for ranged spells
-            if (sp.range > 0 && isThreatened(bm, action.caster_idx)) {
-                caster_dis = true;
-                log_("Disadvantage: threatened (enemy within 10 ft)");
-            }
-            if (caster_pa.agent->hasDisadvantage())
-                log_("Disadvantage: condition");
-            if (caster_pa.agent->hasAdvantage())
-                log_("Advantage: condition");
-
-            // Sorcerer Innate Sorcery: advantage on the caster's spell attack rolls while active.
-            if (caster_stats.innate_sorcery_turns > 0) {
-                caster_adv = true;
-                log_("Advantage: Innate Sorcery");
-            }
-
-            // Target blinded: attacker has advantage
-            bool target_blinded = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().blinded;
-            if (target_blinded) {
-                caster_adv = true;
-                log_("Advantage: target is blinded");
-            }
-
-            // Target stunned: attacker has advantage
-            bool target_stunned = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().stunned;
-            if (target_stunned) {
-                caster_adv = true;
-                log_("Advantage: target is stunned");
-            }
-
-            int d20_val;
-            if (caster_adv && caster_dis) {
-                d20_val = roll(20);  // Cancel out
-            } else if (caster_adv) {
-                d20_val = rollAdvantage(20);
-            } else if (caster_dis) {
-                d20_val = rollDisadvantage(20);
+            // Roll the to-hit. A GUI single-target attack spell pre-rolled it in advanceCast and may
+            // have opened an OnHit Shield window already (the +5 AC / negation is baked into the stored
+            // SpellToHit) — consume that same roll so the player's outcome is what lands. Otherwise roll
+            // now and offer the inline defender Shield (auto/RL via decider_, or auto-take for GUI
+            // multi-beam attack spells, which have no per-beam decision cursor yet).
+            SpellToHit th;
+            if (in_flight_cast_.active && in_flight_cast_.has_preroll &&
+                tgt_idx == in_flight_cast_.preroll_target) {
+                th = in_flight_cast_.preroll;
             } else {
-                d20_val = roll(20);
+                th = rollSpellAttack(bm, action, tgt_idx, applied_metamagic);
+                if (maybeDefenderShieldInlineSpell(bm, action, tgt_idx, th))
+                    tgt_stats = bm.getAgentStats(tgt_idx);   // Shield mutated the target's slot/AC
             }
-            int mod     = spellAttackMod(caster_stats);
-            int total   = d20_val + mod;
-            tr.d20        = d20_val;
-            tr.attack_mod = mod;
-            tr.total_roll = total;
-            tr.target_ac  = calculateAC(bm, tgt_idx);
-            tr.critical   = (d20_val >= caster_stats.crit_threshold);
-            tr.hit        = tr.critical || (d20_val != 1 && total >= tr.target_ac);
-
-            // Metamagic — Seeking Spell: reroll a missed spell attack once, keep the new roll.
-            if (applied_metamagic == MetamagicSeeking && !tr.hit) {
-                int reroll;
-                if (caster_adv && caster_dis)      reroll = roll(20);
-                else if (caster_adv)               reroll = rollAdvantage(20);
-                else if (caster_dis)               reroll = rollDisadvantage(20);
-                else                               reroll = roll(20);
-                log_("Metamagic Seeking: reroll {} (was {})", reroll, d20_val);
-                d20_val       = reroll;
-                total         = d20_val + mod;
-                tr.d20        = d20_val;
-                tr.total_roll = total;
-                tr.critical   = (d20_val >= caster_stats.crit_threshold);
-                tr.hit        = tr.critical || (d20_val != 1 && total >= tr.target_ac);
-            }
+            tr.d20        = th.d20;
+            tr.attack_mod = th.attack_mod;
+            tr.total_roll = th.total_roll;
+            tr.target_ac  = th.target_ac;
+            tr.critical   = th.critical;
+            tr.hit        = th.hit;
 
             if (tr.hit) {
                 std::vector<int> dice;
@@ -1964,6 +2005,55 @@ bool CombatEngine::applyShield(BattleMap& bm, int reactor_idx) noexcept
     return true;
 }
 
+// Would casting Shield flip this spell-attack hit into a miss, and can the target do it right now?
+// Value-based sibling of shouldOfferDefenderShield (the weapon version, which takes an AttackResult).
+bool CombatEngine::shouldOfferSpellShield(const BattleMap& bm, int tgt_idx, const SpellToHit& th) const
+{
+    if (!th.hit || th.critical) return false;
+    if (th.total_roll >= th.target_ac + 5) return false;
+    return canCastShield(bm, tgt_idx);
+}
+
+// Inline defender Shield vs a spell attack (auto/RL path + GUI multi-beam). Mirrors
+// maybeDefenderShieldInline (the weapon version). On a flippable hit: decide via decider_ when one is
+// installed (RL/headless/tests); with no decider, AUTO-TAKE the Shield — the GUI has no per-beam
+// decision cursor for multi-beam attack spells yet (known_limitations.md). On accept, applyShield then
+// recompute th.hit against the new (+5) AC so the consumer sees the negated hit. The caller refetches
+// the target's stats afterward (applyShield spent the target's slot + raised its AC).
+bool CombatEngine::maybeDefenderShieldInlineSpell(BattleMap& bm, const SpellAction& action,
+                                                  int tgt_idx, SpellToHit& th)
+{
+    if (!shouldOfferSpellShield(bm, tgt_idx, th)) return false;
+
+    bool take_shield;
+    if (decider_) {
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnHit;
+        ctx.reactor_idx = tgt_idx;
+        ctx.source_idx  = action.caster_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Cast Shield (+5 AC — the spell attack misses)", "Shield"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return false;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        take_shield = (opt.kind == ReactionOption::Feature && opt.feature == "Shield");
+    } else if (in_flight_cast_.active && in_flight_cast_.interactive) {
+        take_shield = true;   // GUI multi-beam: no decider + no per-beam cursor → auto-take (documented)
+    } else {
+        return false;         // headless/RL with no decider: no reaction (matches maybeDefenderShieldInline)
+    }
+    if (!take_shield) return false;
+
+    if (applyShield(bm, tgt_idx)) {
+        th.target_ac = calculateAC(bm, tgt_idx);   // +5 from Shield is now live
+        th.hit = th.critical || (th.d20 != 1 && th.total_roll >= th.target_ac);
+        log_("{} casts Shield (+5 AC) — the spell attack misses!", agentName(bm, tgt_idx));
+        return true;
+    }
+    return false;
+}
+
 bool CombatEngine::applyCounterspell(BattleMap& bm, int reactor_idx, int caster_idx) noexcept
 {
     if (!canCastCounterspell(bm, reactor_idx, caster_idx)) return false;
@@ -2000,7 +2090,18 @@ void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, cons
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
     if (opt.kind != ReactionOption::Feature) return;
-    if (opt.feature == "Shield") (void)applyShield(bm, ctx.reactor_idx);
+    if (opt.feature == "Shield") {
+        if (applyShield(bm, ctx.reactor_idx) && ctx.window == ReactionWindow::OnHit &&
+            in_flight_cast_.has_preroll && in_flight_cast_.preroll_target == ctx.reactor_idx) {
+            // Spell-attack OnHit window: recompute the pre-rolled to-hit against the new (+5) AC so
+            // executeSpell consumes the negated hit (the OnDeclareCast Magic-Missile Shield needs no
+            // recompute — that immunity is handled by shield_active inside executeSpell).
+            SpellToHit& p = in_flight_cast_.preroll;
+            p.target_ac = calculateAC(bm, ctx.reactor_idx);
+            p.hit = p.critical || (p.d20 != 1 && p.total_roll >= p.target_ac);
+            log_("{} casts Shield (+5 AC) — the spell attack misses!", agentName(bm, ctx.reactor_idx));
+        }
+    }
     else if (opt.feature == "Counterspell") {
         if (applyCounterspell(bm, ctx.reactor_idx, ctx.source_idx))
             in_flight_cast_.countered = true;   // skips executeSpell in advanceCast; slot kept
@@ -2044,6 +2145,43 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
         applyCastReaction(bm, ctx, resp);
         ++c.cursor;
     }
+
+    // ── Single-target spell-attack OnHit Shield window (GUI suspend) ──
+    // Once the OnDeclareCast windows close (and the cast wasn't countered), a single-target AttackRoll
+    // spell pre-rolls its to-hit here so the target can react with Shield — the spell analog of
+    // beginAttack's OnHit window. Only for the interactive (GUI) path and only when the target can
+    // actually cast Shield (so the common no-Shield cast still rolls inside executeSpell, in order).
+    // The auto/RL path and GUI multi-beam attack spells use maybeDefenderShieldInlineSpell instead.
+    if (c.interactive && !c.countered && !c.attack_window_done) {
+        c.attack_window_done = true;                                 // evaluate the window at most once
+        int  single_target   = (c.action.target_indices.size() == 1) ? c.action.target_indices[0] : -1;
+        bool is_attack_spell = false;
+        if (single_target >= 0 && c.action.caster_idx >= 0 &&
+            c.action.caster_idx < static_cast<int>(agents.size())) {
+            const auto& spells = bm.getAgentSpells(c.action.caster_idx);
+            if (c.action.spell_idx >= 0 && c.action.spell_idx < static_cast<int>(spells.size()))
+                is_attack_spell = (spells[static_cast<std::size_t>(c.action.spell_idx)].attack_type
+                                   == Spell::AttackRoll);
+        }
+        if (is_attack_spell && canCastShield(bm, single_target)) {
+            c.preroll        = rollSpellAttack(bm, c.action, single_target, MetamagicNone);
+            c.has_preroll    = true;                                 // executeSpell consumes this roll
+            c.preroll_target = single_target;
+            if (shouldOfferSpellShield(bm, single_target, c.preroll)) {
+                ReactionCtx ctx;
+                ctx.window      = ReactionWindow::OnHit;
+                ctx.reactor_idx = single_target;
+                ctx.source_idx  = c.action.caster_idx;
+                ctx.spell_idx   = c.action.spell_idx;
+                ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                                     "Cast Shield (+5 AC — the spell attack misses)", "Shield"});
+                ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+                pending_decision_ = PendingDecision{true, ctx};     // suspend; GUI resumes via submitDecision
+                return FlowStatus::AwaitingDecision;
+            }
+        }
+    }
+
     pending_decision_.active = false;
     if (!c.countered)
         c.result = executeSpell(bm, c.action);                      // resolve (slot spent inside, late)

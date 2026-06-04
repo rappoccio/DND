@@ -683,6 +683,60 @@ AttackResult CombatEngine::applyRecklessReroll(BattleMap& bm, int attacker_idx,
     return executeAction(bm, Attack{attacker_idx, target_idx, weapon_idx});
 }
 
+AttackResult CombatEngine::applyRiposte(BattleMap& bm, int defender_idx,
+                                        int attacker_idx, int weapon_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (defender_idx < 0 || defender_idx >= n || attacker_idx < 0 || attacker_idx >= n)
+        return AttackResult{};
+
+    Agent::Conditions dc = bm.getAgentConditions(defender_idx);
+    if (!dc.riposte_available) return AttackResult{};   // only when the miss offered it
+
+    Agent::Stats ds = bm.getAgentStats(defender_idx);
+    const Resource* sd = ds.getResource("Superiority Dice");
+    if (!sd || sd->current <= 0) {                      // shouldn't happen (canRiposte checked), but be safe
+        dc.riposte_available = false;
+        bm.setAgentConditions(defender_idx, dc);
+        return AttackResult{};
+    }
+    const int die_size = ds.superiority_die_size;
+
+    // Spend the reaction + clear the flag, then spend 1 Superiority Die.
+    dc.riposte_available = false;
+    dc.reaction_used     = true;
+    bm.setAgentConditions(defender_idx, dc);
+    spendResource(bm, defender_idx, "Superiority Dice", 1);
+    log_("{} ripostes {} (reaction + 1 Superiority Die)",
+         agentName(bm, defender_idx), agentName(bm, attacker_idx));
+
+    // The riposte: a fresh melee attack back at the attacker. (Atomic executeAction, like
+    // applyRecklessReroll — the riposte does not open a separate GUI reaction window.)
+    AttackResult r = executeAction(bm, Attack{defender_idx, attacker_idx, weapon_idx});
+
+    // On a hit, add one Superiority Die to the damage (RAW 2024). Added directly to total_damage like
+    // the Divine Fury / Berserker Frenzy bonus dice; HP/concentration applied as in applyPsionicStrikeEffect.
+    if (r.hit) {
+        const int die = roll(die_size);
+        Agent::Stats as = bm.getAgentStats(attacker_idx);
+        r.total_damage += die;
+        r.damage_breakdown.push_back({"riposte", die});
+        const int overflow = std::max(0, die - as.temp_hp);
+        as.temp_hp = std::max(0, as.temp_hp - die);
+        as.hp_cur  = std::clamp(as.hp_cur - overflow, 0, as.hp_max);
+        r.hp_after    = as.hp_cur;
+        r.target_down = (as.hp_cur <= 0);
+        bm.setAgentStats(attacker_idx, as);
+        log_("Riposte: +{} Superiority Die damage to {}", die, agentName(bm, attacker_idx));
+        if (die > 0) {
+            checkConcentrationOnDamage(bm, attacker_idx, die);
+            processDamageTaken(bm, attacker_idx, die);
+        }
+    }
+    return r;
+}
+
 ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept
 {
     ToppleResult res;

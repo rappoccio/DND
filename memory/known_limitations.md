@@ -58,6 +58,18 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   Counterspell can't itself be countered (no decision stack yet); (b) the 60 ft range gate is untested
   (the 12×12 test map tops out at ~55 ft); (c) the same yield-mid-resolution mechanism is still NOT
   wired for the d20-roll case below (Cutting Words / Countercharm remain pre-roll).
+- **Shield vs spell attacks** (IMPLEMENTED 2026-06-04): `executeSpell`'s per-target to-hit roll was
+  extracted into `rollSpellAttack` (the spell analog of `resolveAttack`) so a single-target AttackRoll
+  spell (Fire Bolt, Guiding Bolt, Chromatic Orb, Ray of Frost…) opens an OnHit Shield window between
+  the roll and damage — `advanceCast` pre-rolls the to-hit and `executeSpell` consumes that same roll
+  (a negated hit deals no damage / fires no concentration save). *Remaining gaps:* (a) **GUI multi-beam
+  attack spells auto-fire Shield** — Scorching Ray / multi-beam Eldritch Blast roll each beam inside
+  `executeSpell`, which has no per-beam decision cursor yet, so in the GUI (no decider) the target's
+  Shield is **auto-cast inline** whenever a beam's +5 AC would flip it to a miss (the auto/RL path asks
+  the decider; only single-target casts park for a human choice). Same deferral as Cleave. (b) **Seeking
+  Spell + the single-target GUI window don't combine** — the pre-roll in `advanceCast` passes
+  `MetamagicNone`, so a Sorcerer's Seeking reroll is skipped for a GUI single-target attack spell that
+  opens the Shield window (rare; the auto/RL path applies Seeking normally).
 - **Bard Countercharm** (deferred): reaction to reroll an ally's just-failed charm/frighten save —
   needs the post-save interrupt at the (many, inline) save sites.
 - **Use Inspiration Die** GUI: RAW the holder decides *after* a failed roll; the button primes it
@@ -74,13 +86,29 @@ Words, Counterspell, Countercharm, and the Use-Inspiration prompt all become con
 
 ## Battle Master Fighter
 
-### Riposte (DEFER)
-**Rule**: Reaction melee attack when a creature misses *you* with a melee attack.
-**Why deferred**: All existing on-hit riders flag the *attacker*. Riposte requires flagging the
-*defender* when the attacker misses them, then prompting the defender's player for a reaction.
-No existing engine pattern covers this trigger direction. Will reuse `reaction_used` once the
-"counter-reaction-on-miss" pattern is established (similar to Opportunity Attack, but triggered
-by a miss rather than movement).
+### Riposte (IMPLEMENTED 2026-06-04 — see RIPOSTE_PLAN.md)
+**Rule**: Reaction melee attack when a creature misses *you* with a melee attack; on a hit, add the
+Superiority Die to the damage. Modeled on Reckless Attack's post-hoc-on-miss path: `applyAttackResult`
+flags `conditions.riposte_available` on the **defender** (not the attacker — the one new direction);
+the GUI prompts (`_offer_riposte` → `apply_riposte`), and the auto/RL driver consults
+`chooseReaction` at an **OnMiss** window inline (`maybeRiposteInline`, the mirror of the OnHit Shield
+path). The riposte fires *after* the triggering attack fully resolves, so it's a fresh top-level
+`executeAction` — no decision stack.
+
+**v1 limitations (deferred):**
+- **Attacker-rider shadowing:** the GUI on-miss rider chain is mutually-exclusive `elif`, and Riposte
+  is offered **last**. If the *attacker* is also eligible for an on-miss rider (Precision/Guided/
+  Reckless) on the same swing, it shadows the defender's Riposte that swing. (Natural reading: the
+  attacker's miss→hit conversion resolves first; if it converts, there's no miss to riposte.) Full
+  chaining — offer Riposte *after* the attacker's on-miss rider resolves and the attack is still a
+  miss — is v2. Rare in practice (both attacker and defender with on-miss reactions on one swing).
+- **No fresh GUI Shield window for the riposte:** `applyRiposte` uses the atomic `executeAction`
+  (like `applyRecklessReroll`), so the original attacker is not offered a *suspendable* Shield window
+  against the riposte swing (auto/RL inline Shield still fires). Same deferral as Cleave.
+- **Reach weapons:** eligibility uses 1-cell (5 ft) reach for the attacker-in-range check
+  (`threateningAgents(..., 1)`); reach-weapon defenders (10 ft) are not yet handled.
+- **Damage type:** the +Superiority-Die is added directly to `total_damage` with no resistance
+  multiplier (consistent with Divine Fury / Berserker Frenzy bonus dice).
 
 ### Additional Maneuvers (beyond starter set)
 The following maneuvers are not yet implemented but will reuse `applyManeuverEffect`'s dispatch
@@ -430,7 +458,7 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
   a die). Wire alongside a general defender-reaction prompt later.
 
 ### Deferred — Battle Master (remaining)
-- **Riposte** (reaction-on-miss, flags the defender — no engine pattern yet)
+- **Riposte** — IMPLEMENTED 2026-06-04 (see the Riposte section above + RIPOSTE_PLAN.md); v1 limits only.
 - **Additional maneuvers** beyond the starter set (Disarming, Feinting, Lunging, etc. — dispatch via `applyManeuverEffect` once needed)
 
 ### Deferred — Champion extras

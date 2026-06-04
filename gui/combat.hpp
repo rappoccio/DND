@@ -469,9 +469,23 @@ struct PendingDecision { bool active{false}; ReactionCtx ctx; };
 // `step` is the path index of that cell (events resolve in path order for stop-on-down).
 struct ProvokeEvent { int reactor{-1}; Cell left_cell{}; int step{0}; };
 
+// The result of one spell attack roll (analog of the weapon AttackResult's to-hit fields). Produced
+// by rollSpellAttack; consumed by executeSpell's AttackRoll branch and carried across the OnHit Shield
+// window for a single-target attack spell so the same roll the player saw is the one that lands.
+struct SpellToHit {
+    int  d20{0};
+    int  attack_mod{0};
+    int  total_roll{0};
+    int  target_ac{0};
+    bool critical{false};
+    bool hit{false};
+};
+
 // Resumable state for one in-flight spell cast that may be interrupted at the OnDeclareCast window
 // (ONDECLARECAST_PLAN.md). beginCast wraps executeSpell with this pre-resolution window: reactors
-// (this pass: Magic Missile targets that can cast Shield) react before the cast resolves.
+// (this pass: Magic Missile targets that can cast Shield) react before the cast resolves. A
+// single-target AttackRoll spell additionally opens an OnHit Shield window after the to-hit roll
+// (the spell analog of beginAttack's OnHit window — see rollSpellAttack/maybeDefenderShieldInlineSpell).
 struct InFlightCast {
     bool active{false};
     bool interactive{false};        // GUI suspends at checkpoints; auto driver resolves inline
@@ -480,6 +494,11 @@ struct InFlightCast {
     std::size_t cursor{0};
     bool countered{false};          // set by a successful Counterspell (step 2) → cast fizzles, slot kept
     SpellResult result;             // filled when the cast resolves
+    // ── single-target spell-attack OnHit Shield window (GUI suspend) ──
+    bool       has_preroll{false};      // the to-hit was rolled in advanceCast; executeSpell consumes it
+    int        preroll_target{-1};      // the target the pre-rolled to-hit applies to
+    SpellToHit preroll{};               // the pre-rolled to-hit (updated by applyCastReaction if Shielded)
+    bool       attack_window_done{false}; // the OnHit Shield window was offered once (don't re-open on resume)
 };
 
 // Resumable state for one in-flight move that may provoke OAs (REACTION_SYSTEM_PLAN.md §6).
@@ -1017,6 +1036,14 @@ public:
     [[nodiscard]] AttackResult applyRecklessReroll(BattleMap& bm, int attacker_idx,
                                                    int target_idx, int weapon_idx) noexcept;
 
+    // Battle Master Riposte (on-miss DEFENDER reaction) — post-hoc entry. After a missing melee
+    // attack the engine flags the target's riposte_available; the GUI prompts (or the auto/RL path
+    // calls maybeRiposteInline) and invokes this to commit the riposte: spend the reaction + 1
+    // Superiority Die, make a melee attack defender→attacker, and on a hit add the Superiority Die to
+    // the damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).
+    [[nodiscard]] AttackResult applyRiposte(BattleMap& bm, int defender_idx,
+                                            int attacker_idx, int weapon_idx) noexcept;
+
     // Weapon Mastery — Push: a qualifying hit (push_available) shoves the target 10 ft straight
     // away from the attacker (Large or smaller). Clears the flag. Returns feet actually moved.
     int applyPush(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
@@ -1151,6 +1178,36 @@ public:
     // Returns true iff Shield was cast (the caller must then re-fetch the target's stats, since this
     // mutates the target's slot/AC and executeAction re-persists a pre-window snapshot otherwise).
     bool maybeDefenderShieldInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // Battle Master Riposte — the OnMiss sibling of maybeDefenderShieldInline (auto/RL only; the GUI,
+    // with no decider, gets the deferred-flag prompt via riposte_available). Gated on the defender's
+    // riposte_available flag (set by applyAttackResult on a melee miss); builds a ReactionCtx{OnMiss}
+    // with a Feature("Riposte") option, asks decider_->chooseReaction, and on accept calls applyRiposte.
+    // Called from executeAction AFTER applyAttackResult, so the riposte is a fresh top-level attack
+    // (no nesting / decision stack). Returns true iff a riposte was made.
+    bool maybeRiposteInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // Spell-attack analog of the weapon to-hit roller. Re-fetches caster/target/agents from `bm`,
+    // applies the same advantage/disadvantage conditions executeSpell's AttackRoll branch used, rolls
+    // the d20 (+ Seeking reroll if applied_metamagic), and returns the resolved to-hit. Pulled out of
+    // executeSpell so a single-target attack spell can roll the to-hit ahead of the OnHit Shield window
+    // (advanceCast) and have executeSpell consume the same roll (the spell analog of resolveAttack).
+    SpellToHit rollSpellAttack(BattleMap& bm, const SpellAction& action, int tgt_idx,
+                               MetamagicOption applied_metamagic);
+
+    // Would casting Shield flip this spell-attack hit to a miss, and can the target do it right now?
+    // Value-based sibling of shouldOfferDefenderShield (which takes a weapon AttackResult).
+    [[nodiscard]] bool shouldOfferSpellShield(const BattleMap& bm, int tgt_idx,
+                                              const SpellToHit& th) const;
+
+    // Inline defender Shield vs a spell attack (auto/RL path + GUI multi-beam). Mirrors
+    // maybeDefenderShieldInline: if shouldOfferSpellShield, decide via decider_ when one is installed
+    // (RL/headless/tests), else AUTO-TAKE the Shield (GUI multi-beam attack spells have no per-beam
+    // decision cursor yet — documented in known_limitations.md). On accept, applyShield + recompute
+    // th.hit against the new (+5) AC. Returns true iff Shield was cast. NOT used for the single-target
+    // GUI case — that suspends at the OnHit window in advanceCast instead.
+    bool maybeDefenderShieldInlineSpell(BattleMap& bm, const SpellAction& action, int tgt_idx,
+                                        SpellToHit& th);
 
     // ── Initiative ────────────────────────────────────────────────────────
     //
@@ -1400,6 +1457,12 @@ private:
     // inline (maybeDefenderShieldInline) and suspendable (advanceAttack) paths so they gate identically.
     [[nodiscard]] bool shouldOfferDefenderShield(const BattleMap& bm, const Attack& action,
                                                  const AttackResult& r) const;
+    // Riposte eligibility: defender_idx is a Battle Master with a Superiority Die and its reaction
+    // free, alive, has a melee weapon, and attacker_idx is within the defender's melee reach. The
+    // single eligibility gate, called from applyAttackResult's melee-miss branch to set the flag.
+    [[nodiscard]] bool canRiposte(const BattleMap& bm, int defender_idx, int attacker_idx) const;
+    // Index of the defender's first melee weapon (the one a Riposte strikes with), or -1 if none.
+    [[nodiscard]] int  riposteWeaponIdx(const BattleMap& bm, int idx) const;
     // Apply one chosen OnHit reaction (this pass: the target's Shield → negates the hit on r).
     void applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
     // Drive the in-flight attack: open the Shield window (suspend for GUI) or finalize via

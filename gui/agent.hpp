@@ -537,6 +537,7 @@ namespace rpg {
       bool raging{false};                   // Barbarian is currently in Rage
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
+      bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
@@ -648,6 +649,7 @@ namespace rpg {
       conditions_.guided_strike_available      = false;
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;
+      conditions_.riposte_available            = false;
       // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
       // they are consumed on the next qualifying attack roll (and survive into this
       // turn so a sapped creature's attack still suffers disadvantage). slowed and

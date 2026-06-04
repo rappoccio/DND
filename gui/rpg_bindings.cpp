@@ -475,6 +475,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("raging",            &Agent::Conditions::raging)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
         .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
+        .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
@@ -2006,6 +2007,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "conditions.reckless_reroll_available, commit Reckless (enemies gain advantage vs you\n"
              "until your next turn) and re-resolve the SAME attack with advantage. Returns the fresh\n"
              "AttackResult (invalid if the flag wasn't set).")
+        .def("apply_riposte",
+             &CombatEngine::applyRiposte,
+             py::arg("battle_map"), py::arg("defender_idx"), py::arg("attacker_idx"), py::arg("weapon_idx"),
+             "Battle Master Riposte (on-miss DEFENDER reaction): after a melee attack misses the\n"
+             "defender, flagged via conditions.riposte_available, spend the reaction + 1 Superiority\n"
+             "Die to make a melee attack defender→attacker; on a hit, add the Superiority Die to the\n"
+             "damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).")
         .def("apply_push",
              &CombatEngine::applyPush,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),

@@ -2054,8 +2054,11 @@ class App:
         has_psionic_strike = False
         has_divine_smite = False
         has_reckless_reroll = False
+        has_riposte = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
+            # Riposte is a DEFENDER reaction: the flag is set on the target, not the attacker.
+            tgt_cond = self.combat.get_agent_conditions(self.bm, target_idx) if 0 <= target_idx < len(agents) else None
             if result.hit and atk_cond and atk_cond.cunning_strike_available:
                 has_cunning_strike = True
             elif result.hit and atk_cond and atk_cond.brutal_strike_available:
@@ -2078,6 +2081,10 @@ class App:
                 has_precision = True
             elif (not result.hit) and atk_cond and atk_cond.reckless_reroll_available:
                 has_reckless_reroll = True
+            # Riposte is offered LAST among on-miss options (v1): an attacker on-miss rider above
+            # shadows the defender's riposte this swing (see known_limitations.md; full chaining is v2).
+            elif (not result.hit) and tgt_cond and tgt_cond.riposte_available:
+                has_riposte = True
             elif result.hit and atk_cond and atk_cond.push_available:
                 has_push = True
             elif result.hit and atk_cond and atk_cond.topple_available:
@@ -2133,6 +2140,8 @@ class App:
             self._offer_precision_attack(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_reckless_reroll:
             self._offer_reckless_reroll(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_riposte:
+            self._offer_riposte(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
@@ -2870,6 +2879,44 @@ class App:
             ("Skip", _skip),
         ]
         px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Offer a Battle Master DEFENDER a Riposte after a melee attack misses them: spend the
+        reaction + 1 Superiority Die to make a melee attack back at the attacker, adding the die to
+        the damage on a hit. The reactor is the TARGET of the missed attack. Mirrors _offer_reckless_reroll."""
+        def _apply():
+            # Riposte = the target (defender) attacks the original attacker.
+            rip = self.combat.apply_riposte(self.bm, target_idx, atk_idx, action.weapon_idx)
+            self._combat_log_add(atk_msg)   # the original miss still happened
+            if rip.valid and rip.hit:
+                dmg_parts = self._get_damage_type_names(rip.magic_damage_types, rip.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{tgt_name}→{atk_name}: Riposte → HIT {rip.total_damage}"
+                    f"{self._damage_breakdown_str(rip)} {dmg_type_str}"
+                    f"{' CRIT!' if rip.critical else ''}{' — DOWN' if rip.target_down else ''}")
+                if rip.target_down:
+                    self._drop_concentration_for_agent(atk_idx)
+            elif rip.valid:
+                self._combat_log_add(
+                    f"{tgt_name}→{atk_name}: Riposte → misses "
+                    f"(roll {rip.total_roll} vs AC {rip.target_ac})")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Riposte — melee attack back (reaction + 1 Superiority Die)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(target_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
     def _create_unarmed_punch_weapon(self):
@@ -4089,8 +4136,9 @@ class App:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name}'s spell!")
             elif ctx.window == rpg.ReactionWindow.OnHit:
+                kind = "spell attack" if ctx.spell_idx >= 0 else "attack"
                 self._combat_log_add(
-                    f"{agents[ctx.reactor_idx].name} may cast Shield vs {agents[ctx.source_idx].name}'s attack!")
+                    f"{agents[ctx.reactor_idx].name} may cast Shield vs {agents[ctx.source_idx].name}'s {kind}!")
             else:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")

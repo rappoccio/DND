@@ -424,6 +424,66 @@ bool CombatEngine::maybeDefenderShieldInline(BattleMap& bm, const Attack& action
     return false;
 }
 
+int CombatEngine::riposteWeaponIdx(const BattleMap& bm, int idx) const
+{
+    const auto weapons = bm.getAgentWeapons(idx);
+    for (int i = 0; i < static_cast<int>(weapons.size()); ++i)
+        if (weapons[static_cast<std::size_t>(i)].type == WeaponType::Melee) return i;
+    return -1;
+}
+
+bool CombatEngine::canRiposte(const BattleMap& bm, int defender_idx, int attacker_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (defender_idx < 0 || defender_idx >= n || attacker_idx < 0 || attacker_idx >= n) return false;
+    if (defender_idx == attacker_idx) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(defender_idx);
+    if (s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Fighter || s.fighter_subclass != BattleMasterPath) return false;
+    const Resource* sd = s.getResource("Superiority Dice");
+    if (!sd || sd->current <= 0) return false;
+    if (riposteWeaponIdx(bm, defender_idx) < 0) return false;          // needs a melee weapon to strike back
+    // The attacker must be within the defender's melee reach (1 cell = 5 ft; reach weapons deferred).
+    const auto threats = threateningAgents(bm, defender_idx, 1);
+    return std::find(threats.begin(), threats.end(), attacker_idx) != threats.end();
+}
+
+bool CombatEngine::maybeRiposteInline(BattleMap& bm, const Attack& action, AttackResult& r)
+{
+    // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via riposte_available.
+    if (!decider_) return false;
+    if (r.hit) return false;
+    const int defender = action.target_idx;       // the one who was missed → may riposte
+    const int attacker = action.attacker_idx;
+    Agent::Conditions dcond = bm.getAgentConditions(defender);
+    if (!dcond.riposte_available) return false;    // set by applyAttackResult on an eligible melee miss
+    const int widx = riposteWeaponIdx(bm, defender);
+    if (widx < 0) { dcond.riposte_available = false; bm.setAgentConditions(defender, dcond); return false; }
+
+    ReactionCtx ctx;
+    ctx.window      = ReactionWindow::OnMiss;
+    ctx.reactor_idx = defender;
+    ctx.source_idx  = attacker;
+    ctx.options.push_back(ReactionOption{ReactionOption::Feature, widx,
+                                         "Riposte (reaction + 1 Superiority Die)", "Riposte"});
+    ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+
+    const ReactionResponse resp = decider_->chooseReaction(ctx);
+    const bool accepted = resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+                          ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature &&
+                          ctx.options[static_cast<std::size_t>(resp.option)].feature == "Riposte";
+    if (!accepted) {
+        dcond.riposte_available = false;           // declined: drop the stale flag (resets at turn start anyway)
+        bm.setAgentConditions(defender, dcond);
+        return false;
+    }
+    (void)applyRiposte(bm, defender, attacker, widx);
+    return true;
+}
+
 // Apply one chosen OnHit reaction to the in-flight attack (this pass: the target's Shield). Mirrors
 // applyCastReaction: on accept, spend the slot+reaction and negate the hit on in_flight_attack_.r so
 // advanceAttack's applyAttackResult rolls no damage / fires no concentration save. Per DM ruling a
@@ -782,7 +842,12 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // Auto/RL defender Shield window (inline via the decider). applyAttackResult re-fetches the
     // target's stats, so Shield's slot-spend + AC are reflected (no stale-snapshot clobber).
     maybeDefenderShieldInline(bm, action, s.r);
-    return applyAttackResult(bm, s);
+    AttackResult r = applyAttackResult(bm, s);
+    // Auto/RL Battle Master Riposte (OnMiss defender reaction). Runs AFTER the attack fully resolves,
+    // so the riposte is a fresh top-level attack (no nesting). The reaction economy caps the chain:
+    // a riposte-of-a-riposte is possible once each (both reactors spend their one reaction), then stops.
+    maybeRiposteInline(bm, action, r);
+    return r;
 }
 
 // ── applyAttackResult: phase B — apply the rolled attack's consequences (on-hit/on-miss rider
@@ -906,6 +971,18 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             updated_atk_cond.maneuver_precision_available = true;
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         }
+    }
+
+    // ── Battle Master Riposte eligibility (on-miss, DEFENDER reaction) ────────
+    // When a MELEE attack misses, a Battle Master TARGET with a Superiority Die and its reaction free
+    // may spend the die + reaction to make a melee attack back. Flagged on the TARGET (the reactor),
+    // not the attacker. The GUI prompts (deferred-flag path); the auto/RL inline window is
+    // maybeRiposteInline, called from executeAction after this returns. canRiposte is the single
+    // eligibility gate (BattleMaster + die + reaction + alive + melee weapon + attacker in reach).
+    if (!r.hit && w.type == WeaponType::Melee && canRiposte(bm, action.target_idx, action.attacker_idx)) {
+        Agent::Conditions tdef = bm.getAgentConditions(action.target_idx);
+        tdef.riposte_available = true;
+        bm.setAgentConditions(action.target_idx, tdef);
     }
 
     // ── Cleric Blessed Strikes — Divine Strike eligibility ────────────────
