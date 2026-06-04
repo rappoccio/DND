@@ -1810,29 +1810,36 @@ class App:
     def _continue_attack_sequence_after_rider(self, atk_idx: int):
         """After a rider effect (Stunning Strike, etc.) is applied, check if more attacks remain
         and either re-prompt or end the attack sequence. Called from rider callbacks."""
-        # Determine if more attacks remain
+        # Determine if more attacks remain. Key on the DURABLE _attack_sequence_slot (not the
+        # transient pending_attack_slot, which _finish_attack disarms centrally so the player can
+        # move between attacks — see the "central disarm" note there).
+        seq_slot = self._attack_sequence_slot
         has_more_attacks = False
-        if self.pending_attack_slot == "bonus":
+        if seq_slot == "bonus":
             stats = self.combat.get_agent_stats(self.bm, atk_idx)
             has_more_attacks = stats.bonus_attacks_remaining > 0
-        elif self.pending_attack_slot == "action":
+        elif seq_slot == "action":
             has_more_attacks = self.attacks_remaining > 0
 
         if has_more_attacks:
-            # Re-prompt for next attack
-            if self.pending_attack_slot == "bonus":
+            atk_name = self.bm.placed_agents[atk_idx].name
+            if seq_slot == "bonus":
+                # Bonus multi-attack (Flurry, etc.): single target — keep auto-targeting (unchanged).
                 stats = self.combat.get_agent_stats(self.bm, atk_idx)
                 rem = stats.bonus_attacks_remaining
-                label = f"Extra attack ({rem} remaining)"
+                self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
+                self._start_attack(self._attack_sequence_slot)
+                self._combat_log_add(
+                    f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
             else:
+                # Action Extra-Attack sequence: DISARM between attacks so the player can move; the
+                # standing "⚔ Attack (N)" button resumes (count preserved, no re-seed). Mirrors the
+                # non-rider path in _finish_attack.
                 rem = self.attacks_remaining
-                label = f"Attack ({rem} remaining)"
-
-            atk_name = self.bm.placed_agents[atk_idx].name
-            self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
-            self._start_attack(self._attack_sequence_slot)
-            self._combat_log_add(
-                f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
+                self.pending_attack_slot = ""
+                self._combat_log_add(
+                    f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — "
+                    f"move if you wish, then click Attack to continue.")
         else:
             # Attacks exhausted
             self.pending_attack_slot = ""
@@ -2132,6 +2139,28 @@ class App:
             self.attacks_remaining -= 1
             has_more_attacks = self.attacks_remaining > 0
 
+        # Central disarm for the ACTION sequence: clear pending_attack_slot NOW, before any rider
+        # menu, so the map leaves target-selection between attacks regardless of which rider (if any)
+        # fires. Without this, the many on-hit riders that don't re-prompt (brutal/cunning/divine/
+        # push/topple/…) left the map armed → clicking your own sprite resolved as a self-attack
+        # ("out of range"). The standing "⚔ Attack (N)" button resumes the sequence; the count is
+        # preserved. Bonus sequences keep their own armed auto-target flow (single target). The
+        # rider continuations and the no-rider block below key on _attack_sequence_slot, not this
+        # field, so the early clear is safe. Also commit the Action here (and end the sequence when
+        # the last attack is spent) so it happens even for the many riders that skip the no-rider
+        # block — otherwise a rider on the LAST attack would leave action_used False + a stale
+        # _attack_sequence_slot, and the next Attack click would re-seed a fresh full set of attacks.
+        # action_used True mid-sequence is fine: mid_sequence_action keeps the "⚔ Attack (N)" button
+        # alive (and the handler lets it fire). Frenzy / unarmed-weapon restore stay in the no-rider
+        # block (rider-laden actions skip them — a pre-existing edge, see known_limitations.md).
+        if self._attack_sequence_slot == "action":
+            self.pending_attack_slot = ""
+            self.action_used = True
+            if not has_more_attacks:
+                self._attack_sequence_slot = ""
+                self.pending_attack_offhand = None
+                self.pending_attack_resource = None
+
         # FLAG: Move to C++
         # Defer logging until the rider effect is chosen; otherwise log immediately.
         if has_cunning_strike:
@@ -2186,21 +2215,28 @@ class App:
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
-                # More attacks left in this sequence — re-setup for the next attack
-                if self.pending_attack_slot == "bonus":
-                    # Bonus-action attack: get count from C++
+                # More attacks left in this sequence.
+                if self._attack_sequence_slot == "bonus":
+                    # Bonus multi-attack (e.g. Flurry of Blows): single target, no standing
+                    # mid-sequence button, so keep auto-targeting the next strike (unchanged).
                     stats = self.combat.get_agent_stats(self.bm, atk_idx)
                     rem = stats.bonus_attacks_remaining
-                    label = f"Extra attack ({rem} remaining)"
+                    self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
+                    self._start_attack("bonus")
+                    self._combat_log_add(
+                        f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
                 else:
-                    # Action attack: use Python counter
+                    # Action Extra-Attack sequence: DISARM target-selection between attacks so the
+                    # player can move (clicking your own sprite no longer reads as a self-attack).
+                    # The standing "⚔ Attack (N)" button (mid_sequence_action) resumes the sequence;
+                    # the count is preserved, so re-clicking does NOT re-seed to a fresh full set
+                    # (see _start_attack's `attacks_remaining == 0` guard). Requested by the user as
+                    # the general fix for "allow movement mid-attack-sequence".
                     rem = self.attacks_remaining
-                    label = f"Attack ({rem} remaining)"
-
-                self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
-                self._start_attack(self.pending_attack_slot if self.pending_attack_slot else "action")
-                self._combat_log_add(
-                    f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
+                    self.pending_attack_slot = ""
+                    self._combat_log_add(
+                        f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — "
+                        f"move if you wish, then click Attack to continue.")
             else:
                 # Attacks exhausted — mark action used and clear sequence state
                 self.pending_attack_slot = ""
@@ -4305,10 +4341,17 @@ class App:
             self.combat.mark_war_magic_used(self.bm, caster_idx)
             self.attacks_remaining -= 1
             if self.attacks_remaining > 0:
-                # Re-enter the Attack action for the remaining attack(s). war_magic_used stays set
-                # (only a fresh Attack-action seed clears it), so the option won't reappear.
+                # War Magic replaced one attack; DISARM between attacks so the player can move. The
+                # standing "⚔ Attack (N)" button resumes the remaining attack(s) — count preserved,
+                # and war_magic_used stays set (only a fresh Attack-action seed clears it) so the
+                # substitution option won't reappear.
                 self.pending_attack_slot = ""
-                self._start_attack(self._attack_sequence_slot)
+                rem = self.attacks_remaining
+                nm = (self.bm.placed_agents[caster_idx].name
+                      if 0 <= caster_idx < len(self.bm.placed_agents) else "?")
+                self._combat_log_add(
+                    f"{nm}: {rem} attack{'s' if rem != 1 else ''} remaining — "
+                    f"move if you wish, then click Attack to continue.")
             else:
                 self.attacks_remaining     = 0
                 self.action_used           = True
@@ -7901,9 +7944,14 @@ class App:
                             len(self.combat.get_agent_weapons(self.bm, _ev_idx)) > 0)
                 _has_offhand = (0 <= _ev_idx < len(self.bm.placed_agents) and
                                 any(w.off_hand for w in self.combat.get_agent_weapons(self.bm, _ev_idx)))
+                # The Attack button also continues an in-progress Extra Attack sequence: mid-sequence
+                # the Action is already marked used, but the standing "⚔ Attack (N)" button must
+                # still resume the remaining attacks. A FRESH Attack needs an unused Action.
+                _mid_seq_atk = (self.attacks_remaining > 0 and self._attack_sequence_slot == "action")
+                if _has_wpn and (not self.action_used or _mid_seq_atk) and \
+                        self.btn_cbt_atk_action.clicked(event):
+                    self._start_attack("action")
                 if not self.action_used:
-                    if _has_wpn and self.btn_cbt_atk_action.clicked(event):
-                        self._start_attack("action")
                     if self.btn_cbt_unarmed.clicked(event):
                         self._show_unarmed_menu(pygame.mouse.get_pos())
                     if self.btn_cbt_pass_action.clicked(event):

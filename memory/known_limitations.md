@@ -82,6 +82,41 @@ Words, Counterspell, Countercharm, and the Use-Inspiration prompt all become con
 
 ---
 
+### Multiple bonus attacks must hit the same target [DEFER]
+**Status:** GUI limitation — bonus multi-attack sequences auto-target and can't move between strikes.
+
+**Context:** The Attack **action** sequence (Extra Attack) now uses an explicit re-click model — after
+each attack the GUI *disarms* target-selection so the player can move, then re-clicks the standing
+"⚔ Attack (N)" button to make the next attack (2026-06-04, requested by the user; fixes "clicking your
+own sprite mid-sequence reads as a self-attack / out of range"). **Bonus** multi-attack sequences
+(Flurry of Blows today; any future feat that grants several bonus attacks) were left on the old
+auto-targeting flow: there is no standing mid-sequence *bonus* button (the bonus attack button is gated
+on `not bonus_used` + an off-hand weapon), and Flurry's strikes all hit one creature so movement
+between them isn't needed.
+
+**Limitation:** A bonus multi-attack cannot move between strikes and effectively must spend all its
+strikes on the same target it first clicks.
+
+**When ready:** Give bonus multi-attack sequences the same disarm + standing-button model — add a
+`mid_sequence_bonus` analog (count-labelled standing bonus-attack button, not gated on an off-hand
+weapon) so the player can move and retarget between bonus strikes. See `_finish_attack` /
+`_continue_attack_sequence_after_rider` (the `pending_attack_slot == "bonus"` branches kept the old
+`_start_attack` auto-re-arm).
+
+### Rider-laden Attack actions skip Frenzy / unarmed-weapon restore [minor]
+The Attack-action sequence advance (disarm between attacks, `action_used`, ending the sequence) is now
+done **centrally** in `_finish_attack` right after the attack-count decrement, so it runs for every
+valid action attack regardless of which on-hit/on-miss rider (if any) fired — this fixes both the
+"clicking your own sprite mid-sequence = self-attack/out of range" report and the re-seed-on-the-last-
+attack bug for riders. However, **Berserker Frenzy's bonus attack and the unarmed-weapon restore** still
+live only in the *no-rider* branch of `_finish_attack`, so when the triggering attack carried a rider
+(brutal/cunning/divine/psionic/smite/etc.) those two side effects are skipped that swing. Rare in
+practice (a Berserker's last action attack would need a rider for Frenzy to be missed). When unified,
+move Frenzy + the unarmed restore next to the central commit (or route every rider through one complete
+`_continue_attack_sequence_after_rider`).
+
+---
+
 ### Attacker-rider → defender-reaction chaining ("rider shadows the defender's reaction") [OPUS] [DEFER]
 **Status:** v1 limitation across every defender-side on-hit/on-miss reaction — deferred (not planned).
 
