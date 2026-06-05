@@ -9,29 +9,13 @@ metadata:
 
 ## Architecture / Infrastructure
 
-### combat.cpp Refactoring [OPUS]
-**Status:** Code complexity/maintainability issue (not a functional bug)
-
-**Problem:** `combat.cpp` has grown to ~7000 lines and is becoming unwieldy. It now contains:
-- Core combat engine (movement, attack resolution, saving throws, damage)
-- All spell execution logic
-- All class feature implementations (Divine Fury, Sneak Attack, Cunning Strike, maneuvers, etc.)
-- Weapon mastery system (9 types × multiple code paths)
-- Condition application and effect resolution
-- Resource spending and turn economy
-
-**Why deferred:**
-- Refactoring large files risks introducing subtle bugs in well-tested code
-- Requires careful extraction of cohesive subsystems without breaking the interdependencies
-- Not a blocker for new feature development (can still add to monolithic file)
-- High risk, moderate benefit for current phase
-
-**When ready:** Extract into subsystems like:
-- `combat_attack.cpp` — attack rolls, hits, misses, critical handling
-- `combat_spell.cpp` — spell execution pipeline
-- `combat_class_features.cpp` — all per-class abilities
-- `combat_weapon_mastery.cpp` — mastery riders and checks
-- Keep `combat.cpp` as the orchestrator
+### combat.cpp Refactoring [OPUS] — ✅ DONE (2026-06)
+**Status:** COMPLETED. The monolithic `combat.cpp` (~7600 lines) was split into translation units;
+`combat.cpp` is now a ~388-line orchestrator and the logic lives in the `combat_*.cpp` files:
+`combat_core.cpp`, `combat_attack.cpp`, `combat_spells.cpp`, `combat_movement.cpp`,
+`combat_conditions.cpp`, `combat_riders.cpp`, `combat_resources.cpp`, `combat_turn.cpp`,
+`combat_state.cpp`, `combat_visibility.cpp`. All remain methods of the single `CombatEngine` class
+(one class, many `.cpp`) — no header/API churn. Kept here only as a record that this is resolved.
 
 ---
 
@@ -46,18 +30,37 @@ actor primes a pending modifier before its own next roll, e.g. Portent, Bardic I
 Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity attacks on movement).
 
 **Features simplified or blocked by this:**
-- **Lore Cutting Words** (implemented): RAW the Lore Bard reacts *after* seeing an enemy's attack
-  roll / ability check / damage roll and subtracts the die. Currently primed *before* the target's
-  roll (negative `pending_roll_bonus_`) — the decider/player must decide ahead of time. Same
-  simplification as Bardic Inspiration `use_bardic_die` and Portent's pre-roll model.
+- **OnD20Seen window — attack rolls** (IMPLEMENTED 2026-06-04, OND20SEEN_PLAN.md): the true post-hoc
+  "react after seeing the d20" window now exists **for attack rolls** and hosts **Bend Luck** (Wild
+  Magic Sorcerer), **Cutting Words** (Lore Bard), and **Silvery Barbs** (new L1 spell). It reuses the
+  `InFlightAttack`/`beginAttack`/`advanceAttack`/`submitDecision` flow checkpoints with a multi-reactor
+  cursor, runs **before** the OnHit Shield window, and is **lowering-only** (a reaction can turn a hit
+  into a miss but never a miss into a hit → no post-hoc damage roll, identical to the Shield contract).
+  Auto/RL: `maybeD20SeenInline`; GUI: the cursor block in `advanceAttack`. Engine in `combat_attack.cpp`
+  (`canBendLuck`/`canCuttingWords`/`canSilveryBarbs`, `d20SeenReactors`/`d20SeenOptions`,
+  `reevaluateAttackHit`, `apply{BendLuck,CuttingWords,SilveryBarbs}ToAttack`). *Remaining gaps:*
+  (a) **saving throws & ability checks** still use the pre-roll prime (`pending_roll_bonus_`) — no save
+  chokepoint yet, so Bend Luck/Cutting Words/Silvery Barbs vs a save/check are still primed before the
+  roll; (b) **Bend Luck BOOST** direction (help an ally's attack *hit*) is deferred — a miss→hit flip
+  needs damage rolled post-hoc; the window offers the penalty only; (c) **Silvery Barbs ally-advantage**
+  rider not modeled (only the reroll); (d) **60 ft range gate untested** (12×12 test map ≈55 ft max,
+  same as Counterspell); (e) a Silvery Barbs reroll that downgrades a **crit** but still hits keeps the
+  originally-(crit-)rolled damage; expanded crit ranges aren't recomputed. The old pre-roll
+  `sorcererBendLuck`/`bardCuttingWords` primes are **kept** for the save/check case.
+- **Lore Cutting Words / Bend Luck vs SAVES & CHECKS** (still pre-roll): for non-attack-roll d20 Tests
+  the Lore Bard / Wild Magic Sorcerer still primes the modifier *before* the roll (negative/positive
+  `pending_roll_bonus_`) — the decider/player decides ahead of time. Same simplification as Bardic
+  Inspiration `use_bardic_die` and Portent's pre-roll model. Lifting this needs a `beginSave`
+  chokepoint (saves are rolled inline across dozens of spell/condition sites).
 - **Counterspell** (IMPLEMENTED 2026-06-03, ONDECLARECAST_PLAN.md step 2): the OnDeclareCast window
   *is* the "pending decision / interrupt" mechanism for the cast case — `beginCast` yields between
   "spell declared" and "spell resolved" so any creature that sees the caster within 60 ft may cast
   Counterspell; the caster makes a CON save vs the counterspeller's DC; on a fail the cast fizzles and
   keeps its slot (2024 rules). *Remaining gaps:* (a) **no recursive counter-counterspell** — a
   Counterspell can't itself be countered (no decision stack yet); (b) the 60 ft range gate is untested
-  (the 12×12 test map tops out at ~55 ft); (c) the same yield-mid-resolution mechanism is still NOT
-  wired for the d20-roll case below (Cutting Words / Countercharm remain pre-roll).
+  (the 12×12 test map tops out at ~55 ft); (c) the yield-mid-resolution mechanism is now wired for
+  **attack rolls** (OnD20Seen — see the entry above) but still NOT for **saves/checks** (Countercharm,
+  and Cutting Words / Bend Luck vs a save/check, remain pre-roll).
 - **Shield vs spell attacks** (IMPLEMENTED 2026-06-04): `executeSpell`'s per-target to-hit roll was
   extracted into `rollSpellAttack` (the spell analog of `resolveAttack`) so a single-target AttackRoll
   spell (Fire Bolt, Guiding Bolt, Chromatic Orb, Ray of Frost…) opens an OnHit Shield window between
@@ -70,8 +73,28 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   Spell + the single-target GUI window don't combine** — the pre-roll in `advanceCast` passes
   `MetamagicNone`, so a Sorcerer's Seeking reroll is skipped for a GUI single-target attack spell that
   opens the Shield window (rare; the auto/RL path applies Seeking normally).
-- **Bard Countercharm** (deferred): reaction to reroll an ally's just-failed charm/frighten save —
-  needs the post-save interrupt at the (many, inline) save sites.
+- **OnSaveFail window — spell saves** (IMPLEMENTED 2026-06-04, ONSAVEFAIL_PLAN.md): the true post-hoc
+  "reroll a just-failed save" window now exists **for directly-targeted (Single/Multiple geometry)
+  Save-type spells**, hosting **Countercharm** (Bard L7, reroll an ally's failed charm/frighten save
+  with advantage, costs the reaction) and **Indomitable** (Fighter L9, reroll your own failed save +
+  Fighter level, costs an Indomitable use, not the reaction). It reuses the `InFlightCast`/`beginCast`/
+  `advanceCast`/`submitDecision` flow checkpoints with a multi-reactor `(failed-target, reactor)` pairs
+  cursor, and is **"raising-only"** (a reroll can only flip failure→success → less/no damage, no
+  condition). The chokepoint is created by **pre-rolling** every target's save in `advanceCast`
+  (`rollSpellSave`, the save analog of `rollSpellAttack`) so `executeSpell` consumes the corrected save
+  (`InFlightCast.has_save_preroll`) — no undo needed. Engine in `combat_spells.cpp` (`rollSpellSave`,
+  `canCountercharm`/`canIndomitable`, `saveFailReactors`/`saveFailOptions`, `reevaluateSave`,
+  `apply{Countercharm,Indomitable}ToSave`, `applySaveFailReaction`). *Remaining gaps:* (a) **only spell
+  saves** — the ~7 other inline save sites (beginTurn condition re-saves, weapon-condition riders,
+  slipping terrain, concentration, Topple/Stunning Strike/maneuver, death saves) are NOT windowed, so
+  Countercharm can't reroll a beginTurn frighten re-save and Indomitable can't reroll a concentration
+  save; (b) **AoE-geometry save spells deferred** (Fear cone, Hypnotic Pattern cube) — their target
+  list is resolved *inside* `executeSpell` (`resolveAoeTargets`), so only Single/Multiple geometry
+  (targets == `action.target_indices`) is pre-rolled; (c) the separate **condition-rider save** on a
+  non-Save-type spell (combat_spells.cpp `:861`) is not windowed (most charm/frighten spells are
+  Save-type, so this is narrow); (d) **30 ft Countercharm range untested** (12×12 map); (e) Countercharm
+  is **reaction-only, no Bardic die**, and Indomitable does **not** cost the reaction (RAW "no action")
+  — both are v1 modeling choices.
 - **Use Inspiration Die** GUI: RAW the holder decides *after* a failed roll; the button primes it
   before instead.
 
@@ -195,9 +218,13 @@ STR *or* DEX (player's choice). This will be a minor enhancement once tested —
 
 ## Fighter — Deferred Features
 
-### Indomitable (L9) [DEFER]
-**Rule**: Reroll a failed saving throw (uses regain on long rest).
-Will mirror Zealot Fanatical Focus / Diviner Portent pattern when implemented.
+### Indomitable (L9) — IMPLEMENTED 2026-06-04 (ONSAVEFAIL_PLAN.md)
+**Rule**: Reroll a failed saving throw (+ Fighter level on the new roll); uses regain on long rest
+(1 at L9, 2 at L13, 3 at L17). Implemented as a consumer of the **OnSaveFail** reaction window: when a
+directly-targeted spell save fails, a L9+ Fighter may spend 1 "Indomitable" resource use to reroll its
+**own** save. Costs the use only, **not** the reaction (RAW "no action"). Engine `canIndomitable` /
+`applyIndomitableToSave` (combat_spells.cpp). *Limited to spell saves this pass* — see the OnSaveFail
+entry under Architecture → Post-hoc reaction interrupts for the deferred save sites.
 
 ### Studied Attacks (L13) [DEFER]
 **Rule**: Advantage on next attack roll against a creature you missed with a weapon attack.
@@ -669,11 +696,13 @@ DEX+CHA save profs, "Bardic Inspiration" resource = max(1, CHA mod), die-size sc
 slot-spend). Superior Inspiration (L18: `apply_superior_inspiration`, tops to 2 at combat start).
 Tests in `gui/test_bard.py`.
 
-### Deferred
-- **[DEFER] Countercharm (L7)**: reaction to reroll (with advantage) an ally's just-failed save
-  that would apply Charmed/Frightened. Deferred by request — needs a reaction hook at the
-  charm/frighten save sites (no single save chokepoint; saves are computed inline at many sites).
-  Revisit alongside the same out-of-band reaction plumbing planned for Lore Cutting Words.
+### Countercharm (L7) — IMPLEMENTED 2026-06-04 (ONSAVEFAIL_PLAN.md)
+Reaction to reroll (with advantage) an ally's just-failed save that would apply Charmed/Frightened.
+Implemented as a consumer of the **OnSaveFail** reaction window: when a directly-targeted charm/frighten
+spell save fails, a L7+ Bard within 30 ft + LoS (or the failed creature itself) may spend its
+**reaction** to reroll the save with advantage. Engine `canCountercharm` / `applyCountercharmToSave`
+(combat_spells.cpp). Modeled as **reaction only, no Bardic die** (the repo's prior definition). *Limited
+to spell saves this pass* — see the OnSaveFail entry under Architecture → Post-hoc reaction interrupts.
 
 ### College subclasses (Phase 3 — combat-core slice implemented)
 **Implemented:**

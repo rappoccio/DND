@@ -1,6 +1,6 @@
 # D&D 5e Combat Sim — Backlog
 
-_Last refreshed: 2026-06-02. High-level epics only. **Per-feature deferrals live in
+_Last refreshed: 2026-06-04. High-level epics only. **Per-feature deferrals live in
 `known_limitations.md`** (the authoritative source) — this file does NOT duplicate it._
 
 Status of live session work (Sorcerer / Bard / Eldritch Knight / Paladin / Bonus-Action
@@ -13,11 +13,14 @@ Manager / Divine Smite) is tracked in the auto-memory, not here. Most recent cla
 
 These gate multiple per-class features; each is a real project, not a quick task.
 
-- [ ] **Reaction / interrupt system** — the largest blocker. "React after seeing the
-  roll/cast" timing. Unlocks RAW: Bend Luck (Sorcerer), Cutting Words + Countercharm
-  (Bard), Riposte (Battle Master), Arcane Deflection (Abjurer), Restore Balance
-  (Clockwork Sorcerer), Indomitable (Fighter). Several of these ship now as *pre-roll*
-  approximations — see `known_limitations.md` → "Post-hoc reaction interrupts".
+- [~] **Reaction / interrupt system** — framework SHIPPED + 6 of 7 windows live
+  (`LeftReach`/OA, `OnHit`/Shield+Protective Field, `OnMiss`/Riposte, `OnDeclareCast`/
+  Shield-vs-MM+Counterspell, `OnD20Seen`/Bend Luck+Cutting Words+Silvery Barbs on attack rolls,
+  `OnSaveFail`/Countercharm+Indomitable on spell saves). Spec `REACTION_SYSTEM_PLAN.md` §9; status in
+  auto-memory `reaction-system-plan`. **Remaining 1 window:** `OnTurnStartNearby` (Sentinel / Branches
+  of the Tree). Plus: extend OnD20Seen / OnSaveFail to the **other inline save sites** (beginTurn,
+  concentration, weapon-condition, death saves — the spell-save chokepoint now exists), and fold
+  Uncanny Dodge + Guided Strike into the OnHit/OnMiss framework.
 - [ ] **Headless / RL default decider** — `CombatDecider` auto-policy for the branches that
   currently require a GUI menu (Reckless, Brutal Strike, OA weapon choice, item pickup).
   See memory `architecture_decider_flow_state`. Interface stub already landed with terrain.

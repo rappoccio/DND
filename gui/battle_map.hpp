@@ -175,6 +175,11 @@ public:
     // ── Wall / boundary detection ─────────────────────────────────────────
     void detectWalls();
 
+    // Discard every auto-detected wall/obstacle so the map is fully passable
+    // except where explicit terrain regions say otherwise. Lets the GUI offer a
+    // "turn off auto-detection" toggle when the detector mis-reads a map.
+    void clearWalls() noexcept { walls_.clear(); disallowed_.clear(); }
+
     [[nodiscard]] const std::vector<Wall>& walls()           const noexcept { return walls_; }
     [[nodiscard]] const CellSet&           disallowedCells() const noexcept { return disallowed_; }
     [[nodiscard]] bool isBlocked(Cell origin, int agentSize, MovementType mt = MovementType::Walk) const noexcept;

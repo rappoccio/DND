@@ -481,6 +481,22 @@ struct SpellToHit {
     bool hit{false};
 };
 
+// The result of one spell saving throw (analog of SpellToHit). Produced by rollSpellSave; consumed by
+// executeSpell's Save branch and carried across the OnSaveFail window (ONSAVEFAIL_PLAN.md) so the same
+// (possibly rerolled) save the player saw is the one that lands. Pass/fail vs DC only — no nat-1/nat-20
+// auto rule on saves. A reaction (Countercharm / Indomitable) can only RAISE a failure → success.
+struct SpellSave {
+    int           target_idx{-1};   // who rolled this save (-1 = no preroll present)
+    int           d20{0};           // the natural d20 (may be re-rolled by a reaction)
+    int           save_mod{0};      // ability mod + (prof ? prof_bonus : 0); fixed across a reroll
+    int           bonus{0};         // post-roll additive (Indomitable adds the Fighter level here); 0 normally
+    int           total{0};         // d20 + save_mod + bonus
+    int           dc{0};            // the spell save DC this roll was compared against
+    bool          saved{false};     // total >= dc
+    bool          auto_fail{false}; // paralyzed/stunned/unconscious vs STR/DEX → can't be helped; skip window
+    SaveAbility_t ability{SaveStr}; // which save (for the menu label)
+};
+
 // Resumable state for one in-flight spell cast that may be interrupted at the OnDeclareCast window
 // (ONDECLARECAST_PLAN.md). beginCast wraps executeSpell with this pre-resolution window: reactors
 // (this pass: Magic Missile targets that can cast Shield) react before the cast resolves. A
@@ -499,6 +515,15 @@ struct InFlightCast {
     int        preroll_target{-1};      // the target the pre-rolled to-hit applies to
     SpellToHit preroll{};               // the pre-rolled to-hit (updated by applyCastReaction if Shielded)
     bool       attack_window_done{false}; // the OnHit Shield window was offered once (don't re-open on resume)
+    // ── OnSaveFail window (nearby creatures may reroll a FAILED save → possible success; ONSAVEFAIL_PLAN.md) ──
+    // A Save-type spell pre-rolls every target's save here so executeSpell's Save branch consumes the
+    // (possibly Countercharm/Indomitable-rerolled) result instead of rolling fresh. Mutually exclusive
+    // with the attack window above (a spell is either AttackRoll or Save), so the phases never interleave.
+    bool                            has_save_preroll{false};  // save_prerolls populated; executeSpell consumes them
+    std::vector<SpellSave>          save_prerolls;            // one per target of the Save-type spell (target_idx-keyed)
+    bool                            save_window_built{false}; // failed-save reactor pairs computed once (after the rolls)
+    std::vector<std::pair<int,int>> savefail_pairs;          // (failed-save target_idx, eligible reactor_idx), in order
+    std::size_t                     savefail_cursor{0};       // next pair to offer
 };
 
 // Resumable state for one in-flight move that may provoke OAs (REACTION_SYSTEM_PLAN.md §6).
@@ -529,6 +554,10 @@ struct InFlightAttack {
     bool adv{false};
     bool dis{false};
     bool shield_offered{false};     // the OnHit Shield window has been opened once (don't re-offer on resume)
+    // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss; OND20SEEN_PLAN.md) ──
+    std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
+    std::size_t      d20_cursor{0};       // next reactor to offer
+    bool             d20_window_built{false}; // reactor list computed once, after the roll (before Shield)
     // Pre-roll snapshots applyAttackResult needs (taken before this attack's own effects mutate state):
     bool can_use_brutal_strike{false};
     bool tgt_incapacitated_at_attack{false};
@@ -1195,6 +1224,16 @@ public:
     SpellToHit rollSpellAttack(BattleMap& bm, const SpellAction& action, int tgt_idx,
                                MetamagicOption applied_metamagic);
 
+    // Spell-save analog of rollSpellAttack (ONSAVEFAIL_PLAN.md). Re-fetches caster/target/agents,
+    // reproduces executeSpell's Save-branch advantage/disadvantage (target conditions + Heightened +
+    // Eldritch Strike [CONSUMES the tag, exactly once] + Danger Sense) and the paralyzed/stunned/
+    // unconscious STR/DEX auto-fail, rolls the d20, and returns the resolved SpellSave. Does NOT roll
+    // damage or apply conditions. Pulled out of executeSpell so a Save-type spell can pre-roll every
+    // target's save ahead of the OnSaveFail window (advanceCast) and have executeSpell consume the same
+    // (possibly rerolled) result.
+    SpellSave rollSpellSave(BattleMap& bm, const SpellAction& action, int tgt_idx,
+                            MetamagicOption applied_metamagic);
+
     // Would casting Shield flip this spell-attack hit to a miss, and can the target do it right now?
     // Value-based sibling of shouldOfferDefenderShield (which takes a weapon AttackResult).
     [[nodiscard]] bool shouldOfferSpellShield(const BattleMap& bm, int tgt_idx,
@@ -1468,6 +1507,74 @@ private:
     // Drive the in-flight attack: open the Shield window (suspend for GUI) or finalize via
     // applyAttackResult. Stores the finished result in last_attack_result_.
     FlowStatus advanceAttack(BattleMap& bm);
+
+    // ── OnD20Seen reactions (attack rolls only; OND20SEEN_PLAN.md) ─────────────────────────────────
+    // "lowering-only" reactions a nearby creature may use AFTER seeing an attack roll: they can turn a
+    // hit into a miss (never a miss into a hit), so the only consequence is r.hit=false — identical to
+    // the Shield contract (no post-hoc damage roll needed). Each gate mirrors canCastCounterspell
+    // (60 ft + line-of-sight to the roller, reaction free, alive) plus the feature's own requirements.
+public:
+    [[nodiscard]] bool canBendLuck    (const BattleMap& bm, int reactor, int roller) const; // L6+ WildMagic Sorc, ≥1 SP
+    [[nodiscard]] bool canCuttingWords(const BattleMap& bm, int reactor, int roller) const; // L3+ Lore Bard, ≥1 Bardic use
+    [[nodiscard]] bool canSilveryBarbs(const BattleMap& bm, int reactor, int roller) const; // knows Silvery Barbs + L1+ slot
+    // Recompute r.hit / r.critical from r.d20 + r.total_roll vs r.target_ac (nat 20 hits/crits, nat 1
+    // misses, else total >= AC). Additive reactions leave r.d20 untouched (crit preserved); the
+    // Silvery Barbs reroll sets r.d20 to the new die.
+    void reevaluateAttackHit(AttackResult& r) const noexcept;
+    // Apply one lowering reaction to the in-flight roll r (spends the resource + the reactor's reaction,
+    // mutates r, reevaluates). Return true if r changed. Write to the in-flight r, not pending_roll_bonus_.
+    bool applyBendLuckToAttack    (BattleMap& bm, int reactor, AttackResult& r);
+    bool applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackResult& r);
+    bool applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r);
+private:
+    // The creatures (≠ attacker) that may lower this attack roll, in initiative order. Silvery Barbs is
+    // only included on a hit (it triggers on a success). Empty when no lowering reaction could change
+    // the outcome (parallels shouldOfferDefenderShield: only a hit a worst-case lower could miss).
+    [[nodiscard]] std::vector<int> d20SeenReactors(const BattleMap& bm, const Attack& action,
+                                                   const AttackResult& r) const;
+    // The legal lowering options for one reactor vs this roll, plus a trailing Skip (size 1 == only Skip).
+    [[nodiscard]] std::vector<ReactionOption> d20SeenOptions(const BattleMap& bm, int reactor,
+                                                             const Attack& action, const AttackResult& r) const;
+    // GUI dispatch: route a chosen OnD20Seen option to the matching apply* on in_flight_attack_.r.
+    void applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
+    // Auto/RL: loop d20SeenReactors, ask decider_, apply the chosen lowering reaction. Called in
+    // executeAction between resolveAttack and maybeDefenderShieldInline. Stops once r becomes a miss.
+    bool maybeD20SeenInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // ── OnSaveFail reactions (spell saves only; ONSAVEFAIL_PLAN.md) ────────────────────────────────
+    // "raising-only" reactions a creature may use AFTER a spell save FAILS: they reroll the save, which
+    // can only turn a failure into a success (less/no damage, no condition) — so executeSpell consuming
+    // the corrected save needs no post-hoc undo (mirror of the OnD20Seen lowering-only contract).
+public:
+    // Bard L7+, reaction free, alive, within 30 ft + line-of-sight of the failed creature, and the
+    // offending spell would apply Charmed or Frightened. The reactor MAY be the failed creature itself.
+    [[nodiscard]] bool canCountercharm(const BattleMap& bm, int reactor, int save_target,
+                                       const SpellAction& action) const;
+    // Fighter L9+, ≥1 "Indomitable" use, alive, and reactor == save_target (you reroll your OWN save).
+    // No range/LoS test (it's self); does NOT require a free reaction (RAW "no action" — see §6).
+    [[nodiscard]] bool canIndomitable(const BattleMap& bm, int reactor, int save_target) const;
+    // Recompute ss.total / ss.saved from ss.d20 + ss.save_mod + ss.bonus vs ss.dc (pass/fail only).
+    void reevaluateSave(SpellSave& ss) const noexcept;
+    // Apply one reroll reaction to a pre-rolled save (spends the resource, mutates ss, reevaluates).
+    // Return true iff ss changed. Countercharm rerolls WITH ADVANTAGE + spends the bard's reaction;
+    // Indomitable rerolls + adds the Fighter level to ss.bonus + spends 1 "Indomitable" use (not the
+    // reaction). Each rolls its d20 directly (no fresh save → no recursive OnSaveFail).
+    bool applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave& ss);
+    bool applyIndomitableToSave (BattleMap& bm, int reactor, SpellSave& ss);
+private:
+    // The creatures eligible for ANY reroll-save reaction vs one FAILED save (ss.saved==false,
+    // !ss.auto_fail), in initiative order: the target itself (Indomitable) + bards within 30 ft on a
+    // charm/frighten spell (Countercharm). Empty for a passed/auto-fail save (nothing to reroll).
+    [[nodiscard]] std::vector<int> saveFailReactors(const BattleMap& bm, const SpellAction& action,
+                                                    const SpellSave& ss) const;
+    // The legal reroll options (Feature kind) for one reactor vs this failed save, + a trailing Skip
+    // (size 1 == only Skip → nothing offered).
+    [[nodiscard]] std::vector<ReactionOption> saveFailOptions(const BattleMap& bm, int reactor,
+                                                              const SpellAction& action,
+                                                              const SpellSave& ss) const;
+    // GUI dispatch: route a chosen OnSaveFail option to the matching apply* on the pre-rolled save in
+    // in_flight_cast_.save_prerolls (found by ctx.source_idx == the failed creature).
+    void applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
 
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 

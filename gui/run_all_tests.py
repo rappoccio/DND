@@ -32,6 +32,8 @@ test_scripts = [
     "test_shield_vs_attack.py",
     "test_shield_vs_spell_attack.py",
     "test_riposte.py",
+    "test_d20seen.py",
+    "test_savefail.py",
     "test_resource.py",
     "test_bonus_actions.py",
     "test_terrain_concentration.py",

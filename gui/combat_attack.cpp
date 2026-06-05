@@ -550,6 +550,223 @@ bool CombatEngine::maybeRiposteInline(BattleMap& bm, const Attack& action, Attac
     return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  OnD20Seen reactions (attack rolls only — OND20SEEN_PLAN.md)
+//  Nearby creatures may LOWER a just-rolled attack roll (Bend Luck penalty / Cutting Words /
+//  Silvery Barbs reroll). v1 is lowering-only: the sole outcome change is hit → miss, so the apply
+//  path mirrors Shield (set r.hit=false; no post-hoc damage roll). The invariant total_roll =
+//  d20 + attack_mod is maintained, so a later Silvery Barbs reroll carries any earlier penalty.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Shared "within 60 ft + line-of-sight to the roller, reaction free, alive, not the roller" gate
+// (mirrors canCastCounterspell's range check). Feature-specific requirements layer on top.
+static bool d20ReactorBase(const BattleMap& bm, int reactor, int roller)
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (reactor < 0 || reactor >= n || roller < 0 || roller >= n || reactor == roller) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    if (bm.getAgentStats(reactor).hp_cur <= 0) return false;
+    const PlacedAgent& rpa = agents[static_cast<std::size_t>(reactor)];
+    const PlacedAgent& opa = agents[static_cast<std::size_t>(roller)];
+    if (footprintDistance(rpa.origin, rpa.agent->getSize(),
+                          opa.origin, opa.agent->getSize()) * 5 > 60) return false;
+    return bm.hasLineOfSight(rpa.origin, rpa.agent->getSize(), opa.origin, opa.agent->getSize());
+}
+
+bool CombatEngine::canBendLuck(const BattleMap& bm, int reactor, int roller) const
+{
+    if (!d20ReactorBase(bm, reactor, roller)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Sorcerer ||
+        s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.char_level < 6) return false;
+    const Resource* sp = s.getResource("Sorcery Points");
+    return sp && sp->current >= 1;
+}
+
+bool CombatEngine::canCuttingWords(const BattleMap& bm, int reactor, int roller) const
+{
+    if (!d20ReactorBase(bm, reactor, roller)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Bard ||
+        s.bard_subclass != BardCollege::LorePath || s.char_level < 3) return false;
+    const Resource* bi = s.getResource("Bardic Inspiration");
+    return bi && bi->current >= 1;
+}
+
+bool CombatEngine::canSilveryBarbs(const BattleMap& bm, int reactor, int roller) const
+{
+    if (!d20ReactorBase(bm, reactor, roller)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    bool has_slot = false;                                  // Silvery Barbs is a 1st-level spell
+    for (int i = 0; i < 9; ++i)
+        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { has_slot = true; break; }
+    if (!has_slot) return false;
+    for (const auto& sp : bm.getAgentSpells(reactor))
+        if (sp.name == "Silvery Barbs") return true;
+    return false;
+}
+
+void CombatEngine::reevaluateAttackHit(AttackResult& r) const noexcept
+{
+    r.fumble = (r.d20 == 1);
+    if      (r.d20 == 20) { r.critical = true;  r.hit = true;  }   // nat 20 always hits/crits
+    else if (r.d20 == 1)  { r.critical = false; r.hit = false; }   // nat 1 always misses
+    else                  { r.critical = false; r.hit = (r.total_roll >= r.target_ac); }
+}
+
+bool CombatEngine::applyBendLuckToAttack(BattleMap& bm, int reactor, AttackResult& r)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Sorcerer ||
+        s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.char_level < 6) return false;
+    Resource* sp = s.getResource("Sorcery Points");
+    if (!sp || sp->current < 1) return false;
+
+    sp->current -= 1;
+    cond.reaction_used = true;
+    const int v = roll(4);                                 // 1d4 PENALTY (lowering-only v1)
+    r.attack_mod -= v;                                     // keep total_roll = d20 + attack_mod
+    r.total_roll  = r.d20 + r.attack_mod;
+    reevaluateAttackHit(r);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses Bend Luck: -{} (now {} vs AC {}) → {}", agentName(bm, reactor), v,
+         r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+    return true;
+}
+
+bool CombatEngine::applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackResult& r)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Bard ||
+        s.bard_subclass != BardCollege::LorePath || s.char_level < 3) return false;
+    Resource* bi = s.getResource("Bardic Inspiration");
+    if (!bi || bi->current < 1) return false;
+
+    bi->current -= 1;
+    cond.reaction_used = true;
+    const int v = roll(s.bardic_inspiration_die_size);     // subtract the Bardic Inspiration die
+    r.attack_mod -= v;
+    r.total_roll  = r.d20 + r.attack_mod;
+    reevaluateAttackHit(r);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses Cutting Words: -{} (now {} vs AC {}) → {}", agentName(bm, reactor), v,
+         r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+    return true;
+}
+
+bool CombatEngine::applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    int slot = -1;                                         // spend the lowest available L1+ slot
+    for (int i = 0; i < 9; ++i)
+        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { slot = i; break; }
+    if (slot < 0) return false;
+    bool knows = false;
+    for (const auto& sp : bm.getAgentSpells(reactor))
+        if (sp.name == "Silvery Barbs") { knows = true; break; }
+    if (!knows) return false;
+
+    s.spell_slots_remaining[static_cast<std::size_t>(slot)] -= 1;
+    cond.reaction_used = true;
+    const int old_d20 = r.d20;
+    r.d20        = roll(20);                               // force a reroll; attacker uses the new die
+    r.total_roll = r.d20 + r.attack_mod;                   // carries any earlier penalty (invariant)
+    reevaluateAttackHit(r);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} casts Silvery Barbs: rerolls the d20 {}→{} (now {} vs AC {}) → {}", agentName(bm, reactor),
+         old_d20, r.d20, r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+    return true;
+}
+
+// Which creatures may lower this attack roll, in index order. Only on a hit (a miss/fumble can't be
+// lowered further). Additive reactions (Bend Luck/Cutting Words) can't change a natural 20, so they
+// only count off a nat-20; Silvery Barbs' reroll can change anything (including a crit).
+std::vector<int> CombatEngine::d20SeenReactors(const BattleMap& bm, const Attack& action,
+                                               const AttackResult& r) const
+{
+    std::vector<int> out;
+    if (!r.hit) return out;                                // nothing to lower
+    const int roller = action.attacker_idx;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i) {
+        if (i == roller) continue;
+        const bool additive = (r.d20 != 20) && (canBendLuck(bm, i, roller) || canCuttingWords(bm, i, roller));
+        const bool reroll   = canSilveryBarbs(bm, i, roller);
+        if (additive || reroll) out.push_back(i);
+    }
+    return out;
+}
+
+std::vector<ReactionOption> CombatEngine::d20SeenOptions(const BattleMap& bm, int reactor,
+                                                         const Attack& action, const AttackResult& r) const
+{
+    std::vector<ReactionOption> opts;
+    const int roller = action.attacker_idx;
+    if (r.d20 != 20 && canBendLuck(bm, reactor, roller))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Bend Luck (-1d4, 1 Sorcery Point)", "BendLuck"});
+    if (r.d20 != 20 && canCuttingWords(bm, reactor, roller))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Cutting Words (-1 Bardic die)", "CuttingWords"});
+    if (canSilveryBarbs(bm, reactor, roller))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Silvery Barbs (force a reroll)", "SilveryBarbs"});
+    if (!opts.empty())
+        opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+    return opts;
+}
+
+void CombatEngine::applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind != ReactionOption::Feature) return;
+    AttackResult& r = in_flight_attack_.r;
+    if      (opt.feature == "BendLuck")     applyBendLuckToAttack(bm, ctx.reactor_idx, r);
+    else if (opt.feature == "CuttingWords") applyCuttingWordsToAttack(bm, ctx.reactor_idx, r);
+    else if (opt.feature == "SilveryBarbs") applySilveryBarbsToAttack(bm, ctx.reactor_idx, r);
+}
+
+bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, AttackResult& r)
+{
+    // Auto/RL only: the GUI (no decider) gets the suspendable window via advanceAttack.
+    if (!decider_) return false;
+    bool changed = false;
+    for (int reactor : d20SeenReactors(bm, action, r)) {
+        if (!r.hit) break;                                 // already lowered to a miss → stop
+        auto opts = d20SeenOptions(bm, reactor, action, r);
+        if (opts.size() <= 1) continue;                    // only Skip (reactor no longer qualifies)
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnD20Seen;
+        ctx.reactor_idx = reactor;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options     = opts;
+        ctx.d20_value   = r.total_roll;
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(opts.size())) continue;
+        const ReactionOption& o = opts[static_cast<std::size_t>(resp.option)];
+        if (o.kind != ReactionOption::Feature) continue;
+        if      (o.feature == "BendLuck")     changed |= applyBendLuckToAttack(bm, reactor, r);
+        else if (o.feature == "CuttingWords") changed |= applyCuttingWordsToAttack(bm, reactor, r);
+        else if (o.feature == "SilveryBarbs") changed |= applySilveryBarbsToAttack(bm, reactor, r);
+    }
+    return changed;
+}
+
 // Apply one chosen OnHit reaction to the in-flight attack (this pass: the target's Shield). Mirrors
 // applyCastReaction: on accept, spend the slot+reaction and negate the hit on in_flight_attack_.r so
 // advanceAttack's applyAttackResult rolls no damage / fires no concentration save. Per DM ruling a
@@ -595,6 +812,27 @@ FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
 FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
 {
     InFlightAttack& s = in_flight_attack_;
+    // OnD20Seen window (BEFORE Shield): nearby creatures may lower the roll. Build the reactor list
+    // once (post-roll), then offer each in turn. submitDecision advances d20_cursor on each resume, so
+    // a Skip simply moves to the next reactor; a lowering reaction that flips the hit to a miss then
+    // makes the Shield gate below false. (OND20SEEN_PLAN.md §5.)
+    if (s.interactive && !s.d20_window_built) {
+        s.d20_reactors     = d20SeenReactors(bm, s.action, s.r);
+        s.d20_window_built = true;
+    }
+    while (s.interactive && s.d20_cursor < s.d20_reactors.size()) {
+        const int reactor = s.d20_reactors[s.d20_cursor];
+        auto opts = d20SeenOptions(bm, reactor, s.action, s.r);   // re-checked: an earlier window may
+        if (opts.size() <= 1) { ++s.d20_cursor; continue; }       // have spent this reactor's resource
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnD20Seen;
+        ctx.reactor_idx = reactor;
+        ctx.source_idx  = s.action.attacker_idx;
+        ctx.options     = std::move(opts);
+        ctx.d20_value   = s.r.total_roll;
+        pending_decision_ = PendingDecision{true, ctx};           // suspend; GUI resumes via submitDecision
+        return FlowStatus::AwaitingDecision;
+    }
     // Offer the Shield window at most once: on resume after a Skip the hit still stands, so without
     // this guard shouldOfferDefenderShield would stay true and re-park forever (single reactor, no cursor).
     if (s.interactive && !s.shield_offered && shouldOfferDefenderShield(bm, s.action, s.r)) {
@@ -905,6 +1143,10 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
     s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    // Auto/RL OnD20Seen window (inline): nearby creatures may LOWER the roll (Bend Luck / Cutting
+    // Words / Silvery Barbs) before it commits — runs BEFORE Shield so a lowered-to-miss attack opens
+    // no Shield window (shouldOfferDefenderShield is gated on r.hit).
+    maybeD20SeenInline(bm, action, s.r);
     // Auto/RL defender Shield window (inline via the decider). applyAttackResult re-fetches the
     // target's stats, so Shield's slot-spend + AC are reflected (no stale-snapshot clobber).
     maybeDefenderShieldInline(bm, action, s.r);

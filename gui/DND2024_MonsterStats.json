@@ -9075,7 +9075,12 @@
         "Legendary Actions": "",
         "Lair Save DC": "",
         "Lair Saving Throws": "",
-        "Other": ""
+        "Other": "",
+	"weapons": {
+	    "main_hand": "Dagger",
+            "off_hand": "Dagger",
+            "ranged": "Shortbow"
+      }
     },
     "Bugbear Warrior": {
         "Name": "Bugbear Warrior",
@@ -25803,7 +25808,12 @@
         "Legendary Actions": "",
         "Lair Save DC": "",
         "Lair Saving Throws": "",
-        "Other": ""
+        "Other": "",
+	"weapons": {
+            "main_hand": "Shortsword",
+            "off_hand": "Shortsword",
+            "ranged": "Shortbow"
+	}
     },
     "Goblin Hexer": {
         "Name": "Goblin Hexer",
@@ -26007,7 +26017,12 @@
         "Legendary Actions": "",
         "Lair Save DC": "",
         "Lair Saving Throws": "",
-        "Other": ""
+        "Other": "",
+	"weapons": {
+            "main_hand": "Dagger",
+            "off_hand": "Unarmed",
+            "ranged": "Longbow"
+	}
     },
     "Goblin Warrior": {
         "Name": "Goblin Warrior",
@@ -26109,7 +26124,12 @@
         "Legendary Actions": "",
         "Lair Save DC": "",
         "Lair Saving Throws": "",
-        "Other": ""
+        "Other": "",
+	"weapons": {
+            "main_hand": "Dagger",
+            "off_hand": "Unarmed",
+            "ranged": "Longbow"
+	}
     },
     "Gold Dragon Wyrmling": {
         "Name": "Gold Dragon Wyrmling",

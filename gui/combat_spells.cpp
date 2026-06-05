@@ -152,6 +152,103 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
     return th;
 }
 
+// Spell-save roller — extracted from executeSpell's Save branch so a Save-type spell can pre-roll every
+// target's save ahead of the OnSaveFail window and have executeSpell consume the same (possibly
+// rerolled) result. Re-fetches caster/target/agents; reproduces the Save branch's advantage/disadvantage
+// (target conditions + Heightened + Eldritch Strike + Danger Sense) and the STR/DEX auto-fail verbatim.
+// Consumes the Eldritch Strike tag exactly once (the preroll REPLACES the inline roll, never both).
+SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, int tgt_idx,
+                                      MetamagicOption applied_metamagic)
+{
+    SpellSave ss{};
+    auto agents = bm.placedAgents();
+    if (action.caster_idx < 0 || action.caster_idx >= static_cast<int>(agents.size())) return ss;
+    if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) return ss;
+    const PlacedAgent& caster_pa     = agents[static_cast<std::size_t>(action.caster_idx)];
+    const Agent::Stats& caster_stats = caster_pa.agent->getStats();
+
+    const auto& spells = bm.getAgentSpells(action.caster_idx);
+    if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size())) return ss;
+    const Spell& sp = spells[static_cast<std::size_t>(action.spell_idx)];
+
+    const PlacedAgent& target_pa         = agents[static_cast<std::size_t>(tgt_idx)];
+    const Agent::Stats& tgt_stats        = target_pa.agent->getStats();
+    const Agent::Conditions& target_cond = target_pa.agent->getConditions();
+
+    ss.target_idx = tgt_idx;
+    ss.ability    = sp.save_ability;
+    ss.dc         = spellSaveDc(caster_stats);
+
+    bool target_adv = target_pa.agent->hasAdvantage();
+    bool target_dis = target_pa.agent->hasDisadvantage();
+
+    // Metamagic — Heightened Spell: one target has disadvantage on its save.
+    if (applied_metamagic == MetamagicHeightened &&
+        !action.target_indices.empty() && tgt_idx == action.target_indices.front()) {
+        target_dis = true;
+        log_("Metamagic Heightened: {} has disadvantage on the save", agentName(bm, tgt_idx));
+    }
+
+    // Eldritch Knight L10 — Eldritch Strike: a creature the EK hit with a weapon has disadvantage on its
+    // next save vs a spell the EK casts. One-shot: consume the tag.
+    if (target_cond.eldritch_strike_by == action.caster_idx) {
+        target_dis = true;
+        log_("Eldritch Strike: {} has disadvantage on the save", agentName(bm, tgt_idx));
+        Agent::Conditions clear_es = bm.getAgentConditions(tgt_idx);
+        clear_es.eldritch_strike_by = -1;
+        bm.setAgentConditions(tgt_idx, clear_es);
+    }
+
+    // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
+    bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
+                     (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
+
+    // Barbarian Danger Sense (L2+): Advantage on DEX saves unless Incapacitated
+    if (sp.save_ability == SaveDex && !target_cond.incapacitated &&
+        tgt_stats.character_class == CharacterClass::Barbarian && tgt_stats.char_level >= 2) {
+        target_adv = true;
+        log_("Danger Sense: target has Advantage on DEX save");
+    }
+
+    int save_d20;
+    if (auto_fail) {
+        save_d20 = 1;  // Automatic fail
+        std::string reason = target_cond.paralyzed ? "paralyzed" : (target_cond.stunned ? "stunned" : "unconscious");
+        log_("Target is {}: automatically fails {} save",
+             reason, sp.save_ability == SaveStr ? "STR" : "DEX");
+    } else if (target_adv && target_dis) {
+        save_d20 = roll(20);  // Cancel out
+    } else if (target_adv) {
+        save_d20 = rollAdvantage(20);
+    } else if (target_dis) {
+        save_d20 = rollDisadvantage(20);
+    } else {
+        save_d20 = roll(20);
+    }
+    auto saveMod = [&](SaveAbility_t ab) -> int {
+        int score = 0; bool prof = false;
+        switch (ab) {
+            case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
+            case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
+            case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
+            case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
+            case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
+            default:      score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
+        }
+        int m = (score - 10) / 2;
+        if (score < 10 && (score - 10) % 2 != 0) --m;
+        return m + (prof ? tgt_stats.prof_bonus : 0);
+    };
+
+    ss.d20       = save_d20;
+    ss.save_mod  = saveMod(sp.save_ability);
+    ss.bonus     = 0;
+    ss.auto_fail = auto_fail;
+    ss.total     = save_d20 + ss.save_mod;
+    ss.saved     = auto_fail ? false : (ss.total >= ss.dc);
+    return ss;
+}
+
 SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 {
     SpellResult result;
@@ -503,72 +600,24 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         case Spell::Save: {
-            int save_dc  = spellSaveDc(caster_stats);
-            // Apply advantage/disadvantage from target conditions
-            const PlacedAgent& target_pa = agents[static_cast<std::size_t>(tgt_idx)];
-            const Agent::Conditions& target_cond = target_pa.agent->getConditions();
-            bool target_adv = target_pa.agent->hasAdvantage();
-            bool target_dis = target_pa.agent->hasDisadvantage();
+            const Agent::Conditions& target_cond =
+                agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions();
 
-            // Metamagic — Heightened Spell: one target has disadvantage on its save.
-            if (applied_metamagic == MetamagicHeightened && !targets.empty() && tgt_idx == targets.front()) {
-                target_dis = true;
-                log_("Metamagic Heightened: {} has disadvantage on the save", agentName(bm, tgt_idx));
+            // Consume a pre-rolled save when one exists: the OnSaveFail window (advanceCast,
+            // ONSAVEFAIL_PLAN.md) pre-rolls every target's save for a directly-targeted Save spell and may
+            // have rerolled it (Countercharm / Indomitable). Otherwise roll it now via rollSpellSave, which
+            // reproduces the same adv/dis + auto-fail logic AND consumes the Eldritch Strike tag exactly
+            // once (the preroll REPLACES this roll, never both). Direct executeSpell callers (zones/NPC)
+            // have no in-flight cast → has_save_preroll is false → they roll inline as before.
+            SpellSave ss;
+            if (in_flight_cast_.active && in_flight_cast_.has_save_preroll) {
+                for (const auto& p : in_flight_cast_.save_prerolls)
+                    if (p.target_idx == tgt_idx) { ss = p; break; }
             }
-
-            // Eldritch Knight L10 — Eldritch Strike: a creature the EK hit with a weapon has
-            // disadvantage on its next save vs a spell the EK casts. One-shot: consume the tag.
-            if (target_cond.eldritch_strike_by == action.caster_idx) {
-                target_dis = true;
-                log_("Eldritch Strike: {} has disadvantage on the save", agentName(bm, tgt_idx));
-                Agent::Conditions clear_es = bm.getAgentConditions(tgt_idx);
-                clear_es.eldritch_strike_by = -1;
-                bm.setAgentConditions(tgt_idx, clear_es);
-            }
-
-            // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
-            bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
-                            (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
-
-            // Barbarian Danger Sense (L2+): Advantage on DEX saves unless Incapacitated
-            if (sp.save_ability == SaveDex && !target_cond.incapacitated &&
-                tgt_stats.character_class == CharacterClass::Barbarian && tgt_stats.char_level >= 2) {
-                target_adv = true;
-                log_("Danger Sense: target has Advantage on DEX save");
-            }
-
-            int save_d20;
-            if (auto_fail) {
-                save_d20 = 1;  // Automatic fail
-                std::string reason = target_cond.paralyzed ? "paralyzed" : (target_cond.stunned ? "stunned" : "unconscious");
-                log_("Target is {}: automatically fails {} save",
-                     reason, sp.save_ability == SaveStr ? "STR" : "DEX");
-            } else if (target_adv && target_dis) {
-                save_d20 = roll(20);  // Cancel out
-            } else if (target_adv) {
-                save_d20 = rollAdvantage(20);
-            } else if (target_dis) {
-                save_d20 = rollDisadvantage(20);
-            } else {
-                save_d20 = roll(20);
-            }
-            auto saveMod = [&](SaveAbility_t ab) -> int {
-                int score = 0; bool prof = false;
-                switch (ab) {
-                    case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-                    case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-                    case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-                    case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-                    case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
-                    default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
-                }
-                int m = (score - 10) / 2;
-                if (score < 10 && (score - 10) % 2 != 0) --m;
-                return m + (prof ? tgt_stats.prof_bonus : 0);
-            };
-            tr.save_d20 = save_d20;
-            tr.save_dc  = save_dc;
-            tr.saved = auto_fail ? false : (save_d20 + saveMod(sp.save_ability) >= save_dc);
+            if (ss.target_idx < 0) ss = rollSpellSave(bm, action, tgt_idx, applied_metamagic);
+            tr.save_d20 = ss.d20;
+            tr.save_dc  = ss.dc;
+            tr.saved    = ss.saved;
 
             std::vector<int> dice;
             int dmg = 0;
@@ -1909,6 +1958,158 @@ bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_l
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  OnSaveFail window — reroll a just-failed spell save (ONSAVEFAIL_PLAN.md)
+//  Consumers: Countercharm (Bard L7 — reroll an ally's failed charm/frighten save WITH ADVANTAGE,
+//  costs the bard's reaction) and Indomitable (Fighter L9 — reroll your OWN failed save + Fighter
+//  level, costs an Indomitable use, not the reaction). "raising-only": a reroll can only turn a
+//  failure into a success, so executeSpell consuming the corrected save needs no undo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Does this spell apply Charmed or Frightened (the Countercharm trigger)?
+static bool spellAppliesCharmOrFear(const Spell& sp)
+{
+    for (const auto& c : sp.conditions)
+        if (c.condition_name == "Charmed" || c.condition_name == "Frightened") return true;
+    return false;
+}
+
+// Shared alive/reaction/range/LoS gate for a save reactor. reactor==save_target (self) skips range/LoS.
+// require_reaction=false lets Indomitable (RAW "no action") react even with its reaction already spent.
+static bool saveReactorBase(const BattleMap& bm, int reactor, int save_target,
+                            int range_ft, bool require_reaction)
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (reactor < 0 || reactor >= n || save_target < 0 || save_target >= n) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.incapacitated) return false;
+    if (require_reaction && cond.reaction_used) return false;
+    if (bm.getAgentStats(reactor).hp_cur <= 0) return false;
+    if (reactor == save_target) return true;                      // self — no range/LoS needed
+    const PlacedAgent& rpa = agents[static_cast<std::size_t>(reactor)];
+    const PlacedAgent& tpa = agents[static_cast<std::size_t>(save_target)];
+    if (footprintDistance(rpa.origin, rpa.agent->getSize(),
+                          tpa.origin, tpa.agent->getSize()) * 5 > range_ft) return false;
+    return bm.hasLineOfSight(rpa.origin, rpa.agent->getSize(), tpa.origin, tpa.agent->getSize());
+}
+
+bool CombatEngine::canCountercharm(const BattleMap& bm, int reactor, int save_target,
+                                   const SpellAction& action) const
+{
+    if (reactor == action.caster_idx) return false;               // the caster won't aid its own target
+    if (!saveReactorBase(bm, reactor, save_target, 30, /*require_reaction=*/true)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Bard || s.char_level < 7) return false;
+    // Only vs a spell that would apply Charmed or Frightened.
+    const auto& spells = bm.getAgentSpells(action.caster_idx);
+    if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size())) return false;
+    return spellAppliesCharmOrFear(spells[static_cast<std::size_t>(action.spell_idx)]);
+}
+
+bool CombatEngine::canIndomitable(const BattleMap& bm, int reactor, int save_target) const
+{
+    if (reactor != save_target) return false;                     // you reroll your OWN save
+    if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/false)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Fighter || s.char_level < 9) return false;
+    const Resource* ind = s.getResource("Indomitable");
+    return ind && ind->current >= 1;
+}
+
+void CombatEngine::reevaluateSave(SpellSave& ss) const noexcept
+{
+    ss.total = ss.d20 + ss.save_mod + ss.bonus;
+    ss.saved = (ss.total >= ss.dc);
+}
+
+bool CombatEngine::applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Bard || s.char_level < 7) return false;
+
+    cond.reaction_used = true;                                    // Countercharm costs the bard's reaction
+    const int a = roll(20), b = roll(20);                         // reroll WITH ADVANTAGE
+    ss.d20 = std::max(a, b);
+    reevaluateSave(ss);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses Countercharm: {} rerolls the save with advantage ({}/{}) → {} vs DC {} → {}",
+         agentName(bm, reactor), agentName(bm, ss.target_idx), a, b, ss.total, ss.dc,
+         ss.saved ? "SAVES" : "still fails");
+    return true;
+}
+
+bool CombatEngine::applyIndomitableToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Fighter || s.char_level < 9) return false;
+    Resource* ind = s.getResource("Indomitable");
+    if (!ind || ind->current < 1) return false;
+
+    ind->current -= 1;                                            // costs an Indomitable use, NOT the reaction
+    const int old_d20 = ss.d20;
+    ss.d20   = roll(20);                                          // reroll the save
+    ss.bonus = s.char_level;                                      // 2024: add the Fighter level to the new roll
+    reevaluateSave(ss);
+    bm.setAgentStats(reactor, s);
+    log_("{} uses Indomitable: rerolls the save {}→{} +{} (level) = {} vs DC {} → {}",
+         agentName(bm, reactor), old_d20, ss.d20, ss.bonus, ss.total, ss.dc,
+         ss.saved ? "SAVES" : "still fails");
+    return true;
+}
+
+// Everyone eligible for ANY reroll-save reaction vs one FAILED save, in index order: the target itself
+// (Indomitable) + bards within 30 ft on a charm/frighten spell (Countercharm).
+std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const SpellAction& action,
+                                                const SpellSave& ss) const
+{
+    std::vector<int> out;
+    if (ss.saved || ss.auto_fail) return out;                     // nothing to reroll
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i)
+        if (canIndomitable(bm, i, ss.target_idx) || canCountercharm(bm, i, ss.target_idx, action))
+            out.push_back(i);
+    return out;
+}
+
+std::vector<ReactionOption> CombatEngine::saveFailOptions(const BattleMap& bm, int reactor,
+                                                          const SpellAction& action,
+                                                          const SpellSave& ss) const
+{
+    std::vector<ReactionOption> opts;
+    if (ss.saved || ss.auto_fail) return opts;
+    if (canIndomitable(bm, reactor, ss.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use Indomitable (reroll your failed save)", "Indomitable"});
+    if (canCountercharm(bm, reactor, ss.target_idx, action))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use Countercharm (reroll the failed save with advantage)", "Countercharm"});
+    if (!opts.empty())
+        opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+    return opts;
+}
+
+void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind != ReactionOption::Feature) return;              // Skip → no reaction
+    // Find the pre-rolled save for the failed creature (carried in ctx.source_idx).
+    SpellSave* ss = nullptr;
+    for (auto& p : in_flight_cast_.save_prerolls)
+        if (p.target_idx == ctx.source_idx) { ss = &p; break; }
+    if (!ss) return;
+    if      (opt.feature == "Countercharm") applyCountercharmToSave(bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "Indomitable")  applyIndomitableToSave (bm, ctx.reactor_idx, *ss);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  OnDeclareCast window — interruptible spell casting (ONDECLARECAST_PLAN.md)
 //  beginCast wraps executeSpell with a pre-resolution reaction window. This pass: Shield vs
 //  Magic Missile (a targeted creature reacts by casting Shield → Magic Missile immunity).
@@ -2180,6 +2381,55 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
                 return FlowStatus::AwaitingDecision;
             }
         }
+    }
+
+    // ── OnSaveFail window (ONSAVEFAIL_PLAN.md): pre-roll a directly-targeted Save spell's saves and let
+    // creatures reroll a FAILURE → possible success (Countercharm / Indomitable). Runs for BOTH drivers
+    // (interactive suspends; auto resolves inline via the decider, like the OnDeclareCast loop above).
+    // AoE-geometry save spells (cone/cube/sphere) are deferred — their target list is resolved inside
+    // executeSpell, so only Single/Multiple geometry (targets == action.target_indices) is pre-rolled (§8).
+    if (!c.countered && !c.save_window_built) {
+        c.save_window_built = true;
+        bool is_save_spell = false;
+        if (c.action.caster_idx >= 0 && c.action.caster_idx < static_cast<int>(agents.size())) {
+            const auto& spells = bm.getAgentSpells(c.action.caster_idx);
+            if (c.action.spell_idx >= 0 && c.action.spell_idx < static_cast<int>(spells.size())) {
+                const Spell& sp = spells[static_cast<std::size_t>(c.action.spell_idx)];
+                is_save_spell = (sp.attack_type == Spell::Save) &&
+                                (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple);
+            }
+        }
+        if (is_save_spell) {
+            for (int tgt : c.action.target_indices)
+                c.save_prerolls.push_back(rollSpellSave(bm, c.action, tgt, c.action.metamagic));
+            c.has_save_preroll = true;                              // executeSpell consumes these
+            for (const SpellSave& ss : c.save_prerolls)
+                for (int reactor : saveFailReactors(bm, c.action, ss))
+                    c.savefail_pairs.emplace_back(ss.target_idx, reactor);
+        }
+    }
+    while (c.savefail_cursor < c.savefail_pairs.size()) {
+        const int save_target = c.savefail_pairs[c.savefail_cursor].first;
+        const int reactor     = c.savefail_pairs[c.savefail_cursor].second;
+        SpellSave* ss = nullptr;
+        for (auto& p : c.save_prerolls) if (p.target_idx == save_target) { ss = &p; break; }
+        // Re-gate: an earlier reaction may have flipped this save to a success or spent the resource.
+        auto opts = (ss && !ss->saved) ? saveFailOptions(bm, reactor, c.action, *ss)
+                                       : std::vector<ReactionOption>{};
+        if (opts.size() <= 1) { ++c.savefail_cursor; continue; }   // only Skip / nothing left to offer
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnSaveFail;
+        ctx.reactor_idx = reactor;
+        ctx.source_idx  = save_target;                             // the creature that failed the save
+        ctx.spell_idx   = c.action.spell_idx;
+        ctx.d20_value   = ss->total;
+        ctx.options     = opts;
+        if (c.interactive) {
+            pending_decision_ = PendingDecision{true, ctx};        // suspend; GUI resumes via submitDecision
+            return FlowStatus::AwaitingDecision;
+        }
+        applySaveFailReaction(bm, ctx, decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{});
+        ++c.savefail_cursor;
     }
 
     pending_decision_.active = false;

@@ -315,6 +315,7 @@ class App:
             os.path.splitext(os.path.basename(map_path))[0] + "_terrain.json"
         )
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
+        self._walls_enabled = True   # auto-detected walls active? (toggle persists in terrain JSON)
 
         self._effects_path = os.path.join(
             self._map_dir,
@@ -584,7 +585,11 @@ class App:
         self.btn_toggle_lighting = Button(pygame.Rect(px, toggle_light_y, W, B),
                                           "Lighting: OFF",
                                           (80, 80, 120), (110, 110, 160), font=self.font_md)
-        quit_y = toggle_light_y + B + self._BTN_GAP
+        toggle_walls_y = toggle_light_y + B + self._BTN_GAP
+        self.btn_toggle_walls = Button(pygame.Rect(px, toggle_walls_y, W, B),
+                                       "Walls: ON" if self._walls_enabled else "Walls: OFF",
+                                       (90, 80, 110), (125, 110, 150), font=self.font_md)
+        quit_y = toggle_walls_y + B + self._BTN_GAP
         self.btn_quit = Button(pygame.Rect(px, quit_y, W, B),
                               "Quit",
                               COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
@@ -613,7 +618,9 @@ class App:
         self.btn_edit_lighting.rect.update(px, light_y, W, self._BTN_H)
         toggle_light_y = light_y + self._BTN_H + self._BTN_GAP
         self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
-        quit_y = toggle_light_y + self._BTN_H + self._BTN_GAP
+        toggle_walls_y = toggle_light_y + self._BTN_H + self._BTN_GAP
+        self.btn_toggle_walls.rect.update(px, toggle_walls_y, W, self._BTN_H)
+        quit_y = toggle_walls_y + self._BTN_H + self._BTN_GAP
         self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
         # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
         HW2 = W // 2 - 2
@@ -4246,6 +4253,16 @@ class App:
                 kind = "spell attack" if ctx.spell_idx >= 0 else "attack"
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may cast Shield vs {agents[ctx.source_idx].name}'s {kind}!")
+            elif ctx.window == rpg.ReactionWindow.OnD20Seen:
+                self._combat_log_add(
+                    f"{agents[ctx.reactor_idx].name} may lower {agents[ctx.source_idx].name}'s "
+                    f"attack roll ({ctx.d20_value}) — Bend Luck / Cutting Words / Silvery Barbs!")
+            elif ctx.window == rpg.ReactionWindow.OnSaveFail:
+                who = ("their own" if ctx.reactor_idx == ctx.source_idx
+                       else f"{agents[ctx.source_idx].name}'s")
+                self._combat_log_add(
+                    f"{agents[ctx.reactor_idx].name} may reroll {who} failed save "
+                    f"({ctx.d20_value}) — Countercharm / Indomitable!")
             else:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
@@ -5378,6 +5395,7 @@ class App:
                 with open(self._terrain_path, 'r') as f:
                     data = json.load(f)
                 self._terrain_regions = data.get("regions", [])
+                self._walls_enabled = bool(data.get("walls_enabled", True))
                 self._apply_terrain_to_battle_map()
             except Exception:
                 self._terrain_regions = []
@@ -5385,11 +5403,37 @@ class App:
             # First load: start with empty terrain, user can manually label or auto-detect later
             self._terrain_regions = []
 
+        # Honour a saved "walls off" preference: drop the auto-detected obstacles so a
+        # map the detector mis-read isn't blocked. (detect_walls already ran in __init__.)
+        if not self._walls_enabled:
+            self.bm.clear_walls()
+
     def _save_terrain(self):
         """Save terrain data to JSON file."""
-        data = {"regions": self._terrain_regions}
+        data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
         with open(self._terrain_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def _toggle_walls(self):
+        """Turn auto-detected walls/obstacles on or off.
+
+        The detector occasionally mis-reads a map (the "janky walls" bug). Toggling
+        OFF discards every auto-detected obstacle so only explicit terrain blocks
+        movement; toggling ON re-runs detection from a clean slate. The choice is
+        persisted in the terrain JSON so it survives a reload.
+        """
+        self._walls_enabled = not self._walls_enabled
+        if self._walls_enabled:
+            self.bm.clear_walls()   # start clean so detection doesn't accumulate
+            self.bm.detect_walls()
+        else:
+            self.bm.clear_walls()
+        self.btn_toggle_walls.text = "Walls: ON" if self._walls_enabled else "Walls: OFF"
+        self._build_overlay()       # redraw blocked/wall cells
+        self._save_terrain()        # persist the preference
+        state = "on" if self._walls_enabled else "off"
+        n = len(self.bm.disallowed_cells)
+        self._combat_log_add(f"Wall auto-detection turned {state} ({n} blocked cells).")
 
     def _load_spell_effects(self):
         """Load spell effect data from JSON file if it exists."""
@@ -7228,6 +7272,9 @@ class App:
         # ── Toggle Lighting Overlay button ─────────────────────────────────
         self.btn_toggle_lighting.draw(self.screen)
 
+        # ── Toggle Wall Auto-Detection button ──────────────────────────────
+        self.btn_toggle_walls.draw(self.screen)
+
         # ── Quit button ────────────────────────────────────────────────────
         self.btn_quit.draw(self.screen)
 
@@ -7921,6 +7968,10 @@ class App:
                 if self.btn_toggle_lighting.clicked(event):
                     self.show_lighting_overlay = not self.show_lighting_overlay
                     self.btn_toggle_lighting.text = "Lighting: ON" if self.show_lighting_overlay else "Lighting: OFF"
+
+                # Toggle Wall Auto-Detection
+                if self.btn_toggle_walls.clicked(event):
+                    self._toggle_walls()
 
                 # Quit
                 if self.btn_quit.clicked(event):

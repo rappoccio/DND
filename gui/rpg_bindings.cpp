@@ -2014,6 +2014,44 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "defender, flagged via conditions.riposte_available, spend the reaction + 1 Superiority\n"
              "Die to make a melee attack defender→attacker; on a hit, add the Superiority Die to the\n"
              "damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).")
+        // ── OnD20Seen reactions (attack rolls only — OND20SEEN_PLAN.md). The interactive window reuses
+        //    begin_attack/pending_decision/submit_decision/last_attack_result; these are the eligibility
+        //    gates + direct apply hooks (used by tests, and by the GUI to label the menu). ──
+        .def("can_bend_luck", &CombatEngine::canBendLuck,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
+             "True iff reactor (L6+ Wild Magic Sorcerer, >=1 Sorcery Point, reaction free, within 60ft\n"
+             "+ LoS of the roller) may use Bend Luck on the roller's attack roll.")
+        .def("can_cutting_words", &CombatEngine::canCuttingWords,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
+             "True iff reactor (L3+ College of Lore Bard, >=1 Bardic Inspiration, reaction free, 60ft+LoS)\n"
+             "may use Cutting Words on the roller's attack roll.")
+        .def("can_silvery_barbs", &CombatEngine::canSilveryBarbs,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
+             "True iff reactor knows Silvery Barbs, has a L1+ slot, reaction free, 60ft+LoS of the roller.")
+        .def("apply_bend_luck_to_attack", &CombatEngine::applyBendLuckToAttack,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Spend 1 Sorcery Point + reaction; subtract 1d4 from the in-flight attack result and\n"
+             "re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
+        .def("apply_cutting_words_to_attack", &CombatEngine::applyCuttingWordsToAttack,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Spend 1 Bardic Inspiration use + reaction; subtract the Bardic die from the attack result\n"
+             "and re-evaluate. Mutates `result`. Returns True if applied.")
+        .def("apply_silvery_barbs_to_attack", &CombatEngine::applySilveryBarbsToAttack,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Spend the lowest L1+ slot + reaction; reroll the d20 and re-evaluate (attacker uses the\n"
+             "new roll). Mutates `result`. Returns True if applied.")
+        // ── OnSaveFail window eligibility gates (ONSAVEFAIL_PLAN.md). The window itself reuses
+        //    begin_cast/resolve_cast/pending_decision/submit_decision/last_cast_result; these gates are for
+        //    tests + GUI menu labels. ──
+        .def("can_countercharm", &CombatEngine::canCountercharm,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"), py::arg("action"),
+             "True iff reactor (L7+ Bard, reaction free, alive, within 30ft+LoS of the save target — or the\n"
+             "target itself) may use Countercharm to reroll the failed save, and the spell would apply\n"
+             "Charmed or Frightened.")
+        .def("can_indomitable", &CombatEngine::canIndomitable,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"),
+             "True iff reactor == save_target, is a L9+ Fighter with >=1 Indomitable use, and is alive\n"
+             "(reroll your OWN failed save; costs the use, not the reaction).")
         .def("apply_push",
              &CombatEngine::applyPush,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
@@ -2494,6 +2532,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Detect grid lines; call before detect_walls().")
         .def("detect_walls",  &BattleMap::detectWalls,
              "Detect thick walls and compute disallowed cells via flood fill.")
+        .def("clear_walls",   &BattleMap::clearWalls,
+             "Discard all auto-detected walls/obstacles (turn off wall auto-detection).")
 
         // Grid geometry (used by Python renderer to draw overlays)
         .def_property_readonly("grid_cols",       &BattleMap::gridCols)

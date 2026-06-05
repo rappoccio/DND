@@ -88,5 +88,6 @@
       "height": 250,
       "multiplier": 0.5
     }
-  ]
+  ],
+  "walls_enabled": true
 }

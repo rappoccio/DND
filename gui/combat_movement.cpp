@@ -744,12 +744,28 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
     // move (LeftReach) share one transport; only one is active at a time (the decision stack that
     // would allow a reaction-during-reaction arrives later with Counterspell-vs-Counterspell).
     if (in_flight_attack_.active) {
-        applyAttackReaction(bm, ctx, resp);
+        // Two windows share the in-flight attack: OnD20Seen (multi-reactor cursor, BEFORE the hit) and
+        // OnHit Shield (single reactor, no cursor). Advance the d20 cursor on each OnD20Seen resume so
+        // a Skip moves to the next reactor; the Shield branch re-enters advanceAttack with the gate
+        // already consumed.
+        if (ctx.window == ReactionWindow::OnD20Seen) {
+            applyD20SeenReaction(bm, ctx, resp);
+            ++in_flight_attack_.d20_cursor;
+        } else {
+            applyAttackReaction(bm, ctx, resp);
+        }
         return advanceAttack(bm);
     }
     if (in_flight_cast_.active) {
-        applyCastReaction(bm, ctx, resp);
-        ++in_flight_cast_.cursor;
+        // Two windows share the in-flight cast: OnDeclareCast/OnHit (Counterspell/Shield, `cursor`) and
+        // OnSaveFail (reroll a failed save, its own `savefail_cursor`). Advance the matching cursor.
+        if (ctx.window == ReactionWindow::OnSaveFail) {
+            applySaveFailReaction(bm, ctx, resp);
+            ++in_flight_cast_.savefail_cursor;
+        } else {
+            applyCastReaction(bm, ctx, resp);
+            ++in_flight_cast_.cursor;
+        }
         return advanceCast(bm);
     }
     applyReactionResponse(bm, ctx, resp);

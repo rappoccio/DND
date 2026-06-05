@@ -397,11 +397,11 @@ class TerrainEditorDialog:
                 continue
             rect = pygame.Rect(region["x"], region["y"], region["width"], region["height"])
             if region["type"] == "Wall":
-                color = (50, 50, 50, 200)
+                color = (0, 0, 0, 255)
             elif region["type"] == "Chasm":
                 color = (140, 140, 140, 180)
             elif region["type"] == "Water":
-                color = (100, 150, 255, 150)
+                color = (100, 150, 255, 255)
             else:  # Difficult Terrain
                 color = (255, 200, 100, 128)
             s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
