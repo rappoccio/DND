@@ -247,6 +247,142 @@ def test_begin_submit_counterspell_path():
     print("✅ test_begin_submit_counterspell_path passed")
 
 
+# ── Counter-counterspell decision stack (COUNTERSPELL_STACK_PLAN.md) ───────────
+def _add(engine, bm, name, col, row):
+    return add_agent_to_battle(engine, bm, create_test_agent(name, col, row))
+
+
+def _make_counterspeller(engine, bm, idx, *, high_dc=True, con=1, l3=2):
+    """Give `idx` Counterspell + an L3 slot + a spellcasting ability. high_dc/con stack the deferred
+    CON save deterministically (DC 19 vs CON 1 → always fails → the counter lands)."""
+    s = engine.get_agent_stats(bm, idx)
+    s.hp_max = 40; s.hp_cur = 40
+    s.con = con
+    s.spell_slots_remaining = [9, 9, l3, 0, 0, 0, 0, 0, 0]
+    s.spellcasting_ability = 5  # CHA
+    s.cha = 20 if high_dc else 10
+    s.prof_bonus = 6 if high_dc else 2
+    engine.set_agent_stats(bm, idx, s)
+    engine.set_agent_spells(bm, idx, [_counterspell()])
+
+
+def _make_caster(engine, bm, idx):
+    s = engine.get_agent_stats(bm, idx)
+    s.con = 1
+    s.spell_slots_remaining = [9, 9, 9, 0, 0, 0, 0, 0, 0]
+    engine.set_agent_stats(bm, idx, s)
+    engine.set_agent_spells(bm, idx, [_magic_missile()])
+
+
+def test_counter_counterspell_depth2():
+    """A casts; B counters; C counters B → B fizzles, A's spell RESOLVES (not countered)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a      = _add(engine, bm, "A", 5, 5)
+    victim = _add(engine, bm, "Victim", 7, 5)
+    b      = _add(engine, bm, "B", 5, 6)
+    c      = _add(engine, bm, "C", 6, 5)
+    # Configure AFTER all adds (apply_agent_configs recreates earlier agents).
+    _make_caster(engine, bm, a)
+    vs = engine.get_agent_stats(bm, victim); vs.hp_max = 40; vs.hp_cur = 40
+    engine.set_agent_stats(bm, victim, vs)
+    _make_counterspeller(engine, bm, b)
+    _make_counterspeller(engine, bm, c)
+
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(a, victim))
+
+    assert not engine.last_cast_countered(), "C counters B → B fizzles → A's spell resolves"
+    assert _hp(engine, bm, victim) < 40, "A's Magic Missile lands"
+    assert _l1(engine, bm, a) == 8, "A's spell resolved → its slot is spent normally"
+    assert _react(engine, bm, b) and _react(engine, bm, c), "both B and C spent their reaction"
+    assert _l3(engine, bm, b) == 1 and _l3(engine, bm, c) == 1, "both spent exactly one L3 slot"
+    print("✅ test_counter_counterspell_depth2 passed")
+
+
+def test_counter_counterspell_depth3():
+    """A←B←C←D: D resolves, C countered, B resolves, A COUNTERED (A keeps its slot, no effect)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a      = _add(engine, bm, "A", 5, 5)
+    victim = _add(engine, bm, "Victim", 7, 5)
+    b      = _add(engine, bm, "B", 5, 6)
+    c      = _add(engine, bm, "C", 6, 5)
+    d      = _add(engine, bm, "D", 6, 6)
+    _make_caster(engine, bm, a)
+    vs = engine.get_agent_stats(bm, victim); vs.hp_max = 40; vs.hp_cur = 40
+    engine.set_agent_stats(bm, victim, vs)
+    _make_counterspeller(engine, bm, b)
+    _make_counterspeller(engine, bm, c)
+    _make_counterspeller(engine, bm, d)
+
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(a, victim))
+
+    assert engine.last_cast_countered(), "B resolves (C countered by D) → A is countered"
+    assert _hp(engine, bm, victim) == 40, "A's spell was countered → no damage"
+    assert _l1(engine, bm, a) == 9, "A's countered spell KEEPS its slot"
+    for who in (b, c, d):
+        assert _react(engine, bm, who), "every counterspeller in the chain spent its reaction"
+        assert _l3(engine, bm, who) == 1, "every counterspeller spent exactly one L3 slot"
+    print("✅ test_counter_counterspell_depth3 passed")
+
+
+def test_cannot_counter_own_counterspell():
+    """A caster can't counter its own Counterspell (canCastCounterspell excludes i == caster).
+    With a lone counterspeller B, B's Counterspell opens NO further window → B's counter lands."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a      = _add(engine, bm, "A", 5, 5)
+    victim = _add(engine, bm, "Victim", 7, 5)
+    b      = _add(engine, bm, "B", 5, 6)
+    _make_caster(engine, bm, a)
+    vs = engine.get_agent_stats(bm, victim); vs.hp_max = 40; vs.hp_cur = 40
+    engine.set_agent_stats(bm, victim, vs)
+    _make_counterspeller(engine, bm, b)
+
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(a, victim))
+
+    assert engine.last_cast_countered(), "no one can counter B's Counterspell → A is countered"
+    assert _hp(engine, bm, victim) == 40, "countered → no damage"
+    assert _l1(engine, bm, a) == 9 and _l3(engine, bm, b) == 1
+    print("✅ test_cannot_counter_own_counterspell passed")
+
+
+def test_counter_counterspell_begin_submit_path():
+    """GUI path: a chain of submit_decision calls drives a depth-2 counter-counterspell to completion."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a      = _add(engine, bm, "A", 5, 5)
+    victim = _add(engine, bm, "Victim", 7, 5)
+    b      = _add(engine, bm, "B", 5, 6)
+    c      = _add(engine, bm, "C", 6, 5)
+    _make_caster(engine, bm, a)
+    vs = engine.get_agent_stats(bm, victim); vs.hp_max = 40; vs.hp_cur = 40
+    engine.set_agent_stats(bm, victim, vs)
+    _make_counterspeller(engine, bm, b)
+    _make_counterspeller(engine, bm, c)
+    # No decider on a fresh engine → begin_cast (interactive) suspends at each checkpoint.
+
+    def _pick_counterspell(pd):
+        return next(i for i, o in enumerate(pd.ctx.options)
+                    if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "Counterspell")
+
+    status = engine.begin_cast(bm, _mm_action(a, victim))
+    # 1st park: B may counter A.
+    assert status == rpg.FlowStatus.AwaitingDecision
+    pd = engine.pending_decision(); assert pd.ctx.reactor_idx == b
+    resp = rpg.ReactionResponse(); resp.option = _pick_counterspell(pd)
+    status = engine.submit_decision(bm, resp)
+    # 2nd park: C may counter B's Counterspell.
+    assert status == rpg.FlowStatus.AwaitingDecision, "B's Counterspell opens its own window"
+    pd = engine.pending_decision(); assert pd.ctx.reactor_idx == c
+    resp = rpg.ReactionResponse(); resp.option = _pick_counterspell(pd)
+    status = engine.submit_decision(bm, resp)
+
+    assert status == rpg.FlowStatus.Completed, "no one can counter C → chain resolves"
+    assert not engine.last_cast_countered(), "C counters B → B fizzles → A resolves"
+    assert _hp(engine, bm, victim) < 40, "A's Magic Missile lands"
+    print("✅ test_counter_counterspell_begin_submit_path passed")
+
+
 def run_all():
     test_counterspell_counters_on_failed_save()
     test_counterspell_fails_on_successful_save()
@@ -257,6 +393,10 @@ def run_all():
     test_counterspell_works_on_non_magic_missile()
     test_counter_and_shield_both_offered()
     test_begin_submit_counterspell_path()
+    test_counter_counterspell_depth2()
+    test_counter_counterspell_depth3()
+    test_cannot_counter_own_counterspell()
+    test_counter_counterspell_begin_submit_path()
     print("\nAll Counterspell (OnDeclareCast) tests passed ✅")
 
 

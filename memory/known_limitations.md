@@ -56,9 +56,11 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   *is* the "pending decision / interrupt" mechanism for the cast case — `beginCast` yields between
   "spell declared" and "spell resolved" so any creature that sees the caster within 60 ft may cast
   Counterspell; the caster makes a CON save vs the counterspeller's DC; on a fail the cast fizzles and
-  keeps its slot (2024 rules). *Remaining gaps:* (a) **no recursive counter-counterspell** — a
-  Counterspell can't itself be countered (no decision stack yet); (b) the 60 ft range gate is untested
-  (the 12×12 test map tops out at ~55 ft); (c) the yield-mid-resolution mechanism is now wired for
+  keeps its slot (2024 rules). **Recursive counter-counterspell IS now supported** (COUNTERSPELL_STACK_PLAN.md,
+  DONE 2026-06-06): `cast_stack_` makes a Counterspell a genuine nested cast whose CON save is deferred to
+  pop time, so a deeper Counterspell can negate it first; the chain is bounded by the reaction economy
+  (1 reaction + 1 L3+ slot each) with a defensive depth cap. *Remaining gaps:* (a) the 60 ft range gate is
+  untested (the 12×12 test map tops out at ~55 ft); (b) the yield-mid-resolution mechanism is now wired for
   **attack rolls** (OnD20Seen — see the entry above) but still NOT for **saves/checks** (Countercharm,
   and Cutting Words / Bend Luck vs a save/check, remain pre-roll).
 - **Shield vs spell attacks** (IMPLEMENTED 2026-06-04): `executeSpell`'s per-target to-hit roll was
@@ -95,6 +97,60 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   Save-type, so this is narrow); (d) **30 ft Countercharm range untested** (12×12 map); (e) Countercharm
   is **reaction-only, no Bardic die**, and Indomitable does **not** cost the reaction (RAW "no action")
   — both are v1 modeling choices.
+- **OnTurnStartNearby window — the LAST of the 7 windows** (IMPLEMENTED 2026-06-05, ONTURNSTARTNEARBY_PLAN.md):
+  fires inside `beginTurn`, hosting **Branches of the Tree** (when a creature starts its turn within the
+  reactor's 5 ft reach, it makes a STR save vs the reactor's spell save DC or is Grappled). Unlike every
+  prior window it needed a **new** transport — `beginTurn` is a synchronous `noexcept` function, so a new
+  `InFlightTurn` + `beginTurnFlow`/`advanceTurnStart` flow-checkpoint pair (mirroring `beginCast`/
+  `advanceCast`) wraps it, with its own `submitDecision` branch and a multi-reactor cursor. It's the
+  simplest window (a post-effect, fire-and-forget interrupt: no pre-roll / re-evaluation, since the
+  reaction doesn't change the `TurnStartResult`). Engine in `combat_riders.cpp` (`canBranchesOfTree`,
+  `turnStartReactors`/`turnStartOptions`, `applyBranchesOfTree`, `applyTurnStartReaction`,
+  `advanceTurnStart`, `beginTurnFlow`); `Agent::Stats::has_branches_of_the_tree`; GUI `_advance_turn`
+  split into a `begin_turn_flow` head + `_finish_turn_start` continuation.
+  **Sentinel is NOT in this window** (corrected 2026-06-05 after the first cut wrongly modeled it as a
+  turn-start strike): RAW Sentinel clause 2 makes a creature provoke an **Opportunity Attack** from a
+  Sentinel-feated threatener **even when it Disengages**. Implemented in the LeftReach/OA path:
+  `detectProvokes` (combat_movement.cpp) checks Disengage **per-reactor** — a Disengaging mover still
+  provokes a reactor whose `Agent::Stats::has_sentinel` is set. **Clause 1** (speed-0 on an OA hit) is
+  also done (added 2026-06-06): when a Sentinel reactor HITS with its OA, `applyReactionResponse` sets
+  `InFlightMove::mover_halted` so `advanceMove` commits only the partial move to the provoke cell and
+  zeroes the mover's movement (both the engine budgets and the Agent's own `initMovement(0,…)`, which
+  `moveAgent` reads) for the rest of the turn; the GUI menu/log flag it as a "Sentinel opportunity
+  attack". *v1 limits:* (a) **Sentinel clause 3 deferred** — the "react when an adjacent enemy attacks an
+  ally" melee strike is a separate `OnAllyAttacked` window inside `resolveAttack`, not built; (b) **5 ft
+  reach only** for Branches (reach weapons / a treant's 10 ft deferred, like Riposte); (c) **no faction
+  system** — every adjacent creature with the feat is offered the reaction regardless of side (the human/
+  decider Skips), same model as OAs; (d) **skipped/down turns open no Branches window** (a paralyzed/
+  unconscious/0-hp creature that "starts its turn" isn't offered); (e) **RL/headless (`runRound`) does not
+  fire the Branches window** — `runRound` never calls `beginTurn` (Sentinel-via-OA DOES work in RL since
+  it's in `detectProvokes`); (f) **Branches DC** = the reactor's spell save DC (based on its
+  `spellcasting_ability`), grapple escape DC matches.
+- **Vitality of the Tree (Barbarian, Path of the World Tree, L3) — OnTurnStartNearby consumer #2 [DONE 2026-06-06]**
+  (built + green, awaiting commit). While raging, at the Barbarian's OWN turn start it may grant one
+  creature within 10 ft Xd6 temp HP (X = `getRageDamageBonus(level)` = 2/3/4, min 1). Free (NOT the
+  reaction), once per turn. The granted THP **vanish when this Barbarian's Rage ends**; the separate
+  entry THP (= Barbarian level on entering Rage) persists. As built:
+  - **Self-option in the window:** `turnStartReactors` now also pushes `source` itself when
+    `canVitalityOfTheTree`; `turnStartOptions` emits `Feature "VitalityOfTheTree"` when `reactor==source`
+    (Branches stays the `reactor!=source` branch). `applyTurnStartReaction` dispatches to
+    `applyVitalityOfTheTree(bm, source, resp.target_idx)`. No new window. (`combat_riders.cpp`)
+  - **Cost/gate:** per-turn `Agent::Conditions::vitality_used_this_turn`, reset in `Agent::turn()`
+    (agent.hpp — the canonical per-turn reset; NOT combat_turn.cpp's top block, which is clobbered by the
+    `cond = getAgentConditions()` re-read at the movement-seed step). Gate: WorldTreePath + L≥3 + raging +
+    !used + a creature within 10 ft (`threateningAgents(src, 2)`).
+  - **Provenance ("vanish on Rage end"):** added `int Agent::Stats::rage_thp_source_idx{-1}` next to
+    `temp_hp` + a static helper `CombatEngine::grantTempHp(Stats&, amount, src_idx=-1)` (max() semantics +
+    tags the granter, or clears the tag for non-rage grants). `endRage` loops all agents and zeroes temp_hp
+    tagged with the ending Barbarian. Routed the in-combat non-rage grants (Dark One's Blessing, Wild Shape,
+    Vitality entry) through the helper so a stale tag can't wipe their THP.
+  - **GUI target click:** `_show_pending_reaction_menu` routes the Vitality option to
+    `_begin_vitality_target_pick` (arms `pending_vitality_target`); a map click on a creature within 10 ft
+    runs `_resolve_vitality_target` → builds `ReactionResponse(option, target_idx)` → `submit_decision`.
+    Out-of-range/invalid picks re-prompt (don't waste the once-per-turn use).
+  - **Bindings:** `can_vitality_of_tree`, `apply_vitality_of_tree`, `Stats.rage_thp_source_idx`,
+    `Conditions.vitality_used_this_turn`. Tests: `gui/test_vitality.py` (14, all green; registered in
+    run_all_tests.py). RL/headless `runRound` still never opens the window (same as Branches).
 - **Use Inspiration Die** GUI: RAW the holder decides *after* a failed roll; the button primes it
   before instead.
 

@@ -483,9 +483,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             // now and offer the inline defender Shield (auto/RL via decider_, or auto-take for GUI
             // multi-beam attack spells, which have no per-beam decision cursor yet).
             SpellToHit th;
-            if (in_flight_cast_.active && in_flight_cast_.has_preroll &&
-                tgt_idx == in_flight_cast_.preroll_target) {
-                th = in_flight_cast_.preroll;
+            if (castActive() && topCast().has_preroll &&
+                tgt_idx == topCast().preroll_target) {
+                th = topCast().preroll;
             } else {
                 th = rollSpellAttack(bm, action, tgt_idx, applied_metamagic);
                 if (maybeDefenderShieldInlineSpell(bm, action, tgt_idx, th))
@@ -610,8 +610,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             // once (the preroll REPLACES this roll, never both). Direct executeSpell callers (zones/NPC)
             // have no in-flight cast → has_save_preroll is false → they roll inline as before.
             SpellSave ss;
-            if (in_flight_cast_.active && in_flight_cast_.has_save_preroll) {
-                for (const auto& p : in_flight_cast_.save_prerolls)
+            if (castActive() && topCast().has_save_preroll) {
+                for (const auto& p : topCast().save_prerolls)
                     if (p.target_idx == tgt_idx) { ss = p; break; }
             }
             if (ss.target_idx < 0) ss = rollSpellSave(bm, action, tgt_idx, applied_metamagic);
@@ -2102,7 +2102,7 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
     if (opt.kind != ReactionOption::Feature) return;              // Skip → no reaction
     // Find the pre-rolled save for the failed creature (carried in ctx.source_idx).
     SpellSave* ss = nullptr;
-    for (auto& p : in_flight_cast_.save_prerolls)
+    for (auto& p : topCast().save_prerolls)
         if (p.target_idx == ctx.source_idx) { ss = &p; break; }
     if (!ss) return;
     if      (opt.feature == "Countercharm") applyCountercharmToSave(bm, ctx.reactor_idx, *ss);
@@ -2171,12 +2171,13 @@ CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action
     const std::string castName = spells[static_cast<std::size_t>(action.spell_idx)].name;
 
     // Counterspell reactors first — it interrupts the whole cast. Any creature (not the caster) that
-    // can see the caster within 60 ft and can cast Counterspell. A Counterspell can't itself be
-    // countered this pass (no recursive decision stack yet — see known_limitations.md).
-    if (castName != "Counterspell")
-        for (int i = 0; i < static_cast<int>(agents.size()); ++i)
-            if (i != action.caster_idx && canCastCounterspell(bm, i, action.caster_idx))
-                reactors.push_back(i);
+    // can see the caster within 60 ft and can cast Counterspell. A Counterspell can ITSELF be
+    // countered (COUNTERSPELL_STACK_PLAN.md): a counter-counterspell is a nested cast on the stack, so
+    // we enroll counterspellers even when castName == "Counterspell". canCastCounterspell excludes
+    // i == caster, so a caster can't counter its own Counterspell.
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i)
+        if (i != action.caster_idx && canCastCounterspell(bm, i, action.caster_idx))
+            reactors.push_back(i);
 
     // Then Shield: only Magic Missile opens a Shield reaction (for each distinct target that can
     // Shield). A reactor already enrolled as a counterspeller is offered both options in advanceCast.
@@ -2239,7 +2240,7 @@ bool CombatEngine::maybeDefenderShieldInlineSpell(BattleMap& bm, const SpellActi
         if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return false;
         const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
         take_shield = (opt.kind == ReactionOption::Feature && opt.feature == "Shield");
-    } else if (in_flight_cast_.active && in_flight_cast_.interactive) {
+    } else if (castActive() && topCast().interactive) {
         take_shield = true;   // GUI multi-beam: no decider + no per-beam cursor → auto-take (documented)
     } else {
         return false;         // headless/RL with no decider: no reaction (matches maybeDefenderShieldInline)
@@ -2291,27 +2292,95 @@ void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, cons
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
     if (opt.kind != ReactionOption::Feature) return;
+    // Counterspell is NOT handled here — it pushes a nested cast (see submitDecision / stepTopCast,
+    // COUNTERSPELL_STACK_PLAN.md), so a deeper Counterspell can negate it before it resolves.
     if (opt.feature == "Shield") {
         if (applyShield(bm, ctx.reactor_idx) && ctx.window == ReactionWindow::OnHit &&
-            in_flight_cast_.has_preroll && in_flight_cast_.preroll_target == ctx.reactor_idx) {
+            topCast().has_preroll && topCast().preroll_target == ctx.reactor_idx) {
             // Spell-attack OnHit window: recompute the pre-rolled to-hit against the new (+5) AC so
             // executeSpell consumes the negated hit (the OnDeclareCast Magic-Missile Shield needs no
             // recompute — that immunity is handled by shield_active inside executeSpell).
-            SpellToHit& p = in_flight_cast_.preroll;
+            SpellToHit& p = topCast().preroll;
             p.target_ac = calculateAC(bm, ctx.reactor_idx);
             p.hit = p.critical || (p.d20 != 1 && p.total_roll >= p.target_ac);
             log_("{} casts Shield (+5 AC) — the spell attack misses!", agentName(bm, ctx.reactor_idx));
         }
     }
-    else if (opt.feature == "Counterspell") {
-        if (applyCounterspell(bm, ctx.reactor_idx, ctx.source_idx))
-            in_flight_cast_.countered = true;   // skips executeSpell in advanceCast; slot kept
-    }
 }
 
-FlowStatus CombatEngine::advanceCast(BattleMap& bm)
+int CombatEngine::agentSpellIndex(const BattleMap& bm, int idx, const std::string& name) const
 {
-    InFlightCast& c = in_flight_cast_;
+    const auto& spells = bm.getAgentSpells(idx);
+    for (int i = 0; i < static_cast<int>(spells.size()); ++i)
+        if (spells[static_cast<std::size_t>(i)].name == name) return i;
+    return -1;
+}
+
+bool CombatEngine::isCounterspellChoice(const ReactionCtx& ctx, const ReactionResponse& resp) const
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return false;
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    return opt.kind == ReactionOption::Feature && opt.feature == "Counterspell";
+}
+
+void CombatEngine::castCounterspell(BattleMap& bm, int reactor, int /*target_caster*/) noexcept
+{
+    // Declaration only: spend the counterspeller's lowest L3+ slot + its reaction. The CON save is
+    // deferred to resolveCounterspellEffect (pop time) so a deeper Counterspell can negate this one
+    // first. (canCastCounterspell was already validated at enumeration/choice time.)
+    Agent::Stats rs = bm.getAgentStats(reactor);
+    for (int i = 2; i < 9; ++i)
+        if (rs.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) {
+            rs.spell_slots_remaining[static_cast<std::size_t>(i)] -= 1; break;
+        }
+    bm.setAgentStats(reactor, rs);
+    Agent::Conditions rc = bm.getAgentConditions(reactor);
+    rc.reaction_used = true;
+    bm.setAgentConditions(reactor, rc);
+    log_("{} casts Counterspell, interrupting the spell", agentName(bm, reactor));
+}
+
+void CombatEngine::pushCounterspell(BattleMap& bm, int reactor, int target_caster)
+{
+    // Synthesize a Counterspell SpellAction so the existing castName/canCastCounterspell machinery
+    // keeps working, then push it as a nested in-flight cast targeting the parent's caster.
+    SpellAction csa{};
+    csa.caster_idx     = reactor;
+    csa.spell_idx      = agentSpellIndex(bm, reactor, "Counterspell");
+    csa.target_indices = { target_caster };
+    InFlightCast child{};
+    child.active                = true;
+    child.interactive           = !cast_stack_.empty() && cast_stack_.back().interactive;  // inherit driver
+    child.action                = csa;
+    child.is_counterspell       = true;
+    child.counter_target_caster = target_caster;
+    child.reactors              = declareCastReactors(bm, csa);     // who can counter THIS counterspell
+    cast_stack_.push_back(std::move(child));                        // ⚠ any prior back() ref now invalid
+}
+
+void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
+{
+    const int reactor = c.action.caster_idx;             // the counterspeller
+    const int target  = c.counter_target_caster;         // the caster being countered
+    const Agent::Stats rs = bm.getAgentStats(reactor);
+    const int dc = spellSaveDc(rs);
+    const Agent::Stats cs = bm.getAgentStats(target);
+    const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
+    const int d20 = roll(20), total = d20 + save_mod;
+    log_("{} must make a DC {} CON save vs Counterspell (rolled {}{}{} = {})",
+         agentName(bm, target), dc, d20, save_mod >= 0 ? "+" : "", save_mod, total);
+    if (total >= dc) { log_("{} resists — the spell resolves", agentName(bm, target)); return; }
+    log_("{}'s spell is countered and fails (its slot is retained)", agentName(bm, target));
+    if (cast_stack_.size() >= 2)                          // mark the PARENT (directly below) countered
+        cast_stack_[cast_stack_.size() - 2].countered = true;
+}
+
+// One step of cast_stack_.back() through its windows. Operates on a re-fetched back() reference and
+// NEVER touches it after a push_back (which would dangle it) — the Counterspell branch captures all
+// values it needs before pushing, then returns Pushed immediately.
+CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
+{
+    InFlightCast& c = cast_stack_.back();
     const auto& agents = bm.placedAgents();
     std::string castName;                                            // the spell being cast (for option gating)
     if (c.action.caster_idx >= 0 && c.action.caster_idx < static_cast<int>(agents.size())) {
@@ -2327,10 +2396,12 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
         ctx.source_idx   = c.action.caster_idx;
         ctx.spell_idx    = c.action.spell_idx;
         // Build this reactor's options fresh (eligibility may have changed since enumeration). A
-        // reactor can be offered both Counterspell and Shield when both apply.
-        if (castName != "Counterspell" && canCastCounterspell(bm, reactor, c.action.caster_idx))
+        // reactor can be offered both Counterspell and Shield when both apply. A Counterspell can now
+        // itself be countered, so the option is offered regardless of castName.
+        if (canCastCounterspell(bm, reactor, c.action.caster_idx))
             ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                                 "Cast Counterspell (interrupt the spell)", "Counterspell"});
+                "Cast Counterspell vs " + agentName(bm, c.action.caster_idx) + "'s " + castName,
+                "Counterspell"});
         if (castName == "Magic Missile" && canCastShield(bm, reactor) &&
             std::find(c.action.target_indices.begin(), c.action.target_indices.end(), reactor)
                 != c.action.target_indices.end())
@@ -2340,9 +2411,17 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
         ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
         if (c.interactive) {
             pending_decision_ = PendingDecision{true, ctx};         // suspend; GUI resumes via submitDecision
-            return FlowStatus::AwaitingDecision;
+            return CastStep::Awaiting;
         }
         const ReactionResponse resp = decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{};
+        // Counterspell → push a nested cast (defensive depth cap backstops the economy bound).
+        if (isCounterspellChoice(ctx, resp) && cast_stack_.size() <= agents.size()) {
+            const int target_caster = c.action.caster_idx;           // capture BEFORE the push (c dangles after)
+            ++c.cursor;                                              // this reactor is handled in the parent
+            castCounterspell(bm, reactor, target_caster);
+            pushCounterspell(bm, reactor, target_caster);
+            return CastStep::Pushed;                                 // ⚠ do NOT touch c after this
+        }
         applyCastReaction(bm, ctx, resp);
         ++c.cursor;
     }
@@ -2353,6 +2432,7 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
     // beginAttack's OnHit window. Only for the interactive (GUI) path and only when the target can
     // actually cast Shield (so the common no-Shield cast still rolls inside executeSpell, in order).
     // The auto/RL path and GUI multi-beam attack spells use maybeDefenderShieldInlineSpell instead.
+    // A Counterspell cast is not an AttackRoll spell, so this window self-skips for it.
     if (c.interactive && !c.countered && !c.attack_window_done) {
         c.attack_window_done = true;                                 // evaluate the window at most once
         int  single_target   = (c.action.target_indices.size() == 1) ? c.action.target_indices[0] : -1;
@@ -2378,7 +2458,7 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
                                                      "Cast Shield (+5 AC — the spell attack misses)", "Shield"});
                 ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
                 pending_decision_ = PendingDecision{true, ctx};     // suspend; GUI resumes via submitDecision
-                return FlowStatus::AwaitingDecision;
+                return CastStep::Awaiting;
             }
         }
     }
@@ -2388,6 +2468,7 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
     // (interactive suspends; auto resolves inline via the decider, like the OnDeclareCast loop above).
     // AoE-geometry save spells (cone/cube/sphere) are deferred — their target list is resolved inside
     // executeSpell, so only Single/Multiple geometry (targets == action.target_indices) is pre-rolled (§8).
+    // A Counterspell cast is not a Save spell, so this window self-skips for it.
     if (!c.countered && !c.save_window_built) {
         c.save_window_built = true;
         bool is_save_spell = false;
@@ -2426,38 +2507,69 @@ FlowStatus CombatEngine::advanceCast(BattleMap& bm)
         ctx.options     = opts;
         if (c.interactive) {
             pending_decision_ = PendingDecision{true, ctx};        // suspend; GUI resumes via submitDecision
-            return FlowStatus::AwaitingDecision;
+            return CastStep::Awaiting;
         }
         applySaveFailReaction(bm, ctx, decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{});
         ++c.savefail_cursor;
     }
 
-    pending_decision_.active = false;
-    if (!c.countered)
-        c.result = executeSpell(bm, c.action);                      // resolve (slot spent inside, late)
+    return CastStep::Completed;
+}
+
+// Resolve cast_stack_.back() and pop it. No push happens in here, so the reference stays valid.
+void CombatEngine::finalizeAndPop(BattleMap& bm)
+{
+    InFlightCast& c = cast_stack_.back();
+    if (c.is_counterspell) {
+        if (!c.countered)                                 // not itself countered → it works
+            resolveCounterspellEffect(bm, c);             // deferred CON save → maybe mark parent .countered
+        // a counterspell yields no SpellResult of interest
+    } else if (!c.countered) {
+        c.result = executeSpell(bm, c.action);            // normal resolution (slot spent inside, late)
+    }
     c.active = false;
+    const bool bottom = (cast_stack_.size() == 1);
+    const SpellResult r = c.result;
+    const bool cnt = c.countered;
+    cast_stack_.pop_back();
+    if (bottom) { last_cast_result_ = r; last_cast_countered_ = cnt; }
+}
+
+FlowStatus CombatEngine::advanceCast(BattleMap& bm)
+{
+    while (!cast_stack_.empty()) {
+        const CastStep st = stepTopCast(bm);               // runs back()'s windows; may push/suspend
+        if (st == CastStep::Awaiting) return FlowStatus::AwaitingDecision;  // GUI suspend
+        if (st == CastStep::Pushed)   continue;            // a counterspell went on top → loop to it
+        finalizeAndPop(bm);                                // Completed → resolve + pop back()
+    }
+    pending_decision_.active = false;
     return FlowStatus::Completed;
 }
 
 FlowStatus CombatEngine::beginCast(BattleMap& bm, const SpellAction& action)
 {
-    in_flight_cast_             = InFlightCast{};
-    in_flight_cast_.active      = true;
-    in_flight_cast_.interactive = true;
-    in_flight_cast_.action      = action;
-    in_flight_cast_.reactors    = declareCastReactors(bm, action);
+    cast_stack_.clear();
+    InFlightCast c{};
+    c.active      = true;
+    c.interactive = true;
+    c.action      = action;
+    c.reactors    = declareCastReactors(bm, action);
+    cast_stack_.push_back(std::move(c));
     return advanceCast(bm);
 }
 
 SpellResult CombatEngine::resolveCast(BattleMap& bm, const SpellAction& action)
 {
-    in_flight_cast_             = InFlightCast{};
-    in_flight_cast_.active      = true;
-    in_flight_cast_.interactive = false;
-    in_flight_cast_.action      = action;
-    in_flight_cast_.reactors    = declareCastReactors(bm, action);
+    cast_stack_.clear();
+    InFlightCast c{};
+    c.active      = true;
+    c.interactive = false;                                 // auto driver: resolve each checkpoint inline
+    c.action      = action;
+    c.reactors    = declareCastReactors(bm, action);
+    cast_stack_.push_back(std::move(c));
     (void)advanceCast(bm);
-    return in_flight_cast_.result;
+    return last_cast_result_;                              // snapshot, set when the bottom popped
 }
 
 } // namespace rpg

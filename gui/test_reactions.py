@@ -198,6 +198,69 @@ def test_disengage_suppresses_oa():
     print("✅ test_disengage_suppresses_oa passed")
 
 
+def test_sentinel_provokes_oa_despite_disengage():
+    """Sentinel feat (clause 2): a creature provokes an OA from a has_sentinel threatener even when it
+    Disengages — the per-reactor exception in detectProvokes."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
+    a = add_agent_to_battle(engine, bm, create_test_agent("Sentinel", 4, 5))
+    ready_mover(engine, bm, m); equip_oa_weapon(engine, bm, a)
+    s = engine.get_agent_stats(bm, a); s.has_sentinel = True
+    engine.set_agent_stats(bm, a, s)
+    set_cond(engine, bm, m, disengaging=True)
+
+    dec = ScriptedDecider(pick_weapon)
+    engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(6, 6), rpg.MovementType.Walk)  # leaves the Sentinel's reach
+    assert len(dec.seen) == 1 and dec.seen[0][0] == a, \
+        f"Sentinel should still get the OA despite Disengage, got {dec.seen}"
+    assert reaction_used(engine, bm, a), "the Sentinel OA spends the reaction"
+    print("✅ test_sentinel_provokes_oa_despite_disengage passed")
+
+
+def test_sentinel_disengage_only_helps_the_sentinel():
+    """A non-Sentinel threatener is still suppressed by Disengage even when a Sentinel is also present."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
+    plain = add_agent_to_battle(engine, bm, create_test_agent("Plain", 4, 5))
+    sent  = add_agent_to_battle(engine, bm, create_test_agent("Sentinel", 5, 4))
+    ready_mover(engine, bm, m)
+    equip_oa_weapon(engine, bm, plain); equip_oa_weapon(engine, bm, sent)
+    s = engine.get_agent_stats(bm, sent); s.has_sentinel = True
+    engine.set_agent_stats(bm, sent, s)
+    set_cond(engine, bm, m, disengaging=True)
+
+    dec = ScriptedDecider(pick_weapon)
+    engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(7, 7), rpg.MovementType.Walk)  # leaves both reaches
+    reactors = [seen[0] for seen in dec.seen]
+    assert sent in reactors and plain not in reactors, \
+        f"only the Sentinel should provoke through Disengage, got {reactors}"
+    print("✅ test_sentinel_disengage_only_helps_the_sentinel passed")
+
+
+def test_sentinel_oa_hit_halts_mover_speed_zero():
+    """Sentinel feat (clause 1): a Sentinel-feated reactor that HITS with its OA stops the mover at the
+    provoke cell and zeroes its movement for the rest of the turn (speed → 0)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
+    a = add_agent_to_battle(engine, bm, create_test_agent("Sentinel", 4, 5))
+    # Survive the OA (→ halted, not down) but make the hit reliable: the engine ignores
+    # weapon.attack_bonus, so guarantee the hit with base_ac = 1 (same idiom as the stop-on-down test).
+    s = engine.get_agent_stats(bm, m); s.hp_max = 50; s.hp_cur = 50; s.base_ac = 1
+    engine.set_agent_stats(bm, m, s)
+    ready_mover(engine, bm, m); equip_oa_weapon(engine, bm, a)
+    sa = engine.get_agent_stats(bm, a); sa.has_sentinel = True
+    engine.set_agent_stats(bm, a, sa)
+
+    dec = ScriptedDecider(pick_weapon); engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(8, 5), rpg.MovementType.Walk)  # tries to flee past the Sentinel
+    assert pos(bm, m) == (5, 5), \
+        f"a Sentinel OA hit should stop the mover at the provoke cell, got {pos(bm, m)}"
+    assert bm.placed_agents[m].walk_remaining == 0, "Sentinel hit → speed 0 for the rest of the turn"
+    print("✅ test_sentinel_oa_hit_halts_mover_speed_zero passed")
+
+
 def test_no_decider_skips_all_reactions():
     """Auto driver with no decider installed: every reaction is skipped; move completes."""
     bm = setup_battle_map(); engine = setup_combat_engine()
@@ -281,6 +344,9 @@ def run_all():
     test_used_reaction_blocks_oa()
     test_incapacitated_reactor_makes_no_oa()
     test_disengage_suppresses_oa()
+    test_sentinel_provokes_oa_despite_disengage()
+    test_sentinel_disengage_only_helps_the_sentinel()
+    test_sentinel_oa_hit_halts_mover_speed_zero()
     test_no_decider_skips_all_reactions()
     test_skip_choice_completes_move_without_consuming_reaction()
     test_stop_on_down_halts_movement()

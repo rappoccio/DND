@@ -564,8 +564,10 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
     const auto& agents = bm.placedAgents();
     if (mover_idx < 0 || mover_idx >= static_cast<int>(agents.size())) return events;
 
-    // Disengage suppresses all opportunity attacks for this move.
-    if (bm.getAgentConditions(mover_idx).disengaging) return events;
+    // Disengage normally suppresses all opportunity attacks for this move — EXCEPT against a
+    // Sentinel-ready threatener: the Sentinel feat (clause 2, ONTURNSTARTNEARBY_PLAN.md §0) makes a
+    // creature provoke an OA from you even if it Disengages. So Disengage is checked per-reactor below.
+    const bool disengaging = bm.getAgentConditions(mover_idx).disengaging;
 
     const int moverSize = agents[static_cast<std::size_t>(mover_idx)].agent->getSize();
     const std::vector<Cell> path = getCellsAlongPath(origin, dest);  // straight-line (interim; plan §11)
@@ -578,6 +580,8 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
         if (ra.agent->getStats().hp_cur <= 0) continue;
         if (bm.getAgentConditions(r).reaction_used) continue;
         if (!canAgentMove(bm, r)) continue;  // Speed 0 cannot make an OA
+        // Disengage suppresses the OA for an ordinary threatener, but a Sentinel-feated one still provokes.
+        if (disengaging && !ra.agent->getStats().has_sentinel) continue;
 
         const int rSize = ra.agent->getSize();
         bool wasIn = footprintDistance(ra.origin, rSize, path.front(), moverSize) <= reach;
@@ -646,18 +650,28 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
     const Cell saved = agents[static_cast<std::size_t>(ctx.source_idx)].origin;
     bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
 
+    // Sentinel feat clause 1: when a Sentinel-feated reactor HITS with its opportunity attack, the
+    // target's speed becomes 0 for the rest of the turn (it stops where the OA triggered).
+    const bool reactor_has_sentinel = bm.getAgentStats(reactor).has_sentinel;
+    bool sentinel_hit = false;
+
     if (opt.kind == ReactionOption::Weapon) {
         AttackResult r = executeAction(bm, Attack{reactor, target, opt.index});
+        const bool is_sentinel_oa = reactor_has_sentinel && target == ctx.source_idx;
         // Log the to-hit result (executeAction logs damage/conditions but not the roll). The old
         // Python OA path logged this; it now lives here so OA hits/misses aren't silent.
         if (!r.valid) {
-            log_("OA: {} can't reach {}", agentName(bm, reactor), agentName(bm, target));
+            log_("{}: {} can't reach {}", is_sentinel_oa ? "Sentinel OA" : "OA",
+                 agentName(bm, reactor), agentName(bm, target));
         } else if (r.hit) {
-            log_("OA: {} hits {} — roll {} vs AC {}{}{}",
+            sentinel_hit = is_sentinel_oa;
+            log_("{}: {} hits {} — roll {} vs AC {}{}{}{}",
+                 is_sentinel_oa ? "Sentinel OA" : "OA",
                  agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac,
-                 r.critical ? " (CRIT)" : "", r.target_down ? " — DOWN" : "");
+                 r.critical ? " (CRIT)" : "", r.target_down ? " — DOWN" : "",
+                 (sentinel_hit && !r.target_down) ? " — Sentinel: speed → 0" : "");
         } else {
-            log_("OA: {} misses {} — roll {} vs AC {}",
+            log_("{}: {} misses {} — roll {} vs AC {}", is_sentinel_oa ? "Sentinel OA" : "OA",
                  agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac);
         }
         in_flight_move_.results.push_back(r);
@@ -674,12 +688,18 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
     rc.reaction_used = true;
     bm.setAgentConditions(reactor, rc);
 
-    // Stop-on-down: if the OA dropped the mover, leave it where it fell; otherwise restore it to
-    // its starting cell so the final committed move runs from the true origin.
+    // Stop-on-down: if the OA dropped the mover, leave it where it fell; otherwise restore it to its
+    // starting cell so the final committed move runs from the true origin. A Sentinel OA hit halts the
+    // mover at the provoke cell (speed → 0) — advanceMove commits the partial move there and zeroes the
+    // remaining budget, so the run from `saved` (origin) is still needed for the budgeted/terrain commit.
     if (bm.getAgentStats(ctx.source_idx).hp_cur <= 0) {
         in_flight_move_.mover_down = true;
         bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
     } else {
+        if (sentinel_hit) {
+            in_flight_move_.mover_halted = true;
+            in_flight_move_.halt_cell    = ctx.source_cell;   // stop where the OA triggered
+        }
         bm.setAgentPosition(ctx.source_idx, saved);
     }
 }
@@ -688,7 +708,7 @@ FlowStatus
 CombatEngine::advanceMove(BattleMap& bm)
 {
     InFlightMove& m = in_flight_move_;
-    while (m.cursor < m.provokes.size() && !m.mover_down) {
+    while (m.cursor < m.provokes.size() && !m.mover_down && !m.mover_halted) {
         const ProvokeEvent ev = m.provokes[m.cursor];
         // The reactor may have lost eligibility since detection (downed/used by a prior OA).
         if (ev.reactor < 0 ||
@@ -709,10 +729,25 @@ CombatEngine::advanceMove(BattleMap& bm)
         ++m.cursor;
     }
 
-    // All provokes resolved (or the mover went down) — commit.
+    // All provokes resolved (or the mover went down / was halted) — commit.
     pending_decision_.active = false;
-    if (!m.mover_down)
-        (void)moveAgent(bm, m.mover_idx, m.dest, m.type);   // real budgeted move + terrain/zone checks
+    if (!m.mover_down) {
+        // A Sentinel OA stops the mover at the provoke cell; otherwise it completes the move to dest.
+        const Cell commit = m.mover_halted ? m.halt_cell : m.dest;
+        (void)moveAgent(bm, m.mover_idx, commit, m.type);   // real budgeted move + terrain/zone checks
+        if (m.mover_halted) {
+            // Sentinel feat: speed becomes 0 for the rest of the turn. Zero BOTH the engine budgets and
+            // the Agent's own remaining (BattleMap::moveAgent reads the latter) so no further movement —
+            // including a fresh begin_move — is possible this turn.
+            walkRemaining_[m.mover_idx]   = 0;
+            flyRemaining_[m.mover_idx]    = 0;
+            swimRemaining_[m.mover_idx]   = 0;
+            burrowRemaining_[m.mover_idx] = 0;
+            const auto& agents = bm.placedAgents();
+            if (m.mover_idx >= 0 && m.mover_idx < static_cast<int>(agents.size()))
+                agents[static_cast<std::size_t>(m.mover_idx)].agent->initMovement(0, 0, 0, 0);
+        }
+    }
     m.active = false;
     return FlowStatus::Completed;
 }
@@ -740,9 +775,15 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
     if (!pending_decision_.active) return FlowStatus::Completed;
     const ReactionCtx ctx = pending_decision_.ctx;
     pending_decision_.active = false;
-    // Dispatch to whichever interruptible flow is parked. Cast (OnDeclareCast), attack (OnHit) and
-    // move (LeftReach) share one transport; only one is active at a time (the decision stack that
-    // would allow a reaction-during-reaction arrives later with Counterspell-vs-Counterspell).
+    // Dispatch to whichever interruptible flow is parked. Cast (OnDeclareCast), attack (OnHit), move
+    // (LeftReach) and turn-start (OnTurnStartNearby) share one transport; only one is active at a time
+    // (the decision stack that would allow a reaction-during-reaction arrives later with
+    // Counterspell-vs-Counterspell).
+    if (in_flight_turn_.active) {   // OnTurnStartNearby — top-level, never nested inside another flow
+        applyTurnStartReaction(bm, ctx, resp);
+        ++in_flight_turn_.cursor;
+        return advanceTurnStart(bm);
+    }
     if (in_flight_attack_.active) {
         // Two windows share the in-flight attack: OnD20Seen (multi-reactor cursor, BEFORE the hit) and
         // OnHit Shield (single reactor, no cursor). Advance the d20 cursor on each OnD20Seen resume so
@@ -756,15 +797,24 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
         }
         return advanceAttack(bm);
     }
-    if (in_flight_cast_.active) {
-        // Two windows share the in-flight cast: OnDeclareCast/OnHit (Counterspell/Shield, `cursor`) and
-        // OnSaveFail (reroll a failed save, its own `savefail_cursor`). Advance the matching cursor.
+    if (castActive()) {
+        // Two windows share the top in-flight cast: OnDeclareCast/OnHit (Counterspell/Shield, `cursor`)
+        // and OnSaveFail (reroll a failed save, its own `savefail_cursor`). Advance the matching cursor.
+        InFlightCast& c = topCast();
         if (ctx.window == ReactionWindow::OnSaveFail) {
             applySaveFailReaction(bm, ctx, resp);
-            ++in_flight_cast_.savefail_cursor;
+            ++c.savefail_cursor;
+        } else if (isCounterspellChoice(ctx, resp) &&
+                   cast_stack_.size() <= bm.placedAgents().size()) {
+            // Counterspell → push a nested cast (COUNTERSPELL_STACK_PLAN.md). Capture the parent caster
+            // (ctx.source_idx) before the push, and do NOT touch c afterward (it dangles).
+            ++c.cursor;
+            castCounterspell(bm, ctx.reactor_idx, ctx.source_idx);
+            pushCounterspell(bm, ctx.reactor_idx, ctx.source_idx);
+            return advanceCast(bm);
         } else {
             applyCastReaction(bm, ctx, resp);
-            ++in_flight_cast_.cursor;
+            ++c.cursor;
         }
         return advanceCast(bm);
     }

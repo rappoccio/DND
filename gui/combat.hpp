@@ -431,7 +431,8 @@ struct ReactionOption {
 struct ReactionCtx {
     ReactionWindow window{ReactionWindow::LeftReach};
     int reactor_idx{-1};   // who is being asked to spend their reaction
-    int source_idx{-1};    // who triggered the window (the mover, for an OA)
+    int source_idx{-1};    // who triggered the window (the mover for an OA; for OnTurnStartNearby, the
+                           // creature whose turn just started; for OnSaveFail, the creature that failed)
     std::vector<ReactionOption> options;   // engine-vetted legal choices (always incl. Skip)
     Cell source_cell{};    // LeftReach: the cell the source is leaving (mover stands here for the OA)
     int  d20_value{-1};    // OnD20Seen payload (future)
@@ -524,6 +525,10 @@ struct InFlightCast {
     bool                            save_window_built{false}; // failed-save reactor pairs computed once (after the rolls)
     std::vector<std::pair<int,int>> savefail_pairs;          // (failed-save target_idx, eligible reactor_idx), in order
     std::size_t                     savefail_cursor{0};       // next pair to offer
+    // ── Counterspell-as-cast (COUNTERSPELL_STACK_PLAN.md): a nested cast whose effect is a deferred CON
+    //    save against counter_target_caster, resolved at pop time so a deeper Counterspell can negate it. ──
+    bool is_counterspell{false};     // this in-flight cast is a Counterspell reaction (no AttackRoll/Save phase)
+    int  counter_target_caster{-1};  // the caster whose spell this Counterspell would counter (= parent's caster)
 };
 
 // Resumable state for one in-flight move that may provoke OAs (REACTION_SYSTEM_PLAN.md §6).
@@ -538,6 +543,8 @@ struct InFlightMove {
     std::vector<ProvokeEvent> provokes;
     std::size_t cursor{0};          // next provoke to resolve
     bool mover_down{false};         // an OA dropped the mover → stop where it fell
+    bool mover_halted{false};       // a Sentinel OA hit → speed becomes 0; stop at halt_cell, no further move
+    Cell halt_cell{};               // the cell the Sentinel OA stopped the mover at (the provoke cell)
     std::vector<AttackResult> results;
 };
 
@@ -567,6 +574,21 @@ struct InFlightAttack {
     bool attacker_was_hidden{false};
     int  atk_sz{1};
     int  tgt_sz{1};
+};
+
+// Resumable state for one in-flight TURN START that may open the OnTurnStartNearby window
+// (ONTURNSTARTNEARBY_PLAN.md). beginTurnFlow runs the synchronous beginTurn body, stores its result,
+// then offers nearby creatures a reaction (Sentinel melee strike / Branches of the Tree grapple)
+// against the creature whose turn just started. Unlike the cast/attack windows there is no pre-roll to
+// consume — the reaction is a post-effect interrupt that does not alter the TurnStartResult.
+struct InFlightTurn {
+    bool             active{false};
+    bool             interactive{false};  // GUI suspends at each reactor; auto driver resolves inline
+    int              agent_idx{-1};        // the creature whose turn started (the window's "source")
+    TurnStartResult  result{};             // the beginTurn outcome (GUI reads it after the flow finishes)
+    std::vector<int> reactors;             // eligible OnTurnStartNearby reactors, in order
+    std::size_t      cursor{0};            // next reactor to offer
+    bool             window_built{false};  // reactor list computed once
 };
 
 // ── Wild Magic Surge (College of Wild Magic) ─────────────────────────────────
@@ -755,9 +777,9 @@ public:
     // an in-flight move or an in-flight cast. Returns the SpellResult via lastCastResult()/resolveCast.
     FlowStatus beginCast(BattleMap& bm, const SpellAction& action);
     SpellResult resolveCast(BattleMap& bm, const SpellAction& action);
-    [[nodiscard]] const SpellResult& lastCastResult() const noexcept { return in_flight_cast_.result; }
+    [[nodiscard]] const SpellResult& lastCastResult() const noexcept { return last_cast_result_; }
     // True if the most recent begin_cast/resolve_cast was countered (spell fizzled, slot retained).
-    [[nodiscard]] bool lastCastCountered() const noexcept { return in_flight_cast_.countered; }
+    [[nodiscard]] bool lastCastCountered() const noexcept { return last_cast_countered_; }
 
     // Interruptible weapon attack (ONDECLARECAST_PLAN.md step 3b): rolls the attack, then opens the
     // OnHit window so the target may cast Shield (+5 AC) to negate the hit before any damage. beginAttack
@@ -797,6 +819,31 @@ public:
     // Returns TurnStartResult indicating if the turn should be skipped
     // (e.g., due to failed paralysis save).
     TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
+
+    // Interruptible turn start (ONTURNSTARTNEARBY_PLAN.md): runs the beginTurn body, then opens the
+    // OnTurnStartNearby window so nearby creatures may react (Sentinel strike / Branches of the Tree
+    // grapple) to `agent_idx` starting its turn. `interactive=true` is the GUI entry (suspends at each
+    // reactor — poll pending_decision(), resume via submit_decision()); `false` is the auto/RL driver
+    // (resolves each reactor inline via the installed decider). Read the TurnStartResult via
+    // lastTurnStartResult() once the flow Completes. The plain beginTurn() above stays the no-window path.
+    FlowStatus beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive);
+    [[nodiscard]] const TurnStartResult& lastTurnStartResult() const noexcept { return in_flight_turn_.result; }
+
+    // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating; ONTURNSTARTNEARBY_PLAN.md).
+    // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
+    // turn-start reaction — it provokes an OA on Disengage; see detectProvokes / Agent::Stats::has_sentinel.)
+    [[nodiscard]] bool canBranchesOfTree(const BattleMap& bm, int reactor, int source) const; // has_branches_of_the_tree
+    // Branches: spend the reaction; the source makes a STR save vs the reactor's spell save DC; on a
+    // failure it is Grappled (escape DC = the same). Rolls directly → no nested window opens.
+    bool         applyBranchesOfTree(BattleMap& bm, int reactor, int source);
+
+    // World Tree "Vitality of the Tree" (Barbarian L3+, OnTurnStartNearby self-option): while raging,
+    // at the start of its own turn the Barbarian may grant one creature within 10 ft Xd6 temp HP
+    // (X = Rage Damage bonus, min 1). Free (not the reaction) but once per turn. canVitalityOfTheTree
+    // gates class/subclass/level/raging/once-per-turn + a valid target in range; applyVitalityOfTheTree
+    // rolls and grants to target_idx (tagging rage provenance so endRage clears it).
+    [[nodiscard]] bool canVitalityOfTheTree(const BattleMap& bm, int source) const;
+    bool               applyVitalityOfTheTree(BattleMap& bm, int source, int target);
 
     // Called when agent's turn ends: apply persistent spell effects marked
     // for end-of-turn (effects_on_end_turn == true).
@@ -979,6 +1026,14 @@ public:
         if (level >= 17) return 4;
         if (level >= 9)  return 3;
         return 2;
+    }
+
+    // Grant temporary HP with 5e max() semantics (temp HP never stacks — take the higher).
+    // src_idx tags the granting Barbarian for rage-sourced THP (World Tree Vitality of the Tree)
+    // so endRage can clear exactly it; pass -1 for any other source, which clears the provenance
+    // when this grant wins. No-op if amount does not exceed current temp_hp.
+    static void grantTempHp(Agent::Stats& s, int amount, int src_idx = -1) noexcept {
+        if (amount > s.temp_hp) { s.temp_hp = amount; s.rage_thp_source_idx = src_idx; }
     }
 
     // Barbarian Rage lifecycle methods
@@ -1472,8 +1527,17 @@ private:
     // Drive the in-flight move: resolve provokes (inline for auto, suspend for GUI), then commit.
     FlowStatus advanceMove(BattleMap& bm);
 
-    // ── Cast interrupt internals (combat_spells.cpp) ─────────────────────────
-    InFlightCast in_flight_cast_{};
+    // ── Cast interrupt internals (combat_spells.cpp) — counter-counterspell decision stack
+    //    (COUNTERSPELL_STACK_PLAN.md). A Counterspell is a genuine nested cast pushed on top of the cast
+    //    it targets; the stack lets a deeper Counterspell negate it before it fires. back() = the cast
+    //    currently resolving; empty = idle. The bottom (original) cast's outcome is snapshotted into
+    //    last_cast_result_/last_cast_countered_ when the stack empties (the GUI accessors read those). ──
+    std::vector<InFlightCast> cast_stack_;
+    SpellResult last_cast_result_{};
+    bool        last_cast_countered_{false};
+    [[nodiscard]] bool          castActive() const noexcept { return !cast_stack_.empty(); }
+    [[nodiscard]] InFlightCast& topCast()           noexcept { return cast_stack_.back(); }   // precond: castActive()
+    [[nodiscard]] const InFlightCast& topCast() const noexcept { return cast_stack_.back(); }
     // OnDeclareCast reactors for a cast: Counterspell casters that can see the caster, plus (for
     // Magic Missile) targets that can cast Shield. advanceCast builds each reactor's options.
     [[nodiscard]] std::vector<int> declareCastReactors(const BattleMap& bm, const SpellAction& action) const;
@@ -1484,9 +1548,29 @@ private:
     [[nodiscard]] bool canCastCounterspell(const BattleMap& bm, int idx, int caster_idx) const;
     // Apply one chosen OnDeclareCast reaction (dispatches on ReactionOption.feature, e.g. "Shield").
     void applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
-    // Drive the in-flight cast: resolve reactions (inline for auto, suspend for GUI), then resolve
-    // the spell via executeSpell (unless countered).
+    // Drive the cast stack: step the top cast through its windows; on a Counterspell choice push a
+    // nested cast; finalize+pop completed casts; suspend (AwaitingDecision) for the GUI.
     FlowStatus advanceCast(BattleMap& bm);
+    // One step of cast_stack_.back() through its OnDeclareCast/OnHit/OnSaveFail windows. Internal
+    // result (not the bound FlowStatus): Pushed = a Counterspell went on top (loop to it), Awaiting =
+    // suspended for the GUI, Completed = all windows done (caller finalizes+pops).
+    enum class CastStep { Completed, Awaiting, Pushed };
+    CastStep stepTopCast(BattleMap& bm);
+    // Resolve cast_stack_.back() (executeSpell, or a Counterspell's deferred CON save) and pop it;
+    // snapshot the bottom cast's result/countered when the stack empties.
+    void finalizeAndPop(BattleMap& bm);
+    // Counterspell-as-nested-cast (COUNTERSPELL_STACK_PLAN.md):
+    //  castCounterspell spends the reactor's L3+ slot + reaction (declaration only — no save yet).
+    void castCounterspell(BattleMap& bm, int reactor, int target_caster) noexcept;
+    //  pushCounterspell pushes a Counterspell cast targeting target_caster onto cast_stack_.
+    void pushCounterspell(BattleMap& bm, int reactor, int target_caster);
+    //  resolveCounterspellEffect rolls the deferred CON save (at pop time) and, on a fail, marks the
+    //  parent cast (directly below on the stack) countered.
+    void resolveCounterspellEffect(BattleMap& bm, InFlightCast& c);
+    // Index of a named spell in an agent's spell list (or -1). Used to synthesize a Counterspell cast.
+    [[nodiscard]] int agentSpellIndex(const BattleMap& bm, int idx, const std::string& name) const;
+    // True if the chosen reaction option is a Counterspell Feature (→ push a nested cast).
+    [[nodiscard]] bool isCounterspellChoice(const ReactionCtx& ctx, const ReactionResponse& resp) const;
 
     // ── Attack interrupt internals (combat_attack.cpp) ───────────────────────
     InFlightAttack in_flight_attack_{};      // resumable state of a begin_attack flow
@@ -1573,8 +1657,21 @@ private:
                                                               const SpellAction& action,
                                                               const SpellSave& ss) const;
     // GUI dispatch: route a chosen OnSaveFail option to the matching apply* on the pre-rolled save in
-    // in_flight_cast_.save_prerolls (found by ctx.source_idx == the failed creature).
+    // topCast().save_prerolls (found by ctx.source_idx == the failed creature).
     void applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
+
+    // ── OnTurnStartNearby internals (combat_riders.cpp; ONTURNSTARTNEARBY_PLAN.md) ──────────────────
+    InFlightTurn in_flight_turn_{};   // resumable state of a begin_turn_flow
+    // The creatures (≠ source) eligible for ANY turn-start reaction vs `source`, in order.
+    [[nodiscard]] std::vector<int> turnStartReactors(const BattleMap& bm, int source) const;
+    // reactor's legal Feature options ("BranchesOfTheTree") vs `source`, + a trailing Skip
+    // (size 1 == only Skip → nothing offered).
+    [[nodiscard]] std::vector<ReactionOption> turnStartOptions(const BattleMap& bm, int reactor,
+                                                               int source) const;
+    // GUI dispatch: route a chosen OnTurnStartNearby option to the matching apply*.
+    void applyTurnStartReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
+    // Drive the in-flight turn start: offer each reactor (suspend for GUI, inline for auto), then finish.
+    FlowStatus advanceTurnStart(BattleMap& bm);
 
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 

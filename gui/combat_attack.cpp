@@ -1620,7 +1620,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             int chaMod = (atk_stats.cha - 10) / 2;
             if (atk_stats.cha < 10 && (atk_stats.cha - 10) % 2 != 0) --chaMod;
             int bonus = std::max(1, chaMod + atk_stats.char_level);
-            atk_stats.temp_hp = std::max(atk_stats.temp_hp, bonus);
+            grantTempHp(atk_stats, bonus);  // non-rage source: clears rage provenance if this grant wins
             bm.setAgentStats(action.attacker_idx, atk_stats);
             log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, action.attacker_idx), bonus);
         }

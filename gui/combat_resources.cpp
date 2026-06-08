@@ -260,7 +260,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
     // World Tree Vitality of the Tree: grant temp HP = Barbarian level on Rage activation
     if (stats.barbarian_subclass == WorldTreePath) {
         int vitality_temp_hp = stats.char_level;
-        stats.temp_hp = std::max(stats.temp_hp, vitality_temp_hp);
+        grantTempHp(stats, vitality_temp_hp);  // entry THP is NOT rage-tagged: it persists past Rage end
         log_("{} grants Vitality: {} temp HP", agentName(bm, idx), vitality_temp_hp);
     }
 
@@ -364,6 +364,20 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
 
     bm.setAgentConditions(idx, cond);
     bm.setAgentStats(idx, stats);
+
+    // World Tree "Vitality of the Tree": temp HP granted by THIS Barbarian's Rage vanishes when the
+    // Rage ends. 5e temp HP never stacks, so any creature whose current temp_hp is tagged with this
+    // Barbarian's index loses exactly that temp HP. (The entry temp HP grant is left untagged on
+    // purpose — it persists as normal temp HP.)
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        Agent::Stats ts = bm.getAgentStats(static_cast<int>(i));
+        if (ts.rage_thp_source_idx == idx) {
+            ts.temp_hp = 0;
+            ts.rage_thp_source_idx = -1;
+            bm.setAgentStats(static_cast<int>(i), ts);
+        }
+    }
+
     log_("{} ends Rage: raging=false, BPS resistance cleared, reckless_attack cleared", agentName(bm, idx));
 }
 
@@ -865,6 +879,7 @@ bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& 
 
   int temp_hp = stats.char_level * (stats.druid_circle == CircleOfMoon ? 3 : 1);
   stats.temp_hp += temp_hp;
+  stats.rage_thp_source_idx = -1;  // Wild Shape THP is not rage-sourced (don't let endRage wipe it)
 
   stats.wild_shape_active = true;
   stats.wild_shape_form_name = beast_name;

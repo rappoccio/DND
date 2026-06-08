@@ -34,6 +34,8 @@ test_scripts = [
     "test_riposte.py",
     "test_d20seen.py",
     "test_savefail.py",
+    "test_turn_start.py",
+    "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",
     "test_terrain_concentration.py",

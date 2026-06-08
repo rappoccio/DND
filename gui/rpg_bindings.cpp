@@ -242,6 +242,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("has_cunning_action",   &Agent::Stats::has_cunning_action)
         .def_readwrite("has_offhand_attack",   &Agent::Stats::has_offhand_attack)
         .def_readwrite("can_cast_spell",       &Agent::Stats::can_cast_spell)
+        .def_readwrite("has_sentinel",             &Agent::Stats::has_sentinel)
+        .def_readwrite("has_branches_of_the_tree", &Agent::Stats::has_branches_of_the_tree)
         .def_readwrite("spellcasting_ability", &Agent::Stats::spellcasting_ability)
         // Initiative
         .def_readwrite("initiative_prof", &Agent::Stats::initiative_prof)
@@ -263,6 +265,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "D&D 5e rule: only one leveled spell (level >= 1) per turn. Reset at turn start.")
         .def_readwrite("temp_hp", &Agent::Stats::temp_hp,
              "Temporary hit points (absorbs damage before hp_cur).")
+        .def_readwrite("rage_thp_source_idx", &Agent::Stats::rage_thp_source_idx,
+             "Index of the Barbarian whose Rage granted the current temp HP (World Tree Vitality of the\n"
+             "Tree), or -1 for any other source. endRage clears temp HP tagged with the ending Barbarian.")
         .def_readwrite("magic_damage_multipliers", &Agent::Stats::magic_damage_multipliers,
              "Per-type magic damage multipliers: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable.")
         .def_readwrite("physical_damage_multipliers", &Agent::Stats::physical_damage_multipliers,
@@ -477,6 +482,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
         .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
+        .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
@@ -1692,6 +1698,38 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Begin agent's turn: seed movement budgets, reset conditions,\n"
              "reset leveled spell flag, and apply persistent spell effects.")
+        .def("begin_turn_flow",
+             &CombatEngine::beginTurnFlow,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("interactive") = true,
+             "Interruptible turn start (ONTURNSTARTNEARBY_PLAN.md): runs begin_turn, then opens the\n"
+             "OnTurnStartNearby window so nearby creatures may react (Sentinel strike / Branches of the\n"
+             "Tree grapple). Returns FlowStatus: Completed, or AwaitingDecision (parked — poll\n"
+             "pending_decision(), resume via submit_decision()). interactive=False is the auto/RL driver\n"
+             "(resolves each reactor inline via the installed decider). Read the TurnStartResult via\n"
+             "last_turn_start_result() once Completed.")
+        .def("last_turn_start_result",
+             &CombatEngine::lastTurnStartResult,
+             py::return_value_policy::reference_internal,
+             "The TurnStartResult of the most recent begin_turn_flow (valid once Completed).")
+        .def("can_branches_of_tree",
+             &CombatEngine::canBranchesOfTree,
+             py::arg("battle_map"), py::arg("reactor"), py::arg("source"),
+             "True if reactor may use Branches of the Tree (STR-save-or-Grappled) vs source starting its turn in reach.")
+        .def("apply_branches_of_tree",
+             &CombatEngine::applyBranchesOfTree,
+             py::arg("battle_map"), py::arg("reactor"), py::arg("source"),
+             "Spend reactor's reaction; source makes a STR save vs the reactor's spell save DC or is Grappled.\n"
+             "Returns True iff it grappled the source.")
+        .def("can_vitality_of_tree",
+             &CombatEngine::canVitalityOfTheTree,
+             py::arg("battle_map"), py::arg("source"),
+             "True if source (raging World Tree Barbarian L3+) may use Vitality of the Tree at its own turn\n"
+             "start: free, once per turn, needs a creature within 10 ft.")
+        .def("apply_vitality_of_tree",
+             &CombatEngine::applyVitalityOfTheTree,
+             py::arg("battle_map"), py::arg("source"), py::arg("target"),
+             "Grant target Xd6 temp HP (X = Rage Damage bonus, min 1) with max() semantics, tagged so it\n"
+             "vanishes when the source's Rage ends. Sets vitality_used_this_turn. Returns True iff granted.")
         .def("end_turn",
              &CombatEngine::endTurn,
              py::arg("battle_map"), py::arg("agent_idx"),

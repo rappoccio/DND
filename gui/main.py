@@ -407,6 +407,8 @@ class App:
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
+        self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
+        self._vitality_option_index    = -1    # the chosen reaction option index to submit once a target is picked
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
@@ -419,6 +421,7 @@ class App:
         # OnDeclareCast/Shield). _reaction_finish is the continuation run once the parked flow resolves;
         # it's set before begin_move/begin_cast and invoked by _submit_reaction on completion.
         self._reaction_finish     = lambda: None
+        self._turn_start_idx      = -1    # agent whose turn-start window (OnTurnStartNearby) is parked
         self._cast_post           = {}    # context the parked cast needs for post-resolve logging
         self._attack_post         = {}    # context the parked attack needs for post-resolve rider chain
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
@@ -1620,39 +1623,61 @@ class App:
         self.arcane_charge_pending     = False
         self._reaction_mover_idx       = -1
 
-        # Begin new agent's turn (conditions reset + movement seed now happen in C++)
+        # Begin new agent's turn (conditions reset + movement seed now happen in C++). The turn start
+        # opens the OnTurnStartNearby reaction window (Branches of the Tree) via the
+        # flow-checkpoint API; the rest of the turn-start work runs in _finish_turn_start once any
+        # reactions resolve (parked windows resume through _submit_reaction → _reaction_finish).
         new_idx = self._current_agent_idx()
         self.selected_idx = new_idx
-        if new_idx >= 0:
-            turn_result = self.combat.begin_turn(self.bm, new_idx)
+        if new_idx < 0:
+            self._update_reach()
+            self._update_attack_overlay()
+            return
+        self._turn_start_idx  = new_idx
+        self._reaction_finish = self._finish_turn_start
+        status = self.combat.begin_turn_flow(self.bm, new_idx, True)
+        self._flush_combat_log()
+        if status == rpg.FlowStatus.AwaitingDecision and self.combat.pending_decision().active:
+            self._show_pending_reaction_menu()   # _submit_reaction → _finish_turn_start on completion
+            return
+        self._finish_turn_start()
 
-            # Tick conditions cast by this agent (duration counted in this agent's turns, not absolute turns)
-            self.combat.tick_agent_conditions_for_caster(self.bm, new_idx)
+    def _finish_turn_start(self):
+        """Continuation of _advance_turn after the OnTurnStartNearby reaction window closes
+        (begin_turn_flow). Reads the stored TurnStartResult and runs the rest of the turn-start work."""
+        new_idx = self._turn_start_idx
+        if new_idx < 0 or new_idx >= len(self.bm.placed_agents):
+            self._update_reach()
+            self._update_attack_overlay()
+            return
+        turn_result = self.combat.last_turn_start_result()
 
-            # Log any save rolls (e.g., paralyzed escape attempt)
-            if turn_result.save_roll_message:
-                self._combat_log_add(f"{self.bm.placed_agents[new_idx].name}: {turn_result.save_roll_message}")
+        # Tick conditions cast by this agent (duration counted in this agent's turns, not absolute turns)
+        self.combat.tick_agent_conditions_for_caster(self.bm, new_idx)
 
-            # If turn was skipped (e.g., paralyzed save failed), advance to next turn
-            if turn_result.turn_skipped:
-                self._advance_turn()
-                return
+        # Log any save rolls (e.g., paralyzed escape attempt)
+        if turn_result.save_roll_message:
+            self._combat_log_add(f"{self.bm.placed_agents[new_idx].name}: {turn_result.save_roll_message}")
 
-            # Initialize Python-side movement tracking (C++ also seeds in beginTurn)
-            self._reset_movement(new_idx)
+        # If turn was skipped (e.g., paralyzed save failed), advance to next turn
+        if turn_result.turn_skipped:
+            self._advance_turn()
+            return
+
+        # Initialize Python-side movement tracking (C++ also seeds in beginTurn)
+        self._reset_movement(new_idx)
 
         # Tick this agent's terrain in C++ (also clears concentration if a concentration terrain expired)
-        if new_idx >= 0:
-            tick = self.combat.tick_terrain_for_turn(self.bm, new_idx)
-            for effect_id in tick.expired_terrain_ids:
-                if effect_id in self._effect_meta:
-                    effect_name = self._effect_meta[effect_id].get("name", "Effect")
-                    self._combat_log_add(f"{effect_name} fades.")
-                    del self._effect_meta[effect_id]
-            if tick.concentration.dropped:
-                self._sync_spell_effect_cache()
-                conc_name = self.bm.placed_agents[new_idx].name
-                self._combat_log_add(f"{conc_name}'s {tick.concentration.spell_name or 'spell'} effect expired.")
+        tick = self.combat.tick_terrain_for_turn(self.bm, new_idx)
+        for effect_id in tick.expired_terrain_ids:
+            if effect_id in self._effect_meta:
+                effect_name = self._effect_meta[effect_id].get("name", "Effect")
+                self._combat_log_add(f"{effect_name} fades.")
+                del self._effect_meta[effect_id]
+        if tick.concentration.dropped:
+            self._sync_spell_effect_cache()
+            conc_name = self.bm.placed_agents[new_idx].name
+            self._combat_log_add(f"{conc_name}'s {tick.concentration.spell_name or 'spell'} effect expired.")
 
         self._update_reach()
         self._update_attack_overlay()
@@ -4263,11 +4288,36 @@ class App:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may reroll {who} failed save "
                     f"({ctx.d20_value}) — Countercharm / Indomitable!")
+            elif ctx.window == rpg.ReactionWindow.OnTurnStartNearby:
+                if ctx.reactor_idx == ctx.source_idx:
+                    # Self-option: the World Tree Barbarian may grant temp HP at its own turn start.
+                    self._combat_log_add(
+                        f"{agents[ctx.source_idx].name} may grant a creature within 10 ft "
+                        f"temp HP — Vitality of the Tree!")
+                else:
+                    self._combat_log_add(
+                        f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name} "
+                        f"starting its turn nearby — Branches of the Tree!")
             else:
-                self._combat_log_add(
-                    f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
-        options = [(opt.label, (lambda i=i: self._submit_reaction(i)))
-                   for i, opt in enumerate(ctx.options)]
+                # LeftReach (OA). A Sentinel-feated reactor is flagged so the player knows a hit will
+                # drop the mover's speed to 0 (and that it provokes even through Disengage).
+                try:
+                    has_sentinel = self.combat.get_agent_stats(self.bm, ctx.reactor_idx).has_sentinel
+                except Exception:
+                    has_sentinel = False
+                if has_sentinel:
+                    self._combat_log_add(
+                        f"{agents[ctx.reactor_idx].name} gets a Sentinel opportunity attack vs "
+                        f"{agents[ctx.source_idx].name} (a hit stops it — speed → 0)!")
+                else:
+                    self._combat_log_add(
+                        f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
+        def _make_cb(i, feature):
+            # Vitality of the Tree needs a target pick before submitting; everything else submits at once.
+            if feature == "VitalityOfTheTree":
+                return lambda i=i: self._begin_vitality_target_pick(i)
+            return lambda i=i: self._submit_reaction(i)
+        options = [(opt.label, _make_cb(i, opt.feature)) for i, opt in enumerate(ctx.options)]
         px, py = self._agent_screen_pos(ctx.reactor_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -4276,6 +4326,56 @@ class App:
         checkpoint or finish the move."""
         resp = rpg.ReactionResponse()
         resp.option = option_index
+        status = self.combat.submit_decision(self.bm, resp)
+        self._flush_combat_log()
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()
+        else:
+            self._reaction_finish()
+
+    def _begin_vitality_target_pick(self, option_index: int):
+        """World Tree Vitality of the Tree (turn-start self-option): the player picked the option;
+        now arm a target click so they choose which creature within 10 ft gets the temp HP. The
+        OnTurnStartNearby window stays parked until _resolve_vitality_target submits the response."""
+        self._vitality_option_index = option_index
+        self.pending_vitality_target = True
+        pd = self.combat.pending_decision()
+        src = pd.ctx.source_idx if pd.active else -1
+        agents = self.bm.placed_agents
+        name = agents[src].name if 0 <= src < len(agents) else "?"
+        self._combat_log_add(f"{name}: click a creature within 10 ft to grant temporary HP (Vitality of the Tree).")
+        self._flush_combat_log()
+
+    def _vitality_in_range(self, src: int, target: int) -> bool:
+        """10 ft (2-cell) footprint Chebyshev check, mirroring C++ threateningAgents(src, 2)."""
+        agents = self.bm.placed_agents
+        if not (0 <= src < len(agents) and 0 <= target < len(agents)) or src == target:
+            return False
+        s = agents[src]; o = agents[target]
+        dc = max(s.origin.col - o.origin.col, o.origin.col - (s.origin.col + s.size - 1), 0)
+        dr = max(s.origin.row - o.origin.row, o.origin.row - (s.origin.row + s.size - 1), 0)
+        return max(dc, dr) <= 2
+
+    def _resolve_vitality_target(self, target_idx: int):
+        """Submit the parked Vitality of the Tree response with the clicked target, then resume the
+        turn-start flow (which completes the window). Re-prompts on an invalid/out-of-range pick so
+        the once-per-turn grant isn't wasted."""
+        pd = self.combat.pending_decision()
+        src = pd.ctx.source_idx if pd.active else -1
+        agents = self.bm.placed_agents
+        if (target_idx == src or not self._vitality_in_range(src, target_idx)
+                or not (0 <= target_idx < len(agents))
+                or self.combat.get_agent_stats(self.bm, target_idx).hp_cur <= 0):
+            self._combat_log_add("Pick a living creature within 10 ft (or choose Skip).")
+            self._flush_combat_log()
+            return  # keep pending_vitality_target armed for another click
+        self.pending_vitality_target = False
+        resp = rpg.ReactionResponse()
+        resp.option     = self._vitality_option_index
+        resp.target_idx = target_idx
+        self._vitality_option_index = -1
         status = self.combat.submit_decision(self.bm, resp)
         self._flush_combat_log()
         self._sync_spell_effect_cache()
@@ -5030,6 +5130,8 @@ class App:
                     "num_attacks":        s.num_attacks,
                     "has_cunning_action": s.has_cunning_action,
                     "has_offhand_attack": s.has_offhand_attack,
+                    "has_sentinel":             s.has_sentinel,
+                    "has_branches_of_the_tree": s.has_branches_of_the_tree,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                     "temp_hp": s.temp_hp,
                     "magic_resistances": [
@@ -7743,6 +7845,8 @@ class App:
                             self._resolve_telekinetic(hit)
                         elif self.pending_flurry_target and hit >= 0:
                             self._resolve_flurry_target(hit)
+                        elif self.pending_vitality_target and hit >= 0:
+                            self._resolve_vitality_target(hit)
                         else:
                             # Only allow dragging the current combatant.
                             cur = self._current_agent_idx()

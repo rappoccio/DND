@@ -126,6 +126,11 @@ namespace rpg {
       bool has_cunning_action{false};  // Rogue: Dash/Disengage/Hide as bonus action
       bool has_offhand_attack{false};  // TWF / light weapon: off-hand bonus attack
       bool can_cast_spell{false};      // spellcaster: Cast Spell action/bonus action
+      // OnTurnStartNearby reactions (ONTURNSTARTNEARBY_PLAN.md): a creature starting its turn within
+      // this reactor's 5 ft reach may be reacted to. has_sentinel → a melee weapon strike (v1
+      // turn-start approximation of the Sentinel feat); has_branches_of_the_tree → a STR-save-or-Grappled.
+      bool has_sentinel{false};
+      bool has_branches_of_the_tree{false};
 
       // ── Initiative ────────────────────────────────────────────────────
       // When true, prof_bonus is also added to the initiative roll
@@ -154,6 +159,11 @@ namespace rpg {
 
       // ── Temporary Hit Points & Damage Multipliers ──────────────────────
       int temp_hp{0};  // absorbs damage before hp_cur
+      // Provenance for rage-sourced temp HP (World Tree "Vitality of the Tree" turn-start grant):
+      // the index of the Barbarian whose Rage granted the current temp_hp, or -1 if it came from
+      // any other source. endRage clears temp_hp on creatures tagged with the ending Barbarian's
+      // index. 5e temp HP never stacks, so temp_hp has exactly one source at a time.
+      int rage_thp_source_idx{-1};
       // 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vuln; initialized in constructor
       std::array<float, NumMagicDamage_t> magic_damage_multipliers;
       std::array<float, NumPhysicalDamage_t> physical_damage_multipliers;
@@ -539,6 +549,7 @@ namespace rpg {
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
       bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
+      bool vitality_used_this_turn{false};  // World Tree Vitality of the Tree turn-start grant used this turn
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
       bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
@@ -634,6 +645,7 @@ namespace rpg {
       conditions_.brutal_strike_used_this_turn = false;
       conditions_.brutal_strike_available      = false;
       conditions_.berserker_frenzy_used        = false;
+      conditions_.vitality_used_this_turn      = false;
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;
       conditions_.sneak_attack_used            = false;

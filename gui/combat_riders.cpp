@@ -1217,4 +1217,180 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
     return result;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  OnTurnStartNearby reactions (beginTurn — ONTURNSTARTNEARBY_PLAN.md)
+//  When a creature starts its turn within a reactor's 5 ft reach, the reactor may spend its reaction:
+//  Branches of the Tree → the creature makes a STR save vs the reactor's spell save DC or is Grappled.
+//  A post-effect interrupt that does not alter the TurnStartResult, so the flow is the simplest of the
+//  seven windows (no pre-roll / re-evaluation). The apply rolls directly → no nested window opens.
+//  (Sentinel is NOT here — RAW it provokes an OA when a creature Disengages out of reach; that lives in
+//  detectProvokes' LeftReach path, gated on Agent::Stats::has_sentinel.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::canBranchesOfTree(const BattleMap& bm, int reactor, int source) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (reactor < 0 || reactor >= n || source < 0 || source >= n || reactor == source) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (!s.has_branches_of_the_tree) return false;
+    if (s.hp_cur <= 0) return false;
+    const Agent::Conditions c = bm.getAgentConditions(reactor);
+    if (c.reaction_used || c.incapacitated) return false;
+    const Agent::Conditions sc = bm.getAgentConditions(source);
+    if (sc.grappled && sc.grappler_idx == reactor) return false;     // already pinned by these branches
+    const auto threats = threateningAgents(bm, source, 1);
+    return std::find(threats.begin(), threats.end(), reactor) != threats.end();
+}
+
+std::vector<int> CombatEngine::turnStartReactors(const BattleMap& bm, int source) const
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    std::vector<int> out;
+    // Vitality of the Tree fires on the source's OWN turn start, so the source itself is a reactor.
+    if (canVitalityOfTheTree(bm, source)) out.push_back(source);
+    for (int i = 0; i < n; ++i) {
+        if (i == source) continue;
+        if (canBranchesOfTree(bm, i, source)) out.push_back(i);
+    }
+    return out;
+}
+
+std::vector<ReactionOption> CombatEngine::turnStartOptions(const BattleMap& bm, int reactor, int source) const
+{
+    std::vector<ReactionOption> opts;
+    if (reactor == source) {
+        // The source's own turn-start self-option (free, once per turn — needs a target pick).
+        if (canVitalityOfTheTree(bm, source))
+            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                          "Vitality of the Tree — grant Xd6 temp HP (free)",
+                                          "VitalityOfTheTree"});
+    } else if (canBranchesOfTree(bm, reactor, source)) {
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Branches of the Tree — STR save or Grappled (reaction)",
+                                      "BranchesOfTheTree"});
+    }
+    opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+    return opts;
+}
+
+bool CombatEngine::applyBranchesOfTree(BattleMap& bm, int reactor, int source)
+{
+    if (!canBranchesOfTree(bm, reactor, source)) return false;
+    Agent::Conditions rc = bm.getAgentConditions(reactor);
+    rc.reaction_used = true;                                          // spend the reaction
+    bm.setAgentConditions(reactor, rc);
+
+    const Agent::Stats rs = bm.getAgentStats(reactor);
+    const Agent::Stats ss = bm.getAgentStats(source);
+    const int dc       = spellSaveDc(rs);
+    const int save_mod = abilityMod(ss.str) + (ss.save_prof_str ? ss.prof_bonus : 0);
+    const int d20      = roll(20);
+    const int total    = d20 + save_mod;
+    log_("{} uses Branches of the Tree on {} (reaction): STR save {} {:+} = {} vs DC {}",
+         agentName(bm, reactor), agentName(bm, source), d20, save_mod, total, dc);
+    if (total < dc) {
+        applyGrappled(bm, source, reactor, dc);                      // escape DC = the same DC
+        log_("{} is Grappled by the branches (speed 0)", agentName(bm, source));
+        return true;
+    }
+    log_("{} resists the branches", agentName(bm, source));
+    return false;
+}
+
+// ── World Tree: Vitality of the Tree (self-option on the Barbarian's own turn start) ──────────────
+// Unlike Branches (a reaction to another creature's turn), this fires on the source's OWN turn, so the
+// window offers the source itself this option. It is free (not the reaction) but once per turn.
+
+bool CombatEngine::canVitalityOfTheTree(const BattleMap& bm, int source) const
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (source < 0 || source >= n) return false;
+    const Agent::Stats s = bm.getAgentStats(source);
+    if (s.character_class != Barbarian || s.barbarian_subclass != WorldTreePath) return false;
+    if (s.char_level < 3 || s.hp_cur <= 0) return false;
+    const Agent::Conditions c = bm.getAgentConditions(source);
+    if (!c.raging || c.vitality_used_this_turn || c.incapacitated) return false;
+    // At least one other living creature within 10 ft (2 cells) to receive the temp HP.
+    return !threateningAgents(bm, source, 2).empty();
+}
+
+bool CombatEngine::applyVitalityOfTheTree(BattleMap& bm, int source, int target)
+{
+    if (!canVitalityOfTheTree(bm, source)) return false;
+    const auto in_range = threateningAgents(bm, source, 2);
+    if (std::find(in_range.begin(), in_range.end(), target) == in_range.end()) return false;  // target not within 10 ft
+
+    const Agent::Stats ss = bm.getAgentStats(source);
+    const int dice = std::max(1, getRageDamageBonus(ss.char_level));
+    int amount = 0;
+    for (int i = 0; i < dice; ++i) amount += roll(6);
+
+    Agent::Stats ts = bm.getAgentStats(target);
+    grantTempHp(ts, amount, source);                                  // max() semantics + rage provenance
+    bm.setAgentStats(target, ts);
+
+    Agent::Conditions sc = bm.getAgentConditions(source);
+    sc.vitality_used_this_turn = true;                                // free, once per turn (NOT the reaction)
+    bm.setAgentConditions(source, sc);
+
+    log_("{} uses Vitality of the Tree on {}: {}d6 = {} temp HP",
+         agentName(bm, source), agentName(bm, target), dice, amount);
+    return true;
+}
+
+void CombatEngine::applyTurnStartReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
+{
+    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // Skip / invalid
+    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+    if (opt.kind != ReactionOption::Feature) return;                                     // Skip
+    if (opt.feature == "BranchesOfTheTree") (void)applyBranchesOfTree(bm, ctx.reactor_idx, ctx.source_idx);
+    else if (opt.feature == "VitalityOfTheTree")
+        // Self-option (reactor == source); resp.target_idx is the chosen creature within 10 ft.
+        (void)applyVitalityOfTheTree(bm, ctx.source_idx, resp.target_idx);
+}
+
+FlowStatus CombatEngine::advanceTurnStart(BattleMap& bm)
+{
+    InFlightTurn& t = in_flight_turn_;
+    // A creature whose turn is skipped (paralyzed/unconscious/Wild-Magic) or that is down isn't
+    // meaningfully "present" to be reacted to — open no window (completes immediately).
+    const bool open = !t.result.turn_skipped && t.agent_idx >= 0
+                   && t.agent_idx < static_cast<int>(bm.placedAgents().size())
+                   && bm.getAgentStats(t.agent_idx).hp_cur > 0;
+    if (open && !t.window_built) {
+        t.reactors     = turnStartReactors(bm, t.agent_idx);
+        t.window_built = true;
+    }
+    while (open && t.cursor < t.reactors.size()) {
+        const int reactor = t.reactors[t.cursor];
+        const auto opts = turnStartOptions(bm, reactor, t.agent_idx);
+        if (opts.size() <= 1) { ++t.cursor; continue; }            // only Skip → no longer qualifies
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnTurnStartNearby;
+        ctx.reactor_idx = reactor;
+        ctx.source_idx  = t.agent_idx;
+        ctx.options     = opts;
+        if (t.interactive) {                                       // GUI suspends; resumes via submitDecision
+            pending_decision_ = PendingDecision{true, ctx};
+            return FlowStatus::AwaitingDecision;
+        }
+        applyTurnStartReaction(bm, ctx, decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{});
+        ++t.cursor;                                                // auto/RL inline
+    }
+    pending_decision_.active = false;
+    t.active = false;
+    return FlowStatus::Completed;
+}
+
+FlowStatus CombatEngine::beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive)
+{
+    in_flight_turn_             = InFlightTurn{};
+    in_flight_turn_.active      = true;
+    in_flight_turn_.interactive = interactive;
+    in_flight_turn_.agent_idx   = agent_idx;
+    in_flight_turn_.result      = beginTurn(bm, agent_idx);        // the existing synchronous body
+    return advanceTurnStart(bm);
+}
+
 } // namespace rpg

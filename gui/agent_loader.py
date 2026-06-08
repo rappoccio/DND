@@ -38,6 +38,8 @@ def dict_to_stats(stats_dict):
     stats.speed_burrow = int(stats_dict.get("speed_burrow", 0))
     stats.prof_bonus = int(stats_dict.get("prof_bonus", 2))
     stats.num_attacks = int(stats_dict.get("num_attacks", 1))
+    stats.has_sentinel = bool(stats_dict.get("has_sentinel", False))
+    stats.has_branches_of_the_tree = bool(stats_dict.get("has_branches_of_the_tree", False))
     stats.save_prof_str = bool(stats_dict.get("save_prof_str", False))
     stats.save_prof_dex = bool(stats_dict.get("save_prof_dex", False))
     stats.save_prof_con = bool(stats_dict.get("save_prof_con", False))
