@@ -196,6 +196,29 @@ move Frenzy + the unarmed restore next to the central commit (or route every rid
 
 ---
 
+### Uncanny Dodge + Guided Strike folded into the reaction framework (2026-06-08)
+**Status:** DONE — the last two ad-hoc interrupts now route through `chooseReaction`/the window helpers.
+
+- **Uncanny Dodge** (Rogue L5+) is now an **OnHit defender option** (alongside Shield) in
+  `defenderOnHitOptions`: auto/RL via `maybeDefenderOnHitInline`, GUI via the `advanceAttack` suspend
+  window (`applyAttackReaction` → `applyUncannyDodge`). The inline auto-halving block was removed from
+  `applyAttackResult`.
+- **Guided Strike** (War Cleric L3+) is now an **OnMiss option**: auto/RL via `maybeGuidedStrikeInline`
+  (runs before `maybeRiposteInline`, since a guided hit forecloses the defender's riposte). The GUI keeps
+  its existing `guided_strike_available`-flag offer (parallel to Riposte), and `applyAttackResult` sets
+  that flag via the shared `canGuidedStrike` gate. `applyGuidedStrike` is unchanged.
+
+**Deliberate behavior change (the cost of consistency):** Uncanny Dodge is now **decider-gated like
+every other reaction** — with **no decider installed it is skipped** (it used to auto-apply). Concretely:
+in the GUI it fires on the player's main attack (which goes through `begin_attack`/the OnHit window) but
+**NOT** on incidental sub-attacks that use the atomic `execute_action` path with no decider —
+**Opportunity Attacks, Cleave, and extra/multiattack swings**. This matches how Shield and Riposte
+already behave on those sub-attacks (the same "reaction-during-reaction on an atomic sub-attack" deferral
+as Cleave). Tests cover all three UD paths (decider auto, no-decider skip, GUI suspend) in
+`test_rogue_l1_18.py`; the auto Guided-Strike path is in `test_cleric.py`.
+
+---
+
 ### Attacker-rider → defender-reaction chaining ("rider shadows the defender's reaction") [OPUS] [DEFER]
 **Status:** v1 limitation across every defender-side on-hit/on-miss reaction — deferred (not planned).
 
@@ -791,3 +814,33 @@ to spell saves this pass* — see the OnSaveFail entry under Architecture → Po
   (any die-holder). **Use Inspiration Die primes the bonus BEFORE the next d20** (engine model),
   not RAW's post-hoc "spend after seeing a failed roll" prompt. No separate resource bar; the
   button only appears when a use/die is available (mirrors Lay on Hands).
+
+## Warlock Eldritch Invocations (combat-sim modeling)
+
+Implemented (engine + GUI picker `InvocationDialog`): Agonizing Blast, Repelling Blast,
+Eldritch Mind, Armor of Shadows, Fiendish Vigor, Devil's Sight, Eldritch Spear. Selected in
+a scrollable picker; unimplemented/level-locked/feat-deferred entries render greyed.
+
+Modeling simplifications (deliberate, combat-sim scope):
+- **Agonizing Blast / Repelling Blast / Eldritch Spear** are hardcoded to **Eldritch Blast**,
+  not a freely chosen damage cantrip. EB is the only attack-roll damage cantrip in use here,
+  so the "choose a cantrip" + Repeatable clauses are not modeled.
+- **Armor of Shadows** is modeled as an always-on unarmored defense (AC 13 + DEX), i.e. the
+  Warlock is assumed to keep Mage Armor up. No 8-hour duration / casting step.
+- **Fiendish Vigor** grants its 12 temp HP (max 2d4+4) at the Warlock's **first `beginTurn`**
+  of the combat, guarded by `fiendish_vigor_applied`. The flag is NOT reset on long rest, so a
+  second encounter in the same session won't re-grant unless stats are reset. The pre-buff is
+  treated as "already up" — temp HP is not present before the Warlock's first turn.
+- **Devil's Sight** materializes `devilssight_range = 120` in `CombatEngine::setAgentStats`
+  (idempotent), reusing the existing vision/blinded plumbing.
+- **Eldritch Spear** extends EB range via `effectiveSpellRange` (bound `effective_spell_range`)
+  and an `executeSpell` `sp.range` bump. The GUI range-circle / `filter_spell_cells` gate does
+  NOT yet consult it — **unobservable on the maps in use** (EB base 120 ft >> ~55 ft maps), so
+  the GUI plumbing is a deferred cosmetic follow-up (same class as the Counterspell 60 ft note).
+
+### Deferred: Gift of the Protectors (invocation code 9)
+Gift of the Protectors = "cast Death Ward CHA-mod times per long rest, for free" (drop to 1 HP
+instead of 0). **Deferred** because Death Ward itself has no engine effect (present in
+spells.json only — no drop-to-1 hook in the unconscious/death path). Implement Death Ward's
+drop-to-1 mechanic + a per-long-rest charge counter first, then this invocation becomes a
+free-cast grant. Stays greyed in the InvocationDialog (note: "needs Death Ward").

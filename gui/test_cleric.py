@@ -384,6 +384,58 @@ def test_guided_strike_turns_miss_to_hit():
     print("✅ test_guided_strike_turns_miss_to_hit passed")
 
 
+class _GuideDecider(rpg.CombatDecider):
+    """At an OnMiss window, pick the Guided Strike option (else Skip). Counts OnMiss offers."""
+    def __init__(self):
+        super().__init__()
+        self.onmiss_offers = 0
+    def choose_reaction(self, ctx):
+        resp = rpg.ReactionResponse(); resp.option = -1
+        if ctx.window == rpg.ReactionWindow.OnMiss:
+            self.onmiss_offers += 1
+            for i, o in enumerate(ctx.options):
+                if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "GuidedStrike":
+                    resp.option = i
+                    break
+        return resp
+
+
+def test_guided_strike_auto_via_decider():
+    # The auto/RL path: a self-guiding War Cleric routes Guided Strike through the OnMiss window
+    # (maybeGuidedStrikeInline → chooseReaction), so execute_action itself turns a miss into a hit.
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "WarCleric", 5, 5)
+    target = _add(engine, bm, "Goblin", 6, 5, hp=200)
+
+    cs = engine.get_agent_stats(bm, cleric)
+    cs.character_class = rpg.CharacterClass.Cleric
+    cs.cleric_subclass = rpg.ClericSubclass.WarDomain
+    cs.char_level = 3
+    cs.wis = 16
+    cs.initialize_class_resources(rpg.CharacterClass.Cleric, 3)
+    engine.set_agent_stats(bm, cleric, cs)
+    engine.set_agent_weapons(bm, cleric, [_war_mace()] * 3)
+    ts = engine.get_agent_stats(bm, target)
+    ts.base_ac = 11; ts.hp_max = 200; ts.hp_cur = 200  # miss roll (2-10) + 10 always >= 11
+    engine.set_agent_stats(bm, target, ts)
+
+    dec = _GuideDecider(); engine.set_decider(dec)
+    attack = rpg.Attack(cleric, target, 0)
+    r = None
+    for _ in range(40):
+        cd_before = _cd(engine, bm, cleric)
+        r = engine.execute_action(bm, attack)
+        if dec.onmiss_offers >= 1:
+            # The miss opened the window and the decider guided it → it is now a hit, CD spent.
+            assert r.hit, "Guided Strike (+10) should have turned the miss into a hit"
+            assert _cd(engine, bm, cleric) == cd_before - 1, "Guided Strike spends one Channel Divinity"
+            print("✅ test_guided_strike_auto_via_decider passed")
+            return
+        if r.hit:
+            continue  # a natural hit doesn't open the OnMiss window; retry for a miss
+    raise AssertionError("never produced a guided miss in 40 attempts")
+
+
 if __name__ == "__main__":
     test_channel_divinity_uses_by_level()
     test_divine_strike_adds_damage_once_per_turn()
@@ -395,4 +447,5 @@ if __name__ == "__main__":
     test_war_priest_resource()
     test_avatar_of_battle_resistance()
     test_guided_strike_turns_miss_to_hit()
+    test_guided_strike_auto_via_decider()
     print("\n✅ All Cleric tests passed!")

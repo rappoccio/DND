@@ -395,6 +395,242 @@ def _mod_str(score: int) -> str:
     return f"+{m}" if m >= 0 else str(m)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Eldritch Invocation registry — shared by StatsDialog + InvocationDialog.
+#
+#  code        : stable integer persisted in Agent.Stats.eldritch_invocations.
+#                DO NOT renumber existing codes (breaks save files).
+#  name        : display name.
+#  min_level   : minimum Warlock level (spec "Prerequisite: Level N+"; 1 = no level req).
+#  implemented : True once the C++ engine has a real combat effect (checked via
+#                hasInvocation(code)); False entries render greyed/non-selectable
+#                in the picker so the GUI never offers a no-op selection.
+#  note        : short status / prerequisite shown in the picker.
+#
+#  Flip `implemented` to True (and add the hasInvocation check in C++) as each
+#  invocation's engine effect lands. See warlock_invocation_roadmap memory.
+# ─────────────────────────────────────────────────────────────────────────────
+INVOCATIONS = [
+    # code, name,                          min_level, implemented, note
+    (0,  "Agonizing Blast",                 2, True,  "EB: +CHA damage"),
+    (1,  "Repelling Blast",                 2, True,  "EB: push 10 ft"),
+    (3,  "Eldritch Mind",                   1, True,  "Adv. on concentration saves"),
+    (2,  "Eldritch Spear",                  2, True,  "EB range +30 ft/level"),
+    (4,  "Devil's Sight",                   2, True,  "See in dim light/darkness 120 ft"),
+    (5,  "Armor of Shadows",                1, True,  "Free Mage Armor (AC)"),
+    (6,  "Fiendish Vigor",                  2, True,  "Free max-roll False Life (temp HP)"),
+    (8,  "One with Shadows",                5, False, "Free Invisibility in dim/dark"),
+    (7,  "Witch Sight",                    15, True,  "Truesight 30 ft"),
+    (10, "Otherworldly Leap",               2, False, "Free Jump (movement)"),
+    (11, "Gift of the Depths",              5, True,  "Swim speed = Speed"),
+    (12, "Master of Myriad Forms",          5, False, "Free Alter Self (natural weapons)"),
+    (9,  "Gift of the Protectors",          9, False, "Death Ward (drop to 1 HP) — needs Death Ward"),
+    (13, "Pact of the Blade",               1, False, "Conjure pact weapon (CHA atk/dmg)"),
+    (14, "Thirsting Blade",                 5, False, "Extra Attack — needs Pact of the Blade"),
+    (15, "Eldritch Smite",                  5, False, "Slot: +force/prone — needs Pact of the Blade"),
+    (16, "Lifedrinker",                     9, False, "+dmg & heal — needs Pact of the Blade"),
+    (17, "Devouring Blade",                12, False, "2 extra attacks — needs Thirsting Blade"),
+    (18, "Pact of the Chain",               1, False, "Attacking familiar"),
+    (19, "Investment of the Chain Master",  5, False, "Familiar buffs — needs Pact of the Chain"),
+    (20, "Pact of the Tome",                1, False, "Bonus cantrips/rituals"),
+    (21, "Lessons of the First Ones",       2, False, "Origin feat — needs feats system"),
+]
+
+# Quick lookup: code -> (name, min_level, implemented, note)
+INVOCATIONS_BY_CODE = {row[0]: row[1:] for row in INVOCATIONS}
+
+
+class InvocationDialog:
+    """Scrollable modal multi-select picker for Warlock Eldritch Invocations.
+
+    Mirrors SpellSelectionDialog's overlay/scroll pattern but toggles a set of
+    invocation codes (checkboxes). Unimplemented, level-locked, or feat-deferred
+    rows render greyed and are not selectable. Commits the chosen codes to the
+    callback when dismissed (Escape / Done / click-outside)."""
+    ITEM_H = 30
+    PAD    = 12
+    HDR_H  = 36
+    BTN_H  = 28
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self._selected = set()       # codes currently chosen
+        self._eff_level = 1          # live Warlock level for gating
+        self._callback = None        # called with sorted list of codes on dismiss
+        self._done_rect = None
+        self._frames_since_show = 0  # ignore the click that opened the dialog
+
+    def show(self, callback, current_codes, eff_level):
+        self.visible = True
+        self._callback = callback
+        self._selected = set(current_codes or [])
+        self._eff_level = eff_level
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w, dlg_h = 440, 540
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def _commit_and_dismiss(self):
+        if self._callback:
+            self._callback(sorted(self._selected))
+        self.visible = False
+
+    def _row_enabled(self, code, min_level, implemented):
+        """A row can be toggled only if its effect exists and the level allows it.
+        A code already selected can always be toggled OFF (so a now-locked pick
+        is removable)."""
+        return (implemented and self._eff_level >= min_level) or (code in self._selected)
+
+    def _list_geom(self):
+        list_y = self.rect.y + self.HDR_H
+        list_h = self.rect.h - self.HDR_H - self.BTN_H - self.PAD * 2
+        return list_y, list_h
+
+    def _max_scroll(self, list_h):
+        return max(0, len(INVOCATIONS) * self.ITEM_H - list_h)
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+
+        # Ignore the very click that opened us (same frame as show()).
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self._commit_and_dismiss()
+                return True
+
+        elif event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            _list_y, list_h = self._list_geom()
+            self.scroll_y = max(0, min(self.scroll_y - event.y * 30, self._max_scroll(list_h)))
+            return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            list_y, list_h = self._list_geom()
+            self._hover_idx = -1
+            for i in range(len(INVOCATIONS)):
+                iy = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= iy < list_y + list_h:
+                    r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if r.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._done_rect and self._done_rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            if not self.rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()   # click outside = accept current
+                return True
+            list_y, list_h = self._list_geom()
+            for i, (code, name, min_level, implemented, note) in enumerate(INVOCATIONS):
+                iy = list_y + i * self.ITEM_H - self.scroll_y
+                if not (list_y <= iy < list_y + list_h):
+                    continue
+                r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos) and self._row_enabled(code, min_level, implemented):
+                    if code in self._selected:
+                        self._selected.discard(code)
+                    else:
+                        self._selected.add(code)
+                    return True
+            return True
+
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+
+        pygame.draw.rect(surf, (40, 40, 54), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+
+        title = self.font_md.render(f"Eldritch Invocations  (Lv {self._eff_level})", True, (220, 220, 235))
+        surf.blit(title, (self.rect.x + self.PAD, self.rect.y + 9))
+
+        list_y, list_h = self._list_geom()
+        list_rect = pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h)
+        prev_clip = surf.get_clip()
+        surf.set_clip(list_rect)
+        cb = 14
+        for i, (code, name, min_level, implemented, note) in enumerate(INVOCATIONS):
+            iy = list_y + i * self.ITEM_H - self.scroll_y
+            if iy + self.ITEM_H < list_y or iy > list_y + list_h:
+                continue
+            row = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+            level_ok = self._eff_level >= min_level
+            enabled  = implemented and level_ok
+            selected = code in self._selected
+            if i == self._hover_idx and (enabled or selected):
+                pygame.draw.rect(surf, (62, 62, 84), row)
+
+            # Checkbox
+            cb_r = pygame.Rect(row.x + 4, row.y + (self.ITEM_H - cb) // 2, cb, cb)
+            box_col = (45, 110, 55) if selected else (50, 50, 66)
+            bdr_col = (80, 200, 90) if selected else (90, 90, 120)
+            if not enabled and not selected:
+                box_col = (38, 38, 48)
+            pygame.draw.rect(surf, box_col, cb_r, border_radius=2)
+            pygame.draw.rect(surf, bdr_col, cb_r, 1, border_radius=2)
+            if selected:
+                pts = [(cb_r.x + 2, cb_r.centery), (cb_r.centerx - 1, cb_r.bottom - 2), (cb_r.right - 2, cb_r.y + 2)]
+                pygame.draw.lines(surf, (120, 240, 120), False, pts, 2)
+
+            name_col = (225, 225, 240) if enabled or selected else (120, 120, 140)
+            nm = self.font_sm.render(name, True, name_col)
+            surf.blit(nm, (cb_r.right + 8, row.y + 2))
+            note_col = (140, 140, 165) if enabled or selected else (95, 95, 115)
+            nt = self.font_sm.render(note, True, note_col)
+            surf.blit(nt, (cb_r.right + 8, row.y + 15))
+
+            # Right-side status tag
+            if not level_ok:
+                tag, tcol = f"Lv {min_level}", (210, 170, 70)
+            elif not implemented:
+                tag, tcol = "soon", (140, 130, 90)
+            else:
+                tag, tcol = "", (0, 0, 0)
+            if tag:
+                ts = self.font_sm.render(tag, True, tcol)
+                surf.blit(ts, (row.right - ts.get_width() - 6, row.y + (self.ITEM_H - ts.get_height()) // 2))
+        surf.set_clip(prev_clip)
+
+        # Scrollbar
+        max_scroll = self._max_scroll(list_h)
+        if max_scroll > 0:
+            track = pygame.Rect(list_rect.right - 6, list_y, 6, list_h)
+            pygame.draw.rect(surf, (30, 30, 42), track)
+            frac = list_h / (len(INVOCATIONS) * self.ITEM_H)
+            th_h = max(20, int(list_h * frac))
+            th_y = list_y + int((list_h - th_h) * (self.scroll_y / max_scroll))
+            pygame.draw.rect(surf, (110, 110, 150), pygame.Rect(track.x, th_y, track.w, th_h))
+
+        # Done button
+        self._done_rect = pygame.Rect(self.rect.right - 90 - self.PAD,
+                                      self.rect.bottom - self.BTN_H - self.PAD, 90, self.BTN_H)
+        hov = self._done_rect.collidepoint(*pygame.mouse.get_pos())
+        pygame.draw.rect(surf, (50, 125, 65) if hov else (35, 90, 45), self._done_rect, border_radius=4)
+        pygame.draw.rect(surf, (90, 90, 120), self._done_rect, 1, border_radius=4)
+        dt = self.font_md.render(f"Done ({len(self._selected)})", True, (220, 220, 220))
+        surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
 class StatsDialog:
     """
     Modal dialog showing and editing D&D 5.5e stats for a placed agent.
@@ -467,6 +703,8 @@ class StatsDialog:
         self._spell_selection_dialog = None
         self._eldritch_invocations = []  # Warlock eldritch invocations (list of int codes)
         self._invocation_rects = {}      # invocation code -> pygame.Rect for checkboxes
+        self._invocation_dialog = None   # scrollable picker (Warlock only)
+        self._invocation_btn_rect = None # "Invocations..." launch button
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE"):
@@ -483,6 +721,7 @@ class StatsDialog:
         self._armor_list        = armor_list or []
         self._eldritch_invocations = list(stats.eldritch_invocations) if hasattr(stats, 'eldritch_invocations') else []
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
+        self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
 
     def _get_available_subclasses(self, class_name: str) -> list[str]:
@@ -586,6 +825,11 @@ class StatsDialog:
             return False
         dlg = self._dlg(screen)
 
+        # Invocation picker is modal-on-top: it consumes all events while open.
+        if self._invocation_dialog and self._invocation_dialog.visible:
+            self._invocation_dialog.handle(event)
+            return True
+
         # Let steppers see every event first so a focused field can consume
         # Escape/Enter before the dialog itself acts on Escape.
         any_field_active = any(st._active for st in self.steppers.values())
@@ -605,6 +849,14 @@ class StatsDialog:
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Invocations "Choose..." button → open the scrollable picker.
+            if self._invocation_btn_rect and self._invocation_btn_rect.collidepoint(event.pos):
+                if self._invocation_dialog:
+                    eff_level = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+                    self._invocation_dialog.show(self._on_invocations_chosen,
+                                                 self._eldritch_invocations, eff_level)
+                return True
+
             # NPC checkbox and spell group interactions
             if hasattr(self, '_npc_checkbox_rect') and self._npc_checkbox_rect:
                 if self._npc_checkbox_rect.collidepoint(event.pos):
@@ -707,6 +959,10 @@ class StatsDialog:
                 return True
 
         return event.type in (pygame.MOUSEMOTION, pygame.MOUSEWHEEL)
+
+    def _on_invocations_chosen(self, codes):
+        """Callback from InvocationDialog: store the chosen invocation codes."""
+        self._eldritch_invocations = list(codes)
 
     def _add_npc_spell(self, group_n, spell):
         """Add a spell to an NPC spell group."""
@@ -936,39 +1192,22 @@ class StatsDialog:
             npc_checkbox_y = dlg.y + self.HDR_H + self.PAD + 300
 
         # ── Warlock Eldritch Invocations ──────────────────────────────────
+        # The full list is large, so it lives in a scrollable popup (InvocationDialog)
+        # launched by this button; selected codes round-trip through _eldritch_invocations.
         self._invocation_rects = {}
+        self._invocation_btn_rect = None
         if self._class_name == "Warlock":
             inv_y = (subclass_y + 24 if 'subclass_y' in locals() else class_y + 24) if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
             inv_lbl = self.font_sm.render("Invocations:", True, self.C_LABEL)
             screen.blit(inv_lbl, (dlg.x + self.PAD, inv_y))
-
-            # Invocation codes: 0=Agonizing Blast, 1=Repelling Blast, 2=Eldritch Spear, 3=Eldritch Mind
-            invocations = [
-                (3, "Eldritch Mind", 1),        # L1+
-                (0, "Agonizing Blast", 2),     # L2+
-                (1, "Repelling Blast", 2),     # L2+
-                (2, "Eldritch Spear", 2),      # L2+
-            ]
-            cb_h = 14
-            inv_base_y = inv_y + 18
-            for idx, (code, name, min_level) in enumerate(invocations):
-                if self._char_level >= min_level:
-                    inv_y_pos = inv_base_y + idx * (cb_h + 4)
-                    inv_r = pygame.Rect(dlg.x + self.PAD, inv_y_pos, cb_h, cb_h)
-                    checked = code in self._eldritch_invocations
-                    box_col = (45, 110, 55) if checked else (60, 60, 80)
-                    bdr_col = (80, 200, 90) if checked else self.C_BORDER
-                    pygame.draw.rect(screen, box_col, inv_r, border_radius=2)
-                    pygame.draw.rect(screen, bdr_col, inv_r, 1, border_radius=2)
-                    if checked:
-                        pts = [(inv_r.x + 2, inv_r.centery),
-                               (inv_r.centerx - 1, inv_r.bottom - 2),
-                               (inv_r.right - 2, inv_r.y + 2)]
-                        pygame.draw.lines(screen, (110, 240, 110), False, pts, 1)
-                    inv_txt = self.font_sm.render(name, True, self.C_LABEL)
-                    screen.blit(inv_txt, (inv_r.right + 6, inv_y_pos))
-                    self._invocation_rects[code] = inv_r
-            npc_checkbox_y = inv_base_y + len([i for i in invocations if self._char_level >= i[2]]) * (cb_h + 4) + 10
+            n_sel = len(self._eldritch_invocations)
+            self._invocation_btn_rect = pygame.Rect(dlg.x + self.PAD + 80, inv_y - 2, 150, 18)
+            hov = self._invocation_btn_rect.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._invocation_btn_rect, border_radius=3)
+            pygame.draw.rect(screen, (120, 150, 180), self._invocation_btn_rect, 1, border_radius=3)
+            btn_txt = self.font_sm.render(f"Choose... ({n_sel} selected)", True, (210, 220, 240))
+            screen.blit(btn_txt, btn_txt.get_rect(center=self._invocation_btn_rect.center))
+            npc_checkbox_y = inv_y + 24
 
         # ── NPC Spells Section ────────────────────────────────────────────
         npc_checkbox_y = npc_checkbox_y if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
@@ -1050,6 +1289,10 @@ class StatsDialog:
             pygame.draw.rect(screen, self.C_BORDER, rect, 1, border_radius=4)
             t = self.font_md.render(label, True, (220, 220, 220))
             screen.blit(t, t.get_rect(center=rect.center))
+
+        # Invocation picker draws last so it overlays the whole stats dialog.
+        if self._invocation_dialog:
+            self._invocation_dialog.draw(screen)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

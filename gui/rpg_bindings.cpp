@@ -2038,6 +2038,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "also spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll\n"
              "(conditions.guided_strike_available). If it now meets AC, the miss becomes a hit and\n"
              "weapon damage is rolled and applied. Pass the Attack that missed and its AttackResult.")
+        .def("can_guided_strike", &CombatEngine::canGuidedStrike,
+             py::arg("battle_map"), py::arg("action"), py::arg("cleric_idx"),
+             "True iff cleric_idx (War Domain L3+ with a Channel Divinity use; the attacker itself, or an\n"
+             "ally within 30 ft whose reaction is free) may Guided-Strike action's miss. Eligibility gate\n"
+             "shared by the GUI flag and the auto/RL OnMiss window (maybeGuidedStrikeInline).")
+        .def("can_uncanny_dodge", &CombatEngine::canUncannyDodge,
+             py::arg("battle_map"), py::arg("target_idx"),
+             "True iff target_idx (Rogue L5+, reaction free, not incapacitated, alive) may use Uncanny\n"
+             "Dodge to halve an attack's damage. Eligibility gate for the OnHit defender window.")
+        .def("apply_uncanny_dodge", &CombatEngine::applyUncannyDodge,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Uncanny Dodge (on-hit DEFENDER reaction): halve result.total_damage (round down), spend the\n"
+             "reactor's reaction, and record the reduction in result.damage_breakdown. Re-validates\n"
+             "can_uncanny_dodge. Returns True iff applied. The OnHit window (begin_attack/submit_decision)\n"
+             "drives this for the GUI; auto/RL runs it inline via maybeDefenderOnHitInline.")
         .def("apply_reckless_reroll",
              &CombatEngine::applyRecklessReroll,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
@@ -2269,6 +2284,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level\n"
              "For Single geometry: returns 1. For AoE: returns 0.\n"
              "caster_level: character level for special cases like Eldritch Blast (default -1 uses slot level formula)")
+        .def("effective_spell_range",
+             &CombatEngine::effectiveSpellRange,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("spell"),
+             "Casting range (ft) for a spell as cast by caster_idx, after range-extending\n"
+             "invocations (Eldritch Spear: +30 ft x Warlock level for Eldritch Blast). Returns\n"
+             "spell.range unchanged otherwise.")
 
         // ── Agent stat and equipment management ─────────────────────────────
         .def("add_agent_config",

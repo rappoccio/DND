@@ -283,6 +283,27 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         return ac;
     }
 
+    // Armor of Shadows invocation (code 5): the Warlock keeps Mage Armor up at all
+    // times (free, no slot), so model it as unarmored defense AC = 13 + DEX when no
+    // armor is worn. Mage Armor does not cap DEX.
+    if (pa.agent->getStats().character_class == CharacterClass::Warlock &&
+        pa.agent->getStats().hasInvocation(5) && !has_armor) {
+        int dex_mod = (pa.agent->getStats().dex - 10) / 2;
+        int ac = 13 + dex_mod;
+
+        // Add shield bonus (off-hand weapon with ac_bonus)
+        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
+            const Weapon& shield = pa.weapons.back();
+            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+                ac += shield.ac_bonus;
+            }
+        }
+
+        // Add temporary modifications
+        ac += pa.agent->getStats().ac_temporary_modifications;
+        return ac;
+    }
+
     // Standard AC calculation (non-Barbarian/Monk or wearing armor)
     int ac = pa.agent->getStats().base_ac;
 

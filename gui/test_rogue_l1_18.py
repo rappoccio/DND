@@ -15,6 +15,23 @@ import rpg_battle_map as rpg
 from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
 
 
+class _UDDecider(rpg.CombatDecider):
+    """At an OnHit defender window, pick the Uncanny Dodge option (else Skip). Records OnHit offers
+    so a test can assert the window actually opened."""
+    def __init__(self):
+        super().__init__()
+        self.onhit_offers = 0
+    def choose_reaction(self, ctx):
+        resp = rpg.ReactionResponse(); resp.option = -1
+        if ctx.window == rpg.ReactionWindow.OnHit:
+            self.onhit_offers += 1
+            for i, o in enumerate(ctx.options):
+                if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "UncannyDodge":
+                    resp.option = i
+                    break
+        return resp
+
+
 def _rogue(engine, bm, idx, level, subclass=None, dex=16):
     """Configure agent idx as a Rogue of the given level (+ optional subclass)."""
     s = engine.get_agent_stats(bm, idx)
@@ -235,7 +252,11 @@ def test_uncanny_dodge():
 
     _rogue(engine, bm, tgt, 5)  # Uncanny Dodge available at L5
 
+    # Uncanny Dodge is now an OnHit defender reaction routed through the framework: the auto/RL path
+    # asks the installed decider (no decider → skipped, like every other reaction).
+    dec = _UDDecider(); engine.set_decider(dec)
     result = _hit_once(engine, bm, atk, tgt, give_adv=True)  # advantage just to land the hit
+    assert dec.onhit_offers >= 1, "the OnHit defender window should have opened for the Rogue"
     reduction = _breakdown_value(result, "uncanny dodge")
     assert reduction is not None and reduction < 0, \
         f"Uncanny Dodge should record a negative reduction, got {reduction}"
@@ -245,6 +266,67 @@ def test_uncanny_dodge():
     # Reaction consumed.
     assert engine.get_agent_conditions(bm, tgt).reaction_used, "Uncanny Dodge consumes the reaction"
     print("✅ test_uncanny_dodge passed")
+
+
+def test_uncanny_dodge_skipped_without_decider():
+    # Framework convention: with no decider installed (headless), every reaction window — Uncanny Dodge
+    # included — is skipped. This is the deliberate change from the old auto-apply behavior.
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 6, 5), ac=1, hp=500)
+    afs = engine.get_agent_stats(bm, atk); afs.str = 16
+    engine.set_agent_stats(bm, atk, afs)
+    w = _finesse_weapon()
+    roll = rpg.PhysicalDamageRoll(); roll.type = rpg.PhysicalDamage.Slashing
+    roll.num_dice = 4; roll.die_size = 6
+    w.physical_damage_types = [roll]
+    engine.set_agent_weapons(bm, atk, _three(w))
+    _rogue(engine, bm, tgt, 5)
+
+    result = _hit_once(engine, bm, atk, tgt, give_adv=True)  # NO decider installed
+    assert _breakdown_value(result, "uncanny dodge") is None, \
+        "without a decider the Uncanny Dodge window is skipped (no auto-apply)"
+    assert not engine.get_agent_conditions(bm, tgt).reaction_used, \
+        "no reaction is spent when the window is skipped"
+    print("✅ test_uncanny_dodge_skipped_without_decider passed")
+
+
+def test_uncanny_dodge_gui_window():
+    # GUI path: begin_attack suspends at the OnHit defender window; submit_decision(UncannyDodge)
+    # halves the damage. No decider is installed (the human is expressed via submit_decision).
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 6, 5), ac=1, hp=500)
+    afs = engine.get_agent_stats(bm, atk); afs.str = 16
+    engine.set_agent_stats(bm, atk, afs)
+    w = _finesse_weapon()
+    roll = rpg.PhysicalDamageRoll(); roll.type = rpg.PhysicalDamage.Slashing
+    roll.num_dice = 4; roll.die_size = 6
+    w.physical_damage_types = [roll]
+    engine.set_agent_weapons(bm, atk, _three(w))
+    _rogue(engine, bm, tgt, 5)
+
+    status = None
+    for _ in range(40):
+        _give_advantage(engine, bm, atk)
+        status = engine.begin_attack(bm, rpg.Attack(atk, tgt, 0))
+        if status == rpg.FlowStatus.AwaitingDecision:
+            break
+        # a miss/fumble finishes immediately with no window — retry to land a hit
+    assert status == rpg.FlowStatus.AwaitingDecision, "a landed hit on a Rogue should open the OnHit window"
+    pd = engine.pending_decision()
+    assert pd.active and pd.ctx.window == rpg.ReactionWindow.OnHit
+    ud = next(i for i, o in enumerate(pd.ctx.options)
+              if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "UncannyDodge")
+    resp = rpg.ReactionResponse(); resp.option = ud
+    status = engine.submit_decision(bm, resp)
+    assert status == rpg.FlowStatus.Completed
+    result = engine.last_attack_result()
+    assert _breakdown_value(result, "uncanny dodge") is not None, "the GUI window should apply Uncanny Dodge"
+    assert engine.get_agent_conditions(bm, tgt).reaction_used, "the reaction is consumed"
+    print("✅ test_uncanny_dodge_gui_window passed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -344,6 +426,8 @@ if __name__ == "__main__":
     test_sneak_attack_requires_finesse_or_ranged()
     test_sneak_attack_scaling_l19()
     test_uncanny_dodge()
+    test_uncanny_dodge_skipped_without_decider()
+    test_uncanny_dodge_gui_window()
     test_evasion_no_damage_on_save()
     test_elusive_negates_advantage()
     print("\n✅ All Rogue Phase 1 tests passed!")

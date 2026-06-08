@@ -129,6 +129,17 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Fiendish Vigor invocation (code 6): the Warlock keeps False Life up (free, no
+    // slot) and auto-maxes the dice (2d4 + 4 = 12 temp HP). Granted once, the first
+    // time this Warlock begins a turn in the combat (the pre-buff is "already up").
+    if (stats.character_class == CharacterClass::Warlock && stats.hasInvocation(6) &&
+        !stats.fiendish_vigor_applied) {
+        stats.fiendish_vigor_applied = true;
+        if (stats.temp_hp < 12) stats.temp_hp = 12;
+        bm.setAgentStats(agent_idx, stats);
+        log_("{} gains 12 temporary HP (Fiendish Vigor — max False Life)", agent_name);
+    }
+
     // Death from Exhaustion: agent dies at exhaustion level 6
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
 

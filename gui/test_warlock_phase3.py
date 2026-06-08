@@ -150,7 +150,146 @@ def test_invocation_storage_roundtrip():
     print("✅ test_invocation_storage_roundtrip passed")
 
 
+def _add_warlock(engine, bm, level, cha=10, dex=10, invocations=None):
+    """Place a single Warlock on the map and return its index."""
+    cfg = rpg.AgentConfig()
+    cfg.name = "Warlock"
+    cfg.start_col = 5
+    cfg.start_row = 5
+    cfg.size = 1
+    cfg.sprite_path = "test.png"
+    engine.add_agent_config(bm, cfg)
+    engine.apply_agent_configs(bm)
+    idx = 0
+    s = _warlock_stats(level, cha=cha, invocations=invocations)
+    s.dex = dex
+    engine.set_agent_stats(bm, idx, s)
+    return idx
+
+
+def test_armor_of_shadows_ac():
+    """Armor of Shadows (code 5): unarmored AC = 13 + DEX, no slot, always on."""
+    # DEX 16 (+3) → Mage Armor AC 16; without the invocation → base AC.
+    engine = setup_combat_engine()
+    bm = setup_battle_map()
+    idx = _add_warlock(engine, bm, level=5, dex=16, invocations=[5])
+    ac = engine.calculate_ac(bm, idx)
+    assert ac == 16, f"Armor of Shadows: expected AC 13+3=16, got {ac}"
+
+    # Control: same warlock without the invocation must NOT get 13+DEX.
+    engine2 = setup_combat_engine()
+    bm2 = setup_battle_map()
+    idx2 = _add_warlock(engine2, bm2, level=5, dex=16, invocations=[])
+    ac2 = engine2.calculate_ac(bm2, idx2)
+    assert ac2 != 16, f"No invocation should not yield Mage Armor AC, got {ac2}"
+
+    print("✅ test_armor_of_shadows_ac passed")
+
+
+def test_fiendish_vigor_temp_hp():
+    """Fiendish Vigor (code 6): max False Life (2d4+4 = 12) temp HP on first turn."""
+    engine = setup_combat_engine()
+    bm = setup_battle_map()
+    idx = _add_warlock(engine, bm, level=5, invocations=[6])
+    assert engine.get_agent_stats(bm, idx).temp_hp == 0, "should start with 0 temp HP"
+    engine.begin_turn(bm, idx)
+    assert engine.get_agent_stats(bm, idx).temp_hp == 12, \
+        f"Fiendish Vigor: expected 12 temp HP, got {engine.get_agent_stats(bm, idx).temp_hp}"
+
+    # Control: no invocation → no temp HP granted.
+    engine2 = setup_combat_engine()
+    bm2 = setup_battle_map()
+    idx2 = _add_warlock(engine2, bm2, level=5, invocations=[])
+    engine2.begin_turn(bm2, idx2)
+    assert engine2.get_agent_stats(bm2, idx2).temp_hp == 0, "no invocation = no temp HP"
+
+    print("✅ test_fiendish_vigor_temp_hp passed")
+
+
+def test_devils_sight_vision():
+    """Devil's Sight (code 4): materialize devilssight_range = 120 ft (see in dark)."""
+    engine = setup_combat_engine()
+    bm = setup_battle_map()
+    idx = _add_warlock(engine, bm, level=5, invocations=[4])
+    assert engine.get_agent_stats(bm, idx).devilssight_range == 120, \
+        f"Devil's Sight: expected devilssight_range 120, got {engine.get_agent_stats(bm, idx).devilssight_range}"
+
+    # Control: no invocation → no devil's sight.
+    engine2 = setup_combat_engine()
+    bm2 = setup_battle_map()
+    idx2 = _add_warlock(engine2, bm2, level=5, invocations=[])
+    assert engine2.get_agent_stats(bm2, idx2).devilssight_range == 0, "no invocation = no devil's sight"
+
+    print("✅ test_devils_sight_vision passed")
+
+
+def test_eldritch_spear_range():
+    """Eldritch Spear (code 2): EB range += 30 ft x Warlock level."""
+    engine = setup_combat_engine()
+    bm = setup_battle_map()
+    idx = _add_warlock(engine, bm, level=5, invocations=[2])
+    eb = _dict_to_spell(_get_eldritch_blast_spell_dict())
+    base = eb.range
+    eff = engine.effective_spell_range(bm, idx, eb)
+    assert eff == base + 30 * 5, f"Eldritch Spear L5: expected {base + 150}, got {eff}"
+
+    # Control: no invocation → unchanged range.
+    engine2 = setup_combat_engine()
+    bm2 = setup_battle_map()
+    idx2 = _add_warlock(engine2, bm2, level=5, invocations=[])
+    assert engine2.effective_spell_range(bm2, idx2, eb) == base, "no invocation = base range"
+
+    print("✅ test_eldritch_spear_range passed")
+
+
+def test_witch_sight_truesight():
+    """Witch Sight (code 7): materialize truesight_range = 30 ft."""
+    engine = setup_combat_engine()
+    bm = setup_battle_map()
+    idx = _add_warlock(engine, bm, level=15, invocations=[7])
+    assert engine.get_agent_stats(bm, idx).truesight_range == 30, \
+        f"Witch Sight: expected truesight_range 30, got {engine.get_agent_stats(bm, idx).truesight_range}"
+
+    engine2 = setup_combat_engine()
+    bm2 = setup_battle_map()
+    idx2 = _add_warlock(engine2, bm2, level=15, invocations=[])
+    assert engine2.get_agent_stats(bm2, idx2).truesight_range == 0, "no invocation = no truesight"
+
+    print("✅ test_witch_sight_truesight passed")
+
+
+def test_gift_of_the_depths_swim():
+    """Gift of the Depths (code 11): swim speed becomes equal to walk speed."""
+    engine = setup_combat_engine()
+    bm = setup_battle_map()
+    idx = _add_warlock(engine, bm, level=5, invocations=[11])
+    s = engine.get_agent_stats(bm, idx)
+    s.speed_walk = 30
+    s.speed_swim = 0
+    engine.set_agent_stats(bm, idx, s)
+    out = engine.get_agent_stats(bm, idx)
+    assert out.speed_swim == 30, f"Gift of the Depths: expected swim 30, got {out.speed_swim}"
+
+    # Control: no invocation → swim stays 0.
+    engine2 = setup_combat_engine()
+    bm2 = setup_battle_map()
+    idx2 = _add_warlock(engine2, bm2, level=5, invocations=[])
+    s2 = engine2.get_agent_stats(bm2, idx2)
+    s2.speed_walk = 30
+    s2.speed_swim = 0
+    engine2.set_agent_stats(bm2, idx2, s2)
+    assert engine2.get_agent_stats(bm2, idx2).speed_swim == 0, "no invocation = no swim grant"
+
+    print("✅ test_gift_of_the_depths_swim passed")
+
+
 if __name__ == '__main__':
     test_beam_count_scaling()
     test_invocation_storage_roundtrip()
+    test_armor_of_shadows_ac()
+    test_fiendish_vigor_temp_hp()
+    test_devils_sight_vision()
+    test_eldritch_spear_range()
+    test_witch_sight_truesight()
+    test_gift_of_the_depths_swim()
     print("\n✅ All Warlock Phase 3 tests passed!")

@@ -560,7 +560,7 @@ struct InFlightAttack {
     AttackResult r{};               // the rolled result (filled by resolveAttack between the phases)
     bool adv{false};
     bool dis{false};
-    bool shield_offered{false};     // the OnHit Shield window has been opened once (don't re-offer on resume)
+    bool onhit_offered{false};      // the OnHit defender window (Shield / Uncanny Dodge) has been opened once
     // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss; OND20SEEN_PLAN.md) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
     std::size_t      d20_cursor{0};       // next reactor to offer
@@ -784,7 +784,7 @@ public:
     // Interruptible weapon attack (ONDECLARECAST_PLAN.md step 3b): rolls the attack, then opens the
     // OnHit window so the target may cast Shield (+5 AC) to negate the hit before any damage. beginAttack
     // is the GUI/interactive entry (suspends at the Shield checkpoint); the auto/RL path stays on
-    // executeAction (inline Shield via maybeDefenderShieldInline). submitDecision resumes a parked attack
+    // executeAction (inline defender reaction via maybeDefenderOnHitInline). submitDecision resumes a parked attack
     // just like a move/cast. The finished result is read via lastAttackResult().
     FlowStatus beginAttack(BattleMap& bm, const Attack& action);
     [[nodiscard]] const AttackResult& lastAttackResult() const noexcept { return last_attack_result_; }
@@ -1253,17 +1253,48 @@ public:
     [[nodiscard]] bool determineAdvantage(BattleMap& bm, InFlightAttack& s);
     [[nodiscard]] AttackResult applyAttackResult(BattleMap& bm, InFlightAttack& s);
 
-    // Defender Shield reaction vs an attack (ONDECLARECAST_PLAN.md step 3). Called right after the
-    // attack roll resolves, BEFORE any damage/concentration: if the target can cast Shield and its
-    // +5 AC would turn this hit into a miss, offer the reaction; on accept, spend the slot+reaction
-    // and negate the hit (r.hit=false) so no damage is rolled and no concentration save fires. This
-    // is the auto/RL path (inline via decider_); the GUI suspend path arrives with beginAttack (3b).
-    // Per DM ruling a negated hit is a genuine miss (attacker miss-branch features still fire).
-    // Returns true iff Shield was cast (the caller must then re-fetch the target's stats, since this
-    // mutates the target's slot/AC and executeAction re-persists a pre-window snapshot otherwise).
-    bool maybeDefenderShieldInline(BattleMap& bm, const Attack& action, AttackResult& r);
+    // The defender's OnHit reaction options against a just-resolved attack: Shield (negate, if its
+    // +5 AC would flip the hit to a miss) and Uncanny Dodge (halve the damage). Both cost the
+    // defender's one reaction, so the menu offers at most one effective choice. Shared by the inline
+    // (auto/RL) and suspendable (advanceAttack/GUI) paths so they gate identically; always ends with
+    // Skip when any real option exists (empty otherwise).
+    [[nodiscard]] std::vector<ReactionOption> defenderOnHitOptions(const BattleMap& bm,
+                                                                   const Attack& action,
+                                                                   const AttackResult& r) const;
 
-    // Battle Master Riposte — the OnMiss sibling of maybeDefenderShieldInline (auto/RL only; the GUI,
+    // Defender OnHit reaction vs an attack (ONDECLARECAST_PLAN.md step 3; Uncanny Dodge folded in).
+    // Called right after the attack roll resolves, BEFORE any damage/concentration. If the target can
+    // cast Shield (its +5 AC turns the hit into a miss) or use Uncanny Dodge (halve the damage), offer
+    // the reaction; on accept, spend the resource+reaction and either negate the hit (Shield → r.hit
+    // false, no damage/concentration; per DM ruling a genuine miss) or halve r.total_damage (Uncanny
+    // Dodge). Auto/RL path (inline via decider_); the GUI suspend path arrives with beginAttack (3b).
+    // Returns true iff a reaction fired (the caller must then re-fetch the target's stats, since this
+    // mutates the target's slot/AC/reaction and executeAction re-persists a pre-window snapshot).
+    bool maybeDefenderOnHitInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // Rogue Uncanny Dodge (L5+): can this target halve an attack's damage right now (reaction free,
+    // not incapacitated, alive)? Eligibility gate for the OnHit defender window.
+    [[nodiscard]] bool canUncannyDodge(const BattleMap& bm, int target_idx) const;
+
+    // Apply Uncanny Dodge: halve r.total_damage (round down), spend the reactor's reaction, and record
+    // the reduction in r.damage_breakdown (negative). Re-validates canUncannyDodge. Returns true on use.
+    bool applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResult& r);
+
+    // War Domain Guided Strike eligibility for one cleric vs a just-missed attack: WarDomain L3+ with a
+    // Channel Divinity use, and either the attacker itself or an ally within 30 ft whose reaction is
+    // free. The miss must not be a natural 1. Used to set guided_strike_available (GUI) and to enumerate
+    // OnMiss reactors (maybeGuidedStrikeInline).
+    [[nodiscard]] bool canGuidedStrike(const BattleMap& bm, const Attack& action, int cleric_idx) const;
+
+    // War Domain Guided Strike — the OnMiss sibling of maybeGuidedStrikeInline's Riposte counterpart
+    // (auto/RL only; the GUI gets the deferred-flag prompt via guided_strike_available). On a miss,
+    // enumerates eligible War Clerics, builds a ReactionCtx{OnMiss} with a Feature("GuidedStrike")
+    // option for each, asks decider_->chooseReaction, and on accept calls applyGuidedStrike (+10, may
+    // turn the miss into a hit). Called from executeAction AFTER applyAttackResult and BEFORE
+    // maybeRiposteInline (a guided hit forecloses the defender's riposte). Returns true iff it fired.
+    bool maybeGuidedStrikeInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // Battle Master Riposte — the OnMiss sibling of maybeDefenderOnHitInline (auto/RL only; the GUI,
     // with no decider, gets the deferred-flag prompt via riposte_available). Gated on the defender's
     // riposte_available flag (set by applyAttackResult on a melee miss); builds a ReactionCtx{OnMiss}
     // with a Feature("Riposte") option, asks decider_->chooseReaction, and on accept calls applyRiposte.
@@ -1295,7 +1326,7 @@ public:
                                               const SpellToHit& th) const;
 
     // Inline defender Shield vs a spell attack (auto/RL path + GUI multi-beam). Mirrors
-    // maybeDefenderShieldInline: if shouldOfferSpellShield, decide via decider_ when one is installed
+    // maybeDefenderOnHitInline: if shouldOfferSpellShield, decide via decider_ when one is installed
     // (RL/headless/tests), else AUTO-TAKE the Shield (GUI multi-beam attack spells have no per-beam
     // decision cursor yet — documented in known_limitations.md). On accept, applyShield + recompute
     // th.hit against the new (+5) AC. Returns true iff Shield was cast. NOT used for the single-target
@@ -1421,6 +1452,12 @@ public:
     // caster_level: character level for special cases like Eldritch Blast (default -1 means use normal formula)
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level,
                                             int caster_level = -1) const noexcept;
+
+    // Effective casting range (ft) for a spell as cast by a specific agent, after
+    // range-extending invocations. Eldritch Spear (code 2): the chosen damage cantrip's
+    // range increases by 30 ft × Warlock level. Returns sp.range unchanged otherwise.
+    // (executeSpell applies this to its local copy; the GUI range-gate may also consult it.)
+    [[nodiscard]] int effectiveSpellRange(const BattleMap& bm, int caster_idx, const Spell& sp) const noexcept;
 
     // ── RL observation vector ─────────────────────────────────────────────
     //
@@ -1577,7 +1614,7 @@ private:
     AttackResult   last_attack_result_{};    // result of the most recent begin_attack flow (read by GUI)
     // True iff the target should be offered a Shield reaction vs this just-rolled attack: a non-crit
     // hit whose +5 AC would flip it to a miss, and the target can cast Shield right now. Shared by the
-    // inline (maybeDefenderShieldInline) and suspendable (advanceAttack) paths so they gate identically.
+    // inline (maybeDefenderOnHitInline) and suspendable (advanceAttack) paths so they gate identically.
     [[nodiscard]] bool shouldOfferDefenderShield(const BattleMap& bm, const Attack& action,
                                                  const AttackResult& r) const;
     // Riposte eligibility: defender_idx is a Battle Master with a Superiority Die and its reaction
@@ -1622,7 +1659,7 @@ private:
     // GUI dispatch: route a chosen OnD20Seen option to the matching apply* on in_flight_attack_.r.
     void applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
     // Auto/RL: loop d20SeenReactors, ask decider_, apply the chosen lowering reaction. Called in
-    // executeAction between resolveAttack and maybeDefenderShieldInline. Stops once r becomes a miss.
+    // executeAction between resolveAttack and maybeDefenderOnHitInline. Stops once r becomes a miss.
     bool maybeD20SeenInline(BattleMap& bm, const Attack& action, AttackResult& r);
 
     // ── OnSaveFail reactions (spell saves only; ONSAVEFAIL_PLAN.md) ────────────────────────────────

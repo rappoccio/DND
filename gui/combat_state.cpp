@@ -48,6 +48,22 @@ Agent::Stats CombatEngine::getAgentStats(const BattleMap& bm, int idx) const noe
 
 void CombatEngine::setAgentStats(BattleMap& bm, int idx, Agent::Stats s) noexcept
 {
+    // Materialize invocation-derived passive vision so every read site (combat_visibility,
+    // the blinded-in-darkness check, the GUI) sees it without each re-deriving the rules.
+    // Idempotent (only ever raises the field), so internal bm.setAgentStats round-trips
+    // preserve it.
+    if (s.character_class == CharacterClass::Warlock) {
+        // Devil's Sight (code 4): see normally in dim light & darkness within 120 ft.
+        if (s.hasInvocation(4) && s.devilssight_range < 120)
+            s.devilssight_range = 120;
+        // Witch Sight (code 7): Truesight 30 ft (the engine's superset of "blindsight" —
+        // see invisible/through-darkness within range).
+        if (s.hasInvocation(7) && s.truesight_range < 30)
+            s.truesight_range = 30;
+        // Gift of the Depths (code 11): a Swim Speed equal to the Warlock's Speed.
+        if (s.hasInvocation(11) && s.speed_swim < s.speed_walk)
+            s.speed_swim = s.speed_walk;
+    }
     bm.setAgentStats(idx, s);
 }
 

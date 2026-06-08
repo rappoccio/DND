@@ -4276,8 +4276,14 @@ class App:
                     f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name}'s spell!")
             elif ctx.window == rpg.ReactionWindow.OnHit:
                 kind = "spell attack" if ctx.spell_idx >= 0 else "attack"
+                # The OnHit defender window may offer Shield (negate) and/or Uncanny Dodge (halve).
+                feats = [o.feature for o in ctx.options
+                         if o.kind == rpg.ReactionOptionKind.Feature]
+                names = {"Shield": "Shield", "UncannyDodge": "Uncanny Dodge"}
+                choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
                 self._combat_log_add(
-                    f"{agents[ctx.reactor_idx].name} may cast Shield vs {agents[ctx.source_idx].name}'s {kind}!")
+                    f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
+                    f"{agents[ctx.source_idx].name}'s {kind}!")
             elif ctx.window == rpg.ReactionWindow.OnD20Seen:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may lower {agents[ctx.source_idx].name}'s "

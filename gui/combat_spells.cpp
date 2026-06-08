@@ -276,6 +276,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     const Agent::Stats& caster_stats = caster_pa.agent->getStats();
 
+    // Eldritch Spear invocation: extend the cantrip's range before any range-dependent
+    // logic (and before Distant Spell, so Distant doubles the already-extended range).
+    sp.range = effectiveSpellRange(bm, action.caster_idx, sp);
+
     // ── Sorcerer Metamagic ────────────────────────────────────────────────────
     // Validate applicability, then deduct Sorcery Points up front and apply the
     // option by temporarily mutating the local `sp` copy (Distant/Extended/Quickened/
@@ -1330,6 +1334,22 @@ int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level,
     return std::max(1, num_targets);  // Always at least 1 target
 }
 
+int CombatEngine::effectiveSpellRange(const BattleMap& bm, int caster_idx, const Spell& sp) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (caster_idx < 0 || static_cast<std::size_t>(caster_idx) >= agents.size())
+        return sp.range;
+    const Agent::Stats& cs = agents[static_cast<std::size_t>(caster_idx)].agent->getStats();
+
+    // Eldritch Spear (code 2): the chosen damage cantrip's range increases by 30 ft
+    // per Warlock level (RAW requires a 10+ ft ranged cantrip — Eldritch Blast qualifies).
+    if (sp.name == "Eldritch Blast" && cs.character_class == CharacterClass::Warlock &&
+        cs.hasInvocation(2) && sp.range >= 10) {
+        return sp.range + 30 * cs.char_level;
+    }
+    return sp.range;
+}
+
 // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
 int CombatEngine::metamagicSpCost(MetamagicOption opt) noexcept
 {
@@ -2216,8 +2236,8 @@ bool CombatEngine::shouldOfferSpellShield(const BattleMap& bm, int tgt_idx, cons
     return canCastShield(bm, tgt_idx);
 }
 
-// Inline defender Shield vs a spell attack (auto/RL path + GUI multi-beam). Mirrors
-// maybeDefenderShieldInline (the weapon version). On a flippable hit: decide via decider_ when one is
+// Inline defender Shield vs a spell attack (auto/RL path + GUI multi-beam). Mirrors the Shield branch
+// of maybeDefenderOnHitInline (the weapon version). On a flippable hit: decide via decider_ when one is
 // installed (RL/headless/tests); with no decider, AUTO-TAKE the Shield — the GUI has no per-beam
 // decision cursor for multi-beam attack spells yet (known_limitations.md). On accept, applyShield then
 // recompute th.hit against the new (+5) AC so the consumer sees the negated hit. The caller refetches
@@ -2243,7 +2263,7 @@ bool CombatEngine::maybeDefenderShieldInlineSpell(BattleMap& bm, const SpellActi
     } else if (castActive() && topCast().interactive) {
         take_shield = true;   // GUI multi-beam: no decider + no per-beam cursor → auto-take (documented)
     } else {
-        return false;         // headless/RL with no decider: no reaction (matches maybeDefenderShieldInline)
+        return false;         // headless/RL with no decider: no reaction (matches maybeDefenderOnHitInline)
     }
     if (!take_shield) return false;
 

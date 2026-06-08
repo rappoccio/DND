@@ -449,6 +449,7 @@ namespace rpg {
       int fiendish_resilience_type{-1};                          // Fiend L10: chosen damage type (0-9, ≠3), -1 = none
       std::deque<int> portent_dice{};                            // Diviner: portent d20 values, refilled on long rest
       std::vector<int> eldritch_invocations{};                   // Warlock invocation codes (see HAIKU_WARLOCK_PHASE3)
+      bool fiendish_vigor_applied{false};                        // Fiendish Vigor (code 6): max-False-Life temp HP granted this combat
       [[nodiscard]] bool hasInvocation(int code) const noexcept {
           return std::find(eldritch_invocations.begin(), eldritch_invocations.end(), code)
                  != eldritch_invocations.end();

@@ -462,31 +462,81 @@ bool CombatEngine::shouldOfferDefenderShield(const BattleMap& bm, const Attack& 
     return canCastShield(bm, action.target_idx);
 }
 
-bool CombatEngine::maybeDefenderShieldInline(BattleMap& bm, const Attack& action, AttackResult& r)
+// Rogue Uncanny Dodge (L5+): the target may spend its reaction to halve an attack's damage. Pure
+// damage-reduction OnHit reaction (no resource beyond the reaction), so it only matters on a hit that
+// actually dealt damage.
+bool CombatEngine::canUncannyDodge(const BattleMap& bm, int target_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(target_idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(target_idx);
+    if (s.hp_cur <= 0) return false;
+    return s.character_class == CharacterClass::Rogue && s.char_level >= 5;
+}
+
+bool CombatEngine::applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResult& r)
+{
+    if (!canUncannyDodge(bm, reactor_idx)) return false;
+    if (!r.hit || r.total_damage <= 0) return false;
+    const int before = r.total_damage;
+    r.total_damage   = before / 2;
+    Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
+    cond.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, cond);
+    r.damage_breakdown.push_back({"uncanny dodge", r.total_damage - before});  // negative: reduction
+    log_("Uncanny Dodge: {} halves the attack ({} -> {})",
+         agentName(bm, reactor_idx), before, r.total_damage);
+    return true;
+}
+
+// The defender's OnHit options against a just-resolved attack: Shield (negate) and/or Uncanny Dodge
+// (halve). Both cost the one reaction, so the menu lists every legal one and the chosen reaction
+// spends the reaction (foreclosing the others). Always appended with Skip when non-empty.
+std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& bm, const Attack& action,
+                                                               const AttackResult& r) const
+{
+    std::vector<ReactionOption> opts;
+    if (shouldOfferDefenderShield(bm, action, r))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Cast Shield (+5 AC — the attack misses)", "Shield"});
+    if (r.hit && r.total_damage > 0 && canUncannyDodge(bm, action.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Uncanny Dodge (halve the damage)", "UncannyDodge"});
+    if (!opts.empty())
+        opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+    return opts;
+}
+
+bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action, AttackResult& r)
 {
     // Auto/RL only: the GUI (no decider) gets the suspendable window via beginAttack in step 3b.
     if (!decider_) return false;
-    if (!shouldOfferDefenderShield(bm, action, r)) return false;
-    const int target = action.target_idx;
+    auto opts = defenderOnHitOptions(bm, action, r);
+    if (opts.size() <= 1) return false;                  // only Skip (or nothing) → no reaction
 
     ReactionCtx ctx;
     ctx.window      = ReactionWindow::OnHit;
-    ctx.reactor_idx = target;
+    ctx.reactor_idx = action.target_idx;
     ctx.source_idx  = action.attacker_idx;
-    ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                         "Cast Shield (+5 AC — the attack misses)", "Shield"});
-    ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+    ctx.options     = std::move(opts);
 
     const ReactionResponse resp = decider_->chooseReaction(ctx);
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return false;
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
-    if (opt.kind != ReactionOption::Feature || opt.feature != "Shield") return false;
+    if (opt.kind != ReactionOption::Feature) return false;
 
-    if (applyShield(bm, target)) {
-        r.hit = false;                      // DM ruling: a Shield-negated hit is a genuine miss.
-        log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, target));
-        return true;
+    if (opt.feature == "Shield") {
+        if (applyShield(bm, action.target_idx)) {
+            r.hit = false;                  // DM ruling: a Shield-negated hit is a genuine miss.
+            log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, action.target_idx));
+            return true;
+        }
+        return false;
     }
+    if (opt.feature == "UncannyDodge")
+        return applyUncannyDodge(bm, action.target_idx, r);
     return false;
 }
 
@@ -548,6 +598,53 @@ bool CombatEngine::maybeRiposteInline(BattleMap& bm, const Attack& action, Attac
     }
     (void)applyRiposte(bm, defender, attacker, widx);
     return true;
+}
+
+// War Domain Guided Strike eligibility for one cleric vs a just-missed attack (shared by the GUI flag
+// in applyAttackResult and the auto/RL OnMiss window). The attacker itself may guide its own miss
+// (no reaction cost — Channel Divinity only); an ally cleric within 30 ft pays its reaction too.
+bool CombatEngine::canGuidedStrike(const BattleMap& bm, const Attack& action, int cleric_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx;
+    if (cleric_idx < 0 || cleric_idx >= n || atk < 0 || atk >= n) return false;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.character_class != CharacterClass::Cleric ||
+        cs.cleric_subclass != WarDomain || cs.char_level < 3) return false;
+    const Resource* cd = cs.getResource("Channel Divinity");
+    if (!cd || cd->current <= 0) return false;
+    if (cleric_idx == atk) return true;                       // self-guide: no reaction needed
+    if (bm.getAgentConditions(cleric_idx).reaction_used) return false;
+    const Cell co = agents[static_cast<std::size_t>(cleric_idx)].origin;
+    const Cell ao = agents[static_cast<std::size_t>(atk)].origin;
+    const double dx = co.col - ao.col, dy = co.row - ao.row;
+    return std::sqrt(dx * dx + dy * dy) * 5.0 <= 30.0;
+}
+
+bool CombatEngine::maybeGuidedStrikeInline(BattleMap& bm, const Attack& action, AttackResult& r)
+{
+    // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via guided_strike_available.
+    if (!decider_) return false;
+    if (r.hit || r.fumble) return false;                      // only a non-fumble miss can be guided
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int cleric = 0; cleric < n; ++cleric) {
+        if (!canGuidedStrike(bm, action, cleric)) continue;
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnMiss;
+        ctx.reactor_idx = cleric;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Guided Strike (+10, 1 Channel Divinity)", "GuidedStrike"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "GuidedStrike") continue;
+        applyGuidedStrike(bm, action, cleric, r);             // +10; may turn the miss into a hit
+        return true;                                          // one guide per attack (the +10 is spent)
+    }
+    return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -767,18 +864,23 @@ bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, Attac
     return changed;
 }
 
-// Apply one chosen OnHit reaction to the in-flight attack (this pass: the target's Shield). Mirrors
-// applyCastReaction: on accept, spend the slot+reaction and negate the hit on in_flight_attack_.r so
-// advanceAttack's applyAttackResult rolls no damage / fires no concentration save. Per DM ruling a
-// Shield-negated hit is a genuine miss, so the attacker's miss-branch features still fire later.
+// Apply the chosen OnHit defender reaction to the in-flight attack: Shield (negate) or Uncanny Dodge
+// (halve damage). Mirrors applyCastReaction: on accept, spend the resource+reaction and mutate
+// in_flight_attack_.r so advanceAttack's applyAttackResult sees the result. A Shield negation rolls no
+// damage / fires no concentration save (per DM ruling a genuine miss, so the attacker's miss-branch
+// features still fire later); Uncanny Dodge leaves the hit but reduces the damage applied.
 void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
 {
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
-    if (opt.kind != ReactionOption::Feature || opt.feature != "Shield") return;
-    if (applyShield(bm, ctx.reactor_idx)) {
-        in_flight_attack_.r.hit = false;
-        log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, ctx.reactor_idx));
+    if (opt.kind != ReactionOption::Feature) return;
+    if (opt.feature == "Shield") {
+        if (applyShield(bm, ctx.reactor_idx)) {
+            in_flight_attack_.r.hit = false;
+            log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, ctx.reactor_idx));
+        }
+    } else if (opt.feature == "UncannyDodge") {
+        applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
     }
 }
 
@@ -833,19 +935,22 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
         pending_decision_ = PendingDecision{true, ctx};           // suspend; GUI resumes via submitDecision
         return FlowStatus::AwaitingDecision;
     }
-    // Offer the Shield window at most once: on resume after a Skip the hit still stands, so without
-    // this guard shouldOfferDefenderShield would stay true and re-park forever (single reactor, no cursor).
-    if (s.interactive && !s.shield_offered && shouldOfferDefenderShield(bm, s.action, s.r)) {
-        s.shield_offered = true;
-        ReactionCtx ctx;
-        ctx.window      = ReactionWindow::OnHit;
-        ctx.reactor_idx = s.action.target_idx;
-        ctx.source_idx  = s.action.attacker_idx;
-        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                             "Cast Shield (+5 AC — the attack misses)", "Shield"});
-        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
-        pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
-        return FlowStatus::AwaitingDecision;
+    // Offer the OnHit defender window (Shield and/or Uncanny Dodge) at most once: on resume after a Skip
+    // the hit still stands, so without this guard the gate would stay true and re-park forever (single
+    // reactor, no cursor). applyAttackReaction (via submitDecision) spends the one reaction.
+    if (s.interactive && !s.onhit_offered) {
+        auto opts = defenderOnHitOptions(bm, s.action, s.r);
+        if (opts.size() > 1) {
+            s.onhit_offered = true;
+            ReactionCtx ctx;
+            ctx.window      = ReactionWindow::OnHit;
+            ctx.reactor_idx = s.action.target_idx;
+            ctx.source_idx  = s.action.attacker_idx;
+            ctx.options     = std::move(opts);
+            pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+            return FlowStatus::AwaitingDecision;
+        }
+        s.onhit_offered = true;   // nothing to offer — don't re-check on a later resume
     }
     pending_decision_.active = false;
     last_attack_result_ = applyAttackResult(bm, s);
@@ -1147,10 +1252,14 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // Words / Silvery Barbs) before it commits — runs BEFORE Shield so a lowered-to-miss attack opens
     // no Shield window (shouldOfferDefenderShield is gated on r.hit).
     maybeD20SeenInline(bm, action, s.r);
-    // Auto/RL defender Shield window (inline via the decider). applyAttackResult re-fetches the
-    // target's stats, so Shield's slot-spend + AC are reflected (no stale-snapshot clobber).
-    maybeDefenderShieldInline(bm, action, s.r);
+    // Auto/RL defender OnHit window (inline via the decider): Shield (negate) or Uncanny Dodge (halve).
+    // applyAttackResult re-fetches the target's stats, so a Shield slot-spend/AC or the halved damage are
+    // reflected (no stale-snapshot clobber).
+    maybeDefenderOnHitInline(bm, action, s.r);
     AttackResult r = applyAttackResult(bm, s);
+    // Auto/RL War Domain Guided Strike (OnMiss): a War Cleric may add +10 to turn the miss into a hit.
+    // Runs BEFORE Riposte so a guided hit forecloses the defender's miss-reaction.
+    maybeGuidedStrikeInline(bm, action, r);
     // Auto/RL Battle Master Riposte (OnMiss defender reaction). Runs AFTER the attack fully resolves,
     // so the riposte is a fresh top-level attack (no nesting). The reaction economy caps the chain:
     // a riposte-of-a-riposte is possible once each (both reactors spend their one reaction), then stops.
@@ -1350,43 +1459,22 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
 
     // ── War Domain — Guided Strike eligibility (on a miss) ────────────────
     // A missed attack (not a natural 1) can be nudged to a hit by a War Cleric L3+ spending Channel
-    // Divinity — the attacker themselves, or an ally within 30 ft (who pays a Reaction). Flag it; the
-    // GUI offers the choice and calls applyGuidedStrike.
+    // Divinity — the attacker themselves, or an ally within 30 ft (who pays a Reaction). Flag it for the
+    // GUI (which offers the choice and calls applyGuidedStrike); the auto/RL path uses the OnMiss window
+    // (maybeGuidedStrikeInline) with the same canGuidedStrike gate.
     if (!r.hit && !r.fumble) {
-        bool eligible = false;
-        for (int c = 0; c < static_cast<int>(agents.size()) && !eligible; ++c) {
-            Agent::Stats cs = bm.getAgentStats(c);
-            if (cs.character_class != CharacterClass::Cleric ||
-                cs.cleric_subclass != WarDomain || cs.char_level < 3) continue;
-            const Resource* cd = cs.getResource("Channel Divinity");
-            if (!cd || cd->current <= 0) continue;
-            if (c == action.attacker_idx) { eligible = true; break; }
-            if (bm.getAgentConditions(c).reaction_used) continue;
-            const Cell co = agents[static_cast<std::size_t>(c)].origin;
-            const Cell ao = agents[static_cast<std::size_t>(action.attacker_idx)].origin;
-            const double dx = co.col - ao.col, dy = co.row - ao.row;
-            if (std::sqrt(dx * dx + dy * dy) * 5.0 <= 30.0) eligible = true;
-        }
-        if (eligible) {
-            updated_atk_cond.guided_strike_available = true;
-            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        for (int c = 0; c < static_cast<int>(agents.size()); ++c) {
+            if (canGuidedStrike(bm, action, c)) {
+                updated_atk_cond.guided_strike_available = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                break;
+            }
         }
     }
 
-    // ── Rogue Uncanny Dodge (L5+) ─────────────────────────────────────────
-    // Reaction: halve the attack's damage (round down). Consumes the target's reaction.
-    if (r.hit && r.total_damage > 0 &&
-        tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 5 &&
-        !tgt_cond.reaction_used && !tgt_cond.incapacitated) {
-        int before = r.total_damage;
-        r.total_damage = before / 2;
-        Agent::Conditions tdef = bm.getAgentConditions(action.target_idx);
-        tdef.reaction_used = true;
-        bm.setAgentConditions(action.target_idx, tdef);
-        r.damage_breakdown.push_back({"uncanny dodge", r.total_damage - before});  // negative: reduction
-        log_("Uncanny Dodge: {} halves the attack ({} -> {})",
-             agentName(bm, action.target_idx), before, r.total_damage);
-    }
+    // (Rogue Uncanny Dodge — the target's damage-halving reaction — now fires in the OnHit defender
+    // window before this finalize: applyUncannyDodge via maybeDefenderOnHitInline (auto/RL) or the
+    // advanceAttack suspend (GUI), so r.total_damage already reflects it here.)
 
     // Apply base attack damage to the target's working stats. resolveAttack now
     // computes damage but does not mutate HP, so the single source of truth is
