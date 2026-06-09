@@ -340,9 +340,10 @@ def test_onhit_grapple_computes_escape_dc_when_unset():
     """With escape_dc=0 the rider computes 10 + attacker STR mod + prof."""
     bm = setup_battle_map()
     engine = setup_combat_engine()
-    a = add_agent_to_battle(engine, bm, create_test_agent("Grabber", 5, 5), str=16, dex=10)
-    t = add_agent_to_battle(engine, bm, create_test_agent("Prey", 6, 5), str=8, dex=8)
+    a = add_agent_to_battle(engine, bm, create_test_agent("Grabber", 5, 5))
+    t = add_agent_to_battle(engine, bm, create_test_agent("Prey", 6, 5))
     s = engine.get_agent_stats(bm, a)
+    s.str = 16        # +3 mod
     s.prof_bonus = 2
     engine.set_agent_stats(bm, a, s)
     _arm_with(engine, bm, a, _grapple_weapon(escape_dc=0, contested=False))
