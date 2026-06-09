@@ -139,6 +139,10 @@ struct PlacedAgent {
     std::array<Weapon, 3>  weapons;       // [Main Hand, Off Hand, Ranged]
     std::vector<Spell>     spells;        // known spells (may be empty)
     std::array<Armor, 6>   armor;         // [Helmet, Chest, Leggings, Boots, Gloves, Cloak]
+    // ── Summoning ──────────────────────────────────────────────────────────
+    int         summoner_idx      = -1;    // index of the summoner; -1 = not a summon
+    bool        removed_from_play = false; // tombstoned (summon dismissed): skip in turns + rendering
+    std::string summon_spell;              // name of the spell that created this summon (if any)
 };
 
 // ── Agent configuration (supplied from Python GUI) ─────────────────────────
@@ -190,6 +194,13 @@ public:
     void applyAgentConfigs();
     void clearAgents();
 
+    // Spawn a single agent at runtime (e.g. a summoned creature) WITHOUT clearing or
+    // rebuilding existing agents, so all runtime state (HP, conditions, concentration,
+    // summon links, movement budgets) is preserved. Appends to placedAgents_ only (not
+    // agentConfigs_), making the summon a transient runtime entity. The caller sets stats /
+    // weapons / summoner_idx afterward by index. Returns the new index, or -1 if blocked.
+    int spawnAgent(const AgentConfig& cfg);
+
     [[nodiscard]] std::span<const PlacedAgent> placedAgents() const noexcept;
 
     // Move an already-placed agent to a new grid origin using the specified
@@ -232,6 +243,16 @@ public:
     // Armor accessors (by index into placedAgents()): 6 slots [helmet, chest, leggings, boots, gloves, cloak].
     [[nodiscard]] std::array<Armor, 6> getAgentArmor(int idx) const noexcept;
     void setAgentArmor(int idx, std::array<Armor, 6> armor) noexcept;
+
+    // Summon accessors (by index into placedAgents()).
+    // A summon links to its summoner via summoner_idx; removed_from_play tombstones it
+    // (kept in the vector to preserve every index reference, then skipped in turns + rendering).
+    [[nodiscard]] int  getAgentSummonerIdx(int idx) const noexcept;
+    void setAgentSummonerIdx(int idx, int summoner_idx) noexcept;
+    [[nodiscard]] std::string getAgentSummonSpell(int idx) const noexcept;
+    void setAgentSummonSpell(int idx, std::string spell_name) noexcept;
+    [[nodiscard]] bool isAgentRemovedFromPlay(int idx) const noexcept;
+    void setAgentRemovedFromPlay(int idx, bool removed) noexcept;
 
     // Spell accessors (by index into placedAgents()).
     [[nodiscard]] std::vector<Spell> getAgentSpells(int idx) const noexcept;

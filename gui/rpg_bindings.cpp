@@ -104,6 +104,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("sprite_path", [](const PlacedAgent& p){ return p.agent->getSprite().string(); })
         .def_property_readonly("x",           [](const PlacedAgent& p){ return p.agent->getX(); })
         .def_property_readonly("y",           [](const PlacedAgent& p){ return p.agent->getY(); })
+        // Summoning (read-only view; mutate via BattleMap.set_agent_* methods)
+        .def_property_readonly("summoner_idx",      [](const PlacedAgent& p){ return p.summoner_idx; })
+        .def_property_readonly("summon_spell",      [](const PlacedAgent& p){ return p.summon_spell; })
+        .def_property_readonly("removed_from_play", [](const PlacedAgent& p){ return p.removed_from_play; })
         // Delegate actions back to C++
         .def("turn",       [](PlacedAgent& p){ p.agent->turn(); })
         .def("action",     [](PlacedAgent& p){ p.agent->action(); })
@@ -1144,7 +1148,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("spell_name",                &DropConcentrationResult::spell_name)
         .def_readonly("removed_terrain_ids",       &DropConcentrationResult::removed_terrain_ids)
         .def_readonly("removed_spell_effect_ids",  &DropConcentrationResult::removed_spell_effect_ids)
-        .def_readonly("removed_condition_ids",     &DropConcentrationResult::removed_condition_ids);
+        .def_readonly("removed_condition_ids",     &DropConcentrationResult::removed_condition_ids)
+        .def_readonly("dismissed_summons",         &DropConcentrationResult::dismissed_summons);
 
     // ── TurnUndeadResult ─────────────────────────────────────────────────────
     py::class_<TurnUndeadResult>(m, "TurnUndeadResult")
@@ -1448,10 +1453,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
     // ── InitiativeEntry ───────────────────────────────────────────────────────
     py::class_<InitiativeEntry>(m, "InitiativeEntry")
         .def(py::init<>())
-        .def_readonly("agent_idx", &InitiativeEntry::agent_idx)
-        .def_readonly("d20",       &InitiativeEntry::d20)
-        .def_readonly("modifier",  &InitiativeEntry::modifier)
-        .def_readonly("total",     &InitiativeEntry::total)
+        // Writable so the GUI can synthesize an entry for a mid-combat summon
+        // (shares the summoner's `total`, inserted immediately after the summoner).
+        .def_readwrite("agent_idx", &InitiativeEntry::agent_idx)
+        .def_readwrite("d20",       &InitiativeEntry::d20)
+        .def_readwrite("modifier",  &InitiativeEntry::modifier)
+        .def_readwrite("total",     &InitiativeEntry::total)
         .def("__repr__", [](const InitiativeEntry& e){
             return "<InitiativeEntry agent=" + std::to_string(e.agent_idx)
                  + " d20=" + std::to_string(e.d20)
@@ -2649,6 +2656,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
         // Agent management (core spatial operations only; stat/equipment management moved to CombatEngine)
         .def("clear_agents",       &BattleMap::clearAgents)
+        .def("spawn_agent",        &BattleMap::spawnAgent,
+             py::arg("config"),
+             "Spawn one agent at runtime (e.g. a summon) WITHOUT clearing existing agents,\n"
+             "preserving all runtime state. Returns the new agent index, or -1 if blocked.\n"
+             "Set stats/weapons/summoner_idx on the returned index afterward.")
         .def("move_agent",         &BattleMap::moveAgent,
              py::arg("idx"), py::arg("new_origin"),
              py::arg("movement_type") = MovementType::Walk,
@@ -2671,6 +2683,26 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("remove_agent",       &BattleMap::removeAgent,
              py::arg("idx"),
              "Remove placed agent[idx] from the map.")
+
+        // ── Summoning ─────────────────────────────────────────────────────
+        .def("get_agent_summoner_idx", &BattleMap::getAgentSummonerIdx,
+             py::arg("idx"),
+             "Index of the agent that summoned agent[idx]; -1 if not a summon.")
+        .def("set_agent_summoner_idx", &BattleMap::setAgentSummonerIdx,
+             py::arg("idx"), py::arg("summoner_idx"),
+             "Tag agent[idx] as a summon controlled by summoner_idx (-1 to clear).")
+        .def("get_agent_summon_spell", &BattleMap::getAgentSummonSpell,
+             py::arg("idx"),
+             "Name of the spell that summoned agent[idx] (empty if none).")
+        .def("set_agent_summon_spell", &BattleMap::setAgentSummonSpell,
+             py::arg("idx"), py::arg("spell_name"),
+             "Record the spell name that summoned agent[idx].")
+        .def("is_agent_removed_from_play", &BattleMap::isAgentRemovedFromPlay,
+             py::arg("idx"),
+             "True if agent[idx] is tombstoned (e.g. dismissed summon): skip in turns + rendering.")
+        .def("set_agent_removed_from_play", &BattleMap::setAgentRemovedFromPlay,
+             py::arg("idx"), py::arg("removed"),
+             "Tombstone/un-tombstone agent[idx]. Kept in placedAgents_ so indices stay valid.")
         .def("apply_dash",         &BattleMap::applyDash,
              py::arg("idx"),
              "Set dashing condition and add base speeds to remaining movement for agent[idx].")

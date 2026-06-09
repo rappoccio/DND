@@ -334,8 +334,13 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // global Extra Attack (num_attacks = 2). v1 simplification: this is not gated to
       // pact-weapon attacks only — a Thirsting-Blade Warlock gets two swings with any
       // weapon, matching how every other class's Extra Attack is global.
-      if (level >= 5 && hasInvocation(14) && hasInvocation(13))
+      if (level >= 5 && hasInvocation(14) && hasInvocation(13)) {
         num_attacks = 2;
+        // Devouring Blade (invocation 17, L12+, requires Thirsting Blade): the extra attack
+        // becomes TWO extra attacks → three total.
+        if (level >= 12 && hasInvocation(17))
+          num_attacks = 3;
+      }
       break;
     }
 

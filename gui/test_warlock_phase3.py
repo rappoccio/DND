@@ -533,6 +533,10 @@ def test_thirsting_blade_extra_attack():
     assert _make(5, [14]).num_attacks == 1, "Thirsting Blade without Pact of the Blade → no extra attack"
     assert _make(4, [13, 14]).num_attacks == 1, "Thirsting Blade requires L5"
     assert _make(5, [13]).num_attacks == 1, "Pact of the Blade alone → no extra attack"
+    # Devouring Blade (17, L12+, needs Thirsting Blade): the extra attack becomes two → 3 total.
+    assert _make(12, [13, 14, 17]).num_attacks == 3, "L12 Devouring Blade → 3 attacks"
+    assert _make(11, [13, 14, 17]).num_attacks == 2, "Devouring Blade requires L12 (else just Thirsting Blade)"
+    assert _make(12, [13, 17]).num_attacks == 1, "Devouring Blade without Thirsting Blade → no extra attack"
     print("✅ test_thirsting_blade_extra_attack passed")
 
 

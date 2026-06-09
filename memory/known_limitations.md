@@ -19,6 +19,24 @@ metadata:
 
 ---
 
+### Agent `render` / visibility flag for GUI suppression [TODO]
+**Status:** Not yet implemented. Needed by the Summoning system (despawned summons) and by the
+Invisible condition (hide the sprite).
+
+**Problem:** Today every placed agent is always drawn by `_draw_one_agent` (`main.py:6491`). Two
+features need to suppress drawing of an agent's sprite without removing it from `placedAgents_`
+(which would shift every index and corrupt `caster_idx`/`agent_idx`/initiative references):
+- **Despawned summons** — when a summoner loses concentration, the summon is *tombstoned* (kept in
+  the vector to preserve indices, like death) but must no longer be drawn.
+- **Invisible condition** — an invisible creature's sprite should not be drawn to viewers lacking
+  Truesight/Blindsight (currently `Conditions.invisible` is set but the sprite still renders).
+
+**Fix:** Add a single render/visibility gate at the top of `_draw_one_agent` (and skip selection
+highlight + initiative for fully-despawned agents). Source it from a C++-side flag (e.g.
+`PlacedAgent.removed_from_play` / `Conditions.invisible`) so both features share one chokepoint.
+
+---
+
 ### Post-hoc reaction interrupts ("react after seeing the roll/cast") [OPUS]
 **Status:** Missing engine mechanism — several features are simplified to a *pre-roll* model.
 
@@ -852,9 +870,11 @@ Selected in a scrollable picker; unimplemented/level-locked/feat-deferred entrie
 - Per-turn flags reset in `Agent::turn()` (canonical) + `runRound` (RL parity). Tests in
   `test_warlock_phase3.py`. `apply_eldritch_smite_effect` added to `replay_record.py`'s recorded set.
 
+- **Devouring Blade** (inv 17, L12+, needs Thirsting Blade): IMPLEMENTED — the Thirsting Blade
+  block sets `num_attacks = 3` when `level >= 12 && hasInvocation(17)` (the extra attack becomes two
+  extra). Same global-Extra-Attack simplification as Thirsting Blade.
+
 ### Deferred: rest of the Pact-boon family
-- **Devouring Blade** (inv 17, L12, needs Thirsting Blade): a *third* attack. Deferred — would
-  need num_attacks=3 gating; left greyed.
 - **Pact of the Chain** (inv 18) + **Investment of the Chain Master** (inv 19): an attacking
   familiar — **deferred until a summon/companion system exists** (same blocker as Wildfire Spirit
   / Phantasmal Creatures). Greyed.

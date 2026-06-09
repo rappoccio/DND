@@ -55,6 +55,15 @@ from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
 
+# ── Summoning registry ─────────────────────────────────────────────────────
+# Maps a summon spell's name to the DND2024_MonsterStats.json key it conjures.
+# The RAW 2024 summon "spirit" stat blocks (Draconic/Bestial/Fey/Undead Spirit) are not in the
+# monster file, so Summon Dragon currently uses the closest existing entry as a stand-in
+# (see SUMMONING_PLAN.md). Extend this dict as more summon spells/stat blocks are added.
+SUMMON_SPELL_TO_MONSTER = {
+    "Summon Dragon": "Spirit Dragon Wyrmling",
+}
+
 class App:
     # ── Bonus-action economy: a thin view over the C++ engine budget ──────────
     # `self.bonus_used` is NOT a plain flag — it reads/writes the active combatant's
@@ -397,6 +406,11 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
+        # Summoning: awaiting a cell click to place a summoned creature (see SUMMONING_PLAN.md).
+        self.pending_summon_slot       = ""    # "" | "action" | "bonus"
+        self.pending_summon_idx        = 0     # spell index of the summon spell being cast
+        self.pending_summon_slot_level = 0     # chosen slot level
+        self.pending_summon_monster    = ""    # monster-JSON key to spawn
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
@@ -1115,6 +1129,8 @@ class App:
         for i, pt in enumerate(self.bm.placed_agents):
             if i == exclude_idx:
                 continue
+            if pt.removed_from_play:
+                continue   # tombstoned (dismissed summon) — no longer occupies its cell
             if (cell.col < pt.origin.col + pt.size and
                     cell.col + size > pt.origin.col and
                     cell.row < pt.origin.row + pt.size and
@@ -1612,6 +1628,9 @@ class App:
             self.turn_idx = (self.turn_idx + 1) % n
             idx = self._current_agent_idx()
             if 0 <= idx < len(self.bm.placed_agents):
+                # Tombstoned summons (dismissed on concentration loss) never take a turn.
+                if self.bm.is_agent_removed_from_play(idx):
+                    continue
                 stats = self.combat.get_agent_stats(self.bm, idx)
                 cond = self.combat.get_agent_conditions(self.bm, idx)
                 # Skip only if dead; unconscious agents at 0 HP still get a turn for death saves
@@ -1727,6 +1746,11 @@ class App:
             self._sync_spell_effect_cache()  # render cache only
             name = self.bm.placed_agents[agent_idx].name
             self._combat_log_add(f"{name} drops concentration on {res.spell_name or 'spell'}.")
+            # Summons created by this caster were tombstoned (removed_from_play) in C++.
+            # They stay in placedAgents_ to keep indices valid; we just log + un-render them.
+            for s_idx in res.dismissed_summons:
+                if 0 <= s_idx < len(self.bm.placed_agents):
+                    self._combat_log_add(f"{self.bm.placed_agents[s_idx].name} vanishes.")
 
 
     def _combat_log_add(self, msg: str):
@@ -3937,6 +3961,19 @@ class App:
         def _activate(s, si_, slot_level_=0):
             sp_ = spells[si_]
 
+            # Summon spells: pick an empty cell within range to manifest the creature, rather than
+            # targeting a creature or placing an AoE (see SUMMONING_PLAN.md). Routed here BEFORE the
+            # geometry branches because Summon Dragon is Single geometry ("click a target").
+            monster = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
+            if monster:
+                self.pending_summon_slot       = s
+                self.pending_summon_idx        = si_
+                self.pending_summon_slot_level = slot_level_
+                self.pending_summon_monster    = monster
+                self._combat_log_add(
+                    f"Casting {sp_.name} — click an empty cell within range to place the {monster}.")
+                return
+
             # Emanation (a moves_with_caster Sphere) is always centered on the caster,
             # so there is no placement to choose — cast immediately on the caster's cell.
             if getattr(sp_, "moves_with_caster", False) and sp_.geometry == rpg.SpellGeometry.Sphere:
@@ -4590,6 +4627,109 @@ class App:
             self.action_used = True
         else:
             self.bonus_used = True
+
+    def _resolve_summon(self, cell):
+        """Place a summoned creature at `cell` (Phase 3, SUMMONING_PLAN.md).
+
+        Manual-control summon: it shares the summoner's initiative count (acts immediately
+        after them) and is auto-dismissed when the summoner loses concentration — that cascade
+        lives in C++ (dropConcentration scans summoner_idx and tombstones via removed_from_play).
+        The creature is spawned non-destructively (bm.spawn_agent) so no existing agent's runtime
+        state is disturbed."""
+        caster_idx = self._current_agent_idx()
+        slot       = self.pending_summon_slot
+        monster    = self.pending_summon_monster
+        spell_idx  = self.pending_summon_idx
+        slot_level = self.pending_summon_slot_level
+        if caster_idx < 0 or not slot or not monster:
+            return
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        sp = spells[spell_idx] if 0 <= spell_idx < len(spells) else None
+        mob_stats = self.mob_stats_json.get(monster)
+        if sp is None or not mob_stats:
+            self._combat_log_add(f"Summon failed: missing spell or '{monster}' stat block.")
+            return
+
+        # Validate placement: in range, line of sight, unoccupied.
+        size   = self._size_category_to_grid_size(mob_stats.get("Size", "Medium"))
+        caster = self.bm.placed_agents[caster_idx]
+        dist_cells = math.hypot(cell.col - caster.origin.col, cell.row - caster.origin.row)
+        if dist_cells * 5.0 > sp.range + 1e-6:
+            self._combat_log_add("Out of range — pick a closer cell.")
+            return
+        if not self.bm.has_line_of_sight(caster.origin, caster.size, cell, size):
+            self._combat_log_add("No line of sight to that cell.")
+            return
+        if not self._can_place(cell, size):
+            self._combat_log_add("That cell is blocked or occupied.")
+            return
+
+        # Spawn WITHOUT rebuilding existing agents (preserves HP/conditions/concentration).
+        cfg = rpg.AgentConfig()
+        cfg.name        = monster
+        cfg.sprite_path = self._get_mob_sprite_path(monster)
+        cfg.size        = size
+        cfg.start_col   = cell.col
+        cfg.start_row   = cell.row
+        new_idx = self.bm.spawn_agent(cfg)
+        if new_idx < 0:
+            self._combat_log_add("Summon failed: could not place the creature.")
+            return
+
+        # Stats + auto-weapons from the monster JSON (same path as bestiary placement).
+        self.combat.set_agent_stats(self.bm, new_idx, self._mob_stats_to_d_d_stats(mob_stats))
+        weapons = list(self.combat.get_agent_weapons(self.bm, new_idx))
+        if not any(w.name for w in weapons):
+            for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
+                weapons[i] = w
+            self.combat.set_agent_weapons(self.bm, new_idx, weapons)
+
+        # Link summon → summoner + spell (drives dismiss-on-concentration-loss in C++).
+        self.bm.set_agent_summoner_idx(new_idx, caster_idx)
+        self.bm.set_agent_summon_spell(new_idx, sp.name)
+
+        # Concentration: a new concentration spell replaces the caster's previous one
+        # (which dismisses any creature the earlier spell had summoned).
+        if sp.requires_concentration:
+            cond = self.combat.get_agent_conditions(self.bm, caster_idx)
+            if cond.concentrating:
+                self._drop_concentration_for_agent(caster_idx)
+                cond = self.combat.get_agent_conditions(self.bm, caster_idx)
+            cond.concentrating    = True
+            cond.concentrating_on = sp.name
+            self.combat.set_agent_conditions(self.bm, caster_idx, cond)
+
+        # Spend the spell slot (PC slots only; NPC spell-group casting is out of scope here).
+        cstats = self.combat.get_agent_stats(self.bm, caster_idx)
+        if not cstats.is_npc and slot_level >= 1:
+            slots = list(cstats.spell_slots_remaining)
+            if slots[slot_level - 1] > 0:
+                slots[slot_level - 1] -= 1
+                cstats.spell_slots_remaining = slots
+                self.combat.set_agent_stats(self.bm, caster_idx, cstats)
+
+        # Insert into initiative immediately after the summoner (shares its count).
+        if self.combat_active and self.initiative_order:
+            caster_pos = next((p for p, e in enumerate(self.initiative_order)
+                               if e.agent_idx == caster_idx), -1)
+            if caster_pos >= 0:
+                base = self.initiative_order[caster_pos]
+                entry = rpg.InitiativeEntry()
+                entry.agent_idx = new_idx
+                entry.d20       = base.d20
+                entry.modifier  = base.modifier
+                entry.total     = base.total
+                self.initiative_order.insert(caster_pos + 1, entry)
+
+        self._combat_log_add(f"{caster.name} summons a {monster}!")
+
+        # Clear pending state + consume the action economy.
+        self.pending_summon_slot       = ""
+        self.pending_summon_idx        = 0
+        self.pending_summon_slot_level = 0
+        self.pending_summon_monster    = ""
+        self.sprites.clear()
+        self._consume_cast_slot(slot, caster_idx)
 
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
@@ -5936,6 +6076,11 @@ class App:
 
     def _draw_one_agent(self, pt, screen_x, screen_y, cpx, alpha=255, tint=None, agent_idx=-1):
         """Draw a single agent (sprite or placeholder) at the given screen coords."""
+        # Render gate: tombstoned agents (e.g. summons dismissed on concentration loss)
+        # are kept in placedAgents_ to preserve indices but are no longer drawn.
+        # (Future: reuse this gate for the Invisible condition — see known_limitations.md.)
+        if getattr(pt, "removed_from_play", False):
+            return
         size_px = cpx * pt.size
         sprite  = self._get_sprite(pt.sprite_path, size_px)
         if sprite:
@@ -6487,6 +6632,8 @@ class App:
         for i, pt in enumerate(agents):
             if i == self.drag_idx:
                 continue    # skip the one being dragged (draw as ghost below)
+            if pt.removed_from_play:
+                continue    # tombstoned (dismissed summon): not rendered, not selectable
             sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
             self._draw_one_agent(pt, sx, sy, cpx, agent_idx=i)
 
@@ -6580,13 +6727,15 @@ class App:
             col    = COL_INITIATIVE_CUR if is_cur else COL_TEXT
             name   = agents[aidx].name if aidx < len(agents) else "?"
             alive  = True
+            dismissed = (aidx < len(agents) and agents[aidx].removed_from_play)
             if aidx < len(agents):
                 s = self.combat.get_agent_stats(self.bm, aidx)
                 alive = s.hp_cur > 0
-            if not alive:
+            if not alive or dismissed:
                 col = (90, 90, 90)
             prefix = "▶ " if is_cur else "  "
-            row_s  = f"{prefix}{entry.total:2d}  {name}"
+            suffix = "  (dismissed)" if dismissed else ""
+            row_s  = f"{prefix}{entry.total:2d}  {name}{suffix}"
             txt(row_s, lx, y, col)
             # Track clickable area for this initiative item
             item_rect = pygame.Rect(lx, y, W, 16)
@@ -7762,6 +7911,14 @@ class App:
                         f"{self.bm.placed_agents[self.safe_target_edit_idx].name}.")
                     self.safe_target_edit_idx = -1
                     continue
+                # Esc cancels a pending summon placement (no slot/action spent yet).
+                if event.key == pygame.K_ESCAPE and self.pending_summon_slot:
+                    self.pending_summon_slot       = ""
+                    self.pending_summon_idx        = 0
+                    self.pending_summon_slot_level = 0
+                    self.pending_summon_monster    = ""
+                    self._combat_log_add("Summon cancelled.")
+                    continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
@@ -7936,6 +8093,8 @@ class App:
                             self._resolve_cleave(hit)
                         elif self.pending_attack_slot and hit >= 0:
                             self._resolve_combat_attack(hit)
+                        elif self.pending_summon_slot:
+                            self._resolve_summon(cell)
                         elif self.pending_spell_slot:
                             if self.pending_spell_is_aoe:
                                 if self._pending_spell_is_wall():

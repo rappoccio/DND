@@ -304,9 +304,33 @@ void BattleMap::applyAgentConfigs()
         }
         auto tok = std::make_shared<ConfiguredAgent>(
             cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}});
+        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}, -1, false, {}});
     }
     std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
+}
+
+int BattleMap::spawnAgent(const AgentConfig& cfg)
+{
+    Cell origin{cfg.startCol, cfg.startRow};
+    if (isBlocked(origin, cfg.size)) {
+        std::cout << std::format("[BattleMap] spawn '{}' failed – blocked\n", cfg.name);
+        return -1;
+    }
+    // Reject a cell already occupied by a live agent's footprint (a tombstoned/dismissed
+    // summon no longer occupies its cell). isBlocked only covers walls/terrain, not agents.
+    for (const auto& pa : placedAgents_) {
+        if (pa.removed_from_play) continue;
+        int psize = pa.agent->getSize();
+        if (origin.col < pa.origin.col + psize && origin.col + cfg.size > pa.origin.col &&
+            origin.row < pa.origin.row + psize && origin.row + cfg.size > pa.origin.row) {
+            std::cout << std::format("[BattleMap] spawn '{}' failed – cell occupied\n", cfg.name);
+            return -1;
+        }
+    }
+    auto tok = std::make_shared<ConfiguredAgent>(
+        cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
+    placedAgents_.push_back({std::move(tok), origin, {}, {}, {}, -1, false, {}});
+    return static_cast<int>(placedAgents_.size()) - 1;
 }
 
 void BattleMap::clearAgents() { placedAgents_.clear(); agentConfigs_.clear(); }
@@ -701,6 +725,46 @@ void BattleMap::setAgentArmor(int idx, std::array<Armor, 6> armor) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].armor = std::move(armor);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Summon accessors
+// ─────────────────────────────────────────────────────────────────────────────
+
+int BattleMap::getAgentSummonerIdx(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return -1;
+    return placedAgents_[static_cast<std::size_t>(idx)].summoner_idx;
+}
+
+void BattleMap::setAgentSummonerIdx(int idx, int summoner_idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].summoner_idx = summoner_idx;
+}
+
+std::string BattleMap::getAgentSummonSpell(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
+    return placedAgents_[static_cast<std::size_t>(idx)].summon_spell;
+}
+
+void BattleMap::setAgentSummonSpell(int idx, std::string spell_name) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].summon_spell = std::move(spell_name);
+}
+
+bool BattleMap::isAgentRemovedFromPlay(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
+    return placedAgents_[static_cast<std::size_t>(idx)].removed_from_play;
+}
+
+void BattleMap::setAgentRemovedFromPlay(int idx, bool removed) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].removed_from_play = removed;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

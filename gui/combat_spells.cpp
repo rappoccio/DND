@@ -1637,10 +1637,11 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
     r.passed  = (r.save_d20 + con_mod >= r.save_dc);
 
     if (!r.passed) {
-        r.concentration_lost  = true;
-        cond.concentrating    = false;
-        cond.concentrating_on = {};
-        bm.setAgentConditions(agent_idx, cond);
+        r.concentration_lost = true;
+        // Route through the full cascade (terrain + spell effects + spell-applied conditions +
+        // summon dismissal), not a bare flag-clear — otherwise a failed save here would leak
+        // a caster's zones/summons. Mirrors checkConcentrationOnDamage.
+        (void)dropConcentration(bm, agent_idx);
     }
     return r;
 }
@@ -1724,6 +1725,21 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     cond.concentrating    = false;
     cond.concentrating_on = {};
     bm.setAgentConditions(agent_idx, cond);
+
+    // 5. Dismiss this caster's summoned creatures. They are TOMBSTONED
+    //    (removed_from_play = true), not erased from placedAgents_, so every
+    //    index reference (caster_idx / agent_idx / initiative) stays valid.
+    //    The GUI skips removed_from_play agents in turns and rendering.
+    {
+        auto summons = bm.placedAgents();
+        for (int i = 0; i < static_cast<int>(summons.size()); ++i) {
+            if (summons[static_cast<std::size_t>(i)].summoner_idx == agent_idx &&
+                !summons[static_cast<std::size_t>(i)].removed_from_play) {
+                bm.setAgentRemovedFromPlay(i, true);
+                result.dismissed_summons.push_back(i);
+            }
+        }
+    }
 
     return result;
 }

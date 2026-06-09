@@ -178,6 +178,7 @@ struct DropConcentrationResult {
     std::vector<int> removed_terrain_ids;
     std::vector<int> removed_spell_effect_ids;
     std::vector<int> removed_condition_ids;
+    std::vector<int> dismissed_summons;      // indices of summons tombstoned (removed_from_play) by this drop
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
