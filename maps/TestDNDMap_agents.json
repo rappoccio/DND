@@ -566,7 +566,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 150,
+        "speed_walk": 160,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -691,8 +691,8 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Dagger",
-        "off_hand": "PactBlade",
+        "main_hand": "PactBlade",
+        "off_hand": "Unarmed",
         "ranged": "Longbow"
       },
       "armor": {
@@ -1256,7 +1256,8 @@
         "Fear",
         "Chain Lightning",
         "Counterspell",
-        "Shield"
+        "Shield",
+        "Summon Dragon"
       ],
       "agent_class": "Sorcerer",
       "agent_char_level": 9,

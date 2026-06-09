@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
 from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
+from helpers import can_place_agent, summon_cell_placeable
 
 
 def _spawn_summon(bm, name, col, row, summoner_idx, spell="Summon Dragon"):
@@ -153,6 +154,63 @@ def test_damage_breaking_concentration_dismisses_summon():
         print("✅ test_damage_breaking_concentration_dismisses_summon passed (held)")
 
 
+def test_placement_in_range_and_empty_is_valid():
+    """A nearby empty cell with line of sight is a legal summon spot."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    origin = bm.placed_agents[caster].origin
+    assert summon_cell_placeable(bm, origin, 1, rpg.Cell(6, 5), 1, 60), \
+        "adjacent empty cell within range should be valid"
+    print("✅ test_placement_in_range_and_empty_is_valid passed")
+
+
+def test_placement_out_of_range_is_invalid():
+    """Beyond the spell's range the cell is rejected, but a closer one is allowed."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    origin = bm.placed_agents[caster].origin
+    # range 5 ft = one cell: three cells away is out of range, adjacent is in range.
+    assert not summon_cell_placeable(bm, origin, 1, rpg.Cell(8, 5), 1, 5), "should be out of range"
+    assert summon_cell_placeable(bm, origin, 1, rpg.Cell(6, 5), 1, 5), "adjacent should be in range"
+    print("✅ test_placement_out_of_range_is_invalid passed")
+
+
+def test_placement_on_occupied_cell_is_invalid():
+    """A cell occupied by another live agent is not a legal summon spot."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    add_agent_to_battle(engine, bm, create_test_agent("Ally", 6, 5))
+    origin = bm.placed_agents[caster].origin
+    assert not summon_cell_placeable(bm, origin, 1, rpg.Cell(6, 5), 1, 60), \
+        "occupied cell should be rejected"
+    print("✅ test_placement_on_occupied_cell_is_invalid passed")
+
+
+def test_can_place_ignores_tombstoned_summon():
+    """A dismissed (tombstoned) summon frees its cell for placement again."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    summon = _spawn_summon(bm, "Spirit Dragon Wyrmling", 6, 6, caster)
+    assert not can_place_agent(bm, rpg.Cell(6, 6), 1), "live summon should block its cell"
+    bm.set_agent_removed_from_play(summon, True)
+    assert can_place_agent(bm, rpg.Cell(6, 6), 1), "tombstoned summon should free its cell"
+    print("✅ test_can_place_ignores_tombstoned_summon passed")
+
+
+def test_can_place_out_of_bounds_is_invalid():
+    """Cells off the grid (negative or past the edge) are rejected."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    assert not can_place_agent(bm, rpg.Cell(-1, 5), 1), "negative cell should be rejected"
+    assert not can_place_agent(bm, rpg.Cell(bm.grid_cols, 5), 1), "past-edge cell should be rejected"
+    print("✅ test_can_place_out_of_bounds_is_invalid passed")
+
+
 if __name__ == "__main__":
     test_summon_bindings_present()
     test_spawn_agent_is_non_destructive()
@@ -160,4 +218,9 @@ if __name__ == "__main__":
     test_drop_concentration_dismisses_summon()
     test_unrelated_summon_not_dismissed()
     test_damage_breaking_concentration_dismisses_summon()
+    test_placement_in_range_and_empty_is_valid()
+    test_placement_out_of_range_is_invalid()
+    test_placement_on_occupied_cell_is_invalid()
+    test_can_place_ignores_tombstoned_summon()
+    test_can_place_out_of_bounds_is_invalid()
     print("\nAll summoning tests passed!")

@@ -46,6 +46,7 @@ from helpers import (
     _DEFAULT_ARMOR, _armor_to_dict, _dict_to_armor,
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
+    can_place_agent, summon_cell_placeable,
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog
 from dialogs_conditions import ConditionsDialog
@@ -411,6 +412,7 @@ class App:
         self.pending_summon_idx        = 0     # spell index of the summon spell being cast
         self.pending_summon_slot_level = 0     # chosen slot level
         self.pending_summon_monster    = ""    # monster-JSON key to spawn
+        self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
@@ -1117,26 +1119,9 @@ class App:
         return -1
 
     def _can_place(self, cell, size, exclude_idx=-1):
-        """Return True if a size×size agent can be placed with top-left at cell."""
-        cols, rows = self.bm.grid_cols, self.bm.grid_rows
-        if cell.col < 0 or cell.row < 0:
-            return False
-        if cell.col + size > cols or cell.row + size > rows:
-            return False
-        if self.bm.is_blocked(cell, size):
-            return False
-        # Check overlap with other agents
-        for i, pt in enumerate(self.bm.placed_agents):
-            if i == exclude_idx:
-                continue
-            if pt.removed_from_play:
-                continue   # tombstoned (dismissed summon) — no longer occupies its cell
-            if (cell.col < pt.origin.col + pt.size and
-                    cell.col + size > pt.origin.col and
-                    cell.row < pt.origin.row + pt.size and
-                    cell.row + size > pt.origin.row):
-                return False
-        return True
+        """Return True if a size×size agent can be placed with top-left at cell.
+        Rule lives in helpers.can_place_agent (shared with the summon preview + tests)."""
+        return can_place_agent(self.bm, cell, size, exclude_idx)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Save / Load
@@ -4728,6 +4713,7 @@ class App:
         self.pending_summon_idx        = 0
         self.pending_summon_slot_level = 0
         self.pending_summon_monster    = ""
+        self.summon_hover_cell         = None
         self.sprites.clear()
         self._consume_cast_slot(slot, caster_idx)
 
@@ -6682,6 +6668,44 @@ class App:
                              pygame.Rect(sx, sy, size_px, size_px), 3,
                              border_radius=3)
 
+        # ── Summon placement preview ───────────────────────────────────────
+        if self.pending_summon_slot and self.summon_hover_cell is not None:
+            cell = self.summon_hover_cell
+            mob  = self.mob_stats_json.get(self.pending_summon_monster, {})
+            ssize = self._size_category_to_grid_size(mob.get("Size", "Medium"))
+            valid = self._summon_cell_valid(cell, ssize)
+            sx, sy = self._cell_to_screen(cell.col, cell.row)
+            size_px = cpx * ssize
+            sprite = self._get_sprite(self._get_mob_sprite_path(self.pending_summon_monster), size_px)
+            if sprite:
+                surf = sprite.copy()
+                surf.set_alpha(160)
+                if not valid:
+                    surf.fill((255, 90, 90), special_flags=pygame.BLEND_RGBA_MULT)
+                self.screen.blit(surf, (sx, sy))
+            else:
+                r = pygame.Rect(sx + 2, sy + 2, size_px - 4, size_px - 4)
+                ph = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+                ph.fill((80, 220, 80, 150) if valid else (220, 60, 60, 150))
+                self.screen.blit(ph, r)
+            border_col = (80, 220, 80) if valid else (220, 60, 60)
+            pygame.draw.rect(self.screen, border_col,
+                             pygame.Rect(sx, sy, size_px, size_px), 3, border_radius=3)
+
+    def _summon_cell_valid(self, cell, size) -> bool:
+        """Whether the pending summon may be placed at `cell` (range + LOS + unoccupied).
+        Same rule (helpers.summon_cell_placeable) that _resolve_summon enforces; used to
+        colour the placement preview."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0:
+            return False
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        sp = spells[self.pending_summon_idx] if 0 <= self.pending_summon_idx < len(spells) else None
+        if sp is None:
+            return False
+        caster = self.bm.placed_agents[caster_idx]
+        return summon_cell_placeable(self.bm, caster.origin, caster.size, cell, size, sp.range)
+
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active."""
         # Stale-rect guard: every combat-action button below is (re)positioned only on the
@@ -7917,6 +7941,7 @@ class App:
                     self.pending_summon_idx        = 0
                     self.pending_summon_slot_level = 0
                     self.pending_summon_monster    = ""
+                    self.summon_hover_cell         = None
                     self._combat_log_add("Summon cancelled.")
                     continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
@@ -8182,6 +8207,9 @@ class App:
                     self.spell_hover_cell = self._screen_to_cell(*event.pos)
                 else:
                     self.spell_hover_cell = None
+
+            if event.type == pygame.MOUSEMOTION and self.pending_summon_slot:
+                self.summon_hover_cell = self._screen_to_cell(*event.pos) if on_map else None
 
             if event.type == pygame.MOUSEMOTION and self.drag_idx >= 0:
                 cell = self._screen_to_cell(*event.pos)

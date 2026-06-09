@@ -2,7 +2,47 @@
 #  helpers.py  –  Utility functions for D&D mechanics and serialization
 # ─────────────────────────────────────────────────────────────────────────────
 
+import math
+
 import rpg_battle_map as rpg
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Placement rules (shared by the GUI and unit tests; no pygame dependency)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def can_place_agent(bm, cell, size, exclude_idx=-1) -> bool:
+    """Return True if a size×size agent fits at top-left `cell`: in bounds, not on a
+    wall/blocked cell, and not overlapping another LIVE agent's footprint. A tombstoned
+    agent (removed_from_play, e.g. a dismissed summon) no longer occupies its cell."""
+    cols, rows = bm.grid_cols, bm.grid_rows
+    if cell.col < 0 or cell.row < 0:
+        return False
+    if cell.col + size > cols or cell.row + size > rows:
+        return False
+    if bm.is_blocked(cell, size):
+        return False
+    for i, pt in enumerate(bm.placed_agents):
+        if i == exclude_idx or pt.removed_from_play:
+            continue
+        if (cell.col < pt.origin.col + pt.size and
+                cell.col + size > pt.origin.col and
+                cell.row < pt.origin.row + pt.size and
+                cell.row + size > pt.origin.row):
+            return False
+    return True
+
+
+def summon_cell_placeable(bm, caster_origin, caster_size, cell, size, spell_range) -> bool:
+    """Whether a summon of footprint `size` may manifest at `cell`: within the spell's
+    range (feet, 5 ft/cell), with line of sight from the caster, on an unoccupied cell.
+    Single source of truth for both the placement preview and _resolve_summon."""
+    dist_cells = math.hypot(cell.col - caster_origin.col, cell.row - caster_origin.row)
+    if dist_cells * 5.0 > spell_range + 1e-6:
+        return False
+    if not bm.has_line_of_sight(caster_origin, caster_size, cell, size):
+        return False
+    return can_place_agent(bm, cell, size)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
