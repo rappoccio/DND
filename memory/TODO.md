@@ -41,6 +41,17 @@ These gate multiple per-class features; each is a real project, not a quick task
   `[DEFER]` / `🚫 not modeled` list (Warlock patrons, Rogue subclasses, Wizard L6 subclass
   features, Cleric domains, Wild Shape mechanics, etc.). That file is the checklist.
 
+## Data / bestiary
+
+- [ ] **Merge with 5e-bits database** — the source `DND2024_MonsterStats.csv/.json` is a
+  buggy spreadsheet export (wrong PBs, typo'd damage averages, fabricated riders — see memory
+  `feedback-monster-data-unreliable`). The [5e-bits 5e-database](https://github.com/5e-bits/5e-database)
+  has structured monster `actions` with real `damage_dice`/`damage_type`/`attack_bonus` — far
+  more reliable. BUT the **2024** set (`src/2024/en/`) currently has only **3 monsters** (Aboleth,
+  Adult Black/Blue Dragon); the complete set is **2014** edition (~330, different values). When a
+  comprehensive 2024 list surfaces, migrate the bestiary to it (or cross-check) and retire the
+  hand-built `tools/monster_weapon_overrides.json`. User is hunting for the bigger list.
+
 ## App / non-combat (deferred — out of the combat-sim core scope)
 
 Per the "combat-sim only" scope rule, these are explicitly deferred, not active:

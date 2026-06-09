@@ -38,6 +38,7 @@ def dict_to_stats(stats_dict):
     stats.speed_burrow = int(stats_dict.get("speed_burrow", 0))
     stats.prof_bonus = int(stats_dict.get("prof_bonus", 2))
     stats.num_attacks = int(stats_dict.get("num_attacks", 1))
+    stats.is_npc = bool(stats_dict.get("is_npc", False))
     stats.has_sentinel = bool(stats_dict.get("has_sentinel", False))
     stats.has_branches_of_the_tree = bool(stats_dict.get("has_branches_of_the_tree", False))
     stats.save_prof_str = bool(stats_dict.get("save_prof_str", False))
@@ -55,6 +56,38 @@ def dict_to_stats(stats_dict):
             stats.spellcasting_ability = int(ability_val) if ability_val else 5
     stats.temp_hp = int(stats_dict.get("temp_hp", 0))
     return stats
+
+
+MAGIC_DAMAGE_NAMES = ["Acid", "Cold", "Fire", "Force", "Lightning",
+                      "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"]
+PHYSICAL_DAMAGE_NAMES = ["Bludgeoning", "Piercing", "Slashing"]
+
+
+def apply_damage_multipliers(stats, stats_dict):
+    """Apply resist/immune/vuln damage multipliers from a stats dict onto a
+    Stats object. Resistance=0.5, immunity=0.0, vulnerability=2.0; everything
+    else stays 1.0. Shared by JSON agent loading and monster auto-population."""
+    for idx in range(len(MAGIC_DAMAGE_NAMES)):
+        stats.set_magic_damage_multiplier(idx, 1.0)
+    for idx in range(len(PHYSICAL_DAMAGE_NAMES)):
+        stats.set_physical_damage_multiplier(idx, 1.0)
+
+    for names, mult, key in (
+        (MAGIC_DAMAGE_NAMES, 0.5, "magic_resistances"),
+        (MAGIC_DAMAGE_NAMES, 0.0, "magic_immunities"),
+        (MAGIC_DAMAGE_NAMES, 2.0, "magic_vulnerabilities"),
+    ):
+        for entry in stats_dict.get(key, []):
+            if entry in names:
+                stats.set_magic_damage_multiplier(names.index(entry), mult)
+    for names, mult, key in (
+        (PHYSICAL_DAMAGE_NAMES, 0.5, "physical_resistances"),
+        (PHYSICAL_DAMAGE_NAMES, 0.0, "physical_immunities"),
+        (PHYSICAL_DAMAGE_NAMES, 2.0, "physical_vulnerabilities"),
+    ):
+        for entry in stats_dict.get(key, []):
+            if entry in names:
+                stats.set_physical_damage_multiplier(names.index(entry), mult)
 
 
 def restore_class_resources(stats, agent_dict, rpg_module=None):
@@ -149,9 +182,6 @@ def load_agents_from_json(json_path, bm, combat, sprites_dir="sprites"):
     combat.apply_agent_configs(bm)
 
     # Restore stats for each placed agent
-    magic_damage_names = ["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"]
-    physical_damage_names = ["Bludgeoning", "Piercing", "Slashing"]
-
     for i, t in enumerate(agent_data):
         if i >= len(bm.placed_agents):
             break
@@ -159,39 +189,7 @@ def load_agents_from_json(json_path, bm, combat, sprites_dir="sprites"):
         if not sd:
             continue
         s = dict_to_stats(sd)
-
-        # Load magic damage multipliers
-        for idx in range(len(magic_damage_names)):
-            s.set_magic_damage_multiplier(idx, 1.0)
-        for res in sd.get("magic_resistances", []):
-            if res in magic_damage_names:
-                idx = magic_damage_names.index(res)
-                s.set_magic_damage_multiplier(idx, 0.5)
-        for imm in sd.get("magic_immunities", []):
-            if imm in magic_damage_names:
-                idx = magic_damage_names.index(imm)
-                s.set_magic_damage_multiplier(idx, 0.0)
-        for vuln in sd.get("magic_vulnerabilities", []):
-            if vuln in magic_damage_names:
-                idx = magic_damage_names.index(vuln)
-                s.set_magic_damage_multiplier(idx, 2.0)
-
-        # Load physical damage multipliers
-        for idx in range(len(physical_damage_names)):
-            s.set_physical_damage_multiplier(idx, 1.0)
-        for res in sd.get("physical_resistances", []):
-            if res in physical_damage_names:
-                idx = physical_damage_names.index(res)
-                s.set_physical_damage_multiplier(idx, 0.5)
-        for imm in sd.get("physical_immunities", []):
-            if imm in physical_damage_names:
-                idx = physical_damage_names.index(imm)
-                s.set_physical_damage_multiplier(idx, 0.0)
-        for vuln in sd.get("physical_vulnerabilities", []):
-            if vuln in physical_damage_names:
-                idx = physical_damage_names.index(vuln)
-                s.set_physical_damage_multiplier(idx, 2.0)
-
+        apply_damage_multipliers(s, sd)
         combat.set_agent_stats(bm, i, s)
 
     # Restore weapons

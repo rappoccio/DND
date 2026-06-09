@@ -54,7 +54,7 @@ from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
 from lighting_dialogs import LightingEditorDialog
-from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
+from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to the DND2024_MonsterStats.json key it conjures.
@@ -876,83 +876,30 @@ class App:
             return specific_path
         return os.path.join(self.sprites_dir, f"{mob_name[0].upper()}.png")
 
-    def _avg_damage_to_dice(self, avg: int) -> tuple[int, int]:
-        total = avg * 2
-        for die in (6, 8, 10):
-            if total % die == 0:
-                return total // die, die
-        return max(1, total // 6), 6
+    def _weapon_from_slot_value(self, val):
+        """Build an rpg.Weapon from a bestiary weapon-slot value: a catalog
+        name string (resolved via weapons.json) or a synthesized weapon dict.
+        Empty/unknown -> a blank rpg.Weapon()."""
+        if isinstance(val, dict):
+            return _dict_to_weapon(val)
+        if isinstance(val, str) and val and val in self.weapon_name_to_dict:
+            return _dict_to_weapon(self.weapon_name_to_dict[val])
+        return rpg.Weapon()
 
-    def _parse_atk_range(self, range_str: str, atk_type: str) -> tuple[int, int, int]:
-        s = range_str.strip()
-        if not s:
-            return 5, 80, 320
-        if "/" in s:
-            parts = s.split("/")
-            normal, long_ = int(parts[0]), int(parts[1])
-            return 5, normal, long_
-        val = int(s)
-        if atk_type == "Melee":
-            return val, 80, 320
-        return 5, val, val * 4
+    @staticmethod
+    def _has_real_weapons(weapons) -> bool:
+        """True if any slot holds a real weapon. 'Unarmed'/'MonkUnarmed' is the
+        default empty-slot sentinel (weapon.hpp), so it counts as no weapon."""
+        return any(w.name and w.name not in ("Unarmed", "MonkUnarmed")
+                   for w in weapons)
 
-    def _parse_damage_types(self, dtype_str: str):
-        physical, magic = [], []
-        for part in dtype_str.split(","):
-            t = part.strip()
-            try:
-                physical.append(getattr(rpg.PhysicalDamage, t))
-                continue
-            except AttributeError:
-                pass
-            try:
-                magic.append(getattr(rpg.MagicDamage, t))
-            except AttributeError:
-                pass
-        return physical, magic
-
-    def _auto_weapons_from_mob_stats(self, mob_stats: dict) -> list:
-        weapons = []
-        for i in range(1, 5):  # slots Atk 1–4; iterate all, skip empties
-            atk_type  = mob_stats.get(f"Atk {i} Type", "").strip()
-            dam_str   = mob_stats.get(f"Atk {i} Dam.", "").strip()
-            dtype_str = mob_stats.get(f"Atk {i} Damage Type", "").strip()
-            range_str = mob_stats.get(f"Atk {i} Range", "").strip()
-            if not atk_type or not dam_str:
-                continue
-            try:
-                avg_dam = int(dam_str)
-            except ValueError:
-                avg_dam = 6
-            num_dice, die_size = self._avg_damage_to_dice(avg_dam)
-            physical, magic    = self._parse_damage_types(dtype_str)
-            reach_ft, normal_ft, long_ft = self._parse_atk_range(range_str, atk_type)
-            w = rpg.Weapon()
-            w.name             = f"Atk {i} ({atk_type})"
-            w.type             = rpg.WeaponType.Melee if atk_type == "Melee" else rpg.WeaponType.Ranged
-            w.reach_ft         = reach_ft
-            w.normal_range_ft  = normal_ft
-            w.long_range_ft    = long_ft
-            w.proficient       = True
-            # Create damage roll objects for each damage type
-            w.physical_damage_types = []
-            for phys_type in physical:
-                roll = rpg.PhysicalDamageRoll()
-                roll.type = phys_type
-                roll.num_dice = num_dice
-                roll.die_size = die_size
-                roll.bonus = 0
-                w.physical_damage_types.append(roll)
-            w.magic_damage_types = []
-            for mag_type in magic:
-                roll = rpg.MagicDamageRoll()
-                roll.type = mag_type
-                roll.num_dice = num_dice
-                roll.die_size = die_size
-                roll.bonus = 0
-                w.magic_damage_types.append(roll)
-            weapons.append(w)
-        return weapons
+    def _auto_weapons_from_mob_stats(self, mob_record: dict) -> list:
+        """Slot-aligned [main_hand, off_hand, ranged] rpg.Weapon list built from
+        the bestiary record's pre-synthesized `weapons` dict. Empty slots are
+        blank weapons so callers can assign them positionally."""
+        wdict = mob_record.get("weapons", {})
+        return [self._weapon_from_slot_value(wdict.get(slot, ""))
+                for slot in ("main_hand", "off_hand", "ranged")]
 
     def _size_category_to_grid_size(self, size_category: str) -> int:
         """Convert D&D size category to grid size (cells)."""
@@ -972,7 +919,7 @@ class App:
         if mob_name in self.mob_stats_json:
             self.selected_mob_stats = self.mob_stats_json[mob_name]
             # Set size based on mob size category
-            size_category = self.selected_mob_stats.get("Size", "Medium")
+            size_category = self.selected_mob_stats.get("size", "Medium")
             self.current_mob_grid_size = self._size_category_to_grid_size(size_category)
         else:
             self.selected_mob_stats = None
@@ -1037,49 +984,15 @@ class App:
         self._pc_name_input.text = cfg.name
         self._pc_name_input.active = True
 
-    def _mob_stats_to_d_d_stats(self, mob_data: dict):
-        """Convert CSV mob stats to D&D 5e agent stats."""
-        # Convert ability modifiers to ability scores: score = (mod * 2) + 10
-        def mod_to_score(mod_str):
-            try:
-                mod = int(mod_str) if mod_str else 0
-                return (mod * 2) + 10
-            except (ValueError, TypeError):
-                return 10
+    def _mob_stats_to_d_d_stats(self, mob_record: dict):
+        """Build rpg.Stats from an engine-ready bestiary record.
 
-        def safe_int(val, default=10):
-            try:
-                return int(val) if val else default
-            except (ValueError, TypeError):
-                return default
-
-        # Create Stats object directly
-        stats = rpg.Stats()
-        stats.str = mod_to_score(mob_data.get('STR Mod'))
-        stats.dex = mod_to_score(mob_data.get('DEX Mod'))
-        stats.con = mod_to_score(mob_data.get('CON Mod'))
-        stats.intel = mod_to_score(mob_data.get('INT Mod'))
-        stats.wis = mod_to_score(mob_data.get('WIS Mod'))
-        stats.cha = mod_to_score(mob_data.get('CHA Mod'))
-        stats.hp_max = safe_int(mob_data.get('HP', '10'), 10)
-        stats.hp_cur = stats.hp_max
-        stats.base_ac = safe_int(mob_data.get('AC', '10'), 10)
-        stats.speed_walk   = safe_int(mob_data.get('Walk',   '30'), 30)
-        stats.speed_fly    = safe_int(mob_data.get('Fly',    '0'),   0)
-        stats.speed_swim   = safe_int(mob_data.get('Swim',   '0'),   0)
-        stats.speed_burrow = safe_int(mob_data.get('Burrow', '0'),   0)
-        stats.prof_bonus   = safe_int(mob_data.get('PB',     '2'),   2)
-        stats.num_attacks  = safe_int(mob_data.get('# of Atk', '1'), 1)
-
-        # Saving throw proficiencies from "Saving Throw" field (comma-separated ability names)
-        save_str = mob_data.get('Saving Throw', '') or ''
-        saves = {s.strip().lower() for s in save_str.split(',')}
-        stats.save_prof_str   = 'strength'     in saves
-        stats.save_prof_dex   = 'dexterity'    in saves
-        stats.save_prof_con   = 'constitution' in saves
-        stats.save_prof_intel = 'intelligence' in saves
-        stats.save_prof_wis   = 'wisdom'       in saves
-        stats.save_prof_cha   = 'charisma'     in saves
+        The record's `stats` block is already in agent_loader.dict_to_stats
+        shape (ability scores, speeds, save profs, resist/immune/vuln lists,
+        is_npc), so this just loads it and applies the damage multipliers."""
+        sd = mob_record.get("stats", {})
+        stats = dict_to_stats(sd)
+        apply_damage_multipliers(stats, sd)
         return stats
 
     # ─────────────────────────────────────────────────────────────────────
@@ -4636,7 +4549,7 @@ class App:
             return
 
         # Validate placement: in range, line of sight, unoccupied.
-        size   = self._size_category_to_grid_size(mob_stats.get("Size", "Medium"))
+        size   = self._size_category_to_grid_size(mob_stats.get("size", "Medium"))
         caster = self.bm.placed_agents[caster_idx]
         dist_cells = math.hypot(cell.col - caster.origin.col, cell.row - caster.origin.row)
         if dist_cells * 5.0 > sp.range + 1e-6:
@@ -4664,7 +4577,7 @@ class App:
         # Stats + auto-weapons from the monster JSON (same path as bestiary placement).
         self.combat.set_agent_stats(self.bm, new_idx, self._mob_stats_to_d_d_stats(mob_stats))
         weapons = list(self.combat.get_agent_weapons(self.bm, new_idx))
-        if not any(w.name for w in weapons):
+        if not self._has_real_weapons(weapons):
             for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
                 weapons[i] = w
             self.combat.set_agent_weapons(self.bm, new_idx, weapons)
@@ -6677,7 +6590,7 @@ class App:
         if self.pending_summon_slot and self.summon_hover_cell is not None:
             cell = self.summon_hover_cell
             mob  = self.mob_stats_json.get(self.pending_summon_monster, {})
-            ssize = self._size_category_to_grid_size(mob.get("Size", "Medium"))
+            ssize = self._size_category_to_grid_size(mob.get("size", "Medium"))
             valid = self._summon_cell_valid(cell, ssize)
             sx, sy = self._cell_to_screen(cell.col, cell.row)
             size_px = cpx * ssize
@@ -7898,8 +7811,9 @@ class App:
                             self.combat.set_agent_stats(self.bm, idx, d_d_stats)
                             # For auto-weapons, we need to update the weapons array
                             current_weapons = list(self.combat.get_agent_weapons(self.bm, idx))
-                            # Check if all weapons are empty
-                            has_weapons = any(w.name for w in current_weapons)
+                            # Default slots are "Unarmed" (the empty sentinel), so
+                            # check for a *real* weapon before auto-filling.
+                            has_weapons = self._has_real_weapons(current_weapons)
                             if not has_weapons:
                                 # Fill empty weapon slots with auto-weapons
                                 auto_weapons = self._auto_weapons_from_mob_stats(self.selected_mob_stats)
