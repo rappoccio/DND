@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the Shield spell vs *attacks* via the OnHit window (ONDECLARECAST_PLAN.md, step 3a).
+Test suite for the Shield spell vs *attacks* via the OnHit window (step 3a).
 
 When a creature is hit by an attack, it may react by casting Shield (+5 AC). If the +5 turns the hit
 into a miss, the attack deals no damage and fires no concentration save — the decision happens BEFORE

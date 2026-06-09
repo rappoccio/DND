@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the Shield spell via the OnDeclareCast window (ONDECLARECAST_PLAN.md, step 1).
+Test suite for the Shield spell via the OnDeclareCast window (step 1).
 
 A creature targeted by Magic Missile may react by casting Shield → it takes no damage from the
 Magic Missile, spends an L1+ slot + its reaction, and gains +5 AC until its next turn. Driven

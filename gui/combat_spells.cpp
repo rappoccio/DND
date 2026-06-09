@@ -625,8 +625,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             const Agent::Conditions& target_cond =
                 agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions();
 
-            // Consume a pre-rolled save when one exists: the OnSaveFail window (advanceCast,
-            // ONSAVEFAIL_PLAN.md) pre-rolls every target's save for a directly-targeted Save spell and may
+            // Consume a pre-rolled save when one exists: the OnSaveFail window (advanceCast)
+            // pre-rolls every target's save for a directly-targeted Save spell and may
             // have rerolled it (Countercharm / Indomitable). Otherwise roll it now via rollSpellSave, which
             // reproduces the same adv/dis + auto-fail logic AND consumes the Eldritch Strike tag exactly
             // once (the preroll REPLACES this roll, never both). Direct executeSpell callers (zones/NPC)
@@ -2012,7 +2012,7 @@ bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_l
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  OnSaveFail window — reroll a just-failed spell save (ONSAVEFAIL_PLAN.md)
+//  OnSaveFail window — reroll a just-failed spell save
 //  Consumers: Countercharm (Bard L7 — reroll an ally's failed charm/frighten save WITH ADVANTAGE,
 //  costs the bard's reaction) and Indomitable (Fighter L9 — reroll your OWN failed save + Fighter
 //  level, costs an Indomitable use, not the reaction). "raising-only": a reroll can only turn a
@@ -2164,7 +2164,7 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  OnDeclareCast window — interruptible spell casting (ONDECLARECAST_PLAN.md)
+//  OnDeclareCast window — interruptible spell casting
 //  beginCast wraps executeSpell with a pre-resolution reaction window. This pass: Shield vs
 //  Magic Missile (a targeted creature reacts by casting Shield → Magic Missile immunity).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2226,7 +2226,7 @@ CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action
 
     // Counterspell reactors first — it interrupts the whole cast. Any creature (not the caster) that
     // can see the caster within 60 ft and can cast Counterspell. A Counterspell can ITSELF be
-    // countered (COUNTERSPELL_STACK_PLAN.md): a counter-counterspell is a nested cast on the stack, so
+    // countered: a counter-counterspell is a nested cast on the stack, so
     // we enroll counterspellers even when castName == "Counterspell". canCastCounterspell excludes
     // i == caster, so a caster can't counter its own Counterspell.
     for (int i = 0; i < static_cast<int>(agents.size()); ++i)
@@ -2346,8 +2346,8 @@ void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, cons
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
     if (opt.kind != ReactionOption::Feature) return;
-    // Counterspell is NOT handled here — it pushes a nested cast (see submitDecision / stepTopCast,
-    // COUNTERSPELL_STACK_PLAN.md), so a deeper Counterspell can negate it before it resolves.
+    // Counterspell is NOT handled here — it pushes a nested cast (see submitDecision / stepTopCast),
+    // so a deeper Counterspell can negate it before it resolves.
     if (opt.feature == "Shield") {
         if (applyShield(bm, ctx.reactor_idx) && ctx.window == ReactionWindow::OnHit &&
             topCast().has_preroll && topCast().preroll_target == ctx.reactor_idx) {
@@ -2517,7 +2517,7 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
         }
     }
 
-    // ── OnSaveFail window (ONSAVEFAIL_PLAN.md): pre-roll a directly-targeted Save spell's saves and let
+    // ── OnSaveFail window: pre-roll a directly-targeted Save spell's saves and let
     // creatures reroll a FAILURE → possible success (Countercharm / Indomitable). Runs for BOTH drivers
     // (interactive suspends; auto resolves inline via the decider, like the OnDeclareCast loop above).
     // AoE-geometry save spells (cone/cube/sphere) are deferred — their target list is resolved inside

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the OnSaveFail reaction window on SPELL SAVES (ONSAVEFAIL_PLAN.md).
+Test suite for the OnSaveFail reaction window on SPELL SAVES.
 
 After a directly-targeted (Single/Multiple geometry) Save-type spell pre-rolls a target's save and it
 FAILS, a creature may reroll it — "raising-only" (a reroll can only turn a failure into a success):

@@ -1213,7 +1213,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
     py::class_<RecklessCtx>(m, "RecklessCtx")
         .def_readonly("attacker_idx", &RecklessCtx::attacker_idx);
 
-    // ── Reaction system (REACTION_SYSTEM_PLAN.md) ─────────────────────────────
+    // ── Reaction system ─────────────────────────────
     py::enum_<ReactionWindow>(m, "ReactionWindow")
         .value("LeftReach",         ReactionWindow::LeftReach)
         .value("OnHit",             ReactionWindow::OnHit)
@@ -1721,7 +1721,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("begin_turn_flow",
              &CombatEngine::beginTurnFlow,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("interactive") = true,
-             "Interruptible turn start (ONTURNSTARTNEARBY_PLAN.md): runs begin_turn, then opens the\n"
+             "Interruptible turn start: runs begin_turn, then opens the\n"
              "OnTurnStartNearby window so nearby creatures may react (Sentinel strike / Branches of the\n"
              "Tree grapple). Returns FlowStatus: Completed, or AwaitingDecision (parked — poll\n"
              "pending_decision(), resume via submit_decision()). interactive=False is the auto/RL driver\n"
@@ -1831,7 +1831,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("col"), py::arg("row"),
              "Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).\n"
              "Returns true if valid, false if out of bounds or blocked.")
-        // ── Reaction system / flow checkpoints (REACTION_SYSTEM_PLAN.md) ──────
+        // ── Reaction system / flow checkpoints ──────
         .def("begin_move",
              &CombatEngine::beginMove,
              py::arg("battle_map"), py::arg("idx"), py::arg("dest"), py::arg("type"),
@@ -1853,7 +1853,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::return_value_policy::reference_internal,
              "The decision the engine is currently parked on (PendingDecision; .active is False\n"
              "when not parked). The GUI polls this each frame.")
-        // ── OnDeclareCast: interruptible spell casting (ONDECLARECAST_PLAN.md) ─
+        // ── OnDeclareCast: interruptible spell casting ─
         .def("begin_cast",
              &CombatEngine::beginCast,
              py::arg("battle_map"), py::arg("action"),
@@ -2097,7 +2097,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "defender, flagged via conditions.riposte_available, spend the reaction + 1 Superiority\n"
              "Die to make a melee attack defender→attacker; on a hit, add the Superiority Die to the\n"
              "damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).")
-        // ── OnD20Seen reactions (attack rolls only — OND20SEEN_PLAN.md). The interactive window reuses
+        // ── OnD20Seen reactions (attack rolls only). The interactive window reuses
         //    begin_attack/pending_decision/submit_decision/last_attack_result; these are the eligibility
         //    gates + direct apply hooks (used by tests, and by the GUI to label the menu). ──
         .def("can_bend_luck", &CombatEngine::canBendLuck,
@@ -2123,7 +2123,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend the lowest L1+ slot + reaction; reroll the d20 and re-evaluate (attacker uses the\n"
              "new roll). Mutates `result`. Returns True if applied.")
-        // ── OnSaveFail window eligibility gates (ONSAVEFAIL_PLAN.md). The window itself reuses
+        // ── OnSaveFail window eligibility gates. The window itself reuses
         //    begin_cast/resolve_cast/pending_decision/submit_decision/last_cast_result; these gates are for
         //    tests + GUI menu labels. ──
         .def("can_countercharm", &CombatEngine::canCountercharm,

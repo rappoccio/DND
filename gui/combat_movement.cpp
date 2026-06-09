@@ -551,7 +551,7 @@ void CombatEngine::standup(BattleMap& bm, int idx) noexcept
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Reaction system — Opportunity Attacks via flow checkpoints
-//  (see REACTION_SYSTEM_PLAN.md). The OA rule used to live in main.py; it now lives
+//  The OA rule used to live in main.py; it now lives
 //  here. detectProvokes finds per-creature / per-step leavers along the path;
 //  beginMove/submitDecision (GUI) and resolveMove (auto/RL) drive the checkpoints.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -565,7 +565,7 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
     if (mover_idx < 0 || mover_idx >= static_cast<int>(agents.size())) return events;
 
     // Disengage normally suppresses all opportunity attacks for this move — EXCEPT against a
-    // Sentinel-ready threatener: the Sentinel feat (clause 2, ONTURNSTARTNEARBY_PLAN.md §0) makes a
+    // Sentinel-ready threatener: the Sentinel feat (clause 2) makes a
     // creature provoke an OA from you even if it Disengages. So Disengage is checked per-reactor below.
     const bool disengaging = bm.getAgentConditions(mover_idx).disengaging;
 
@@ -806,7 +806,7 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
             ++c.savefail_cursor;
         } else if (isCounterspellChoice(ctx, resp) &&
                    cast_stack_.size() <= bm.placedAgents().size()) {
-            // Counterspell → push a nested cast (COUNTERSPELL_STACK_PLAN.md). Capture the parent caster
+            // Counterspell → push a nested cast. Capture the parent caster
             // (ctx.source_idx) before the push, and do NOT touch c afterward (it dangles).
             ++c.cursor;
             castCounterspell(bm, ctx.reactor_idx, ctx.source_idx);

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the Shield spell vs *spell attacks* via the OnHit window (ONDECLARECAST_PLAN.md /
-REACTION_SYSTEM_PLAN.md). This is the spell analog of test_shield_vs_attack.py.
+Test suite for the Shield spell vs *spell attacks* via the OnHit window. This is the spell analog of test_shield_vs_attack.py.
 
 executeSpell's per-target to-hit roll was extracted into rollSpellAttack so a single-target attack
 spell (Fire Bolt, Guiding Bolt, Chromatic Orb, Ray of Frost…) can offer the target a reactive Shield

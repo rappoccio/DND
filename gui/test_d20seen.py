@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the OnD20Seen reaction window on ATTACK ROLLS (OND20SEEN_PLAN.md).
+Test suite for the OnD20Seen reaction window on ATTACK ROLLS.
 
 After an attack roll is seen, a nearby creature (within 60 ft + LoS, reaction free) may LOWER it:
   · Bend Luck     (L6+ Wild Magic Sorcerer)  — spend 1 Sorcery Point, -1d4

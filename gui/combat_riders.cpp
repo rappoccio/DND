@@ -1289,7 +1289,7 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  OnTurnStartNearby reactions (beginTurn — ONTURNSTARTNEARBY_PLAN.md)
+//  OnTurnStartNearby reactions (beginTurn)
 //  When a creature starts its turn within a reactor's 5 ft reach, the reactor may spend its reaction:
 //  Branches of the Tree → the creature makes a STR save vs the reactor's spell save DC or is Grappled.
 //  A post-effect interrupt that does not alter the TurnStartResult, so the flow is the simplest of the

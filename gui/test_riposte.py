@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for Battle Master Riposte (RIPOSTE_PLAN.md).
+Test suite for Battle Master Riposte.
 
 Riposte is a DEFENDER reaction modeled on Reckless Attack's post-hoc-on-miss path: when a MELEE
 attack misses a Battle Master, the engine flags conditions.riposte_available on the TARGET (the

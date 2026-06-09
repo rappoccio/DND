@@ -126,7 +126,7 @@ namespace rpg {
       bool has_cunning_action{false};  // Rogue: Dash/Disengage/Hide as bonus action
       bool has_offhand_attack{false};  // TWF / light weapon: off-hand bonus attack
       bool can_cast_spell{false};      // spellcaster: Cast Spell action/bonus action
-      // OnTurnStartNearby reactions (ONTURNSTARTNEARBY_PLAN.md): a creature starting its turn within
+      // OnTurnStartNearby reactions: a creature starting its turn within
       // this reactor's 5 ft reach may be reacted to. has_sentinel → a melee weapon strike (v1
       // turn-start approximation of the Sentinel feat); has_branches_of_the_tree → a STR-save-or-Grappled.
       bool has_sentinel{false};

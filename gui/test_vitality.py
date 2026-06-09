@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for World Tree Barbarian "Vitality of the Tree" — the second OnTurnStartNearby consumer
-(ONTURNSTARTNEARBY_PLAN.md / REACTION_SYSTEM_PLAN.md §9).
+Test suite for World Tree Barbarian "Vitality of the Tree" — the second OnTurnStartNearby consumer.
 
 Unlike Branches of the Tree (a reaction to ANOTHER creature's turn start), Vitality fires on the
 Barbarian's OWN turn start: while raging, it may grant one creature within 10 ft Xd6 temp HP

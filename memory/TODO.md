@@ -13,14 +13,14 @@ Manager / Divine Smite) is tracked in the auto-memory, not here. Most recent cla
 
 These gate multiple per-class features; each is a real project, not a quick task.
 
-- [~] **Reaction / interrupt system** — framework SHIPPED + 6 of 7 windows live
+- [~] **Reaction / interrupt system** — framework SHIPPED + ALL 7 windows live
   (`LeftReach`/OA, `OnHit`/Shield+Protective Field, `OnMiss`/Riposte, `OnDeclareCast`/
   Shield-vs-MM+Counterspell, `OnD20Seen`/Bend Luck+Cutting Words+Silvery Barbs on attack rolls,
-  `OnSaveFail`/Countercharm+Indomitable on spell saves). Spec `REACTION_SYSTEM_PLAN.md` §9; status in
-  auto-memory `reaction-system-plan`. **Remaining 1 window:** `OnTurnStartNearby` (Sentinel / Branches
-  of the Tree). Plus: extend OnD20Seen / OnSaveFail to the **other inline save sites** (beginTurn,
-  concentration, weapon-condition, death saves — the spell-save chokepoint now exists), and fold
-  Uncanny Dodge + Guided Strike into the OnHit/OnMiss framework.
+  `OnSaveFail`/Countercharm+Indomitable on spell saves, `OnTurnStartNearby`/Branches of the Tree).
+  Spec docs retired; status in auto-memory `reaction-system-plan` + `known_limitations.md`.
+  **Remaining FOLLOW-UPS only:** extend OnD20Seen / OnSaveFail to the **other inline save sites**
+  (beginTurn, concentration, weapon-condition, death saves — the spell-save chokepoint now exists),
+  fold Uncanny Dodge + Guided Strike into the OnHit/OnMiss framework, and Sentinel clauses 1 + 3.
 - [ ] **Headless / RL default decider** — `CombatDecider` auto-policy for the branches that
   currently require a GUI menu (Reckless, Brutal Strike, OA weapon choice, item pickup).
   See memory `architecture_decider_flow_state`. Interface stub already landed with terrain.
@@ -34,7 +34,7 @@ These gate multiple per-class features; each is a real project, not a quick task
 
 - [ ] **Sorcerer** — Wild Magic Surge **trigger** (1/turn after a slot-spell) + GUI
   enforcement of bands 6/8/10; Tides of Chaos; Controlled Chaos (L14); Tamed Surge (L18).
-  Still tracked in `SORCERER_IMPLEMENTATION_PLAN.md` + `known_limitations.md` → Sorcerer.
+  Still tracked in `known_limitations.md` → Sorcerer.
 - [ ] **Bard** — Valor Combat Inspiration (+AC/+damage), Glamour Mantle of Inspiration
   (multi-target temp HP), optional Countercharm. See `known_limitations.md` → Bard.
 - [ ] **Everything else** — each class section in `known_limitations.md` carries its own

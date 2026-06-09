@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the reaction system (REACTION_SYSTEM_PLAN.md) — Opportunity Attacks.
+Test suite for the reaction system — Opportunity Attacks.
 
 The OA rule now lives in the C++ engine. These tests drive it headlessly via the
 auto driver (resolve_move) with a scripted CombatDecider, plus a direct

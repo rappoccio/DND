@@ -649,7 +649,7 @@ bool CombatEngine::maybeGuidedStrikeInline(BattleMap& bm, const Attack& action, 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  OnD20Seen reactions (attack rolls only — OND20SEEN_PLAN.md)
+//  OnD20Seen reactions (attack rolls only)
 //  Nearby creatures may LOWER a just-rolled attack roll (Bend Luck penalty / Cutting Words /
 //  Silvery Barbs reroll). v1 is lowering-only: the sole outcome change is hit → miss, so the apply
 //  path mirrors Shield (set r.hit=false; no post-hoc damage roll). The invariant total_roll =
@@ -885,7 +885,7 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
     }
 }
 
-// beginAttack — GUI/interactive entry to a weapon attack (ONDECLARECAST_PLAN.md step 3b). Runs phase A
+// beginAttack — GUI/interactive entry to a weapon attack. Runs phase A
 // (determineAdvantage) and the roll (resolveAttack) into the in-flight state, then hands off to
 // advanceAttack which opens the Shield window or finalizes. The auto/RL path stays on executeAction
 // (inline Shield). Result is read via lastAttackResult(); submitDecision resumes a parked attack.
@@ -918,7 +918,7 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
     // OnD20Seen window (BEFORE Shield): nearby creatures may lower the roll. Build the reactor list
     // once (post-roll), then offer each in turn. submitDecision advances d20_cursor on each resume, so
     // a Skip simply moves to the next reactor; a lowering reaction that flips the hit to a miss then
-    // makes the Shield gate below false. (OND20SEEN_PLAN.md §5.)
+    // makes the Shield gate below false.
     if (s.interactive && !s.d20_window_built) {
         s.d20_reactors     = d20SeenReactors(bm, s.action, s.r);
         s.d20_window_built = true;
@@ -1276,7 +1276,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
 
 // ── applyAttackResult: phase B — apply the rolled attack's consequences (on-hit/on-miss rider
 // eligibility, damage, concentration, conditions, downstate). Split from executeAction so a defender
-// reaction (Shield) can fire between the roll and damage (ONDECLARECAST_PLAN.md step 3). Working
+// reaction (Shield) can fire between the roll and damage. Working
 // stats/conditions are re-fetched fresh here, so a Shield cast in the window is reflected. ──────────
 AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
 {

@@ -146,7 +146,7 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
 
       // Indomitable (L9+): reroll a failed saving throw (+ Fighter level on the new roll). 1 use at L9,
       // 2 at L13, 3 at L17. Regains on long rest. Consumed by the OnSaveFail reaction window
-      // (ONSAVEFAIL_PLAN.md); costs the use only, not the reaction (RAW "no action").
+      // costs the use only, not the reaction (RAW "no action").
       if (level >= 9) {
         int ind_uses = (level >= 17) ? 3 : (level >= 13) ? 2 : 1;
         Resource ind("Indomitable", ind_uses, 0);

@@ -19,21 +19,13 @@ metadata:
 
 ---
 
-### Agent `render` / visibility flag for GUI suppression [TODO]
-**Status:** Not yet implemented. Needed by the Summoning system (despawned summons) and by the
-Invisible condition (hide the sprite).
-
-**Problem:** Today every placed agent is always drawn by `_draw_one_agent` (`main.py:6491`). Two
-features need to suppress drawing of an agent's sprite without removing it from `placedAgents_`
-(which would shift every index and corrupt `caster_idx`/`agent_idx`/initiative references):
-- **Despawned summons** — when a summoner loses concentration, the summon is *tombstoned* (kept in
-  the vector to preserve indices, like death) but must no longer be drawn.
-- **Invisible condition** — an invisible creature's sprite should not be drawn to viewers lacking
-  Truesight/Blindsight (currently `Conditions.invisible` is set but the sprite still renders).
-
-**Fix:** Add a single render/visibility gate at the top of `_draw_one_agent` (and skip selection
-highlight + initiative for fully-despawned agents). Source it from a C++-side flag (e.g.
-`PlacedAgent.removed_from_play` / `Conditions.invisible`) so both features share one chokepoint.
+### Render gate for the Invisible condition [TODO]
+**Status:** The render-suppression chokepoint now EXISTS (built for Summoning): `_draw_one_agent`
+returns early on `pt.removed_from_play`, and `_draw_agents` skips it for selection/highlight. What
+remains is wiring the **Invisible condition** into that same gate: an invisible creature's sprite
+should not be drawn to viewers lacking Truesight/Blindsight (today `Conditions.invisible` is set but
+the sprite still renders). Reuse the existing gate rather than adding a second path. (Dismissed
+summons no longer need this — they are also moved off-map to (-1,-1), so they render nowhere.)
 
 ---
 
@@ -48,7 +40,7 @@ actor primes a pending modifier before its own next roll, e.g. Portent, Bardic I
 Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity attacks on movement).
 
 **Features simplified or blocked by this:**
-- **OnD20Seen window — attack rolls** (IMPLEMENTED 2026-06-04, OND20SEEN_PLAN.md): the true post-hoc
+- **OnD20Seen window — attack rolls** (IMPLEMENTED 2026-06-04): the true post-hoc
   "react after seeing the d20" window now exists **for attack rolls** and hosts **Bend Luck** (Wild
   Magic Sorcerer), **Cutting Words** (Lore Bard), and **Silvery Barbs** (new L1 spell). It reuses the
   `InFlightAttack`/`beginAttack`/`advanceAttack`/`submitDecision` flow checkpoints with a multi-reactor
@@ -74,7 +66,7 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   *is* the "pending decision / interrupt" mechanism for the cast case — `beginCast` yields between
   "spell declared" and "spell resolved" so any creature that sees the caster within 60 ft may cast
   Counterspell; the caster makes a CON save vs the counterspeller's DC; on a fail the cast fizzles and
-  keeps its slot (2024 rules). **Recursive counter-counterspell IS now supported** (COUNTERSPELL_STACK_PLAN.md,
+  keeps its slot (2024 rules). **Recursive counter-counterspell IS now supported** (
   DONE 2026-06-06): `cast_stack_` makes a Counterspell a genuine nested cast whose CON save is deferred to
   pop time, so a deeper Counterspell can negate it first; the chain is bounded by the reaction economy
   (1 reaction + 1 L3+ slot each) with a defensive depth cap. *Remaining gaps:* (a) the 60 ft range gate is
@@ -93,7 +85,7 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   Spell + the single-target GUI window don't combine** — the pre-roll in `advanceCast` passes
   `MetamagicNone`, so a Sorcerer's Seeking reroll is skipped for a GUI single-target attack spell that
   opens the Shield window (rare; the auto/RL path applies Seeking normally).
-- **OnSaveFail window — spell saves** (IMPLEMENTED 2026-06-04, ONSAVEFAIL_PLAN.md): the true post-hoc
+- **OnSaveFail window — spell saves** (IMPLEMENTED 2026-06-04): the true post-hoc
   "reroll a just-failed save" window now exists **for directly-targeted (Single/Multiple geometry)
   Save-type spells**, hosting **Countercharm** (Bard L7, reroll an ally's failed charm/frighten save
   with advantage, costs the reaction) and **Indomitable** (Fighter L9, reroll your own failed save +
@@ -115,7 +107,7 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   Save-type, so this is narrow); (d) **30 ft Countercharm range untested** (12×12 map); (e) Countercharm
   is **reaction-only, no Bardic die**, and Indomitable does **not** cost the reaction (RAW "no action")
   — both are v1 modeling choices.
-- **OnTurnStartNearby window — the LAST of the 7 windows** (IMPLEMENTED 2026-06-05, ONTURNSTARTNEARBY_PLAN.md):
+- **OnTurnStartNearby window — the LAST of the 7 windows** (IMPLEMENTED 2026-06-05):
   fires inside `beginTurn`, hosting **Branches of the Tree** (when a creature starts its turn within the
   reactor's 5 ft reach, it makes a STR save vs the reactor's spell save DC or is Grappled). Unlike every
   prior window it needed a **new** transport — `beginTurn` is a synchronous `noexcept` function, so a new
@@ -315,7 +307,7 @@ STR *or* DEX (player's choice). This will be a minor enhancement once tested —
 
 ## Fighter — Deferred Features
 
-### Indomitable (L9) — IMPLEMENTED 2026-06-04 (ONSAVEFAIL_PLAN.md)
+### Indomitable (L9) — IMPLEMENTED 2026-06-04
 **Rule**: Reroll a failed saving throw (+ Fighter level on the new roll); uses regain on long rest
 (1 at L9, 2 at L13, 3 at L17). Implemented as a consumer of the **OnSaveFail** reaction window: when a
 directly-targeted spell save fails, a L9+ Fighter may spend 1 "Indomitable" resource use to reroll its
@@ -391,6 +383,34 @@ layer (main.py) rather than the C++ engine. This means:
 
 ## Spell mechanics
 - _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.
+
+---
+
+## Summoning — IMPLEMENTED ✅ (2026-06-09, built + green)
+Spells that manifest a controllable creature, dismissed when the summoner loses concentration.
+**Done:** `Summon Dragon` end-to-end — `bm.spawn_agent` (non-destructive append, rejects walls +
+live footprints); `PlacedAgent.{summoner_idx, removed_from_play, summon_spell}`; `dropConcentration`
+tombstones the caster's summons (reported in `dismissed_summons`) and `setAgentRemovedFromPlay` also
+banishes them off-map to (-1,-1) so their cell frees up (index preserved, never erased); manual
+control sharing the summoner's initiative; GUI placement preview (green/red, rule in
+`helpers.summon_cell_placeable` / `can_place_agent`); render gate skips dismissed summons;
+`_save_agents` skips summoned/tombstoned agents (transient — vanish on reload). Tests:
+`test_summoning.py`. Root-cause fix: `concentrationSave` now routes through `dropConcentration`.
+
+**Statblock stand-in:** the RAW 2024 summon "spirit" stat blocks (Draconic/Bestial/Fey/Undead…) are
+NOT in `DND2024_MonsterStats.json`, so `Summon Dragon → Spirit Dragon Wyrmling` via
+`SUMMON_SPELL_TO_MONSTER` (wrong AC/HP/damage, doesn't scale with slot).
+
+**Deferred:**
+- Author the RAW scaling spirit stat blocks (replaces the Spirit-Dragon-Wyrmling stand-in).
+- Rest of the 2024 Summon X line (only Summon Dragon is in `spells.json`) — each is just a new
+  `SUMMON_SPELL_TO_MONSTER` entry once the spell + stat block exist.
+- Conjure Animals / Woodland Beings (multi-creature from one spell — needs a multi-spawn GUI flow);
+  Animate Dead (Skeleton/Zombie are in the JSON, but it's non-concentration → permanent control);
+  Find Familiar / Find Steed (overlaps the parked Pact of the Chain item).
+- Summon auto-control AI (RAW "obey commands; else Dodge") — manual for now.
+- Not auto-tested (pygame): `_resolve_summon` placement UX, initiative insertion, the `_save_agents`
+  skip (verified by inspection).
 
 ---
 
@@ -796,7 +816,7 @@ DEX+CHA save profs, "Bardic Inspiration" resource = max(1, CHA mod), die-size sc
 slot-spend). Superior Inspiration (L18: `apply_superior_inspiration`, tops to 2 at combat start).
 Tests in `gui/test_bard.py`.
 
-### Countercharm (L7) — IMPLEMENTED 2026-06-04 (ONSAVEFAIL_PLAN.md)
+### Countercharm (L7) — IMPLEMENTED 2026-06-04
 Reaction to reroll (with advantage) an ally's just-failed save that would apply Charmed/Frightened.
 Implemented as a consumer of the **OnSaveFail** reaction window: when a directly-targeted charm/frighten
 spell save fails, a L7+ Bard within 30 ft + LoS (or the failed creature itself) may spend its

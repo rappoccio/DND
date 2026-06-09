@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the OnTurnStartNearby reaction window (ONTURNSTARTNEARBY_PLAN.md) — window #7,
+Test suite for the OnTurnStartNearby reaction window — window #7,
 the last of the reaction framework.
 
 Consumer: **Branches of the Tree** — when a creature starts its turn within the reactor's 5 ft reach,

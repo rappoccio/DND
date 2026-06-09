@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Summoning system — engine-level tests (SUMMONING_PLAN.md, Phases 1-3).
+Summoning system — engine-level tests (Phases 1-3).
 
 Covers the C++ pieces that the GUI summon flow relies on:
 - bm.spawn_agent appends a single agent WITHOUT clearing existing agents/state.

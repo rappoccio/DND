@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for Counterspell via the OnDeclareCast window (ONDECLARECAST_PLAN.md, step 2).
+Test suite for Counterspell via the OnDeclareCast window (step 2).
 
 2024 Counterspell: when a creature it can see within 60 ft casts a spell, a reactor may react by
 casting Counterspell (spending an L3+ slot + its reaction). The original caster then makes a CON save
@@ -247,7 +247,7 @@ def test_begin_submit_counterspell_path():
     print("✅ test_begin_submit_counterspell_path passed")
 
 
-# ── Counter-counterspell decision stack (COUNTERSPELL_STACK_PLAN.md) ───────────
+# ── Counter-counterspell decision stack ───────────
 def _add(engine, bm, name, col, row):
     return add_agent_to_battle(engine, bm, create_test_agent(name, col, row))
 

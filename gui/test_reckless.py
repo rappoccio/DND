@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for Reckless Attack (RECKLESS_ATTACK_PLAN.md).
+Test suite for Reckless Attack.
 
 Two entry points:
   • Pre-declared (set reckless_attack before attacking) — RAW.

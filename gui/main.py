@@ -59,8 +59,8 @@ from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to the DND2024_MonsterStats.json key it conjures.
 # The RAW 2024 summon "spirit" stat blocks (Draconic/Bestial/Fey/Undead Spirit) are not in the
-# monster file, so Summon Dragon currently uses the closest existing entry as a stand-in
-# (see SUMMONING_PLAN.md). Extend this dict as more summon spells/stat blocks are added.
+# monster file, so Summon Dragon currently uses the closest existing entry as a stand-in.
+# Extend this dict as more summon spells/stat blocks are added.
 SUMMON_SPELL_TO_MONSTER = {
     "Summon Dragon": "Spirit Dragon Wyrmling",
 }
@@ -407,7 +407,7 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
-        # Summoning: awaiting a cell click to place a summoned creature (see SUMMONING_PLAN.md).
+        # Summoning: awaiting a cell click to place a summoned creature.
         self.pending_summon_slot       = ""    # "" | "action" | "bonus"
         self.pending_summon_idx        = 0     # spell index of the summon spell being cast
         self.pending_summon_slot_level = 0     # chosen slot level
@@ -428,7 +428,7 @@ class App:
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
-        # Reaction system (REACTION_SYSTEM_PLAN.md): OA detection/resolution lives in the C++ engine
+        # Reaction system: OA detection/resolution lives in the C++ engine
         # (begin_move/pending_decision/submit_decision). These just track the parked mover for the
         # post-commit GUI refresh while a reaction checkpoint is open.
         self._reaction_mover_idx  = -1    # mover whose move is parked at a reaction checkpoint
@@ -2052,7 +2052,7 @@ class App:
         """Resolve the pending attack against target_idx.
 
         Routes through begin_attack (not execute_action) so the target can cast Shield (+5 AC) as a
-        reaction before any damage (the OnHit window, REACTION_SYSTEM_PLAN.md). begin_attack rolls the
+        reaction before any damage (the OnHit window). begin_attack rolls the
         attack, then either parks at the Shield checkpoint (AwaitingDecision) or resolves immediately
         (Completed). _finish_attack runs the post-resolution rider chain + logging in both cases,
         reading the result from last_attack_result()."""
@@ -2492,7 +2492,7 @@ class App:
         # FLAG: stays on execute_action (the auto Shield path) by design — a Cleave is itself a
         # rider-spawned attack, so routing it through begin_attack would open a Shield window during
         # another reaction (reaction-during-reaction), which the engine has no decision stack for yet.
-        # Move to begin_attack once that stack lands (REACTION_SYSTEM_PLAN.md).
+        # Move to begin_attack once that stack lands.
         result = self.combat.execute_action(self.bm, action)
         self._flush_combat_log()
 
@@ -3947,7 +3947,7 @@ class App:
             sp_ = spells[si_]
 
             # Summon spells: pick an empty cell within range to manifest the creature, rather than
-            # targeting a creature or placing an AoE (see SUMMONING_PLAN.md). Routed here BEFORE the
+            # targeting a creature or placing an AoE. Routed here BEFORE the
             # geometry branches because Summon Dragon is Single geometry ("click a target").
             monster = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
             if monster:
@@ -4391,7 +4391,7 @@ class App:
         """Render the menu for whatever reaction checkpoint the engine is parked on (OA, …).
 
         The C++ engine owns OA detection + resolution via the flow-checkpoint API
-        (begin_move → pending_decision → submit_decision; REACTION_SYSTEM_PLAN.md §7g). This just
+        (begin_move → pending_decision → submit_decision). This just
         draws ctx.options at the reactor and routes the click back through submit_decision."""
         pd = self.combat.pending_decision()
         if not pd.active:
@@ -4614,7 +4614,7 @@ class App:
             self.bonus_used = True
 
     def _resolve_summon(self, cell):
-        """Place a summoned creature at `cell` (Phase 3, SUMMONING_PLAN.md).
+        """Place a summoned creature at `cell` (Phase 3).
 
         Manual-control summon: it shares the summoner's initiative count (acts immediately
         after them) and is auto-dismissed when the summoner loses concentration — that cascade
@@ -4749,7 +4749,7 @@ class App:
         # Cast through the OnDeclareCast window (begin_cast): a targeted creature may react before the
         # spell resolves (Shield vs Magic Missile). begin_cast resolves inline when no reaction is
         # offered (Completed) or parks at the reaction checkpoint (AwaitingDecision); _finish_cast does
-        # the post-resolution logging in both cases (ONDECLARECAST_PLAN.md).
+        # the post-resolution logging in both cases.
         self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx, aoe=False)
         self._reaction_finish = self._finish_cast
 
@@ -5345,7 +5345,7 @@ class App:
         for i, pt in enumerate(self.bm.placed_agents):
             # Summoned creatures are transient (concentration-tied) and have no persisted
             # summoner link, so they are never written to the save — they vanish on reload
-            # rather than becoming orphaned permanent agents. See SUMMONING_PLAN.md.
+            # rather than becoming orphaned permanent agents.
             if pt.summoner_idx >= 0 or pt.removed_from_play:
                 continue
             s = self.combat.get_agent_stats(self.bm, i)
@@ -8268,7 +8268,7 @@ class App:
                         else:
                             # In combat, the C++ engine owns Opportunity-Attack detection AND
                             # resolution via the flow-checkpoint API (begin_move -> pending_decision
-                            # -> submit_decision; REACTION_SYSTEM_PLAN.md). It does per-creature /
+                            # -> submit_decision). It does per-creature /
                             # per-step provoke and commits the move itself. Out of combat, just move.
                             self._reaction_mover_idx  = self.drag_idx
                             self._reaction_dist_moved = dist_moved

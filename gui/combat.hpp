@@ -404,7 +404,7 @@ struct TurnStartResult {
 struct BrutalStrikeCtx { int attacker_idx; int target_idx; int level; };
 struct RecklessCtx     { int attacker_idx; };
 
-// ── Reaction system (see REACTION_SYSTEM_PLAN.md) ────────────────────────────
+// ── Reaction system ────────────────────────────
 // A "window" is WHEN in resolution a reaction may fire. This pass wires only
 // LeftReach (Opportunity Attacks); the rest are reserved for future consumers.
 enum class ReactionWindow {
@@ -459,7 +459,7 @@ struct CombatDecider {
     virtual ReactionResponse chooseReaction(const ReactionCtx&)          { return {}; }
 };
 
-// Flow-checkpoint transport (REACTION_SYSTEM_PLAN.md §6): interactive flows (e.g. a move
+// Flow-checkpoint transport: interactive flows (e.g. a move
 // that provokes OAs) suspend at a decision point instead of blocking. The GUI polls
 // pendingDecision(), draws the menu async, and routes the click back via submitDecision().
 enum class FlowStatus { Completed, AwaitingDecision };
@@ -485,7 +485,7 @@ struct SpellToHit {
 };
 
 // The result of one spell saving throw (analog of SpellToHit). Produced by rollSpellSave; consumed by
-// executeSpell's Save branch and carried across the OnSaveFail window (ONSAVEFAIL_PLAN.md) so the same
+// executeSpell's Save branch and carried across the OnSaveFail window so the same
 // (possibly rerolled) save the player saw is the one that lands. Pass/fail vs DC only — no nat-1/nat-20
 // auto rule on saves. A reaction (Countercharm / Indomitable) can only RAISE a failure → success.
 struct SpellSave {
@@ -501,7 +501,7 @@ struct SpellSave {
 };
 
 // Resumable state for one in-flight spell cast that may be interrupted at the OnDeclareCast window
-// (ONDECLARECAST_PLAN.md). beginCast wraps executeSpell with this pre-resolution window: reactors
+// beginCast wraps executeSpell with this pre-resolution window: reactors
 // (this pass: Magic Missile targets that can cast Shield) react before the cast resolves. A
 // single-target AttackRoll spell additionally opens an OnHit Shield window after the to-hit roll
 // (the spell analog of beginAttack's OnHit window — see rollSpellAttack/maybeDefenderShieldInlineSpell).
@@ -518,7 +518,7 @@ struct InFlightCast {
     int        preroll_target{-1};      // the target the pre-rolled to-hit applies to
     SpellToHit preroll{};               // the pre-rolled to-hit (updated by applyCastReaction if Shielded)
     bool       attack_window_done{false}; // the OnHit Shield window was offered once (don't re-open on resume)
-    // ── OnSaveFail window (nearby creatures may reroll a FAILED save → possible success; ONSAVEFAIL_PLAN.md) ──
+    // ── OnSaveFail window (nearby creatures may reroll a FAILED save → possible success) ──
     // A Save-type spell pre-rolls every target's save here so executeSpell's Save branch consumes the
     // (possibly Countercharm/Indomitable-rerolled) result instead of rolling fresh. Mutually exclusive
     // with the attack window above (a spell is either AttackRoll or Save), so the phases never interleave.
@@ -527,13 +527,13 @@ struct InFlightCast {
     bool                            save_window_built{false}; // failed-save reactor pairs computed once (after the rolls)
     std::vector<std::pair<int,int>> savefail_pairs;          // (failed-save target_idx, eligible reactor_idx), in order
     std::size_t                     savefail_cursor{0};       // next pair to offer
-    // ── Counterspell-as-cast (COUNTERSPELL_STACK_PLAN.md): a nested cast whose effect is a deferred CON
+    // ── Counterspell-as-cast: a nested cast whose effect is a deferred CON
     //    save against counter_target_caster, resolved at pop time so a deeper Counterspell can negate it. ──
     bool is_counterspell{false};     // this in-flight cast is a Counterspell reaction (no AttackRoll/Save phase)
     int  counter_target_caster{-1};  // the caster whose spell this Counterspell would counter (= parent's caster)
 };
 
-// Resumable state for one in-flight move that may provoke OAs (REACTION_SYSTEM_PLAN.md §6).
+// Resumable state for one in-flight move that may provoke OAs.
 struct InFlightMove {
     bool active{false};
     bool interactive{false};        // true = GUI (suspend at checkpoints); false = auto driver
@@ -551,7 +551,7 @@ struct InFlightMove {
 };
 
 // Resumable state for one in-flight attack that may open a defender reaction window between the
-// attack roll and damage (ONDECLARECAST_PLAN.md step 3). determineAdvantage fills the pre-roll state
+// attack roll and damage. determineAdvantage fills the pre-roll state
 // + snapshots; the caller rolls (resolveAttack) into r; applyAttackResult finalizes (riders/damage/
 // concentration). beginAttack parks here at the OnHit Shield window and submitDecision resumes (3b).
 struct InFlightAttack {
@@ -563,7 +563,7 @@ struct InFlightAttack {
     bool adv{false};
     bool dis{false};
     bool onhit_offered{false};      // the OnHit defender window (Shield / Uncanny Dodge) has been opened once
-    // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss; OND20SEEN_PLAN.md) ──
+    // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
     std::size_t      d20_cursor{0};       // next reactor to offer
     bool             d20_window_built{false}; // reactor list computed once, after the roll (before Shield)
@@ -579,7 +579,7 @@ struct InFlightAttack {
 };
 
 // Resumable state for one in-flight TURN START that may open the OnTurnStartNearby window
-// (ONTURNSTARTNEARBY_PLAN.md). beginTurnFlow runs the synchronous beginTurn body, stores its result,
+// beginTurnFlow runs the synchronous beginTurn body, stores its result,
 // then offers nearby creatures a reaction (Sentinel melee strike / Branches of the Tree grapple)
 // against the creature whose turn just started. Unlike the cast/attack windows there is no pre-roll to
 // consume — the reaction is a post-effect interrupt that does not alter the TurnStartResult.
@@ -764,7 +764,7 @@ public:
     // Returns true if successful, false if destination is blocked or out of bounds.
     bool teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
 
-    // ── Reaction system / flow checkpoints (REACTION_SYSTEM_PLAN.md) ──────────
+    // ── Reaction system / flow checkpoints ──────────
     // Start a (potentially) provoking move on the GUI/interactive path. Returns
     // Completed if no decision is needed, or AwaitingDecision if it parked at an OA
     // checkpoint — the GUI then polls pendingDecision() and resumes via submitDecision().
@@ -778,7 +778,7 @@ public:
     // What the engine is parked on (active=false when not parked). GUI polls each frame.
     [[nodiscard]] const PendingDecision& pendingDecision() const noexcept { return pending_decision_; }
 
-    // Interruptible spell cast (ONDECLARECAST_PLAN.md): opens the OnDeclareCast window before the
+    // Interruptible spell cast: opens the OnDeclareCast window before the
     // spell resolves, so reactions (this pass: Shield vs Magic Missile) can change/cancel it.
     // beginCast is the GUI/interactive entry (suspends at a checkpoint); resolveCast is the auto/RL
     // driver (resolves each checkpoint inline via the decider). submitDecision (above) resumes either
@@ -789,7 +789,7 @@ public:
     // True if the most recent begin_cast/resolve_cast was countered (spell fizzled, slot retained).
     [[nodiscard]] bool lastCastCountered() const noexcept { return last_cast_countered_; }
 
-    // Interruptible weapon attack (ONDECLARECAST_PLAN.md step 3b): rolls the attack, then opens the
+    // Interruptible weapon attack: rolls the attack, then opens the
     // OnHit window so the target may cast Shield (+5 AC) to negate the hit before any damage. beginAttack
     // is the GUI/interactive entry (suspends at the Shield checkpoint); the auto/RL path stays on
     // executeAction (inline defender reaction via maybeDefenderOnHitInline). submitDecision resumes a parked attack
@@ -828,7 +828,7 @@ public:
     // (e.g., due to failed paralysis save).
     TurnStartResult beginTurn(BattleMap& bm, int agent_idx) noexcept;
 
-    // Interruptible turn start (ONTURNSTARTNEARBY_PLAN.md): runs the beginTurn body, then opens the
+    // Interruptible turn start: runs the beginTurn body, then opens the
     // OnTurnStartNearby window so nearby creatures may react (Sentinel strike / Branches of the Tree
     // grapple) to `agent_idx` starting its turn. `interactive=true` is the GUI entry (suspends at each
     // reactor — poll pending_decision(), resume via submit_decision()); `false` is the auto/RL driver
@@ -837,7 +837,7 @@ public:
     FlowStatus beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive);
     [[nodiscard]] const TurnStartResult& lastTurnStartResult() const noexcept { return in_flight_turn_.result; }
 
-    // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating; ONTURNSTARTNEARBY_PLAN.md).
+    // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating).
     // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
     // turn-start reaction — it provokes an OA on Disengage; see detectProvokes / Agent::Stats::has_sentinel.)
     [[nodiscard]] bool canBranchesOfTree(const BattleMap& bm, int reactor, int source) const; // has_branches_of_the_tree
@@ -1286,7 +1286,7 @@ public:
                                                                    const Attack& action,
                                                                    const AttackResult& r) const;
 
-    // Defender OnHit reaction vs an attack (ONDECLARECAST_PLAN.md step 3; Uncanny Dodge folded in).
+    // Defender OnHit reaction vs an attack (Uncanny Dodge folded in).
     // Called right after the attack roll resolves, BEFORE any damage/concentration. If the target can
     // cast Shield (its +5 AC turns the hit into a miss) or use Uncanny Dodge (halve the damage), offer
     // the reaction; on accept, spend the resource+reaction and either negate the hit (Shield → r.hit
@@ -1334,7 +1334,7 @@ public:
     SpellToHit rollSpellAttack(BattleMap& bm, const SpellAction& action, int tgt_idx,
                                MetamagicOption applied_metamagic);
 
-    // Spell-save analog of rollSpellAttack (ONSAVEFAIL_PLAN.md). Re-fetches caster/target/agents,
+    // Spell-save analog of rollSpellAttack. Re-fetches caster/target/agents,
     // reproduces executeSpell's Save-branch advantage/disadvantage (target conditions + Heightened +
     // Eldritch Strike [CONSUMES the tag, exactly once] + Danger Sense) and the paralyzed/stunned/
     // unconscious STR/DEX auto-fail, rolls the d20, and returns the resolved SpellSave. Does NOT roll
@@ -1589,7 +1589,7 @@ private:
     FlowStatus advanceMove(BattleMap& bm);
 
     // ── Cast interrupt internals (combat_spells.cpp) — counter-counterspell decision stack
-    //    (COUNTERSPELL_STACK_PLAN.md). A Counterspell is a genuine nested cast pushed on top of the cast
+    //    A Counterspell is a genuine nested cast pushed on top of the cast
     //    it targets; the stack lets a deeper Counterspell negate it before it fires. back() = the cast
     //    currently resolving; empty = idle. The bottom (original) cast's outcome is snapshotted into
     //    last_cast_result_/last_cast_countered_ when the stack empties (the GUI accessors read those). ──
@@ -1620,7 +1620,7 @@ private:
     // Resolve cast_stack_.back() (executeSpell, or a Counterspell's deferred CON save) and pop it;
     // snapshot the bottom cast's result/countered when the stack empties.
     void finalizeAndPop(BattleMap& bm);
-    // Counterspell-as-nested-cast (COUNTERSPELL_STACK_PLAN.md):
+    // Counterspell-as-nested-cast:
     //  castCounterspell spends the reactor's L3+ slot + reaction (declaration only — no save yet).
     void castCounterspell(BattleMap& bm, int reactor, int target_caster) noexcept;
     //  pushCounterspell pushes a Counterspell cast targeting target_caster onto cast_stack_.
@@ -1653,7 +1653,7 @@ private:
     // applyAttackResult. Stores the finished result in last_attack_result_.
     FlowStatus advanceAttack(BattleMap& bm);
 
-    // ── OnD20Seen reactions (attack rolls only; OND20SEEN_PLAN.md) ─────────────────────────────────
+    // ── OnD20Seen reactions (attack rolls only) ─────────────────────────────────
     // "lowering-only" reactions a nearby creature may use AFTER seeing an attack roll: they can turn a
     // hit into a miss (never a miss into a hit), so the only consequence is r.hit=false — identical to
     // the Shield contract (no post-hoc damage roll needed). Each gate mirrors canCastCounterspell
@@ -1686,7 +1686,7 @@ private:
     // executeAction between resolveAttack and maybeDefenderOnHitInline. Stops once r becomes a miss.
     bool maybeD20SeenInline(BattleMap& bm, const Attack& action, AttackResult& r);
 
-    // ── OnSaveFail reactions (spell saves only; ONSAVEFAIL_PLAN.md) ────────────────────────────────
+    // ── OnSaveFail reactions (spell saves only) ────────────────────────────────
     // "raising-only" reactions a creature may use AFTER a spell save FAILS: they reroll the save, which
     // can only turn a failure into a success (less/no damage, no condition) — so executeSpell consuming
     // the corrected save needs no post-hoc undo (mirror of the OnD20Seen lowering-only contract).
@@ -1721,7 +1721,7 @@ private:
     // topCast().save_prerolls (found by ctx.source_idx == the failed creature).
     void applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
 
-    // ── OnTurnStartNearby internals (combat_riders.cpp; ONTURNSTARTNEARBY_PLAN.md) ──────────────────
+    // ── OnTurnStartNearby internals (combat_riders.cpp) ──────────────────
     InFlightTurn in_flight_turn_{};   // resumable state of a begin_turn_flow
     // The creatures (≠ source) eligible for ANY turn-start reaction vs `source`, in order.
     [[nodiscard]] std::vector<int> turnStartReactors(const BattleMap& bm, int source) const;
