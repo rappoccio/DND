@@ -5343,6 +5343,11 @@ class App:
         path = path or self._save_path
         data = []
         for i, pt in enumerate(self.bm.placed_agents):
+            # Summoned creatures are transient (concentration-tied) and have no persisted
+            # summoner link, so they are never written to the save — they vanish on reload
+            # rather than becoming orphaned permanent agents. See SUMMONING_PLAN.md.
+            if pt.summoner_idx >= 0 or pt.removed_from_play:
+                continue
             s = self.combat.get_agent_stats(self.bm, i)
             # Save only the filename, not the full path, for portability
             sprite_filename = os.path.basename(pt.sprite_path) if pt.sprite_path else ""

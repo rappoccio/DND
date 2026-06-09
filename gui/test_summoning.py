@@ -111,6 +111,24 @@ def test_drop_concentration_dismisses_summon():
     print("✅ test_drop_concentration_dismisses_summon passed")
 
 
+def test_dismissed_summon_moved_off_map():
+    """A dismissed summon is banished to (-1,-1) so its old cell no longer collides
+    with movement/placement on the real grid (while its index stays valid)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    summon = _spawn_summon(bm, "Spirit Dragon Wyrmling", 6, 6, caster)
+    assert bm.placed_agents[summon].origin.col == 6
+    _set_concentrating(engine, bm, caster, "Summon Dragon")
+
+    engine.drop_concentration(bm, caster)
+    off = bm.placed_agents[summon].origin
+    assert (off.col, off.row) == (-1, -1), f"summon should be off-map, got ({off.col},{off.row})"
+    assert len(bm.placed_agents) == 2, "summon must not be erased"
+    assert can_place_agent(bm, rpg.Cell(6, 6), 1), "the freed cell should be placeable again"
+    print("✅ test_dismissed_summon_moved_off_map passed")
+
+
 def test_unrelated_summon_not_dismissed():
     """Dropping caster A's concentration leaves caster B's summon alone."""
     bm = setup_battle_map()
@@ -216,6 +234,7 @@ if __name__ == "__main__":
     test_spawn_agent_is_non_destructive()
     test_spawn_agent_blocked_cell_returns_negative()
     test_drop_concentration_dismisses_summon()
+    test_dismissed_summon_moved_off_map()
     test_unrelated_summon_not_dismissed()
     test_damage_breaking_concentration_dismisses_summon()
     test_placement_in_range_and_empty_is_valid()

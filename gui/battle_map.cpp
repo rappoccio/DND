@@ -764,7 +764,16 @@ bool BattleMap::isAgentRemovedFromPlay(int idx) const noexcept
 void BattleMap::setAgentRemovedFromPlay(int idx, bool removed) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
-    placedAgents_[static_cast<std::size_t>(idx)].removed_from_play = removed;
+    auto& pa = placedAgents_[static_cast<std::size_t>(idx)];
+    pa.removed_from_play = removed;
+    if (removed) {
+        // Banish the tombstoned summon off-map so its footprint no longer collides with
+        // movement, placement, or targeting on the real grid. The index stays valid (we never
+        // erase), preserving every caster_idx/agent_idx/initiative reference. Intentionally
+        // bypasses the inBounds check in setAgentPosition.
+        pa.origin = Cell{-1, -1};
+        pa.agent->setPosition(-1, -1);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
