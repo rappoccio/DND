@@ -1433,6 +1433,16 @@ public:
     [[nodiscard]] ShoveResult executeShove(BattleMap& bm,
                                            const ShoveAction& action);
 
+    // Shared grapple core — used by the standalone Grapple Weapon Action
+    // (executeGrapple), on-hit weapon grapple riders (combat_attack), and the
+    // future Grappler feat. Does NOT check adjacency (callers gate range).
+    //   contested          — true: roll attacker Athletics vs target max(Athletics,
+    //                        Acrobatics); false: grapple lands automatically.
+    //   escape_dc_override  — >0: fixed escape DC; 0: compute 10 + STR mod + prof.
+    // On success applies the Grappled condition via applyGrappled().
+    GrappleResult resolveGrapple(BattleMap& bm, int attacker_idx, int target_idx,
+                                 bool contested, int escape_dc_override) noexcept;
+
     // Execute a grapple attempt (contested Athletics check).
     // Attacker vs target Athletics/Acrobatics (target chooses higher).
     // On success: target gains Grappled condition with escape DC.

@@ -1825,6 +1825,17 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         };
 
         for (const auto& weapon_cond : w.conditions) {
+            // Grappled routes through the shared Grapple Weapon Action core
+            // (resolveGrapple → applyGrappled), reused by the standalone Grapple
+            // action and the future Grappler feat — it sets the grappled flag +
+            // escape DC, which the generic active-condition path does not. Range
+            // is already satisfied (the attack hit), so no adjacency re-check.
+            if (weapon_cond.condition_name == "Grappled") {
+                (void)resolveGrapple(bm, action.attacker_idx, action.target_idx,
+                                     weapon_cond.contested, weapon_cond.escape_dc);
+                continue;
+            }
+
             bool condition_applies = false;
 
             if (!weapon_cond.requires_save) {

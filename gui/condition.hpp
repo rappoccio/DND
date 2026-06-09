@@ -23,6 +23,13 @@ struct AttackCondition {
     SaveAbility_t save_dc_ability = SaveWis;   // attacker's ability for DC
     bool requires_save = false;           // if false, condition applies automatically; if true, target gets a save
     OnDamage_t on_damage = OnDamage_t::None;   // behavior when the affected creature takes damage
+
+    // ── Grappled rider (condition_name == "Grappled") ──────────────────────────
+    // The on-hit grapple reuses the standalone Grapple Weapon Action core
+    // (CombatEngine::resolveGrapple → applyGrappled), shared with the Grappler feat.
+    bool contested = false;   // true  → contested Athletics vs max(Athletics,Acrobatics)
+                              // false → grapple lands automatically on the qualifying hit
+    int  escape_dc = 0;       // fixed escape DC override; 0 → compute 10 + STR mod + prof
 };
 
 } // namespace rpg

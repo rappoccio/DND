@@ -1172,6 +1172,58 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     return result;
 }
 
+GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int target_idx,
+                                           bool contested, int escape_dc_override) noexcept
+{
+    GrappleResult result;
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
+        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size()) ||
+        attacker_idx == target_idx) {
+        return result;
+    }
+
+    auto& attacker = agents[attacker_idx];
+    auto& target   = agents[target_idx];
+
+    // Attacker Athletics: d20 + STR mod + proficiency (grapple assumed proficient).
+    int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
+    auto attacker_stats = getAgentStats(bm, attacker_idx);
+    int attacker_prof = attacker_stats.prof_bonus;
+
+    result.valid = true;
+    if (contested) {
+        int attacker_d20 = roll(20);
+        int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
+        // Defender: max(Athletics, Acrobatics) = max(STR, DEX) + the same d20.
+        int target_str_mod = (target.agent->getStats().str - 10) / 2;
+        int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
+        int target_d20 = roll(20);
+        int defender_total = std::max(target_d20 + target_str_mod, target_d20 + target_dex_mod);
+        result.attacker_roll = attacker_total;
+        result.defender_roll = defender_total;
+        result.success = (attacker_total > defender_total);  // ties go to defender
+    } else {
+        // Automatic on a qualifying hit (the attack already landed).
+        result.success = true;
+    }
+
+    if (result.success) {
+        // Fixed escape DC override, else the standard 10 + STR mod + proficiency.
+        result.escape_dc = (escape_dc_override > 0) ? escape_dc_override
+                                                    : (10 + attacker_str_mod + attacker_prof);
+        applyGrappled(bm, target_idx, attacker_idx, result.escape_dc);
+        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" grapples \"" +
+                             std::string(target.agent->name()) + "\" (escape DC " +
+                             std::to_string(result.escape_dc) + ")";
+    } else {
+        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" fails to grapple \"" +
+                             std::string(target.agent->name()) + "\" (attacker " + std::to_string(result.attacker_roll) +
+                             " vs defender " + std::to_string(result.defender_roll) + ")";
+    }
+    return result;
+}
+
 GrappleResult CombatEngine::executeGrapple(BattleMap& bm, const GrappleAction& action)
 {
     GrappleResult result;
@@ -1203,39 +1255,9 @@ GrappleResult CombatEngine::executeGrapple(BattleMap& bm, const GrappleAction& a
         return result;
     }
 
-    // Roll attacker Athletics: d20 + STR mod + proficiency (assume grapple is proficient)
-    int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
-    auto attacker_stats = getAgentStats(bm, action.attacker_idx);
-    int attacker_prof = attacker_stats.prof_bonus;
-    int attacker_d20 = roll(20);
-    int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
-
-    // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
-    int target_str_mod = (target.agent->getStats().str - 10) / 2;
-    int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-    int target_d20 = roll(20);
-    int target_athletic = target_d20 + target_str_mod;
-    int target_acrobatic = target_d20 + target_dex_mod;
-    int defender_total = std::max(target_athletic, target_acrobatic);
-
-    result.valid = true;
-    result.attacker_roll = attacker_total;
-    result.defender_roll = defender_total;
-    result.success = (attacker_total > defender_total);  // ties go to defender
-
-    if (result.success) {
-        result.escape_dc = 10 + attacker_str_mod + attacker_prof;
-        applyGrappled(bm, action.target_idx, action.attacker_idx, result.escape_dc);
-        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" grapples \"" + std::string(target.agent->name()) +
-                            "\" (attacker " + std::to_string(attacker_total) + " vs defender " +
-                            std::to_string(defender_total) + " - DC " + std::to_string(result.escape_dc) + ")";
-    } else {
-        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" fails to grapple \"" +
-                            std::string(target.agent->name()) + "\" (attacker " + std::to_string(attacker_total) +
-                            " vs defender " + std::to_string(defender_total) + ")";
-    }
-
-    return result;
+    // Standalone Grapple action: contested check, computed escape DC.
+    return resolveGrapple(bm, action.attacker_idx, action.target_idx,
+                          /*contested=*/true, /*escape_dc_override=*/0);
 }
 
 GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_idx)

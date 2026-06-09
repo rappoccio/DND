@@ -235,6 +235,9 @@ def _dict_to_weapon(d: dict):
             c.condition_duration = int(cond_entry.get("condition_duration", 0))
             c.push_ft = int(cond_entry.get("push_ft", 0))
             c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
+            # Grappled rider: contested Athletics vs automatic-on-hit, + optional fixed escape DC.
+            c.contested = bool(cond_entry.get("contested", False))
+            c.escape_dc = int(cond_entry.get("escape_dc", 0))
             # Parse save_ability string (target's save - e.g., "SaveDex" -> rpg.SaveAbility.SaveDex)
             save_ability_str = cond_entry.get("save_ability", "SaveDex")
             try:

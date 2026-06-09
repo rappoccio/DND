@@ -591,6 +591,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("condition_duration", &AttackCondition::condition_duration)
         .def_readwrite("push_ft",            &AttackCondition::push_ft)
         .def_readwrite("save_repeat_turns",  &AttackCondition::save_repeat_turns)
+        .def_readwrite("contested",          &AttackCondition::contested,
+             "Grappled rider: true = contested Athletics check; false = grapple lands automatically on hit.")
+        .def_readwrite("escape_dc",          &AttackCondition::escape_dc,
+             "Grappled rider: fixed escape DC override; 0 = compute 10 + STR mod + proficiency.")
         .def_readwrite("save_ability",       &AttackCondition::save_ability)
         .def_readwrite("save_dc_ability",    &AttackCondition::save_dc_ability)
         .def_readwrite("requires_save",      &AttackCondition::requires_save,

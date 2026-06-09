@@ -951,3 +951,32 @@ condition via `conditions:[{condition_name:"Invisible"|"GreaterInvisible"}]` (no
 RAW 1 hour / 1 minute) — long enough to outlast a combat. Cast targets self/ally via
 `SpellAction.target_indices`; self-targeting in the GUI depends on the click landing on the
 caster. One with Shadows reuses the same Invisible condition (non-persistent).
+
+## Monster on-hit riders: Grappled / Prone / Poisoned (2026-06-09)
+
+Synthesized NPC weapons can now carry on-hit riders from `tools/monster_weapon_overrides.json`
+(passed through by `monster_parser._weapon_for_slot` into the weapon dict's `conditions` /
+`mastery`). How each is modeled:
+- **Grappled** — a `{"condition_name":"Grappled", "escape_dc":N, "contested":bool}` entry routes
+  through the shared grapple core `CombatEngine::resolveGrapple` (which `executeGrapple` and the
+  future Grappler feat also call). Default `contested:false` = automatic on hit; `escape_dc`
+  overrides the computed `10 + STR mod + prof`. NOT the generic active-condition path (that only
+  tracks duration and would leave the `grappled` flag false).
+- **Prone** — modeled as weapon **`"mastery":"Topple"`** (CON save vs `8 + prof + abilityMod` →
+  `applyProne`). `to_record` auto-sets the monster's `weapon_mastery=1` so Topple fires; without
+  the Weapon Mastery feature it would be inert.
+- **Poisoned** — `{"condition_name":"Poisoned", "condition_duration":N}` via the existing
+  `addAgentCondition` path (sets the `poisoned` flag).
+
+Deliberate deferrals / approximations:
+- **Shambling Mound 5 ft *pull*** is NOT modeled — the engine's weapon push handler requires
+  `push_ft > 0`, so negative/pull-toward isn't supported. Deferred until a pull mechanic exists.
+- **Approximate save DCs** — Topple/Poison/grapple-escape DCs derive from the attacker's
+  ability + prof, not the fixed book numbers (no fixed-DC field without an engine change).
+- **Poisoned has no auto-expiry** — `tickAgentConditions` doesn't clear the `poisoned` flag, so a
+  "1 turn" poison rider persists (matches the existing Poison weapon-mastery behavior). A
+  duration-driven clear would need adding "Poisoned" to the tick-removal switch.
+- **`condition_rider`** (beast-form field) is still set in `main.py` but never consumed in C++ —
+  inert. Beast-form on-hit conditions would need the same routing if/when wanted.
+- Deferred riders (unchanged): Wereboar lycanthropy curse + Tusk charge-conditional extra dice,
+  Hobgoblin Warlord Javelin speed −10, Bone Devil "can't regain HP while Poisoned".

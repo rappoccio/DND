@@ -284,6 +284,77 @@ def test_grappler_movement_drags_target():
     else:
         print("🔴 Grapple didn't succeed, skipping drag test")
 
+def _grapple_weapon(escape_dc=0, contested=False):
+    """A reach weapon that grapples on hit (the monster on-hit rider shape)."""
+    w = rpg.Weapon()
+    w.name = "Tentacle"
+    w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5
+    w.proficient = True
+    w.attack_bonus = 30  # force the attack to land
+    pr = rpg.PhysicalDamageRoll()
+    pr.type = rpg.PhysicalDamage.Bludgeoning
+    pr.num_dice = 1
+    pr.die_size = 4
+    w.physical_damage_types = [pr]
+    c = rpg.AttackCondition()
+    c.condition_name = "Grappled"
+    c.contested = contested
+    c.escape_dc = escape_dc
+    w.conditions = [c]
+    return w
+
+
+def _arm_with(engine, bm, idx, weapon):
+    filler = rpg.Weapon()
+    filler.name = "none"
+    engine.set_agent_weapons(bm, idx, [weapon, filler, filler])
+
+
+def _land_hit(engine, bm, attacker, target, tries=20):
+    for _ in range(tries):
+        r = engine.execute_action(bm, rpg.Attack(attacker, target, 0))
+        if r.hit:
+            return r
+    raise AssertionError("on-hit grapple attack never landed")
+
+
+def test_onhit_grapple_automatic_with_escape_dc():
+    """A weapon Grappled rider (contested=False) grapples automatically on a hit,
+    honouring the fixed escape_dc override — the Giant Toad / Mimic / Roper shape."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    a = add_agent_to_battle(engine, bm, create_test_agent("Toad", 5, 5), str=14, dex=10)
+    t = add_agent_to_battle(engine, bm, create_test_agent("Prey", 6, 5), str=8, dex=8)
+    _arm_with(engine, bm, a, _grapple_weapon(escape_dc=12, contested=False))
+
+    _land_hit(engine, bm, a, t)
+    tc = engine.get_agent_conditions(bm, t)
+    assert tc.grappled, "automatic on-hit grapple should set grappled"
+    assert tc.grappler_idx == a, "grappler index should be the attacker"
+    assert tc.grapple_escape_dc == 12, f"escape_dc override should be 12, got {tc.grapple_escape_dc}"
+    print("✅ test_onhit_grapple_automatic_with_escape_dc passed")
+
+
+def test_onhit_grapple_computes_escape_dc_when_unset():
+    """With escape_dc=0 the rider computes 10 + attacker STR mod + prof."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    a = add_agent_to_battle(engine, bm, create_test_agent("Grabber", 5, 5), str=16, dex=10)
+    t = add_agent_to_battle(engine, bm, create_test_agent("Prey", 6, 5), str=8, dex=8)
+    s = engine.get_agent_stats(bm, a)
+    s.prof_bonus = 2
+    engine.set_agent_stats(bm, a, s)
+    _arm_with(engine, bm, a, _grapple_weapon(escape_dc=0, contested=False))
+
+    _land_hit(engine, bm, a, t)
+    tc = engine.get_agent_conditions(bm, t)
+    assert tc.grappled, "automatic on-hit grapple should set grappled"
+    # 10 + STR mod(16 -> +3) + prof(2) = 15
+    assert tc.grapple_escape_dc == 15, f"computed escape_dc should be 15, got {tc.grapple_escape_dc}"
+    print("✅ test_onhit_grapple_computes_escape_dc_when_unset passed")
+
+
 def run_all_tests():
     """Run all grapple tests."""
     tests = [
@@ -297,6 +368,8 @@ def run_all_tests():
         test_grappled_agent_cannot_move,
         test_grapple_badge_in_repr,
         test_grappler_movement_drags_target,
+        test_onhit_grapple_automatic_with_escape_dc,
+        test_onhit_grapple_computes_escape_dc_when_unset,
     ]
 
     print("\n" + "="*60)
