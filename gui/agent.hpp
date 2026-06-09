@@ -147,6 +147,7 @@ namespace rpg {
       int darkvision_range{0};   // feet; 0 = no darkvision. See normally in Darkness within range.
       int truesight_range{0};    // feet; 0 = no truesight. See normally in all light including magical darkness.
       int devilssight_range{0};  // feet; 0 = no devil's sight. See in Darkness and MagicalDarkness within range.
+      int blindsight_range{0};   // feet; 0 = no blindsight. Perceive without sight (pierces the Invisible condition) within range.
 
       // ── NPC Spell System ────────────────────────────────────────────────
       // When true: use N/day system (Spell::uses_remaining); when false: use spell slots
@@ -518,7 +519,8 @@ namespace rpg {
       bool disengaging{false};   // does not provoke opportunity attacks
       bool reaction_used{false}; // reaction already used this turn
       bool hidden{false};        // enemies cannot detect; attacks from hiding have advantage
-      bool invisible{false};     // enemies cannot see this agent
+      bool invisible{false};     // enemies cannot see this agent (pierced by Truesight/Blindsight)
+      bool invisible_persists_on_action{false}; // Greater Invisibility: does NOT end on attack/cast (else Invisibility ends after the actor attacks/deals damage/casts)
       bool incapacitated{false}; // cannot act, movement speed 0
       bool concentrating{false}; // concentrating on a spell; breaks on damage CON save failure
       std::string concentrating_on{}; // name of the spell being concentrated on
@@ -572,6 +574,9 @@ namespace rpg {
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
       bool divine_smite_available{false};   // Paladin: a melee/unarmed hit can apply Divine Smite this attack
       bool divine_smite_used{false};        // Paladin: Divine Smite already used this turn (bonus action, once per turn)
+      bool eldritch_smite_available{false}; // Warlock (Eldritch Smite, inv 15): a pact-weapon hit can expend a pact slot this attack
+      bool eldritch_smite_used{false};      // Warlock: Eldritch Smite already used this turn (once per turn)
+      bool lifedrinker_used{false};         // Warlock (Lifedrinker, inv 16): bonus necrotic + temp HP already applied this turn (once per turn)
       bool war_magic_used{false};           // Eldritch Knight: War Magic substitution already used this Attack action (once per Attack action; reset when a fresh action-attack sequence seeds — Action Surge permits another)
       int  eldritch_strike_by{-1};          // Eldritch Knight L10: this creature (the target of an EK weapon hit) has disadvantage on its next save vs a spell cast by agent index eldritch_strike_by; -1 = none. One-shot: consumed at the save site (RAW window simplified — see known_limitations)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
@@ -658,6 +663,9 @@ namespace rpg {
       conditions_.psionic_strike_used          = false;
       conditions_.divine_smite_available       = false;
       conditions_.divine_smite_used            = false;
+      conditions_.eldritch_smite_available     = false;
+      conditions_.eldritch_smite_used          = false;
+      conditions_.lifedrinker_used             = false;
       conditions_.war_magic_used               = false;
       conditions_.guided_strike_available      = false;
       conditions_.maneuver_available           = false;

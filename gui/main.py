@@ -785,6 +785,9 @@ class App:
         self.btn_cbt_flurry_of_blows = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Flurry of Blows (2 Attacks)",
                                           (180, 110, 200), (210, 140, 230), self.font_md)
+        self.btn_cbt_one_with_shadows = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "One with Shadows (Invisible)",
+                                          (90, 80, 150), (120, 110, 190), self.font_md)
         self.btn_cbt_second_wind = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Second Wind (Bonus Action)",
                                           (180, 150, 100), (220, 190, 130), self.font_md)
@@ -1260,6 +1263,24 @@ class App:
                 current_weapons[0] = self._create_monk_unarmed_weapon()
                 self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
 
+        # Master of Myriad Forms (invocation 12): give the Warlock Alter Self claws
+        # (1d6) in place of a bare unarmed strike.
+        if class_name == "Warlock" and 12 in (eldritch_invocations or []):
+            current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+            if current_weapons and current_weapons[0].name == "Unarmed":
+                current_weapons[0] = self._create_alter_self_claws_weapon()
+                self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
+
+        # Pact of the Blade (invocation 13): conjure the pact weapon into the MAIN-HAND slot (0).
+        # Weapons are a fixed 3-slot array (main/off/ranged); the pact weapon is the Warlock's
+        # primary armament, so it always takes the main hand. pact_weapon=True drives the CHA
+        # attack/damage + the pact-weapon rider gates.
+        if class_name == "Warlock" and 13 in (eldritch_invocations or []):
+            current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+            if current_weapons and current_weapons[0].name != "PactBlade":
+                current_weapons[0] = self._create_pact_blade_weapon()
+                self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
+
         # Store NPC metadata if provided, and initialize spell uses via C++
         if npc_data:
             self._agent_meta[agent_idx] = npc_data
@@ -1416,8 +1437,16 @@ class App:
         is_running_jump = self.last_movement_dist >= 10
         max_jump_dist = strength if is_running_jump else (strength // 2)
 
-        # Calculate reachable cells (Manhattan distance from current position, ignoring walls)
+        # Otherworldly Leap (invocation 10): Jump spell always active → triple distance.
+        if stats.character_class == rpg.CharacterClass.Warlock and stats.has_invocation(10):
+            max_jump_dist *= 3
+
+        # Calculate reachable cells (Manhattan distance from current position).
+        # Jumping clears Chasm/Water but is blocked by walls, so exclude wall cells
+        # (MovementType.Jump); the engine's jump_agent enforces the same on execution.
         origin = agent.origin
+        size = agent.size
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
         for dr in range(-max_jump_dist, max_jump_dist + 1):
             for dc in range(-max_jump_dist, max_jump_dist + 1):
                 manhattan_dist = abs(dc) + abs(dr)
@@ -1426,8 +1455,12 @@ class App:
                 if manhattan_dist > max_jump_dist:
                     continue
 
-                target_cell = rpg.Cell(origin.col + dc, origin.row + dr)
-                # Add cells within Manhattan distance (visualization will skip invalid ones)
+                tc, tr = origin.col + dc, origin.row + dr
+                if not (0 <= tc < cols and 0 <= tr < rows):
+                    continue
+                target_cell = rpg.Cell(tc, tr)
+                if self.bm.is_blocked(target_cell, size, rpg.MovementType.Jump):
+                    continue  # landing cell is a wall — not a valid jump target
                 self.jump_reachable_cells.append(target_cell)
 
     def _execute_jump(self, agent_idx: int, target_cell):
@@ -2101,6 +2134,7 @@ class App:
         has_precision = False
         has_psionic_strike = False
         has_divine_smite = False
+        has_eldritch_smite = False
         has_reckless_reroll = False
         has_riposte = False
         has_protective_field = False
@@ -2122,6 +2156,8 @@ class App:
                 has_psionic_strike = True
             elif result.hit and atk_cond and atk_cond.divine_smite_available:
                 has_divine_smite = True
+            elif result.hit and atk_cond and atk_cond.eldritch_smite_available:
+                has_eldritch_smite = True
             elif result.hit and atk_cond and atk_cond.maneuver_available:
                 has_maneuver = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
@@ -2209,6 +2245,8 @@ class App:
             self._offer_psionic_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_smite:
             self._offer_divine_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_eldritch_smite:
+            self._offer_eldritch_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_maneuver:
@@ -2544,6 +2582,35 @@ class App:
                 options.append((f"Divine Smite ({_ordinal(lvl)} slot → {dice}d8 Radiant)",
                                 lambda l=lvl: _apply(l)))
         options.append(("Skip Divine Smite", lambda: _apply(None)))
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_eldritch_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a pact-weapon hit, offer Warlock Eldritch Smite. Pact Magic slots are all one level
+        (pact_slot_level), so there's a single option: expend the pact slot → (lvl+1)d8 Force + knock
+        Prone. The damage, slot + bonus-action spend, and Prone happen in C++ via
+        apply_eldritch_smite_effect. Mirrors _offer_divine_smite."""
+        def _apply(slot_level):
+            if slot_level is not None:
+                self.combat.apply_eldritch_smite_effect(self.bm, atk_idx, target_idx, slot_level, result)
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: HIT {result.total_damage}{self._damage_breakdown_str(result)} "
+                    f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        psl = stats.pact_slot_level()
+        options = []
+        if psl >= 1 and stats.spell_slots_remaining[psl - 1] > 0:
+            dice = psl + 1
+            options.append((f"Eldritch Smite (pact slot L{psl} → {dice}d8 Force + Prone)",
+                            lambda l=psl: _apply(l)))
+        options.append(("Skip Eldritch Smite", lambda: _apply(None)))
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -3091,6 +3158,46 @@ class App:
         dmg_roll.bonus = 0
         unarmed.physical_damage_types = [dmg_roll]
         return unarmed
+
+    def _create_alter_self_claws_weapon(self):
+        """Master of Myriad Forms (invocation 12): Alter Self Natural Weapons —
+        a 1d6 finesse natural weapon the Warlock is proficient with. ("Counts as
+        magical" has no engine effect: no nonmagical-resistance is modeled.)"""
+        claws = rpg.Weapon()
+        claws.name = "AlterSelfClaws"
+        claws.type = rpg.WeaponType.Melee
+        claws.proficient = True
+        claws.finesse = True
+        claws.reach_ft = 5
+        claws.bonus_hit = 0
+        dmg_roll = rpg.PhysicalDamageRoll()
+        dmg_roll.type = rpg.PhysicalDamage.Slashing
+        dmg_roll.num_dice = 1
+        dmg_roll.die_size = 6
+        dmg_roll.bonus = 0
+        claws.physical_damage_types = [dmg_roll]
+        return claws
+
+    def _create_pact_blade_weapon(self):
+        """Pact of the Blade (invocation 13): the conjured pact weapon — a 1d8 slashing martial
+        melee weapon the Warlock is proficient with. pact_weapon=True both lets the engine use CHA
+        for the attack/damage rolls AND identifies it for Thirsting Blade / Eldritch Smite /
+        Lifedrinker. (Modeled as a fixed weapon; "choose any melee weapon" is a combat-sim
+        simplification.)"""
+        blade = rpg.Weapon()
+        blade.name = "PactBlade"
+        blade.type = rpg.WeaponType.Melee
+        blade.proficient = True
+        blade.pact_weapon = True
+        blade.reach_ft = 5
+        blade.bonus_hit = 0
+        dmg_roll = rpg.PhysicalDamageRoll()
+        dmg_roll.type = rpg.PhysicalDamage.Slashing
+        dmg_roll.num_dice = 1
+        dmg_roll.die_size = 8
+        dmg_roll.bonus = 0
+        blade.physical_damage_types = [dmg_roll]
+        return blade
 
     def _show_portent_dice_menu(self):
         """Show available portent dice for selection."""
@@ -5365,6 +5472,16 @@ class App:
             if stats.character_class == rpg.CharacterClass.Monk and cpp_weapons[0].name == "Unarmed":
                 cpp_weapons[0] = self._create_monk_unarmed_weapon()
 
+            # Master of Myriad Forms (invocation 12): Alter Self claws (1d6) for Warlocks
+            if (stats.character_class == rpg.CharacterClass.Warlock and
+                    stats.has_invocation(12) and cpp_weapons[0].name == "Unarmed"):
+                cpp_weapons[0] = self._create_alter_self_claws_weapon()
+
+            # Pact of the Blade (invocation 13): re-conjure the pact weapon into the main-hand slot.
+            if (stats.character_class == rpg.CharacterClass.Warlock and
+                    stats.has_invocation(13) and cpp_weapons[0].name != "PactBlade"):
+                cpp_weapons[0] = self._create_pact_blade_weapon()
+
             self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
 
         # Restore spells — load from spell_indices or legacy "spells" field
@@ -7050,6 +7167,17 @@ class App:
                         self.btn_cbt_second_wind.draw(self.screen)
                         y += B + gap
 
+            # One with Shadows button — Warlock (invocation 8). Free Invisibility while the
+            # Warlock stands in Dim Light/Darkness; the click enforces the lighting gate.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.character_class == rpg.CharacterClass.Warlock and stats.has_invocation(8):
+                    self.btn_cbt_one_with_shadows.rect.x = lx
+                    self.btn_cbt_one_with_shadows.rect.y = y
+                    self.btn_cbt_one_with_shadows.rect.w = W
+                    self.btn_cbt_one_with_shadows.draw(self.screen)
+                    y += B + gap
+
             # Action Surge button — Fighter (L1+), resets action_used (available anytime)
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -7829,10 +7957,12 @@ class App:
                                 if caster_idx >= 0 and caster_idx < len(self.bm.placed_agents):
                                     caster = self.bm.placed_agents[caster_idx]
                                     target = self.bm.placed_agents[hit]
-                                    if self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
-                                        self._resolve_spell_cast(hit)
-                                    else:
+                                    if not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
                                         self._combat_log_add("No line of sight to target!")
+                                    elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
+                                        self._combat_log_add("Cannot perceive target (invisible)!")
+                                    else:
+                                        self._resolve_spell_cast(hit)
                                 else:
                                     self._resolve_spell_cast(hit)
                         elif self.pending_shove_slot and hit >= 0:
@@ -8343,6 +8473,13 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_second_wind(idx)
+                    if self.btn_cbt_one_with_shadows.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.apply_one_with_shadows(self.bm, idx):
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: One with Shadows — now invisible.")
+                            else:
+                                self._combat_log_add("One with Shadows requires standing in Dim Light or Darkness.")
                     if self.btn_cbt_action_surge.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

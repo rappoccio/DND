@@ -446,8 +446,14 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     int jump_dist_ft = jump_dist_cells * 5;
 
     // Determine max jump distance based on strength and running/standing
-    int strength = pa.agent->getStats().str;
+    const auto& jstats = pa.agent->getStats();
+    int strength = jstats.str;
     int max_jump_ft = is_running ? strength : (strength / 2);
+
+    // Otherworldly Leap invocation (code 10): the Warlock keeps the Jump spell up on
+    // itself for free, tripling its jump distance.
+    if (jstats.character_class == CharacterClass::Warlock && jstats.hasInvocation(10))
+        max_jump_ft *= 3;
 
     // Check if jump is within range
     if (jump_dist_ft > max_jump_ft)
@@ -457,18 +463,29 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     if (pa.agent->getWalkRemaining() < jump_dist_ft)
         return false;
 
-    // Move using flyTo to ignore walls (this deducts from fly_remaining)
-    bool moved = pa.agent->flyTo(newOrigin.col, newOrigin.row);
-    if (!moved)
+    int agent_size = pa.agent->getSize();
+    if (!inBounds(newOrigin, agent_size))
         return false;
 
-    // Adjust movement budgets: refund fly and deduct from walk
-    // addMovement with negative values will subtract from the budgets
-    pa.agent->addMovement(-jump_dist_ft,  // deduct from walk
-                          jump_dist_ft,    // refund fly
-                          0, 0);
+    // Jumping clears Chasms and Water but NOT walls. MovementType::Jump encodes exactly
+    // that in isBlocked (walls/disallowed → blocked; Chasm/Water → passable). Trace the
+    // straight line to the landing cell and fail if any step (incl. the landing footprint)
+    // is blocked by a wall. (Replaces the old flyTo, which ignored walls entirely.)
+    int oc = pa.origin.col, orow = pa.origin.row;
+    int steps = std::max(std::abs(newOrigin.col - oc), std::abs(newOrigin.row - orow));
+    if (steps == 0)
+        return false;
+    for (int i = 1; i <= steps; ++i) {
+        Cell step{ oc   + (newOrigin.col - oc)   * i / steps,
+                   orow + (newOrigin.row - orow) * i / steps };
+        if (isBlocked(step, agent_size, MovementType::Jump))
+            return false;  // a wall blocks the leap
+    }
 
+    // Commit: jumping spends walk budget; move directly to the landing cell.
+    pa.agent->addMovement(-jump_dist_ft, 0, 0, 0);
     pa.origin = newOrigin;
+    pa.agent->setPosition(newOrigin.col, newOrigin.row);
     return true;
 }
 

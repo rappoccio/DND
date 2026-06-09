@@ -91,6 +91,29 @@ int CombatEngine::healAgent(BattleMap& bm, int idx, int amount) noexcept
     return s.hp_cur;
 }
 
+bool CombatEngine::applyOneWithShadows(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
+    const Agent::Stats& s = pa.agent->getStats();
+    if (s.character_class != CharacterClass::Warlock || !s.hasInvocation(8)) return false;
+
+    // Must be standing in an area of Dim Light or Darkness (the light level at the cell —
+    // not the obscuration-effect layer, which is for fog/magical-darkness AoEs).
+    VisibilityLevel light = bm.getLightLevel(pa.origin);
+    if (light != VisibilityLevel::Dim && light != VisibilityLevel::Dark &&
+        light != VisibilityLevel::MagicalDark)
+        return false;
+
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.invisible = true;
+    c.invisible_persists_on_action = false;  // free Invisibility — ends on the Warlock's next attack/cast
+    bm.setAgentConditions(idx, c);
+    log_("{}: One with Shadows — gains the Invisible condition", agentName(bm, idx));
+    return true;
+}
+
 int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept
 {
     // Fetch caster's Lay on Hands pool

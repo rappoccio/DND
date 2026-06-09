@@ -126,17 +126,30 @@ int CombatEngine::attackModifier(const Weapon& w,
     else
         base = abilityMod(s.dex);
 
+    // Pact of the Blade: the Warlock may use Charisma instead of STR/DEX for the
+    // pact weapon's attack rolls (modeled as "whichever is best" — never worse).
+    if (w.pact_weapon)
+        base = std::max(base, abilityMod(s.cha));
+
     return base + (w.proficient ? s.prof_bonus : 0);
 }
 
 int CombatEngine::damageAbilityMod(const Weapon& w,
                                     const Agent::Stats& s) noexcept
 {
+    int base;
     if (w.finesse)
-        return std::max(abilityMod(s.str), abilityMod(s.dex));
-    if (w.thrown || w.type == WeaponType::Melee)
-        return abilityMod(s.str);
-    return abilityMod(s.dex);
+        base = std::max(abilityMod(s.str), abilityMod(s.dex));
+    else if (w.thrown || w.type == WeaponType::Melee)
+        base = abilityMod(s.str);
+    else
+        base = abilityMod(s.dex);
+
+    // Pact of the Blade: CHA option for the pact weapon's damage rolls (never worse).
+    if (w.pact_weapon)
+        base = std::max(base, abilityMod(s.cha));
+
+    return base;
 }
 
 int CombatEngine::spellAttackMod(const Agent::Stats& s) noexcept
@@ -481,7 +494,8 @@ std::vector<float> CombatEngine::getBattleObservation(
                                         chebyshevToFootprint(tc, tr, atk_org, atk_sz));
 
             bool los = bm.hasLineOfSight(atk_org, atk_sz,
-                                          tgt.origin, tgt_sz);
+                                          tgt.origin, tgt_sz)
+                       && canPerceiveTarget(bm, attacker_idx, ti);
 
             appendAgentBlock(obs, s,
                              tgt.origin.col, tgt.origin.row, cols, rows);
@@ -526,7 +540,8 @@ std::vector<Attack> CombatEngine::availableAttacks(
 
         for (int wi = 0; wi < static_cast<int>(atk.weapons.size()); ++wi) {
             const Weapon& w = atk.weapons[static_cast<std::size_t>(wi)];
-            if (canAttack(w, bm, atk.origin, atk_sz, tgt.origin, tgt_sz)) {
+            if (canAttack(w, bm, atk.origin, atk_sz, tgt.origin, tgt_sz)
+                    && canPerceiveTarget(bm, attacker_idx, ti)) {
                 log_("[AVAILABLE_ATTACKS] Can attack with weapon {}: '{}'", wi, w.name);
                 result.push_back({attacker_idx, ti, wi});
             }

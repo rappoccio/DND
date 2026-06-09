@@ -259,6 +259,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Truesight range in feet (0 = no truesight). See normally in all light including magical darkness.")
         .def_readwrite("devilssight_range",    &Agent::Stats::devilssight_range,
              "Devil's Sight range in feet (0 = no devil's sight). See in Darkness and MagicalDarkness within range.")
+        .def_readwrite("blindsight_range",     &Agent::Stats::blindsight_range,
+             "Blindsight range in feet (0 = none). Pierces the Invisible condition within range.")
         .def_readwrite("is_npc", &Agent::Stats::is_npc,
              "True if this agent uses N/day spell system (NPC); false if using spell slots (player).")
         .def_readwrite("leveled_spell_cast_this_turn", &Agent::Stats::leveled_spell_cast_this_turn,
@@ -500,6 +502,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
         .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
         .def_readwrite("divine_smite_used", &Agent::Conditions::divine_smite_used)
+        .def_readwrite("eldritch_smite_available", &Agent::Conditions::eldritch_smite_available)
+        .def_readwrite("eldritch_smite_used", &Agent::Conditions::eldritch_smite_used)
+        .def_readwrite("lifedrinker_used", &Agent::Conditions::lifedrinker_used)
         .def_readwrite("war_magic_used", &Agent::Conditions::war_magic_used)
         .def_readwrite("eldritch_strike_by", &Agent::Conditions::eldritch_strike_by)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
@@ -606,6 +611,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("long_range_ft",    &Weapon::long_range_ft)
         .def_readwrite("finesse",          &Weapon::finesse)
         .def_readwrite("thrown",           &Weapon::thrown)
+        .def_readwrite("pact_weapon",      &Weapon::pact_weapon)
         .def_readwrite("proficient",       &Weapon::proficient)
         .def_readwrite("off_hand",         &Weapon::off_hand)
         .def_readwrite("two_handed",       &Weapon::two_handed)
@@ -1417,6 +1423,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("critical",     &AttackResult::critical)
         .def_readonly("fumble",       &AttackResult::fumble)
         .def_readonly("disadvantage", &AttackResult::disadvantage)
+        .def_readonly("advantage",    &AttackResult::advantage)
         .def_readonly("hit",          &AttackResult::hit)
         .def_readonly("dice_results",          &AttackResult::dice_results)
         .def_readonly("damage_mod",            &AttackResult::damage_mod)
@@ -1560,6 +1567,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     "Paladin Lay on Hands: spend from caster's pool to heal target. "
                     "Clamps spend to min(pool_remaining, target_hp_deficit). "
                     "Returns actual HP healed (0 if nothing to heal, -1 if invalid).")
+        .def("apply_one_with_shadows",
+             &CombatEngine::applyOneWithShadows,
+             py::arg("battle_map"), py::arg("idx"),
+             "One with Shadows (Warlock invocation 8): if standing in Dim Light/Darkness,\n"
+             "gain the Invisible condition for free (ends on the Warlock's next attack/cast).\n"
+             "Returns True if applied.")
         .def("activate_sacred_weapon",
              &CombatEngine::activateSacredWeapon,
              py::arg("battle_map"), py::arg("idx"),
@@ -2006,6 +2019,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Radiant, +1d8 vs Undead/Fiend, to the AttackResult and target HP. Spends the slot +\n"
              "bonus action, sets the leveled-spell + once-per-turn interlocks. Returns Radiant dealt,\n"
              "or -1 if not allowed (no slot/bonus action, already smited, leveled spell already cast).")
+        .def("apply_eldritch_smite_effect",
+             &CombatEngine::applyEldritchSmiteEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             py::arg("slot_level"), py::arg("result"),
+             "Warlock Eldritch Smite (inv 15, L5+, Pact of the Blade): after a pact-weapon hit\n"
+             "(conditions.eldritch_smite_available), spend a Pact Magic slot (slot_level =\n"
+             "pact_slot_level()) as a Bonus Action to add (slot_level+1)d8 Force to the AttackResult\n"
+             "and target HP, and knock a Huge-or-smaller target Prone. Spends the slot + bonus action,\n"
+             "sets the leveled-spell + once-per-turn interlocks. Returns Force dealt, or -1 if not\n"
+             "allowed (no pact slot/bonus action, already smited, leveled spell already cast).")
         .def("can_use_war_magic",
              &CombatEngine::canUseWarMagic,
              py::arg("battle_map"), py::arg("idx"),
@@ -2443,6 +2466,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Get the cached visibility level between two agents.\n"
              "Returns Blocked if visibility hasn't been computed for this pair.\n"
              "Call compute_visibility() first to populate the cache.")
+        .def("can_perceive_target",
+             &CombatEngine::canPerceiveTarget,
+             py::arg("battle_map"), py::arg("viewer_idx"), py::arg("target_idx"),
+             "True unless the target has the Invisible condition and the viewer lacks\n"
+             "Truesight/Blindsight in range. Geometric line-of-sight is separate.")
 
         // RNG
         .def("reseed", &CombatEngine::reseed, py::arg("seed"))
@@ -2488,6 +2516,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
                "Aquatic movement: through water terrain.")
         .value("Burrow", MovementType::Burrow,
                "Underground movement: ignores surface obstacles.")
+        .value("Jump",   MovementType::Jump,
+               "Jumping: clears Water and Chasm terrain but is blocked by walls.")
         .export_values();
 
     // ── DetectionParams ─────────────────────────────────────────────────────
@@ -2610,6 +2640,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         })
         .def("is_blocked", &BattleMap::isBlocked,
              py::arg("origin"), py::arg("agent_size"), py::arg("movement_type") = MovementType::Walk)
+        .def("set_terrain_type", &BattleMap::setTerrainType,
+             py::arg("cell"), py::arg("terrain_type"),
+             "Set a cell's TerrainType (Standard/Water/Wall/Chasm).")
+        .def("get_terrain_type", &BattleMap::getTerrainType,
+             py::arg("cell"),
+             "Get a cell's TerrainType.")
 
         // Agent management (core spatial operations only; stat/equipment management moved to CombatEngine)
         .def("clear_agents",       &BattleMap::clearAgents)

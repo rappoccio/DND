@@ -353,6 +353,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyDeafened(bm, cond.agent_idx);
             } else if (cond.condition_name == "Petrified") {
                 applyPetrified(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Invisible" || cond.condition_name == "GreaterInvisible") {
+                auto ac = bm.getAgentConditions(cond.agent_idx);
+                ac.invisible = true;
+                // Greater Invisibility does not end when the creature attacks or casts.
+                ac.invisible_persists_on_action = (cond.condition_name == "GreaterInvisible");
+                bm.setAgentConditions(cond.agent_idx, ac);
             }
             log_("Applied condition '{}' to {} for {} turns",
                  cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);
@@ -409,6 +415,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.unconscious = false;
                         agent_cond.incapacitated = false;
                         // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
+                    } else if (cond.condition_name == "Invisible" || cond.condition_name == "GreaterInvisible") {
+                        agent_cond.invisible = false;
+                        agent_cond.invisible_persists_on_action = false;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for {}",

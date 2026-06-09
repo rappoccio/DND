@@ -240,6 +240,88 @@ def test_advantage_on_stealth_with_invisible():
     assert agent.name == "Invisible"
     print("✅ Invisibility concept acknowledged")
 
+def _set_invisible(engine, bm, idx, value=True):
+    cond = engine.get_agent_conditions(bm, idx)
+    cond.invisible = value
+    engine.set_agent_conditions(bm, idx, cond)
+
+
+def test_invisible_target_not_attackable():
+    """An invisible target is excluded from available_attacks (can't target what you can't see)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Attacker", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 6, 5))
+    # Baseline: target is attackable.
+    attacks = engine.available_attacks(bm, atk)
+    assert any(a.target_idx == tgt for a in attacks), "target should be attackable when visible"
+    # Make the target invisible → no longer in the action space.
+    _set_invisible(engine, bm, tgt, True)
+    attacks = engine.available_attacks(bm, atk)
+    assert not any(a.target_idx == tgt for a in attacks), "invisible target must be excluded from available_attacks"
+    assert not engine.can_perceive_target(bm, atk, tgt), "can_perceive_target should be False for invisible target"
+    print("✅ test_invisible_target_not_attackable")
+
+
+def test_truesight_and_blindsight_pierce_invisibility():
+    """Truesight or Blindsight in range lets a viewer perceive (and attack) an invisible target."""
+    for sense in ("truesight_range", "blindsight_range"):
+        bm = setup_battle_map()
+        engine = setup_combat_engine()
+        atk = add_agent_to_battle(engine, bm, create_test_agent("Seer", 5, 5))
+        tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 6, 5))
+        _set_invisible(engine, bm, tgt, True)
+        s = engine.get_agent_stats(bm, atk)
+        setattr(s, sense, 30)
+        engine.set_agent_stats(bm, atk, s)
+        assert engine.can_perceive_target(bm, atk, tgt), f"{sense} should pierce invisibility"
+        attacks = engine.available_attacks(bm, atk)
+        assert any(a.target_idx == tgt for a in attacks), f"{sense} viewer should be able to attack invisible target"
+    print("✅ test_truesight_and_blindsight_pierce_invisibility")
+
+
+def test_invisible_target_visibility_blocked():
+    """compute_visibility/get_visibility report an invisible target as Blocked (no truesight)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    obs = add_agent_to_battle(engine, bm, create_test_agent("Observer", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 6, 5))
+    _set_invisible(engine, bm, tgt, True)
+    engine.compute_visibility(bm, obs)
+    assert engine.get_visibility(obs, tgt) == rpg.VisibilityLevel.Blocked, \
+        "invisible target should be Blocked in the visibility map"
+    print("✅ test_invisible_target_visibility_blocked")
+
+
+def _melee_wpn():
+    w = rpg.Weapon()
+    w.name = "Dagger"; w.type = rpg.WeaponType.Melee; w.proficient = True
+    w.reach_ft = 5; w.range_short_feet = 5; w.range_long_feet = 5
+    roll = rpg.PhysicalDamageRoll()
+    roll.type = rpg.PhysicalDamage.Piercing; roll.num_dice = 1; roll.die_size = 4
+    w.physical_damage_types = [roll]
+    return [w, rpg.Weapon(), rpg.Weapon()]
+
+
+def test_invisible_attacker_has_advantage():
+    """An invisible attacker rolls its attacks with advantage."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Sneak", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 6, 5))
+    engine.set_agent_weapons(bm, atk, _melee_wpn())
+    engine.begin_turn(bm, atk)
+    # Baseline: no advantage.
+    base = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert not base.advantage, "control attack should not have advantage"
+    # Invisible attacker → advantage.
+    _set_invisible(engine, bm, atk, True)
+    engine.begin_turn(bm, atk)
+    res = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert res.advantage, "invisible attacker should roll with advantage"
+    print("✅ test_invisible_attacker_has_advantage")
+
+
 if __name__ == "__main__":
     tests = [
         test_visibility_level_clear,
@@ -263,6 +345,10 @@ if __name__ == "__main__":
         test_hidden_agent_detection_on_movement,
         test_blinded_condition_blocks_sight,
         test_advantage_on_stealth_with_invisible,
+        test_invisible_target_not_attackable,
+        test_truesight_and_blindsight_pierce_invisibility,
+        test_invisible_target_visibility_blocked,
+        test_invisible_attacker_has_advantage,
     ]
 
     print("Running Visibility Mechanics Tests...")

@@ -174,6 +174,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 {
     AttackResult r;
     r.disadvantage = disadvantage;
+    r.advantage    = advantage;
     r.attack_mod   = attackModifier(w, attacker) + w.bonus_hit;
     // Paladin Oath of Devotion — Sacred Weapon: while active, add the stored CHA bonus to weapon attack rolls.
     if (attacker.character_class == CharacterClass::Paladin && attacker.sacred_weapon_turns > 0)
@@ -1078,6 +1079,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: attacker is hidden");
     }
 
+    // Attacker is invisible: attacks have advantage (Invisibility ends after attacking).
+    if (atk_cond.invisible) {
+        adv = true;
+        log_("Advantage: attacker is invisible");
+    }
+
     // Rogue Steady Aim: the bonus action grants advantage on this attack (consumed below).
     if (atk_cond.steady_aim) {
         adv = true;
@@ -1446,6 +1453,23 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Warlock Eldritch Smite eligibility (on a pact-weapon hit) ─────────
+    // L5+ Warlock with Pact of the Blade (13) + Eldritch Smite (15) may, once per turn, expend a
+    // Pact Magic spell slot as a Bonus Action to add (slot+1)d8 Force + knock Prone. Like Divine
+    // Smite: gated on a free bonus action, a pact slot, and no leveled spell already this turn.
+    // Applied out of band via applyEldritchSmiteEffect (GUI offer / auto path).
+    if (r.hit && atk_stats.character_class == CharacterClass::Warlock &&
+        atk_stats.char_level >= 5 && w.pact_weapon &&
+        atk_stats.hasInvocation(13) && atk_stats.hasInvocation(15) &&
+        !atk_cond.eldritch_smite_used && !atk_stats.leveled_spell_cast_this_turn &&
+        hasBonusAction(bm, action.attacker_idx)) {
+        const int psl = atk_stats.pact_slot_level();
+        if (psl >= 1 && atk_stats.spell_slots_remaining[static_cast<std::size_t>(psl - 1)] > 0) {
+            updated_atk_cond.eldritch_smite_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
     // ── Eldritch Knight — Eldritch Strike (on a weapon hit) ───────────────
     // L10+ EK: hitting a creature with a weapon gives it disadvantage on its next saving throw
     // against a spell the EK casts. Tag the target with the EK's index; the save site (executeSpell)
@@ -1541,6 +1565,39 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // Mark Divine Fury as used this turn
         updated_atk_cond.berserker_frenzy_used = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Warlock Lifedrinker (on a pact-weapon hit) — AUTOMATIC ────────────
+    // L9+ Warlock with Pact of the Blade (13) + Lifedrinker (16): once per turn, a pact-weapon hit
+    // deals extra Necrotic = max(1, CHA mod) and grants the Warlock that many temp HP. No player
+    // choice (like Zealot Divine Fury above), so it covers every attack path. Must run AFTER the
+    // base-damage application above (it adds to the already-decremented tgt_stats).
+    if (r.hit && atk_stats.character_class == CharacterClass::Warlock &&
+        atk_stats.char_level >= 9 && w.pact_weapon &&
+        atk_stats.hasInvocation(13) && atk_stats.hasInvocation(16) &&
+        !atk_cond.lifedrinker_used) {
+        const int bonus = std::max(1, abilityMod(atk_stats.cha));
+        const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Necrotic];
+        const int ld_damage = static_cast<int>(static_cast<float>(bonus) * mult);
+
+        r.total_damage += ld_damage;
+        r.damage_breakdown.push_back({"lifedrinker", ld_damage});
+        r.magic_damage_types.push_back(MagicDamage_t::Necrotic);
+        int overflow = std::max(0, ld_damage - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ld_damage);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+
+        // The Warlock drinks life: gains temp HP equal to the bonus. Persist atk_stats now — the
+        // attacker's stats are otherwise only written in the Dark One's Blessing branch below (which
+        // reuses this same local copy, so a later write stays consistent).
+        grantTempHp(atk_stats, bonus, -1);
+        bm.setAgentStats(action.attacker_idx, atk_stats);
+        updated_atk_cond.lifedrinker_used = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        log_("{} drains life: +{} Necrotic, gains {} temp HP (Lifedrinker)",
+             agentName(bm, action.attacker_idx), ld_damage, bonus);
     }
 
     // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets.
@@ -1855,6 +1912,17 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         cond.hidden = false;
         bm.setAgentConditions(action.attacker_idx, cond);
         log_("{} is no longer hidden", agents[action.attacker_idx].agent->name());
+    }
+
+    // Invisibility ends after the attacker makes an attack roll / deals damage (RAW),
+    // unless it's Greater Invisibility (invisible_persists_on_action).
+    if (action.attacker_idx >= 0 && action.attacker_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions cond = bm.getAgentConditions(action.attacker_idx);
+        if (cond.invisible && !cond.invisible_persists_on_action) {
+            cond.invisible = false;
+            bm.setAgentConditions(action.attacker_idx, cond);
+            log_("{}'s invisibility ends (made an attack)", agents[action.attacker_idx].agent->name());
+        }
     }
 
     return r;

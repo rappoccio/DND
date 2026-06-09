@@ -512,12 +512,15 @@ Requires creature summoning system.
 - Great Old One: Thought Shield (partially implemented)
 - Archfey: Steps of the Fey, Misty Escape (need teleport primitive)
 
-### Deferred (Phase 3b) — Remaining Eldritch Invocations
-- Pact of the Blade line (needs weapon primitive)
-- Devil's Sight, Eldritch Spear range (needs range-enforcement system)
+### Phase 3b — Eldritch Invocations (mostly DONE — see the Eldritch Invocations section below)
+- Devil's Sight, Eldritch Spear range, and the **Pact of the Blade family** (Pact of the Blade /
+  Thirsting Blade / Eldritch Smite / Lifedrinker) are implemented (2026-06-08).
+- Still deferred: Devouring Blade (L12 3rd attack), Pact of the Chain (needs summons), Pact of the
+  Tome (needs char-building), Gift of the Protectors (needs Death Ward), Lessons of the First Ones
+  (needs feats). See the "Warlock Eldritch Invocations" section for details.
 
 ### Not modeled (combat simulator only) 🚫
-- Telepathy, familiars, Pact of the Tome, utility features
+- Telepathy, familiars (Pact of the Chain blocked on a summon system), utility features
 
 ---
 
@@ -818,8 +821,45 @@ to spell saves this pass* — see the OnSaveFail entry under Architecture → Po
 ## Warlock Eldritch Invocations (combat-sim modeling)
 
 Implemented (engine + GUI picker `InvocationDialog`): Agonizing Blast, Repelling Blast,
-Eldritch Mind, Armor of Shadows, Fiendish Vigor, Devil's Sight, Eldritch Spear. Selected in
-a scrollable picker; unimplemented/level-locked/feat-deferred entries render greyed.
+Eldritch Mind, Armor of Shadows, Fiendish Vigor, Devil's Sight, Eldritch Spear, Witch Sight,
+One with Shadows, Otherworldly Leap, Gift of the Depths, Master of Myriad Forms, and the
+**Pact of the Blade family** (Pact of the Blade, Thirsting Blade, Eldritch Smite, Lifedrinker).
+Selected in a scrollable picker; unimplemented/level-locked/feat-deferred entries render greyed.
+
+### Pact of the Blade family (IMPLEMENTED 2026-06-08)
+- **Pact of the Blade** (inv 13): a new `Weapon::pact_weapon` flag (mirrors `finesse`). The GUI
+  conjures a fixed `"PactBlade"` (1d8 slashing, proficient, `pact_weapon=True`), appended to the
+  Warlock's weapons in `_on_stats_ok` + the load path (idempotent). `attackModifier` /
+  `damageAbilityMod` (combat_core.cpp) allow CHA for a pact weapon — modeled as
+  `max(normal STR/DEX rule, CHA mod)`, i.e. "best of, never worse". The flag also **identifies**
+  the pact weapon for the three riders below.
+  - *Simplification:* the pact weapon is a fixed 1d8 slashing blade, not "any melee weapon you
+    choose" (no weapon-build system).
+- **Thirsting Blade** (inv 14, L5+): `num_attacks = 2` in the Warlock chassis
+  (`initializeClassResources`) when `hasInvocation(14) && hasInvocation(13) && level >= 5`.
+  - *Simplification:* like every other class's Extra Attack this is **global**, not gated to
+    pact-weapon attacks only — a Thirsting-Blade Warlock gets two swings with any weapon.
+- **Eldritch Smite** (inv 15, L5+): on-hit rider modeled on Divine Smite. Eligibility flag
+  `eldritch_smite_available` set in `applyAttackResult` (pact-weapon hit, L5+, inv 13+15, free
+  bonus action, a pact slot, no leveled spell this turn); applied out of band via
+  `applyEldritchSmiteEffect` (GUI `_offer_eldritch_smite`, bound `apply_eldritch_smite_effect`):
+  expend the pact slot (level = `pact_slot_level()`) as a Bonus Action → `(slot+1)d8` Force, knock
+  a Huge-or-smaller target (`getSize() <= 3`) Prone. Once per turn (`eldritch_smite_used`).
+- **Lifedrinker** (inv 16, L9+): **automatic** (no player choice) inline in `applyAttackResult`
+  (like Zealot Divine Fury) — on a pact-weapon hit, once per turn, deal extra Necrotic =
+  `max(1, CHA mod)` and grant the Warlock that many temp HP (`grantTempHp`). Flag `lifedrinker_used`.
+  - *v1 modeling:* the temp-HP grant uses the standard `max()` semantics (doesn't stack).
+- Per-turn flags reset in `Agent::turn()` (canonical) + `runRound` (RL parity). Tests in
+  `test_warlock_phase3.py`. `apply_eldritch_smite_effect` added to `replay_record.py`'s recorded set.
+
+### Deferred: rest of the Pact-boon family
+- **Devouring Blade** (inv 17, L12, needs Thirsting Blade): a *third* attack. Deferred — would
+  need num_attacks=3 gating; left greyed.
+- **Pact of the Chain** (inv 18) + **Investment of the Chain Master** (inv 19): an attacking
+  familiar — **deferred until a summon/companion system exists** (same blocker as Wildfire Spirit
+  / Phantasmal Creatures). Greyed.
+- **Pact of the Tome** (inv 20): bonus cantrips/rituals — **deferred until a character-building /
+  free-cantrip-grant system exists**. Greyed.
 
 Modeling simplifications (deliberate, combat-sim scope):
 - **Agonizing Blast / Repelling Blast / Eldritch Spear** are hardcoded to **Eldritch Blast**,
@@ -844,3 +884,30 @@ instead of 0). **Deferred** because Death Ward itself has no engine effect (pres
 spells.json only — no drop-to-1 hook in the unconscious/death path). Implement Death Ward's
 drop-to-1 mechanic + a per-long-rest charge counter first, then this invocation becomes a
 free-cast grant. Stays greyed in the InvocationDialog (note: "needs Death Ward").
+
+## Invisible condition (combat-sim modeling)
+
+The Invisible condition now gates targeting and grants advantage (implemented 2026-06-08):
+- A creature with `conditions.invisible` cannot be targeted by attacks/spells unless the
+  viewer has Truesight or Blindsight in range (`canPerceiveTarget`, enforced in
+  `availableAttacks`, `getBattleObservation`'s LoS flag, `computeVisibility`, and the GUI
+  spell gate). Devil's Sight and Darkvision do NOT pierce invisibility.
+- An invisible attacker rolls attacks with advantage (`AttackResult.advantage`).
+
+Deliberate DM-call simplifications (deferred):
+- **Disadvantage when attacking an unseen attacker is NOT modeled.** RAW, attacking a
+  creature you can't see is at disadvantage; here, targeting an unseen creature is simply
+  blocked, so that case doesn't arise. (DM-interpretation call — left out intentionally.)
+- **Reaction eligibility** (`d20ReactorBase`, the save-reactor gate) still uses raw
+  geometric `hasLineOfSight` and does NOT consult `canPerceiveTarget` — so an invisible
+  creature can still be the subject of those reaction windows. Left out pending a rules call.
+
+### Invisibility / Greater Invisibility spells (data-driven)
+Both are now self/touch buffs (JSON `attack_type: Automatic`, `type: Harm` with no damage —
+there is no "Buff" SpellType, so Harm-with-no-damage is used) that apply the Invisible
+condition via `conditions:[{condition_name:"Invisible"|"GreaterInvisible"}]` (no `save_ability`
+⇒ no save). `addAgentCondition` maps those names to `conditions.invisible` (+
+`invisible_persists_on_action` for the Greater variant). Duration is modeled as 10 rounds (not
+RAW 1 hour / 1 minute) — long enough to outlast a combat. Cast targets self/ally via
+`SpellAction.target_indices`; self-targeting in the GUI depends on the click landing on the
+caster. One with Shadows reuses the same Invisible condition (non-persistent).

@@ -63,6 +63,7 @@ class RecordingCombat:
         "begin_turn", "end_turn", "tick_agent_conditions_for_caster",
         "tick_terrain_for_turn", "activate_rage", "end_rage",
         "apply_brutal_strike_effect", "apply_cunning_strike_effect",
+        "apply_eldritch_smite_effect",
         "execute_shove", "execute_grapple",
         "execute_grapple_escape", "drop_concentration", "clear_all_concentration",
         "set_safe_targets",

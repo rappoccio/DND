@@ -19,9 +19,35 @@
 
 namespace rpg {
 
+// True if a viewer with these stats can pierce the Invisible condition at `dist_ft`.
+// Both Truesight and Blindsight defeat invisibility within their range (Devil's Sight
+// and Darkvision do NOT).
+static bool piercesInvisibility(const Agent::Stats& vs, int dist_ft) noexcept {
+    return vs.truesight_range >= dist_ft || vs.blindsight_range >= dist_ft;
+}
+
+static int chebyshevFeet(const PlacedAgent& a, const PlacedAgent& b) noexcept {
+    int dx = std::abs(a.origin.col - b.origin.col);
+    int dy = std::abs(a.origin.row - b.origin.row);
+    return std::max(dx, dy) * 5;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Visibility
 // ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (viewer_idx < 0 || viewer_idx >= n || target_idx < 0 || target_idx >= n)
+        return true;  // permissive on bad indices; callers handle geometry/range separately
+    const PlacedAgent& target = agents[static_cast<std::size_t>(target_idx)];
+    if (!target.agent->getConditions().invisible)
+        return true;  // not invisible → perceivable (geometric LoS handled elsewhere)
+    const PlacedAgent& viewer = agents[static_cast<std::size_t>(viewer_idx)];
+    return piercesInvisibility(viewer.agent->getStats(), chebyshevFeet(viewer, target));
+}
 
 void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 {
@@ -48,6 +74,14 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 
         // Check if target is hidden — if so, they're invisible
         if (target.agent->getConditions().hidden) {
+            int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
+            visibilityMap_[key] = VisibilityLevel::Blocked;
+            continue;
+        }
+
+        // Invisible condition: blocked unless the viewer has Truesight/Blindsight in range.
+        if (target.agent->getConditions().invisible &&
+            !piercesInvisibility(viewer_stats, chebyshevFeet(viewer, target))) {
             int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
             visibilityMap_[key] = VisibilityLevel::Blocked;
             continue;

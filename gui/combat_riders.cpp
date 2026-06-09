@@ -200,6 +200,77 @@ int CombatEngine::applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int ta
     return smite_damage;
 }
 
+int CombatEngine::applyEldritchSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                           int slot_level, AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return -1;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 1 || slot_level > 9) return -1;
+
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.eldritch_smite_available || atk_cond.eldritch_smite_used) return -1;  // once per turn
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    // Must still have a bonus action, the pact slot, and no leveled spell already this turn.
+    if (!hasBonusAction(bm, attacker_idx)) return -1;
+    if (atk_stats.leveled_spell_cast_this_turn) return -1;
+    const auto si = static_cast<std::size_t>(slot_level - 1);
+    if (atk_stats.spell_slots_remaining[si] <= 0) return -1;
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+
+    // (slot_level + 1)d8 Force damage.
+    const int dice = slot_level + 1;
+    int raw = 0;
+    for (int i = 0; i < dice; ++i) raw += roll(8);
+
+    const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Force];
+    const int smite_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"eldritch smite", smite_damage});
+    result.total_damage += smite_damage;
+    result.magic_damage_types.push_back(MagicDamage_t::Force);
+
+    int overflow = std::max(0, smite_damage - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - smite_damage);
+    tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    // Spend the pact slot, the bonus action, and mark the leveled-spell + once-per-turn interlocks.
+    atk_stats.spell_slots_remaining[si] -= 1;
+    atk_stats.leveled_spell_cast_this_turn = true;
+    bm.setAgentStats(attacker_idx, atk_stats);
+    (void)spendBonusAction(bm, attacker_idx);
+
+    atk_cond.eldritch_smite_used = true;
+    atk_cond.eldritch_smite_available = false;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    log_("{} uses Eldritch Smite (level {} pact slot): +{} Force damage",
+         agentName(bm, attacker_idx), slot_level, smite_damage);
+
+    // Knock a Huge-or-smaller target Prone. getSize() is the grid footprint in cells
+    // (Medium/Small=1, Large=2, Huge=3, Gargantuan=4), so Huge-or-smaller is <= 3 — the same
+    // convention the Push mastery uses for "Large or smaller" (<= 2). Skip if already down.
+    if (!result.target_down) {
+        Agent::Conditions tgt_cond = bm.getAgentConditions(target_idx);
+        const int tgt_sz = agents[static_cast<std::size_t>(target_idx)].agent->getSize();
+        if (tgt_sz <= 3 && !tgt_cond.prone) {
+            tgt_cond.prone = true;
+            bm.setAgentConditions(target_idx, tgt_cond);
+            log_("{} is knocked Prone (Eldritch Smite)", agentName(bm, target_idx));
+        }
+    }
+
+    // The extra damage can break concentration and trigger on-damage conditions.
+    if (smite_damage > 0) {
+        checkConcentrationOnDamage(bm, target_idx, smite_damage);
+        processDamageTaken(bm, target_idx, smite_damage);
+    }
+    return smite_damage;
+}
+
 bool CombatEngine::canUseWarMagic(BattleMap& bm, int idx) const noexcept
 {
     auto agents = bm.placedAgents();

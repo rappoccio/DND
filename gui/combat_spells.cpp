@@ -101,6 +101,12 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         log_("Advantage: Innate Sorcery");
     }
 
+    // Caster is invisible: spell attacks have advantage (Invisibility ends after casting).
+    if (caster_pa.agent->getConditions().invisible) {
+        caster_adv = true;
+        log_("Advantage: caster is invisible");
+    }
+
     // Target blinded: attacker has advantage
     bool target_blinded = agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().blinded;
     if (target_blinded) {
@@ -275,6 +281,18 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     result.attack_type = sp.attack_type;
 
     const Agent::Stats& caster_stats = caster_pa.agent->getStats();
+
+    // Casting a spell ends the caster's (non-Greater) Invisibility (RAW). Done before any new
+    // grant below, so casting Invisibility/Greater Invisibility still leaves the caster invisible.
+    {
+        Agent::Conditions cc = bm.getAgentConditions(action.caster_idx);
+        if (cc.invisible && !cc.invisible_persists_on_action) {
+            cc.invisible = false;
+            bm.setAgentConditions(action.caster_idx, cc);
+            log_("{}'s invisibility ends (cast a spell)", agentName(bm, action.caster_idx));
+        }
+    }
+
 
     // Eldritch Spear invocation: extend the cantrip's range before any range-dependent
     // logic (and before Distant Spell, so Distant doubles the already-extended range).

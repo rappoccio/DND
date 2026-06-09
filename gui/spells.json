@@ -3507,7 +3507,7 @@
  },
  {
   "name": "Greater Invisibility",
-  "description": "",
+  "description": "A creature you touch has the Invisible condition until the spell ends (it does not end when the target attacks or casts).",
   "type": "Harm",
   "geometry": "Single",
   "attack_type": "Automatic",
@@ -3516,7 +3516,7 @@
   "radius": 0,
   "width": 0,
   "length": 0,
-  "duration": 1,
+  "duration": 10,
   "magic_damage_types": [],
   "physical_damage_types": [],
   "level": 4,
@@ -3524,7 +3524,10 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "illusion"
+  "school": "illusion",
+  "conditions": [
+   { "condition_name": "GreaterInvisible" }
+  ]
  },
  {
   "name": "Greater Restoration",
@@ -4390,13 +4393,13 @@
   "description": "A creature you touch has the Invisible condition until the spell ends. The spell ends early immediately after the target makes an attack roll, deals damage, or casts a spell.",
   "type": "Harm",
   "geometry": "Single",
-  "attack_type": "AttackRoll",
+  "attack_type": "Automatic",
   "save_ability": "SaveDex",
   "range": 5,
   "radius": 0,
   "width": 0,
   "length": 0,
-  "duration": 1,
+  "duration": 10,
   "magic_damage_types": [],
   "physical_damage_types": [],
   "level": 2,
@@ -4404,7 +4407,10 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "illusion"
+  "school": "illusion",
+  "conditions": [
+   { "condition_name": "Invisible" }
+  ]
  },
  {
   "name": "Irresistible Dance",

@@ -328,6 +328,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         hl.long_rest_regen = 1 + level;
         resources["Healing Light"] = hl;
       }
+
+      // Thirsting Blade (invocation 14, L5+, requires Pact of the Blade): a second
+      // attack with the pact weapon as part of the Attack action. Modeled as the engine's
+      // global Extra Attack (num_attacks = 2). v1 simplification: this is not gated to
+      // pact-weapon attacks only — a Thirsting-Blade Warlock gets two swings with any
+      // weapon, matching how every other class's Extra Attack is global.
+      if (level >= 5 && hasInvocation(14) && hasInvocation(13))
+        num_attacks = 2;
       break;
     }
 

@@ -46,6 +46,9 @@ struct Weapon {
     // ── Attack-roll modifier rules ─────────────────────────────────────────
     bool         finesse         = false;       // use STR or DEX (whichever is higher)
     bool         thrown          = false;       // ranged but uses STR
+    bool         pact_weapon     = false;       // Warlock Pact of the Blade: may use CHA for attack/damage
+                                                // (and identifies the pact weapon for Thirsting Blade /
+                                                //  Eldritch Smite / Lifedrinker)
 
     // ── General ───────────────────────────────────────────────────────────
     bool         proficient      = false;       // add proficiency bonus to hit

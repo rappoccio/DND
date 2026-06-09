@@ -78,6 +78,7 @@ struct AttackResult {
     bool critical     = false;  // natural 20 → double damage dice
     bool fumble       = false;  // natural 1  → automatic miss
     bool disadvantage = false;  // roll was made at disadvantage (long range etc.)
+    bool advantage    = false;  // roll was made at advantage (reckless, hidden, invisible, etc.)
     bool hit          = false;
 
     // ── Damage (only meaningful when hit == true) ─────────────────────────
@@ -645,6 +646,12 @@ public:
     // Returns actual HP healed (0 if nothing to heal, -1 if no pool remaining).
     static int layOnHands (BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept;
 
+    // One with Shadows (Warlock invocation 8): while in an area of Dim Light or Darkness,
+    // cast Invisibility on self for free (no slot). Sets the Invisible condition (ends on the
+    // Warlock's next attack/cast, like Invisibility). Returns true if applied, false if the
+    // agent isn't an invocation-8 Warlock or isn't standing in dim/dark.
+    bool applyOneWithShadows(BattleMap& bm, int idx) noexcept;
+
     // Sacred Weapon (Paladin Oath of Devotion): Bonus Action, spend 1 Channel Oath use to add
     // +CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires Oath of Devotion
     // and an available Channel Oath use. Returns the attack bonus granted, or -1 if it could not
@@ -949,6 +956,13 @@ public:
     // Returns Blocked if visibility hasn't been computed for this pair.
     [[nodiscard]] VisibilityLevel getVisibility(int source_idx, int target_idx) const noexcept;
 
+    // True if `viewer` can perceive `target` for targeting purposes: a target with the
+    // Invisible condition can only be perceived by a viewer with Truesight or Blindsight
+    // whose range reaches it. Non-invisible targets are always perceivable here (geometric
+    // line-of-sight is enforced separately). Used by availableAttacks / getBattleObservation
+    // so the RL action space and observation agree with the GUI.
+    [[nodiscard]] bool canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept;
+
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
     // reasons for conditions, etc.). Optional; null = silent.
@@ -1073,6 +1087,15 @@ public:
     // divine_smite_used. Returns the Radiant damage dealt, or -1 if not allowed.
     int applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                int slot_level, AttackResult& result) noexcept;
+
+    // Warlock Eldritch Smite (invocation 15, L5+, Pact of the Blade): on a pact-weapon hit, expend a
+    // Pact Magic spell slot as a Bonus Action to add (slot_level + 1)d8 Force damage, and knock a
+    // Huge-or-smaller target Prone. slot_level is the Warlock's pact slot level (pact_slot_level()).
+    // Requires eldritch_smite_available, a free bonus action, a pact slot, and no leveled spell cast
+    // this turn; spends the pact slot + bonus action, sets leveled_spell_cast_this_turn and
+    // eldritch_smite_used. Returns the Force damage dealt, or -1 if not allowed.
+    int applyEldritchSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                 int slot_level, AttackResult& result) noexcept;
 
     // Eldritch Knight War Magic (L7+): during the Attack action, one weapon attack may be replaced
     // by casting a spell. canUseWarMagic owns the class/subclass/level + once-per-Attack-action gate
