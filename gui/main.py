@@ -995,6 +995,39 @@ class App:
         apply_damage_multipliers(stats, sd)
         return stats
 
+    def _load_npc_spells_from_record(self, agent_idx: int, mob_record: dict):
+        """Auto-populate an NPC's innate spells from its bestiary record.
+
+        Mirrors the saved-agent spell-restore path: the record's `spell_indices`
+        (canonical catalog names) become Spell objects via spells.json, then
+        `npc_spell_groups` ({uses/day: [names]}) sets each spell's uses_max via
+        init_npc_spell_groups. No-op for non-casters."""
+        spell_names = mob_record.get("spell_indices", [])
+        if not spell_names:
+            return
+        cpp_spells = []
+        for spell_name in spell_names:
+            idx = self.spell_name_to_idx.get(spell_name)
+            if idx is None:
+                print(f"WARNING: NPC spell '{spell_name}' not in catalog "
+                      f"for {mob_record.get('name', agent_idx)}")
+                continue
+            spell_dict = self.all_spells[idx]
+            self._spell_metadata[(agent_idx, len(cpp_spells))] = {
+                "terrain_effect": spell_dict.get("terrain_effect"),
+                "hatch_pattern": spell_dict.get("hatch_pattern"),
+                "terrain_color": spell_dict.get("terrain_color"),
+            }
+            cpp_spells.append(self._dict_to_spell(agent_idx, spell_dict))
+        self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
+
+        npc_spell_groups = mob_record.get("npc_spell_groups", {})
+        if npc_spell_groups:
+            groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
+            self.combat.init_npc_spell_groups(self.bm, agent_idx, groups_dict)
+            self._agent_meta[agent_idx] = {
+                "is_npc": True, "npc_spell_groups": npc_spell_groups}
+
     # ─────────────────────────────────────────────────────────────────────
     #  Grid coordinate helpers
     # ─────────────────────────────────────────────────────────────────────
@@ -4581,6 +4614,8 @@ class App:
             for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
                 weapons[i] = w
             self.combat.set_agent_weapons(self.bm, new_idx, weapons)
+        # Innate spells from the conjured creature's stat block (no-op for non-casters).
+        self._load_npc_spells_from_record(new_idx, mob_stats)
 
         # Link summon → summoner + spell (drives dismiss-on-concentration-loss in C++).
         self.bm.set_agent_summoner_idx(new_idx, caster_idx)
@@ -7821,6 +7856,8 @@ class App:
                                     if i < 3:
                                         current_weapons[i] = auto_w
                                 self.combat.set_agent_weapons(self.bm, idx, current_weapons)
+                            # Auto-load innate spells (no-op for non-casters).
+                            self._load_npc_spells_from_record(idx, self.selected_mob_stats)
                         elif self._pending_pc_class:
                             # Apply PC stats (class/level and spell slots already set)
                             self.combat.set_agent_stats(self.bm, idx, self._pending_pc_stats)

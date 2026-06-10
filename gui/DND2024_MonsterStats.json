@@ -100,6 +100,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Elementalism",
+      "Gust of Wind",
+      "Mage Hand",
+      "Message",
+      "Lightning Bolt",
+      "Feather Fall"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Gust of Wind"
+      ],
+      "1": [
+        "Lightning Bolt",
+        "Feather Fall"
+      ]
     }
   },
   "Aarakocra Skirmisher": {
@@ -311,6 +328,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts",
+      "Minor Illusion",
+      "Counterspell"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Thoughts"
+      ],
+      "2": [
+        "Counterspell"
+      ]
     }
   },
   "Aboleth": {
@@ -626,6 +656,24 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Fear",
+      "Acid Arrow",
+      "Speak with Dead",
+      "Vitriolic Sphere"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Fear",
+        "Acid Arrow"
+      ],
+      "1": [
+        "Speak with Dead",
+        "Vitriolic Sphere"
+      ]
     }
   },
   "Adult Blue Dragon": {
@@ -718,6 +766,25 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Invisibility",
+      "Mage Hand",
+      "Shatter",
+      "Scrying",
+      "Sending"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Invisibility",
+        "Shatter"
+      ],
+      "1": [
+        "Scrying",
+        "Sending"
+      ]
     }
   },
   "Adult Brass Dragon": {
@@ -829,6 +896,27 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Minor Illusion",
+      "Scorching Ray",
+      "Shapechange",
+      "Speak with Animals",
+      "Detect Thoughts",
+      "Control Weather"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Scorching Ray",
+        "Shapechange",
+        "Speak with Animals"
+      ],
+      "1": [
+        "Detect Thoughts",
+        "Control Weather"
+      ]
     }
   },
   "Adult Bronze Dragon": {
@@ -942,6 +1030,27 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Guiding Bolt",
+      "Shapechange",
+      "Speak with Animals",
+      "Thaumaturgy",
+      "Detect Thoughts",
+      "Water Breathing"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Guiding Bolt",
+        "Shapechange",
+        "Speak with Animals"
+      ],
+      "1": [
+        "Detect Thoughts",
+        "Water Breathing"
+      ]
     }
   },
   "Adult Copper Dragon": {
@@ -1035,6 +1144,25 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Mind Spike",
+      "Minor Illusion",
+      "Shapechange",
+      "Greater Restoration",
+      "Major Image"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Mind Spike",
+        "Shapechange"
+      ],
+      "1": [
+        "Greater Restoration",
+        "Major Image"
+      ]
     }
   },
   "Adult Deep Dragon": {
@@ -1245,6 +1373,24 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Guiding Bolt",
+      "Shapechange",
+      "Flame Strike",
+      "Zone of Truth"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Guiding Bolt",
+        "Shapechange"
+      ],
+      "1": [
+        "Flame Strike",
+        "Zone of Truth"
+      ]
     }
   },
   "Adult Green Dragon": {
@@ -1341,6 +1487,20 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Mind Spike",
+      "Geas"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Mind Spike"
+      ],
+      "1": [
+        "Geas"
+      ]
     }
   },
   "Adult Red Dragon": {
@@ -1451,6 +1611,22 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Command",
+      "Detect Magic",
+      "Scorching Ray",
+      "Fireball"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Command",
+        "Detect Magic",
+        "Scorching Ray"
+      ],
+      "1": [
+        "Fireball"
+      ]
     }
   },
   "Adult Silver Dragon": {
@@ -1561,6 +1737,26 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Hold Monster",
+      "Ice Knife",
+      "Shapechange",
+      "Ice Storm",
+      "Zone of Truth"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Hold Monster",
+        "Ice Knife",
+        "Shapechange"
+      ],
+      "1": [
+        "Ice Storm",
+        "Zone of Truth"
+      ]
     }
   },
   "Adult Spirit Dragon": {
@@ -1655,6 +1851,22 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Shapechange",
+      "Thunderwave",
+      "Legend Lore"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Shapechange",
+        "Thunderwave"
+      ],
+      "1": [
+        "Legend Lore"
+      ]
     }
   },
   "Adult White Dragon": {
@@ -2070,6 +2282,26 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Fear",
+      "Acid Arrow",
+      "Create Undead",
+      "Speak with Dead",
+      "Vitriolic Sphere"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Fear",
+        "Acid Arrow"
+      ],
+      "1": [
+        "Create Undead",
+        "Speak with Dead",
+        "Vitriolic Sphere"
+      ]
     }
   },
   "Ancient Blue Dragon": {
@@ -2162,6 +2394,25 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Invisibility",
+      "Mage Hand",
+      "Shatter",
+      "Scrying",
+      "Sending"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Invisibility",
+        "Shatter"
+      ],
+      "1": [
+        "Scrying",
+        "Sending"
+      ]
     }
   },
   "Ancient Brass Dragon": {
@@ -2273,6 +2524,27 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Minor Illusion",
+      "Scorching Ray",
+      "Shapechange",
+      "Speak with Animals",
+      "Detect Thoughts",
+      "Control Weather"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Scorching Ray",
+        "Shapechange",
+        "Speak with Animals"
+      ],
+      "1": [
+        "Detect Thoughts",
+        "Control Weather"
+      ]
     }
   },
   "Ancient Bronze Dragon": {
@@ -2386,6 +2658,31 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Guiding Bolt",
+      "Shapechange",
+      "Speak with Animals",
+      "Thaumaturgy",
+      "Detect Thoughts",
+      "Control Water",
+      "Scrying",
+      "Water Breathing"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Guiding Bolt",
+        "Shapechange",
+        "Speak with Animals"
+      ],
+      "1": [
+        "Detect Thoughts",
+        "Control Water",
+        "Scrying",
+        "Water Breathing"
+      ]
     }
   },
   "Ancient Copper Dragon": {
@@ -2479,6 +2776,27 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Mind Spike",
+      "Minor Illusion",
+      "Shapechange",
+      "Greater Restoration",
+      "Major Image",
+      "Project Image"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Mind Spike",
+        "Shapechange"
+      ],
+      "1": [
+        "Greater Restoration",
+        "Major Image",
+        "Project Image"
+      ]
     }
   },
   "Ancient Deep Dragon": {
@@ -2689,6 +3007,26 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Guiding Bolt",
+      "Shapechange",
+      "Flame Strike",
+      "Word of Recall",
+      "Zone of Truth"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Guiding Bolt",
+        "Shapechange"
+      ],
+      "1": [
+        "Flame Strike",
+        "Word of Recall",
+        "Zone of Truth"
+      ]
     }
   },
   "Ancient Green Dragon": {
@@ -2785,6 +3123,22 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Mind Spike",
+      "Geas",
+      "Modify Memory"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Mind Spike"
+      ],
+      "1": [
+        "Geas",
+        "Modify Memory"
+      ]
     }
   },
   "Ancient Red Dragon": {
@@ -2895,6 +3249,24 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Command",
+      "Detect Magic",
+      "Scorching Ray",
+      "Fireball",
+      "Scrying"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Command",
+        "Detect Magic",
+        "Scorching Ray"
+      ],
+      "1": [
+        "Fireball",
+        "Scrying"
+      ]
     }
   },
   "Ancient Silver Dragon": {
@@ -3011,6 +3383,28 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Hold Monster",
+      "Ice Knife",
+      "Shapechange",
+      "Ice Storm",
+      "Teleport",
+      "Zone of Truth"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Hold Monster",
+        "Ice Knife",
+        "Shapechange"
+      ],
+      "1": [
+        "Ice Storm",
+        "Teleport",
+        "Zone of Truth"
+      ]
     }
   },
   "Ancient Spirit Dragon": {
@@ -3105,6 +3499,24 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Shapechange",
+      "Thunderwave",
+      "Legend Lore",
+      "Sequester"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Shapechange",
+        "Thunderwave"
+      ],
+      "1": [
+        "Legend Lore",
+        "Sequester"
+      ]
     }
   },
   "Ancient White Dragon": {
@@ -3322,6 +3734,30 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Animal Messenger",
+      "Speak with Animals",
+      "Awaken",
+      "Greater Restoration",
+      "Animal Shapes",
+      "Sunburst"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship",
+        "Animal Messenger",
+        "Speak with Animals"
+      ],
+      "2": [
+        "Awaken",
+        "Greater Restoration"
+      ],
+      "1": [
+        "Animal Shapes",
+        "Sunburst"
+      ]
     }
   },
   "Animated Armor": {
@@ -4108,6 +4544,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Silent Image",
+      "Hold Person"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Silent Image"
+      ],
+      "1": [
+        "Hold Person"
+      ]
     }
   },
   "Arcanaloth": {
@@ -4254,6 +4702,32 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Alter Self",
+      "Counterspell",
+      "Detect Magic",
+      "Identify",
+      "Mage Hand",
+      "Prestidigitation",
+      "Contact Other Plane",
+      "Detect Thoughts",
+      "Dimension Door",
+      "Mind Blank"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Alter Self",
+        "Counterspell",
+        "Detect Magic",
+        "Identify"
+      ],
+      "1": [
+        "Contact Other Plane",
+        "Detect Thoughts",
+        "Dimension Door",
+        "Mind Blank"
+      ]
     }
   },
   "Arch-hag": {
@@ -4372,6 +4846,30 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Counterspell",
+      "Detect Thoughts",
+      "Dimension Door",
+      "Dispel Magic",
+      "Hypnotic Pattern",
+      "Mass Suggestion",
+      "Modify Memory",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Counterspell",
+        "Detect Thoughts",
+        "Dimension Door",
+        "Dispel Magic",
+        "Hypnotic Pattern"
+      ],
+      "2": [
+        "Mass Suggestion",
+        "Modify Memory",
+        "Plane Shift"
+      ]
     }
   },
   "Archelon": {
@@ -4565,6 +5063,49 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Disguise Self",
+      "Invisibility",
+      "Light",
+      "Mage Armor",
+      "Mage Hand",
+      "Prestidigitation",
+      "Counterspell",
+      "Misty Step",
+      "Shield",
+      "Fly",
+      "Lightning Bolt",
+      "Cone of Cold",
+      "Mind Blank",
+      "Scrying",
+      "Teleport"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Disguise Self",
+        "Invisibility",
+        "Mage Armor"
+      ],
+      "3": [
+        "Counterspell",
+        "Misty Step",
+        "Shield"
+      ],
+      "2": [
+        "Fly",
+        "Lightning Bolt"
+      ],
+      "1": [
+        "Cone of Cold",
+        "Mind Blank",
+        "Scrying",
+        "Teleport"
+      ]
     }
   },
   "Archpriest": {
@@ -4669,6 +5210,32 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Light",
+      "Thaumaturgy",
+      "Bless",
+      "Dispel Magic",
+      "Healing Word",
+      "Lesser Restoration",
+      "Flame Strike",
+      "Greater Restoration",
+      "Raise Dead",
+      "Zone of Truth"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Bless",
+        "Dispel Magic",
+        "Healing Word",
+        "Lesser Restoration"
+      ],
+      "1": [
+        "Flame Strike",
+        "Greater Restoration",
+        "Raise Dead",
+        "Zone of Truth"
+      ]
     }
   },
   "Assassin": {
@@ -5143,6 +5710,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Elementalism",
+      "Mage Hand",
+      "Hellish Rebuke",
+      "Fireball"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Hellish Rebuke"
+      ],
+      "1": [
+        "Fireball"
+      ]
     }
   },
   "Azer Sentinel": {
@@ -5946,6 +6527,24 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Disguise Self",
+      "Mage Hand",
+      "Minor Illusion",
+      "Hold Person",
+      "Mage Armor",
+      "Major Image"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Disguise Self"
+      ],
+      "1": [
+        "Hold Person",
+        "Mage Armor",
+        "Major Image"
+      ]
     }
   },
   "Banshee": {
@@ -6312,6 +6911,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Disguise Self",
+      "Invisibility",
+      "Entangle",
+      "Phantasmal Killer"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Disguise Self",
+        "Invisibility"
+      ],
+      "1": [
+        "Entangle",
+        "Phantasmal Killer"
+      ]
     }
   },
   "Basilisk": {
@@ -7334,6 +7949,32 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Create or Destroy Water",
+      "Detect Magic",
+      "Major Image",
+      "Control Water",
+      "Dispel Magic",
+      "Invisibility",
+      "Control Weather",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Create or Destroy Water",
+        "Detect Magic",
+        "Major Image"
+      ],
+      "2": [
+        "Control Water",
+        "Dispel Magic",
+        "Invisibility"
+      ],
+      "1": [
+        "Control Weather",
+        "Plane Shift"
+      ]
     }
   },
   "Black Bear": {
@@ -8394,6 +9035,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Thaumaturgy",
+      "Command",
+      "Detect Thoughts",
+      "Lightning Bolt"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Command",
+        "Detect Thoughts",
+        "Lightning Bolt"
+      ]
     }
   },
   "Boromar Smuggler": {
@@ -9469,6 +10124,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Druidcraft",
+      "Ray of Sickness",
+      "Speak with Plants",
+      "Vitriolic Sphere"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Ray of Sickness"
+      ],
+      "1": [
+        "Speak with Plants",
+        "Vitriolic Sphere"
+      ]
     }
   },
   "Bullywug Warrior": {
@@ -9786,6 +10457,24 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Alter Self",
+      "Command",
+      "Detect Magic",
+      "Dominate Person",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Alter Self",
+        "Command",
+        "Detect Magic"
+      ],
+      "1": [
+        "Dominate Person",
+        "Plane Shift"
+      ]
     }
   },
   "Camel": {
@@ -9974,6 +10663,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Burning Hands",
+      "Mending",
+      "Thunderwave",
+      "Cure Wounds",
+      "Invisibility"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Burning Hands",
+        "Thunderwave"
+      ],
+      "1": [
+        "Cure Wounds",
+        "Invisibility"
+      ]
     }
   },
   "Carrion Crawler": {
@@ -10366,6 +11072,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Druidcraft",
+      "Speak with Animals"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Animals"
+      ]
     }
   },
   "Chain Devil": {
@@ -11080,6 +11795,27 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Fog Cloud",
+      "Light",
+      "Misty Step",
+      "Control Weather",
+      "Gaseous Form",
+      "Telekinesis"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Fog Cloud",
+        "Misty Step"
+      ],
+      "1": [
+        "Control Weather",
+        "Gaseous Form",
+        "Telekinesis"
+      ]
     }
   },
   "Cockatrice": {
@@ -11856,6 +12592,40 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Detect Magic",
+      "Detect Thoughts",
+      "Shapechange",
+      "Bless",
+      "Lesser Restoration",
+      "Sanctuary",
+      "Create Food and Water",
+      "Dream",
+      "Greater Restoration",
+      "Scrying",
+      "Sleep"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good",
+        "Detect Magic",
+        "Detect Thoughts",
+        "Shapechange"
+      ],
+      "2": [
+        "Bless",
+        "Lesser Restoration",
+        "Sanctuary"
+      ],
+      "1": [
+        "Create Food and Water",
+        "Dream",
+        "Greater Restoration",
+        "Scrying",
+        "Sleep"
+      ]
     }
   },
   "Crab": {
@@ -12289,6 +13059,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Light",
+      "Thaumaturgy",
+      "Command",
+      "Spiritual Weapon",
+      "Hold Person"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Command",
+        "Spiritual Weapon"
+      ],
+      "1": [
+        "Hold Person"
+      ]
     }
   },
   "Cultist Hierophant": {
@@ -12392,6 +13178,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Armor",
+      "Thaumaturgy",
+      "Mass Suggestion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Mage Armor"
+      ],
+      "1": [
+        "Mass Suggestion"
+      ]
     }
   },
   "Cultist of Demogorgon": {
@@ -12579,6 +13378,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Calm Emotions",
+      "Detect Thoughts",
+      "Dominate Person"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Calm Emotions",
+        "Detect Thoughts"
+      ],
+      "1": [
+        "Dominate Person"
+      ]
     }
   },
   "Cultists of Bhaal": {
@@ -12685,6 +13498,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mind Spike",
+      "Dimension Door",
+      "Mislead"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Mind Spike"
+      ],
+      "1": [
+        "Dimension Door",
+        "Mislead"
+      ]
     }
   },
   "Cultists of Myrkul": {
@@ -12793,6 +13620,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Speak with Dead",
+      "Thaumaturgy",
+      "Animate Dead",
+      "Circle of Death"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Dead"
+      ],
+      "1": [
+        "Animate Dead",
+        "Circle of Death"
+      ]
     }
   },
   "Cyclops Oracle": {
@@ -12897,6 +13739,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Arcane Eye",
+      "Detect Magic",
+      "Locate Object",
+      "Legend Lore"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Arcane Eye",
+        "Detect Magic",
+        "Locate Object"
+      ],
+      "1": [
+        "Legend Lore"
+      ]
     }
   },
   "Cyclops Sentry": {
@@ -13289,6 +14147,34 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Detect Magic",
+      "Stone Shape",
+      "Gaseous Form",
+      "Invisibility",
+      "Move Earth",
+      "Passwall",
+      "Plane Shift",
+      "Tongues",
+      "Wall of Stone"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good",
+        "Detect Magic",
+        "Stone Shape"
+      ],
+      "1": [
+        "Gaseous Form",
+        "Invisibility",
+        "Move Earth",
+        "Passwall",
+        "Plane Shift",
+        "Tongues",
+        "Wall of Stone"
+      ]
     }
   },
   "Dardew": {
@@ -13585,6 +14471,30 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts",
+      "Dispel Magic",
+      "Dimension Door",
+      "Invisibility",
+      "Scrying",
+      "Circle of Death",
+      "Create Undead"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Thoughts",
+        "Dispel Magic"
+      ],
+      "2": [
+        "Dimension Door",
+        "Invisibility",
+        "Scrying"
+      ],
+      "1": [
+        "Circle of Death",
+        "Create Undead"
+      ]
     }
   },
   "Death Cultist": {
@@ -13689,6 +14599,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Speak with Dead",
+      "Thaumaturgy"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Dead"
+      ]
     }
   },
   "Death Dog": {
@@ -13884,6 +14803,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Command",
+      "Phantom Steed",
+      "Dispel Magic"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Command",
+        "Phantom Steed"
+      ],
+      "2": [
+        "Dispel Magic"
+      ]
     }
   },
   "Death Knight Aspirant": {
@@ -13983,6 +14916,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Phantom Steed",
+      "Dispel Magic"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Phantom Steed"
+      ],
+      "1": [
+        "Dispel Magic"
+      ]
     }
   },
   "Death Slaad": {
@@ -14081,6 +15026,33 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Invisibility",
+      "Mage Hand",
+      "Major Image",
+      "Blight",
+      "Cloudkill",
+      "Fly",
+      "Plane Shift",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Invisibility",
+        "Major Image"
+      ],
+      "1": [
+        "Blight",
+        "Cloudkill",
+        "Fly",
+        "Plane Shift",
+        "Tongues"
+      ]
     }
   },
   "Death Tyrant": {
@@ -15005,6 +15977,30 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Shapechange",
+      "Cure Wounds",
+      "Lesser Restoration",
+      "Remove Curse",
+      "Commune",
+      "Raise Dead"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good",
+        "Shapechange"
+      ],
+      "2": [
+        "Cure Wounds",
+        "Lesser Restoration",
+        "Remove Curse"
+      ],
+      "1": [
+        "Commune",
+        "Raise Dead"
+      ]
     }
   },
   "Dire Wolf": {
@@ -15410,6 +16406,36 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Detect Magic",
+      "Create Food and Water",
+      "Tongues",
+      "Wind Walk",
+      "Creation",
+      "Gaseous Form",
+      "Invisibility",
+      "Major Image",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good",
+        "Detect Magic"
+      ],
+      "2": [
+        "Create Food and Water",
+        "Tongues",
+        "Wind Walk"
+      ],
+      "1": [
+        "Creation",
+        "Gaseous Form",
+        "Invisibility",
+        "Major Image",
+        "Plane Shift"
+      ]
     }
   },
   "Doppelganger": {
@@ -15620,6 +16646,22 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Ray of Sickness",
+      "Create Undead",
+      "Finger of Death"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Ray of Sickness"
+      ],
+      "1": [
+        "Create Undead",
+        "Finger of Death"
+      ]
     }
   },
   "Draft Horse": {
@@ -15923,6 +16965,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Detect Thoughts"
+      ]
     }
   },
   "Dreaming Dark Mindkiller": {
@@ -16035,6 +17085,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dominate Person"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Dominate Person"
+      ]
     }
   },
   "Dretch": {
@@ -16352,6 +17410,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Darkness",
+      "Faerie Fire",
+      "Levitate"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Darkness",
+        "Faerie Fire",
+        "Levitate"
+      ]
     }
   },
   "Drow Mage of Lolth": {
@@ -16462,6 +17532,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Mage Armor",
+      "Mage Hand",
+      "Minor Illusion",
+      "Faerie Fire",
+      "Misty Step"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Mage Armor"
+      ],
+      "3": [
+        "Faerie Fire",
+        "Misty Step"
+      ]
     }
   },
   "Drow of Loth": {
@@ -16573,6 +17660,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Faerie Fire"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Faerie Fire"
+      ]
     }
   },
   "Drow Priestes of Lolth": {
@@ -16667,6 +17763,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Guidance",
+      "Thaumaturgy",
+      "Cure Wounds",
+      "Darkness",
+      "Dispel Magic",
+      "Lesser Restoration"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Cure Wounds",
+        "Darkness",
+        "Dispel Magic",
+        "Lesser Restoration"
+      ]
     }
   },
   "Druid": {
@@ -16771,6 +17884,29 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Druidcraft",
+      "Speak with Animals",
+      "Entangle",
+      "Thunderwave",
+      "Animal Messenger",
+      "Longstrider",
+      "Moonbeam"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Animals"
+      ],
+      "2": [
+        "Entangle",
+        "Thunderwave"
+      ],
+      "1": [
+        "Animal Messenger",
+        "Longstrider",
+        "Moonbeam"
+      ]
     }
   },
   "Dryad": {
@@ -16879,6 +18015,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Charm Monster",
+      "Druidcraft",
+      "Entangle",
+      "Pass without Trace"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship",
+        "Charm Monster"
+      ],
+      "1": [
+        "Entangle",
+        "Pass without Trace"
+      ]
     }
   },
   "Dust Mephit": {
@@ -17287,6 +18440,29 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Elementalism",
+      "Gaseous Form",
+      "Invisibility",
+      "Major Image",
+      "Plane Shift",
+      "Tongues",
+      "Wall of Fire"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic"
+      ],
+      "1": [
+        "Gaseous Form",
+        "Invisibility",
+        "Major Image",
+        "Plane Shift",
+        "Tongues",
+        "Wall of Fire"
+      ]
     }
   },
   "Eldritch Eddy": {
@@ -17640,7 +18816,11 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "spell_indices": [
+      "Elementalism",
+      "Mage Hand"
+    ]
   },
   "Elephant": {
     "name": "Elephant",
@@ -18165,6 +19345,28 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Calm Emotions",
+      "Greater Restoration",
+      "Pass without Trace",
+      "Water Breathing",
+      "Commune",
+      "Dispel Evil and Good",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Calm Emotions",
+        "Greater Restoration",
+        "Pass without Trace",
+        "Water Breathing"
+      ],
+      "1": [
+        "Commune",
+        "Dispel Evil and Good",
+        "Plane Shift"
+      ]
     }
   },
   "Empyrean Iota": {
@@ -18278,6 +19480,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Bless",
+      "Healing Word",
+      "Lesser Restoration"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Bless",
+        "Healing Word",
+        "Lesser Restoration"
+      ]
     }
   },
   "Erinyes": {
@@ -18689,6 +19903,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Mage Hand",
+      "Minor Illusion",
+      "Hallucinatory Terrain",
+      "Polymorph"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Hallucinatory Terrain",
+        "Polymorph"
+      ]
     }
   },
   "Faerie Dragon Youth": {
@@ -18779,7 +20006,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Mage Hand",
+      "Minor Illusion"
+    ]
   },
   "Fiend Cultist": {
     "name": "Fiend Cultist",
@@ -18867,6 +20099,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Hellish Rebuke",
+      "Scorching Ray",
+      "Thaumaturgy",
+      "Fireball"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Hellish Rebuke",
+        "Scorching Ray"
+      ],
+      "2": [
+        "Fireball"
+      ]
     }
   },
   "Fiendish Icon": {
@@ -19296,6 +20543,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Magic Missile",
+      "Fireball"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Magic Missile"
+      ],
+      "1": [
+        "Fireball"
+      ]
     }
   },
   "Flaming Skeleton": {
@@ -20572,6 +21832,16 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Sleep",
+      "Unseen Servant"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Sleep",
+        "Unseen Servant"
+      ]
     }
   },
   "Ghast": {
@@ -20823,6 +22093,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Speak with Dead",
+      "Thaumaturgy"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Dead"
+      ]
     }
   },
   "Ghost": {
@@ -22738,6 +24017,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Detect Magic",
+      "Clairvoyance"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good",
+        "Detect Magic"
+      ],
+      "1": [
+        "Clairvoyance"
+      ]
     }
   },
   "Giant Rat": {
@@ -24026,6 +25319,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Misty Step",
+      "Nondetection",
+      "Plane Shift",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Misty Step"
+      ],
+      "2": [
+        "Nondetection",
+        "Plane Shift",
+        "Tongues"
+      ]
     }
   },
   "Githyanki Knight": {
@@ -24111,6 +25421,25 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Misty Step",
+      "Nondetection",
+      "Tongues",
+      "Plane Shift",
+      "Telekinesis"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Misty Step",
+        "Nondetection",
+        "Tongues"
+      ],
+      "1": [
+        "Plane Shift",
+        "Telekinesis"
+      ]
     }
   },
   "Githyanki Warrior/Soldier": {
@@ -24196,6 +25525,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Misty Step",
+      "Nondetection"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Misty Step"
+      ],
+      "1": [
+        "Nondetection"
+      ]
     }
   },
   "Githzerai Monk": {
@@ -24281,6 +25623,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Feather Fall",
+      "Jump",
+      "Shield",
+      "See Invisibility"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Feather Fall",
+        "Jump",
+        "Shield"
+      ],
+      "1": [
+        "See Invisibility"
+      ]
     }
   },
   "Githzerai Psion": {
@@ -24384,6 +25743,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Feather Fall",
+      "Mage Hand",
+      "Shield",
+      "Plane Shift",
+      "See Invisibility"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Feather Fall",
+        "Shield"
+      ],
+      "1": [
+        "Plane Shift",
+        "See Invisibility"
+      ]
     }
   },
   "Githzerai Zerth": {
@@ -24469,6 +25845,27 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Feather Fall",
+      "Jump",
+      "Shield",
+      "Phantasmal Killer",
+      "Plane Shift",
+      "See Invisibility"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Feather Fall",
+        "Jump",
+        "Shield"
+      ],
+      "1": [
+        "Phantasmal Killer",
+        "Plane Shift",
+        "See Invisibility"
+      ]
     }
   },
   "Glabrezu": {
@@ -24570,6 +25967,26 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Darkness",
+      "Detect Magic",
+      "Dispel Magic",
+      "Confusion",
+      "Fly",
+      "Power Word Stun"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Darkness",
+        "Detect Magic",
+        "Dispel Magic"
+      ],
+      "1": [
+        "Confusion",
+        "Fly",
+        "Power Word Stun"
+      ]
     }
   },
   "Gladiator": {
@@ -25350,6 +26767,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Minor Illusion",
+      "Blindness/Deafness",
+      "Faerie Fire",
+      "Grease"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Blindness/Deafness",
+        "Faerie Fire",
+        "Grease"
+      ]
     }
   },
   "Goblin Minion": {
@@ -26088,6 +27518,31 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Invisibility",
+      "Mage Hand",
+      "Major Image",
+      "Cloudkill",
+      "Fly",
+      "Plane Shift",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Invisibility",
+        "Major Image"
+      ],
+      "1": [
+        "Cloudkill",
+        "Fly",
+        "Plane Shift",
+        "Tongues"
+      ]
     }
   },
   "Green Dragon Wyrmling": {
@@ -26280,6 +27735,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Disguise Self",
+      "Invisibility",
+      "Minor Illusion",
+      "Ray of Sickness"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Disguise Self",
+        "Invisibility",
+        "Ray of Sickness"
+      ]
     }
   },
   "Green Slaad": {
@@ -26396,6 +27865,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Mage Hand",
+      "Fireball",
+      "Invisibility"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts"
+      ],
+      "1": [
+        "Fireball",
+        "Invisibility"
+      ]
     }
   },
   "Grell": {
@@ -27202,6 +28688,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Thaumaturgy",
+      "Clairvoyance",
+      "Cure Wounds",
+      "Flame Strike",
+      "Geas",
+      "True Seeing"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Clairvoyance",
+        "Cure Wounds",
+        "Flame Strike",
+        "Geas",
+        "True Seeing"
+      ]
     }
   },
   "Gulthias Blight": {
@@ -29954,6 +31457,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Daylight",
+      "Druidcraft",
+      "Plant Growth",
+      "Blindness/Deafness"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Daylight",
+        "Plant Growth"
+      ],
+      "1": [
+        "Blindness/Deafness"
+      ]
     }
   },
   "Incubus": {
@@ -30052,6 +31570,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Disguise Self",
+      "Etherealness",
+      "Dream",
+      "Hypnotic Pattern"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Disguise Self",
+        "Etherealness"
+      ],
+      "1": [
+        "Dream",
+        "Hypnotic Pattern"
+      ]
     }
   },
   "Intellect Devourer": {
@@ -30676,6 +32210,16 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Cure Wounds",
+      "Lesser Restoration"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Cure Wounds",
+        "Lesser Restoration"
+      ]
     }
   },
   "Juvenile Shadow Dragon": {
@@ -30899,6 +32443,25 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Silence",
+      "Thaumaturgy",
+      "Ray of Sickness",
+      "Blight",
+      "Mislead"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Silence"
+      ],
+      "2": [
+        "Ray of Sickness"
+      ],
+      "1": [
+        "Blight",
+        "Mislead"
+      ]
     }
   },
   "Kenku": {
@@ -31591,6 +33154,26 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Alarm",
+      "Arcane Lock",
+      "Mage Armor",
+      "Counterspell",
+      "Dispel Magic"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Alarm",
+        "Arcane Lock",
+        "Mage Armor"
+      ],
+      "3": [
+        "Counterspell"
+      ],
+      "1": [
+        "Dispel Magic"
+      ]
     }
   },
   "Kuo-toa": {
@@ -31809,6 +33392,29 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Thaumaturgy",
+      "Shield of Faith",
+      "Divination",
+      "Hold Monster",
+      "Scrying",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic"
+      ],
+      "2": [
+        "Shield of Faith"
+      ],
+      "1": [
+        "Divination",
+        "Hold Monster",
+        "Scrying",
+        "Tongues"
+      ]
     }
   },
   "Kuo-toa Monitor": {
@@ -32006,6 +33612,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Shield of Faith"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Shield of Faith"
+      ]
     }
   },
   "Lacedon Ghoul": {
@@ -32209,6 +33823,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Disguise Self",
+      "Minor Illusion",
+      "Geas",
+      "Major Image",
+      "Scrying"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Disguise Self"
+      ],
+      "1": [
+        "Geas",
+        "Major Image",
+        "Scrying"
+      ]
     }
   },
   "Larva": {
@@ -32528,6 +34159,50 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Counterspell",
+      "Detect Magic",
+      "Detect Thoughts",
+      "Dispel Magic",
+      "Fear",
+      "Fireball",
+      "Invisibility",
+      "Lightning Bolt",
+      "Mage Hand",
+      "Prestidigitation",
+      "Shield",
+      "Animate Dead",
+      "Dimension Door",
+      "Plane Shift",
+      "Chain Lightning",
+      "Finger of Death",
+      "Power Word Kill",
+      "Scrying"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Counterspell",
+        "Detect Magic",
+        "Detect Thoughts",
+        "Dispel Magic",
+        "Fear",
+        "Fireball",
+        "Invisibility",
+        "Lightning Bolt",
+        "Shield"
+      ],
+      "2": [
+        "Animate Dead",
+        "Dimension Door",
+        "Plane Shift"
+      ],
+      "1": [
+        "Chain Lightning",
+        "Finger of Death",
+        "Power Word Kill",
+        "Scrying"
+      ]
     }
   },
   "Lion": {
@@ -32810,6 +34485,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Elementalism",
+      "Meld into Stone",
+      "Speak with Plants",
+      "Spike Growth"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Meld into Stone",
+        "Speak with Plants",
+        "Spike Growth"
+      ]
     }
   },
   "Lizardfolk Sovereign": {
@@ -33127,6 +34815,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Elementalism",
+      "Gust of Wind",
+      "Thunderwave",
+      "Jump",
+      "Feather Fall"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Gust of Wind",
+        "Thunderwave"
+      ],
+      "2": [
+        "Jump",
+        "Feather Fall"
+      ]
     }
   },
   "Mage": {
@@ -33229,6 +34934,39 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Light",
+      "Mage Armor",
+      "Mage Hand",
+      "Prestidigitation",
+      "Counterspell",
+      "Misty Step",
+      "Shield",
+      "Fireball",
+      "Invisibility",
+      "Cone of Cold",
+      "Fly"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Mage Armor"
+      ],
+      "3": [
+        "Counterspell",
+        "Misty Step",
+        "Shield"
+      ],
+      "2": [
+        "Fireball",
+        "Invisibility"
+      ],
+      "1": [
+        "Cone of Cold",
+        "Fly"
+      ]
     }
   },
   "Mage Apprentice": {
@@ -33331,6 +35069,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Prestidigitation",
+      "Disguise Self",
+      "Ice Knife",
+      "Mage Armor",
+      "Thunderwave"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Disguise Self",
+        "Ice Knife",
+        "Mage Armor",
+        "Thunderwave"
+      ]
     }
   },
   "Magma Mephit": {
@@ -33920,6 +35674,49 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Counterspell",
+      "Detect Magic",
+      "Detect Thoughts",
+      "Light",
+      "Lightning Bolt",
+      "Mage Armor",
+      "Mage Hand",
+      "Misty Step",
+      "Prestidigitation",
+      "Shield",
+      "Scrying",
+      "Sending",
+      "Wall of Force",
+      "Befuddlement",
+      "Clone",
+      "Finger of Death",
+      "Mind Blank",
+      "Simulacrum"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Counterspell",
+        "Detect Magic",
+        "Detect Thoughts",
+        "Lightning Bolt",
+        "Mage Armor",
+        "Misty Step",
+        "Shield"
+      ],
+      "2": [
+        "Scrying",
+        "Sending",
+        "Wall of Force"
+      ],
+      "1": [
+        "Befuddlement",
+        "Clone",
+        "Finger of Death",
+        "Mind Blank",
+        "Simulacrum"
+      ]
     }
   },
   "Manticore": {
@@ -34119,6 +35916,32 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Create or Destroy Water",
+      "Detect Evil and Good",
+      "Detect Magic",
+      "Purify Food and Drink",
+      "Control Water",
+      "Gaseous Form",
+      "Invisibility",
+      "Plane Shift",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Create or Destroy Water",
+        "Detect Evil and Good",
+        "Detect Magic",
+        "Purify Food and Drink"
+      ],
+      "1": [
+        "Control Water",
+        "Gaseous Form",
+        "Invisibility",
+        "Plane Shift",
+        "Tongues"
+      ]
     }
   },
   "Marilith": {
@@ -34393,6 +36216,17 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Guidance",
+      "Detect Thoughts",
+      "See Invisibility"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Detect Thoughts",
+        "See Invisibility"
+      ]
     }
   },
   "Medusa": {
@@ -34730,6 +36564,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Elementalism",
+      "Light",
+      "Control Water",
+      "Create or Destroy Water"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Control Water",
+        "Create or Destroy Water"
+      ]
     }
   },
   "Merrow": {
@@ -34963,6 +36809,16 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Command",
+      "Mage Hand",
+      "Minor Illusion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Command"
+      ]
     }
   },
   "Merrow Haranguer": {
@@ -35207,6 +37063,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Cloudkill",
+      "Darkness",
+      "Dispel Magic"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Cloudkill",
+        "Darkness",
+        "Dispel Magic"
+      ]
     }
   },
   "Mimic": {
@@ -35429,6 +37297,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts",
+      "Dominate Monster",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Thoughts"
+      ],
+      "1": [
+        "Dominate Monster",
+        "Plane Shift"
+      ]
     }
   },
   "Mind Flayer Arcanist": {
@@ -35544,6 +37426,37 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Disguise Self",
+      "Mage Hand",
+      "Shield",
+      "Clairvoyance",
+      "Dimension Door",
+      "Fireball",
+      "Lightning Bolt",
+      "Plane Shift",
+      "Sending"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Disguise Self"
+      ],
+      "2": [
+        "Shield"
+      ],
+      "1": [
+        "Clairvoyance",
+        "Dimension Door",
+        "Fireball",
+        "Lightning Bolt",
+        "Plane Shift",
+        "Sending"
+      ]
     }
   },
   "Minotaur of Baphomet": {
@@ -36694,6 +38607,25 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Dispel Magic",
+      "Command",
+      "Thaumaturgy",
+      "Animate Dead",
+      "Harm",
+      "Insect Plague"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Dispel Magic",
+        "Command"
+      ],
+      "1": [
+        "Animate Dead",
+        "Harm",
+        "Insect Plague"
+      ]
     }
   },
   "Myconid Adult": {
@@ -37355,6 +39287,24 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Etherealness",
+      "Magic Missile",
+      "Phantasmal Killer",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Etherealness",
+        "Magic Missile"
+      ],
+      "2": [
+        "Phantasmal Killer",
+        "Plane Shift"
+      ]
     }
   },
   "Nightmare": {
@@ -37958,6 +39908,32 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Armor",
+      "Mage Hand",
+      "Minor Illusion",
+      "Shield",
+      "Befuddlement",
+      "Detect Thoughts",
+      "Fly",
+      "Scrying",
+      "Shatter"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Mage Armor"
+      ],
+      "2": [
+        "Shield"
+      ],
+      "1": [
+        "Befuddlement",
+        "Detect Thoughts",
+        "Fly",
+        "Scrying",
+        "Shatter"
+      ]
     }
   },
   "Noggle Ransacker": {
@@ -39006,6 +40982,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Charm Person",
+      "Darkness",
+      "Gaseous Form",
+      "Sleep"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Charm Person",
+        "Darkness",
+        "Gaseous Form",
+        "Sleep"
+      ]
     }
   },
   "Orien Enforcer": {
@@ -39111,6 +41101,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Misty Step"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Misty Step"
+      ]
     }
   },
   "Otyugh": {
@@ -39822,6 +41820,16 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Minor Illusion",
+      "Prestidigitation",
+      "Hideous Laughter"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Hideous Laughter"
+      ]
     }
   },
   "Peryton": {
@@ -40037,6 +42045,29 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Mage Hand",
+      "Counterspell",
+      "Shield",
+      "Clairvoyance",
+      "Major Image"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts"
+      ],
+      "3": [
+        "Counterspell",
+        "Shield"
+      ],
+      "1": [
+        "Clairvoyance",
+        "Major Image"
+      ]
     }
   },
   "Phaerimm Elder": {
@@ -40167,6 +42198,35 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Command",
+      "Detect Magic",
+      "Detect Thoughts",
+      "Mage Hand",
+      "Counterspell",
+      "Shield",
+      "Clairvoyance",
+      "Geas",
+      "Major Image",
+      "Mirage Arcane"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Command",
+        "Detect Magic",
+        "Detect Thoughts"
+      ],
+      "3": [
+        "Counterspell",
+        "Shield"
+      ],
+      "1": [
+        "Clairvoyance",
+        "Geas",
+        "Major Image",
+        "Mirage Arcane"
+      ]
     }
   },
   "Phaerimm Hatchling": {
@@ -40259,6 +42319,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts",
+      "Mage Hand"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Thoughts"
+      ]
     }
   },
   "Phaerimm Scout": {
@@ -40369,6 +42438,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Mage Hand",
+      "Clairvoyance"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts"
+      ],
+      "1": [
+        "Clairvoyance"
+      ]
     }
   },
   "Phaerimn": {
@@ -40460,6 +42544,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts",
+      "Mage Hand"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Thoughts"
+      ]
     }
   },
   "Phaerimn Agent": {
@@ -40569,6 +42662,29 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Mage Hand",
+      "Counterspell",
+      "Shield",
+      "Clairvoyance",
+      "Major Image"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts"
+      ],
+      "3": [
+        "Counterspell",
+        "Shield"
+      ],
+      "1": [
+        "Clairvoyance",
+        "Major Image"
+      ]
     }
   },
   "Phase Spider": {
@@ -41383,6 +43499,24 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Druidcraft",
+      "Invisibility",
+      "Detect Thoughts",
+      "Fly",
+      "Sleep"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Invisibility"
+      ],
+      "1": [
+        "Detect Thoughts",
+        "Fly",
+        "Sleep"
+      ]
     }
   },
   "Pixie Wonderbringer": {
@@ -41489,6 +43623,24 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Druidcraft",
+      "Invisibility",
+      "Detect Thoughts",
+      "Fly",
+      "Major Image"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Invisibility"
+      ],
+      "1": [
+        "Detect Thoughts",
+        "Fly",
+        "Major Image"
+      ]
     }
   },
   "Planetar": {
@@ -41588,6 +43740,34 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Cure Wounds",
+      "Invisibility",
+      "Lesser Restoration",
+      "Remove Curse",
+      "Commune",
+      "Control Weather",
+      "Dispel Evil and Good",
+      "Raise Dead"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good"
+      ],
+      "2": [
+        "Cure Wounds",
+        "Invisibility",
+        "Lesser Restoration",
+        "Remove Curse"
+      ],
+      "1": [
+        "Commune",
+        "Control Weather",
+        "Dispel Evil and Good",
+        "Raise Dead"
+      ]
     }
   },
   "Plesiosaurus": {
@@ -42172,6 +44352,26 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Light",
+      "Thaumaturgy",
+      "Bless",
+      "Dispel Magic",
+      "Healing Word",
+      "Lesser Restoration",
+      "Spirit Guardians"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Bless",
+        "Dispel Magic",
+        "Healing Word",
+        "Lesser Restoration"
+      ],
+      "1": [
+        "Spirit Guardians"
+      ]
     }
   },
   "Priest Acolyte": {
@@ -42274,6 +44474,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Light",
+      "Thaumaturgy",
+      "Bless",
+      "Healing Word",
+      "Sanctuary"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Bless",
+        "Healing Word",
+        "Sanctuary"
+      ]
     }
   },
   "Primeval Owlbear": {
@@ -42928,6 +45142,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Minor Illusion",
+      "Feather Fall",
+      "Shield",
+      "Mind Spike"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Feather Fall",
+        "Shield"
+      ],
+      "2": [
+        "Mind Spike"
+      ]
     }
   },
   "Quasit": {
@@ -43270,6 +45500,20 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Daylight",
+      "Dispel Evil and Good",
+      "Greater Restoration",
+      "Phantom Steed"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Daylight",
+        "Dispel Evil and Good",
+        "Greater Restoration",
+        "Phantom Steed"
+      ]
     }
   },
   "Rakshasa": {
@@ -43365,6 +45609,30 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Disguise Self",
+      "Mage Hand",
+      "Minor Illusion",
+      "Fly",
+      "Invisibility",
+      "Major Image",
+      "Plane Shift"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Disguise Self"
+      ],
+      "1": [
+        "Fly",
+        "Invisibility",
+        "Major Image",
+        "Plane Shift"
+      ]
     }
   },
   "Rat": {
@@ -45204,6 +47472,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Thaumaturgy",
+      "Bless",
+      "Healing Word",
+      "Hold Person",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "2": [
+        "Bless",
+        "Healing Word",
+        "Hold Person",
+        "Tongues"
+      ]
     }
   },
   "Sahuagin Warrior": {
@@ -45727,6 +48010,34 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Blight",
+      "Detect Magic",
+      "Dispel Magic",
+      "Mage Hand",
+      "Prestidigitation",
+      "Ray of Sickness",
+      "Dimension Door",
+      "Speak with Dead",
+      "Create Undead",
+      "Power Word Kill"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Blight",
+        "Detect Magic",
+        "Dispel Magic",
+        "Ray of Sickness"
+      ],
+      "2": [
+        "Dimension Door",
+        "Speak with Dead"
+      ],
+      "1": [
+        "Create Undead",
+        "Power Word Kill"
+      ]
     }
   },
   "Sammaster (Lich Form)": {
@@ -45867,6 +48178,40 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Cone of Cold",
+      "Counterspell",
+      "Detect Magic",
+      "Dispel Magic",
+      "Invisibility",
+      "Mage Hand",
+      "Prestidigitation",
+      "Shield",
+      "Speak with Dead",
+      "Wall of Force",
+      "Create Undead",
+      "Disintegrate",
+      "Power Word Kill"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Cone of Cold",
+        "Counterspell",
+        "Detect Magic",
+        "Dispel Magic",
+        "Invisibility",
+        "Shield"
+      ],
+      "2": [
+        "Speak with Dead",
+        "Wall of Force"
+      ],
+      "1": [
+        "Create Undead",
+        "Disintegrate",
+        "Power Word Kill"
+      ]
     }
   },
   "Satyr": {
@@ -46712,6 +49057,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Shield"
+    ],
+    "npc_spell_groups": {
+      "3": [
+        "Shield"
+      ]
     }
   },
   "Shadow": {
@@ -47130,6 +49483,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Disguise Self",
+      "Minor Illusion",
+      "Pass without Trace"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Disguise Self"
+      ],
+      "1": [
+        "Pass without Trace"
+      ]
     }
   },
   "Shadowmoor Giant": {
@@ -47727,6 +50093,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Comprehend Languages",
+      "Mage Armor",
+      "Message",
+      "Sending"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Comprehend Languages",
+        "Mage Armor"
+      ],
+      "1": [
+        "Sending"
+      ]
     }
   },
   "Skeleton": {
@@ -48146,6 +50527,32 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Cure Wounds",
+      "Lesser Restoration",
+      "Remove Curse",
+      "Commune",
+      "Control Weather",
+      "Dispel Evil and Good",
+      "Resurrection"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good"
+      ],
+      "3": [
+        "Cure Wounds",
+        "Lesser Restoration",
+        "Remove Curse"
+      ],
+      "1": [
+        "Commune",
+        "Control Weather",
+        "Dispel Evil and Good",
+        "Resurrection"
+      ]
     }
   },
   "Speaker Devil": {
@@ -48246,6 +50653,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Dimension Door",
+      "Modify Memory"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts"
+      ],
+      "2": [
+        "Dimension Door",
+        "Modify Memory"
+      ]
     }
   },
   "Spectator": {
@@ -48547,6 +50970,33 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Identify",
+      "Mage Hand",
+      "Minor Illusion",
+      "Prestidigitation",
+      "Dispel Magic",
+      "Legend Lore",
+      "Locate Object",
+      "Plane Shift",
+      "Remove Curse",
+      "Tongues"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Identify"
+      ],
+      "1": [
+        "Dispel Magic",
+        "Legend Lore",
+        "Locate Object",
+        "Plane Shift",
+        "Remove Curse",
+        "Tongues"
+      ]
     }
   },
   "Sphinx of Secrets": {
@@ -48647,6 +51097,23 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Identify",
+      "Prestidigitation",
+      "Locate Object",
+      "Remove Curse"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Identify"
+      ],
+      "1": [
+        "Locate Object",
+        "Remove Curse"
+      ]
     }
   },
   "Sphinx of Valor": {
@@ -48747,6 +51214,27 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Thaumaturgy",
+      "Detect Magic",
+      "Dispel Magic",
+      "Greater Restoration",
+      "Heroes' Feast",
+      "Zone of Truth"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good"
+      ],
+      "1": [
+        "Detect Magic",
+        "Dispel Magic",
+        "Greater Restoration",
+        "Heroes' Feast",
+        "Zone of Truth"
+      ]
     }
   },
   "Sphinx of Wonder": {
@@ -49252,6 +51740,28 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Mage Hand",
+      "Minor Illusion",
+      "Water Breathing",
+      "Detect Thoughts",
+      "Dimension Door",
+      "Hold Person",
+      "Lightning Bolt"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Water Breathing"
+      ],
+      "2": [
+        "Detect Thoughts",
+        "Dimension Door",
+        "Hold Person",
+        "Lightning Bolt"
+      ]
     }
   },
   "Spore of Moander": {
@@ -50245,6 +52755,19 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Light",
+      "Control Weather"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic"
+      ],
+      "1": [
+        "Control Weather"
+      ]
     }
   },
   "Succubus": {
@@ -50343,6 +52866,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dominate Person"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Dominate Person"
+      ]
     }
   },
   "Swanmay": {
@@ -50469,6 +53000,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Druidcraft",
+      "Speak with Animals",
+      "Animal Friendship",
+      "Spike Growth"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Animals"
+      ],
+      "1": [
+        "Animal Friendship",
+        "Spike Growth"
+      ]
     }
   },
   "Swarm of Bats": {
@@ -51784,6 +54330,15 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Message",
+      "Disintegrate"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Disintegrate"
+      ]
     }
   },
   "Tarkanan Ruffian": {
@@ -52129,6 +54684,21 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Mending",
+      "Prestidigitation",
+      "Disintegrate",
+      "Move Earth",
+      "Stone Shape"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Disintegrate",
+        "Move Earth",
+        "Stone Shape"
+      ]
     }
   },
   "Tharashk Hunter": {
@@ -52445,6 +55015,17 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Mage Hand",
+      "Detect Thoughts",
+      "Sending"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Detect Thoughts",
+        "Sending"
+      ]
     }
   },
   "Tiger": {
@@ -53584,6 +56165,26 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Alter Self",
+      "Clairvoyance",
+      "Detect Magic",
+      "Dimension Door",
+      "Fireball",
+      "Wall of Fire"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Alter Self",
+        "Clairvoyance",
+        "Detect Magic"
+      ],
+      "1": [
+        "Dimension Door",
+        "Fireball",
+        "Wall of Fire"
+      ]
     }
   },
   "Umber Hulk": {
@@ -53787,6 +56388,16 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Darkness",
+      "Minor Illusion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Darkness"
+      ]
     }
   },
   "Unicorn": {
@@ -53903,6 +56514,33 @@
         "actions_in_lair": null,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Evil and Good",
+      "Druidcraft",
+      "Cure Wounds",
+      "Lesser Restoration",
+      "Calm Emotions",
+      "Dispel Evil and Good",
+      "Entangle",
+      "Pass without Trace",
+      "Word of Recall"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Evil and Good"
+      ],
+      "3": [
+        "Cure Wounds",
+        "Lesser Restoration"
+      ],
+      "1": [
+        "Calm Emotions",
+        "Dispel Evil and Good",
+        "Entangle",
+        "Pass without Trace",
+        "Word of Recall"
+      ]
     }
   },
   "Vadalis Heir": {
@@ -54008,6 +56646,26 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Druidcraft",
+      "Light",
+      "Speak with Animals",
+      "Animal Friendship",
+      "Animal Messenger",
+      "Ice Storm"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Speak with Animals"
+      ],
+      "3": [
+        "Animal Friendship",
+        "Animal Messenger"
+      ],
+      "1": [
+        "Ice Storm"
+      ]
     }
   },
   "Valindra Shadowmantle": {
@@ -54147,6 +56805,48 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Counterspell",
+      "Detect Magic",
+      "Detect Thoughts",
+      "Disguise Self",
+      "Dispel Magic",
+      "Fly",
+      "Invisibility",
+      "Lightning Bolt",
+      "Mage Hand",
+      "Prestidigitation",
+      "Shield",
+      "Animate Dead",
+      "Plane Shift",
+      "Cone of Cold",
+      "Finger of Death",
+      "Power Word Kill",
+      "Scrying"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Counterspell",
+        "Detect Magic",
+        "Detect Thoughts",
+        "Disguise Self",
+        "Dispel Magic",
+        "Fly",
+        "Invisibility",
+        "Lightning Bolt",
+        "Shield"
+      ],
+      "2": [
+        "Animate Dead",
+        "Plane Shift"
+      ],
+      "1": [
+        "Cone of Cold",
+        "Finger of Death",
+        "Power Word Kill",
+        "Scrying"
+      ]
     }
   },
   "Vampire": {
@@ -54454,6 +57154,30 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Dispel Magic",
+      "Fireball",
+      "Mage Hand",
+      "Prestidigitation",
+      "Scrying",
+      "Wall of Fire"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Dispel Magic",
+        "Fireball"
+      ],
+      "2": [
+        "Scrying"
+      ],
+      "1": [
+        "Wall of Fire"
+      ]
     }
   },
   "Vampire Nightbringer": {
@@ -54880,6 +57604,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Compulsion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Compulsion"
+      ]
     }
   },
   "Venomous Snake": {
@@ -55448,6 +58180,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Minor Illusion",
+      "Hypnotic Pattern",
+      "Major Image"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Hypnotic Pattern",
+        "Major Image"
+      ]
     }
   },
   "Vrock": {
@@ -55744,6 +58488,24 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Dancing Lights",
+      "Ray of Sickness",
+      "Thaumaturgy",
+      "Cure Wounds",
+      "Hold Person",
+      "Protection from Poison"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Ray of Sickness"
+      ],
+      "1": [
+        "Cure Wounds",
+        "Hold Person",
+        "Protection from Poison"
+      ]
     }
   },
   "Vulture": {
@@ -58607,6 +61369,22 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Detect Thoughts",
+      "Gaseous Form",
+      "Web",
+      "Dominate Person"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Thoughts",
+        "Gaseous Form",
+        "Web"
+      ],
+      "1": [
+        "Dominate Person"
+      ]
     }
   },
   "Young Black Dragon": {
@@ -59915,6 +62693,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Suggestion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship"
+      ],
+      "3": [
+        "Suggestion"
+      ]
     }
   },
   "Yuan-ti Infiltrator": {
@@ -60027,6 +62817,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Suggestion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship"
+      ],
+      "2": [
+        "Suggestion"
+      ]
     }
   },
   "Yuan-ti Malison (Type 1)": {
@@ -60139,6 +62941,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Suggestion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship"
+      ],
+      "2": [
+        "Suggestion"
+      ]
     }
   },
   "Yuan-ti Malison (Type 2)": {
@@ -60233,6 +63047,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Suggestion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship"
+      ],
+      "2": [
+        "Suggestion"
+      ]
     }
   },
   "Yuan-ti Malison (Type 3)": {
@@ -60347,6 +63173,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Animal Friendship",
+      "Suggestion"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Animal Friendship"
+      ],
+      "2": [
+        "Suggestion"
+      ]
     }
   },
   "Zhentilar Paladin of Bane": {
@@ -60451,6 +63289,16 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Command",
+      "Fear"
+    ],
+    "npc_spell_groups": {
+      "1": [
+        "Command",
+        "Fear"
+      ]
     }
   },
   "Zhentilar Soldier": {
@@ -60680,6 +63528,36 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Counterspell",
+      "Detect Magic",
+      "Detect Thoughts",
+      "Dispel Magic",
+      "Mage Hand",
+      "Message",
+      "Dimension Door",
+      "Fly",
+      "Scrying",
+      "Befuddlement",
+      "Disintegrate"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Counterspell",
+        "Detect Magic",
+        "Detect Thoughts",
+        "Dispel Magic"
+      ],
+      "2": [
+        "Dimension Door",
+        "Fly",
+        "Scrying"
+      ],
+      "1": [
+        "Befuddlement",
+        "Disintegrate"
+      ]
     }
   },
   "Zombie": {

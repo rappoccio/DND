@@ -980,3 +980,29 @@ Deliberate deferrals / approximations:
   inert. Beast-form on-hit conditions would need the same routing if/when wanted.
 - Deferred riders (unchanged): Wereboar lycanthropy curse + Tusk charge-conditional extra dice,
   Hobgoblin Warlord Javelin speed −10, Bone Devil "can't regain HP while Poisoned".
+
+## NPC innate spellcasting auto-population (2026-06-09)
+
+Monster stat blocks' innate spells (CSV columns At Will / 3-Day / 2-Day / 1-Day) are auto-loaded
+onto placed/summoned NPCs. The CSV names are resolved against `spells.json` and written to each
+bestiary record as `spell_indices` + `npc_spell_groups` (`{uses/day: [names]}`) — the same shape
+the saved-agent loader already consumes. Resolution lives in `gui/read_stats_from_csv.py`
+(`attach_npc_spells`, runs during full regen) and the one-shot `tools/add_npc_spells.py`
+(augments the existing JSON in place). GUI glue: `_load_npc_spells_from_record` in `main.py`,
+called from the bestiary-placement and summon paths. 161 casters, 886 spells attached.
+
+Deliberate approximations / deferrals:
+- **At-Will *leveled* spells use a 99/day budget** (`AT_WILL_USES`), not true unlimited. An NPC
+  leveled spell needs `uses_max > 0` to be castable (cantrips are level 0 → always castable and
+  stay ungrouped), and the only no-infra way to express "at will" is a large N. The combat panel
+  shows e.g. `Detect Magic 99/99`. A real unlimited flag would be an engine change.
+- **Fixed spell save DC / spell attack from the CSV are ignored** — the engine computes DC and
+  attack from the NPC's spellcasting ability + prof bonus (same as the manual-NPC flow). The
+  `Spell Save DC` / `Spell Attack` columns are not wired (no fixed-DC field without an engine change).
+- **Upcast level annotations are stripped** — `Melf's Acid Arrow (3rd level)` resolves to the base
+  `Acid Arrow`; the NPC casts at base level (no per-listing cast-level override).
+- **7 referenced spells are not in `spells.json`** (skipped, reported by `add_npc_spells.py`):
+  Beast Sense, Destructive Wave, Friends, Synaptic Static, Summon Fiend, Jallarzi's Storm of
+  Radiance. Add them to the catalog to pick them up automatically.
+- Source-data spelling fixes live in `_SPELL_ALIASES` (read_stats_from_csv.py); extend as new
+  typos surface (monster data is unreliable).
