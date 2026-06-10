@@ -145,6 +145,19 @@ int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int 
     return clamped;
 }
 
+bool CombatEngine::spendLuckForAdvantage(BattleMap& bm, int idx)
+{
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.hp_max == 0 && s.hp_cur == 0) return false;  // invalid idx
+    if (!s.hasFeat("Lucky") || s.luck_points <= 0) return false;
+    s.luck_points -= 1;
+    bm.setAgentStats(idx, s);
+    grantPendingAdvantage(true);   // consumed by the agent's next d20 roll
+    log_("{} spends a Luck Point for Advantage ({} remaining)",
+         agentName(bm, idx), s.luck_points);
+    return true;
+}
+
 TerrainTickResult CombatEngine::tickTerrainForTurn(BattleMap& bm, int agent_idx)
 {
     TerrainTickResult result;

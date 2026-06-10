@@ -429,6 +429,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Warlock eldritch invocations (list of invocation codes)")
         .def("has_invocation", &Agent::Stats::hasInvocation,
              "Check if warlock has a specific invocation code")
+        .def_readwrite("feats", &Agent::Stats::feats,
+             "Feats taken (list of canonical names, e.g. 'Tough', 'Savage Attacker', "
+             "'Tavern Brawler', 'Alert', 'Lucky'). Set directly when restoring a save.")
+        .def("has_feat", &Agent::Stats::hasFeat, py::arg("name"),
+             "Check whether the character has the named feat")
+        .def("add_feat", &Agent::Stats::addFeat, py::arg("name"),
+             "Grant a feat and apply its one-time stat effects (Tough HP, Alert initiative "
+             "proficiency, Lucky points). Call after ability scores/level/prof_bonus are set. "
+             "On reload, set `feats` directly instead — bonuses are already folded into hp_max/luck_points.")
+        .def_readwrite("luck_points", &Agent::Stats::luck_points,
+             "Lucky feat: current Luck Points (spent for Advantage; regained on a Long Rest)")
+        .def_readwrite("luck_points_max", &Agent::Stats::luck_points_max,
+             "Lucky feat: maximum Luck Points (= proficiency bonus)")
         .def_readwrite("fiendish_resilience_type", &Agent::Stats::fiendish_resilience_type,
              "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
@@ -524,6 +537,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("topple_available", &Agent::Conditions::topple_available)
         .def_readwrite("cleave_available", &Agent::Conditions::cleave_available)
         .def_readwrite("cleave_used_this_turn", &Agent::Conditions::cleave_used_this_turn)
+        .def_readwrite("savage_attacker_used_this_turn", &Agent::Conditions::savage_attacker_used_this_turn)
+        .def_readwrite("tavern_brawler_push_used_this_turn", &Agent::Conditions::tavern_brawler_push_used_this_turn)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -1671,6 +1686,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Roll d20 + DEX mod [+ prof_bonus if initiative_prof] for every\n"
              "living agent.  Returns a list of InitiativeEntry sorted highest\n"
              "first.  Call once at combat start; reuse the order each round.")
+
+        .def("swap_initiative",
+             &CombatEngine::swapInitiative,
+             py::arg("order"), py::arg("agent_a"), py::arg("agent_b"),
+             "Alert feat — Initiative Swap: exchange two agents' Initiative totals in the\n"
+             "order list and re-sort. The caller enforces the willing-ally / not-Incapacitated\n"
+             "constraint. The list is modified in place.")
+
+        .def("spend_luck_for_advantage",
+             &CombatEngine::spendLuckForAdvantage,
+             py::arg("battle_map"), py::arg("idx"),
+             "Lucky feat: spend one Luck Point to grant the agent Advantage on its next d20\n"
+             "Test (consumed by the next d20 roll). Returns False if no points remain.")
 
         .def("execute_action",
              &CombatEngine::executeAction,

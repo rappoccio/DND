@@ -1006,3 +1006,49 @@ Deliberate approximations / deferrals:
   Radiance. Add them to the catalog to pick them up automatically.
 - Source-data spelling fixes live in `_SPELL_ALIASES` (read_stats_from_csv.py); extend as new
   typos surface (monster data is unreliable).
+
+## Origin feats (2026-06-09)
+
+The combat-relevant 2024 Origin feats are wired into the C++ engine. Feats are stored as a
+`std::vector<std::string> feats` on `Agent::Stats` with `has_feat()` (mirrors
+`eldritch_invocations`/`has_invocation`). `add_feat(name)` grants a feat AND applies its one-time
+stat effects (Tough HP, Alert initiative proficiency, Lucky points) — call it after ability
+scores/level/prof_bonus are set. On reload, set `feats` directly (the bonuses are already folded
+into the persisted `hp_max`/`luck_points`, so re-applying would double-count). Persisted via
+`feats`/`luck_points`/`luck_points_max` in the save JSON. Tests: `gui/test_feats.py`.
+
+Implemented:
+- **Tough** — `hp_max`/`hp_cur` += 2 × character level on grant.
+- **Alert** — sets `initiative_prof` (prof bonus added to initiative); Initiative Swap via
+  `CombatEngine::swap_initiative(order, a, b)` (returns the reordered list).
+- **Savage Attacker** — once per turn, rerolls the weapon damage in `applyAttackResult` and keeps
+  the better roll (compares the "weapon" damage-breakdown entry so flat riders like Rage are fair).
+  Gated by `conditions.savage_attacker_used_this_turn`.
+- **Tavern Brawler** — Enhanced Unarmed Strike (bare "Unarmed" weapon deals 1d4 + STR Bludgeoning,
+  in `rollDamage`) + Damage Rerolls (reroll a 1 on that die) + Push (Unarmed hit shoves 5 ft, once
+  per turn, via `forceMoveAgent`). Scoped to the default "Unarmed" weapon — Monk "MonkUnarmed" is
+  left untouched.
+- **Lucky** — Luck Points = prof bonus (regained on Long Rest); `spend_luck_for_advantage(bm, idx)`
+  spends one to grant Advantage on the agent's next d20 (via the existing pending-advantage hook).
+
+Deferred / noted:
+- **Lucky — Disadvantage benefit** (impose Disadvantage on an attack roll against you): needs a
+  defender reaction window (OnD20Seen imposes a −1d4 penalty, not a reroll-to-disadvantage). Only
+  the self-Advantage benefit is wired. The single engine-wide `pending_advantage_` flag means the
+  Lucky character must spend immediately before their own roll (fine in the turn-by-turn GUI flow).
+- **Healer** — both benefits deferred. Battle Medic needs a Hit-Dice pool (no `hit_dice_*` on Stats
+  yet) and a Healer's Kit item; Healing Rerolls (reroll 1s on healing dice) would touch every
+  healing dice site (Cure Wounds, Healing Word, Lay on Hands, Healing Light, …).
+- **Magic Initiate** — a spell-grant feat; the GUI can already add the cantrips/level-1 spell to a
+  character's spell list. The free once-per-long-rest cast without a slot is not separately tracked.
+- **Crafter, Skilled, Musician** — out of combat (tool/skill proficiencies, item discount/crafting,
+  rest-time Heroic Inspiration). Noted only; not modelled. (Musician's Encouraging Song could later
+  reuse the existing Heroic Inspiration mechanic if wanted.)
+- **GUI feat picker** — DONE 2026-06-09. The StatsDialog has an "Origin Feat:" cycle picker (PCs
+  only, hidden for NPCs); `App._set_origin_feat` applies it idempotently, stripping the prior feat's
+  one-time effects (Tough HP, Alert prof, Lucky points) before applying the new one via `add_feat`.
+  Edge case: re-confirming the *same* feat is a no-op, so **changing a Tough character's level via
+  the dialog does not recompute the +2/level HP** (the HP stepper is editable, so adjust there). One
+  feat per PC by design (general/repeatable feats are a future, separate UI).
+- **Improvised weapon proficiency** (Tavern Brawler) and the once-per-turn "as part of the Attack
+  action" qualifier on Push are not enforced.

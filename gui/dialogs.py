@@ -660,6 +660,12 @@ class StatsDialog:
     C_OK      = ( 35,  90,  45)
     C_OK_H    = ( 50, 125,  65)
 
+    # Origin feats (2024 PHB). One per PC; "NONE" = no feat. The combat-relevant feats
+    # (Tough/Alert/Savage Attacker/Tavern Brawler/Lucky) are wired into the engine; the
+    # rest are stored for completeness (effects out of combat — see known_limitations.md).
+    ORIGIN_FEATS = ["NONE", "Alert", "Crafter", "Healer", "Lucky", "Magic Initiate",
+                    "Musician", "Savage Attacker", "Skilled", "Tavern Brawler", "Tough"]
+
     # Ordered ability-score fields
     ABILITIES = [
         ("STR", "str"),  ("DEX", "dex"), ("CON", "con"),
@@ -705,6 +711,8 @@ class StatsDialog:
         self._invocation_rects = {}      # invocation code -> pygame.Rect for checkboxes
         self._invocation_dialog = None   # scrollable picker (Warlock only)
         self._invocation_btn_rect = None # "Invocations..." launch button
+        self._origin_feat        = "NONE"  # one origin feat per PC (cycle picker)
+        self._origin_feat_rects: dict = {}
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE"):
@@ -720,6 +728,9 @@ class StatsDialog:
         self._npc_spell_groups  = dict(npc_spell_groups) if npc_spell_groups else {}
         self._armor_list        = armor_list or []
         self._eldritch_invocations = list(stats.eldritch_invocations) if hasattr(stats, 'eldritch_invocations') else []
+        # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
+        cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
+        self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
@@ -930,6 +941,20 @@ class StatsDialog:
                     self._blessed_strike_name = available[(idx + 1) % len(available)]
                     return True
 
+            # Origin feat cycle buttons (PCs only)
+            if self._origin_feat_rects:
+                available = self._origin_feat_rects.get("available", [])
+                left_rect = self._origin_feat_rects.get("left")
+                right_rect = self._origin_feat_rects.get("right")
+                if available and left_rect and left_rect.collidepoint(event.pos):
+                    idx = available.index(self._origin_feat) if self._origin_feat in available else 0
+                    self._origin_feat = available[(idx - 1) % len(available)]
+                    return True
+                if available and right_rect and right_rect.collidepoint(event.pos):
+                    idx = available.index(self._origin_feat) if self._origin_feat in available else 0
+                    self._origin_feat = available[(idx + 1) % len(available)]
+                    return True
+
             # Proficiency checkboxes
             for flag_key, rect in self._prof_rects.items():
                 if rect.collidepoint(event.pos):
@@ -975,7 +1000,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -1208,6 +1233,27 @@ class StatsDialog:
             btn_txt = self.font_sm.render(f"Choose... ({n_sel} selected)", True, (210, 220, 240))
             screen.blit(btn_txt, btn_txt.get_rect(center=self._invocation_btn_rect.center))
             npc_checkbox_y = inv_y + 24
+
+        # ── Origin Feat (PCs only): one origin feat per character ──────────
+        self._origin_feat_rects = {}
+        if self._char_level_stepper and not self._is_npc:
+            feat_y = npc_checkbox_y
+            screen.blit(self.font_sm.render("Origin Feat:", True, self.C_LABEL), (dlg.x + self.PAD, feat_y))
+            left_f_r  = pygame.Rect(dlg.x + self.PAD + 75, feat_y, 20, 16)
+            right_f_r = pygame.Rect(dlg.right - self.PAD - 20, feat_y, 20, 16)
+            feat_txt_r = pygame.Rect(left_f_r.right + 4, feat_y, right_f_r.left - left_f_r.right - 8, 16)
+            pygame.draw.rect(screen, (60, 55, 80), left_f_r, border_radius=2)
+            pygame.draw.rect(screen, (120, 100, 150), left_f_r, 1, border_radius=2)
+            _lt = self.font_sm.render("<", True, (220, 210, 240)); screen.blit(_lt, _lt.get_rect(center=left_f_r.center))
+            pygame.draw.rect(screen, (60, 55, 80), feat_txt_r, border_radius=2)
+            pygame.draw.rect(screen, (120, 100, 150), feat_txt_r, 1, border_radius=2)
+            _disp = "None" if self._origin_feat == "NONE" else self._origin_feat
+            _ft = self.font_sm.render(_disp, True, (220, 210, 240)); screen.blit(_ft, _ft.get_rect(center=feat_txt_r.center))
+            pygame.draw.rect(screen, (60, 55, 80), right_f_r, border_radius=2)
+            pygame.draw.rect(screen, (120, 100, 150), right_f_r, 1, border_radius=2)
+            _rt = self.font_sm.render(">", True, (220, 210, 240)); screen.blit(_rt, _rt.get_rect(center=right_f_r.center))
+            self._origin_feat_rects = {"left": left_f_r, "right": right_f_r, "available": self.ORIGIN_FEATS}
+            npc_checkbox_y = feat_y + 24
 
         # ── NPC Spells Section ────────────────────────────────────────────
         npc_checkbox_y = npc_checkbox_y if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300

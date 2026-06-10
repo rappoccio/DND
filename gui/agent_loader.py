@@ -56,6 +56,11 @@ def dict_to_stats(stats_dict):
         else:
             stats.spellcasting_ability = int(ability_val) if ability_val else 5
     stats.temp_hp = int(stats_dict.get("temp_hp", 0))
+    # Feats: set the list directly (do NOT call add_feat on load — hp_max/luck_points are
+    # already persisted with the feat bonuses folded in).
+    stats.feats = list(stats_dict.get("feats", []))
+    stats.luck_points = int(stats_dict.get("luck_points", 0))
+    stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
     return stats
 
 

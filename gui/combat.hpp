@@ -647,6 +647,11 @@ public:
     // Returns actual HP healed (0 if nothing to heal, -1 if no pool remaining).
     static int layOnHands (BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept;
 
+    // Lucky (Origin feat) — spend one Luck Point to grant the agent Advantage on its next
+    // d20 Test (via grantPendingAdvantage, consumed by the next d20 roll). Returns true if a
+    // point was spent, false if the agent has the Lucky feat exhausted / no points remaining.
+    bool spendLuckForAdvantage(BattleMap& bm, int idx);
+
     // One with Shadows (Warlock invocation 8): while in an area of Dim Light or Darkness,
     // cast Invisibility on self for free (no slot). Sets the Invisible condition (ends on the
     // Warlock's next attack/cast, like Invisibility). Returns true if applied, false if the
@@ -1366,6 +1371,13 @@ public:
     // then by agent_idx.  Call once at combat start; reuse the order for
     // all subsequent runRound() calls.
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
+
+    // Alert (Origin feat) — Initiative Swap: immediately after rolling Initiative, swap
+    // your Initiative with a willing ally's. Returns a copy of `order` with the two agents'
+    // totals exchanged and re-sorted; returns it unchanged if either index is absent.
+    // (The willing-ally / not-Incapacitated constraint is left to the caller/GUI.)
+    std::vector<InitiativeEntry> swapInitiative(std::vector<InitiativeEntry> order,
+                                                int agent_a, int agent_b) const;
 
     // ── Round execution ───────────────────────────────────────────────────
     //

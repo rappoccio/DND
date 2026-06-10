@@ -1132,7 +1132,42 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE"):
+    # Origin feats the GUI can assign (must mirror StatsDialog.ORIGIN_FEATS minus "NONE").
+    _ORIGIN_FEATS = {"Alert", "Crafter", "Healer", "Lucky", "Magic Initiate", "Musician",
+                     "Savage Attacker", "Skilled", "Tavern Brawler", "Tough"}
+
+    @staticmethod
+    def _set_origin_feat(stats, new_feat: str, char_level: int):
+        """Set the agent's single origin feat idempotently.
+
+        The dialog re-edits a live Stats whose hp_max/luck_points already include any prior
+        feat's one-time bonus (the HP stepper round-trips the boosted value), so changing or
+        re-confirming a feat must STRIP the previous origin feat's effects before applying the
+        new one. add_feat() (the C++ source of truth) handles the apply; this only handles the
+        inverse for the swap. No-op when the feat is unchanged.
+        """
+        new_feat = new_feat or "NONE"
+        prev = next((f for f in list(stats.feats) if f in App._ORIGIN_FEATS), None)
+        prev = prev or "NONE"
+        if prev == new_feat:
+            return  # already applied — leave hp_max/luck_points/initiative_prof as-is
+
+        # Strip the previous origin feat's one-time effects.
+        if prev == "Tough":
+            stats.hp_max = max(1, stats.hp_max - 2 * char_level)
+            stats.hp_cur = max(1, stats.hp_cur - 2 * char_level)
+        elif prev == "Alert":
+            stats.initiative_prof = False   # only this feat sets it
+        elif prev == "Lucky":
+            stats.luck_points = 0
+            stats.luck_points_max = 0
+        stats.feats = [f for f in list(stats.feats) if f not in App._ORIGIN_FEATS]
+
+        # Apply the newly chosen feat via the engine (applies Tough HP / Alert prof / Lucky points).
+        if new_feat != "NONE":
+            stats.add_feat(new_feat)
+
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE"):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1199,6 +1234,10 @@ class App:
         # Initialize class resources (Rage, Focus Points, Portent Dice, etc.)
         # This must come AFTER setting subclass since resource creation checks subclass
         stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
+
+        # Origin feat (one per PC). Applied after stats/level/prof_bonus are set so Tough HP,
+        # Alert initiative proficiency, and Lucky points compute from the final values.
+        self._set_origin_feat(stats, origin_feat, char_level)
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
@@ -5326,6 +5365,9 @@ class App:
                     "has_branches_of_the_tree": s.has_branches_of_the_tree,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                     "temp_hp": s.temp_hp,
+                    "feats": list(s.feats),
+                    "luck_points": s.luck_points,
+                    "luck_points_max": s.luck_points_max,
                     "magic_resistances": [
                         name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
                         if s.get_magic_damage_multiplier(idx) == 0.5

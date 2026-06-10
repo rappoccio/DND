@@ -195,6 +195,9 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     const int pa = consumePendingAdvantage();
     advantage    = advantage    || pa > 0;
     disadvantage = disadvantage || pa < 0;
+    // Reflect a folded-in one-shot grant (Lucky, Tides of Chaos, …) in the reported flags.
+    r.advantage    = advantage;
+    r.disadvantage = disadvantage;
 
     // If both advantage and disadvantage: they cancel out (roll normally)
     if (advantage && disadvantage) {
@@ -306,6 +309,28 @@ void CombatEngine::rollDamage(const Weapon& w,
         result.magic_damage_types.push_back(dmg_roll.type);
         format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
                     magicDamageName(dmg_roll.type));
+    }
+
+    // Tavern Brawler (Origin feat) — Enhanced Unarmed Strike: a bare Unarmed Strike deals
+    // 1d4 + STR Bludgeoning (vs the default 1 + STR). Damage Rerolls: reroll a 1 on the
+    // die (once, keep the new roll). Scoped to the default "Unarmed" weapon — the Monk's
+    // "MonkUnarmed" die supersedes this and is left untouched.
+    if (w.name == "Unarmed" && attacker.hasFeat("Tavern Brawler")) {
+        const int num_dice = result.critical ? 2 : 1;
+        int type_damage = 0;
+        std::vector<int> type_dice;
+        for (int i = 0; i < num_dice; ++i) {
+            int d = roll(4);
+            if (d == 1) d = roll(4);   // Damage Rerolls: reroll a 1, must use the new roll
+            result.dice_results.push_back(d);
+            type_dice.push_back(d);
+            type_damage += d;
+        }
+        float multiplier = target.physical_damage_multipliers[Bludgeoning];
+        raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        result.physical_damage_types.push_back(Bludgeoning);
+        format_type(num_dice, 4, type_damage, multiplier, type_dice,
+                    physicalDamageName(Bludgeoning));
     }
 
     int ability_mod = damageAbilityMod(w, attacker);
@@ -1500,6 +1525,34 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // window before this finalize: applyUncannyDodge via maybeDefenderOnHitInline (auto/RL) or the
     // advanceAttack suspend (GUI), so r.total_damage already reflects it here.)
 
+    // Savage Attacker (Origin feat): once per turn, reroll the weapon's damage dice and
+    // keep the better roll. resolveAttack already rolled damage once (recorded as the
+    // "weapon" entry in r.damage_breakdown); we reroll a fresh weapon-damage total and, if
+    // higher, fold the delta into r.total_damage. Flat riders (Rage, etc.) are added equally
+    // to both rolls, so comparing only the weapon portion picks the correct better roll.
+    if (r.hit && atk_stats.hasFeat("Savage Attacker") &&
+        !atk_cond.savage_attacker_used_this_turn) {
+        int orig_weapon = 0;
+        for (const auto& kv : r.damage_breakdown)
+            if (kv.first == "weapon") { orig_weapon = kv.second; break; }
+        AttackResult alt;
+        alt.critical = r.critical;   // preserve crit (doubles the dice in rollDamage)
+        rollDamage(w, atk_stats, tgt_stats, alt, action.no_ability_damage);
+        if (alt.total_damage > orig_weapon) {
+            r.total_damage += (alt.total_damage - orig_weapon);
+            for (auto& kv : r.damage_breakdown)
+                if (kv.first == "weapon") { kv.second = alt.total_damage; break; }
+            r.dice_results = alt.dice_results;
+            log_("{}: Savage Attacker rerolls damage ({} → {})",
+                 agentName(bm, action.attacker_idx), orig_weapon, alt.total_damage);
+        } else {
+            log_("{}: Savage Attacker reroll not better ({} vs {}) — keeps original",
+                 agentName(bm, action.attacker_idx), alt.total_damage, orig_weapon);
+        }
+        updated_atk_cond.savage_attacker_used_this_turn = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     // Apply base attack damage to the target's working stats. resolveAttack now
     // computes damage but does not mutate HP, so the single source of truth is
     // applied here (and persisted once via setAgentStats below). Subsequent
@@ -1511,6 +1564,19 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
         r.hp_after    = tgt_stats.hp_cur;
         r.target_down = (r.hp_after <= 0);
+    }
+
+    // Tavern Brawler (Origin feat) — Push: on an Unarmed-Strike hit, shove the target 5 ft
+    // straight away from you (once per turn). Reuses the forced-movement primitive shared
+    // by Weapon Mastery Push and shove riders.
+    if (r.hit && w.name == "Unarmed" && atk_stats.hasFeat("Tavern Brawler") &&
+        !atk_cond.tavern_brawler_push_used_this_turn) {
+        int cells = bm.forceMoveAgent(action.target_idx, atk_pt.origin, 5);
+        if (cells > 0)
+            log_("{}: Tavern Brawler pushes {} 5 ft", agentName(bm, action.attacker_idx),
+                 agentName(bm, action.target_idx));
+        updated_atk_cond.tavern_brawler_push_used_this_turn = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
     // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging

@@ -59,6 +59,33 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
     return entries;
 }
 
+// Alert (Origin feat) — Initiative Swap: exchange the Initiative totals of two agents
+// (e.g. the Alert character and a willing ally) and re-sort the order. No-op if either
+// agent_idx is missing from `order` or the two indices are equal.
+std::vector<InitiativeEntry> CombatEngine::swapInitiative(std::vector<InitiativeEntry> order,
+                                                          int agent_a, int agent_b) const
+{
+    if (agent_a == agent_b) return order;
+    InitiativeEntry* ea = nullptr;
+    InitiativeEntry* eb = nullptr;
+    for (auto& e : order) {
+        if (e.agent_idx == agent_a) ea = &e;
+        if (e.agent_idx == agent_b) eb = &e;
+    }
+    if (!ea || !eb) return order;
+    // Swap the rolled Initiative (total + its d20 component) so the two agents trade
+    // turn-order slots. The DEX modifier stays with each agent (used only as a tiebreaker).
+    std::swap(ea->total, eb->total);
+    std::swap(ea->d20,   eb->d20);
+    std::sort(order.begin(), order.end(), [](const InitiativeEntry& a,
+                                             const InitiativeEntry& b) {
+        if (a.total    != b.total)    return a.total    > b.total;
+        if (a.modifier != b.modifier) return a.modifier > b.modifier;
+        return a.agent_idx < b.agent_idx;
+    });
+    return order;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Turn start / end
 // ─────────────────────────────────────────────────────────────────────────────

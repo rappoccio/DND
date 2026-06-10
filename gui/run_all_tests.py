@@ -41,6 +41,7 @@ test_scripts = [
     "test_terrain_concentration.py",
     "test_summoning.py",
     "test_npc_spells.py",
+    "test_feats.py",
     "test_evoker_safe_targets.py",
     "test_emanation.py",
     "test_class_features.py",

@@ -456,6 +456,42 @@ namespace rpg {
                  != eldritch_invocations.end();
       }
 
+      // ── Feats ───────────────────────────────────────────────────────────
+      // Canonical feat names a character has taken (e.g. "Tough", "Savage Attacker",
+      // "Tavern Brawler", "Alert", "Lucky"). Mirrors the eldritch_invocations pattern.
+      // Combat hooks query hasFeat(); one-time stat effects (Tough HP, Alert initiative
+      // proficiency, Lucky points) are applied by addFeat() when a feat is first granted.
+      std::vector<std::string> feats{};
+      [[nodiscard]] bool hasFeat(const std::string& f) const noexcept {
+          return std::find(feats.begin(), feats.end(), f) != feats.end();
+      }
+
+      // ── Lucky (Origin feat) ─────────────────────────────────────────────
+      // Luck Points = proficiency bonus, regained on a Long Rest. Spent to grant
+      // Advantage on a d20 Test (CombatEngine::spendLuckForAdvantage).
+      int luck_points{0};
+      int luck_points_max{0};
+
+      // Grant a feat and apply its one-time stat-derived effects. Call AFTER ability
+      // scores, level, and prof_bonus are set (the GUI assigns feats at the end of
+      // configuration). Restoring from a save sets the `feats` list directly instead —
+      // hp_max/luck_points are persisted with the bonus already folded in, so re-applying
+      // here would double-count. No-op if the feat is already present.
+      void addFeat(const std::string& name) {
+          if (hasFeat(name)) return;
+          feats.push_back(name);
+          if (name == "Tough") {
+              const int bonus = 2 * char_level;   // +2 HP per character level
+              hp_max += bonus;
+              hp_cur += bonus;
+          } else if (name == "Alert") {
+              initiative_prof = true;             // add prof_bonus to initiative rolls
+          } else if (name == "Lucky") {
+              luck_points_max = prof_bonus;
+              luck_points     = prof_bonus;
+          }
+      }
+
       // Helper: get resource by name (returns nullptr if not found)
       [[nodiscard]] Resource* getResource(const std::string& name) noexcept {
         auto it = resources.find(name);
@@ -478,6 +514,7 @@ namespace rpg {
         for (auto& [name, res] : resources) {
           res.restore_long_rest();
         }
+        luck_points = luck_points_max;   // Lucky feat: Luck Points regained on a Long Rest
       }
 
       // Short rest: restore some resources (e.g., Focus Points for Monk)
@@ -594,6 +631,9 @@ namespace rpg {
       bool poison_used_this_turn{false};    // Poison mastery: once per turn
       bool topple_available{false};         // Topple: a hit this attack can force a Prone save (GUI prompt)
       bool topple_used_this_turn{false};    // Topple: once per turn
+      // ── Origin feats (per-turn) ─────────────────────────────────────────────
+      bool savage_attacker_used_this_turn{false};    // Savage Attacker: damage reroll once per turn
+      bool tavern_brawler_push_used_this_turn{false};// Tavern Brawler: Unarmed-Strike push once per turn
       bool cleave_available{false};         // Cleave: a hit this attack can grant an extra attack (GUI prompt)
       bool cleave_used_this_turn{false};    // Cleave: once per turn
     };
@@ -682,6 +722,8 @@ namespace rpg {
       conditions_.topple_available             = false;
       conditions_.cleave_available             = false;
       conditions_.cleave_used_this_turn        = false;
+      conditions_.savage_attacker_used_this_turn     = false;
+      conditions_.tavern_brawler_push_used_this_turn = false;
       takeTurn();
     }
 
