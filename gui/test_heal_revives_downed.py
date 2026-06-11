@@ -41,7 +41,7 @@ def test_heal_clears_downed_state():
     assert engine.get_agent_conditions(bm, idx).unconscious
     print("✅ Hero is downed (0 HP, unconscious, 2 death-save failures)")
 
-    new_hp = rpg.CombatEngine.heal_agent(bm, idx, 7)
+    new_hp = engine.heal_agent(bm, idx, 7)
     assert new_hp == 7, f"expected 7 HP, got {new_hp}"
 
     cond = engine.get_agent_conditions(bm, idx)
@@ -58,7 +58,7 @@ def test_healed_pc_not_skipped_on_turn():
     idx = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 5, hp=20))
 
     _down_agent(engine, bm, idx, failures=1)
-    rpg.CombatEngine.heal_agent(bm, idx, 5)
+    engine.heal_agent(bm, idx, 5)
 
     res = engine.begin_turn(bm, idx)
     assert not res.turn_skipped, f"healed PC should act, got skip: {res.skip_reason}"
@@ -79,7 +79,7 @@ def test_heal_does_not_revive_the_truly_dead():
     cond.dead = True
     engine.set_agent_conditions(bm, idx, cond)
 
-    rpg.CombatEngine.heal_agent(bm, idx, 10)
+    engine.heal_agent(bm, idx, 10)
     cond = engine.get_agent_conditions(bm, idx)
     assert cond.dead is True, "healing must not resurrect the truly dead"
     assert cond.unconscious is True, "dead creature should stay unconscious"

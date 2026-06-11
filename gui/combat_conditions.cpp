@@ -249,11 +249,10 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
 
 void CombatEngine::reviveOnHeal(BattleMap& bm, int idx) noexcept
 {
-    auto agents = bm.placedAgents();
+    const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
-    const Agent::Stats& s = bm.getAgentStats(idx);
-    if (s.hp_cur <= 0) return;                 // still at 0 HP — nothing to recover from
+    if (bm.getAgentStats(idx).hp_cur <= 0) return;   // still at 0 HP — nothing to recover from
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     if (cond.dead) return;                     // true death needs revival magic, not healing
@@ -262,17 +261,15 @@ void CombatEngine::reviveOnHeal(BattleMap& bm, int idx) noexcept
         cond.death_save_successes == 0 && cond.death_save_failures == 0)
         return;
 
-    // Regaining any HP from 0 returns the creature to consciousness and clears death saves.
-    // (Prone is left in place — they can stand on their turn, per RAW.)
+    // Regaining any HP from 0 returns the creature to consciousness and clears death saves
+    // (D&D 5e), so begin_turn no longer skips them. Prone is left in place — they stand on
+    // their turn, per RAW. Static (no `this`), so the heal log lives at the calling sites.
     cond.unconscious          = false;
     cond.incapacitated        = false;
     cond.stabilized           = false;
     cond.death_save_successes  = 0;
     cond.death_save_failures   = 0;
     bm.setAgentConditions(idx, cond);
-
-    log_("{} regains consciousness from healing ({} HP) — back in the fight",
-         agents[static_cast<std::size_t>(idx)].agent->name(), s.hp_cur);
 }
 
 void CombatEngine::applyPoisoned(BattleMap& bm, int idx) noexcept

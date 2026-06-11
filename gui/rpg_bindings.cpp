@@ -1613,6 +1613,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     &CombatEngine::healAgent,
                     py::arg("battle_map"), py::arg("idx"), py::arg("amount"),
                     "Raise hp_cur of agent[idx] by amount (clamped to hp_max). "
+                    "A downed creature healed above 0 HP returns to consciousness. "
                     "Returns new hp_cur.")
         .def_static("lay_on_hands",
                     &CombatEngine::layOnHands,
