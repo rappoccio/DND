@@ -23,6 +23,7 @@ test_scripts = [
     "test_condition_saves.py",
     "test_grapple.py",
     "test_death_saves.py",
+    "test_heal_revives_downed.py",
     "test_exhaustion.py",
     "test_forced_movement_oa.py",
     "test_reactions.py",

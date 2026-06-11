@@ -13,6 +13,7 @@ import os
 import json
 import math
 import random
+import shutil
 
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
 
@@ -328,26 +329,19 @@ class App:
         self._agent_meta: dict[int, dict] = {}  # {agent_idx: {"npc_spell_groups": {...}}} — for stats dialog
 
         self._map_dir  = os.path.dirname(os.path.abspath(map_path)) or "/"
-        self._save_path = os.path.join(
-            self._map_dir,
-            os.path.splitext(os.path.basename(map_path))[0] + "_agents.json"
-        )
-        self._terrain_path = os.path.join(
-            self._map_dir,
-            os.path.splitext(os.path.basename(map_path))[0] + "_terrain.json"
-        )
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
         self._walls_enabled = True   # auto-detected walls active? (toggle persists in terrain JSON)
 
-        self._effects_path = os.path.join(
+        # An "encounter" = agents + terrain + lighting + effects, stored as four
+        # sidecar JSON files that share one base name. The map PNG is shared (passed
+        # on the command line) so many encounters can reuse the same map. The initial
+        # base name is derived from the map for backward compatibility; Save/Load can
+        # re-point it anywhere via _set_encounter_base().
+        default_agents = os.path.join(
             self._map_dir,
-            os.path.splitext(os.path.basename(map_path))[0] + "_effects.json"
+            os.path.splitext(os.path.basename(map_path))[0] + "_agents.json"
         )
-
-        self._lighting_path = os.path.join(
-            self._map_dir,
-            os.path.splitext(os.path.basename(map_path))[0] + "_lighting.json"
-        )
+        self._set_encounter_base(default_agents)
 
         # Load terrain, spell effects, and lighting data if they exist
         self._load_terrain()
@@ -469,6 +463,8 @@ class App:
         self.round_num              = 0     # current round number (incremented when turn_idx wraps)
         self._effect_meta: dict     = {}    # {effect_id: {"name": str, "color": tuple, "cells": [(col,row)]}}
         self.show_terrain            = False # toggle for showing all terrain regions
+        self._status_msg             = ""    # transient confirmation text (Save/Load Terrain, …)
+        self._status_msg_until       = 0     # pygame ticks (ms) when _status_msg expires
         self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
         self.show_visible_targets    = False # toggle for showing visible target debug info
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
@@ -479,8 +475,10 @@ class App:
                                                         # Burst); -1 = use the spell's stored type
 
         # ── Agent config GUI state ────────────────────────────────────────
-        self._init_config_panel()
+        # Combat panel first: it creates btn_show_terrain, which the config panel
+        # also lays out (the toggle is available before combat too).
         self._init_combat_panel()
+        self._init_config_panel()
         self.scroll_y = 0         # scroll offset for agent list
 
         # ── Map panning (mouse scroll) ────────────────────────────────────
@@ -610,7 +608,18 @@ class App:
         self.btn_edit_terrain = Button(pygame.Rect(px, ter_y, W, B),
                                        "Edit Terrain",
                                        (80, 100, 120), (110, 130, 160), font=self.font_md)
-        light_y = ter_y + B + self._BTN_GAP
+        # btn_show_terrain (created in _init_combat_panel) is laid out here too, in the
+        # reserved slot below Edit Terrain; _draw_panel positions/draws it each frame.
+        show_ter_y = ter_y + B + self._BTN_GAP
+        self.btn_show_terrain.rect.update(px, show_ter_y, W, B)
+        # Save / Load Terrain (file pickers — lets terrain be saved before combat and
+        # reused across maps/encounters, independent of the agents save).
+        save_ter_y = show_ter_y + B + self._BTN_GAP
+        self.btn_save_terrain = Button(pygame.Rect(px, save_ter_y, HW, B), "Save Terrain",
+                                       (50, 100, 60), (70, 130, 80), font=self.font_md)
+        self.btn_load_terrain = Button(pygame.Rect(px + HW + 4, save_ter_y, HW, B), "Load Terrain",
+                                       (50, 75, 120), (70, 100, 155), font=self.font_md)
+        light_y = save_ter_y + B + self._BTN_GAP
         self.btn_edit_lighting = Button(pygame.Rect(px, light_y, W, B),
                                         "Edit Lighting",
                                         (120, 100, 80), (160, 130, 110), font=self.font_md)
@@ -647,7 +656,12 @@ class App:
         self.btn_begin_combat.rect.update(px, bc_y, W, self._BTN_H)
         ter_y = bc_y + self._BTN_H + self._BTN_GAP
         self.btn_edit_terrain.rect.update(px, ter_y, W, self._BTN_H)
-        light_y = ter_y + self._BTN_H + self._BTN_GAP
+        show_ter_y = ter_y + self._BTN_H + self._BTN_GAP
+        self.btn_show_terrain.rect.update(px, show_ter_y, W, self._BTN_H)
+        save_ter_y = show_ter_y + self._BTN_H + self._BTN_GAP
+        self.btn_save_terrain.rect.update(px, save_ter_y, SW, self._BTN_H)
+        self.btn_load_terrain.rect.update(px + SW + 4, save_ter_y, SW, self._BTN_H)
+        light_y = save_ter_y + self._BTN_H + self._BTN_GAP
         self.btn_edit_lighting.rect.update(px, light_y, W, self._BTN_H)
         toggle_light_y = light_y + self._BTN_H + self._BTN_GAP
         self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
@@ -1097,13 +1111,92 @@ class App:
     #  Save / Load
     # ─────────────────────────────────────────────────────────────────────
     # ── Save / load callbacks called by the file browser ─────────────────────
+    def _set_encounter_base(self, agents_path: str):
+        """Point all per-encounter sidecar files at the same base name as the chosen
+        agents file, so one map PNG can host many encounters.
+
+        Given '<dir>/<base>_agents.json' (or '<dir>/<base>.json' if the user typed a
+        plain name), the sidecars become '<dir>/<base>_terrain.json',
+        '<base>_effects.json' and '<base>_lighting.json'.
+        """
+        self._save_path = agents_path
+        d  = os.path.dirname(agents_path)
+        fn = os.path.basename(agents_path)
+        if fn.endswith("_agents.json"):
+            base = fn[:-len("_agents.json")]
+        else:
+            base = os.path.splitext(fn)[0]
+        self._terrain_path  = os.path.join(d, base + "_terrain.json")
+        self._effects_path  = os.path.join(d, base + "_effects.json")
+        self._lighting_path = os.path.join(d, base + "_lighting.json")
+
     def _on_save_path_chosen(self, path: str):
-        self._save_path = path
+        # Capture the previous sidecar locations so lighting/effects (which have no GUI
+        # re-serialization path) can be carried forward to the new encounter base.
+        old_lighting = self._lighting_path
+        old_effects  = self._effects_path
+        self._set_encounter_base(path)
         self._save_agents(path)
+        self._save_terrain()        # writes self._terrain_path (now at the new base)
+        # Lighting & effects travel with the encounter: copy the previous files to the
+        # new base if they exist and we aren't overwriting an existing encounter's scene.
+        for old, new in ((old_lighting, self._lighting_path),
+                         (old_effects,  self._effects_path)):
+            if old != new and os.path.exists(old) and not os.path.exists(new):
+                try:
+                    shutil.copyfile(old, new)
+                except Exception as e:
+                    print(f"Warning: could not carry forward {os.path.basename(old)}: {e}")
 
     def _on_load_path_chosen(self, path: str):
-        self._save_path = path
+        # The Load browser shows every .json, so the user can pick a sidecar
+        # (terrain/lighting/effects) by mistake. Those have no "agents" key — refuse
+        # them rather than wiping the current scene with an empty agent list.
+        try:
+            with open(path) as f:
+                if "agents" not in json.load(f):
+                    self._flash_status(f"Not an encounter file: {os.path.basename(path)}")
+                    return
+        except Exception as e:
+            self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
+            return
+        self._set_encounter_base(path)
         self._load_agents(path)
+        # Re-load the rest of the scene from the new base (terrain resets even if the
+        # new encounter has none of these files, so a stale scene doesn't bleed through).
+        self._load_terrain()
+        self._load_lighting()
+        self._load_spell_effects()
+
+    def _flash_status(self, msg: str, secs: float = 2.5):
+        """Show a transient confirmation message in the panel for `secs` seconds."""
+        self._status_msg = msg
+        self._status_msg_until = pygame.time.get_ticks() + int(secs * 1000)
+
+    def _on_save_terrain_chosen(self, path: str):
+        """Export the current terrain to a chosen _terrain.json (does not change the
+        active encounter base — pure export so terrain can be reused across maps)."""
+        self._save_terrain(path)
+        self._flash_status(f"Terrain saved: {os.path.basename(path)}")
+
+    def _on_load_terrain_chosen(self, path: str):
+        """Import terrain from a chosen _terrain.json into the current scene (it then
+        saves with this encounter)."""
+        # Load shows every .json, so refuse a non-terrain pick (no "regions" key)
+        # rather than clearing the current terrain with an empty region list.
+        try:
+            with open(path) as f:
+                if "regions" not in json.load(f):
+                    self._flash_status(f"Not a terrain file: {os.path.basename(path)}")
+                    return
+        except Exception as e:
+            self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
+            return
+        self._load_terrain(path)
+        if self.selected_idx >= 0:
+            self._update_reach()
+            self._update_attack_overlay()
+        self._flash_status(f"Terrain loaded: {os.path.basename(path)}")
 
     def _update_reach(self):
         """Recompute walk/fly reachable-cell overlays for the selected agent.
@@ -6095,35 +6188,44 @@ class App:
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
 
-    def _load_terrain(self):
+    def _load_terrain(self, path: str | None = None):
         """Load terrain data from JSON file if it exists.
 
         If the file doesn't exist on first load, terrain starts empty.
         User can manually label terrain using the terrain editor,
         or choose to auto-detect walls as a fallback.
         """
-        if os.path.exists(self._terrain_path):
+        # Reset first so this is safe to call repeatedly when swapping encounters
+        # (a new encounter with no terrain file must not inherit the previous scene).
+        path = path or self._terrain_path
+        self._terrain_regions = []
+        self._walls_enabled = True
+        self.bm.reset_terrain_multipliers()
+
+        if os.path.exists(path):
             try:
-                with open(self._terrain_path, 'r') as f:
+                with open(path, 'r') as f:
                     data = json.load(f)
                 self._terrain_regions = data.get("regions", [])
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 self._apply_terrain_to_battle_map()
             except Exception:
                 self._terrain_regions = []
-        else:
-            # First load: start with empty terrain, user can manually label or auto-detect later
-            self._terrain_regions = []
 
-        # Honour a saved "walls off" preference: drop the auto-detected obstacles so a
-        # map the detector mis-read isn't blocked. (detect_walls already ran in __init__.)
-        if not self._walls_enabled:
+        # Honour the walls preference: ON re-detects from a clean slate; OFF drops every
+        # auto-detected obstacle so a map the detector mis-read isn't blocked. (On first
+        # load detect_walls already ran in __init__; clear+detect reproduces that result.)
+        if self._walls_enabled:
+            self.bm.clear_walls()
+            self.bm.detect_walls()
+        else:
             self.bm.clear_walls()
 
-    def _save_terrain(self):
-        """Save terrain data to JSON file."""
+    def _save_terrain(self, path: str | None = None):
+        """Save terrain data to JSON file (defaults to the active encounter's path)."""
+        path = path or self._terrain_path
         data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
-        with open(self._terrain_path, 'w') as f:
+        with open(path, 'w') as f:
             json.dump(data, f, indent=2)
 
     def _toggle_walls(self):
@@ -6181,7 +6283,11 @@ class App:
             }
 
     def _load_lighting(self):
-        """Load lighting data from JSON file if it exists."""
+        """Load lighting data from JSON file if it exists.
+
+        When the encounter has no lighting file, reset to a fully-lit default so a
+        previous encounter's darkness/sources don't bleed through on a swap.
+        """
         if os.path.exists(self._lighting_path):
             try:
                 with open(self._lighting_path, 'r') as f:
@@ -6197,6 +6303,9 @@ class App:
                 self.bm.apply_base_lighting(default_lvl, sources)
             except Exception as e:
                 print(f"[App] Error loading lighting: {e}")
+        else:
+            # No lighting file for this encounter: clean, fully-lit default.
+            self.bm.apply_base_lighting(rpg.VisibilityLevel.Clear, [])
 
     def _save_lighting(self, light_sources, default_light):
         """Save lighting data to JSON file."""
@@ -6805,11 +6914,13 @@ class App:
             terrain_type = region.get("type", "Difficult Terrain")
 
             if terrain_type == "Wall":
-                color = (50, 50, 50, 150)
+                color = (0, 0, 0, 255)           # opaque black
             elif terrain_type == "Chasm":
-                color = (140, 140, 140, 150)
+                color = (128, 128, 128, 255)     # opaque grey
+            elif terrain_type == "Water":
+                color = (50, 100, 230, 128)      # blue, 50% transparent
             else:  # Difficult Terrain
-                color = (139, 90, 43, 150)  # Brown
+                color = (139, 90, 43, 128)       # brown, 50% transparent
 
             # Draw filled rectangle
             fill_surf = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -8054,6 +8165,20 @@ class App:
         # ── Edit Terrain button ────────────────────────────────────────────
         self.btn_edit_terrain.draw(self.screen)
 
+        # ── Show/Hide Terrain toggle (shared with the combat panel) ────────
+        # Re-anchor each frame: the combat panel resizes this same button, so we
+        # restore the pre-combat slot (full width, below Edit Terrain) here.
+        self.btn_show_terrain.rect.update(
+            self.btn_edit_terrain.rect.x,
+            self.btn_edit_terrain.rect.bottom + self._BTN_GAP,
+            self.btn_edit_terrain.rect.w, self._BTN_H)
+        self.btn_show_terrain.text = "Hide Terrain" if self.show_terrain else "Show Terrain"
+        self.btn_show_terrain.draw(self.screen)
+
+        # ── Save / Load Terrain (file pickers) ─────────────────────────────
+        self.btn_save_terrain.draw(self.screen)
+        self.btn_load_terrain.draw(self.screen)
+
         # ── Edit Lighting button ───────────────────────────────────────────
         self.btn_edit_lighting.draw(self.screen)
 
@@ -8079,6 +8204,10 @@ class App:
         text(f"Walls: {len(self.bm.walls)}   Blocked: {len(self.bm.disallowed_cells)}",
              lx, info_y + 18)
         text(f"Agents placed: {len(self.bm.placed_agents)}", lx, info_y + 36)
+
+        # Transient confirmation (e.g. "Terrain saved: …")
+        if self._status_msg and pygame.time.get_ticks() < self._status_msg_until:
+            text(self._status_msg, lx, info_y - 20, (120, 220, 140))
 
     # ─────────────────────────────────────────────────────────────────────
     #  Event handling
@@ -8729,14 +8858,14 @@ class App:
                         name_pattern="_agents.json"
                     )
 
-                # Load — open browser in load mode
+                # Load — open browser in load mode. No name_pattern: show ALL .json so
+                # encounters saved with custom names (not just *_agents.json) are visible.
                 if self.btn_load.clicked(event):
                     start = os.path.dirname(self._save_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_load_path_chosen,
                         save_mode=False,
                         extensions=JSON_EXTS,
-                        name_pattern="_agents.json"
                     )
 
                 # Long Rest — reset all spell slots
@@ -8765,6 +8894,31 @@ class App:
                 # Edit Terrain
                 if self.btn_edit_terrain.clicked(event):
                     self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm)
+
+                # Show/Hide Terrain (same toggle as in combat)
+                if self.btn_show_terrain.clicked(event):
+                    self.show_terrain = not self.show_terrain
+
+                # Save Terrain — open browser in save mode
+                if self.btn_save_terrain.clicked(event):
+                    start = os.path.dirname(self._terrain_path) or self._map_dir
+                    self.file_browser.open(
+                        start, self._on_save_terrain_chosen,
+                        save_mode=True,
+                        extensions=JSON_EXTS,
+                        default_filename=os.path.basename(self._terrain_path),
+                        name_pattern="_terrain.json"
+                    )
+
+                # Load Terrain — open browser in load mode. No name_pattern: show ALL
+                # .json so terrain saved with custom names (not just *_terrain.json) shows.
+                if self.btn_load_terrain.clicked(event):
+                    start = os.path.dirname(self._terrain_path) or self._map_dir
+                    self.file_browser.open(
+                        start, self._on_load_terrain_chosen,
+                        save_mode=False,
+                        extensions=JSON_EXTS,
+                    )
 
                 # Edit Lighting
                 if self.btn_edit_lighting.clicked(event):

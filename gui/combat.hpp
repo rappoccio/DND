@@ -906,6 +906,10 @@ public:
     void applyGrappled(BattleMap& bm, int target_idx, int grappler_idx, int escape_dc) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
+    // Inverse of going down: a creature that regains HP from 0 returns to consciousness
+    // and resets its death saves (D&D 5e). No-op unless the agent is currently downed and
+    // not truly dead. Call after any healing so a healed creature isn't skipped in initiative.
+    void reviveOnHeal(BattleMap& bm, int idx) noexcept;
     // Rogue Cunning Strike rider application (save + condition): Poison/Trip/Withdraw/KnockOut/Obscure.
     // Internal helper called by applyCunningStrikeEffect after the Sneak Attack dice are spent.
     void applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,

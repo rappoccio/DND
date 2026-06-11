@@ -247,6 +247,34 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
 }
 
+void CombatEngine::reviveOnHeal(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    const Agent::Stats& s = bm.getAgentStats(idx);
+    if (s.hp_cur <= 0) return;                 // still at 0 HP — nothing to recover from
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.dead) return;                     // true death needs revival magic, not healing
+    // Only act when the creature was actually downed; a heal on a conscious creature is a no-op here.
+    if (!cond.unconscious && !cond.stabilized &&
+        cond.death_save_successes == 0 && cond.death_save_failures == 0)
+        return;
+
+    // Regaining any HP from 0 returns the creature to consciousness and clears death saves.
+    // (Prone is left in place — they can stand on their turn, per RAW.)
+    cond.unconscious          = false;
+    cond.incapacitated        = false;
+    cond.stabilized           = false;
+    cond.death_save_successes  = 0;
+    cond.death_save_failures   = 0;
+    bm.setAgentConditions(idx, cond);
+
+    log_("{} regains consciousness from healing ({} HP) — back in the fight",
+         agents[static_cast<std::size_t>(idx)].agent->name(), s.hp_cur);
+}
+
 void CombatEngine::applyPoisoned(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();

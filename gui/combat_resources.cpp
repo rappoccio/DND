@@ -88,6 +88,7 @@ int CombatEngine::healAgent(BattleMap& bm, int idx, int amount) noexcept
     if (s.hp_max == 0 && s.hp_cur == 0) return 0;   // default-constructed → invalid idx
     s.hp_cur = std::min(s.hp_max, s.hp_cur + amount);
     bm.setAgentStats(idx, s);
+    reviveOnHeal(bm, idx);   // regaining HP from 0 returns a downed creature to consciousness
     return s.hp_cur;
 }
 
@@ -563,6 +564,7 @@ int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx,
     int healed = std::min(total_healing, target_stats.hp_max - target_stats.hp_cur);
     target_stats.hp_cur = std::min(target_stats.hp_max, target_stats.hp_cur + total_healing);
     bm.setAgentStats(target_idx, target_stats);
+    reviveOnHeal(bm, target_idx);   // a healed downed ally rejoins initiative
 
     log_("{}: Healing Light: {} d6 = {} healing to {}", agentName(bm, healer_idx), num_dice, total_healing, agentName(bm, target_idx));
     return healed;

@@ -397,13 +397,13 @@ class TerrainEditorDialog:
                 continue
             rect = pygame.Rect(region["x"], region["y"], region["width"], region["height"])
             if region["type"] == "Wall":
-                color = (0, 0, 0, 255)
+                color = (0, 0, 0, 255)           # opaque black
             elif region["type"] == "Chasm":
-                color = (140, 140, 140, 180)
+                color = (128, 128, 128, 255)     # opaque grey
             elif region["type"] == "Water":
-                color = (100, 150, 255, 255)
+                color = (50, 100, 230, 128)      # blue, 50% transparent
             else:  # Difficult Terrain
-                color = (255, 200, 100, 128)
+                color = (139, 90, 43, 128)       # brown, 50% transparent
             s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
             s.fill(color)
             screen.blit(s, (rect.x, rect.y))
@@ -424,7 +424,7 @@ class TerrainEditorDialog:
             f"[1] Wall (black)",
             f"[2] Chasm (grey)",
             f"[3] Water (blue)",
-            f"[4] Difficult Terrain (orange)"
+            f"[4] Difficult Terrain (brown)"
         ]
         y = 10
         for text in sel_texts:

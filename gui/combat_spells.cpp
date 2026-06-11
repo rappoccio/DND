@@ -908,6 +908,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 // Death save on damage for agents already unconscious
                 rollDeathSave(bm, tgt_idx);
             }
+        } else {
+            // HP is positive: if a healing spell brought a downed target back up, restore
+            // consciousness so they aren't skipped in initiative (no-op otherwise).
+            reviveOnHeal(bm, tgt_idx);
         }
 
         // Check concentration saves: once per damage instance (e.g., once per Magic Missile)
@@ -1622,6 +1626,8 @@ void CombatEngine::tickEffects(BattleMap& bm)
         bm.setAgentStats(fx.target_idx, s);
         if (fx.spell.type != Spell::Heal)
             processDamageTaken(bm, fx.target_idx, std::max(0, total));
+        else
+            reviveOnHeal(bm, fx.target_idx);   // delayed/area heal can revive a downed target
     }
 
     auto expired = [](const ActiveEffect& fx) { return fx.turns_remaining <= 0; };

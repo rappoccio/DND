@@ -1217,10 +1217,26 @@ Built + green. Test: `gui/test_general_feats_g4.py` (17 cases).
   main-hand and off-hand slots. The off-hand bonus attack itself already works via the `off_hand` weapon
   flag, so Enhanced Dual Wielding needs no new attack path. *Note-only:* Quick Draw (no draw/stow economy).
 
-**Still deferred in G4:** **Polearm Master** — Pole Strike (bonus-action 1d4 bludgeoning with the butt-end)
-needs a synthetic "butt-end" weapon profile (a 1d4 variant of the polearm) which is new infra; Reactive
-Strike (an OA when a creature enters your reach) needs an enter-reach reaction window that doesn't exist.
-Marked "soon" in the GUI feat list.
+**Still deferred in G4:** **Polearm Master** — see the dedicated entry below.
+
+- **Polearm Master (DEFERRED).** 2024 PHB general feat (prereq STR or DEX 13). Two clauses, both blocked
+  on infra the engine doesn't have yet:
+  1. **Pole Strike** — when you take the Attack action with a Quarterstaff, Spear, Glaive, Halberd, or Pike,
+     you can make ONE bonus-action attack with the weapon's opposite end, dealing **1d4 bludgeoning**
+     (uses the same ability mod; on-hit riders/masteries apply). Needs a synthetic "butt-end" weapon
+     profile (a 1d4-bludgeoning variant of the wielded polearm) — new infra. The bonus-attack plumbing
+     itself already exists (`_start_extra_attack(slot=)`, the generic reusable-bonus-attack flow per
+     [[feedback-reusable-bonus-attack]]), so once a butt-end weapon can be synthesized this is a thin
+     bonus-action attack against that profile, gated on the wielded weapon being one of the 5 polearms.
+  2. **Reactive Strike (a.k.a. the reach-OA clause)** — while wielding one of those weapons, creatures
+     **provoke an opportunity attack from you when they ENTER your reach** (not just when they leave it).
+     Needs an *enter-reach* reaction window; the reaction framework currently only has LeftReach/OA
+     (leaving reach), not an on-enter-reach trigger ([[reaction-system-plan]] lists the 7 existing
+     windows — none fire on entering reach). This is the harder half: it's a new flow-checkpoint window,
+     parallel to LeftReach but evaluated as a creature steps INTO a threatened cell, with the usual
+     one-reaction-per-round economy. Until that window exists, the clause can't be modeled.
+  Marked "soon" in the GUI feat list. When picked up, do clause 1 first (small, reuses existing bonus-attack
+  infra) and treat clause 2 as its own reaction-window project.
 
 ## General feats — phase G5 (armor / saves / movement passives + Telekinetic) DONE 2026-06-11
 
