@@ -142,6 +142,11 @@ struct SpellAction {
                                           // (honored up to the caster's CHA modifier).
     int transmuted_damage_type = -1;      // Transmuted: MagicDamage_t to convert the spell's elemental
                                           // damage into (Acid/Cold/Fire/Lightning/Poison/Thunder); -1 = none.
+    // Cast-time element choice for spells whose damage type is chosen on each cast
+    // (Chromatic Orb, Sorcerous Burst). When >= 0, executeSpell rewrites every
+    // magic_damage_roll's type to this MagicDamage_t for this cast only (no persistent
+    // mutation). Independent of Transmuted metamagic. -1 = use the spell's stored type.
+    int damage_type_override = -1;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

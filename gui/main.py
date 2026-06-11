@@ -48,7 +48,7 @@ from helpers import (
     _spell_to_dict, _dict_to_spell,
     can_place_agent, summon_cell_placeable,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -63,6 +63,15 @@ from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
 # Extend this dict as more summon spells/stat blocks are added.
 SUMMON_SPELL_TO_MONSTER = {
     "Summon Dragon": "Spirit Dragon Wyrmling",
+}
+
+# Spells whose damage type is chosen per cast (not fixed in spells.json). Each maps to the
+# ElementPickerDialog option list (label, MagicDamage_t int) of the legal types. The choice is
+# stored as SpellAction.damage_type_override and rewrites the cast's damage type in executeSpell.
+# MagicDamage_t: Acid=0, Cold=1, Fire=2, Lightning=4, Poison=6, Psychic=7, Thunder=9.
+ELEMENT_CHOICE_SPELLS = {
+    "Chromatic Orb":   [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Thunder", 9)],
+    "Sorcerous Burst": [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Psychic", 7), ("Thunder", 9)],
 }
 
 class App:
@@ -311,6 +320,9 @@ class App:
         self.lighting_editor = LightingEditorDialog(self.font_sm, self.font_md)
         self.conditions_dialog = ConditionsDialog(self.font_sm, self.font_md, self.font_lg)
         self.context_menu   = ContextMenu()
+        # Cast-time element picker (Chromatic Orb / Sorcerous Burst). Reuses the same modal as
+        # Elemental Adept's feat picker; opened from _activate, single-select.
+        self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
 
         # ── NPC spell mechanics ──────────────────────────────────────────────
         self._agent_meta: dict[int, dict] = {}  # {agent_idx: {"npc_spell_groups": {...}}} — for stats dialog
@@ -463,6 +475,8 @@ class App:
 
         # ── Spell slot economy (class-based caster tracking) ────────────────
         self.pending_spell_slot_level: int = 0          # slot level chosen for current spell cast
+        self.pending_spell_damage_type: int = -1        # cast-time element choice (Chromatic Orb / Sorcerous
+                                                        # Burst); -1 = use the spell's stored type
 
         # ── Agent config GUI state ────────────────────────────────────────
         self._init_config_panel()
@@ -4231,6 +4245,28 @@ class App:
 
         def _activate(s, si_, slot_level_=0):
             sp_ = spells[si_]
+            # Cleared for every fresh cast; only the element-choice branch below sets it.
+            self.pending_spell_damage_type = -1
+
+            # Cast-time element choice (Chromatic Orb, Sorcerous Burst): pick one damage type via
+            # the ElementPickerDialog, store it as the SpellAction override, then continue to the
+            # normal Single-target selection. Both spells are Single geometry, so the callback sets
+            # up single-target pending state directly.
+            elem_opts = ELEMENT_CHOICE_SPELLS.get(sp_.name)
+            if elem_opts is not None:
+                def _on_elem(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, elem_opts=elem_opts):
+                    self.pending_spell_damage_type = chosen[0] if chosen else -1
+                    self.pending_spell_is_aoe     = False
+                    self.pending_spell_targets    = []
+                    self.pending_spell_slot       = s
+                    self.pending_spell_idx        = si_
+                    self.pending_spell_slot_level = slot_level_
+                    type_name = next((lbl for lbl, val in elem_opts
+                                      if val == self.pending_spell_damage_type), "?")
+                    self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
+                self._element_dialog.show(_on_elem, elem_opts, current_values=None, multi=False,
+                                          title=f"{sp_.name}: damage type")
+                return
 
             # Summon spells: pick an empty cell within range to manifest the creature, rather than
             # targeting a creature or placing an AoE. Routed here BEFORE the
@@ -5032,6 +5068,7 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
+        action.damage_type_override = self.pending_spell_damage_type  # cast-time element choice (-1 = none)
         self._apply_pact_slot_level(caster_idx, sp, action)
 
         # Cast through the OnDeclareCast window (begin_cast): a targeted creature may react before the
@@ -5045,6 +5082,7 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
+        self.pending_spell_damage_type = -1
         self.spell_hover_cell          = None
 
         status = self.combat.begin_cast(self.bm, action)
@@ -8121,6 +8159,11 @@ class App:
                 self.lighting_editor.handle(event)
                 continue
 
+            # ── Cast-time element picker is a top modal: consume events while open ──
+            if self._element_dialog.visible:
+                self._element_dialog.handle(event)
+                continue
+
             # ── Terrain placement dialog gets priority when open ────────────
             if self.terrain_placement_dialog.active:
                 self.terrain_placement_dialog.handle(event)
@@ -9120,6 +9163,7 @@ class App:
             self.mob_dialog.draw(self.screen)      # modal — always on top
             self.conditions_dialog.draw(self.screen)  # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
+            self._element_dialog.draw(self.screen) # cast-time element picker — topmost modal
             pygame.display.flip()
             self.clock.tick(60)
         # Clean up temporary terrain effects before quitting

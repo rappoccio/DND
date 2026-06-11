@@ -1129,6 +1129,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Careful Spell: allies excluded from this spell's area (up to the caster's CHA mod).")
         .def_readwrite("transmuted_damage_type", &SpellAction::transmuted_damage_type,
              "Transmuted Spell: MagicDamage value to convert the spell's elemental damage into (-1 = none).")
+        .def_readwrite("damage_type_override", &SpellAction::damage_type_override,
+             "Cast-time element choice (Chromatic Orb, Sorcerous Burst): MagicDamage value to set this\n"
+             "cast's damage type to (-1 = use the spell's stored type). Rewrites every damage roll's type.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)

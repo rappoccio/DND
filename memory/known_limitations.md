@@ -400,12 +400,19 @@ layer (main.py) rather than the C++ engine. This means:
   damage). Fixed in `spells.json`: **Chromatic Orb** (3d8 Thunder — user), **Sorcerous Burst** (1d8
   Thunder), **Dragon's Breath** (3d6 Fire, already Cone/15ft/SaveDex). Worth re-scanning the file if more
   surface during play (most other "Harm + empty dice" entries are correctly non-damage utility spells).
-- **Element-pickable spells (DEFERRED — item 5).** Chromatic Orb, Sorcerous Burst (and Dragon's Breath)
-  let the caster CHOOSE the damage type at cast time (Acid/Cold/Fire/Lightning/Poison/Thunder, etc.). The
-  engine has no cast-time element picker, so each is **hardcoded** to a placeholder element (Chromatic
-  Orb→Thunder, Sorcerous Burst→Thunder, Dragon's Breath→Fire). TODO: a GUI element-choice prompt + a
-  per-cast damage-type override on `SpellAction` so the chosen type flows into the damage roll. Affects any
-  "choose the type" spell.
+- **Element-pickable spells — Chromatic Orb + Sorcerous Burst DONE 2026-06-11; Dragon's Breath deferred.**
+  These spells let the caster CHOOSE the damage type at cast time. Implemented via design (a): a per-cast
+  `SpellAction.damage_type_override` (int MagicDamage_t, -1 = none; bound + repr'd). `executeSpell` rewrites
+  every `sp.magic_damage_rolls[].type` to the chosen type on its LOCAL mutable copy only — no persistent
+  mutation of the stored spell, applied before Metamagic so Transmuted can still further convert. GUI:
+  `App._activate` detects the spell via `ELEMENT_CHOICE_SPELLS` (main.py — option lists incl. Poison for
+  both, Psychic for Sorcerous Burst only) → opens the reusable `ElementPickerDialog(multi=False)` →
+  callback stores `pending_spell_damage_type` + sets up Single-target select → `_resolve_spell_cast`
+  copies it onto `action.damage_type_override`. `_element_dialog` is a top modal in App's event/draw loop.
+  Tests: test_element_spells.py (chosen type lands; resistance to chosen vs other type; override replaces
+  the stored placeholder; per-cast only). **Dragon's Breath still hardcoded to Fire** (Cone/Save geometry,
+  not yet wired — same `damage_type_override` mechanism would serve it once `ELEMENT_CHOICE_SPELLS` is
+  extended and the AoE resolve path forwards the field).
 - **Chromatic Orb "hop" / leap (DEFERRED — item 6).** RAW: if two or more of the d8s roll the same number,
   the orb leaps to a new target within 30 ft (a fresh attack roll + damage roll), and can keep chaining.
   Not modeled — Chromatic Orb is a plain single-target attack-roll spell for now. TODO: after the damage
@@ -1288,8 +1295,9 @@ Poisoner lifts a weapon's Poison resistance but Elemental Adept — spells-only 
 damage-type chooser, parameterized by `(options, current, multi, title)`; `ELEMENTAL_ADEPT_OPTIONS` lists
 the 5 elements. Opened from `StatsDialog._on_feats_chosen` when Elemental Adept is selected (multi-select);
 the choice threads through `_confirm` → `App._on_stats_ok(elemental_adept_types=...)` → `stats.
-elemental_adept_types`. Built to be reused for **cast-time** element choices (Chromatic Orb / Sorcerous
-Burst, single-select) — that wiring is the next consumer, not yet done.
+elemental_adept_types`. Also the **cast-time** element picker (single-select) for Chromatic Orb /
+Sorcerous Burst — wired into `App` (`_element_dialog`, opened from `_activate`, top modal). See the
+"Element-pickable spells" entry above for the `SpellAction.damage_type_override` mechanism. DONE 2026-06-11.
 
 *Deferred within G5b:* treat-1-as-2 is applied via `rollSpellTypeDamage` at the spell sites only (weapons
 never get it, per RAW). Spell-attack/automatic/save/zone/tick all covered; healing and the necrotic-rider

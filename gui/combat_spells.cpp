@@ -310,6 +310,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // is untouched, and persistent effects copy this (already-modified) sp below.
     Spell sp = spells[static_cast<std::size_t>(action.spell_idx)];
 
+    // Cast-time element choice (Chromatic Orb, Sorcerous Burst): the caster picks the
+    // damage type per cast. Rewrite every magic-damage roll's type on this local copy
+    // only — the stored spell keeps its placeholder type. Applied before Metamagic so
+    // Transmuted (elemental-only) can still further convert if both are used.
+    if (action.damage_type_override >= 0 && action.damage_type_override < NumMagicDamage_t) {
+        auto chosen = static_cast<MagicDamage_t>(action.damage_type_override);
+        for (auto& r : sp.magic_damage_rolls) r.type = chosen;
+    }
+
     result.valid       = true;
     result.spell_idx   = action.spell_idx;
     result.spell_name  = sp.name;
