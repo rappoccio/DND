@@ -656,7 +656,7 @@ GENERAL_FEATS = [
     ("Sharpshooter",           "in",   "No long-range / firing-in-melee disadvantage"),
     ("Spell Sniper",           "in",   "Spell attacks: no melee disadv; +60 ft range"),
     ("Heavy Armor Master",     "in",   "-PB to B/P/S in Heavy armor"),
-    ("Elemental Adept",        "soon", "Ignore resistance; treat 1 as 2"),
+    ("Elemental Adept",        "in",   "Spells ignore resistance to a chosen element; treat 1 as 2"),
     ("Mage Slayer",            "in",   "Conc-breaker: disadv on conc save (Guarded Mind soon)"),
     ("War Caster",             "in",   "Adv on concentration saves"),
     ("Durable",                "in",   "Advantage on Death Saves"),
@@ -667,7 +667,7 @@ GENERAL_FEATS = [
     ("Skulker",                "in",   "Blindsight 10 ft"),
     ("Telekinetic",            "in",   "Bonus-action shove 5 ft (STR save, 30 ft)"),
     ("Weapon Master",          "in",   "Use one weapon's Mastery property (Nick)"),
-    ("Poisoner",               "soon", "Poison ignores resistance"),
+    ("Poisoner",               "in",   "Poison damage ignores resistance (Potent Poison)"),
     ("Charger",                "soon", "+10 ft Dash; charge bonus"),
     ("Fey Touched",            "soon", "Misty Step + 1 spell (grant)"),
     ("Shadow Touched",         "soon", "Invisibility + 1 spell (grant)"),
@@ -856,6 +856,139 @@ class FeatDialog:
         surf.blit(dt, dt.get_rect(center=self._done_rect.center))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Reusable element picker (damage-type chooser). A small modal that lists a
+#  caller-supplied set of damage types and returns the chosen value(s). Used now
+#  by Elemental Adept (multi-select: one entry per element the feat was taken for)
+#  and intended for cast-time element choices like Chromatic Orb / Sorcerous Burst
+#  (single-select). Values are MagicDamage_t indices (Acid=0,Cold=1,Fire=2,
+#  Lightning=4,Thunder=9, etc.). Modelled on FeatDialog's overlay/checkbox pattern.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The five elements Elemental Adept may choose (label, MagicDamage_t index).
+ELEMENTAL_ADEPT_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
+
+
+class ElementPickerDialog:
+    """Modal (multi- or single-select) damage-type picker. Commits chosen values on dismiss."""
+    ITEM_H = 32
+    PAD    = 12
+    HDR_H  = 36
+    BTN_H  = 28
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self._hover_idx = -1
+        self._options = []          # list of (label, value)
+        self._selected = set()      # chosen values
+        self._multi = True
+        self._title = "Choose Element"
+        self._callback = None       # called with a sorted list of chosen values on dismiss
+        self._done_rect = None
+        self._frames_since_show = 0
+
+    def show(self, callback, options, current_values=None, multi=True, title="Choose Element"):
+        self.visible = True
+        self._callback = callback
+        self._options = list(options)
+        self._selected = set(current_values or [])
+        self._multi = multi
+        self._title = title
+        self._hover_idx = -1
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 320
+        dlg_h = self.HDR_H + len(self._options) * self.ITEM_H + self.BTN_H + self.PAD * 3
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def _commit_and_dismiss(self):
+        if self._callback:
+            self._callback(sorted(self._selected))
+        self.visible = False
+
+    def _list_y(self):
+        return self.rect.y + self.HDR_H + self.PAD
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        # Swallow the click that opened this dialog (one frame), like FeatDialog.
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self._commit_and_dismiss()
+                return True
+        elif event.type == pygame.MOUSEMOTION:
+            list_y = self._list_y()
+            self._hover_idx = -1
+            for i in range(len(self._options)):
+                r = pygame.Rect(self.rect.x + self.PAD, list_y + i * self.ITEM_H,
+                                self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos):
+                    self._hover_idx = i
+                    break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._done_rect and self._done_rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            if not self.rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            list_y = self._list_y()
+            for i, (_label, value) in enumerate(self._options):
+                r = pygame.Rect(self.rect.x + self.PAD, list_y + i * self.ITEM_H,
+                                self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos):
+                    if value in self._selected:
+                        self._selected.discard(value)
+                    elif self._multi:
+                        self._selected.add(value)
+                    else:
+                        self._selected = {value}   # single-select replaces
+                    return True
+            return True
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+        pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
+
+        hdr = self.font_md.render(self._title, True, (220, 220, 235))
+        surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + 9))
+
+        list_y = self._list_y()
+        for i, (label, value) in enumerate(self._options):
+            r = pygame.Rect(self.rect.x + self.PAD, list_y + i * self.ITEM_H,
+                            self.rect.w - self.PAD * 2, self.ITEM_H)
+            if i == self._hover_idx:
+                pygame.draw.rect(surf, (44, 44, 66), r, border_radius=4)
+            box = pygame.Rect(r.x + 4, r.y + (self.ITEM_H - 18) // 2, 18, 18)
+            pygame.draw.rect(surf, (150, 150, 180), box, width=2, border_radius=3)
+            if value in self._selected:
+                inner = box.inflate(-6, -6)
+                pygame.draw.rect(surf, (120, 200, 120), inner, border_radius=2)
+            lbl = self.font_md.render(label, True, (220, 220, 235))
+            surf.blit(lbl, (box.right + 10, r.y + (self.ITEM_H - lbl.get_height()) // 2))
+
+        bw, bh = 110, self.BTN_H
+        self._done_rect = pygame.Rect(self.rect.centerx - bw // 2,
+                                      self.rect.bottom - self.PAD - bh, bw, bh)
+        pygame.draw.rect(surf, (35, 90, 45), self._done_rect, border_radius=6)
+        dt = self.font_md.render(f"Done ({len(self._selected)})", True, (220, 220, 220))
+        surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
 # Set of general-feat names (for splitting feats vector between origin + general pickers).
 GENERAL_FEAT_NAMES = {row[0] for row in GENERAL_FEATS}
 
@@ -945,6 +1078,8 @@ class StatsDialog:
         self._feat_dialog        = None    # General Feats multi-select picker (PCs)
         self._feat_btn_rect      = None    # "Feats..." launch button
         self._general_feats      = set()   # selected general feat names
+        self._element_dialog     = None    # Elemental Adept element picker (opened from the feat picker)
+        self._elemental_adept_types = []   # MagicDamage_t indices chosen for Elemental Adept
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE"):
@@ -964,7 +1099,9 @@ class StatsDialog:
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
         self._general_feats = {f for f in cur_feats if f in GENERAL_FEAT_NAMES}
+        self._elemental_adept_types = list(stats.elemental_adept_types) if hasattr(stats, 'elemental_adept_types') else []
         self._feat_dialog = FeatDialog(self.font_sm, self.font_md)
+        self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
@@ -1078,6 +1215,11 @@ class StatsDialog:
         # General Feats picker is modal-on-top too.
         if self._feat_dialog and self._feat_dialog.visible:
             self._feat_dialog.handle(event)
+            return True
+
+        # Element picker (Elemental Adept) is modal-on-top, above the feat picker.
+        if self._element_dialog and self._element_dialog.visible:
+            self._element_dialog.handle(event)
             return True
 
         # Let steppers see every event first so a focused field can consume
@@ -1235,8 +1377,22 @@ class StatsDialog:
         self._eldritch_invocations = list(codes)
 
     def _on_feats_chosen(self, names):
-        """Callback from FeatDialog: store the chosen general-feat names."""
+        """Callback from FeatDialog: store the chosen general-feat names.
+
+        If Elemental Adept is among them, immediately pop the reusable element picker so the player
+        chooses which element(s) it applies to. Deselecting the feat clears the stored elements."""
         self._general_feats = set(names)
+        if "Elemental Adept" in self._general_feats:
+            if self._element_dialog:
+                self._element_dialog.show(self._on_elements_chosen, ELEMENTAL_ADEPT_OPTIONS,
+                                          current_values=self._elemental_adept_types, multi=True,
+                                          title="Elemental Adept — element(s)")
+        else:
+            self._elemental_adept_types = []
+
+    def _on_elements_chosen(self, values):
+        """Callback from the element picker: store the chosen MagicDamage_t indices."""
+        self._elemental_adept_types = list(values)
 
     def _add_npc_spell(self, group_n, spell):
         """Add a spell to an NPC spell group."""
@@ -1249,7 +1405,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats))
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types))
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -1605,6 +1761,9 @@ class StatsDialog:
         # General Feats picker overlays on top as well.
         if self._feat_dialog:
             self._feat_dialog.draw(screen)
+        # Element picker overlays above the feat picker (Elemental Adept).
+        if self._element_dialog:
+            self._element_dialog.draw(screen)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

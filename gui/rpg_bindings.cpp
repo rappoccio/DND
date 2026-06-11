@@ -438,6 +438,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Grant a feat and apply its one-time stat effects (Tough HP, Alert initiative "
              "proficiency, Lucky points). Call after ability scores/level/prof_bonus are set. "
              "On reload, set `feats` directly instead — bonuses are already folded into hp_max/luck_points.")
+        .def_readwrite("elemental_adept_types", &Agent::Stats::elemental_adept_types,
+             "MagicDamage_t indices (Acid=0,Cold=1,Fire=2,Lightning=4,Thunder=9) whose Resistance this "
+             "caster's Elemental Adept ignores (and whose spell dice treat a 1 as a 2). One entry per "
+             "element the feat was taken for; chosen via the GUI element picker, serialized in the save.")
+        .def("has_elemental_adept_type", &Agent::Stats::hasElementalAdeptType, py::arg("type"),
+             "True if the caster has Elemental Adept covering MagicDamage_t `type`.")
         .def_readwrite("luck_points", &Agent::Stats::luck_points,
              "Lucky feat: current Luck Points (spent for Advantage; regained on a Long Rest)")
         .def_readwrite("luck_points_max", &Agent::Stats::luck_points_max,

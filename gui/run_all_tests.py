@@ -45,6 +45,7 @@ test_scripts = [
     "test_general_feats.py",
     "test_general_feats_g4.py",
     "test_general_feats_g5.py",
+    "test_general_feats_g5b.py",
     "test_fighting_styles.py",
     "test_dual_wield.py",
     "test_reaction_feats.py",

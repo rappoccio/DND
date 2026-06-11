@@ -1033,6 +1033,18 @@ public:
                                           bool disadvantage = false,
                                           int exhaustion_level = 0);
 
+    // ── G5b feats — caster resistance-ignore / treat-1-as-2 (Elemental Adept + Poisoner) ──
+    // effectiveMagicDamageMult: the target's multiplier for `type`, but Resistance (0 < m < 1) is
+    // lifted to 1.0 when the caster ignores it — Poisoner (Poison, from any source) or Elemental
+    // Adept (its chosen elements, spells only). Immunity (0.0) and Vulnerability are untouched (the
+    // feats ignore Resistance only, not Immunity).
+    [[nodiscard]] float effectiveMagicDamageMult(const Agent::Stats& caster, const Agent::Stats& target,
+                                                 MagicDamage_t type, bool from_spell) const noexcept;
+    // rollSpellTypeDamage: roll `num_dice` d`die_size`, applying Elemental Adept's "treat a 1 as a 2"
+    // for the caster's chosen elements (spells only). Appends each die to `out_dice`; returns the sum.
+    int rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t type,
+                            int num_dice, int die_size, std::vector<int>& out_dice, bool from_spell) noexcept;
+
     // Roll damage dice and populate the damage fields of an existing result.
     // Applies target's damage multipliers (resistance/vulnerability/immunity).
     // Call only when result.hit == true.

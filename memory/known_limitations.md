@@ -1261,11 +1261,39 @@ armor-master feats had nothing to detect. Now bound (`rpg_bindings.cpp`) and rou
 `_dict_to_armor`/`_armor_to_dict` (helpers.py); armor.json already carried the values (Plate/Chain Mail/
 Mithral Plate = 0, Cold Iron Breastplate = 2).
 
-**Deferred to G5b:** **Elemental Adept** + **Poisoner (Potent Poison)** — both need "ignore the target's
-resistance for damage type X" threaded through the ~8 damage-multiplier sites (combat_spells/combat_attack)
-plus, for Elemental Adept, treating 1s as 2s on the spell's damage dice and a stored **chosen element**.
-Per the user, build a **reusable element picker** (a GUI popup on trigger) that Elemental Adept,
-**Chromatic Orb**, and **Sorcerous Burst** will all share. Marked "soon" in the GUI feat list.
+## General feats — phase G5b (resistance-ignore caster feats) DONE 2026-06-11
+
+Built + green (67 suites). Test: `gui/test_general_feats_g5b.py` (9 cases). Two shared engine helpers
+(combat_spells.cpp) centralize the logic so each damage site is a 2-line change:
+- `effectiveMagicDamageMult(caster, target, type, from_spell)` — returns the target's multiplier, but
+  Resistance (`0 < m < 1`) is lifted to **1.0** when the caster ignores it: **Poisoner** (type==Poison,
+  any source) or **Elemental Adept** (its chosen elements, `from_spell` only). **Immunity (0.0) and
+  Vulnerability are untouched** — the feats ignore Resistance only.
+- `rollSpellTypeDamage(caster, type, n, die, out_dice, from_spell)` — rolls the dice applying Elemental
+  Adept's **treat-a-1-as-a-2** for the caster's chosen elements (`from_spell` only).
+
+Applied at all **5 spell magic-damage sites** (attack-roll / save / automatic in executeSpell, the zone
+`applySpellEffect`, and `tickEffects` — the last two fetch caster stats from `effect.caster_idx` /
+`fx.caster_idx`) and the **weapon magic-damage site** in `rollDamage` (with `from_spell=false`, so
+Poisoner lifts a weapon's Poison resistance but Elemental Adept — spells-only — does not).
+
+- **Elemental Adept** — chosen elements stored as `Agent::Stats::elemental_adept_types` (`vector<int>` of
+  MagicDamage_t indices; `hasElementalAdeptType`), bound + round-tripped in the save (`elemental_adept_types`
+  in `_save_agents` / `agent_loader.dict_to_stats`). The feat may be taken per element, so it's a list.
+- **Poisoner — Potent Poison** — `caster.hasFeat("Poisoner")` + type==Poison; not spell-gated (covers a
+  weapon's Poison damage too). The Brew Poison / Apply Poison clause (CON save 2d8 + Poisoned) stays
+  deferred (needs the apply-poison-to-weapon + bonus-action infra). Poison is a MagicDamage_t here.
+
+**Reusable element picker (GUI):** `ElementPickerDialog` (dialogs.py) — a small modal multi/single-select
+damage-type chooser, parameterized by `(options, current, multi, title)`; `ELEMENTAL_ADEPT_OPTIONS` lists
+the 5 elements. Opened from `StatsDialog._on_feats_chosen` when Elemental Adept is selected (multi-select);
+the choice threads through `_confirm` → `App._on_stats_ok(elemental_adept_types=...)` → `stats.
+elemental_adept_types`. Built to be reused for **cast-time** element choices (Chromatic Orb / Sorcerous
+Burst, single-select) — that wiring is the next consumer, not yet done.
+
+*Deferred within G5b:* treat-1-as-2 is applied via `rollSpellTypeDamage` at the spell sites only (weapons
+never get it, per RAW). Spell-attack/automatic/save/zone/tick all covered; healing and the necrotic-rider
+site (combat_attack:2120) are intentionally untouched (not elemental spell damage).
 
 ## Fighting Style feats (2024 PHB) — Blind Fighting DONE 2026-06-10
 

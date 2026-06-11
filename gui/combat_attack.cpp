@@ -308,8 +308,10 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        // Apply target's resistance/vulnerability/immunity multiplier
-        float multiplier = target.magic_damage_multipliers[dmg_roll.type];
+        // Apply target's resistance/vulnerability/immunity multiplier. Poisoner (Potent Poison) lets a
+        // weapon's Poison damage ignore the target's Poison Resistance (from_spell=false → no Elemental
+        // Adept, which is spells-only).
+        float multiplier = effectiveMagicDamageMult(attacker, target, dmg_roll.type, false);
         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += modified_damage;
         result.magic_damage_types.push_back(dmg_roll.type);

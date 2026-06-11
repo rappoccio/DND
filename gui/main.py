@@ -1192,7 +1192,7 @@ class App:
         for n in names:
             stats.add_feat(n)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1265,6 +1265,9 @@ class App:
         self._set_origin_feat(stats, origin_feat, char_level)
         # General feats (multi-select). Disjoint from origin feats; no ASI auto-apply.
         self._set_general_feats(stats, general_feats)
+        # Elemental Adept's chosen element(s) (set via the element picker). Kept only while the feat
+        # is selected; cleared otherwise so a deselect doesn't leave stale types.
+        stats.elemental_adept_types = list(elemental_adept_types or []) if stats.has_feat("Elemental Adept") else []
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
@@ -5672,6 +5675,7 @@ class App:
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                     "temp_hp": s.temp_hp,
                     "feats": list(s.feats),
+                    "elemental_adept_types": list(s.elemental_adept_types),
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
                     "magic_resistances": [

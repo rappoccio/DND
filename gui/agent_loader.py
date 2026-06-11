@@ -59,6 +59,7 @@ def dict_to_stats(stats_dict):
     # Feats: set the list directly (do NOT call add_feat on load — hp_max/luck_points are
     # already persisted with the feat bonuses folded in).
     stats.feats = list(stats_dict.get("feats", []))
+    stats.elemental_adept_types = [int(t) for t in stats_dict.get("elemental_adept_types", [])]
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
     return stats

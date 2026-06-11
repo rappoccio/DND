@@ -466,6 +466,17 @@ namespace rpg {
           return std::find(feats.begin(), feats.end(), f) != feats.end();
       }
 
+      // ── Elemental Adept (general feat) ──────────────────────────────────
+      // MagicDamage_t indices whose Resistance this caster's spells ignore (and whose damage dice
+      // treat a 1 as a 2). The feat may be taken once per element (acid/cold/fire/lightning/thunder),
+      // so this is a list. Chosen via the GUI element picker; serialized in the save's `feats` block.
+      std::vector<int> elemental_adept_types{};
+      [[nodiscard]] bool hasElementalAdeptType(int t) const noexcept {
+          return hasFeat("Elemental Adept") &&
+                 std::find(elemental_adept_types.begin(), elemental_adept_types.end(), t)
+                     != elemental_adept_types.end();
+      }
+
       // ── Lucky (Origin feat) ─────────────────────────────────────────────
       // Luck Points = proficiency bonus, regained on a Long Rest. Spent to grant
       // Advantage on a d20 Test (CombatEngine::spendLuckForAdvantage).

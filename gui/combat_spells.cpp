@@ -32,6 +32,36 @@
 namespace rpg {
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  G5b feats — caster resistance-ignore / treat-1-as-2 (Elemental Adept + Poisoner)
+// ─────────────────────────────────────────────────────────────────────────────
+
+float CombatEngine::effectiveMagicDamageMult(const Agent::Stats& caster, const Agent::Stats& target,
+                                             MagicDamage_t type, bool from_spell) const noexcept
+{
+    float m = target.magic_damage_multipliers[type];
+    if (m > 0.0f && m < 1.0f) {  // Resistance only — leave Immunity (0.0) and Vulnerability untouched
+        if (type == Poison && caster.hasFeat("Poisoner")) return 1.0f;            // Potent Poison (any source)
+        if (from_spell && caster.hasElementalAdeptType(type)) return 1.0f;        // Elemental Adept (spells)
+    }
+    return m;
+}
+
+int CombatEngine::rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t type,
+                                      int num_dice, int die_size, std::vector<int>& out_dice,
+                                      bool from_spell) noexcept
+{
+    const bool boost = from_spell && caster.hasElementalAdeptType(type);  // treat a 1 as a 2
+    int sum = 0;
+    for (int i = 0; i < num_dice; ++i) {
+        int d = roll(die_size);
+        if (boost && d == 1) d = 2;
+        out_dice.push_back(d);
+        sum += d;
+    }
+    return sum;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Casting
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -556,14 +586,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     // Damage spell: roll per-damage-type damage and apply target's multipliers
                     for (const auto& roll_info : sp.magic_damage_rolls) {
                         int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
-                        int type_damage = 0;
-                        for (int i = 0; i < n_dice; ++i) {
-                            int d = roll(roll_info.die_size);
-                            dice.push_back(d);
-                            type_damage += d;
-                        }
-                        // Apply target's resistance/vulnerability/immunity multiplier
-                        float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                        // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
+                        int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, n_dice,
+                                                              roll_info.die_size, dice, true);
+                        // Resistance/vuln/immunity multiplier — Elemental Adept / Poisoner lift the
+                        // caster-relevant Resistance to 1.0.
+                        float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
                         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
                         log_("[DAMAGE] Spell attack: type={} base={} mult={} result={}", static_cast<int>(roll_info.type), type_damage, multiplier, modified_damage);
                         dmg += modified_damage;
@@ -675,15 +703,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             } else {
                 // Damage spell: roll per-damage-type damage and apply target's multipliers
                 for (const auto& roll_info : sp.magic_damage_rolls) {
-                    int type_damage = 0;
-                    for (int i = 0; i < roll_info.num_dice; ++i) {
-                        int d = roll(roll_info.die_size);
-                        dice.push_back(d);
-                        type_damage += d;
-                    }
+                    // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
+                    int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
+                                                          roll_info.die_size, dice, true);
                     type_damage += roll_info.bonus;
-                    // Apply target's resistance/vulnerability/immunity multiplier first
-                    float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                    // Resistance/vuln/immunity multiplier first (Elemental Adept / Poisoner lift the
+                    // caster-relevant Resistance to 1.0).
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
                     int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
                     // Then apply half damage on successful save
                     if (tr.saved) modified_damage /= 2;
@@ -763,15 +789,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             } else {
                 // Damage spell: roll per-damage-type damage and apply target's multipliers
                 for (const auto& roll_info : sp.magic_damage_rolls) {
-                    int type_damage = 0;
-                    for (int i = 0; i < roll_info.num_dice; ++i) {
-                        int d = roll(roll_info.die_size);
-                        dice.push_back(d);
-                        type_damage += d;
-                    }
+                    // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
+                    int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
+                                                          roll_info.die_size, dice, true);
                     type_damage += roll_info.bonus;
-                    // Apply target's resistance/vulnerability/immunity multiplier
-                    float multiplier = tgt_stats.magic_damage_multipliers[roll_info.type];
+                    // Resistance/vuln/immunity multiplier (Elemental Adept / Poisoner lift the
+                    // caster-relevant Resistance to 1.0).
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
                     int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
                     total += modified_damage;
                 }
@@ -1458,12 +1482,17 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
     }
 
     // Calculate total by rolling all damage types and applying multipliers (then halving on a save).
+    // The caster's Elemental Adept / Poisoner can ignore the target's Resistance on a damaging zone.
+    const Agent::Stats zone_caster =
+        (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
+            ? bm.getAgentStats(effect.caster_idx) : Agent::Stats{};
     int total = 0;
     for (const auto& roll_info : sp.magic_damage_rolls) {
-        int type_damage = 0;
-        for (int i = 0; i < roll_info.num_dice; ++i) type_damage += roll(roll_info.die_size);
+        std::vector<int> zdice;  // per-type dice (discarded; rollSpellTypeDamage applies treat-1-as-2)
+        int type_damage = rollSpellTypeDamage(zone_caster, roll_info.type, roll_info.num_dice,
+                                              roll_info.die_size, zdice, true);
         type_damage += roll_info.bonus;
-        float multiplier = target_stats.magic_damage_multipliers[roll_info.type];
+        float multiplier = effectiveMagicDamageMult(zone_caster, target_stats, roll_info.type, true);
         int modified = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         if (saved) modified /= 2;
         total += modified;
@@ -1546,16 +1575,15 @@ void CombatEngine::tickEffects(BattleMap& bm)
         int total = 0;
 
         // Roll per-damage-type damage
-        // Roll per-damage-type damage and apply target's multipliers
+        // Roll per-damage-type damage and apply target's multipliers. The caster's Elemental Adept /
+        // Poisoner can ignore the target's Resistance on this ticking effect.
+        const Agent::Stats tick_caster =
+            (fx.caster_idx >= 0 && static_cast<std::size_t>(fx.caster_idx) < agents.size())
+                ? bm.getAgentStats(fx.caster_idx) : Agent::Stats{};
         for (const auto& roll_info : fx.spell.magic_damage_rolls) {
-            int type_damage = 0;
-            for (int i = 0; i < roll_info.num_dice; ++i) {
-                int d = roll(roll_info.die_size);
-                dice.push_back(d);
-                type_damage += d;
-            }
-            // Apply target's resistance/vulnerability/immunity multiplier
-            float multiplier = s.magic_damage_multipliers[roll_info.type];
+            int type_damage = rollSpellTypeDamage(tick_caster, roll_info.type, roll_info.num_dice,
+                                                  roll_info.die_size, dice, true);
+            float multiplier = effectiveMagicDamageMult(tick_caster, s, roll_info.type, true);
             int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
             total += modified_damage;
         }
