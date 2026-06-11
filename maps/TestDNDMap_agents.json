@@ -45,9 +45,87 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Rapier",
-        "off_hand": "Dagger",
-        "ranged": "Longbow"
+        "main_hand": {
+          "name": "Rapier",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
+          "finesse": true,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Vex",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 8
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Dagger",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 20,
+          "long_range_ft": 60,
+          "finesse": true,
+          "thrown": true,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "mastery": "Nick",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 4
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Longbow",
+          "type": "ranged",
+          "reach_ft": 5,
+          "normal_range_ft": 150,
+          "long_range_ft": 600,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": true,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Slow",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 8
+            }
+          ],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -147,9 +225,69 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unarmed",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -218,8 +356,8 @@
       "name": "Cult Mage",
       "sprite_path": "cult-mage.png",
       "size": 1,
-      "col": 8,
-      "row": 6,
+      "col": 10,
+      "row": 5,
       "stats": {
         "str": 10,
         "dex": 14,
@@ -259,9 +397,69 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unarmed",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -389,9 +587,75 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "UnarmedStunningFire",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "UnarmedStunningFire",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
+          "finesse": true,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 4,
+          "bonus_damage": 3,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": [
+            {
+              "type": "Fire",
+              "num_dice": 2,
+              "die_size": 6
+            }
+          ]
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -491,9 +755,69 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unarmed",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -581,7 +905,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 130,
+        "speed_walk": 140,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -600,7 +924,9 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Savage Attacker"
+          "Savage Attacker",
+          "Great Weapon Master",
+          "Sentinel"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -612,9 +938,87 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Greataxe",
-        "off_hand": "Dagger",
-        "ranged": "Longbow"
+        "main_hand": {
+          "name": "Greataxe",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": true,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Cleave",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Slashing",
+              "num_dice": 1,
+              "die_size": 12
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Dagger",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 20,
+          "long_range_ft": 60,
+          "finesse": true,
+          "thrown": true,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "mastery": "Nick",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 4
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Longbow",
+          "type": "ranged",
+          "reach_ft": 5,
+          "normal_range_ft": 150,
+          "long_range_ft": 600,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": true,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Slow",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 8
+            }
+          ],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -704,7 +1108,9 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Magic Initiate"
+          "Magic Initiate",
+          "Elemental Adept",
+          "War Caster"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -716,9 +1122,75 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "PactBlade",
-        "off_hand": "Unarmed",
-        "ranged": "Longbow"
+        "main_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Longbow",
+          "type": "ranged",
+          "reach_ft": 5,
+          "normal_range_ft": 150,
+          "long_range_ft": 600,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": true,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Slow",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 8
+            }
+          ],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -820,7 +1292,9 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Alert"
+          "Alert",
+          "Dual Wielder",
+          "Piercer"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -832,9 +1306,87 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Shortsword",
-        "off_hand": "Shortsword",
-        "ranged": "Longbow"
+        "main_hand": {
+          "name": "Shortsword",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
+          "finesse": true,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "mastery": "Vex",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 6
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Shortsword",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
+          "finesse": true,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "mastery": "Vex",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 6
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Longbow",
+          "type": "ranged",
+          "reach_ft": 5,
+          "normal_range_ft": 150,
+          "long_range_ft": 600,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": true,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Slow",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 8
+            }
+          ],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -854,7 +1406,7 @@
       "agent_paladin_oath": "NONE",
       "agent_wizard_subclass": "NONE",
       "agent_warlock_subclass": "NONE",
-      "agent_rogue_subclass": "ArcaneTrickster",
+      "agent_rogue_subclass": "Thief",
       "agent_cleric_subclass": "NONE",
       "agent_bard_subclass": "NONE",
       "agent_sorcerer_subclass": "NONE",
@@ -924,7 +1476,8 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Tough"
+          "Tough",
+          "War Caster"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -936,9 +1489,69 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unarmed",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -960,6 +1573,8 @@
         "Wall of Fire",
         "Flame Strike",
         "Scrying",
+        "Healing Word",
+        "Spirit Guardians",
         "Divine Spark (Harm)",
         "Divine Spark (Heal)",
         "Radiance of the Dawn"
@@ -989,8 +1604,8 @@
         4,
         3,
         3,
+        3,
         1,
-        0,
         0,
         0,
         0,
@@ -1009,122 +1624,11 @@
       ]
     },
     {
-      "name": "Vampire Infernalist",
-      "sprite_path": "vampire-infernalist.png",
-      "size": 1,
-      "col": 6,
-      "row": 2,
-      "stats": {
-        "str": 18,
-        "dex": 16,
-        "con": 16,
-        "intel": 20,
-        "wis": 16,
-        "cha": 18,
-        "hp_max": 172,
-        "hp_cur": 172,
-        "ac": 16,
-        "speed_walk": 40,
-        "speed_swim": 0,
-        "speed_fly": 0,
-        "speed_burrow": 0,
-        "prof_bonus": 5,
-        "save_prof_str": false,
-        "save_prof_dex": false,
-        "save_prof_con": true,
-        "save_prof_intel": false,
-        "save_prof_wis": false,
-        "save_prof_cha": false,
-        "num_attacks": 3,
-        "has_cunning_action": false,
-        "has_offhand_attack": false,
-        "has_sentinel": false,
-        "has_branches_of_the_tree": false,
-        "spellcasting_ability": "cha",
-        "temp_hp": 0,
-        "feats": [],
-        "luck_points": 0,
-        "luck_points_max": 0,
-        "magic_resistances": [],
-        "magic_immunities": [],
-        "magic_vulnerabilities": [],
-        "physical_resistances": [],
-        "physical_immunities": [],
-        "physical_vulnerabilities": []
-      },
-      "weapons": {
-        "main_hand": "UnarmedStunningFire",
-        "off_hand": "Dagger",
-        "ranged": "Unarmed"
-      },
-      "armor": {
-        "helmet": "",
-        "chest": "",
-        "leggings": "",
-        "boots": "",
-        "gloves": "",
-        "cloak": ""
-      },
-      "spell_indices": [
-        "Fireball",
-        "Wall of Fire",
-        "Magic Missile",
-        "Counterspell",
-        "Shield"
-      ],
-      "agent_class": "None",
-      "agent_char_level": 1,
-      "agent_barbarian_subclass": "NONE",
-      "agent_fighter_subclass": "NONE",
-      "agent_druid_circle": "NONE",
-      "agent_monk_subclass": "NONE",
-      "agent_paladin_oath": "NONE",
-      "agent_wizard_subclass": "NONE",
-      "agent_warlock_subclass": "NONE",
-      "agent_rogue_subclass": "NONE",
-      "agent_cleric_subclass": "NONE",
-      "agent_bard_subclass": "NONE",
-      "agent_sorcerer_subclass": "NONE",
-      "agent_eldritch_invocations": [],
-      "agent_fiendish_resilience_type": -1,
-      "druid_wild_shape_active": false,
-      "druid_wild_shape_form_name": "",
-      "druid_starry_form_active": false,
-      "druid_starry_constellation": 0,
-      "druid_land_type": 0,
-      "druid_wrath_of_sea_active": false,
-      "spell_slots_max": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "spell_slots_cur": [
-        5,
-        4,
-        3,
-        2,
-        1,
-        1,
-        0,
-        0,
-        0
-      ],
-      "is_npc": true,
-      "npc_spell_groups": {},
-      "npc_spell_uses_cur": {}
-    },
-    {
       "name": "Seungho",
       "sprite_path": "",
       "size": 1,
-      "col": 5,
-      "row": 3,
+      "col": 4,
+      "row": 6,
       "stats": {
         "str": 16,
         "dex": 8,
@@ -1154,7 +1658,9 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Savage Attacker"
+          "Savage Attacker",
+          "Great Weapon Master",
+          "Heavy Armor Master"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -1166,9 +1672,75 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Greatsword",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Greatsword",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": true,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Graze",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Slashing",
+              "num_dice": 2,
+              "die_size": 6
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -1225,7 +1797,10 @@
         0,
         0,
         0
-      ]
+      ],
+      "is_npc": true,
+      "npc_spell_groups": {},
+      "npc_spell_uses_cur": {}
     },
     {
       "name": "Azrathea Diggle",
@@ -1262,7 +1837,9 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Lucky"
+          "Lucky",
+          "Elemental Adept",
+          "War Caster"
         ],
         "luck_points": 2,
         "luck_points_max": 2,
@@ -1274,9 +1851,69 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Unarmed",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -1378,7 +2015,8 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [
-          "Lucky"
+          "Lucky",
+          "War Caster"
         ],
         "luck_points": 2,
         "luck_points_max": 2,
@@ -1390,9 +2028,87 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Dagger",
-        "off_hand": "Dagger",
-        "ranged": "Shortbow"
+        "main_hand": {
+          "name": "Dagger",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 20,
+          "long_range_ft": 60,
+          "finesse": true,
+          "thrown": true,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "mastery": "Nick",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 4
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Dagger",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 20,
+          "long_range_ft": 60,
+          "finesse": true,
+          "thrown": true,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "mastery": "Nick",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 4
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Shortbow",
+          "type": "ranged",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "Vex",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 6
+            }
+          ],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
@@ -1410,7 +2126,8 @@
         "Fear",
         "Vicious Mockery",
         "Counterspell",
-        "Shield"
+        "Shield",
+        "Hypnotic Pattern"
       ],
       "agent_class": "Bard",
       "agent_char_level": 1,
@@ -1434,7 +2151,7 @@
       "druid_land_type": 0,
       "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
-        0,
+        2,
         0,
         0,
         0,
@@ -1445,10 +2162,10 @@
         0
       ],
       "spell_slots_cur": [
-        0,
-        0,
-        0,
-        0,
+        4,
+        3,
+        3,
+        1,
         0,
         0,
         0,
@@ -1457,29 +2174,29 @@
       ]
     },
     {
-      "name": "Grakkok",
-      "sprite_path": "",
+      "name": "Werewolf",
+      "sprite_path": "W.png",
       "size": 1,
-      "col": 9,
-      "row": 8,
+      "col": 5,
+      "row": 4,
       "stats": {
-        "str": 20,
+        "str": 16,
         "dex": 14,
-        "con": 16,
-        "intel": 8,
+        "con": 14,
+        "intel": 10,
         "wis": 10,
-        "cha": 8,
-        "hp_max": 95,
-        "hp_cur": 95,
-        "ac": 10,
-        "speed_walk": 30,
+        "cha": 10,
+        "hp_max": 71,
+        "hp_cur": 71,
+        "ac": 15,
+        "speed_walk": 40,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
         "prof_bonus": 2,
         "save_prof_str": false,
         "save_prof_dex": false,
-        "save_prof_con": false,
+        "save_prof_con": true,
         "save_prof_intel": false,
         "save_prof_wis": false,
         "save_prof_cha": false,
@@ -1501,23 +2218,83 @@
         "physical_vulnerabilities": []
       },
       "weapons": {
-        "main_hand": "Longsword",
-        "off_hand": "Unarmed",
-        "ranged": "Unarmed"
+        "main_hand": {
+          "name": "Melee (Piercing)",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Melee (Slashing)",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Ranged (Piercing)",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
       },
       "armor": {
         "helmet": "",
-        "chest": "Plate",
+        "chest": "",
         "leggings": "",
         "boots": "",
         "gloves": "",
         "cloak": ""
       },
       "spell_indices": [],
-      "agent_class": "Fighter",
-      "agent_char_level": 9,
+      "agent_class": "None",
+      "agent_char_level": 1,
       "agent_barbarian_subclass": "NONE",
-      "agent_fighter_subclass": "BattleMaster",
+      "agent_fighter_subclass": "NONE",
       "agent_druid_circle": "NONE",
       "agent_monk_subclass": "NONE",
       "agent_paladin_oath": "NONE",
@@ -1557,6 +2334,214 @@
         0,
         0
       ]
+    },
+    {
+      "name": "Vampire Infernalist",
+      "sprite_path": "vampire-infernalist.png",
+      "size": 1,
+      "col": 13,
+      "row": 1,
+      "stats": {
+        "str": 18,
+        "dex": 16,
+        "con": 16,
+        "intel": 20,
+        "wis": 16,
+        "cha": 18,
+        "hp_max": 172,
+        "hp_cur": 172,
+        "ac": 16,
+        "speed_walk": 40,
+        "speed_swim": 0,
+        "speed_fly": 0,
+        "speed_burrow": 0,
+        "prof_bonus": 5,
+        "save_prof_str": false,
+        "save_prof_dex": false,
+        "save_prof_con": true,
+        "save_prof_intel": false,
+        "save_prof_wis": false,
+        "save_prof_cha": false,
+        "num_attacks": 3,
+        "has_cunning_action": false,
+        "has_offhand_attack": false,
+        "has_sentinel": false,
+        "has_branches_of_the_tree": false,
+        "spellcasting_ability": "int",
+        "temp_hp": 0,
+        "feats": [],
+        "luck_points": 0,
+        "luck_points_max": 0,
+        "magic_resistances": [
+          "Fire",
+          "Necrotic"
+        ],
+        "magic_immunities": [],
+        "magic_vulnerabilities": [],
+        "physical_resistances": [],
+        "physical_immunities": [],
+        "physical_vulnerabilities": []
+      },
+      "weapons": {
+        "main_hand": {
+          "name": "Melee (Slashing)",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": true,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [
+            {
+              "type": "Slashing",
+              "num_dice": 3,
+              "die_size": 12
+            }
+          ],
+          "magic_damage_types": []
+        },
+        "off_hand": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        },
+        "ranged": {
+          "name": "Unarmed",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
+          "thrown": false,
+          "proficient": false,
+          "off_hand": false,
+          "two_handed": false,
+          "heavy": false,
+          "light": false,
+          "is_shield": false,
+          "mastery": "None",
+          "bonus_hit": 0,
+          "bonus_damage": 0,
+          "ac_bonus": 0,
+          "physical_damage_types": [],
+          "magic_damage_types": []
+        }
+      },
+      "armor": {
+        "helmet": "",
+        "chest": "",
+        "leggings": "",
+        "boots": "",
+        "gloves": "",
+        "cloak": ""
+      },
+      "spell_indices": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Dispel Magic",
+        "Fireball",
+        "Mage Hand",
+        "Prestidigitation",
+        "Scrying",
+        "Wall of Fire"
+      ],
+      "agent_class": "None",
+      "agent_char_level": 1,
+      "agent_barbarian_subclass": "NONE",
+      "agent_fighter_subclass": "NONE",
+      "agent_druid_circle": "NONE",
+      "agent_monk_subclass": "NONE",
+      "agent_paladin_oath": "NONE",
+      "agent_wizard_subclass": "NONE",
+      "agent_warlock_subclass": "NONE",
+      "agent_rogue_subclass": "NONE",
+      "agent_cleric_subclass": "NONE",
+      "agent_bard_subclass": "NONE",
+      "agent_sorcerer_subclass": "NONE",
+      "agent_eldritch_invocations": [],
+      "agent_fiendish_resilience_type": -1,
+      "druid_wild_shape_active": false,
+      "druid_wild_shape_form_name": "",
+      "druid_starry_form_active": false,
+      "druid_starry_constellation": 0,
+      "druid_land_type": 0,
+      "druid_wrath_of_sea_active": false,
+      "spell_slots_max": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "spell_slots_cur": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "is_npc": true,
+
+      "npc_spell_groups": {
+	  "99": [
+	      "Detect Magic",
+	      "Detect Thoughts",
+	      "Dispel Magic",
+	      "Fireball"
+	  ],
+	  "2": [
+	      "Scrying"
+	  ],
+	  "1": [
+	      "Wall of Fire",
+	      "Greater Invisibilty",
+	      "Blight"
+	  ]
+      },
+      "npc_spell_uses_cur": {
+        "Detect Magic": 99,
+        "Detect Thoughts": 99,
+        "Dispel Magic": 99,
+        "Fireball": 99,
+        "Scrying": 2,
+        "Wall of Fire": 1,
+	"Blight":1,
+	"Greater Invisibilty":1
+      }
     }
   ],
   "map_items": []

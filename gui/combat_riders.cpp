@@ -386,6 +386,29 @@ void CombatEngine::applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int
     }
 }
 
+GrappleResult CombatEngine::applyPunchAndGrab(BattleMap& bm, int attacker_idx, int target_idx) noexcept
+{
+    GrappleResult result;
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return result;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return result;
+
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.grappler_punch_grab_available || atk_cond.grappler_punch_grab_used) return result;  // once per turn
+
+    // Mark Punch-and-Grab used for the turn + clear the flag, THEN run the grapple. The grapple routes
+    // through the shared resolveGrapple core (contested check + computed escape DC), exactly like the
+    // standalone Grapple action — no parallel grapple path.
+    atk_cond.grappler_punch_grab_used      = true;
+    atk_cond.grappler_punch_grab_available = false;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    result = resolveGrapple(bm, attacker_idx, target_idx, /*contested=*/true, /*escape_dc_override=*/0);
+    log_("{}: Grappler — Punch-and-Grab also attempts to grapple {}",
+         agentName(bm, attacker_idx), agentName(bm, target_idx));
+    return result;
+}
+
 void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                             const std::vector<int>& effects, AttackResult& result) noexcept
 {
@@ -808,6 +831,32 @@ AttackResult CombatEngine::applyRiposte(BattleMap& bm, int defender_idx,
     return r;
 }
 
+AttackResult CombatEngine::applySentinelGuard(BattleMap& bm, int sentinel_idx,
+                                              int attacker_idx, int weapon_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (sentinel_idx < 0 || sentinel_idx >= n || attacker_idx < 0 || attacker_idx >= n)
+        return AttackResult{};
+    Agent::Conditions sc = bm.getAgentConditions(sentinel_idx);
+    if (sc.reaction_used) return AttackResult{};          // re-validate (canSentinelGuard checked, but be safe)
+
+    log_("Sentinel Guardian: {} reacts — melee attack vs {}",
+         agentName(bm, sentinel_idx), agentName(bm, attacker_idx));
+
+    // The guard counter-attack: a fresh melee attack at the attacker. resolving_sentinel_guard_ keeps
+    // this strike from re-opening the OnAllyAttacked window (a guard does not provoke its own guard).
+    resolving_sentinel_guard_ = true;
+    AttackResult r = executeAction(bm, Attack{sentinel_idx, attacker_idx, weapon_idx});
+    resolving_sentinel_guard_ = false;
+
+    // Spend the reaction (re-fetch: executeAction may have mutated the Sentinel's conditions).
+    sc = bm.getAgentConditions(sentinel_idx);
+    sc.reaction_used = true;
+    bm.setAgentConditions(sentinel_idx, sc);
+    return r;
+}
+
 ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept
 {
     ToppleResult res;
@@ -1011,6 +1060,33 @@ int CombatEngine::applyProtectiveField(BattleMap& bm, int defender_idx, int dama
     log_("{} uses Protective Field: prevents {} damage (rolled reduction {})",
          agentName(bm, defender_idx), healed, reduction);
     return healed;
+}
+
+int CombatEngine::applyInterception(BattleMap& bm, int interceptor_idx, int target_idx, int damage_taken) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (interceptor_idx < 0 || interceptor_idx >= n || target_idx < 0 || target_idx >= n) return -1;
+    if (damage_taken <= 0) return -1;
+
+    Agent::Stats istats = bm.getAgentStats(interceptor_idx);
+    if (!istats.hasFeat("Interception")) return -1;
+
+    Agent::Conditions ic = bm.getAgentConditions(interceptor_idx);
+    if (ic.reaction_used || ic.incapacitated) return -1;       // re-validate (canIntercept checked; be safe)
+
+    // Reduction = 1d10 + the interceptor's Proficiency Bonus; never restore more than the hit cost.
+    int reduction = roll(10) + istats.prof_bonus;
+    int prevented = std::min(reduction, damage_taken);
+
+    // Spend the reaction, then heal back the prevented damage to the target.
+    ic.reaction_used = true;
+    bm.setAgentConditions(interceptor_idx, ic);
+    healAgent(bm, target_idx, prevented);
+
+    log_("{} uses Interception: prevents {} damage to {} (rolled reduction {})",
+         agentName(bm, interceptor_idx), prevented, agentName(bm, target_idx), reduction);
+    return prevented;
 }
 
 int CombatEngine::applyTelekineticMovement(BattleMap& bm, int idx, int target_idx) noexcept

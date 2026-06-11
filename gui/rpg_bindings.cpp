@@ -500,6 +500,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
         .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
         .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
+        .def_readwrite("sentinel_guard_available", &Agent::Conditions::sentinel_guard_available)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
@@ -517,6 +518,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
         .def_readwrite("psionic_strike_available", &Agent::Conditions::psionic_strike_available)
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
+        .def_readwrite("grappler_punch_grab_available", &Agent::Conditions::grappler_punch_grab_available)
+        .def_readwrite("grappler_punch_grab_used", &Agent::Conditions::grappler_punch_grab_used)
         .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
         .def_readwrite("divine_smite_used", &Agent::Conditions::divine_smite_used)
         .def_readwrite("eldritch_smite_available", &Agent::Conditions::eldritch_smite_available)
@@ -539,6 +542,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("cleave_used_this_turn", &Agent::Conditions::cleave_used_this_turn)
         .def_readwrite("savage_attacker_used_this_turn", &Agent::Conditions::savage_attacker_used_this_turn)
         .def_readwrite("tavern_brawler_push_used_this_turn", &Agent::Conditions::tavern_brawler_push_used_this_turn)
+        .def_readwrite("crusher_push_used_this_turn", &Agent::Conditions::crusher_push_used_this_turn)
+        .def_readwrite("piercer_reroll_used_this_turn", &Agent::Conditions::piercer_reroll_used_this_turn)
+        .def_readwrite("slasher_slow_used_this_turn", &Agent::Conditions::slasher_slow_used_this_turn)
+        .def_readwrite("gwm_hew_available", &Agent::Conditions::gwm_hew_available)
+        .def_readwrite("crusher_marked", &Agent::Conditions::crusher_marked)
+        .def_readwrite("crusher_marked_by", &Agent::Conditions::crusher_marked_by)
+        .def_readwrite("slasher_marked", &Agent::Conditions::slasher_marked)
+        .def_readwrite("slasher_marked_by", &Agent::Conditions::slasher_marked_by)
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -638,6 +649,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("proficient",       &Weapon::proficient)
         .def_readwrite("off_hand",         &Weapon::off_hand)
         .def_readwrite("two_handed",       &Weapon::two_handed)
+        .def_readwrite("heavy",            &Weapon::heavy)
+        .def_readwrite("light",            &Weapon::light)
+        .def_readwrite("is_shield",        &Weapon::is_shield)
         .def_readwrite("mastery",          &Weapon::mastery)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
@@ -1240,7 +1254,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("OnDeclareCast",     ReactionWindow::OnDeclareCast)
         .value("OnD20Seen",         ReactionWindow::OnD20Seen)
         .value("OnSaveFail",        ReactionWindow::OnSaveFail)
-        .value("OnTurnStartNearby", ReactionWindow::OnTurnStartNearby);
+        .value("OnTurnStartNearby", ReactionWindow::OnTurnStartNearby)
+        .value("OnAllyAttacked",    ReactionWindow::OnAllyAttacked);
 
     py::enum_<ReactionOption::Kind>(m, "ReactionOptionKind")
         .value("Skip",    ReactionOption::Skip)
@@ -1792,6 +1807,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::calculateAC,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Calculate total AC for agent (base AC + armor + DEX + shield + temp mods).")
+        .def("is_holding_shield",
+             &CombatEngine::isHoldingShield,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "True iff a weapon slot holds a Shield (Weapon.is_shield or a weapon named 'Shield'). Gate\n"
+             "for Shield Master and the shield-gated Fighting Styles (Interception, Protection, Unarmed).")
+        .def("can_shield_bash",
+             &CombatEngine::canShieldBash,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "True iff the agent may use Shield Master's bonus-action Shield Bash now: has the Shield\n"
+             "Master feat, is holding a Shield, and has a Bonus Action free. The shove reuses execute_shove.")
         .def("apply_armor_multipliers",
              &CombatEngine::applyArmorMultipliers,
              py::arg("battle_map"), py::arg("agent_idx"),
@@ -2115,6 +2140,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "reactor's reaction, and record the reduction in result.damage_breakdown. Re-validates\n"
              "can_uncanny_dodge. Returns True iff applied. The OnHit window (begin_attack/submit_decision)\n"
              "drives this for the GUI; auto/RL runs it inline via maybeDefenderOnHitInline.")
+        .def("can_defensive_duelist", &CombatEngine::canDefensiveDuelist,
+             py::arg("battle_map"), py::arg("action"), py::arg("result"),
+             "True iff action's target may use Defensive Duelist vs the just-resolved attack: has the feat,\n"
+             "reaction free, wields a Finesse melee weapon, the attack is melee and a non-crit hit, and +PB\n"
+             "to AC would flip it to a miss. Eligibility gate for the OnHit defender window.")
+        .def("apply_defensive_duelist", &CombatEngine::applyDefensiveDuelist,
+             py::arg("battle_map"), py::arg("reactor_idx"),
+             "Defensive Duelist (on-hit DEFENDER reaction): spend the reactor's reaction so its +PB AC\n"
+             "negates the attack. The caller flips result.hit to a miss. Returns True iff the reaction fired.")
         .def("apply_reckless_reroll",
              &CombatEngine::applyRecklessReroll,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
@@ -2129,6 +2163,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "defender, flagged via conditions.riposte_available, spend the reaction + 1 Superiority\n"
              "Die to make a melee attack defender→attacker; on a hit, add the Superiority Die to the\n"
              "damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).")
+        .def("can_sentinel_guard", &CombatEngine::canSentinelGuard,
+             py::arg("battle_map"), py::arg("action"), py::arg("sentinel_idx"),
+             "True iff sentinel_idx (has the Sentinel feat, reaction free, alive, a melee weapon, the\n"
+             "attacker within 5 ft, and neither the attacker nor action's target is itself — RAW: the\n"
+             "target must not have the feat) may use Guardian to counter-attack action's attacker.\n"
+             "Eligibility gate shared by the GUI flag and the auto/RL OnAllyAttacked window.")
+        .def("apply_sentinel_guard",
+             &CombatEngine::applySentinelGuard,
+             py::arg("battle_map"), py::arg("sentinel_idx"), py::arg("attacker_idx"), py::arg("weapon_idx"),
+             "Sentinel Guardian (OnAllyAttacked bystander reaction): after an adjacent enemy attacks an\n"
+             "ally (flagged via the attacker's conditions.sentinel_guard_available), the Sentinel spends\n"
+             "its reaction to make a melee attack at the attacker. Returns the counter-attack's\n"
+             "AttackResult (invalid if the reaction was already used).")
         // ── OnD20Seen reactions (attack rolls only). The interactive window reuses
         //    begin_attack/pending_decision/submit_decision/last_attack_result; these are the eligibility
         //    gates + direct apply hooks (used by tests, and by the GUI to label the menu). ──
@@ -2189,12 +2236,33 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Psi Warrior Psionic Strike: after a qualifying hit (conditions.psionic_strike_available),\n"
              "spend one Psionic Energy die and add Force damage (die roll + INT mod) to the AttackResult\n"
              "and the target's HP. Once per turn.")
+        .def("apply_punch_and_grab",
+             &CombatEngine::applyPunchAndGrab,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             "Grappler feat — Punch-and-Grab: after an Unarmed-Strike hit in the Attack action\n"
+             "(conditions.grappler_punch_grab_available), ALSO attempt a Grapple this attack (normally one\n"
+             "or the other), once per turn. Runs through the shared resolveGrapple core (contested check,\n"
+             "computed escape DC). Returns the GrappleResult (invalid if the flag wasn't set).")
         .def("apply_protective_field",
              &CombatEngine::applyProtectiveField,
              py::arg("battle_map"), py::arg("defender_idx"), py::arg("damage_taken"),
              "Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's\n"
              "reaction to prevent (die roll + INT mod) damage, capped at damage_taken (modeled as a\n"
              "heal-back). Returns the damage prevented, or -1 if it could not be used.")
+        .def("can_intercept",
+             &CombatEngine::canIntercept,
+             py::arg("battle_map"), py::arg("action"), py::arg("interceptor_idx"), py::arg("damage_taken"),
+             "Interception fighting style: True iff agent[interceptor_idx] may reduce the damage of\n"
+             "`action` (which just hit action.target_idx for damage_taken). Requires the Interception\n"
+             "feat, reaction free, alive/not incapacitated, holding a Shield or weapon, within 5 ft of the\n"
+             "(still-standing) target, able to see the attacker, and != attacker/target. The GUI scans all\n"
+             "agents with this to find an eligible interceptor.")
+        .def("apply_interception",
+             &CombatEngine::applyInterception,
+             py::arg("battle_map"), py::arg("interceptor_idx"), py::arg("target_idx"), py::arg("damage_taken"),
+             "Interception fighting style (reaction): spend the interceptor's reaction to prevent\n"
+             "(1d10 + Proficiency Bonus) damage to the target, capped at damage_taken (modeled as a\n"
+             "heal-back, like Protective Field). Returns the damage prevented, or -1 if it could not be used.")
         .def("apply_telekinetic_movement",
              &CombatEngine::applyTelekineticMovement,
              py::arg("battle_map"), py::arg("idx"), py::arg("target_idx"),
@@ -2332,6 +2400,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Rolls CON save (DC = max(10, damage/2)).\n"
              "Clears concentration on failed save.\n"
              "Returns ConcentrationSaveResult with details.")
+        .def("check_concentration_on_damage",
+             &CombatEngine::checkConcentrationOnDamage,
+             py::arg("battle_map"), py::arg("target_idx"), py::arg("damage"), py::arg("damager_idx") = -1,
+             "Roll the target's concentration save on taking `damage` (DC = max(10, damage/2)); on a\n"
+             "failure fully drop concentration. War Caster (target feat) grants Advantage; a damager with\n"
+             "Mage Slayer (pass damager_idx) imposes Disadvantage (Concentration Breaker). Returns True\n"
+             "iff concentration was lost.")
         .def("available_castable_spells",
              &CombatEngine::availableCastableSpells,
              py::arg("battle_map"), py::arg("agent_idx"),

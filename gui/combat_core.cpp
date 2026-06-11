@@ -131,6 +131,11 @@ int CombatEngine::attackModifier(const Weapon& w,
     if (w.pact_weapon)
         base = std::max(base, abilityMod(s.cha));
 
+    // Archery fighting style: +2 to attack rolls with Ranged weapons (not thrown
+    // melee weapons, which are Melee-type with the Thrown property).
+    if (w.type == WeaponType::Ranged && !w.thrown && s.hasFeat("Archery"))
+        base += 2;
+
     return base + (w.proficient ? s.prof_bonus : 0);
 }
 
@@ -222,11 +227,11 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         int con_mod = (pa.agent->getStats().con - 10) / 2;
         int ac = 10 + dex_mod + con_mod;
 
-        // Add shield bonus (off-hand weapon with ac_bonus)
-        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
-            const Weapon& shield = pa.weapons.back();
-            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+        // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+        for (const Weapon& shield : pa.weapons) {
+            if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
                 ac += shield.ac_bonus;
+                break;
             }
         }
 
@@ -241,11 +246,11 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         int wis_mod = (pa.agent->getStats().wis - 10) / 2;
         int ac = 10 + dex_mod + wis_mod;
 
-        // Add shield bonus (off-hand weapon with ac_bonus)
-        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
-            const Weapon& shield = pa.weapons.back();
-            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+        // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+        for (const Weapon& shield : pa.weapons) {
+            if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
                 ac += shield.ac_bonus;
+                break;
             }
         }
 
@@ -262,11 +267,11 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         int cha_mod = (pa.agent->getStats().cha - 10) / 2;
         int ac = 10 + dex_mod + cha_mod;
 
-        // Add shield bonus (off-hand weapon with ac_bonus)
-        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
-            const Weapon& shield = pa.weapons.back();
-            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+        // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+        for (const Weapon& shield : pa.weapons) {
+            if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
                 ac += shield.ac_bonus;
+                break;
             }
         }
 
@@ -283,11 +288,11 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         int cha_mod = (pa.agent->getStats().cha - 10) / 2;
         int ac = 10 + dex_mod + cha_mod;
 
-        // Add shield bonus (off-hand weapon with ac_bonus)
-        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
-            const Weapon& shield = pa.weapons.back();
-            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+        // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+        for (const Weapon& shield : pa.weapons) {
+            if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
                 ac += shield.ac_bonus;
+                break;
             }
         }
 
@@ -304,11 +309,11 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int ac = 13 + dex_mod;
 
-        // Add shield bonus (off-hand weapon with ac_bonus)
-        if (!pa.weapons.empty() && pa.weapons.size() > 1) {
-            const Weapon& shield = pa.weapons.back();
-            if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+        // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+        for (const Weapon& shield : pa.weapons) {
+            if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
                 ac += shield.ac_bonus;
+                break;
             }
         }
 
@@ -343,12 +348,31 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         }
     }
 
-    // Add shield bonus (off-hand weapon with ac_bonus)
-    if (!pa.weapons.empty() && pa.weapons.size() > 1) {
-        const Weapon& shield = pa.weapons.back();
-        if (shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+    // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+    for (const Weapon& shield : pa.weapons) {
+        if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
             ac += shield.ac_bonus;
+            break;
         }
+    }
+
+    // Defense fighting style: +1 AC while wearing armor (the unarmored Barbarian/Monk
+    // branches above return early, so this correctly applies only with armor on).
+    if (has_armor && pa.agent->getStats().hasFeat("Defense"))
+        ac += 1;
+
+    // Dual Wielder (general feat) — Enhanced Dual Wielding grants +1 AC while wielding a melee
+    // weapon in each hand (the main-hand and off-hand slots both hold a real, non-Shield melee
+    // weapon). The off-hand bonus attack itself is already modeled via the off_hand weapon flag.
+    if (pa.agent->getStats().hasFeat("Dual Wielder")) {
+        auto is_melee_weapon = [](const Weapon& w) {
+            return w.type == WeaponType::Melee && !w.is_shield &&
+                   w.name.find("Shield") == std::string::npos &&
+                   (!w.physicalDamageRolls.empty() || !w.magicDamageRolls.empty());
+        };
+        const auto& ws = pa.weapons;
+        if (ws.size() >= 2 && is_melee_weapon(ws[0]) && is_melee_weapon(ws[1]))
+            ac += 1;
     }
 
     // Add temporary modifications
@@ -357,6 +381,28 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     // TODO: Apply condition modifiers (prone, etc.)
 
     return ac;
+}
+
+bool CombatEngine::isHoldingShield(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return false;
+    for (const Weapon& w : agents[static_cast<std::size_t>(agent_idx)].weapons) {
+        if (w.is_shield || (!w.name.empty() && w.name.find("Shield") != std::string::npos))
+            return true;
+    }
+    return false;
+}
+
+bool CombatEngine::canShieldBash(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return false;
+    if (!bm.getAgentStats(agent_idx).hasFeat("Shield Master")) return false;
+    if (!isHoldingShield(bm, agent_idx)) return false;
+    return hasBonusAction(bm, agent_idx);
 }
 
 void CombatEngine::applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept

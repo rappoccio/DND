@@ -54,6 +54,11 @@ struct Weapon {
     bool         proficient      = false;       // add proficiency bonus to hit
     bool         off_hand        = false;       // designated off-hand weapon (TWF)
     bool         two_handed      = false;       // requires both hands (main hand only, no off-hand)
+    bool         heavy           = false;       // Heavy property (Great Weapon Master, Polearm Master)
+    bool         light           = false;       // Light property (Dual Wielder, off-hand / TWF, Crossbow Expert)
+    bool         is_shield       = false;       // this "weapon" is a Shield held in the off-hand: grants ac_bonus,
+                                                // makes no attack, and counts as "holding a Shield" (Shield Master,
+                                                // Interception, Protection, Unarmed Fighting)
     WeaponMastery mastery        = WeaponMastery::None;  // 2024 Weapon Mastery property
 
     std::vector<MagicDamageRoll>    magicDamageRolls;

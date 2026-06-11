@@ -631,6 +631,235 @@ class InvocationDialog:
         surf.blit(dt, dt.get_rect(center=self._done_rect.center))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  General feats (2024 PHB). A PC may take several (unlike the single origin feat).
+#  status: "in"   = combat effect wired into the engine now
+#          "soon" = planned combat effect, not yet implemented
+#          "note" = out-of-combat / no engine effect (selectable for record-keeping)
+#  All rows are selectable; the tag just communicates whether it does anything in
+#  combat yet. Names are the canonical strings stored in Agent.Stats.feats.
+#  See GENERAL_FEATS_PLAN.md and known_limitations.md.
+# ─────────────────────────────────────────────────────────────────────────────
+GENERAL_FEATS = [
+    # name,                    status, note
+    ("Crusher",                "in",   "Bludgeoning hit: push 5 ft (crit-adv soon)"),
+    ("Piercer",                "in",   "Piercing: reroll a die; +die on crit"),
+    ("Slasher",                "in",   "Slashing hit: -10 ft Speed (crit-disadv soon)"),
+    ("Great Weapon Master",    "in",   "Heavy hit: +PB damage; crit/kill: Hew bonus attack"),
+    ("Grappler",               "in",   "Unarmed hit: also Grapple; adv vs grappled"),
+    ("Sentinel",               "in",   "OA on Disengage; Halt speed 0; Guardian"),
+    ("Defensive Duelist",      "in",   "Reaction: +PB AC vs melee (finesse)"),
+    ("Shield Master",          "in",   "Shield Bash (bonus shove); Interpose soon"),
+    ("Dual Wielder",           "in",   "+1 AC with two melee weapons; off-hand attack"),
+    ("Polearm Master",         "soon", "Bonus d4 butt-end; reach reaction"),
+    ("Crossbow Expert",        "in",   "Crossbows: no melee disadvantage (firing in melee)"),
+    ("Sharpshooter",           "in",   "No long-range / firing-in-melee disadvantage"),
+    ("Spell Sniper",           "in",   "Spell attacks: no melee disadv; +60 ft range"),
+    ("Heavy Armor Master",     "soon", "-PB to B/P/S in Heavy armor"),
+    ("Elemental Adept",        "soon", "Ignore resistance; treat 1 as 2"),
+    ("Mage Slayer",            "in",   "Conc-breaker: disadv on conc save (Guarded Mind soon)"),
+    ("War Caster",             "in",   "Adv on concentration saves"),
+    ("Durable",                "soon", "Advantage on Death Saves"),
+    ("Resilient",              "soon", "Gain a saving-throw proficiency"),
+    ("Medium Armor Master",    "soon", "+3 (not +2) Dex to AC in Medium armor"),
+    ("Speedy",                 "soon", "+10 ft Speed; OA disadvantage vs you"),
+    ("Athlete",                "soon", "Climb Speed = Speed; hop up"),
+    ("Skulker",                "soon", "Blindsight 10 ft"),
+    ("Telekinetic",            "soon", "Bonus-action shove 5 ft (STR save)"),
+    ("Weapon Master",          "soon", "Use one weapon's Mastery property"),
+    ("Poisoner",               "soon", "Poison ignores resistance"),
+    ("Charger",                "soon", "+10 ft Dash; charge bonus"),
+    ("Fey Touched",            "soon", "Misty Step + 1 spell (grant)"),
+    ("Shadow Touched",         "soon", "Invisibility + 1 spell (grant)"),
+    ("Mounted Combatant",      "note", "No mount system modelled"),
+    ("Ability Score Improvement","note","Edit ability scores directly"),
+    ("Actor",                  "note", "Cha checks / mimicry"),
+    ("Chef",                   "note", "Rest food / treats (rest-based)"),
+    ("Inspiring Leader",       "note", "Rest temp HP to allies"),
+    ("Keen Mind",              "note", "Skill/Expertise; bonus-action Study"),
+    ("Observant",              "note", "Skill/Expertise; bonus-action Search"),
+    ("Skill Expert",           "note", "Skill prof + Expertise"),
+    ("Ritual Caster",          "note", "Ritual spells (out of combat)"),
+    ("Telepathic",             "note", "Detect Thoughts / telepathy"),
+    ("Heavily Armored",        "note", "Heavy-armor training (not enforced)"),
+    ("Lightly Armored",        "note", "Light-armor training (not enforced)"),
+    ("Moderately Armored",     "note", "Medium-armor training (not enforced)"),
+    ("Martial Weapon Training","note", "Weapon proficiency (not enforced)"),
+    # ── Fighting Styles (granted by the Fighting Style feature; prereqs not enforced) ──
+    ("Archery",                "in",   "Fighting Style: +2 to-hit with Ranged weapons"),
+    ("Defense",                "in",   "Fighting Style: +1 AC while wearing armor"),
+    ("Dueling",                "in",   "Fighting Style: +2 dmg, one-handed melee, no other weapon"),
+    ("Great Weapon Fighting",  "in",   "Fighting Style: reroll 1/2 as 3 (two-handed melee)"),
+    ("Thrown Weapon Fighting", "in",   "Fighting Style: +2 dmg with thrown weapons"),
+    ("Unarmed Fighting",       "in",   "Fighting Style: Unarmed Strike deals 1d6"),
+    ("Blind Fighting",         "in",   "Fighting Style: Blindsight 10 ft (see invisible)"),
+    ("Two-Weapon Fighting",    "note", "Fighting Style: off-hand mod already modelled (no-op)"),
+    ("Interception",           "in",   "Fighting Style: reaction, reduce ally damage 1d10+PB"),
+    ("Protection",             "soon", "Fighting Style: reaction, impose Disadvantage"),
+]
+
+
+class FeatDialog:
+    """Scrollable modal multi-select picker for General feats (one PC may take several).
+
+    Mirrors InvocationDialog's overlay/scroll/checkbox pattern but toggles a set of
+    feat NAMES. Every row is selectable (feats are recorded in Agent.Stats.feats); the
+    right-side tag shows whether the feat has a combat effect yet ('combat'), is planned
+    ('soon'), or is out-of-combat ('note'). Commits chosen names on dismiss."""
+    ITEM_H = 30
+    PAD    = 12
+    HDR_H  = 36
+    BTN_H  = 28
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self._selected = set()       # feat names currently chosen
+        self._callback = None        # called with sorted list of names on dismiss
+        self._done_rect = None
+        self._frames_since_show = 0
+
+    def show(self, callback, current_names):
+        self.visible = True
+        self._callback = callback
+        self._selected = set(current_names or [])
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w, dlg_h = 460, 560
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def _commit_and_dismiss(self):
+        if self._callback:
+            self._callback(sorted(self._selected))
+        self.visible = False
+
+    def _list_geom(self):
+        list_y = self.rect.y + self.HDR_H
+        list_h = self.rect.h - self.HDR_H - self.BTN_H - self.PAD * 2
+        return list_y, list_h
+
+    def _max_scroll(self, list_h):
+        return max(0, len(GENERAL_FEATS) * self.ITEM_H - list_h)
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self._commit_and_dismiss()
+                return True
+        elif event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            _list_y, list_h = self._list_geom()
+            self.scroll_y = max(0, min(self.scroll_y - event.y * 30, self._max_scroll(list_h)))
+            return True
+        elif event.type == pygame.MOUSEMOTION:
+            list_y, list_h = self._list_geom()
+            self._hover_idx = -1
+            for i in range(len(GENERAL_FEATS)):
+                iy = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= iy < list_y + list_h:
+                    r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if r.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._done_rect and self._done_rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            if not self.rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            list_y, list_h = self._list_geom()
+            for i, (name, status, note) in enumerate(GENERAL_FEATS):
+                iy = list_y + i * self.ITEM_H - self.scroll_y
+                if not (list_y <= iy < list_y + list_h):
+                    continue
+                r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos):
+                    if name in self._selected:
+                        self._selected.discard(name)
+                    else:
+                        self._selected.add(name)
+                    return True
+            return True
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+        pygame.draw.rect(surf, (40, 40, 54), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+        title = self.font_md.render("General Feats", True, (220, 220, 235))
+        surf.blit(title, (self.rect.x + self.PAD, self.rect.y + 9))
+
+        list_y, list_h = self._list_geom()
+        list_rect = pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h)
+        prev_clip = surf.get_clip()
+        surf.set_clip(list_rect)
+        cb = 14
+        _TAGS = {"in": ("combat", (90, 200, 110)), "soon": ("soon", (210, 170, 70)),
+                 "note": ("note", (130, 130, 150))}
+        for i, (name, status, note) in enumerate(GENERAL_FEATS):
+            iy = list_y + i * self.ITEM_H - self.scroll_y
+            if iy + self.ITEM_H < list_y or iy > list_y + list_h:
+                continue
+            row = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+            selected = name in self._selected
+            if i == self._hover_idx:
+                pygame.draw.rect(surf, (62, 62, 84), row)
+            cb_r = pygame.Rect(row.x + 4, row.y + (self.ITEM_H - cb) // 2, cb, cb)
+            box_col = (45, 110, 55) if selected else (50, 50, 66)
+            bdr_col = (80, 200, 90) if selected else (90, 90, 120)
+            pygame.draw.rect(surf, box_col, cb_r, border_radius=2)
+            pygame.draw.rect(surf, bdr_col, cb_r, 1, border_radius=2)
+            if selected:
+                pts = [(cb_r.x + 2, cb_r.centery), (cb_r.centerx - 1, cb_r.bottom - 2), (cb_r.right - 2, cb_r.y + 2)]
+                pygame.draw.lines(surf, (120, 240, 120), False, pts, 2)
+            nm = self.font_sm.render(name, True, (225, 225, 240))
+            surf.blit(nm, (cb_r.right + 8, row.y + 2))
+            nt = self.font_sm.render(note, True, (140, 140, 165))
+            surf.blit(nt, (cb_r.right + 8, row.y + 15))
+            tag, tcol = _TAGS.get(status, ("", (0, 0, 0)))
+            if tag:
+                ts = self.font_sm.render(tag, True, tcol)
+                surf.blit(ts, (row.right - ts.get_width() - 6, row.y + (self.ITEM_H - ts.get_height()) // 2))
+        surf.set_clip(prev_clip)
+
+        max_scroll = self._max_scroll(list_h)
+        if max_scroll > 0:
+            track = pygame.Rect(list_rect.right - 6, list_y, 6, list_h)
+            pygame.draw.rect(surf, (30, 30, 42), track)
+            frac = list_h / (len(GENERAL_FEATS) * self.ITEM_H)
+            th_h = max(20, int(list_h * frac))
+            th_y = list_y + int((list_h - th_h) * (self.scroll_y / max_scroll))
+            pygame.draw.rect(surf, (110, 110, 150), pygame.Rect(track.x, th_y, track.w, th_h))
+
+        self._done_rect = pygame.Rect(self.rect.right - 90 - self.PAD,
+                                      self.rect.bottom - self.BTN_H - self.PAD, 90, self.BTN_H)
+        hov = self._done_rect.collidepoint(*pygame.mouse.get_pos())
+        pygame.draw.rect(surf, (50, 125, 65) if hov else (35, 90, 45), self._done_rect, border_radius=4)
+        pygame.draw.rect(surf, (90, 90, 120), self._done_rect, 1, border_radius=4)
+        dt = self.font_md.render(f"Done ({len(self._selected)})", True, (220, 220, 220))
+        surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
+# Set of general-feat names (for splitting feats vector between origin + general pickers).
+GENERAL_FEAT_NAMES = {row[0] for row in GENERAL_FEATS}
+
+
 class StatsDialog:
     """
     Modal dialog showing and editing D&D 5.5e stats for a placed agent.
@@ -713,6 +942,9 @@ class StatsDialog:
         self._invocation_btn_rect = None # "Invocations..." launch button
         self._origin_feat        = "NONE"  # one origin feat per PC (cycle picker)
         self._origin_feat_rects: dict = {}
+        self._feat_dialog        = None    # General Feats multi-select picker (PCs)
+        self._feat_btn_rect      = None    # "Feats..." launch button
+        self._general_feats      = set()   # selected general feat names
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE"):
@@ -731,6 +963,8 @@ class StatsDialog:
         # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
+        self._general_feats = {f for f in cur_feats if f in GENERAL_FEAT_NAMES}
+        self._feat_dialog = FeatDialog(self.font_sm, self.font_md)
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
@@ -841,6 +1075,11 @@ class StatsDialog:
             self._invocation_dialog.handle(event)
             return True
 
+        # General Feats picker is modal-on-top too.
+        if self._feat_dialog and self._feat_dialog.visible:
+            self._feat_dialog.handle(event)
+            return True
+
         # Let steppers see every event first so a focused field can consume
         # Escape/Enter before the dialog itself acts on Escape.
         any_field_active = any(st._active for st in self.steppers.values())
@@ -866,6 +1105,12 @@ class StatsDialog:
                     eff_level = self._char_level_stepper.value if self._char_level_stepper else self._char_level
                     self._invocation_dialog.show(self._on_invocations_chosen,
                                                  self._eldritch_invocations, eff_level)
+                return True
+
+            # General Feats "Choose..." button → open the multi-select picker.
+            if self._feat_btn_rect and self._feat_btn_rect.collidepoint(event.pos):
+                if self._feat_dialog:
+                    self._feat_dialog.show(self._on_feats_chosen, self._general_feats)
                 return True
 
             # NPC checkbox and spell group interactions
@@ -989,6 +1234,10 @@ class StatsDialog:
         """Callback from InvocationDialog: store the chosen invocation codes."""
         self._eldritch_invocations = list(codes)
 
+    def _on_feats_chosen(self, names):
+        """Callback from FeatDialog: store the chosen general-feat names."""
+        self._general_feats = set(names)
+
     def _add_npc_spell(self, group_n, spell):
         """Add a spell to an NPC spell group."""
         spell_name = spell.get("name", "Unknown")
@@ -1000,7 +1249,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats))
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -1255,6 +1504,20 @@ class StatsDialog:
             self._origin_feat_rects = {"left": left_f_r, "right": right_f_r, "available": self.ORIGIN_FEATS}
             npc_checkbox_y = feat_y + 24
 
+        # ── General Feats button (PCs only): launch the multi-select picker ──
+        self._feat_btn_rect = None
+        if self._char_level_stepper and not self._is_npc:
+            gf_y = npc_checkbox_y
+            screen.blit(self.font_sm.render("Feats:", True, self.C_LABEL), (dlg.x + self.PAD, gf_y))
+            n_sel = len(self._general_feats)
+            self._feat_btn_rect = pygame.Rect(dlg.x + self.PAD + 80, gf_y - 2, 150, 18)
+            hov = self._feat_btn_rect.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._feat_btn_rect, border_radius=3)
+            pygame.draw.rect(screen, (120, 150, 180), self._feat_btn_rect, 1, border_radius=3)
+            btn_txt = self.font_sm.render(f"Choose... ({n_sel} selected)", True, (210, 220, 240))
+            screen.blit(btn_txt, btn_txt.get_rect(center=self._feat_btn_rect.center))
+            npc_checkbox_y = gf_y + 24
+
         # ── NPC Spells Section ────────────────────────────────────────────
         npc_checkbox_y = npc_checkbox_y if self._char_level_stepper else dlg.y + self.HDR_H + self.PAD + 300
         npc_checkbox_h = 16
@@ -1339,6 +1602,9 @@ class StatsDialog:
         # Invocation picker draws last so it overlays the whole stats dialog.
         if self._invocation_dialog:
             self._invocation_dialog.draw(screen)
+        # General Feats picker overlays on top as well.
+        if self._feat_dialog:
+            self._feat_dialog.draw(screen)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

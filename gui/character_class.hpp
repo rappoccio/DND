@@ -28,32 +28,11 @@ inline std::array<int,9> compute_class_slots(CharacterClass cls, int lvl) {
     if (lvl < 1 || lvl > 20) lvl = 1;
     lvl--;  // Convert to 0-indexed
 
-    // Full caster table A (Bard, Cleric, Druid — 0 slots at level 1)
-    static constexpr std::array<std::array<int,9>,20> kFullA{{
-        {0,0,0,0,0,0,0,0,0},  // 1
-        {2,0,0,0,0,0,0,0,0},  // 2
-        {3,0,0,0,0,0,0,0,0},  // 3
-        {3,2,0,0,0,0,0,0,0},  // 4
-        {4,3,0,0,0,0,0,0,0},  // 5
-        {4,3,0,0,0,0,0,0,0},  // 6
-        {4,3,2,0,0,0,0,0,0},  // 7
-        {4,3,3,0,0,0,0,0,0},  // 8
-        {4,3,3,1,0,0,0,0,0},  // 9
-        {4,3,3,2,0,0,0,0,0},  // 10
-        {4,3,3,2,1,0,0,0,0},  // 11
-        {4,3,3,2,1,0,0,0,0},  // 12
-        {4,3,3,2,1,1,0,0,0},  // 13
-        {4,3,3,2,1,1,0,0,0},  // 14
-        {4,3,3,2,2,1,1,0,0},  // 15
-        {4,3,3,2,2,1,1,0,0},  // 16
-        {4,3,3,2,2,1,1,1,0},  // 17
-        {4,3,3,3,2,1,1,1,0},  // 18
-        {4,3,3,3,2,2,1,1,1},  // 19
-        {4,3,3,3,2,2,2,1,1}   // 20
-    }};
-
-    // Full caster table B (Sorcerer, Wizard — start with 2 slots at level 1)
-    static constexpr std::array<std::array<int,9>,20> kFullB{{
+    // Full caster table (Bard, Cleric, Druid, Sorcerer, Wizard). ALL full casters share the same
+    // slot progression and have 2 first-level slots at level 1 — there is no Bard/Cleric/Druid variant.
+    // (Previously a bogus "table A" was off by one row, giving these classes level N-1's slots, so a
+    // level-1 Bard/Cleric/Druid got 0 slots — fixed 2026-06-10.)
+    static constexpr std::array<std::array<int,9>,20> kFull{{
         {2,0,0,0,0,0,0,0,0},  // 1
         {3,0,0,0,0,0,0,0,0},  // 2
         {4,2,0,0,0,0,0,0,0},  // 3
@@ -126,9 +105,8 @@ inline std::array<int,9> compute_class_slots(CharacterClass cls, int lvl) {
 
     switch (cls) {
         case Bard: case Cleric: case Druid:
-            return kFullA[lvl];
         case Sorcerer: case Wizard:
-            return kFullB[lvl];
+            return kFull[lvl];
         case Paladin: case Ranger:
             return kHalf[lvl];
         case Warlock:

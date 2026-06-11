@@ -588,6 +588,7 @@ namespace rpg {
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
       bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)
+      bool sentinel_guard_available{false}; // Sentinel feat (Guardian): an adjacent enemy attacked an ally; a nearby Sentinel may guard (set on the ATTACKER)
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool vitality_used_this_turn{false};  // World Tree Vitality of the Tree turn-start grant used this turn
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
@@ -609,6 +610,8 @@ namespace rpg {
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
+      bool grappler_punch_grab_available{false}; // Grappler feat: an Unarmed-Strike hit (Attack action) can also Grapple this attack
+      bool grappler_punch_grab_used{false};      // Grappler feat: Punch-and-Grab already used this turn (once per turn)
       bool divine_smite_available{false};   // Paladin: a melee/unarmed hit can apply Divine Smite this attack
       bool divine_smite_used{false};        // Paladin: Divine Smite already used this turn (bonus action, once per turn)
       bool eldritch_smite_available{false}; // Warlock (Eldritch Smite, inv 15): a pact-weapon hit can expend a pact slot this attack
@@ -634,6 +637,18 @@ namespace rpg {
       // ── Origin feats (per-turn) ─────────────────────────────────────────────
       bool savage_attacker_used_this_turn{false};    // Savage Attacker: damage reroll once per turn
       bool tavern_brawler_push_used_this_turn{false};// Tavern Brawler: Unarmed-Strike push once per turn
+      // ── General feats (per-turn) ────────────────────────────────────────────
+      bool crusher_push_used_this_turn{false};       // Crusher: Bludgeoning-hit push once per turn
+      bool piercer_reroll_used_this_turn{false};     // Piercer: Puncture damage-die reroll once per turn
+      bool slasher_slow_used_this_turn{false};       // Slasher: Hamstring −10 ft Speed once per turn
+      bool gwm_hew_available{false};   // Great Weapon Master Hew: a melee crit/kill offers a bonus attack (GUI prompt)
+      // ── General feats — enhanced-crit marks (cross-turn; NOT reset in turn()) ────────
+      // Set on the VICTIM by a critical hit; expire at the start of the feat-user's next turn
+      // (cleared in CombatEngine::beginTurn for the agent whose index matches *_marked_by).
+      bool crusher_marked{false};   // Crusher crit: attack rolls AGAINST this creature have Advantage
+      int  crusher_marked_by{-1};   // feat-user index whose next turn clears the mark
+      bool slasher_marked{false};   // Slasher crit: THIS creature's attack rolls have Disadvantage
+      int  slasher_marked_by{-1};   // feat-user index whose next turn clears the mark
       bool cleave_available{false};         // Cleave: a hit this attack can grant an extra attack (GUI prompt)
       bool cleave_used_this_turn{false};    // Cleave: once per turn
     };
@@ -701,6 +716,8 @@ namespace rpg {
       conditions_.divine_strike_used           = false;
       conditions_.psionic_strike_available     = false;
       conditions_.psionic_strike_used          = false;
+      conditions_.grappler_punch_grab_available = false;
+      conditions_.grappler_punch_grab_used      = false;
       conditions_.divine_smite_available       = false;
       conditions_.divine_smite_used            = false;
       conditions_.eldritch_smite_available     = false;
@@ -711,6 +728,7 @@ namespace rpg {
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;
       conditions_.riposte_available            = false;
+      conditions_.sentinel_guard_available     = false;
       // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
       // they are consumed on the next qualifying attack roll (and survive into this
       // turn so a sapped creature's attack still suffers disadvantage). slowed and
@@ -724,6 +742,10 @@ namespace rpg {
       conditions_.cleave_used_this_turn        = false;
       conditions_.savage_attacker_used_this_turn     = false;
       conditions_.tavern_brawler_push_used_this_turn = false;
+      conditions_.crusher_push_used_this_turn        = false;
+      conditions_.piercer_reroll_used_this_turn      = false;
+      conditions_.slasher_slow_used_this_turn        = false;
+      conditions_.gwm_hew_available                  = false;
       takeTurn();
     }
 

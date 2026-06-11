@@ -48,7 +48,7 @@ from helpers import (
     _spell_to_dict, _dict_to_spell,
     can_place_agent, summon_cell_placeable,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -1167,7 +1167,22 @@ class App:
         if new_feat != "NONE":
             stats.add_feat(new_feat)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE"):
+    @staticmethod
+    def _set_general_feats(stats, names):
+        """Set the agent's general feats from the multi-select picker.
+
+        General feats currently carry no one-time stat effects (ASI is not auto-applied —
+        edit ability scores via the steppers), so this is a plain replace: drop all general
+        feats, then re-add the selected ones. `add_feat` is used so any future general feat
+        that gains an addFeat effect still applies on grant. Origin feats are untouched
+        (the two name-sets are disjoint).
+        """
+        names = list(names or [])
+        stats.feats = [f for f in list(stats.feats) if f not in GENERAL_FEAT_NAMES]
+        for n in names:
+            stats.add_feat(n)
+
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1238,6 +1253,8 @@ class App:
         # Origin feat (one per PC). Applied after stats/level/prof_bonus are set so Tough HP,
         # Alert initiative proficiency, and Lucky points compute from the final values.
         self._set_origin_feat(stats, origin_feat, char_level)
+        # General feats (multi-select). Disjoint from origin feats; no ASI auto-apply.
+        self._set_general_feats(stats, general_feats)
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
@@ -2127,11 +2144,15 @@ class App:
         has_maneuver = False
         has_precision = False
         has_psionic_strike = False
+        has_punch_and_grab = False
         has_divine_smite = False
         has_eldritch_smite = False
         has_reckless_reroll = False
         has_riposte = False
         has_protective_field = False
+        has_interception = False
+        has_sentinel_guard = False
+        has_gwm_hew = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             # Riposte is a DEFENDER reaction: the flag is set on the target, not the attacker.
@@ -2148,6 +2169,8 @@ class App:
                 has_divine_strike = True
             elif result.hit and atk_cond and atk_cond.psionic_strike_available:
                 has_psionic_strike = True
+            elif result.hit and atk_cond and atk_cond.grappler_punch_grab_available:
+                has_punch_and_grab = True
             elif result.hit and atk_cond and atk_cond.divine_smite_available:
                 has_divine_smite = True
             elif result.hit and atk_cond and atk_cond.eldritch_smite_available:
@@ -2176,6 +2199,23 @@ class App:
             # on-miss shadowing.
             elif self._can_protective_field(target_idx, result):
                 has_protective_field = True
+            # Interception is a BYSTANDER on-hit damage-reduction reaction: an ally within 5 ft of the
+            # target spends its reaction to reduce the damage by 1d10 + PB (post-hit heal-back). Offered
+            # among the on-hit reductions; the full eligibility scan lives in C++ (can_intercept).
+            elif (result.hit and result.total_damage > 0 and not result.target_down
+                  and self._find_interceptor(action, target_idx, result) >= 0):
+                has_interception = True
+            # Sentinel Guardian is a BYSTANDER reaction (a third creature near the attacker), fired on a
+            # hit OR a miss. Flagged on the attacker; offered LAST among the v1 single-rider chain (an
+            # attacker's own rider shadows it this swing — see known_limitations.md).
+            elif atk_cond and atk_cond.sentinel_guard_available:
+                has_sentinel_guard = True
+            # Great Weapon Master — Hew: a melee crit/kill with a Heavy weapon offers one bonus-action
+            # attack (only when the bonus action is still free). Offered last; uses the shared
+            # extra-attack flow. Distinct economy from the on-hit riders above (it spends the bonus action).
+            elif (atk_cond and atk_cond.gwm_hew_available and not self.bonus_used
+                  and self._attack_sequence_slot != "bonus"):
+                has_gwm_hew = True
 
         # FLAG: Move to C++
         # Format attack message
@@ -2237,6 +2277,8 @@ class App:
             self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_psionic_strike:
             self._offer_psionic_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_punch_and_grab:
+            self._offer_punch_and_grab(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_smite:
             self._offer_divine_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_eldritch_smite:
@@ -2253,12 +2295,18 @@ class App:
             self._offer_riposte(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_protective_field:
             self._offer_protective_field(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_interception:
+            self._offer_interception(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_sentinel_guard:
+            self._offer_sentinel_guard(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
             self._offer_topple(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         elif has_cleave:
             self._offer_cleave(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
+        elif has_gwm_hew:
+            self._offer_gwm_hew(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         else:
             self._combat_log_add(atk_msg)
 
@@ -2275,7 +2323,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -2500,6 +2548,35 @@ class App:
         self._flush_combat_log()
         self._update_attack_overlay()
 
+    def _offer_gwm_hew(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+        """Great Weapon Master — Hew: after a Critical Hit or a kill with a Heavy melee weapon,
+        optionally make one attack with that weapon as a Bonus Action. Routes through the shared
+        extra-attack flow (which spends the bonus action). Clearing gwm_hew_available stops a re-offer.
+
+        v1 sequencing: accepting Hew now forgoes any remaining Attack-action attacks (the bonus attack
+        takes over the pending sequence). RAW lets you finish your attacks first, then Hew — deferred
+        (see known_limitations.md)."""
+        def _apply(do):
+            self._combat_log_add(atk_msg)
+            c = self.combat.get_agent_conditions(self.bm, atk_idx)
+            c.gwm_hew_available = False
+            self.combat.set_agent_conditions(self.bm, atk_idx, c)
+            self._flush_combat_log()
+            if do:
+                # Forgo any leftover action attacks so the bonus-action Hew sets up cleanly.
+                self.attacks_remaining = 0
+                self._attack_sequence_slot = ""
+                self.pending_attack_slot = ""
+                self._start_extra_attack(weapon_idx=weapon_idx, offhand=False,
+                                         label="Great Weapon Master: Hew")
+            self._update_attack_overlay()
+        options = [
+            ("Hew: bonus-action attack", lambda: _apply(True)),
+            ("Skip Hew", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After a qualifying weapon hit, offer Cleric Divine Strike (Radiant or Necrotic).
         Mirrors _offer_brutal_strike; the extra die is applied in C++ via apply_divine_strike_effect."""
@@ -2541,6 +2618,31 @@ class App:
         options = [
             ("Psionic Strike (1 die → Force)", lambda: _apply(True)),
             ("Skip Psionic Strike", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_punch_and_grab(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After an Unarmed-Strike hit in the Attack action, offer the Grappler feat's Punch-and-Grab:
+        ALSO attempt a Grapple this attack (normally damage OR grapple), once per turn. The contested
+        grapple runs in C++ via apply_punch_and_grab → resolveGrapple. Mirrors _offer_psionic_strike."""
+        def _apply(use_it):
+            self._combat_log_add(atk_msg)   # the unarmed-strike damage still landed
+            if use_it:
+                grab = self.combat.apply_punch_and_grab(self.bm, atk_idx, target_idx)
+                if grab.valid and grab.success:
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Punch-and-Grab — grappled (escape DC {grab.escape_dc})")
+                elif grab.valid:
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Punch-and-Grab — grapple failed "
+                        f"(atk {grab.attacker_roll} vs def {grab.defender_roll})")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+        options = [
+            ("Punch-and-Grab (also attempt a Grapple)", lambda: _apply(True)),
+            ("Skip Grapple", lambda: _apply(False)),
         ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
@@ -3066,6 +3168,61 @@ class App:
         px, py = self._agent_screen_pos(target_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _offer_sentinel_guard(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Offer a Sentinel BYSTANDER a Guardian reaction after an adjacent enemy attacks an ally: spend
+        the reaction to make a melee attack at the attacker. The reactor is a third creature within 5 ft
+        of the attacker (NOT the attacker or the attack's target). Scans for the first eligible Sentinel
+        via can_sentinel_guard. Fires on a hit OR a miss; never alters the original attack. Mirrors
+        _offer_riposte, but the reactor is found by scan (like _offer_guided_strike)."""
+        agents = self.bm.placed_agents
+        sentinel_idx = -1
+        for i in range(len(agents)):
+            if self.combat.can_sentinel_guard(self.bm, action, i):
+                sentinel_idx = i
+                break
+        if sentinel_idx < 0:                       # eligibility lapsed since the flag was set
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+            return
+        sent_name = agents[sentinel_idx].name if sentinel_idx < len(agents) else "?"
+        # First melee weapon the Sentinel wields (mirrors C++ riposteWeaponIdx; the engine re-validates).
+        widx = next((i for i, w in enumerate(self.combat.get_agent_weapons(self.bm, sentinel_idx))
+                     if w.type == rpg.WeaponType.Melee), -1)
+
+        def _apply():
+            self._combat_log_add(atk_msg)          # the original attack still happened
+            grd = self.combat.apply_sentinel_guard(self.bm, sentinel_idx, atk_idx, widx)
+            if grd.valid and grd.hit:
+                dmg_parts = self._get_damage_type_names(grd.magic_damage_types, grd.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{sent_name}→{atk_name}: Sentinel Guardian → HIT {grd.total_damage}"
+                    f"{self._damage_breakdown_str(grd)} {dmg_type_str}"
+                    f"{' CRIT!' if grd.critical else ''}{' — DOWN' if grd.target_down else ''}")
+                if grd.target_down:
+                    self._drop_concentration_for_agent(atk_idx)
+            elif grd.valid:
+                self._combat_log_add(
+                    f"{sent_name}→{atk_name}: Sentinel Guardian → misses "
+                    f"(roll {grd.total_roll} vs AC {grd.target_ac})")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            (f"Sentinel Guardian — {sent_name} melee attacks the attacker (reaction)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(sentinel_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _can_protective_field(self, target_idx, result):
         """Eligibility gate for the Psi Warrior Protective Field reaction (mirrors the checks in
         applyProtectiveField). Reactor = the hit target: Fighter L3+ Psi Warrior, reaction free, not
@@ -3117,6 +3274,55 @@ class App:
             ("Skip", _skip),
         ]
         px, py = self._agent_screen_pos(target_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _find_interceptor(self, action, target_idx, result):
+        """Return the first agent eligible to use the Interception fighting style against this hit, or
+        -1. All the rules (Interception feat, reaction free, Shield/weapon, within 5 ft of the still-
+        standing target, can see the attacker) live in C++ can_intercept; we only pre-gate on the hit
+        actually dealing damage and not dropping the target (the v1 heal-back can't rescue a drop to 0)."""
+        if not (result.hit and result.total_damage > 0) or result.target_down:
+            return -1
+        agents = self.bm.placed_agents
+        for i in range(len(agents)):
+            if i == target_idx:
+                continue
+            if self.combat.can_intercept(self.bm, action, i, result.total_damage):
+                return i
+        return -1
+
+    def _offer_interception(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Offer a bystander with the Interception fighting style (holding a Shield/weapon, within 5 ft
+        of the target) to spend its reaction reducing the damage by 1d10 + PB. The reactor is a THIRD
+        creature (not the target). apply_interception re-validates and heals the target back in C++.
+        Mirrors _offer_protective_field but keyed on the interceptor."""
+        agents = self.bm.placed_agents
+        interceptor_idx = self._find_interceptor(action, target_idx, result)
+        itc_name = agents[interceptor_idx].name if 0 <= interceptor_idx < len(agents) else "Ally"
+
+        def _apply():
+            self._combat_log_add(atk_msg)   # the hit (and its damage) still landed
+            prevented = self.combat.apply_interception(self.bm, interceptor_idx, target_idx, result.total_damage)
+            if prevented > 0:
+                self._combat_log_add(
+                    f"{itc_name}: Interception — prevents {prevented} damage to {tgt_name} (reaction + 1d10 + PB).")
+            else:
+                self._combat_log_add(f"{itc_name}: Interception had no effect.")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            (f"Interception — {itc_name} reduces damage (reaction + 1d10 + PB)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(interceptor_idx if interceptor_idx >= 0 else target_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
     def _create_unarmed_punch_weapon(self):
@@ -5062,9 +5268,17 @@ class App:
             pygame.draw.rect(self.screen, (60, 220, 90),
                              pygame.Rect(gx, gy, cpx, cpx), 3)
 
-        # Draw spell range circle (thin line showing max range from caster)
+        # Draw spell range circle (thin line showing max reach from caster). Self-origin AoEs
+        # (Cone, Line) store their reach in radius/length, not `range` (which is 0 for them), so a
+        # 60-ft Cone of Cold would otherwise draw a 0-ft ring. Use the geometry's extent for those.
         caster = self.bm.placed_agents[caster_idx]
-        range_cells = sp.range / 5
+        if sp.geometry == rpg.SpellGeometry.Cone:
+            reach_ft = sp.radius
+        elif sp.geometry == rpg.SpellGeometry.Line:
+            reach_ft = sp.length
+        else:
+            reach_ft = sp.range
+        range_cells = reach_ft / 5
         range_px = range_cells * cpx
         caster_sx, caster_sy = self._cell_to_screen(caster.origin.col, caster.origin.row)
         caster_center_x = caster_sx + (caster.size * cpx) / 2
@@ -5393,10 +5607,14 @@ class App:
                         if s.get_physical_damage_multiplier(idx) == 2.0
                     ],
                 },
+                # Full weapon dicts (not just names) so NPC / monster weapons and any per-weapon
+                # customizations (bonus_hit, mastery, damage dice, heavy/light) survive the round-trip
+                # without depending on the PC weapons.json catalog. Loader accepts dicts or, for older
+                # saves, bare name strings (catalog lookup).
                 "weapons": {
-                    "main_hand": self.combat.get_agent_weapons(self.bm, i)[0].name or "",
-                    "off_hand": self.combat.get_agent_weapons(self.bm, i)[1].name or "",
-                    "ranged": self.combat.get_agent_weapons(self.bm, i)[2].name or "",
+                    "main_hand": _weapon_to_dict(self.combat.get_agent_weapons(self.bm, i)[0]),
+                    "off_hand": _weapon_to_dict(self.combat.get_agent_weapons(self.bm, i)[1]),
+                    "ranged": _weapon_to_dict(self.combat.get_agent_weapons(self.bm, i)[2]),
                 },
                 "armor": {
                     "helmet": self.combat.get_agent_armor(self.bm, i)[0].name or "",
@@ -5560,15 +5778,18 @@ class App:
                 break
             cpp_weapons = [rpg.Weapon(), rpg.Weapon(), rpg.Weapon()]  # 3 slots: main, off, ranged
 
-            # Try new weapons dict format first (slot names -> weapon names)
+            # Try new weapons dict format first. Each slot holds either a full weapon dict
+            # (current format — lossless, works for NPC/monster/custom weapons) or, for older
+            # saves, a bare weapon name string resolved against the PC weapons.json catalog.
             weapons_dict = t.get("weapons", {})
             if weapons_dict and isinstance(weapons_dict, dict):
                 slot_names = ["main_hand", "off_hand", "ranged"]
                 for slot_idx, slot_name in enumerate(slot_names):
-                    weapon_name = weapons_dict.get(slot_name, "")
-                    if weapon_name and weapon_name in self.weapon_name_to_dict:
-                        weapon_dict = self.weapon_name_to_dict[weapon_name]
-                        cpp_weapons[slot_idx] = _dict_to_weapon(weapon_dict)
+                    weapon_data = weapons_dict.get(slot_name, "")
+                    if isinstance(weapon_data, dict):
+                        cpp_weapons[slot_idx] = _dict_to_weapon(weapon_data)
+                    elif weapon_data and weapon_data in self.weapon_name_to_dict:
+                        cpp_weapons[slot_idx] = _dict_to_weapon(self.weapon_name_to_dict[weapon_data])
             else:
                 # Fallback to legacy weapon_indices format (list of weapon names)
                 weapon_names = t.get("weapon_indices", [])
@@ -5605,7 +5826,12 @@ class App:
 
             self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
 
-        # Restore spells — load from spell_indices or legacy "spells" field
+        # Restore spells — load from spell_indices or legacy "spells" field.
+        # Class features (Channel Divinity options like Divine Spark / Radiance of the Dawn) live in
+        # classfeatures.json, not spells.json. They're auto-granted by _grant_class_features (by class +
+        # level + subclass, with level-scaled dice), so any such names persisted into a save's
+        # spell_indices are skipped here (not looked up in spells.json) to avoid a bogus "not found" warning.
+        cf_names = {f.get("name") for f in self.all_class_features}
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
@@ -5627,6 +5853,8 @@ class App:
                             "terrain_color": spell_dict.get("terrain_color"),
                         }
                         self._spell_metadata[(i, j)] = meta
+                    elif spell_name in cf_names:
+                        continue  # class feature — granted below via _grant_class_features, not from spells.json
                     else:
                         available = ", ".join(sorted(list(self.spell_name_to_idx.keys())[:5])) + "..."
                         print(f"WARNING: Spell '{spell_name}' not found for agent {t.get('name', i)}")
@@ -5660,6 +5888,10 @@ class App:
                             }
                             self._spell_metadata[(i, j)] = meta
 
+            # Grant always-prepared class features (Channel Divinity options, etc.) from
+            # classfeatures.json by class + level + subclass — same path as _apply_spells_to_agent, so
+            # a loaded agent gets its features regardless of what was persisted in spell_indices.
+            self._grant_class_features(i, cpp_spells)
             self.combat.set_agent_spells(self.bm, i, cpp_spells)
 
         # Restore armor — load from armor dict (new format) or legacy armor_indices (old format)

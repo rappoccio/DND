@@ -1023,13 +1023,19 @@
   "width": 0,
   "length": 0,
   "duration": 1,
-  "magic_damage_types": [],
+  "magic_damage_types": [
+   {
+    "type": "Thunder",
+    "num_dice": 3,
+    "die_size": 8
+   }
+  ],
   "physical_damage_types": [],
   "level": 1,
   "upcast_dice_bonus": 1,
   "requires_concentration": false,
-  "requires_los": false,
-  "check_los_on_center": true,
+  "requires_los": true,
+  "check_los_on_center": false,
   "school": "evocation"
  },
  {
@@ -2284,7 +2290,13 @@
   "width": 0,
   "length": 0,
   "duration": 1,
-  "magic_damage_types": [],
+  "magic_damage_types": [
+   {
+    "type": "Fire",
+    "num_dice": 3,
+    "die_size": 6
+   }
+  ],
   "physical_damage_types": [],
   "level": 2,
   "upcast_dice_bonus": 1,
@@ -6809,7 +6821,13 @@
   "width": 0,
   "length": 0,
   "duration": 1,
-  "magic_damage_types": [],
+  "magic_damage_types": [
+   {
+    "type": "Thunder",
+    "num_dice": 1,
+    "die_size": 8
+   }
+  ],
   "physical_damage_types": [],
   "level": 0,
   "upcast_dice_bonus": 0,

@@ -271,6 +271,11 @@ void CombatEngine::rollDamage(const Weapon& w,
         log_parts.push_back(std::move(part));
     };
 
+    // Great Weapon Fighting style: with a two-handed melee weapon, treat any 1 or 2 on a
+    // weapon damage die as a 3. Applies only to the weapon's own physical dice (below).
+    const bool gwf = w.type == WeaponType::Melee && w.two_handed
+                     && attacker.hasFeat("Great Weapon Fighting");
+
     // Roll physical damage types and apply target's multipliers
     for (const auto& dmg_roll : w.physicalDamageRolls) {
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
@@ -278,6 +283,7 @@ void CombatEngine::rollDamage(const Weapon& w,
         std::vector<int> type_dice;
         for (int i = 0; i < num_dice; ++i) {
             int d = roll(dmg_roll.die_size);
+            if (gwf && d < 3) d = 3;   // Great Weapon Fighting: 1 or 2 → 3
             result.dice_results.push_back(d);
             type_dice.push_back(d);
             type_damage += d;
@@ -315,7 +321,8 @@ void CombatEngine::rollDamage(const Weapon& w,
     // 1d4 + STR Bludgeoning (vs the default 1 + STR). Damage Rerolls: reroll a 1 on the
     // die (once, keep the new roll). Scoped to the default "Unarmed" weapon — the Monk's
     // "MonkUnarmed" die supersedes this and is left untouched.
-    if (w.name == "Unarmed" && attacker.hasFeat("Tavern Brawler")) {
+    if (w.name == "Unarmed" && attacker.hasFeat("Tavern Brawler")
+            && !attacker.hasFeat("Unarmed Fighting")) {
         const int num_dice = result.critical ? 2 : 1;
         int type_damage = 0;
         std::vector<int> type_dice;
@@ -330,6 +337,28 @@ void CombatEngine::rollDamage(const Weapon& w,
         raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
         result.physical_damage_types.push_back(Bludgeoning);
         format_type(num_dice, 4, type_damage, multiplier, type_dice,
+                    physicalDamageName(Bludgeoning));
+    }
+
+    // Unarmed Fighting style: a bare Unarmed Strike deals 1d6 Bludgeoning (vs the default
+    // flat STR-only). Supersedes Tavern Brawler's 1d4 above when both are present. Scoped
+    // to the default "Unarmed" weapon ("MonkUnarmed" supersedes this and is untouched).
+    // DEFERRED: the 1d8-when-empty-handed upgrade (no weapon-array access here) and the
+    // start-of-turn 1d4 to a creature you have Grappled.
+    if (w.name == "Unarmed" && attacker.hasFeat("Unarmed Fighting")) {
+        const int num_dice = result.critical ? 2 : 1;
+        int type_damage = 0;
+        std::vector<int> type_dice;
+        for (int i = 0; i < num_dice; ++i) {
+            int d = roll(6);
+            result.dice_results.push_back(d);
+            type_dice.push_back(d);
+            type_damage += d;
+        }
+        float multiplier = target.physical_damage_multipliers[Bludgeoning];
+        raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        result.physical_damage_types.push_back(Bludgeoning);
+        format_type(num_dice, 6, type_damage, multiplier, type_dice,
                     physicalDamageName(Bludgeoning));
     }
 
@@ -517,6 +546,49 @@ bool CombatEngine::applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResul
     return true;
 }
 
+// Defensive Duelist (feat): on a non-crit MELEE hit, a wielder of a Finesse melee weapon may add its
+// Proficiency Bonus to AC against the attack (reaction), flipping the hit to a miss when +PB clears the
+// roll. Offered only when the +PB would actually flip the outcome and the reaction is free.
+bool CombatEngine::canDefensiveDuelist(const BattleMap& bm, const Attack& action, const AttackResult& r) const
+{
+    if (!r.hit || r.critical) return false;
+    const int tgt = action.target_idx;
+    const auto& agents = bm.placedAgents();
+    if (tgt < 0 || tgt >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats ts = bm.getAgentStats(tgt);
+    if (!ts.hasFeat("Defensive Duelist")) return false;
+    if (ts.hp_cur <= 0) return false;
+    const Agent::Conditions tc = bm.getAgentConditions(tgt);
+    if (tc.reaction_used || tc.incapacitated) return false;
+    // Adding PB to AC must actually flip the hit to a miss (else the reaction is wasted).
+    if (r.total_roll >= r.target_ac + ts.prof_bonus) return false;
+    // RAW: the triggering attack must be a MELEE attack, and the defender must wield a Finesse melee weapon.
+    const int atk = action.attacker_idx;
+    if (atk >= 0 && atk < static_cast<int>(agents.size())) {
+        const auto aw = bm.getAgentWeapons(atk);
+        if (action.weapon_idx >= 0 && action.weapon_idx < static_cast<int>(aw.size()) &&
+            aw[static_cast<std::size_t>(action.weapon_idx)].type != WeaponType::Melee)
+            return false;
+    }
+    const auto tw = bm.getAgentWeapons(tgt);
+    for (const Weapon& w : tw)
+        if (w.finesse && w.type == WeaponType::Melee) return true;
+    return false;
+}
+
+bool CombatEngine::applyDefensiveDuelist(BattleMap& bm, int reactor_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor_idx < 0 || reactor_idx >= static_cast<int>(agents.size())) return false;
+    Agent::Conditions c = bm.getAgentConditions(reactor_idx);
+    if (c.reaction_used) return false;
+    c.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, c);
+    log_("{} uses Defensive Duelist (+{} AC) — the attack misses!",
+         agentName(bm, reactor_idx), bm.getAgentStats(reactor_idx).prof_bonus);
+    return true;
+}
+
 // The defender's OnHit options against a just-resolved attack: Shield (negate) and/or Uncanny Dodge
 // (halve). Both cost the one reaction, so the menu lists every legal one and the chosen reaction
 // spends the reaction (foreclosing the others). Always appended with Skip when non-empty.
@@ -530,6 +602,9 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (r.hit && r.total_damage > 0 && canUncannyDodge(bm, action.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Uncanny Dodge (halve the damage)", "UncannyDodge"});
+    if (canDefensiveDuelist(bm, action, r))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Defensive Duelist (+PB AC — the attack misses)", "DefensiveDuelist"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -563,6 +638,13 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
     }
     if (opt.feature == "UncannyDodge")
         return applyUncannyDodge(bm, action.target_idx, r);
+    if (opt.feature == "DefensiveDuelist") {
+        if (applyDefensiveDuelist(bm, action.target_idx)) {
+            r.hit = false;                  // DM ruling: a Defensive-Duelist-negated hit is a genuine miss.
+            return true;
+        }
+        return false;
+    }
     return false;
 }
 
@@ -624,6 +706,123 @@ bool CombatEngine::maybeRiposteInline(BattleMap& bm, const Attack& action, Attac
     }
     (void)applyRiposte(bm, defender, attacker, widx);
     return true;
+}
+
+// ── Sentinel feat — Guardian (OnAllyAttacked bystander reaction) ─────────────
+// RAW 2024: when a creature within 5 ft of you makes an attack against a target other than you (and
+// that target doesn't have the Sentinel feat), you may use your reaction to make a melee attack
+// against the attacking creature. Fires on a hit OR a miss (it keys on the attack being made, not the
+// outcome) and never alters the original attack — it's a pure counter-strike.
+bool CombatEngine::canSentinelGuard(const BattleMap& bm, const Attack& action, int sentinel_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx;
+    const int tgt = action.target_idx;
+    if (sentinel_idx < 0 || sentinel_idx >= n || atk < 0 || atk >= n) return false;
+    if (sentinel_idx == atk || sentinel_idx == tgt) return false;   // the attack must be against someone OTHER than the Sentinel
+    const Agent::Stats ss = bm.getAgentStats(sentinel_idx);
+    if (!ss.has_sentinel || ss.hp_cur <= 0) return false;
+    const Agent::Conditions sc = bm.getAgentConditions(sentinel_idx);
+    if (sc.reaction_used || sc.incapacitated) return false;
+    if (tgt >= 0 && tgt < n && bm.getAgentStats(tgt).has_sentinel) return false;  // RAW: target must not have the feat
+    if (riposteWeaponIdx(bm, sentinel_idx) < 0) return false;       // needs a melee weapon to strike back
+    // The attacking creature must be within the Sentinel's 5 ft reach (1 cell; reach weapons deferred).
+    const auto threats = threateningAgents(bm, sentinel_idx, 1);
+    return std::find(threats.begin(), threats.end(), atk) != threats.end();
+}
+
+// ── Interception fighting style — eligibility for one bystander vs a hit on someone else ─────
+bool CombatEngine::canIntercept(const BattleMap& bm, const Attack& action,
+                                int interceptor_idx, int damage_taken) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx;
+    const int tgt = action.target_idx;
+    if (interceptor_idx < 0 || interceptor_idx >= n || atk < 0 || atk >= n || tgt < 0 || tgt >= n)
+        return false;
+    if (interceptor_idx == atk || interceptor_idx == tgt) return false;  // protect a creature OTHER than yourself
+    if (damage_taken <= 0) return false;
+
+    const Agent::Stats is = bm.getAgentStats(interceptor_idx);
+    if (!is.hasFeat("Interception") || is.hp_cur <= 0) return false;
+    const Agent::Conditions ic = bm.getAgentConditions(interceptor_idx);
+    if (ic.reaction_used || ic.incapacitated) return false;
+
+    // v1 heal-back model: cannot rescue a target already dropped to 0 by the hit (see known_limitations).
+    if (bm.getAgentStats(tgt).hp_cur <= 0) return false;
+
+    // Must be holding a Shield or a Simple/Martial weapon (≈ any real weapon with damage dice).
+    bool armed = isHoldingShield(bm, interceptor_idx);
+    if (!armed) {
+        for (const Weapon& w : agents[static_cast<std::size_t>(interceptor_idx)].weapons)
+            if (!w.physicalDamageRolls.empty() || !w.magicDamageRolls.empty()) { armed = true; break; }
+    }
+    if (!armed) return false;
+
+    // "A creature you can see hits…": the interceptor must be able to perceive the attacker.
+    if (!canPerceiveTarget(bm, interceptor_idx, atk)) return false;
+
+    // Within 5 ft (1 cell) of the TARGET being hit. Footprint Chebyshev (mirrors threateningAgents).
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(tgt)];
+    const PlacedAgent& ip = agents[static_cast<std::size_t>(interceptor_idx)];
+    const int dc = std::max({tp.origin.col - ip.origin.col,
+                             ip.origin.col - (tp.origin.col + tp.agent->getSize() - 1), 0});
+    const int dr = std::max({tp.origin.row - ip.origin.row,
+                             ip.origin.row - (tp.origin.row + tp.agent->getSize() - 1), 0});
+    return std::max(dc, dr) <= 1;
+}
+
+bool CombatEngine::maybeSentinelGuardInline(BattleMap& bm, const Attack& action, AttackResult& /*r*/)
+{
+    // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via sentinel_guard_available.
+    if (!decider_) return false;
+    if (resolving_sentinel_guard_) return false;          // a guard counter-attack doesn't provoke its own guard
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int sentinel = 0; sentinel < n; ++sentinel) {
+        if (!canSentinelGuard(bm, action, sentinel)) continue;
+        const int widx = riposteWeaponIdx(bm, sentinel);
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnAllyAttacked;
+        ctx.reactor_idx = sentinel;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, widx,
+                                             "Sentinel Guardian (melee attack vs the attacker)", "SentinelGuard"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "SentinelGuard") continue;
+        (void)applySentinelGuard(bm, sentinel, action.attacker_idx, widx);
+        return true;                                      // one guard per attack (reaction-economy bounds the chain)
+    }
+    return false;
+}
+
+bool CombatEngine::maybeInterceptionInline(BattleMap& bm, const Attack& action, AttackResult& r)
+{
+    // Auto/RL only: the GUI (no decider) scans via can_intercept + _offer_interception.
+    if (!decider_) return false;
+    if (!r.hit || r.total_damage <= 0) return false;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i) {
+        if (!canIntercept(bm, action, i, r.total_damage)) continue;
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnAllyAttacked;
+        ctx.reactor_idx = i;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Interception (reduce the damage by 1d10 + PB)", "Interception"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "Interception") continue;
+        (void)applyInterception(bm, i, action.target_idx, r.total_damage);
+        return true;                                      // one interception per attack
+    }
+    return false;
 }
 
 // War Domain Guided Strike eligibility for one cleric vs a just-missed attack (shared by the GUI flag
@@ -907,6 +1106,9 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
         }
     } else if (opt.feature == "UncannyDodge") {
         applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
+    } else if (opt.feature == "DefensiveDuelist") {
+        if (applyDefensiveDuelist(bm, ctx.reactor_idx))
+            in_flight_attack_.r.hit = false;
     }
 }
 
@@ -1045,10 +1247,28 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
                                    atk_pt.origin, atk_sz,
                                    tgt_pt.origin, tgt_sz);
 
+    // Sharpshooter (general feat) — Long Range: attacking at long range imposes no
+    // Disadvantage. hasDisadvantage returns only the long-range penalty here, so clearing
+    // disadv before the engagement check below removes exactly that benefit.
+    if (disadv && atk_pt.agent->getStats().hasFeat("Sharpshooter")) {
+        disadv = false;
+        log_("Sharpshooter: no Disadvantage at long range");
+    }
+
     // Apply engagement disadvantage: ranged attacks suffer disadvantage if engaged
     bool is_ranged = (w.type == WeaponType::Ranged);
     if (is_ranged && isThreatened(bm, action.attacker_idx)) {
-        disadv = true;
+        // Firing in Melee — Sharpshooter (any ranged weapon) and Crossbow Expert (Crossbows
+        // only) negate the within-5-ft Disadvantage from a nearby enemy.
+        const Agent::Stats& fs = atk_pt.agent->getStats();
+        bool firing_in_melee_ok =
+            fs.hasFeat("Sharpshooter") ||
+            (fs.hasFeat("Crossbow Expert") && w.name.find("Crossbow") != std::string::npos);
+        if (firing_in_melee_ok)
+            log_("{}: no Disadvantage firing in melee (feat)",
+                 agentName(bm, action.attacker_idx));
+        else
+            disadv = true;
     }
 
     // Check agent conditions for advantage/disadvantage
@@ -1074,6 +1294,13 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (atk_cond.poisoned) {
         dis = true;
         log_("Disadvantage: attacker is poisoned");
+    }
+
+    // Slasher (general feat) — Enhanced Critical: a creature crit by Slashing has Disadvantage on
+    // its own attack rolls until the feat-user's next turn (mark cleared in beginTurn).
+    if (atk_cond.slasher_marked) {
+        dis = true;
+        log_("Disadvantage: attacker was crit by Slasher");
     }
 
     // Attacker frightened: disadvantage on attacks when fear source is in LOS
@@ -1104,8 +1331,11 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: attacker is hidden");
     }
 
-    // Attacker is invisible: attacks have advantage (Invisibility ends after attacking).
-    if (atk_cond.invisible) {
+    // Attacker is invisible: attacks have advantage (Invisibility ends after attacking) —
+    // UNLESS the target can still perceive the attacker (Truesight/Blindsight in range, or
+    // the Blind Fighting style's Blindsight 10 ft). canPerceiveTarget(viewer, perceived).
+    if (atk_cond.invisible &&
+        !canPerceiveTarget(bm, action.target_idx, action.attacker_idx)) {
         adv = true;
         log_("Advantage: attacker is invisible");
     }
@@ -1180,6 +1410,20 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (tgt_cond.reckless_attack) {
         adv = true;
         log_("Advantage: target has Reckless Attack active");
+    }
+
+    // Crusher (general feat) — Enhanced Critical: attack rolls against a creature crit by
+    // Bludgeoning have Advantage until the feat-user's next turn (mark cleared in beginTurn).
+    if (tgt_cond.crusher_marked) {
+        adv = true;
+        log_("Advantage: target was crit by Crusher");
+    }
+
+    // Grappler feat — Advantage on attack rolls against a creature you are grappling.
+    if (tgt_cond.grappled && tgt_cond.grappler_idx == action.attacker_idx &&
+        atk_pt.agent->getStats().hasFeat("Grappler")) {
+        adv = true;
+        log_("Advantage: Grappler attacking a creature it has grappled");
     }
 
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
@@ -1289,6 +1533,9 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // reflected (no stale-snapshot clobber).
     maybeDefenderOnHitInline(bm, action, s.r);
     AttackResult r = applyAttackResult(bm, s);
+    // Auto/RL Interception (OnAllyAttacked): a nearby ally with the Interception fighting style may
+    // spend its reaction to reduce the damage this hit dealt (post-hit heal-back). On-hit only.
+    maybeInterceptionInline(bm, action, r);
     // Auto/RL War Domain Guided Strike (OnMiss): a War Cleric may add +10 to turn the miss into a hit.
     // Runs BEFORE Riposte so a guided hit forecloses the defender's miss-reaction.
     maybeGuidedStrikeInline(bm, action, r);
@@ -1296,6 +1543,9 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // so the riposte is a fresh top-level attack (no nesting). The reaction economy caps the chain:
     // a riposte-of-a-riposte is possible once each (both reactors spend their one reaction), then stops.
     maybeRiposteInline(bm, action, r);
+    // Auto/RL Sentinel Guardian (OnAllyAttacked): a Sentinel adjacent to the attacker may counter-attack
+    // it after it struck an ally. Runs last — it's a bystander's reaction and never alters this attack.
+    maybeSentinelGuardInline(bm, action, r);
     return r;
 }
 
@@ -1458,6 +1708,19 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Grappler feat — Punch-and-Grab eligibility (on an Unarmed-Strike hit) ─
+    // After hitting with an Unarmed Strike as part of the Attack action (not a bonus-action strike), a
+    // Grappler may ALSO attempt a Grapple this attack (normally one or the other), once per turn. Flagged
+    // for the GUI (which offers it and calls applyPunchAndGrab → resolveGrapple); the grapple itself runs
+    // through the shared resolveGrapple core. attack_slot is set by Python ("action"/"bonus"); an empty
+    // slot (internal callers / tests) is treated as the Attack action.
+    if (r.hit && atk_stats.hasFeat("Grappler") &&
+        (w.name == "Unarmed" || w.name == "MonkUnarmed") &&
+        action.attack_slot != "bonus" && !atk_cond.grappler_punch_grab_used) {
+        updated_atk_cond.grappler_punch_grab_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     // ── Paladin Divine Smite eligibility (on a melee/unarmed hit) ─────────
     // After hitting with a melee weapon or Unarmed Strike, a Paladin may spend a spell slot as
     // a Bonus Action to add Radiant damage (applied out of band via applyDivineSmiteEffect; the
@@ -1521,6 +1784,22 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Sentinel feat — Guardian eligibility (OnAllyAttacked) ─────────────
+    // After ANY attack (hit or miss) against a creature other than themselves, a Sentinel adjacent to
+    // the attacker may spend their reaction to make a melee attack back. Flagged on the ATTACKER for the
+    // GUI (which scans for the eligible Sentinel and calls applySentinelGuard); the auto/RL path uses
+    // the OnAllyAttacked window (maybeSentinelGuardInline) with the same canSentinelGuard gate. Skipped
+    // while a guard counter-attack is itself resolving (a guard does not provoke its own guard).
+    if (!resolving_sentinel_guard_) {
+        for (int g = 0; g < static_cast<int>(agents.size()); ++g) {
+            if (canSentinelGuard(bm, action, g)) {
+                updated_atk_cond.sentinel_guard_available = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                break;
+            }
+        }
+    }
+
     // (Rogue Uncanny Dodge — the target's damage-halving reaction — now fires in the OnHit defender
     // window before this finalize: applyUncannyDodge via maybeDefenderOnHitInline (auto/RL) or the
     // advanceAttack suspend (GUI), so r.total_damage already reflects it here.)
@@ -1553,6 +1832,97 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
+    // ── General feats — damage-affecting on-hit riders (folded into r.total_damage
+    //    before the single base-damage application below). ────────────────────────
+    {
+        auto deals_phys = [&](PhysicalDamage_t t) {
+            return std::find(r.physical_damage_types.begin(), r.physical_damage_types.end(), t)
+                   != r.physical_damage_types.end();
+        };
+        auto weapon_phys_die = [&](PhysicalDamage_t t) -> int {
+            for (const auto& pr : w.physicalDamageRolls) if (pr.type == t) return pr.die_size;
+            return 0;
+        };
+        auto bump_weapon_breakdown = [&](int delta) {
+            for (auto& kv : r.damage_breakdown)
+                if (kv.first == "weapon") { kv.second = std::max(0, kv.second + delta); return; }
+        };
+
+        // Great Weapon Master — Heavy Weapon Mastery: a hit with a Heavy melee weapon as part of
+        // the Attack action deals +PB extra damage (every qualifying hit, not once/turn).
+        if (r.hit && atk_stats.hasFeat("Great Weapon Master") && w.heavy &&
+            (w.type == WeaponType::Melee || w.thrown) && action.attack_slot != "bonus") {
+            int pb = atk_stats.prof_bonus;
+            r.total_damage += pb;
+            r.damage_breakdown.push_back({"GWM", pb});
+            log_("{}: Great Weapon Master adds +{} damage (Heavy weapon)",
+                 agentName(bm, action.attacker_idx), pb);
+        }
+
+        // Dueling fighting style: +2 damage when wielding a one-handed melee weapon and no
+        // other weapon. A Shield does not count; empty slots (no damage dice) don't count.
+        if (r.hit && atk_stats.hasFeat("Dueling") &&
+            w.type == WeaponType::Melee && !w.two_handed) {
+            bool another_weapon = false;
+            for (int i = 0; i < static_cast<int>(atk_pt.weapons.size()); ++i) {
+                if (i == action.weapon_idx) continue;
+                const Weapon& other = atk_pt.weapons[static_cast<std::size_t>(i)];
+                if (other.is_shield || other.name.find("Shield") != std::string::npos) continue;
+                if (!other.physicalDamageRolls.empty() || !other.magicDamageRolls.empty()) {
+                    another_weapon = true;
+                    break;
+                }
+            }
+            if (!another_weapon) {
+                r.total_damage += 2;
+                r.damage_breakdown.push_back({"Dueling", 2});
+                log_("{}: Dueling adds +2 damage", agentName(bm, action.attacker_idx));
+            }
+        }
+
+        // Thrown Weapon Fighting style: +2 damage on a hit with a thrown weapon.
+        if (r.hit && atk_stats.hasFeat("Thrown Weapon Fighting") && w.thrown) {
+            r.total_damage += 2;
+            r.damage_breakdown.push_back({"Thrown Weapon Fighting", 2});
+            log_("{}: Thrown Weapon Fighting adds +2 damage",
+                 agentName(bm, action.attacker_idx));
+        }
+
+        // Piercer — Puncture: once per turn, reroll one of the attack's damage dice and use the
+        // new roll. A rational user rerolls the lowest die, so we reroll min(dice) using the
+        // weapon's Piercing die size (target's Piercing multiplier applied to the delta).
+        if (r.hit && atk_stats.hasFeat("Piercer") && !atk_cond.piercer_reroll_used_this_turn &&
+            deals_phys(Piercing) && !r.dice_results.empty()) {
+            int die = weapon_phys_die(Piercing);
+            if (die > 0) {
+                auto it = std::min_element(r.dice_results.begin(), r.dice_results.end());
+                int oldv = *it, newv = roll(die);
+                float mult = tgt_stats.physical_damage_multipliers[Piercing];
+                int delta = static_cast<int>(static_cast<float>(newv - oldv) * mult);
+                *it = newv;
+                r.total_damage = std::max(0, r.total_damage + delta);
+                bump_weapon_breakdown(delta);
+                updated_atk_cond.piercer_reroll_used_this_turn = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                log_("{}: Piercer rerolls a Piercing die ({} → {})",
+                     agentName(bm, action.attacker_idx), oldv, newv);
+            }
+        }
+
+        // Piercer — Enhanced Critical: on a Piercing critical hit, roll one extra Piercing die.
+        if (r.hit && r.critical && atk_stats.hasFeat("Piercer") && deals_phys(Piercing)) {
+            int die = weapon_phys_die(Piercing);
+            if (die > 0) {
+                float mult = tgt_stats.physical_damage_multipliers[Piercing];
+                int extra = static_cast<int>(static_cast<float>(roll(die)) * mult);
+                r.total_damage += extra;
+                bump_weapon_breakdown(extra);
+                log_("{}: Piercer crit adds an extra Piercing die ({})",
+                     agentName(bm, action.attacker_idx), extra);
+            }
+        }
+    }
+
     // Apply base attack damage to the target's working stats. resolveAttack now
     // computes damage but does not mutate HP, so the single source of truth is
     // applied here (and persisted once via setAgentStats below). Subsequent
@@ -1577,6 +1947,75 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                  agentName(bm, action.target_idx));
         updated_atk_cond.tavern_brawler_push_used_this_turn = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── General feats — non-damage on-hit riders (after damage is applied). ──────
+    {
+        auto deals_phys = [&](PhysicalDamage_t t) {
+            return std::find(r.physical_damage_types.begin(), r.physical_damage_types.end(), t)
+                   != r.physical_damage_types.end();
+        };
+
+        // Crusher — Push: once per turn, a Bludgeoning hit shoves the target 5 ft to an unoccupied
+        // space if it is no more than one size larger than you. Enhanced Critical: a Bludgeoning
+        // crit marks the target so attack rolls against it have Advantage until your next turn.
+        if (r.hit && atk_stats.hasFeat("Crusher") && deals_phys(Bludgeoning)) {
+            if (!atk_cond.crusher_push_used_this_turn && tgt_sz <= atk_sz + 1) {
+                int cells = bm.forceMoveAgent(action.target_idx, atk_pt.origin, 5);
+                if (cells > 0)
+                    log_("{}: Crusher pushes {} 5 ft", agentName(bm, action.attacker_idx),
+                         agentName(bm, action.target_idx));
+                updated_atk_cond.crusher_push_used_this_turn = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+            }
+            if (r.critical) {
+                Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+                tc.crusher_marked = true;
+                tc.crusher_marked_by = action.attacker_idx;
+                bm.setAgentConditions(action.target_idx, tc);
+                log_("{}: Crusher crit — attacks against {} have Advantage until {}'s next turn",
+                     agentName(bm, action.attacker_idx), agentName(bm, action.target_idx),
+                     agentName(bm, action.attacker_idx));
+            }
+        }
+
+        // Slasher — Hamstring: once per turn, a Slashing hit reduces the target's Speed by 10 ft
+        // until the start of your next turn (reuses the Weapon Mastery `slowed` flag). Enhanced
+        // Critical: a Slashing crit marks the target so ITS attack rolls have Disadvantage until
+        // your next turn.
+        if (r.hit && atk_stats.hasFeat("Slasher") && deals_phys(Slashing)) {
+            Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+            bool dirty = false;
+            if (!atk_cond.slasher_slow_used_this_turn) {
+                tc.slowed = true; dirty = true;
+                updated_atk_cond.slasher_slow_used_this_turn = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                log_("{}: Slasher reduces {}'s Speed by 10 ft", agentName(bm, action.attacker_idx),
+                     agentName(bm, action.target_idx));
+            }
+            if (r.critical) {
+                tc.slasher_marked = true;
+                tc.slasher_marked_by = action.attacker_idx;
+                dirty = true;
+                log_("{}: Slasher crit — {} has Disadvantage on attacks until {}'s next turn",
+                     agentName(bm, action.attacker_idx), agentName(bm, action.target_idx),
+                     agentName(bm, action.attacker_idx));
+            }
+            if (dirty) bm.setAgentConditions(action.target_idx, tc);
+        }
+
+        // Great Weapon Master — Hew: scoring a Critical Hit, or reducing a creature to 0 HP, with a
+        // Heavy melee weapon as part of the Attack action arms a single bonus-action attack with that
+        // weapon. The bonus-action economy naturally limits it to once per turn (the GUI offers it via
+        // gwm_hew_available and routes it through the shared extra-attack flow).
+        if (r.hit && atk_stats.hasFeat("Great Weapon Master") && w.heavy &&
+            (w.type == WeaponType::Melee || w.thrown) && action.attack_slot != "bonus" &&
+            (r.critical || r.target_down)) {
+            updated_atk_cond.gwm_hew_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+            log_("{}: Great Weapon Master — Hew offers a bonus-action attack",
+                 agentName(bm, action.attacker_idx));
+        }
     }
 
     // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging
@@ -1813,7 +2252,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
 
     if (r.total_damage > 0 && (r.hit || graze_damage > 0)) {
         // Taking weapon damage forces a concentration save on the target (DC = max(10, dmg/2)).
-        checkConcentrationOnDamage(bm, action.target_idx, r.total_damage);
+        // Pass the attacker so a Mage Slayer imposes Disadvantage (Concentration Breaker).
+        checkConcentrationOnDamage(bm, action.target_idx, r.total_damage, action.attacker_idx);
         // ...and ends/triggers on-damage conditions (Sleep, Hypnotic Pattern, Tasha's).
         processDamageTaken(bm, action.target_idx, r.total_damage);
     }

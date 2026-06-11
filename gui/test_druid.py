@@ -35,13 +35,14 @@ def test_druid_is_wis_full_caster():
 
 
 def test_druid_spell_slot_progression():
-    """Druid spell slots follow full caster table A."""
+    """Druid spell slots follow the standard full-caster table (2 first-level slots at level 1 —
+    Druids/Clerics/Bards are full casters, identical to Wizards/Sorcerers)."""
     cases = [
-        (1, [0, 0, 0, 0, 0, 0, 0, 0, 0]),
-        (2, [2, 0, 0, 0, 0, 0, 0, 0, 0]),
-        (3, [3, 0, 0, 0, 0, 0, 0, 0, 0]),
-        (5, [4, 3, 0, 0, 0, 0, 0, 0, 0]),
-        (9, [4, 3, 3, 1, 0, 0, 0, 0, 0]),
+        (1, [2, 0, 0, 0, 0, 0, 0, 0, 0]),
+        (2, [3, 0, 0, 0, 0, 0, 0, 0, 0]),
+        (3, [4, 2, 0, 0, 0, 0, 0, 0, 0]),
+        (5, [4, 3, 2, 0, 0, 0, 0, 0, 0]),
+        (9, [4, 3, 3, 3, 1, 0, 0, 0, 0]),
     ]
     for level, expected_slots in cases:
         s = rpg.Stats()

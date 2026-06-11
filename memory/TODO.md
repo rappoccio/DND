@@ -40,6 +40,8 @@ These gate multiple per-class features; each is a real project, not a quick task
 - [ ] **Everything else** — each class section in `known_limitations.md` carries its own
   `[DEFER]` / `🚫 not modeled` list (Warlock patrons, Rogue subclasses, Wizard L6 subclass
   features, Cleric domains, Wild Shape mechanics, etc.). That file is the checklist.
+- [ ] **Ranger** -- needs implementation.  
+- [ ] **Multiclassing support** -- needs implementation
 
 ## Data / bestiary
 

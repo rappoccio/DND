@@ -33,7 +33,7 @@
       "multiplier": 0.0
     },
     {
-      "type": "Water",
+      "type": "Wall",
       "x": 159,
       "y": 438,
       "width": 50,
@@ -41,7 +41,7 @@
       "multiplier": 0.0
     },
     {
-      "type": "Water",
+      "type": "Wall",
       "x": 209,
       "y": 487,
       "width": 50,
@@ -49,7 +49,7 @@
       "multiplier": 0.0
     },
     {
-      "type": "Water",
+      "type": "Wall",
       "x": 259,
       "y": 537,
       "width": 49,
@@ -57,7 +57,7 @@
       "multiplier": 0.0
     },
     {
-      "type": "Water",
+      "type": "Wall",
       "x": 209,
       "y": 588,
       "width": 50,
@@ -65,7 +65,7 @@
       "multiplier": 0.0
     },
     {
-      "type": "Water",
+      "type": "Wall",
       "x": 259,
       "y": 637,
       "width": 149,
@@ -73,20 +73,12 @@
       "multiplier": 0.0
     },
     {
-      "type": "Water",
+      "type": "Wall",
       "x": 358,
       "y": 688,
       "width": 100,
       "height": 100,
       "multiplier": 0.0
-    },
-    {
-      "type": "Difficult Terrain",
-      "x": 458,
-      "y": 138,
-      "width": 250,
-      "height": 250,
-      "multiplier": 0.5
     }
   ],
   "walls_enabled": true

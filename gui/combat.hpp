@@ -413,7 +413,8 @@ enum class ReactionWindow {
     OnDeclareCast,      // a spell was declared, not yet resolved (future, Counterspell)
     OnD20Seen,          // a d20 Test is visible pre-commit (future)
     OnSaveFail,         // a saving throw just failed (future, Countercharm)
-    OnTurnStartNearby   // a creature started its turn within range (future)
+    OnTurnStartNearby,  // a creature started its turn within range (future)
+    OnAllyAttacked      // an adjacent enemy attacked someone other than the reactor (Sentinel Guardian)
 };
 
 // One legal thing the reactor may do, ENUMERATED BY THE ENGINE so it is guaranteed
@@ -721,6 +722,16 @@ public:
     // Calculate AC for an agent based on base AC, armor, shield, DEX, and conditions.
     [[nodiscard]] int calculateAC(const BattleMap& bm, int agent_idx) const noexcept;
 
+    // True iff the agent is "holding a Shield" — a weapon slot contains a shield (Weapon::is_shield,
+    // or the legacy convention of a weapon named "Shield"). Shared gate for Shield Master and the
+    // shield-gated Fighting Styles (Interception, Protection, Unarmed Fighting).
+    [[nodiscard]] bool isHoldingShield(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // Shield Master — bonus-action Shield Bash gate: the agent has the Shield Master feat, is holding a
+    // Shield, and has a Bonus Action free. The shove itself reuses executeShove (no parallel path); the
+    // caller is responsible for the "took the Attack action this turn" timing (GUI gates on action_used).
+    [[nodiscard]] bool canShieldBash(const BattleMap& bm, int agent_idx) const noexcept;
+
     // Merge equipped armor damage multipliers into agent stats (most restrictive wins).
     // Call this once at combat start and whenever armor is equipped/removed mid-combat.
     void applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept;
@@ -949,7 +960,10 @@ public:
 
     // Helper: Check concentration save when target takes damage from a spell.
     // Returns true if concentration was lost, false otherwise.
-    bool checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage) noexcept;
+    // damager_idx (optional): who dealt the damage. When known, a damager with the Mage Slayer feat
+    // imposes Disadvantage on the save (Concentration Breaker); the concentrator's own War Caster feat
+    // grants Advantage. Pass -1 (default) when the source is environmental / unknown.
+    bool checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage, int damager_idx = -1) noexcept;
 
     // ── Visibility and Line of Sight ───────────────────────────────────────
     // Compute visibility from one agent to all others on the map.
@@ -1126,6 +1140,13 @@ public:
     // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
     // psionic_strike_available; clears it and sets psionic_strike_used.
     void applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
+
+    // Grappler feat — Punch-and-Grab (on-hit): after an Unarmed-Strike hit as part of the Attack action,
+    // the attacker may ALSO attempt a Grapple this attack (normally you pick damage OR grapple), once per
+    // turn. Routes the grapple through the shared resolveGrapple core (contested check, computed escape
+    // DC) — never a parallel path. Requires grappler_punch_grab_available; clears it and sets
+    // grappler_punch_grab_used. Returns the GrappleResult (invalid if the flag wasn't set).
+    [[nodiscard]] GrappleResult applyPunchAndGrab(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
 
     // Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's reaction
     // to reduce incoming damage by (die roll + INT mod), capped at damage_taken. Modeled as a post-hit
@@ -1309,6 +1330,17 @@ public:
     // the reduction in r.damage_breakdown (negative). Re-validates canUncannyDodge. Returns true on use.
     bool applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResult& r);
 
+    // Defensive Duelist (feat) — OnHit defender reaction. When a creature HITS the target with a MELEE
+    // attack and the target wields a Finesse melee weapon, it may add its Proficiency Bonus to AC against
+    // that attack, possibly flipping the hit to a miss. Like Shield: offered only on a non-crit hit whose
+    // +PB could actually flip the outcome, and only with the reaction free. On accept the caller sets
+    // r.hit = false (a genuine miss, per the same DM ruling as Shield).
+    [[nodiscard]] bool canDefensiveDuelist(const BattleMap& bm, const Attack& action, const AttackResult& r) const;
+
+    // Apply Defensive Duelist: spend the reactor's reaction. Re-validates nothing (the caller gated via
+    // canDefensiveDuelist) beyond the reaction; the caller flips r.hit. Returns true iff the reaction fired.
+    bool applyDefensiveDuelist(BattleMap& bm, int reactor_idx) noexcept;
+
     // War Domain Guided Strike eligibility for one cleric vs a just-missed attack: WarDomain L3+ with a
     // Channel Divinity use, and either the attacker itself or an ally within 30 ft whose reaction is
     // free. The miss must not be a natural 1. Used to set guided_strike_available (GUI) and to enumerate
@@ -1330,6 +1362,48 @@ public:
     // Called from executeAction AFTER applyAttackResult, so the riposte is a fresh top-level attack
     // (no nesting / decision stack). Returns true iff a riposte was made.
     bool maybeRiposteInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // Sentinel feat (Guardian) eligibility for one bystander vs an attack just made against someone
+    // else: the bystander has the Sentinel feat, its reaction is free, it's alive/not incapacitated,
+    // it wields a melee weapon, the attacking creature is within its 5 ft reach, and neither the
+    // attacker nor the attack's target is itself (RAW: the target must not have the Sentinel feat).
+    // Used to set sentinel_guard_available (GUI) and to enumerate OnAllyAttacked reactors
+    // (maybeSentinelGuardInline).
+    [[nodiscard]] bool canSentinelGuard(const BattleMap& bm, const Attack& action, int sentinel_idx) const;
+
+    // Sentinel Guardian (OnAllyAttacked) — the bystander sibling of maybeRiposteInline (auto/RL only;
+    // the GUI gets the deferred-flag prompt via sentinel_guard_available). After an attack resolves,
+    // enumerates eligible Sentinels adjacent to the attacker, builds a ReactionCtx{OnAllyAttacked} with
+    // a Feature("SentinelGuard") option, asks decider_->chooseReaction, and on accept calls
+    // applySentinelGuard (a melee attack back at the attacker). Called from executeAction AFTER the
+    // attack fully resolves; resolving_sentinel_guard_ suppresses a guard-of-a-guard (the counter-attack
+    // would otherwise re-open this window). Returns true iff a guard was made.
+    bool maybeSentinelGuardInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
+    // Apply Sentinel Guardian: the Sentinel makes a melee attack against the attacking creature and
+    // spends its reaction. Re-validates the reaction is free. Returns the counter-attack's result.
+    [[nodiscard]] AttackResult applySentinelGuard(BattleMap& bm, int sentinel_idx,
+                                                  int attacker_idx, int weapon_idx) noexcept;
+
+    // Interception fighting style (OnAllyAttacked bystander damage-reduction). RAW 2024: when a creature
+    // you can see hits a target OTHER than you within 5 ft of you with an attack roll, you may use your
+    // reaction to reduce that target's damage by 1d10 + PB (min 0); you must be holding a Shield or a
+    // Simple/Martial weapon. canIntercept gates one bystander: has the Interception feat, reaction free,
+    // alive/not incapacitated, holding a shield-or-weapon, within 5 ft of the (still-standing) target,
+    // can perceive the attacker, and != attacker/target. Modeled as a post-hit heal-back (mirrors
+    // applyProtectiveField), so v1 cannot save a target dropped to 0 by the hit (see known_limitations).
+    [[nodiscard]] bool canIntercept(const BattleMap& bm, const Attack& action,
+                                    int interceptor_idx, int damage_taken) const;
+
+    // Apply Interception: roll 1d10 + PB, heal the target back by min(reduction, damage_taken), spend the
+    // interceptor's reaction. Re-validates the reaction is free + feat. Returns the damage prevented (or -1).
+    int applyInterception(BattleMap& bm, int interceptor_idx, int target_idx, int damage_taken) noexcept;
+
+    // Interception (OnAllyAttacked) — the damage-reduction sibling of maybeSentinelGuardInline (auto/RL
+    // only; the GUI scans via can_intercept + _offer_interception). After a hit resolves, enumerates
+    // eligible interceptors within 5 ft of the target, offers a ReactionCtx{OnAllyAttacked}, and on accept
+    // calls applyInterception. Called from executeAction AFTER the attack applies. Returns true iff used.
+    bool maybeInterceptionInline(BattleMap& bm, const Attack& action, AttackResult& r);
 
     // Spell-attack analog of the weapon to-hit roller. Re-fetches caster/target/agents from `bm`,
     // applies the same advantage/disadvantage conditions executeSpell's AttackRoll branch used, rolls
@@ -1575,6 +1649,7 @@ private:
 
     // Portent Dice system (Diviner Wizard L3+)
     int pending_portent_die_{-1};    // d20 value to use on next roll (-1 = none pending)
+    bool resolving_sentinel_guard_{false};  // true while a Sentinel Guardian counter-attack is resolving (suppresses guard-of-a-guard)
     std::unordered_map<int, int> agent_portent_round_used_;  // track which round each agent last used portent
 
     // Bardic Inspiration: a flat bonus folded into the NEXT d20 Test (0 = none).

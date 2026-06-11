@@ -106,6 +106,21 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     slipDistanceMoved_[agent_idx] = 0;
     agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
 
+    // General feats — expire enhanced-crit marks that this agent set on a victim "until the start
+    // of your next turn" (Crusher: attackers Advantage vs victim; Slasher: victim's attacks at
+    // Disadvantage). The mark lives on the victim with *_marked_by == this agent, so clear it here.
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        Agent::Conditions c = bm.getAgentConditions(i);
+        bool dirty = false;
+        if (c.crusher_marked && c.crusher_marked_by == agent_idx) {
+            c.crusher_marked = false; c.crusher_marked_by = -1; dirty = true;
+        }
+        if (c.slasher_marked && c.slasher_marked_by == agent_idx) {
+            c.slasher_marked = false; c.slasher_marked_by = -1; dirty = true;
+        }
+        if (dirty) bm.setAgentConditions(i, c);
+    }
+
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     auto stats = agent.agent->getStats();
 

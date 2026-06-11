@@ -127,8 +127,19 @@ Cutting Words) or *post-event* on a fully-resolved result (e.g. opportunity atta
   `InFlightMove::mover_halted` so `advanceMove` commits only the partial move to the provoke cell and
   zeroes the mover's movement (both the engine budgets and the Agent's own `initMovement(0,…)`, which
   `moveAgent` reads) for the rest of the turn; the GUI menu/log flag it as a "Sentinel opportunity
-  attack". *v1 limits:* (a) **Sentinel clause 3 deferred** — the "react when an adjacent enemy attacks an
-  ally" melee strike is a separate `OnAllyAttacked` window inside `resolveAttack`, not built; (b) **5 ft
+  attack". **Clause 3 — Guardian** is also done (added 2026-06-10): the `OnAllyAttacked` window. After ANY
+  attack resolves (`executeAction`), a Sentinel adjacent to the **attacker** (and not the attack's target)
+  may spend its reaction to make a melee attack back. `canSentinelGuard` (combat_attack.cpp) is the gate
+  (has_sentinel + reaction free + alive + melee weapon + attacker in 5 ft + target ≠ self and target lacks
+  the feat); `maybeSentinelGuardInline` is the auto/RL window (scans, offers `OnAllyAttacked`, calls
+  `applySentinelGuard`); the GUI gets the deferred flag `Conditions::sentinel_guard_available` (set on the
+  attacker in `applyAttackResult`) → `_offer_sentinel_guard` (scans for the eligible Sentinel). Fires on a
+  hit OR a miss; never alters the original attack. `resolving_sentinel_guard_` suppresses a guard-of-a-guard.
+  Tests in test_reactions.py (counter-attack, target-is-Sentinel skip, adjacency gate, fires-on-miss,
+  spent-reaction block, no-guard-of-a-guard). **Sentinel is now fully complete (all 3 clauses).**
+  *v1 Guardian limits:* offered LAST in the single-rider GUI chain (an attacker's own on-hit/on-miss rider
+  shadows it this swing, same v1 model as Riposte); 5 ft reach only; no faction system (decider/human Skips
+  for allies). *Other v1 limits:* (b) **5 ft
   reach only** for Branches (reach weapons / a treant's 10 ft deferred, like Riposte); (c) **no faction
   system** — every adjacent creature with the feat is offered the reaction regardless of side (the human/
   decider Skips), same model as OAs; (d) **skipped/down turns open no Branches window** (a paralyzed/
@@ -383,6 +394,40 @@ layer (main.py) rather than the C++ engine. This means:
 
 ## Spell mechanics
 - _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.
+
+### Spell-data fixes + deferrals (2026-06-10)
+- **Empty-damage data bug** — several damage spells shipped with `"magic_damage_types": []` (dealt 0
+  damage). Fixed in `spells.json`: **Chromatic Orb** (3d8 Thunder — user), **Sorcerous Burst** (1d8
+  Thunder), **Dragon's Breath** (3d6 Fire, already Cone/15ft/SaveDex). Worth re-scanning the file if more
+  surface during play (most other "Harm + empty dice" entries are correctly non-damage utility spells).
+- **Element-pickable spells (DEFERRED — item 5).** Chromatic Orb, Sorcerous Burst (and Dragon's Breath)
+  let the caster CHOOSE the damage type at cast time (Acid/Cold/Fire/Lightning/Poison/Thunder, etc.). The
+  engine has no cast-time element picker, so each is **hardcoded** to a placeholder element (Chromatic
+  Orb→Thunder, Sorcerous Burst→Thunder, Dragon's Breath→Fire). TODO: a GUI element-choice prompt + a
+  per-cast damage-type override on `SpellAction` so the chosen type flows into the damage roll. Affects any
+  "choose the type" spell.
+- **Chromatic Orb "hop" / leap (DEFERRED — item 6).** RAW: if two or more of the d8s roll the same number,
+  the orb leaps to a new target within 30 ft (a fresh attack roll + damage roll), and can keep chaining.
+  Not modeled — Chromatic Orb is a plain single-target attack-roll spell for now. TODO: after the damage
+  roll, detect duplicate d8 faces and, if present, prompt/auto-pick a secondary target within 30 ft and
+  re-resolve (bounded to avoid infinite chains).
+- **Sorcerous Burst "explode on 8" (DEFERRED).** RAW: each d8 that rolls an 8 lets you add another d8 (up
+  to your spellcasting modifier). Modeled as a flat 1d8 (no explosion / no level scaling for the cantrip).
+- **Ray of Enfeeblement — no direct damage (RAW).** 2024 RoE deals **no** damage; it's a debuff (target
+  has Disadvantage on STR-based d20 Tests and subtracts 1d8 from its damage rolls; Con save each turn to
+  end). The empty damage array is correct. The debuff itself is **not modeled** (no "subtract 1d8 from
+  damage rolls" condition — same gap as **Bane**'s −1d4). TODO: a damage-roll-penalty condition would
+  cover both.
+- **Cleric Channel Divinity lives in `classfeatures.json`, NOT `spells.json` (2026-06-10).** `Divine Spark
+  (Harm)`, `Divine Spark (Heal)`, and `Radiance of the Dawn` are class features (with `resource_name:
+  "Channel Divinity"` + `resource_cost`), auto-granted by `App._grant_class_features` keyed on class +
+  level + subclass, with level-scaled dice baked by `_apply_feature_scaling` (1d8→4d8 + WIS mod at levels
+  1/7/13/18). **Bug fixed:** `_load_agents` previously called `set_agent_spells` WITHOUT
+  `_grant_class_features` (only `_apply_spells_to_agent` did), so loaded Clerics didn't get their Channel
+  Divinity options, and any class-feature names persisted in a save's `spell_indices` warned "not found"
+  (they're not in spells.json). Now `_load_agents` skips class-feature names during spell_indices
+  resolution and calls `_grant_class_features` before `set_agent_spells`, matching the configure path.
+  (Do NOT add these to spells.json — they belong in classfeatures.json.)
 
 ---
 
@@ -1052,3 +1097,207 @@ Deferred / noted:
   feat per PC by design (general/repeatable feats are a future, separate UI).
 - **Improvised weapon proficiency** (Tavern Brawler) and the once-per-turn "as part of the Attack
   action" qualifier on Push are not enforced.
+
+## General feats — phase G0 + G1 (2026-06-10)
+
+Foundation + the damage-type on-hit cluster. `Weapon` gained `heavy`/`light` flags (bindings,
+`helpers._dict_to_weapon`, `weapons.json` tagged per 2024). A multi-select **FeatDialog** (43
+general feats with status tags: `combat`/`soon`/`note`) is launched from the StatsDialog "Feats:"
+button (PCs only) and commits names into `Agent.Stats.feats` via `App._set_general_feats` — disjoint
+from the single-select origin-feat picker. Tests: `gui/test_general_feats.py`.
+
+Design: **a feat's Ability Score Increase is NOT auto-applied** — set final ability scores via the
+stat steppers (decision avoids the strip-on-swap/ripple problem; "Ability Score Improvement" is a
+no-op marker). General feats currently carry no one-time stat effects, so `_set_general_feats` is a
+plain replace. **Prerequisites are not enforced** (soft, combat-sim convenience).
+
+Implemented combat mechanics (all in `applyAttackResult`, keyed on `r.physical_damage_types` /
+`r.critical` / `w.heavy`, with per-turn `Conditions` flags reset in `Agent::turn()`):
+- **Crusher** — Bludgeoning hit → push 5 ft once/turn (size-gated ≤ atk+1).
+- **Piercer** — Puncture: reroll one damage die once/turn (rerolls the lowest `dice_results` entry
+  using the weapon's Piercing die size — approximate on multi-type weapons; "must use new" applied
+  unconditionally) + Enhanced Critical: +1 Piercing die on a Piercing crit.
+- **Slasher** — Hamstring: Slashing hit → −10 ft Speed once/turn (reuses the `slowed` flag).
+- **Great Weapon Master** — Heavy Weapon Mastery: +PB damage on a Heavy melee hit that is part of
+  the Attack action (`action.attack_slot != "bonus"`); every qualifying hit, not once/turn.
+
+**G1b — enhanced-crit advantage effects — DONE 2026-06-10.** Crusher crit → `crusher_marked`
+(+`crusher_marked_by`) on the victim: attack rolls against it have Advantage. Slasher crit →
+`slasher_marked`: the victim's own attacks have Disadvantage. Both checked in `determineAdvantage`
+(Reckless-style) and expire at the start of the *feat-user's* next turn — cleared in
+`CombatEngine::beginTurn` by scanning for marks whose `*_marked_by == agent_idx` (the GUI reaches
+beginTurn via begin_turn_flow, same path as the Shield "+5 AC until your next turn" expiry). NOT
+reset in `Agent::turn()` — that expires at the victim's turn, which is wrong (Slasher's disadvantage
+must apply *during* the victim's turn). Single source tracked (last critter wins). Tests in
+`test_general_feats.py`.
+
+**G2 — Grappler + Sentinel — DONE 2026-06-10.**
+- **Sentinel** — all 3 clauses complete (clause 2 Disengage-OA + clause 1 Halt + clause 3 Guardian/
+  OnAllyAttacked); see the reaction-window section above.
+- **Grappler** — **Punch-and-Grab**: an Unarmed-Strike hit as part of the Attack action
+  (`w.name == "Unarmed"|"MonkUnarmed"`, `action.attack_slot != "bonus"`) arms
+  `Conditions::grappler_punch_grab_available`; `applyPunchAndGrab` then ALSO runs a grapple through the
+  shared `resolveGrapple` core (contested check, computed escape DC — no parallel path), once per turn
+  (`grappler_punch_grab_used`). Deferred-flag + apply-effect pattern (like Divine/Psionic Strike): GUI
+  `_offer_punch_and_grab`; auto/RL leaves it to the offer (no inline, same as the other attacker on-hit
+  riders). **Advantage** on attack rolls vs a creature you've grappled is in `determineAdvantage`
+  (tgt grappled + `grappler_idx == attacker` + `hasFeat("Grappler")`). Tests in `test_general_feats.py`.
+  *Deferred:* **Fast Wrestler** (no Speed reduction dragging a grappled creature of your size or smaller)
+  is a **no-op** — the engine has no drag-movement system (a grappled creature has Speed 0 and the
+  grappler can't pull it along), so there's nothing to discount. Revisit if drag-movement is ever added.
+
+**G3 — Reaction feats + shield-in-off-hand foundation — MOSTLY DONE 2026-06-10.**
+- **Shield-in-off-hand foundation.** `Weapon.is_shield` (+ existing `ac_bonus`) lets a Shield occupy a
+  weapon slot (the off-hand) instead of only the Armor slots — the user's mental model ("holding a
+  Shield" = a Shield in the off-hand). `isHoldingShield(bm, idx)` scans weapon slots (is_shield, or a
+  weapon named "Shield"); `calculateAC` now scans ALL weapon slots for the shield `ac_bonus` (was: only
+  the last slot — that was the bug that made an off-hand shield grant no AC). weapons.json has a "Shield"
+  entry (is_shield, ac_bonus 2, off_hand); `helpers._weapon_to_dict`/`_dict_to_weapon` carry is_shield +
+  ac_bonus (so equip + save/load round-trip). Shared gate for Shield Master AND the queued shield-gated
+  Fighting Styles (Interception, Protection, Unarmed Fighting). *GUI:* a Shield is selected like any
+  weapon into the off-hand slot (no is_shield/ac_bonus edit fields in WeaponDialog — it comes
+  preconfigured from weapons.json; the dialog deep-copies dicts so the keys survive editing).
+- **War Caster** — Advantage on concentration saves: `checkConcentrationOnDamage` + `concentrationSave`
+  roll with Advantage when the concentrator `hasFeat("War Caster")` (alongside Eldritch Mind). The
+  Reactive-Spell clause (cast a cantrip as an OA) and Somatic-with-full-hands are deferred (out of scope /
+  complex).
+- **Mage Slayer — Concentration Breaker** — when a Mage Slayer damages a concentrator, the conc save has
+  Disadvantage. `checkConcentrationOnDamage` gained an optional `damager_idx`; the weapon-damage site
+  passes `action.attacker_idx`. (Spell/terrain damage sites still pass -1 — Mage Slayer is a martial
+  feat, so weapon damage is the relevant trigger.) **Guarded Mind** (auto-succeed a failed save, 1/short
+  rest) DEFERRED — needs a save-success-override mechanism.
+- **Defensive Duelist** — OnHit defender reaction: a Finesse-melee wielder may add its PB to AC vs a
+  non-crit MELEE hit, flipping it to a miss (a genuine miss, same DM ruling as Shield). Folded into the
+  existing defenderOnHit window: `canDefensiveDuelist` + `applyDefensiveDuelist`, listed in
+  `defenderOnHitOptions`, handled in both `maybeDefenderOnHitInline` (auto/RL) and `applyAttackReaction`
+  (GUI suspend). Offered only when +PB would actually flip the outcome.
+- **Shield Master — Push** — `canShieldBash(bm, idx)` gate (Shield Master feat + isHoldingShield + a free
+  Bonus Action); the shove itself reuses `executeShove` (no parallel path). *Deferred:* the GUI
+  bonus-action Shield-Bash offer (the generic Shove button already does a bonus-action shove), and
+  **Interpose** (reaction when subjected to a Dex-save-for-half effect → no damage on a success) — that
+  needs a reaction window at the spell save-for-half damage site (like Rogue Evasion, but as a reaction),
+  which isn't built.
+
+Deferred:
+- All other general feats per GENERAL_FEATS_PLAN.md phases G5–G6 + the deferred list (Mounted
+  Combatant has no mount system; rest-based temp-HP feats; Hit-Dice-pool feats stay deferred).
+
+## General feats — phase G4 (bonus-attack + ranged-penalty) DONE 2026-06-11
+
+Built + green. Test: `gui/test_general_feats_g4.py` (17 cases).
+
+**Ranged-penalty (pure gating, no GUI economy):**
+- **Sharpshooter** — in `determineAdvantage` (combat_attack.cpp): clears the long-range Disadvantage
+  (`hasDisadvantage` returns only that here, so clearing `disadv` before the engagement check is exact)
+  AND the within-5-ft "firing in melee" Disadvantage (any ranged weapon).
+- **Crossbow Expert** — same engagement-Disadvantage gate, but **Crossbows only** (`w.name` contains
+  "Crossbow"); does NOT touch long range. *Note-only:* Ignore-Loading (Loading isn't modeled — crossbows
+  already fire freely) and the off-hand crossbow ability-mod (the engine already adds the ability mod to
+  ALL off-hand damage — the 2024 TWF "no off-hand mod" rule isn't modeled, see Two-Weapon Fighting no-op).
+- **Spell Sniper** — `rollSpellAttack` (combat_spells.cpp): a nearby enemy imposes no Disadvantage on a
+  spell attack roll; **+60 ft range** for attack-roll spells (`sp.attack_type==AttackRoll && range>=10`)
+  added in `effectiveSpellRange` (alongside Eldritch Spear). *Note-only:* ignore cover (cover not modeled).
+
+**Bonus-attack:**
+- **Great Weapon Master — Hew** — a melee crit OR a kill with a **Heavy** weapon as part of the Attack
+  action sets `gwm_hew_available` (Conditions flag, reset in `Agent::turn()`/beginTurn). The GUI offers it
+  (`_offer_gwm_hew`, last in the on-hit rider chain, gated on a free bonus action) and routes it through
+  the shared `_start_extra_attack` flow (per `reusable_bonus_attack`). *v1 limitation:* accepting Hew
+  forgoes any remaining Attack-action attacks (the bonus attack takes over the pending sequence); RAW lets
+  you finish your attacks first, then Hew — the mid-sequence interleave is deferred (same fragile GUI
+  multi-attack sequencing the other riders share). Headless/RL path just leaves the flag set (informational).
+- **Dual Wielder** — `+1 AC` in `calculateAC` while a real, non-Shield **melee weapon** sits in BOTH the
+  main-hand and off-hand slots. The off-hand bonus attack itself already works via the `off_hand` weapon
+  flag, so Enhanced Dual Wielding needs no new attack path. *Note-only:* Quick Draw (no draw/stow economy).
+
+**Still deferred in G4:** **Polearm Master** — Pole Strike (bonus-action 1d4 bludgeoning with the butt-end)
+needs a synthetic "butt-end" weapon profile (a 1d4 variant of the polearm) which is new infra; Reactive
+Strike (an OA when a creature enters your reach) needs an enter-reach reaction window that doesn't exist.
+Marked "soon" in the GUI feat list.
+
+## Fighting Style feats (2024 PHB) — Blind Fighting DONE 2026-06-10
+
+Fighting Styles are modeled as feats (`hasFeat("<Name>")`), granted by the Fighting Style feature.
+
+**Blind Fighting — Blindsight 10 ft — DONE.** The engine already models blindsight as exactly one
+mechanic: `piercesInvisibility` (combat_visibility.cpp) → `canPerceiveTarget` → gates
+`availableAttacks` (an invisible creature is otherwise *unattackable*, stricter than RAW) and the RL
+observation LoS flag. Blind Fighting is queried from **`hasFeat("Blind Fighting")` inside
+`piercesInvisibility`** (within 10 ft), NOT by setting `blindsight_range=10` — because the Python
+save/load layer does NOT serialize the raw sense ranges (`blindsight_range`/`truesight_range`/etc.),
+and reload sets the feats list directly without re-running `addFeat`'s one-time effects, so a
+stat-mutation approach would silently drop on reload. Feats ARE serialized, so the hasFeat path
+round-trips. Two halves:
+- *Offense:* within 10 ft a Blind Fighter perceives/targets an invisible creature (the `piercesInvisibility` edit).
+- *Defense:* the invisible-attacker advantage in `determineAdvantage` (combat_attack.cpp ~L1221) was
+  **unconditional** — even against a Truesight defender (pre-existing gap). Now gated on
+  `!canPerceiveTarget(bm, target_idx, attacker_idx)`, so a defender that perceives the attacker
+  (Blind Fighting in 10 ft, or any Truesight/Blindsight) denies the advantage. Latent correctness
+  fix for all see-invisible defenders, not just Blind Fighting.
+- *Limitation:* blindsight's "see in **darkness**" clause has no distinct effect — `canPerceiveTarget`
+  only checks the `invisible` axis, not obscuration; darkness already does not gate attacks in this
+  engine (consistent with how existing `blindsight_range` behaves).
+
+Tests: `gui/test_fighting_styles.py` (registered in run_all_tests.py) — offense at 5/10/15/20 ft,
+available_attacks re-entry, defense (invisible attacker denied advantage vs a Blind Fighting defender;
+control keeps advantage vs a sighted one).
+
+**Passive batch — DONE 2026-06-10:**
+- **Archery** — `attackModifier` (combat_core.cpp): +2 when `w.type==Ranged && !w.thrown`. Shows in
+  `AttackResult.attack_mod`.
+- **Defense** — `calculateAC` standard branch (combat_core.cpp): +1 when `has_armor` (the unarmored
+  Barbarian/Monk branches return early, so it's armor-only by construction).
+- **Dueling** — `applyAttackResult` damage-rider block (combat_attack.cpp): +2 when melee, `!two_handed`,
+  and no OTHER *real* weapon is equipped. "Real" = a weapon slot with damage dice that isn't a Shield;
+  default/empty `Unarmed` slots (no dice) and Shields don't count. Pushes a `("Dueling",2)` breakdown
+  entry. NOTE: the dice-bearing `_mk_weapon("Filler")` padding in `test_feats._arm` would read as a
+  second real weapon — Dueling tests use `_solo_arm` (exact slots, true empties).
+- **Thrown Weapon Fighting** — same block: +2 when `r.hit && w.thrown`.
+- **Great Weapon Fighting** — `rollDamage` physical loop (combat_attack.cpp): with a two-handed melee
+  weapon, any die roll of 1 or 2 → 3 (`if (gwf && d < 3) d = 3;`). Verified deterministically via
+  `AttackResult.dice_results`.
+- **Unarmed Fighting** — `rollDamage` near the Tavern Brawler block: a bare `Unarmed` strike rolls 1d6
+  Bludgeoning. Supersedes Tavern Brawler's 1d4 (TB block now gated `&& !hasFeat("Unarmed Fighting")`,
+  so exactly one die is added with both feats).
+- **Two-Weapon Fighting** — no-op marker: the engine already adds the ability mod to off-hand damage
+  (`rollDamage` always adds `damageAbilityMod`; the off-hand penalty is unmodeled), so the style's
+  effect is already present.
+
+*Passive-batch simplifications:* Dueling and Thrown Weapon Fighting can BOTH fire on a one-handed
+thrown weapon (a creature with both styles double-dips +4) — accepted, rare; the engine can't tell a
+melee swing from a throw on a melee-type thrown weapon, so Thrown Weapon Fighting's +2 also applies
+when such a weapon is used in melee. GWF gates on `two_handed` only — a Versatile weapon wielded in two
+hands isn't distinguished (we don't track current grip). Unarmed Fighting DEFERS the d8-when-empty-handed
+upgrade (no weapon-array access in `rollDamage`) and the start-of-turn 1d4 to a creature you've Grappled.
+
+**Interception — DONE 2026-06-10.** OnAllyAttacked bystander damage-reduction reaction: when a creature
+you can see hits a target other than you within 5 ft of you, spend your reaction to reduce that target's
+damage by 1d10 + PB (must hold a Shield or a Simple/Martial weapon). `canIntercept` (combat_attack.cpp)
+gates one bystander; `applyInterception` (combat_riders.cpp) rolls 1d10+PB and **heals the target back**
+by min(reduction, damage) — modeled exactly like Psi Warrior Protective Field (post-hit heal-back).
+Auto/RL via `maybeInterceptionInline` (executeAction, after applyAttackResult, OnAllyAttacked window +
+decider); GUI scans `can_intercept` across agents → `_offer_interception` (bystander reactor, mirrors
+`_offer_protective_field`). Bindings: `can_intercept`, `apply_interception`. In the FeatDialog (status
+"in"). Tests: test_reactions.py (reduces damage, adjacency-to-target gate, feat gate, direct-apply +
+reaction spend). *v1 limitation (shared with Protective Field):* the heal-back can't rescue a target
+dropped to 0 by the hit (`canIntercept` requires the target's hp_cur > 0 post-hit). "Shield or Simple/
+Martial weapon" is approximated as "holding a Shield OR any weapon with damage dice" (the engine doesn't
+classify simple/martial). The damage reduction is a heal-back, so `AttackResult.total_damage` still
+reports the gross (unreduced) damage — tests assert on the target's HP, not total_damage.
+
+**Still TODO** — only **Protection** (Fighting Style) remains deferred: it imposes Disadvantage on an
+attack roll *before* it resolves (a pre-resolution reaction), and no such reaction window exists — the
+hardest one to build. GUI: Fighting Styles share the FeatDialog general-feat list (granted by the
+Fighting Style feature; prereqs not enforced) — engine is correct via `hasFeat`.
+
+## Bug fixes 2026-06-10
+- **NPC/monster weapons survive save→load.** The GUI saved weapons by NAME and rebuilt them via the
+  PC `weapons.json` catalog, so non-catalog weapons (Bite/Claw/custom monster attacks) and per-weapon
+  customizations were dropped. `_save_agents` now writes the full `_weapon_to_dict` per slot;
+  `_load_agents` reconstructs from the dict (still accepts a bare name string for old saves →
+  catalog lookup). `agent_loader.load_agents_from_json` already handled dict weapons. Test:
+  `test_save_load_weapons.py`. (Note: weapon `conditions`/on-hit riders are still not serialized.)
+- **Self-origin spell range ring.** The cast-time "range circle" drew `sp.range`, which is 0 for
+  Cone/Line spells (their reach is in `radius`/`length`), so Cone of Cold showed a 0-ft ring. Fixed
+  in `_draw_*` range-circle code: Cone→`radius`, Line→`length`, else→`range`. The AoE cell preview
+  (`_aoe_cells`) was already correct (used `radius`), which is why damage applied fine.

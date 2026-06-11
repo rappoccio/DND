@@ -174,9 +174,13 @@ def _weapon_to_dict(w) -> dict:
         "proficient":       w.proficient,
         "off_hand":         w.off_hand,
         "two_handed":       w.two_handed,
+        "heavy":            w.heavy,
+        "light":            w.light,
+        "is_shield":        w.is_shield,
         "mastery":          w.mastery.name,
         "bonus_hit":        w.bonus_hit,
         "bonus_damage":     w.bonus_damage,
+        "ac_bonus":         w.ac_bonus,
         "physical_damage_types": [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
                                    for r in w.physical_damage_types],
         "magic_damage_types":    [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
@@ -199,9 +203,13 @@ def _dict_to_weapon(d: dict):
     w.proficient      = bool(d.get("proficient",      True))
     w.off_hand        = bool(d.get("off_hand",        False))
     w.two_handed      = bool(d.get("two_handed",      False))
+    w.heavy           = bool(d.get("heavy",           False))
+    w.light           = bool(d.get("light",           False))
+    w.is_shield       = bool(d.get("is_shield",       False))
     w.mastery         = _parse_mastery(d.get("mastery", ""))
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
+    w.ac_bonus        = int(d.get("ac_bonus",        0))
 
     # Physical damage rolls - build list then assign
     physical_rolls = []

@@ -85,10 +85,15 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         }
     }
 
-    // Apply engagement disadvantage for ranged spells
+    // Apply engagement disadvantage for ranged spells. Spell Sniper (general feat) — Firing
+    // in Melee: a nearby enemy imposes no Disadvantage on the caster's spell attack rolls.
     if (sp.range > 0 && isThreatened(bm, action.caster_idx)) {
-        caster_dis = true;
-        log_("Disadvantage: threatened (enemy within 10 ft)");
+        if (caster_stats.hasFeat("Spell Sniper"))
+            log_("Spell Sniper: no Disadvantage casting a spell in melee");
+        else {
+            caster_dis = true;
+            log_("Disadvantage: threatened (enemy within 10 ft)");
+        }
     }
     if (caster_pa.agent->hasDisadvantage())
         log_("Disadvantage: condition");
@@ -1365,6 +1370,12 @@ int CombatEngine::effectiveSpellRange(const BattleMap& bm, int caster_idx, const
         cs.hasInvocation(2) && sp.range >= 10) {
         return sp.range + 30 * cs.char_level;
     }
+
+    // Spell Sniper (general feat): a spell that requires an attack roll gains +60 ft of range
+    // (only when it already has a meaningful ranged distance, excluding Touch/Self spells).
+    if (sp.attack_type == Spell::AttackRoll && sp.range >= 10 && cs.hasFeat("Spell Sniper")) {
+        return sp.range + 60;
+    }
     return sp.range;
 }
 
@@ -1615,6 +1626,8 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
         Agent::Stats cs = bm.getAgentStats(agent_idx);
         if (cs.character_class == CharacterClass::Warlock && cs.hasInvocation(3))
             has_adv = true;  // Eldritch Mind
+        if (cs.hasFeat("War Caster"))
+            has_adv = true;  // War Caster: Advantage on concentration saves
     }
     bool has_dis = cond.has_disadvantage;
     int save_d20;
@@ -1646,7 +1659,7 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
     return r;
 }
 
-bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage) noexcept
+bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int damage, int damager_idx) noexcept
 {
     const auto& agents = bm.placedAgents();
     if (target_idx < 0 || static_cast<std::size_t>(target_idx) >= agents.size())
@@ -1663,7 +1676,19 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
     int con_mod = (cstats.con - 10) / 2;
     if (cstats.con < 10 && (cstats.con - 10) % 2 != 0) --con_mod;  // floor for odd negative scores
     if (cstats.save_prof_con) con_mod += cstats.prof_bonus;       // CON save proficiency
-    int save_roll = roll(20);
+
+    // War Caster (feat) → Advantage on the save; Mage Slayer (feat) on the damager → Disadvantage
+    // (Concentration Breaker). Eldritch Mind invocation also grants Advantage. They cancel if both apply.
+    bool adv = cstats.hasFeat("War Caster") ||
+               (cstats.character_class == CharacterClass::Warlock && cstats.hasInvocation(3));
+    bool dis = false;
+    if (damager_idx >= 0 && static_cast<std::size_t>(damager_idx) < agents.size() &&
+        bm.getAgentStats(damager_idx).hasFeat("Mage Slayer"))
+        dis = true;
+    int save_roll = (adv && dis) ? roll(20)
+                  : adv          ? rollAdvantage(20)
+                  : dis          ? rollDisadvantage(20)
+                                 : roll(20);
     int save_total = save_roll + con_mod;
 
     if (save_total >= dc) {
