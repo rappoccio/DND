@@ -540,6 +540,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("topple_available", &Agent::Conditions::topple_available)
         .def_readwrite("cleave_available", &Agent::Conditions::cleave_available)
         .def_readwrite("cleave_used_this_turn", &Agent::Conditions::cleave_used_this_turn)
+        .def_readwrite("offhand_attack_used", &Agent::Conditions::offhand_attack_used)
         .def_readwrite("savage_attacker_used_this_turn", &Agent::Conditions::savage_attacker_used_this_turn)
         .def_readwrite("tavern_brawler_push_used_this_turn", &Agent::Conditions::tavern_brawler_push_used_this_turn)
         .def_readwrite("crusher_push_used_this_turn", &Agent::Conditions::crusher_push_used_this_turn)
@@ -701,6 +702,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("description",               &Armor::description)
         .def_readwrite("ac_bonus",                  &Armor::ac_bonus)
         .def_readwrite("ac_base",                   &Armor::ac_base)
+        .def_readwrite("dex_mod_cap",               &Armor::dex_mod_cap)
         .def_readwrite("grants_disadvantage",       &Armor::grants_disadvantage)
         .def_readwrite("magic_damage_multipliers",  &Armor::magic_damage_multipliers)
         .def_readwrite("physical_damage_multipliers", &Armor::physical_damage_multipliers)
@@ -1511,6 +1513,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("is_offhand",   &Attack::is_offhand)
         .def_readwrite("no_ability_damage", &Attack::no_ability_damage)
         .def_readwrite("attack_slot",  &Attack::attack_slot)
+        .def_readwrite("opportunity",  &Attack::opportunity)
         .def("__repr__", [](const Attack& a){
             std::string s = "<Attack atk=" + std::to_string(a.attacker_idx)
                  + " tgt=" + std::to_string(a.target_idx)
@@ -2030,6 +2033,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Execute a shove attempt (bonus action, contested Athletics check).\n"
              "On success: either push 5ft or knock prone based on action.knock_prone.\n"
              "Returns ShoveResult with rolls, success status, and log message.")
+        .def("apply_telekinetic_shove",
+             &CombatEngine::applyTelekineticShove,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"),
+             "Telekinetic feat — Telekinetic Shove (Bonus Action): shove a creature within 30 ft.\n"
+             "Target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure it\n"
+             "is pushed 5 ft away (reuses the Thunderwave knockback). Returns ShoveResult:\n"
+             "attacker_roll=DC, defender_roll=save total, success=shove landed.")
         .def("execute_grapple",
              &CombatEngine::executeGrapple,
              py::arg("battle_map"), py::arg("action"),

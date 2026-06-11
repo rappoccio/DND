@@ -310,6 +310,10 @@ def _dict_to_armor(d: dict):
     a.damage_reduction = int(d.get("damage_reduction", 0))
     a.requires_strength = bool(d.get("requires_strength", False))
     a.str_requirement = int(d.get("str_requirement", 0))
+    # DEX-to-AC cap: heavy armor = 0, medium = 2, light/unarmored omit it (C++ default 30). This
+    # must be carried onto the C++ Armor or calculateAC can't cap DEX, and Heavy/Medium Armor
+    # Master (which key off dex_mod_cap == 0 / == 2) can't detect the armor category.
+    a.dex_mod_cap = int(d.get("dex_mod_cap", 30))
 
     # Magic damage multipliers (10 types)
     magic_mults = d.get("magic_damage_multipliers", [1.0] * 10)
@@ -332,6 +336,7 @@ def _armor_to_dict(a) -> dict:
         "name": a.name,
         "description": a.description,
         "ac_bonus": a.ac_bonus,
+        "dex_mod_cap": a.dex_mod_cap,
         "magic_damage_multipliers": list(a.magic_damage_multipliers),
         "physical_damage_multipliers": list(a.physical_damage_multipliers),
         "damage_reduction": a.damage_reduction,

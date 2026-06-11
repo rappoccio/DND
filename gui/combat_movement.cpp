@@ -529,9 +529,11 @@ void CombatEngine::standup(BattleMap& bm, int idx) noexcept
         return;
     }
 
-    // Cost to stand up: half of walk speed
+    // Cost to stand up: half of walk speed. Athlete (general feat) lets you stand from Prone using
+    // only 5 feet of movement. (Athlete's Climb Speed = Speed and the running-jump clauses are not
+    // mechanically modelled — no climb-budget / jump system; see known_limitations.md.)
     int walk_speed = agents[idx].agent->getStats().speed_walk;
-    int standup_cost = walk_speed / 2;
+    int standup_cost = agents[idx].agent->getStats().hasFeat("Athlete") ? 5 : walk_speed / 2;
 
     // Check if agent has enough movement
     auto it = walkRemaining_.find(idx);
@@ -656,7 +658,9 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
     bool sentinel_hit = false;
 
     if (opt.kind == ReactionOption::Weapon) {
-        AttackResult r = executeAction(bm, Attack{reactor, target, opt.index});
+        Attack oa{reactor, target, opt.index};
+        oa.opportunity = true;   // a Speedy target imposes Disadvantage on the OA roll
+        AttackResult r = executeAction(bm, oa);
         const bool is_sentinel_oa = reactor_has_sentinel && target == ctx.source_idx;
         // Log the to-hit result (executeAction logs damage/conditions but not the roll). The old
         // Python OA path logged this; it now lives here so OA hits/misses aren't silent.

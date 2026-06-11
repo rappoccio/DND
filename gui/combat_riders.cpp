@@ -1248,6 +1248,68 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     return result;
 }
 
+ShoveResult CombatEngine::applyTelekineticShove(BattleMap& bm, int caster_idx, int target_idx) noexcept
+{
+    ShoveResult result;
+    auto agents = bm.placedAgents();
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size()) ||
+        target_idx < 0 || target_idx >= static_cast<int>(agents.size()) ||
+        caster_idx == target_idx) {
+        result.log_message = "Invalid Telekinetic Shove.";
+        return result;
+    }
+
+    auto& caster = agents[static_cast<std::size_t>(caster_idx)];
+    auto& target = agents[static_cast<std::size_t>(target_idx)];
+
+    // Range 30 ft (6 cells, Chebyshev).
+    int dx = std::abs(target.origin.col - caster.origin.col);
+    int dy = std::abs(target.origin.row - caster.origin.row);
+    if (std::max(dx, dy) > 6) {
+        result.log_message = "Target is beyond 30 feet.";
+        return result;
+    }
+
+    const Agent::Stats cs = getAgentStats(bm, caster_idx);
+    auto mod = [](int score) {
+        int m = (score - 10) / 2;
+        if (score < 10 && (score - 10) % 2 != 0) --m;
+        return m;
+    };
+    // DC = 8 + PB + the best of INT/WIS/CHA (the feat's spellcasting-ability choice; we take the
+    // caster's strongest mental modifier rather than store a per-character pick).
+    int spell_mod = std::max({mod(cs.intel), mod(cs.wis), mod(cs.cha)});
+    int dc = 8 + cs.prof_bonus + spell_mod;
+
+    const Agent::Stats ts = getAgentStats(bm, target_idx);
+    int str_mod = mod(ts.str);
+    int save_d20 = roll(20);
+    int save_total = save_d20 + str_mod + (ts.save_prof_str ? ts.prof_bonus : 0);
+
+    result.valid = true;
+    result.attacker_roll = dc;
+    result.defender_roll = save_total;
+
+    if (save_total >= dc) {
+        result.success = false;
+        result.log_message = "\"" + std::string(target.agent->name()) +
+                             "\" resists the Telekinetic Shove (" + std::to_string(save_total) +
+                             " vs DC " + std::to_string(dc) + ").";
+        log_("{}", result.log_message);
+        return result;
+    }
+
+    int cells_moved = bm.forceMoveAgent(target_idx, caster.origin, 5);
+    result.push_ft_applied = cells_moved * 5;
+    result.success = (result.push_ft_applied > 0);
+    result.log_message = "\"" + std::string(caster.agent->name()) + "\" telekinetically shoves \"" +
+                         std::string(target.agent->name()) + "\" " +
+                         std::to_string(result.push_ft_applied) + " feet (save " +
+                         std::to_string(save_total) + " vs DC " + std::to_string(dc) + ").";
+    log_("{}", result.log_message);
+    return result;
+}
+
 GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int target_idx,
                                            bool contested, int escape_dc_override) noexcept
 {

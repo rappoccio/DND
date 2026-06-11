@@ -337,6 +337,12 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
         }
     }
 
+    // Medium Armor Master (general feat) — while wearing Medium armor, the DEX bonus to AC may be
+    // as high as +3 instead of the usual +2. Medium armor is the equipped set whose most restrictive
+    // cap is 2 (heavy armor's cap is 0 and is left unchanged).
+    if (dex_mod_cap == 2 && pa.agent->getStats().hasFeat("Medium Armor Master"))
+        dex_mod_cap = 3;
+
     // Apply capped DEX modifier
     int capped_dex_mod = std::min(dex_mod, dex_mod_cap);
     ac += capped_dex_mod;

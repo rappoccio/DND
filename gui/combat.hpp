@@ -110,6 +110,8 @@ struct Attack {
     bool is_offhand   = false; // off-hand attack: proficiency bonus not added to hit
     bool no_ability_damage = false; // Cleave: do not add a positive ability modifier to damage
     std::string attack_slot = "";   // "action" or "bonus" — set by Python to indicate attack type
+    bool opportunity = false;       // this attack is an Opportunity Attack (set on the OA path) —
+                                    // a Speedy target imposes Disadvantage on it
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1518,6 +1520,13 @@ public:
     // On success: either push 5ft or knock prone based on knock_prone flag.
     [[nodiscard]] ShoveResult executeShove(BattleMap& bm,
                                            const ShoveAction& action);
+
+    // Telekinetic (general feat) — Telekinetic Shove: a Bonus Action that shoves one creature within
+    // 30 ft. The target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure
+    // it is pushed 5 ft away from the caster (reuses forceMoveAgent, the Thunderwave knockback path).
+    // Returns a ShoveResult: attacker_roll = save DC, defender_roll = target's save total,
+    // success = the shove landed (save failed and the target moved).
+    [[nodiscard]] ShoveResult applyTelekineticShove(BattleMap& bm, int caster_idx, int target_idx) noexcept;
 
     // Shared grapple core — used by the standalone Grapple Weapon Action
     // (executeGrapple), on-hit weapon grapple riders (combat_attack), and the

@@ -205,6 +205,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         int con_mod = (stats.con - 10) / 2;
         if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
         int death_d20 = roll(20);
+        // Durable (general feat) — Defy Death: Advantage on Death Saving Throws (take the higher d20).
+        if (stats.hasFeat("Durable")) death_d20 = std::max(death_d20, roll(20));
         int death_total = death_d20 + con_mod;
 
         if (death_d20 == 20) {
@@ -515,7 +517,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     int move_penalty = exhaustion_penalty
                      + (cond.hamstrung ? 15 : 0)
                      + (cond.slowed    ? 10 : 0);
-    walkRemaining_[agent_idx] = std::max(0, stats.speed_walk - move_penalty);
+    // Speedy (general feat) — your Speed increases by 10 feet. Applied as a budget bonus (not a
+    // stat mutation, so it's idempotent across turns/reloads); affects the walking budget only.
+    int speed_bonus = stats.hasFeat("Speedy") ? 10 : 0;
+    walkRemaining_[agent_idx] = std::max(0, stats.speed_walk + speed_bonus - move_penalty);
     flyRemaining_ [agent_idx] = std::max(0, stats.speed_fly - move_penalty);
     swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - move_penalty);
     burrowRemaining_[agent_idx] = std::max(0, stats.speed_burrow - move_penalty);
@@ -723,6 +728,8 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
     int con_mod = (stats.con - 10) / 2;
     if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
     int death_d20 = roll(20);
+    // Durable (general feat) — Defy Death: Advantage on Death Saving Throws (take the higher d20).
+    if (stats.hasFeat("Durable")) death_d20 = std::max(death_d20, roll(20));
     int death_total = death_d20 + con_mod;
 
     if (death_d20 == 20) {

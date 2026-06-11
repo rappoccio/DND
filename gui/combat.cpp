@@ -406,6 +406,23 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
     default:
       break;
   }
+
+  // ── Weapon Mastery feature (2024) ─────────────────────────────────────────
+  // The five martial classes gain Weapon Mastery at level 1, letting them use their
+  // weapons' mastery properties (here it gates the Nick action-economy relocation).
+  // Stored as a feat so hasFeat("Weapon Mastery") is the single gate; guarded so a
+  // re-init doesn't duplicate the entry. (Monk does NOT get Weapon Mastery.)
+  switch (cls) {
+    case Barbarian:
+    case Fighter:
+    case Paladin:
+    case Ranger:
+    case Rogue:
+      if (!hasFeat("Weapon Mastery")) addFeat("Weapon Mastery");
+      break;
+    default:
+      break;
+  }
 }
 
 } // namespace rpg

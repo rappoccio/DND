@@ -21,12 +21,12 @@ namespace rpg {
 
 // True if a viewer with these stats can pierce the Invisible condition at `dist_ft`.
 // Both Truesight and Blindsight defeat invisibility within their range (Devil's Sight
-// and Darkvision do NOT). The Blind Fighting fighting style grants Blindsight 10 ft —
-// queried from hasFeat (not blindsight_range) so it round-trips through save/load, which
-// does not serialize the raw sense ranges.
+// and Darkvision do NOT). The Blind Fighting fighting style and the Skulker general feat
+// each grant Blindsight 10 ft — queried from hasFeat (not blindsight_range) so they
+// round-trip through save/load, which does not serialize the raw sense ranges.
 static bool piercesInvisibility(const Agent::Stats& vs, int dist_ft) noexcept {
     return vs.truesight_range >= dist_ft || vs.blindsight_range >= dist_ft
-        || (dist_ft <= 10 && vs.hasFeat("Blind Fighting"));
+        || (dist_ft <= 10 && (vs.hasFeat("Blind Fighting") || vs.hasFeat("Skulker")));
 }
 
 static int chebyshevFeet(const PlacedAgent& a, const PlacedAgent& b) noexcept {

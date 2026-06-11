@@ -412,16 +412,16 @@ def test_unarmed_fighting_supersedes_tavern_brawler():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Two-Weapon Fighting — modeled as a no-op (see known_limitations)
+#  Two-Weapon Fighting — the off-hand ability-mod behaviour lives in test_dual_wield.py
+#  (this style lifts the "no ability mod on off-hand damage" restriction). Here we only
+#  confirm the feat is storable; the damage assertions are in the dual-wield suite.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_two_weapon_fighting_is_storable_noop():
-    # The engine already adds the ability modifier to off-hand damage, so the only
-    # mechanical effect of the style is already present; the feat is a storable marker.
+def test_two_weapon_fighting_is_storable():
     s = rpg.Stats()
     s.add_feat("Two-Weapon Fighting")
     assert s.has_feat("Two-Weapon Fighting")
-    print("✅ test_two_weapon_fighting_is_storable_noop")
+    print("✅ test_two_weapon_fighting_is_storable")
 
 
 if __name__ == "__main__":
@@ -444,7 +444,7 @@ if __name__ == "__main__":
         test_great_weapon_fighting_not_one_handed,
         test_unarmed_fighting_adds_1d6,
         test_unarmed_fighting_supersedes_tavern_brawler,
-        test_two_weapon_fighting_is_storable_noop,
+        test_two_weapon_fighting_is_storable,
     ]
     failures = 0
     for t in tests:

@@ -651,6 +651,12 @@ namespace rpg {
       int  slasher_marked_by{-1};   // feat-user index whose next turn clears the mark
       bool cleave_available{false};         // Cleave: a hit this attack can grant an extra attack (GUI prompt)
       bool cleave_used_this_turn{false};    // Cleave: once per turn
+      // ── Two-Weapon Fighting (per-turn) ──────────────────────────────────────
+      // The single Light-property off-hand extra attack is one resource per turn. It lands in
+      // the Bonus Action by default, or — with the Nick mastery on the off-hand weapon (and the
+      // Weapon Mastery feature) — in the Attack action, freeing the Bonus Action. Dual Wielder
+      // grants an ADDITIONAL bonus-action off-hand attack (only useful once Nick frees the bonus).
+      bool offhand_attack_used{false};      // the per-turn off-hand extra attack has been spent
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -740,6 +746,7 @@ namespace rpg {
       conditions_.topple_available             = false;
       conditions_.cleave_available             = false;
       conditions_.cleave_used_this_turn        = false;
+      conditions_.offhand_attack_used          = false;
       conditions_.savage_attacker_used_this_turn     = false;
       conditions_.tavern_brawler_push_used_this_turn = false;
       conditions_.crusher_push_used_this_turn        = false;

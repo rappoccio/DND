@@ -34,7 +34,10 @@
         "has_branches_of_the_tree": false,
         "spellcasting_ability": "cha",
         "temp_hp": 0,
-        "feats": [],
+        "feats": [
+          "Dual Wielder",
+          "Two-Weapon Fighting"
+        ],
         "luck_points": 0,
         "luck_points_max": 0,
         "magic_resistances": [],
@@ -905,7 +908,7 @@
         "hp_max": 95,
         "hp_cur": 95,
         "ac": 13,
-        "speed_walk": 140,
+        "speed_walk": 150,
         "speed_swim": 0,
         "speed_fly": 0,
         "speed_burrow": 0,
@@ -926,7 +929,8 @@
         "feats": [
           "Savage Attacker",
           "Great Weapon Master",
-          "Sentinel"
+          "Sentinel",
+          "Weapon Mastery"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -1261,8 +1265,8 @@
       "name": "Keef Girgo",
       "sprite_path": "",
       "size": 1,
-      "col": 7,
-      "row": 10,
+      "col": 8,
+      "row": 7,
       "stats": {
         "str": 1,
         "dex": 20,
@@ -1293,8 +1297,9 @@
         "temp_hp": 0,
         "feats": [
           "Alert",
+          "Weapon Mastery",
           "Dual Wielder",
-          "Piercer"
+          "Two-Weapon Fighting"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -1310,31 +1315,25 @@
           "name": "Shortsword",
           "type": "melee",
           "reach_ft": 5,
-          "normal_range_ft": 0,
-          "long_range_ft": 0,
-          "finesse": true,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
           "thrown": false,
           "proficient": true,
-          "off_hand": true,
+          "off_hand": false,
           "two_handed": false,
           "heavy": false,
-          "light": true,
+          "light": false,
           "is_shield": false,
-          "mastery": "Vex",
+          "mastery": "None",
           "bonus_hit": 0,
           "bonus_damage": 0,
           "ac_bonus": 0,
-          "physical_damage_types": [
-            {
-              "type": "Piercing",
-              "num_dice": 1,
-              "die_size": 6
-            }
-          ],
+          "physical_damage_types": [],
           "magic_damage_types": []
         },
         "off_hand": {
-          "name": "Shortsword",
+          "name": "Scimitar",
           "type": "melee",
           "reach_ft": 5,
           "normal_range_ft": 0,
@@ -1347,13 +1346,13 @@
           "heavy": false,
           "light": true,
           "is_shield": false,
-          "mastery": "Vex",
+          "mastery": "Nick",
           "bonus_hit": 0,
           "bonus_damage": 0,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
-              "type": "Piercing",
+              "type": "Slashing",
               "num_dice": 1,
               "die_size": 6
             }
@@ -1362,29 +1361,23 @@
         },
         "ranged": {
           "name": "Longbow",
-          "type": "ranged",
+          "type": "melee",
           "reach_ft": 5,
-          "normal_range_ft": 150,
-          "long_range_ft": 600,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
           "finesse": false,
           "thrown": false,
           "proficient": true,
           "off_hand": false,
           "two_handed": false,
-          "heavy": true,
+          "heavy": false,
           "light": false,
           "is_shield": false,
-          "mastery": "Slow",
+          "mastery": "None",
           "bonus_hit": 0,
           "bonus_damage": 0,
           "ac_bonus": 0,
-          "physical_damage_types": [
-            {
-              "type": "Piercing",
-              "num_dice": 1,
-              "die_size": 8
-            }
-          ],
+          "physical_damage_types": [],
           "magic_damage_types": []
         }
       },
@@ -1660,7 +1653,8 @@
         "feats": [
           "Savage Attacker",
           "Great Weapon Master",
-          "Heavy Armor Master"
+          "Heavy Armor Master",
+          "Weapon Mastery"
         ],
         "luck_points": 0,
         "luck_points_max": 0,
@@ -2367,7 +2361,7 @@
         "has_offhand_attack": false,
         "has_sentinel": false,
         "has_branches_of_the_tree": false,
-        "spellcasting_ability": "int",
+        "spellcasting_ability": "cha",
         "temp_hp": 0,
         "feats": [],
         "luck_points": 0,
@@ -2515,22 +2509,21 @@
         0
       ],
       "is_npc": true,
-
       "npc_spell_groups": {
-	  "99": [
-	      "Detect Magic",
-	      "Detect Thoughts",
-	      "Dispel Magic",
-	      "Fireball"
-	  ],
-	  "2": [
-	      "Scrying"
-	  ],
-	  "1": [
-	      "Wall of Fire",
-	      "Greater Invisibilty",
-	      "Blight"
-	  ]
+        "99": [
+          "Detect Magic",
+          "Detect Thoughts",
+          "Dispel Magic",
+          "Fireball"
+        ],
+        "2": [
+          "Scrying"
+        ],
+        "1": [
+          "Wall of Fire",
+          "Greater Invisibilty",
+          "Blight"
+        ]
       },
       "npc_spell_uses_cur": {
         "Detect Magic": 99,
@@ -2538,9 +2531,7 @@
         "Dispel Magic": 99,
         "Fireball": 99,
         "Scrying": 2,
-        "Wall of Fire": 1,
-	"Blight":1,
-	"Greater Invisibilty":1
+        "Wall of Fire": 1
       }
     }
   ],

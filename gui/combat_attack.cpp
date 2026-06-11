@@ -363,7 +363,12 @@ void CombatEngine::rollDamage(const Weapon& w,
     }
 
     int ability_mod = damageAbilityMod(w, attacker);
-    if (suppress_positive_mod && ability_mod > 0) ability_mod = 0;  // Cleave: keep only a negative mod
+    // An off-hand (Two-Weapon Fighting) attack adds no ability modifier to its damage unless that
+    // modifier is negative. The Two-Weapon Fighting style lifts the restriction entirely. The
+    // off-hand weapon's `off_hand` flag is the per-attack signal (the main-hand weapon is never
+    // flagged off_hand, so a dual-wielder's first attack keeps its mod).
+    const bool offhand_no_mod = w.off_hand && !attacker.hasFeat("Two-Weapon Fighting");
+    if ((suppress_positive_mod || offhand_no_mod) && ability_mod > 0) ability_mod = 0;  // Cleave / off-hand: keep only a negative mod
     result.damage_mod   = ability_mod + w.bonus_damage;
     result.total_damage = std::max(0, raw + result.damage_mod);
     result.damage_breakdown.clear();
@@ -1229,7 +1234,9 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         return false;
 
     Weapon w = atk_pt.weapons[static_cast<std::size_t>(action.weapon_idx)];
-    if (action.is_offhand) w.proficient = false;  // off-hand: no proficiency bonus to hit
+    // Note: an off-hand (Two-Weapon Fighting) attack uses the same attack roll as any other —
+    // proficiency to-hit DOES apply (RAW). The only off-hand penalty is on damage (no positive
+    // ability mod unless the Two-Weapon Fighting style), handled in rollDamage via w.off_hand.
 
     int atk_sz = atk_pt.agent->getSize();
     int tgt_sz = tgt_pt.agent->getSize();
@@ -1294,6 +1301,14 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (atk_cond.poisoned) {
         dis = true;
         log_("Disadvantage: attacker is poisoned");
+    }
+
+    // Speedy (general feat) — Opportunity Attacks made against you are made with Disadvantage.
+    // The OA path flags the attack via Attack::opportunity.
+    if (action.opportunity && tgt_pt.agent->getStats().hasFeat("Speedy")) {
+        dis = true;
+        log_("Disadvantage: {} has Speedy (Opportunity Attack against them)",
+             agentName(bm, action.target_idx));
     }
 
     // Slasher (general feat) — Enhanced Critical: a creature crit by Slashing has Disadvantage on
@@ -1920,6 +1935,26 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 log_("{}: Piercer crit adds an extra Piercing die ({})",
                      agentName(bm, action.attacker_idx), extra);
             }
+        }
+    }
+
+    // Heavy Armor Master (general feat) — while wearing Heavy armor, Bludgeoning, Piercing, and
+    // Slashing damage taken from an attack is reduced by the wearer's Proficiency Bonus. Heavy armor
+    // is detected by an equipped piece with a 0 DEX cap (Plate / Chain Mail / Mithral Plate).
+    // Approximation: the −PB is taken off r.total_damage when the attack dealt any B/P/S type; on a
+    // mixed physical+magical hit this can trim the magical part too. Weapon-attack path only (spell
+    // attacks that deal B/P/S are not covered — see known_limitations.md).
+    if (r.hit && r.total_damage > 0 && tgt_stats.hasFeat("Heavy Armor Master") &&
+        !r.physical_damage_types.empty()) {
+        bool tgt_heavy_armor = false;
+        for (const auto& piece : tgt_pt.armor)
+            if (!piece.name.empty() && piece.dex_mod_cap == 0) { tgt_heavy_armor = true; break; }
+        if (tgt_heavy_armor) {
+            int pb = tgt_stats.prof_bonus;
+            int reduced = std::min(pb, r.total_damage);
+            r.total_damage -= reduced;
+            log_("{}: Heavy Armor Master reduces damage by {} (B/P/S in Heavy armor)",
+                 agentName(bm, action.target_idx), reduced);
         }
     }
 

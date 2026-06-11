@@ -711,6 +711,12 @@ class App:
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
+        # Nick (weapon mastery): relocate the off-hand attack into the Attack action, freeing the
+        # bonus action. Shown after the Attack action when the off-hand weapon has Nick + the agent
+        # has Weapon Mastery + the off-hand attack hasn't been spent yet.
+        self.btn_cbt_nick        = Button(pygame.Rect(px,       dummy_y, W, B),
+                                          "🗡 Nick: Off-hand Atk",
+                                          COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
         self.btn_cbt_pass_bonus  = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "Pass",
                                           COL_BTN_PASS, COL_BTN_PASS_HOV, self.font_md)
@@ -726,6 +732,10 @@ class App:
         self.btn_cbt_grapple_esc = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "💨 Escape",
                                           (150, 120, 80), (180, 150, 110), self.font_md)
+        # Telekinetic feat — Telekinetic Shove (bonus action, 30 ft, STR save or pushed 5 ft).
+        self.btn_cbt_telekinetic = Button(pygame.Rect(px,       dummy_y, W, B),
+                                          "🌀 Telekinetic Shove",
+                                          (110, 90, 170), (140, 120, 200), self.font_md)
         self.btn_cbt_spell_action= Button(pygame.Rect(px, dummy_y, W, B),
                                           "✨ Cast Spell",
                                           COL_BTN_SPELL, COL_BTN_SPELL_HOV, self.font_md)
@@ -2031,24 +2041,73 @@ class App:
             return ""
         return " [" + " + ".join(f"{amt} ({label})" for label, amt in bd) + "]"
 
-    def _start_extra_attack(self, weapon_idx=0, offhand=False, resource=None, label="Extra attack"):
+    def _start_extra_attack(self, weapon_idx=0, offhand=False, resource=None, label="Extra attack",
+                            slot="bonus"):
         """Generic 'make one extra weapon attack' setup — reused by War Priest, Great Weapon Master,
         Nick, etc. Configures the pending-attack knobs and enters target selection; the shared
-        target-click → _resolve_combat_attack does the attack, spends `resource` (if any), and
-        consumes the bonus action."""
+        target-click → _resolve_combat_attack does the attack and spends `resource` (if any).
+
+        slot="bonus" consumes the bonus action (most callers); slot="action" adds the attack to the
+        Attack action without touching the bonus action (Nick's off-hand relocation)."""
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        self._attack_sequence_slot = "bonus"
+        self._attack_sequence_slot = slot
         # Only set attacks_remaining if not already set (e.g., by Flurry of Blows which queues multiple)
         if self.attacks_remaining == 0:
-            stats = self.combat.get_agent_stats(self.bm, idx)
-            self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
-        self.pending_attack_slot = "bonus"
+            if slot == "bonus":
+                stats = self.combat.get_agent_stats(self.bm, idx)
+                self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
+            else:
+                self.attacks_remaining = 1   # a single extra Attack-action attack (Nick)
+        self.pending_attack_slot = slot
         self.pending_weapon_idx = weapon_idx
         self.pending_attack_offhand = offhand     # proficient (not an off-hand strike) when False
         self.pending_attack_resource = resource   # spent on a valid attack (e.g. "War Priest")
         self._combat_log_add(f"{label} — click a target.")
+
+    def _offhand_bonus_available(self, idx: int) -> bool:
+        """Can this agent make an off-hand attack as a Bonus Action right now?
+
+        The single Light-property off-hand extra attack lands in the bonus action by default. Once
+        it's been spent (e.g. relocated into the Attack action via Nick, or already taken in the
+        bonus), only the Dual Wielder feat grants a second bonus-action off-hand attack."""
+        if idx < 0 or idx >= len(self.bm.placed_agents):
+            return False
+        weapons = self.combat.get_agent_weapons(self.bm, idx)
+        if not any(w.off_hand for w in weapons):
+            return False
+        conds = self.combat.get_agent_conditions(self.bm, idx)
+        if not conds.offhand_attack_used:
+            return True
+        return self.combat.get_agent_stats(self.bm, idx).has_feat("Dual Wielder")
+
+    def _nick_offhand_idx(self, idx: int) -> int:
+        """Weapon-array index of an off-hand weapon whose Nick mastery can relocate the off-hand
+        attack into the Attack action right now (agent has the Weapon Mastery feature and the
+        off-hand extra attack hasn't been spent), else -1."""
+        if idx < 0 or idx >= len(self.bm.placed_agents):
+            return -1
+        # The Weapon Master general feat grants access to a weapon's Mastery property to anyone, so
+        # it satisfies the same gate as the martials' auto-granted "Weapon Mastery" feature.
+        st = self.combat.get_agent_stats(self.bm, idx)
+        if not (st.has_feat("Weapon Mastery") or st.has_feat("Weapon Master")):
+            return -1
+        if self.combat.get_agent_conditions(self.bm, idx).offhand_attack_used:
+            return -1
+        weapons = self.combat.get_agent_weapons(self.bm, idx)
+        for i, w in enumerate(weapons):
+            if w.off_hand and w.mastery == rpg.WeaponMastery.Nick:
+                return i
+        return -1
+
+    def _mark_offhand_attack_used(self, idx: int):
+        """Mark the single per-turn off-hand extra attack as spent on agent `idx`."""
+        if idx < 0 or idx >= len(self.bm.placed_agents):
+            return
+        conds = self.combat.get_agent_conditions(self.bm, idx)
+        conds.offhand_attack_used = True
+        self.combat.set_agent_conditions(self.bm, idx, conds)
 
     def _resolve_combat_attack(self, target_idx: int):
         """Resolve the pending attack against target_idx.
@@ -2092,6 +2151,15 @@ class App:
         if result.valid and self.pending_attack_resource:
             self.combat.spend_resource(self.bm, atk_idx, self.pending_attack_resource)
             self.pending_attack_resource = None
+
+        # Spend the single per-turn off-hand extra attack when this strike used the off-hand weapon
+        # (base bonus off-hand, Nick relocation, or Dual Wielder's bonus). Once spent, the base
+        # bonus off-hand attack is no longer offered — only Dual Wielder grants a second one.
+        if result.valid:
+            weapons = self.combat.get_agent_weapons(self.bm, atk_idx)
+            wi = action.weapon_idx
+            if 0 <= wi < len(weapons) and weapons[wi].off_hand:
+                self._mark_offhand_attack_used(atk_idx)
 
         self._flush_combat_log()
 
@@ -3897,6 +3965,14 @@ class App:
         hint = f"shove and {'knock prone' if shove_type == 'prone' else 'push 5ft'}"
         self._combat_log_add(f"Click a target to {hint}.")
 
+    def _start_telekinetic_shove(self):
+        """Telekinetic feat — Telekinetic Shove (bonus action, 30 ft, STR save or pushed 5 ft)."""
+        if self.bonus_used:
+            return
+        self.pending_shove_slot = "bonus"
+        self.pending_shove_type = "telekinetic"
+        self._combat_log_add("Click a target within 30 ft to telekinetically shove (STR save or pushed 5 ft).")
+
     def _resolve_shove(self, target_idx: int):
         """Execute the pending shove action."""
         if not self.pending_shove_slot or not self.pending_shove_type:
@@ -3906,6 +3982,22 @@ class App:
         if atk_idx < 0:
             self.pending_shove_slot = ""
             self.pending_shove_type = ""
+            return
+
+        # Telekinetic Shove is a STR-save shove at 30 ft (reuses the C++ Thunderwave knockback);
+        # the ordinary push/prone shove is a contested Athletics check at 5 ft.
+        if self.pending_shove_type == "telekinetic":
+            result = self.combat.apply_telekinetic_shove(self.bm, atk_idx, target_idx)
+            if result.valid:
+                self._combat_log_add(result.log_message)
+                if result.push_ft_applied > 0:
+                    self._update_reach()
+                    self._update_attack_overlay()
+            else:
+                self._combat_log_add(f"Telekinetic Shove failed: {result.log_message}")
+            self.pending_shove_slot = ""
+            self.pending_shove_type = ""
+            self.bonus_used = True
             return
 
         # Create ShoveAction
@@ -7112,7 +7204,7 @@ class App:
         _cur_has_spells  = False
         if 0 <= cur_idx < len(agents):
             _cur_has_weapons = len(self.combat.get_agent_weapons(self.bm, cur_idx)) > 0
-            _cur_has_offhand = any(w.off_hand for w in self.combat.get_agent_weapons(self.bm, cur_idx))
+            _cur_has_offhand = self._offhand_bonus_available(cur_idx)
             _cur_has_spells  = len(self.combat.get_agent_spells(self.bm, cur_idx)) > 0
             _cur_can_spell   = _cur_has_spells  # can cast if has spells
 
@@ -7122,6 +7214,15 @@ class App:
         if self.action_used and not mid_sequence_action:
             txt("[Action used]", lx, y, (100, 100, 120))
             y += B
+            # Nick: after the Attack action, relocate the off-hand attack here (frees the bonus
+            # action). Only when the off-hand weapon has Nick + the agent has Weapon Mastery + the
+            # off-hand attack hasn't been spent (checked by _nick_offhand_idx).
+            if self._nick_offhand_idx(cur_idx) >= 0:
+                self.btn_cbt_nick.rect.x = lx
+                self.btn_cbt_nick.rect.y = y
+                self.btn_cbt_nick.rect.w = W
+                self.btn_cbt_nick.draw(self.screen)
+                y += B + gap
         else:
             # Check if agent is Frightened - if so, only Dash is allowed
             cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
@@ -7404,6 +7505,15 @@ class App:
                         self.btn_cbt_grapple.rect.w = TW2_grapple
                         self.btn_cbt_grapple.draw(self.screen)
                         y += B + gap
+
+            # Telekinetic Shove (general feat) — bonus action, 30 ft range (not gated on adjacency).
+            if 0 <= cur_idx < len(agents):
+                if self.combat.get_agent_stats(self.bm, cur_idx).has_feat("Telekinetic"):
+                    self.btn_cbt_telekinetic.rect.x = lx
+                    self.btn_cbt_telekinetic.rect.y = y
+                    self.btn_cbt_telekinetic.rect.w = W
+                    self.btn_cbt_telekinetic.draw(self.screen)
+                    y += B + gap
 
             # Hide, Dash, Disengage (Cunning Action) buttons - only if agent has cunning action
             if 0 <= cur_idx < len(agents):
@@ -8650,8 +8760,7 @@ class App:
                 _ev_idx = self._current_agent_idx()
                 _has_wpn = (0 <= _ev_idx < len(self.bm.placed_agents) and
                             len(self.combat.get_agent_weapons(self.bm, _ev_idx)) > 0)
-                _has_offhand = (0 <= _ev_idx < len(self.bm.placed_agents) and
-                                any(w.off_hand for w in self.combat.get_agent_weapons(self.bm, _ev_idx)))
+                _has_offhand = self._offhand_bonus_available(_ev_idx)
                 # The Attack button also continues an in-progress Extra Attack sequence: mid-sequence
                 # the Action is already marked used, but the standing "⚔ Attack (N)" button must
                 # still resume the remaining attacks. A FRESH Attack needs an unused Action.
@@ -8659,6 +8768,12 @@ class App:
                 if _has_wpn and (not self.action_used or _mid_seq_atk) and \
                         self.btn_cbt_atk_action.clicked(event):
                     self._start_attack("action")
+                # Nick: relocate the off-hand attack into the Attack action (frees the bonus action).
+                # Ungated by action_used — the button is only drawn after the Attack action is taken.
+                _nick_idx = self._nick_offhand_idx(_ev_idx)
+                if _nick_idx >= 0 and self.btn_cbt_nick.clicked(event):
+                    self._start_extra_attack(weapon_idx=_nick_idx, offhand=True, slot="action",
+                                             label="Nick: off-hand attack (part of Attack action)")
                 if not self.action_used:
                     if self.btn_cbt_unarmed.clicked(event):
                         self._show_unarmed_menu(pygame.mouse.get_pos())
@@ -8739,6 +8854,8 @@ class App:
                         self._start_grapple()
                     if self.btn_cbt_grapple_esc.clicked(event):
                         self._execute_grapple_escape()
+                    if self.btn_cbt_telekinetic.clicked(event):
+                        self._start_telekinetic_shove()
                     if self.btn_cbt_hide_bonus.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

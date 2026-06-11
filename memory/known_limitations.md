@@ -1215,6 +1215,58 @@ needs a synthetic "butt-end" weapon profile (a 1d4 variant of the polearm) which
 Strike (an OA when a creature enters your reach) needs an enter-reach reaction window that doesn't exist.
 Marked "soon" in the GUI feat list.
 
+## General feats — phase G5 (armor / saves / movement passives + Telekinetic) DONE 2026-06-11
+
+Built + green (66 suites). Test: `gui/test_general_feats_g5.py` (14 cases). All passives query `hasFeat`
+at the point of use (no stat mutation → idempotent across turns/reloads, like Blind Fighting/Speedy).
+
+- **Heavy Armor Master** — in `applyAttackResult` (combat_attack.cpp), before the single HP application:
+  if the hit dealt any B/P/S type (`r.physical_damage_types` non-empty) and the target wears Heavy armor
+  (an equipped piece with `dex_mod_cap == 0`), `r.total_damage -= min(PB, total)`. *Approximation:* the
+  −PB comes off the whole `r.total_damage`, so a mixed physical+magical hit can trim the magical part too;
+  and it's the **weapon-attack path only** — a spell attack that deals B/P/S is not covered.
+- **Medium Armor Master** — in `calculateAC`: after the most-restrictive DEX cap is computed, `if (cap == 2
+  && hasFeat) cap = 3`. Detects Medium armor as "min equipped cap is 2"; Heavy (cap 0) is left unchanged.
+- **Durable** — Advantage on Death Saving Throws (Defy Death): both death-save sites (`beginTurn`'s
+  start-of-turn save and the on-damage `rollDeathSave`) take `max(roll(20), roll(20))` when `hasFeat`. The
+  HD-based Speedy Recovery clause stays deferred (no Hit-Dice pool).
+- **Speedy** — +10 ft walking budget in `beginTurn`'s movement seeding (`stats.speed_walk + 10 - penalty`,
+  not a stat mutation). OAs against you have Disadvantage: a new `Attack::opportunity` flag (set on the
+  single OA path in `applyReactionResponse`, bound for tests) makes `determineAdvantage` impose `dis` when
+  the target `hasFeat("Speedy")`. *Deferred:* the "Dash ignores Difficult Terrain" clause (Dash↔difficult-
+  terrain movement-cost interaction isn't wired).
+- **Athlete** — `standup` costs only 5 ft (vs half-speed) when `hasFeat`. *Note-only:* Climb Speed = Speed
+  (no per-turn climb budget in the seeding — only walk/fly/swim/burrow) and the running High/Long Jump
+  distance (no jump system).
+- **Skulker** — Blindsight 10 ft, added to `piercesInvisibility` alongside Blind Fighting (`dist_ft <= 10
+  && (hasFeat("Blind Fighting") || hasFeat("Skulker"))`). *Note-only:* Stealth/Sniper clauses (no skill rolls).
+- **Telekinetic — Telekinetic Shove** — `applyTelekineticShove(bm, caster, target)` (combat_riders.cpp,
+  bound as `apply_telekinetic_shove`): a 30-ft-range Bonus Action; STR save (DC = 8 + caster PB + best of
+  INT/WIS/CHA mod) or pushed 5 ft via `forceMoveAgent` (the same knockback Thunderwave/Shove use, per the
+  user). Returns a `ShoveResult` (attacker_roll=DC, defender_roll=save, success=landed). GUI:
+  `btn_cbt_telekinetic` ("🌀 Telekinetic Shove", gated on `hasFeat("Telekinetic")` + bonus available) →
+  `_start_telekinetic_shove` → reuses the `pending_shove_*` target-click flow, dispatched in `_resolve_shove`
+  by `shove_type == "telekinetic"`. *Note-only:* the Mage Hand grant; the DC uses the caster's strongest
+  mental mod rather than a stored per-character ability choice.
+- **Weapon Master** — GUI-only: the Nick gate `_nick_offhand_idx` now accepts `has_feat("Weapon Mastery")
+  OR has_feat("Weapon Master")`, so a non-martial with the feat can use a weapon's Mastery (Nick). C++
+  masteries already fire off `w.mastery` regardless of the feat (monsters rely on this), so no engine gate
+  changed. *Note-only:* weapon-proficiency grant (proficiency isn't enforced).
+- **Resilient** — marker only: like ASI, the chosen save proficiency is set via the StatsDialog save-prof
+  checkboxes (`save_prof_*`), so the feat carries no engine effect of its own. Tagged "note" in the GUI list.
+
+**Binding fix (foundation):** `Armor.dex_mod_cap` was never exposed in pybind, so every Python-built Armor
+kept the C++ default 30 — meaning `calculateAC` could not cap DEX for heavy/medium armor at all, and the
+armor-master feats had nothing to detect. Now bound (`rpg_bindings.cpp`) and round-tripped in
+`_dict_to_armor`/`_armor_to_dict` (helpers.py); armor.json already carried the values (Plate/Chain Mail/
+Mithral Plate = 0, Cold Iron Breastplate = 2).
+
+**Deferred to G5b:** **Elemental Adept** + **Poisoner (Potent Poison)** — both need "ignore the target's
+resistance for damage type X" threaded through the ~8 damage-multiplier sites (combat_spells/combat_attack)
+plus, for Elemental Adept, treating 1s as 2s on the spell's damage dice and a stored **chosen element**.
+Per the user, build a **reusable element picker** (a GUI popup on trigger) that Elemental Adept,
+**Chromatic Orb**, and **Sorcerous Burst** will all share. Marked "soon" in the GUI feat list.
+
 ## Fighting Style feats (2024 PHB) — Blind Fighting DONE 2026-06-10
 
 Fighting Styles are modeled as feats (`hasFeat("<Name>")`), granted by the Fighting Style feature.
