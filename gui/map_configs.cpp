@@ -112,6 +112,7 @@ static Spell spellFromJson(const json& j) noexcept {
     spell.requires_concentration = j.value("requires_concentration", false);
     spell.requires_los = j.value("requires_los", false);
     spell.check_los_on_center = j.value("check_los_on_center", true);
+    spell.selective_targeting = j.value("selective_targeting", false);
     spell.uses_max = j.value("uses_max", 0);
     spell.uses_remaining = j.value("uses_remaining", 0);
     spell.effects_on_begin_turn = j.value("effects_on_begin_turn", true);

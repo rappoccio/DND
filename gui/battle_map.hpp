@@ -143,6 +143,11 @@ struct PlacedAgent {
     int         summoner_idx      = -1;    // index of the summoner; -1 = not a summon
     bool        removed_from_play = false; // tombstoned (summon dismissed): skip in turns + rendering
     std::string summon_spell;              // name of the spell that created this summon (if any)
+    // ── Faction / team ─────────────────────────────────────────────────────
+    // Encounter-side team assignment (NOT an intrinsic Stat). 0 = neutral/unassigned
+    // (its own faction, hostile to everyone). 1+ = red/blue/... Used for hide vs only
+    // enemies, sparing allies from selective AoEs, and restricting heals to allies.
+    int         faction           = 0;
 };
 
 // ── Agent configuration (supplied from Python GUI) ─────────────────────────
@@ -249,6 +254,10 @@ public:
     // (kept in the vector to preserve every index reference, then skipped in turns + rendering).
     [[nodiscard]] int  getAgentSummonerIdx(int idx) const noexcept;
     void setAgentSummonerIdx(int idx, int summoner_idx) noexcept;
+
+    // Faction / team accessors (0 = neutral). See PlacedAgent::faction.
+    [[nodiscard]] int  getAgentFaction(int idx) const noexcept;
+    void setAgentFaction(int idx, int faction) noexcept;
     [[nodiscard]] std::string getAgentSummonSpell(int idx) const noexcept;
     void setAgentSummonSpell(int idx, std::string spell_name) noexcept;
     [[nodiscard]] bool isAgentRemovedFromPlay(int idx) const noexcept;

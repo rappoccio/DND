@@ -989,6 +989,138 @@ class ElementPickerDialog:
         surf.blit(dt, dt.get_rect(center=self._done_rect.center))
 
 
+class TeamPickerDialog:
+    """Modal team/faction assignment. Lists every placed agent with a coloured team
+    chip; clicking a row cycles its team (neutral → red → blue → …). Commits the
+    {agent_idx: faction} map on dismiss. Scrolls if there are many agents."""
+    ITEM_H   = 30
+    PAD      = 12
+    HDR_H    = 40
+    BTN_H    = 28
+    MAX_ROWS = 16
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self._hover_idx = -1
+        self._rows = []            # list of (agent_idx, name)
+        self._assign = {}          # agent_idx -> faction
+        self._callback = None
+        self._done_rect = None
+        self._scroll = 0
+        self._frames_since_show = 0
+
+    def show(self, callback, agents):
+        """agents: iterable of (agent_idx, name, faction)."""
+        self.visible = True
+        self._callback = callback
+        self._rows   = [(idx, name) for (idx, name, _f) in agents]
+        self._assign = {idx: f for (idx, _n, f) in agents}
+        self._hover_idx = -1
+        self._scroll = 0
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 360
+        nrows = max(1, min(len(self._rows), self.MAX_ROWS))
+        dlg_h = self.HDR_H + nrows * self.ITEM_H + self.BTN_H + self.PAD * 3
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def _commit_and_dismiss(self):
+        if self._callback:
+            self._callback(dict(self._assign))
+        self.visible = False
+
+    def _list_y(self):
+        return self.rect.y + self.HDR_H + self.PAD
+
+    def _visible_rows(self):
+        return min(len(self._rows), self.MAX_ROWS)
+
+    def _cycle(self, agent_idx):
+        cur = self._assign.get(agent_idx, 0)
+        i = FACTION_CHOICES.index(cur) if cur in FACTION_CHOICES else 0
+        self._assign[agent_idx] = FACTION_CHOICES[(i + 1) % len(FACTION_CHOICES)]
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        # Swallow the click that opened this dialog (one frame), like ElementPickerDialog.
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self._commit_and_dismiss()
+                return True
+        elif event.type == pygame.MOUSEWHEEL:
+            maxscroll = max(0, len(self._rows) - self.MAX_ROWS)
+            self._scroll = max(0, min(maxscroll, self._scroll - event.y))
+            return True
+        elif event.type == pygame.MOUSEMOTION:
+            list_y = self._list_y()
+            self._hover_idx = -1
+            for vi in range(self._visible_rows()):
+                r = pygame.Rect(self.rect.x + self.PAD, list_y + vi * self.ITEM_H,
+                                self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos):
+                    self._hover_idx = vi + self._scroll
+                    break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._done_rect and self._done_rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            if not self.rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            list_y = self._list_y()
+            for vi in range(self._visible_rows()):
+                r = pygame.Rect(self.rect.x + self.PAD, list_y + vi * self.ITEM_H,
+                                self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos):
+                    self._cycle(self._rows[vi + self._scroll][0])
+                    return True
+            return True
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+        pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
+
+        hdr = self.font_md.render("Assign Teams (click to cycle)", True, (220, 220, 235))
+        surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + 11))
+
+        list_y = self._list_y()
+        for vi in range(self._visible_rows()):
+            ridx = vi + self._scroll
+            agent_idx, name = self._rows[ridx]
+            fac = self._assign.get(agent_idx, 0)
+            r = pygame.Rect(self.rect.x + self.PAD, list_y + vi * self.ITEM_H,
+                            self.rect.w - self.PAD * 2, self.ITEM_H)
+            if ridx == self._hover_idx:
+                pygame.draw.rect(surf, (44, 44, 66), r, border_radius=4)
+            chip = pygame.Rect(r.x + 4, r.y + (self.ITEM_H - 18) // 2, 56, 18)
+            pygame.draw.rect(surf, faction_color(fac), chip, border_radius=4)
+            ct = self.font_sm.render(faction_name(fac), True, (20, 20, 20))
+            surf.blit(ct, ct.get_rect(center=chip.center))
+            lbl = self.font_md.render(name, True, (220, 220, 235))
+            surf.blit(lbl, (chip.right + 12, r.y + (self.ITEM_H - lbl.get_height()) // 2))
+
+        bw, bh = 110, self.BTN_H
+        self._done_rect = pygame.Rect(self.rect.centerx - bw // 2,
+                                      self.rect.bottom - self.PAD - bh, bw, bh)
+        pygame.draw.rect(surf, (35, 90, 45), self._done_rect, border_radius=6)
+        dt = self.font_md.render("Done", True, (220, 220, 220))
+        surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
 # Set of general-feat names (for splitting feats vector between origin + general pickers).
 GENERAL_FEAT_NAMES = {row[0] for row in GENERAL_FEATS}
 

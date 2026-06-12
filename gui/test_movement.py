@@ -149,6 +149,32 @@ def test_jump_movement():
     assert after_jump < initial_walk
     print("✅ Jump movement costs movement budget")
 
+def test_jump_distance_ceiling():
+    """Long-jump reach = Strength SCORE in feet (running) rounded UP to whole 5-ft squares.
+    Str 8 → 8 ft → 2 squares (10 ft) is reachable; 3 squares (15 ft) is out of range."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Jumper", 5, 5), str=8)
+    # Give plenty of walk budget so the distance cap (not movement) is what's under test.
+    s = engine.get_agent_stats(bm, idx); s.speed_walk = 30; engine.set_agent_stats(bm, idx, s)
+
+    def _ready():
+        engine.begin_turn(bm, idx)
+        # jump_agent checks the Agent's own movement budget; the GUI seeds it at turn start
+        # via init_movement (begin_turn only seeds the CombatEngine's separate budget).
+        bm.placed_agents[idx].init_movement(30, 0, 0, 0)
+
+    _ready()
+    assert engine.jump_agent(bm, idx, rpg.Cell(7, 5), True), \
+        "Str 8 running jump should reach 2 squares (ceiling of 8 ft)"
+
+    # Reset and confirm a 3-square (15 ft) jump exceeds the ceiling'd reach.
+    bm.set_agent_position(idx, rpg.Cell(5, 5))
+    _ready()
+    assert not engine.jump_agent(bm, idx, rpg.Cell(8, 5), True), \
+        "Str 8 must not reach 3 squares (15 ft > 10 ft ceiling)"
+    print("✅ test_jump_distance_ceiling")
+
 def test_disengage_action():
     """Test disengage action (no opportunity attacks when moving)."""
     bm = setup_battle_map()
@@ -227,6 +253,7 @@ if __name__ == "__main__":
         test_terrain_effect_expires,
         test_permanent_terrain_effect,
         test_jump_movement,
+        test_jump_distance_ceiling,
         test_disengage_action,
         test_dash_action,
         test_standing_up,

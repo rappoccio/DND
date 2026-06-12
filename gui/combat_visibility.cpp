@@ -52,6 +52,14 @@ bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int ta
     return piercesInvisibility(viewer.agent->getStats(), chebyshevFeet(viewer, target));
 }
 
+bool CombatEngine::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+{
+    if (a_idx == b_idx) return true;            // self is always "friendly"
+    int fa = bm.getAgentFaction(a_idx);
+    int fb = bm.getAgentFaction(b_idx);
+    return fa != 0 && fa == fb;                 // same non-zero team; neutral allies no one
+}
+
 void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 {
     const auto& agents = bm.placedAgents();
@@ -158,9 +166,12 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
     Cell hider_origin = hider_pa.origin;
     int hider_size = hider_pa.agent->getSize();
 
-    // Check if any other agent has LOS to the hider — if so, can't hide
+    // Check if any ENEMY has LOS to the hider — if so, can't hide. Allies (same faction)
+    // know where you are and do not prevent or spot a hide (RAW: you hide from creatures
+    // that can see you, i.e. your enemies).
     for (std::size_t i = 0; i < agents.size(); ++i) {
         if (static_cast<int>(i) == agent_idx) continue;
+        if (areAllies(bm, agent_idx, static_cast<int>(i))) continue;
         if (agents[i].agent->getConditions().incapacitated || agents[i].agent->getStats().hp_cur <= 0) continue;
 
         const PlacedAgent& observer_pa = agents[i];
@@ -187,12 +198,13 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
     log_("{} attempts to hide (Stealth check): d20={} + {} = {}",
          hider_pa.agent->name(), result.stealth_d20, stealth_mod, result.stealth_total);
 
-    // Contest against agents with LOS to the hider
+    // Contest against enemies with LOS to the hider (allies are skipped — see above).
     bool spotted = false;
     std::string contest_log;
 
     for (std::size_t i = 0; i < agents.size(); ++i) {
         if (static_cast<int>(i) == agent_idx) continue;
+        if (areAllies(bm, agent_idx, static_cast<int>(i))) continue;
         if (agents[i].agent->getConditions().incapacitated || agents[i].agent->getStats().hp_cur <= 0) continue;
 
         const PlacedAgent& observer_pa = agents[i];
@@ -274,6 +286,7 @@ std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx
 
     for (std::size_t i = 0; i < agents.size(); ++i) {
         if (static_cast<int>(i) == agent_idx) continue;
+        if (areAllies(bm, agent_idx, static_cast<int>(i))) continue;  // allies don't try to spot you
         if (agents[i].agent->getConditions().incapacitated || agents[i].agent->getStats().hp_cur <= 0) continue;
 
         const PlacedAgent& observer_pa = agents[i];

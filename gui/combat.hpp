@@ -995,6 +995,12 @@ public:
     // so the RL action space and observation agree with the GUI.
     [[nodiscard]] bool canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept;
 
+    // True if two placed agents are allies: same NON-zero faction. Faction 0 is
+    // neutral/unassigned — every neutral is its own faction, allied with no one
+    // (so neutral-vs-neutral is NOT allied). Drives hide-from-enemies, sparing
+    // allies from selective AoEs, and restricting heals to allies.
+    [[nodiscard]] bool areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
+
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
     // reasons for conditions, etc.). Optional; null = silent.

@@ -54,6 +54,24 @@ These gate multiple per-class features; each is a real project, not a quick task
   comprehensive 2024 list surfaces, migrate the bestiary to it (or cross-check) and retire the
   hand-built `tools/monster_weapon_overrides.json`. User is hunting for the bigger list.
 
+## Character import / storage
+
+- [x] **D&D Beyond character importer** (2026-06-11) — `tools/import_character.py` fetches a
+  public DDB character (`character-service.dndbeyond.com/character/v5/character/<id>`, urllib,
+  no deps), *derives* our flat agent record (final ability scores from base+modifiers, AC
+  back-solved into `base_ac`, HP, prof, saves, slots from caster table, class/subclass/weapon/
+  spell name-mapping), best-effort + warns, saves the raw DDB JSON as a `.ddb.json` sidecar
+  (lossless source of truth), and can `--merge` into an existing encounter file by name (keeps
+  position/faction). This is "Option A".
+- [ ] **Option B — enrich OUR native schema with DDB's good ideas (future epic).** Our agent
+  JSON is lossy/provenance-free (stores final WIS 18, not "15 base +3 feats"), so it can't cleanly
+  re-derive or re-level. Option B = store `base` ability scores + a small `modifiers` list (and
+  item-driven AC) instead of only finals, deriving the flat engine view at load. Adopts the DDB
+  *philosophy* without swallowing the proprietary 345 KB blob or mandating a GUI stat-editor
+  rewrite. Touches C++ loaders, bindings, `agent_loader.py`, GUI save/load, test fixtures — a real
+  cross-cutting refactor; do as its own design epic. (We rejected literal DDB-blob-as-native-store:
+  proprietary, server-versioned, requires reimplementing DDB's whole derivation engine.)
+
 ## App / non-combat (deferred — out of the combat-sim core scope)
 
 Per the "combat-sim only" scope rule, these are explicitly deferred, not active:

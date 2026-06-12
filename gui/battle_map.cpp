@@ -479,8 +479,12 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     if (jstats.character_class == CharacterClass::Warlock && jstats.hasInvocation(10))
         max_jump_ft *= 3;
 
-    // Check if jump is within range
-    if (jump_dist_ft > max_jump_ft)
+    // The reach is the Strength SCORE in feet (running) or half (standing). Convert that to whole
+    // 5-ft squares rounding UP, so a creature reaches the square its Strength falls within
+    // (e.g. Str 8 → 8 ft → 2 squares / 10 ft). Movement is still charged the full grid distance
+    // (jump_dist_ft) below.
+    int max_jump_cells = (max_jump_ft + 4) / 5;
+    if (jump_dist_cells > max_jump_cells)
         return false;
 
     // Check if agent has enough walk movement budget (jumping uses walk budget)
@@ -741,6 +745,18 @@ void BattleMap::setAgentSummonerIdx(int idx, int summoner_idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].summoner_idx = summoner_idx;
+}
+
+int BattleMap::getAgentFaction(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return 0;
+    return placedAgents_[static_cast<std::size_t>(idx)].faction;
+}
+
+void BattleMap::setAgentFaction(int idx, int faction) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].faction = faction;
 }
 
 std::string BattleMap::getAgentSummonSpell(int idx) const noexcept

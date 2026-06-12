@@ -53,6 +53,7 @@ test_scripts = [
     "test_reaction_feats.py",
     "test_save_load_weapons.py",
     "test_evoker_safe_targets.py",
+    "test_factions.py",
     "test_emanation.py",
     "test_class_features.py",
     "test_on_damage.py",

@@ -11,6 +11,7 @@ Right panel – agent configuration GUI (add / remove / place agents)
 import sys
 import os
 import json
+import re
 import math
 import random
 import shutil
@@ -49,7 +50,7 @@ from helpers import (
     _spell_to_dict, _dict_to_spell,
     can_place_agent, summon_cell_placeable,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -325,6 +326,9 @@ class App:
         # Elemental Adept's feat picker; opened from _activate, single-select.
         self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
 
+        # Team/faction picker (opened from an agent's right-click menu → "Set Teams…").
+        self.team_dialog = TeamPickerDialog(self.font_sm, self.font_md)
+
         # ── NPC spell mechanics ──────────────────────────────────────────────
         self._agent_meta: dict[int, dict] = {}  # {agent_idx: {"npc_spell_groups": {...}}} — for stats dialog
 
@@ -358,6 +362,9 @@ class App:
         self.drag_offset  = (0, 0)     # (dcol, drow) within agent where click landed
         self.drag_cell    = None       # Cell: current snapped target
         self.drag_valid   = False      # is current drag_cell a legal drop?
+
+        # ── Copy/paste clipboard (pre-combat encounter building) ───────────
+        self._agent_clipboard = None   # snapshot dict of a copied agent (Ctrl+C / Ctrl+V)
 
         # ── Placement mode state (for floating agent placement) ────────────
         self.placement_mode_active = False  # True when placing new agent
@@ -595,7 +602,10 @@ class App:
                               (50, 100, 60), (70, 130, 80), font=self.font_md)
         self.btn_load = Button(pygame.Rect(px + SW+4, b1, SW, B), "Load",
                               (50, 75, 120), (70, 100, 155), font=self.font_md)
-        lr_y = b1 + B + self._BTN_GAP
+        imp_y = b1 + B + self._BTN_GAP
+        self.btn_import_ddb = Button(pygame.Rect(px, imp_y, W, B), "Import D&D Beyond",
+                                     (95, 70, 120), (125, 95, 160), font=self.font_md)
+        lr_y = imp_y + B + self._BTN_GAP
         self.btn_long_rest = Button(pygame.Rect(px, lr_y, HW, B), "Long Rest",
                                     (60, 100, 60), (80, 130, 80), font=self.font_md)
         self.btn_short_rest = Button(pygame.Rect(px + HW + 4, lr_y, HW, B), "Short Rest",
@@ -649,7 +659,9 @@ class App:
         self.btn_clear.rect.update(px, b0, W, self._BTN_H)
         self.btn_save.rect.update(px,        b1, SW, self._BTN_H)
         self.btn_load.rect.update(px + SW+4, b1, SW, self._BTN_H)
-        lr_y = b1 + self._BTN_H + self._BTN_GAP
+        imp_y = b1 + self._BTN_H + self._BTN_GAP
+        self.btn_import_ddb.rect.update(px, imp_y, W, self._BTN_H)
+        lr_y = imp_y + self._BTN_H + self._BTN_GAP
         self.btn_long_rest.rect.update(px, lr_y, SW, self._BTN_H)
         self.btn_short_rest.rect.update(px + SW + 4, lr_y, SW, self._BTN_H)
         bc_y = lr_y + self._BTN_H + self._BTN_GAP + 8
@@ -1198,6 +1210,113 @@ class App:
             self._update_attack_overlay()
         self._flash_status(f"Terrain loaded: {os.path.basename(path)}")
 
+    # ─────────────────────────────────────────────────────────────────────
+    #  Copy / paste agents (pre-combat encounter building)
+    # ─────────────────────────────────────────────────────────────────────
+    def _unique_agent_name(self, name: str) -> str:
+        """Return a name not already in use, suffixing/incrementing a trailing number.
+        e.g. 'Goblin' -> 'Goblin 2', 'Goblin 2' -> 'Goblin 3' (skipping taken names)."""
+        existing = {pt.name for pt in self.bm.placed_agents}
+        parts = name.rsplit(" ", 1)
+        if len(parts) == 2 and parts[1].isdigit():
+            base, n = parts[0], int(parts[1]) + 1
+        else:
+            base, n = name, 2
+        candidate = f"{base} {n}"
+        while candidate in existing:
+            n += 1
+            candidate = f"{base} {n}"
+        return candidate
+
+    def _find_free_cell_near(self, col: int, row: int, size: int):
+        """Spiral out from (col,row) for the nearest cell where a size×size agent fits."""
+        for radius in range(0, 13):
+            for dc in range(-radius, radius + 1):
+                for dr in range(-radius, radius + 1):
+                    if max(abs(dc), abs(dr)) != radius:
+                        continue   # only the ring at this radius
+                    c = rpg.Cell(col + dc, row + dr)
+                    if self._can_place(c, size):
+                        return c
+        return None
+
+    def _copy_agent(self, idx: int):
+        """Snapshot a placed agent's full loadout to the clipboard (Ctrl+C)."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            self._flash_status("Select an agent first, then Ctrl+C")
+            return
+        pt = self.bm.placed_agents[idx]
+        self._agent_clipboard = {
+            "name":       pt.name,
+            "sprite":     pt.sprite_path,
+            "size":       pt.size,
+            "stats":      self.combat.get_agent_stats(self.bm, idx),
+            "weapons":    list(self.combat.get_agent_weapons(self.bm, idx)),
+            "spells":     list(self.combat.get_agent_spells(self.bm, idx)),
+            "armor":      list(self.combat.get_agent_armor(self.bm, idx)),
+            "meta":       dict(self._agent_meta.get(idx, {})),
+            # Spell rendering metadata for this agent, keyed by spell index.
+            "spell_meta": {sp_idx: m for (a_idx, sp_idx), m in self._spell_metadata.items()
+                           if a_idx == idx},
+        }
+        self._flash_status(f"Copied {pt.name} — Ctrl+V to paste")
+
+    def _paste_agent(self, cell):
+        """Spawn a clone of the clipboard agent at/near `cell` (pre-combat only)."""
+        if self.combat_active:
+            return
+        if not self._agent_clipboard:
+            self._flash_status("Nothing to paste — copy an agent first (Ctrl+C)")
+            return
+        if cell is None:
+            self._flash_status("Hover the map, then Ctrl+V to paste")
+            return
+        clip = self._agent_clipboard
+        dest = self._find_free_cell_near(cell.col, cell.row, clip["size"])
+        if dest is None:
+            self._flash_status("No free space to paste here")
+            return
+
+        # Append a new agent non-destructively (existing agents' state untouched).
+        cfg = rpg.AgentConfig()
+        cfg.name        = self._unique_agent_name(clip["name"])
+        cfg.sprite_path = clip["sprite"]
+        cfg.size        = clip["size"]
+        cfg.start_col   = dest.col
+        cfg.start_row   = dest.row
+        new_idx = self.bm.spawn_agent(cfg)
+        if new_idx < 0:
+            self._flash_status("Paste failed — could not place the copy")
+            return
+
+        # Clone the full loadout. The copy is a fresh creature: start at full HP, no
+        # temp HP, no carried-over conditions (spawn_agent already gives clean conditions).
+        st = clip["stats"]
+        st.hp_cur  = st.hp_max
+        st.temp_hp = 0
+        self.combat.set_agent_stats(self.bm, new_idx, st)
+        self.combat.set_agent_weapons(self.bm, new_idx, clip["weapons"])
+        self.combat.set_agent_spells(self.bm, new_idx, clip["spells"])
+        self.combat.set_agent_armor(self.bm, new_idx, clip["armor"])
+
+        # NPC innate-spell groups, so a copied NPC caster can still cast.
+        meta = clip["meta"]
+        if meta.get("is_npc") and meta.get("npc_spell_groups"):
+            groups = {int(k): v for k, v in meta["npc_spell_groups"].items()}
+            self.combat.init_npc_spell_groups(self.bm, new_idx, groups)
+            self._agent_meta[new_idx] = {"is_npc": True,
+                                         "npc_spell_groups": meta["npc_spell_groups"]}
+
+        # Re-key spell rendering metadata onto the pasted agent.
+        for sp_idx, m in clip["spell_meta"].items():
+            self._spell_metadata[(new_idx, sp_idx)] = m
+
+        self.sprites.clear()
+        self.selected_idx = new_idx
+        self._update_reach()
+        self._update_attack_overlay()
+        self._flash_status(f"Pasted {cfg.name}")
+
     def _update_reach(self):
         """Recompute walk/fly reachable-cell overlays for the selected agent.
 
@@ -1556,13 +1675,18 @@ class App:
         if strength <= 0:
             return
 
-        # Determine if running or standing jump (based on most recent movement)
+        # Determine if running or standing jump (based on most recent movement).
+        # Reach is the Strength SCORE in feet (running) or half (standing).
         is_running_jump = self.last_movement_dist >= 10
-        max_jump_dist = strength if is_running_jump else (strength // 2)
+        max_jump_ft = strength if is_running_jump else (strength // 2)
 
         # Otherworldly Leap (invocation 10): Jump spell always active → triple distance.
         if stats.character_class == rpg.CharacterClass.Warlock and stats.has_invocation(10):
-            max_jump_dist *= 3
+            max_jump_ft *= 3
+
+        # Convert feet → whole 5-ft squares, rounding UP (matches the engine's jump_agent), so
+        # Str 8 → 8 ft → 2 squares (10 ft). Manhattan distance below is measured in squares.
+        max_jump_cells = (max_jump_ft + 4) // 5
 
         # Calculate reachable cells (Manhattan distance from current position).
         # Jumping clears Chasm/Water but is blocked by walls, so exclude wall cells
@@ -1570,12 +1694,12 @@ class App:
         origin = agent.origin
         size = agent.size
         cols, rows = self.bm.grid_cols, self.bm.grid_rows
-        for dr in range(-max_jump_dist, max_jump_dist + 1):
-            for dc in range(-max_jump_dist, max_jump_dist + 1):
+        for dr in range(-max_jump_cells, max_jump_cells + 1):
+            for dc in range(-max_jump_cells, max_jump_cells + 1):
                 manhattan_dist = abs(dc) + abs(dr)
                 if manhattan_dist == 0:
                     continue  # Can't jump to current cell
-                if manhattan_dist > max_jump_dist:
+                if manhattan_dist > max_jump_cells:
                     continue
 
                 tc, tr = origin.col + dc, origin.row + dr
@@ -1603,7 +1727,13 @@ class App:
         # Determine if running or standing jump based on most recent movement
         is_running = self.last_movement_dist >= 10
 
-        # Execute jump (C++ handles all budget deductions)
+        # A jump may only be made while the bonus action is available (house rule: jumping
+        # costs a Bonus Action in addition to movement).
+        if self.bonus_used:
+            self._combat_log_add(f"{agent.name}: Cannot jump — Bonus Action already used.")
+            return
+
+        # Execute jump (C++ handles all movement-budget deductions)
         if self.combat.jump_agent(self.bm, agent_idx, target_cell, is_running):
             self._flush_combat_log()  # Flush any spell effect damage messages
             # Update remaining movement values
@@ -1613,15 +1743,20 @@ class App:
             self.move_remaining_swim = ag.swim_remaining
             self.move_remaining_burrow = ag.burrow_remaining
             self.last_movement_dist = 0  # Reset run-up after jump
+            self.bonus_used = True       # jumping spends the Bonus Action
             jump_type = "running" if is_running else "standing"
-            self._combat_log_add(f"{agent.name}: {jump_type.capitalize()} long jump (+{jump_dist}ft)")
+            self._combat_log_add(f"{agent.name}: {jump_type.capitalize()} long jump (+{jump_dist}ft, Bonus Action)")
             self._update_reach()
-            self._update_jump_reachable()
+            # The bonus action is spent — close the jump overlay (no second jump this turn).
+            self.jump_overlay_active = False
+            self.jump_reachable_cells = []
         else:
-            # Jump failed - out of range or insufficient movement
+            # Jump failed - out of range or insufficient movement. Report the ceiling'd cap in
+            # feet (Strength score → squares, rounded up) to match the engine's range check.
             strength = stats.str
-            max_dist = strength if is_running else (strength // 2)
-            self._combat_log_add(f"{agent.name}: Jump out of range ({jump_dist}ft > {max_dist}ft)")
+            max_ft = strength if is_running else (strength // 2)
+            max_cells = (max_ft + 4) // 5
+            self._combat_log_add(f"{agent.name}: Jump out of range ({jump_dist}ft > {max_cells * 5}ft max)")
 
     def _start_combat(self):
         """Roll initiative and enter combat mode."""
@@ -1950,6 +2085,22 @@ class App:
             return 2
         return -1   # all slots full
 
+    def _open_team_picker(self):
+        """Open the modal team picker listing every placed agent. Clicking a row cycles
+        its team; on dismiss the chosen factions are written back to the engine."""
+        agents = self.bm.placed_agents
+        rows = [(i, pt.name, self.bm.get_agent_faction(i)) for i, pt in enumerate(agents)]
+        if not rows:
+            self._combat_log_add("No agents placed to assign to teams.")
+            return
+
+        def _commit(assign: dict):
+            for idx, fac in assign.items():
+                self.bm.set_agent_faction(int(idx), int(fac))
+            self._combat_log_add("Teams updated.")
+
+        self.team_dialog.show(_commit, rows)
+
     def _show_visible_targets_popup(self):
         """Debug popup showing visible targets for the selected agent."""
         idx = self._current_agent_idx()
@@ -1964,9 +2115,10 @@ class App:
         # Compute visibility for this agent
         self.combat.compute_visibility(self.bm, idx)
 
-        # Build popup text
+        # Build popup text (header + each line annotated with the agent's team)
         selected_agent = agents[idx].name
-        visibility_info = f"Visible targets for {selected_agent}:\n"
+        caster_team = faction_name(self.bm.get_agent_faction(idx))
+        visibility_info = f"Visible targets for {selected_agent} ({caster_team} team):\n"
 
         visible_count = 0
         for target_idx, agent in enumerate(agents):
@@ -1984,7 +2136,8 @@ class App:
                     rpg.VisibilityLevel.MagicalDark: "Magical Darkness",
                     rpg.VisibilityLevel.Blocked: "Blocked"
                 }.get(vis_level, "Unknown")
-                visibility_info += f"  • {agent.name} ({vis_name})\n"
+                tgt_team = faction_name(self.bm.get_agent_faction(target_idx))
+                visibility_info += f"  • {agent.name} ({vis_name}, {tgt_team} team)\n"
 
         if visible_count == 0:
             visibility_info += "  (no visible targets)"
@@ -2219,6 +2372,46 @@ class App:
         conds.offhand_attack_used = True
         self.combat.set_agent_conditions(self.bm, idx, conds)
 
+    def _are_allies(self, a_idx: int, b_idx: int) -> bool:
+        """GUI mirror of the engine's areAllies: same NON-zero faction. Neutral (0)
+        is its own faction, allied with no one."""
+        if a_idx == b_idx:
+            return True
+        n = len(self.bm.placed_agents)
+        if not (0 <= a_idx < n and 0 <= b_idx < n):
+            return False
+        fa = self.bm.get_agent_faction(a_idx)
+        fb = self.bm.get_agent_faction(b_idx)
+        return fa != 0 and fa == fb
+
+    def _pending_spell_is_harm(self) -> bool:
+        """True if the spell currently being aimed is a Harm spell (so a friendly-fire
+        confirm is warranted). Heal/Transport spells return False — healing an ally
+        must never prompt."""
+        ci = self._current_agent_idx()
+        if ci < 0:
+            return False
+        spells = self.combat.get_agent_spells(self.bm, ci)
+        if not (0 <= self.pending_spell_idx < len(spells)):
+            return False
+        return spells[self.pending_spell_idx].type == rpg.SpellType.Harm
+
+    def _confirm_friendly_harm(self, target_idx: int, on_confirm) -> None:
+        """Faction rule 4: if the acting agent and target_idx are on the same team,
+        ask the player to confirm before a harmful action (e.g. accidentally clicking
+        a teammate). Non-allies (or no current actor) run on_confirm() immediately."""
+        actor = self._current_agent_idx()
+        if actor < 0 or not self._are_allies(actor, target_idx):
+            on_confirm()
+            return
+        tgt_name = self.bm.placed_agents[target_idx].name
+        options = [
+            (f"Harm ally {tgt_name}!", on_confirm),
+            ("Cancel", lambda: None),
+        ]
+        px, py = self._agent_screen_pos(target_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _resolve_combat_attack(self, target_idx: int):
         """Resolve the pending attack against target_idx.
 
@@ -2297,6 +2490,29 @@ class App:
                 tail = (f" ({rem} attack{'s' if rem != 1 else ''} remaining)" if rem > 0 else "")
                 self._combat_log_add(
                     f"{atk_name}: out of range — move closer or click Attack to retry{tail}")
+                # ── DEBUG: why was this attack invalid? Surface the weapon + geometry so a
+                # ranged ("out of range") rejection can be diagnosed live (range vs LoS).
+                try:
+                    if 0 <= atk_idx < len(agents) and 0 <= target_idx < len(agents):
+                        wi = action.weapon_idx
+                        wlist = self.combat.get_agent_weapons(self.bm, atk_idx)
+                        w = wlist[wi] if 0 <= wi < len(wlist) else None
+                        ao = agents[atk_idx].origin; asz = agents[atk_idx].size
+                        to = agents[target_idx].origin; tsz = agents[target_idx].size
+                        dist_cells = max(abs(ao.col - to.col), abs(ao.row - to.row))
+                        los = self.bm.has_line_of_sight(ao, asz, to, tsz)
+                        if w is not None:
+                            wtype = "Ranged" if w.type == rpg.WeaponType.Ranged else "Melee"
+                            reach = w.long_range_ft if w.type == rpg.WeaponType.Ranged else w.reach_ft
+                            self._combat_log_add(
+                                f"  [debug] weapon slot {wi}='{w.name}' type={wtype} "
+                                f"reach/range={reach}ft (reach_ft={w.reach_ft}, "
+                                f"normal={w.normal_range_ft}, long={w.long_range_ft})")
+                        self._combat_log_add(
+                            f"  [debug] dist={dist_cells} cells ({dist_cells*5}ft), "
+                            f"LoS={los}, target={tgt_name}")
+                except Exception as _e:
+                    self._combat_log_add(f"  [debug] (diagnostics failed: {_e})")
                 self.pending_attack_slot = ""
             return
 
@@ -5089,6 +5305,9 @@ class App:
         # Link summon → summoner + spell (drives dismiss-on-concentration-loss in C++).
         self.bm.set_agent_summoner_idx(new_idx, caster_idx)
         self.bm.set_agent_summon_spell(new_idx, sp.name)
+        # Inherit the summoner's team so the conjured creature fights alongside it (and is
+        # spared by the summoner's selective spells / can be healed by them).
+        self.bm.set_agent_faction(new_idx, self.bm.get_agent_faction(caster_idx))
 
         # Concentration: a new concentration spell replaces the caster's previous one
         # (which dismisses any creature the earlier spell had summoned).
@@ -5784,6 +6003,7 @@ class App:
                 "size":        pt.size,
                 "col":         pt.origin.col,
                 "row":         pt.origin.row,
+                "faction":     pt.faction,
                 "stats": {
                     "str": s.str, "dex": s.dex, "con": s.con,
                     "intel": s.intel, "wis": s.wis, "cha": s.cha,
@@ -5904,6 +6124,165 @@ class App:
             json.dump({"agents": data, "map_items": items_data}, f, indent=2)
 
     # FLAG: Move to C++
+    # ── D&D Beyond import ─────────────────────────────────────────────────────
+    def _import_ddb_character(self):
+        """Fetch a public D&D Beyond character, derive our agent record via
+        tools/import_character.py, append it to the current encounter file and
+        reload. Thin GUI wrapper around the standalone importer."""
+        url = self._modal_text_prompt(
+            "Import D&D Beyond Character",
+            "Paste a character URL or ID (the sheet must be publicly shared):")
+        if not url:
+            return
+        # lazy-import the standalone tool from the repo tools/ dir
+        tools_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "tools")
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        try:
+            import import_character as ic
+        except Exception as e:                       # noqa: BLE001 — surface any import error
+            self._modal_message(["Importer unavailable:", str(e)])
+            return
+
+        self._modal_message(["Importing from D&D Beyond…"], blocking=False)
+        try:
+            data = ic.fetch_character(url)
+            ic._WARN = []                            # capture this character's warnings
+            agent = ic.build_agent(data, ic.load_catalogs(), faction=0)
+            warnings = list(ic._WARN)
+        except Exception as e:                       # noqa: BLE001 — network/parse/derive errors
+            self._modal_message(["Import failed:", str(e)])
+            return
+
+        # lossless sidecar (raw DDB JSON), best-effort
+        try:
+            cid = re.search(r"(\d{4,})", str(url))
+            side_dir = os.path.join(tools_dir, "ddb_sources")
+            os.makedirs(side_dir, exist_ok=True)
+            slug = ic.slugify(data.get("name", ""))
+            fn = f"{cid.group(1) if cid else slug}_{slug}.ddb.json"
+            with open(os.path.join(side_dir, fn), "w") as f:
+                json.dump({"data": data}, f, indent=2)
+        except Exception:                            # noqa: BLE001 — sidecar is best-effort
+            pass
+
+        # Persist current placements, append the new agent at a free column, reload.
+        self._save_agents()
+        try:
+            with open(self._save_path) as f:
+                doc = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            doc = {"agents": [], "map_items": []}
+        agents = doc.setdefault("agents", [])
+        occupied = {(a.get("col"), a.get("row")) for a in agents}
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
+        spot = next(((c, r) for c in range(cols) for r in range(rows)
+                     if (c, r) not in occupied), (0, 0))
+        agent["col"], agent["row"] = spot
+        agents.append(agent)
+        doc.setdefault("map_items", [])
+        with open(self._save_path, "w") as f:
+            json.dump(doc, f, indent=2)
+        self._load_agents()
+
+        sub = ""
+        for k, v in agent.items():
+            if k.startswith("agent_") and k.endswith(("subclass", "circle", "oath")) and v != "NONE":
+                sub = f" / {v}"
+                break
+        lines = [f"Imported {agent['name']}",
+                 f"{agent['agent_class']} {agent['agent_char_level']}{sub}   "
+                 f"HP {agent['stats']['hp_max']}   spells {len(agent['spell_indices'])}",
+                 "Placed at the right edge — drag it into position, set its team via right-click."]
+        if warnings:
+            lines.append(f"{len(warnings)} note(s) (best-effort import):")
+            lines.extend("• " + w[:70] for w in warnings[:8])
+            if len(warnings) > 8:
+                lines.append(f"  …and {len(warnings) - 8} more (see console).")
+        self._modal_message(lines)
+
+    def _modal_text_prompt(self, title: str, prompt: str) -> str | None:
+        """Blocking single-line text prompt. Returns the entered text, or None on cancel."""
+        sw, sh = self.screen.get_size()
+        W, H = min(560, sw - 80), 180
+        box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
+        inp = TextInput(pygame.Rect(box.x + 20, box.y + 86, W - 40, 32), font=self.font_md)
+        inp.active = True
+        ok = Button(pygame.Rect(box.right - 210, box.bottom - 46, 90, 32), "Import",
+                    (60, 110, 70), (80, 140, 90), font=self.font_md)
+        cancel = Button(pygame.Rect(box.right - 110, box.bottom - 46, 90, 32), "Cancel",
+                        (110, 60, 60), (150, 80, 80), font=self.font_md)
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return None
+                    if event.key == pygame.K_RETURN:
+                        return inp.text.strip() or None
+                inp.handle(event)
+                if ok.clicked(event):
+                    return inp.text.strip() or None
+                if cancel.clicked(event):
+                    return None
+            self.screen.blit(overlay, (0, 0))
+            pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
+            pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
+            self.screen.blit(self.font_lg.render(title, True, (235, 235, 245)),
+                             (box.x + 20, box.y + 18))
+            self.screen.blit(self.font_md.render(prompt, True, (185, 185, 200)),
+                             (box.x + 20, box.y + 52))
+            inp.draw(self.screen)
+            ok.draw(self.screen)
+            cancel.draw(self.screen)
+            pygame.display.flip()
+            self.clock.tick(60)
+
+    def _modal_message(self, lines, blocking: bool = True):
+        """Blocking message box (OK to dismiss). blocking=False draws once and returns
+        (for a transient 'working…' splash)."""
+        sw, sh = self.screen.get_size()
+        W = min(640, sw - 80)
+        line_h = 24
+        H = 44 + line_h * len(lines) + (46 if blocking else 18)
+        box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
+        ok = Button(pygame.Rect(box.centerx - 45, box.bottom - 40, 90, 30), "OK",
+                    (60, 90, 120), (80, 120, 150), font=self.font_md)
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+
+        def render():
+            self.screen.blit(overlay, (0, 0))
+            pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
+            pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
+            y = box.y + 16
+            for i, ln in enumerate(lines):
+                f = self.font_lg if i == 0 else self.font_md
+                col = (235, 235, 245) if i == 0 else (190, 190, 205)
+                self.screen.blit(f.render(ln, True, col), (box.x + 20, y))
+                y += line_h + (6 if i == 0 else 0)
+            if blocking:
+                ok.draw(self.screen)
+            pygame.display.flip()
+
+        if not blocking:
+            render()
+            return
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                    return
+                if ok.clicked(event):
+                    return
+            render()
+            self.clock.tick(60)
+
     def _load_agents(self, path: str | None = None):
         path = path or self._save_path
         if not os.path.exists(path):
@@ -5998,6 +6377,9 @@ class App:
                     s.set_physical_damage_multiplier(idx, 2.0)
 
             self.combat.set_agent_stats(self.bm, i, s)
+
+            # Restore team/faction (0 = neutral for older saves that predate factions).
+            self.bm.set_agent_faction(i, int(t.get("faction", 0)))
 
         # Restore weapons — load from weapons dict (slot format) or legacy formats
         for i, t in enumerate(agent_data):
@@ -6922,13 +7304,18 @@ class App:
             else:  # Difficult Terrain
                 color = (139, 90, 43, 128)       # brown, 50% transparent
 
+            # Anchor to the map's on-screen top-left, including the pan offset, so terrain
+            # moves with the map when scrolling (the map blit also adds pan_x/pan_y).
+            ox = self.map_rect.x + self.pan_x
+            oy = self.map_rect.y + self.pan_y
+
             # Draw filled rectangle
             fill_surf = pygame.Surface((w, h), pygame.SRCALPHA)
             fill_surf.fill(color)
-            self.screen.blit(fill_surf, (x + self.map_rect.x, y + self.map_rect.y))
+            self.screen.blit(fill_surf, (x + ox, y + oy))
 
             # Draw border
-            border_rect = pygame.Rect(x + self.map_rect.x, y + self.map_rect.y, w, h)
+            border_rect = pygame.Rect(x + ox, y + oy, w, h)
             border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
             pygame.draw.rect(self.screen, border_color, border_rect, 2)
 
@@ -6937,8 +7324,8 @@ class App:
 
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""
-        screen_x = int(x + self.map_rect.x)
-        screen_y = int(y + self.map_rect.y)
+        screen_x = int(x + self.map_rect.x + self.pan_x)
+        screen_y = int(y + self.map_rect.y + self.pan_y)
         screen_w = int(w)
         screen_h = int(h)
         hatch_color = tuple(min(c + 100, 255) for c in color[:3]) + (120,)
@@ -7436,13 +7823,6 @@ class App:
                 self.btn_cbt_hide.draw(self.screen)
                 y += B + gap
 
-                # Long Jump button
-                self.btn_cbt_long_jump.rect.x = lx
-                self.btn_cbt_long_jump.rect.y = y
-                self.btn_cbt_long_jump.rect.w = W
-                self.btn_cbt_long_jump.draw(self.screen)
-                y += B + gap
-
                 # Prone / Stand Up buttons
                 cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
                 is_prone = cond.prone if cond else False
@@ -7582,6 +7962,18 @@ class App:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_pass_bonus.draw(self.screen)
             y += B
+
+        # Long Jump — costs a Bonus Action (house rule) and also spends movement. Lives in the
+        # Bonus Action area and is only offered while the bonus action is available; executing a
+        # jump consumes it (see _execute_jump). The engine's jump_agent still enforces the
+        # remaining movement budget when a landing cell is clicked.
+        if not self.bonus_used:
+            y += gap
+            self.btn_cbt_long_jump.rect.x = lx
+            self.btn_cbt_long_jump.rect.y = y
+            self.btn_cbt_long_jump.rect.w = W
+            self.btn_cbt_long_jump.draw(self.screen)
+            y += B + gap
 
         # Arcane Ward charging button (Abjurer L3+ with active ward)
         if not self.bonus_used and 0 <= cur_idx < len(agents):
@@ -8145,7 +8537,8 @@ class App:
             self.screen.blit(t, (x, widget_y - loff))
 
         # ── Widgets ───────────────────────────────────────────────────────
-        for w in [self.btn_select_mob, self.btn_select_pc, self.btn_clear, self.btn_save, self.btn_load]:
+        for w in [self.btn_select_mob, self.btn_select_pc, self.btn_clear, self.btn_save,
+                  self.btn_load, self.btn_import_ddb]:
             w.draw(self.screen)
 
         # Current save-file hint (updates when user picks a different path)
@@ -8268,6 +8661,18 @@ class App:
                 elif event.key == pygame.K_RIGHT:
                     self.pan_x -= 30
 
+            # ── Copy / paste agents (Ctrl+C / Ctrl+V; Cmd on macOS) — pre-combat only ──
+            if (map_input_allowed and event.type == pygame.KEYDOWN
+                    and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META))
+                    and not self.combat_active
+                    and not self._pc_name_input
+                    and not self.placement_mode_active):
+                if event.key == pygame.K_c:
+                    self._copy_agent(self.selected_idx)
+                elif event.key == pygame.K_v:
+                    mx, my = pygame.mouse.get_pos()
+                    self._paste_agent(self._screen_to_cell(mx, my))
+
             # ── Terrain editor gets first pick when open ──────────────────
             if self.terrain_editor.active:
                 self.terrain_editor.handle(event)
@@ -8291,6 +8696,11 @@ class App:
             # ── Cast-time element picker is a top modal: consume events while open ──
             if self._element_dialog.visible:
                 self._element_dialog.handle(event)
+                continue
+
+            # ── Team picker is a top modal: consume events while open ──────────────
+            if self.team_dialog.visible:
+                self.team_dialog.handle(event)
                 continue
 
             # ── Terrain placement dialog gets priority when open ────────────
@@ -8597,7 +9007,8 @@ class App:
                         _menu_opts = [("Edit Stats",   _open_stats),
                                       ("Edit Weapons", _open_weapons),
                                       ("Edit Armor",   _open_armor),
-                                      ("Edit Spells",  _open_spells)]
+                                      ("Edit Spells",  _open_spells),
+                                      ("Set Teams…",   self._open_team_picker)]
                         # Evoker Wizards only: manage the set of creatures safe from their AoEs.
                         _hs = self.combat.get_agent_stats(self.bm, hit)
                         if (_hs.character_class == rpg.CharacterClass.Wizard and
@@ -8633,7 +9044,7 @@ class App:
                         elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
                         elif self.pending_attack_slot and hit >= 0:
-                            self._resolve_combat_attack(hit)
+                            self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
                             self._resolve_summon(cell)
                         elif self.pending_spell_slot:
@@ -8661,6 +9072,9 @@ class App:
                                         self._combat_log_add("No line of sight to target!")
                                     elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
                                         self._combat_log_add("Cannot perceive target (invisible)!")
+                                    elif self._pending_spell_is_harm():
+                                        # Faction rule 4: confirm before a harmful spell on a teammate.
+                                        self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_spell_cast(h))
                                     else:
                                         self._resolve_spell_cast(hit)
                                 else:
@@ -8736,21 +9150,28 @@ class App:
                     self.drag_cell  = rpg.Cell(tcol, trow)
                     self.drag_valid = self._can_place(
                         self.drag_cell, pt.size, exclude_idx=self.drag_idx)
-                    # Restrict to the computed reach (walk ∪ fly).
-                    # Outside combat an empty reach means no speed → allow
-                    # free repositioning.  Inside combat an empty reach means
-                    # movement is exhausted → block the drag entirely.
-                    if self.drag_valid:
+                    # The movement-range clamp applies only in combat. Before combat the
+                    # agent can be repositioned anywhere it legally fits (DM free placement);
+                    # placement validity (bounds + no overlap) was checked just above.
+                    if self.drag_valid and self.combat_active:
                         if self._reach_set:
                             self.drag_valid = (
                                 self.drag_cell.col, self.drag_cell.row
                             ) in self._reach_set
-                        elif self.combat_active:
-                            self.drag_valid = False   # no movement remaining
+                        else:
+                            self.drag_valid = False   # movement exhausted
 
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.drag_idx >= 0:
-                    if self.drag_valid and self.drag_cell is not None:
+                    if self.drag_valid and self.drag_cell is not None and not self.combat_active:
+                        # Free pre-combat repositioning: placement validity was already
+                        # checked (_can_place), so bypass the movement rules (speed / range /
+                        # pathing) entirely and set the agent's position directly.
+                        if self.bm.set_agent_position(self.drag_idx, self.drag_cell):
+                            self.selected_idx = self.drag_idx
+                        self._update_reach()
+                        self._update_attack_overlay()
+                    elif self.drag_valid and self.drag_cell is not None:
                         # Calculate Manhattan distance moved (for running jump qualification)
                         ag_old = self.bm.placed_agents[self.drag_idx]
                         dist_moved = abs(self.drag_cell.col - ag_old.origin.col) + abs(self.drag_cell.row - ag_old.origin.row)
@@ -8867,6 +9288,10 @@ class App:
                         save_mode=False,
                         extensions=JSON_EXTS,
                     )
+
+                # Import a D&D Beyond character into the current encounter
+                if self.btn_import_ddb.clicked(event):
+                    self._import_ddb_character()
 
                 # Long Rest — reset all spell slots
                 if self.btn_long_rest.clicked(event):
@@ -9022,11 +9447,13 @@ class App:
                             self._update_reach()
                             self._update_attack_overlay()
                         self.action_used = True
-                    if self.btn_cbt_long_jump.clicked(event):
-                        if not self.pending_spell_slot:  # Don't allow jump while casting spell
-                            self._toggle_jump_overlay()
                     if self.btn_cbt_spell_action.clicked(event):
                         self._start_cast_spell("action")
+                # Long Jump costs a Bonus Action (and movement) — available regardless of the
+                # Action, but only while the bonus action is unspent.
+                if not self.bonus_used and self.btn_cbt_long_jump.clicked(event):
+                    if not self.pending_spell_slot:  # Don't allow jump while casting spell
+                        self._toggle_jump_overlay()
                 # Stand up doesn't use an action, so it's available regardless of action_used
                 if self.btn_cbt_standup.clicked(event):
                     idx = self._current_agent_idx()
@@ -9318,6 +9745,7 @@ class App:
             self.conditions_dialog.draw(self.screen)  # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
             self._element_dialog.draw(self.screen) # cast-time element picker — topmost modal
+            self.team_dialog.draw(self.screen)     # team picker — topmost modal
             pygame.display.flip()
             self.clock.tick(60)
         # Clean up temporary terrain effects before quitting

@@ -57,6 +57,11 @@ namespace rpg {
       bool requires_los{false};            // Spell requires line of sight to target/area
       bool check_los_on_center{true};      // If true, only the spell center needs LOS (user configurable)
       bool requires_sight{false};          // Spell requires target to be visible (not blocked/heavily obscured)
+      // "Creatures of your choosing" — a Harm AoE that intrinsically spares chosen creatures
+      // (e.g. Radiance of the Dawn). When true, the caster's allies (same faction + claimed
+      // neutrals) are auto-excluded from this spell's area without any Evoker/Careful feature.
+      // Heal spells already restrict to allies via faction, so this flag is meaningful on Harm.
+      bool selective_targeting{false};
 
       int level{0};              // 0 = cantrip (unlimited); 1-9 = slot level required
       int upcast_dice_bonus{0};  // extra dice per slot level above spell.level

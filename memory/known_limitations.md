@@ -1405,3 +1405,38 @@ Fighting Style feature; prereqs not enforced) — engine is correct via `hasFeat
   Cone/Line spells (their reach is in `radius`/`length`), so Cone of Cold showed a 0-ft ring. Fixed
   in `_draw_*` range-circle code: Cone→`radius`, Line→`length`, else→`range`. The AoE cell preview
   (`_aoe_cells`) was already correct (used `radius`), which is why damage applied fine.
+
+## Factions / Teams (2026-06-11)
+N-faction team system (`PlacedAgent.faction`, int; 0 = neutral/unassigned). `BattleMap.get/set_agent_faction`
++ readonly `PlacedAgent.faction` property. `CombatEngine::areAllies(bm,a,b)` = same NON-zero faction
+(neutral is its own faction, allied with no one). GUI labels in `constants.py` (`FACTION_NAMES/COLORS/CHOICES`,
+`faction_name`, `faction_color`); red=1, blue=2. Four rules:
+- **Rule 1 (hide):** `checkHide` + `checkHiddenAgentDetection` skip same-faction observers — only enemies
+  prevent/spot a hide.
+- **Rule 2 (harmful AoE):** friendly fire stays ON by default (Fireball roasts allies). Allies are spared
+  only via the existing Evoker `safeTargets_`/Careful, or a spell with the new `Spell.selective_targeting`
+  flag ("creatures of your choosing", e.g. Radiance of the Dawn → auto-spares same-faction). Gated on
+  caster faction != 0.
+- **Rule 3 (beneficial AoE):** `type==Heal`, non-Single geometry, caster faction != 0 → drops non-allies
+  (enemies never healed). Neutral caster keeps legacy "affect everyone" behavior (no regression for
+  un-teamed encounters / old saves).
+- **Rule 4 (GUI confirm):** `_confirm_friendly_harm` pops a ContextMenu before a harmful weapon attack or
+  Harm spell on a same-team target (`_pending_spell_is_harm` gates spells; heals never prompt).
+GUI: `_show_visible_targets_popup` annotates header + each line with team; `TeamPickerDialog` (dialogs.py,
+opened from an agent's right-click menu "Set Teams…") cycles each agent neutral→red→blue. Faction persists
+in save/load (top-level `"faction"` key; defaults 0 for old saves). Summons inherit the summoner's faction
+in `_resolve_summon`. Tests: `test_factions.py` (7 cases). Built + green 2026-06-11.
+
+**Limitations / deferred:**
+- **Claiming neutrals is non-directional** (chosen "simpler option"): the TeamPicker just reassigns a
+  neutral's faction to a real team — there is no per-faction directional relationship (faction A treats
+  neutral N as friend while faction B still treats N as enemy). A directional claim matrix is the future
+  upgrade if needed.
+- **Control-mode-per-team not built** (DM/auto/player axis). For now both teams are human-driven; the
+  faction tag is the foundation. Game-mode auto-agents must later honor the visibility rules (PCs hide
+  from NPCs and vice-versa via stealth-vs-perception contests).
+- **Careful Spell pre-existing discrepancy** (not faction-specific): the engine *fully excludes* Careful
+  targets from the AoE area, but RAW Careful only lets them auto-succeed the save (still half damage on
+  Fireball). Left as-is — out of scope for the faction work.
+- `selective_targeting` is loaded from spell JSON (`map_configs.cpp spellFromJson`) + bound; no spells in
+  the catalog set it yet (set it on Radiance-of-the-Dawn-type entries when added).

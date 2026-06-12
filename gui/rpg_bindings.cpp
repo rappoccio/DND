@@ -108,6 +108,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("summoner_idx",      [](const PlacedAgent& p){ return p.summoner_idx; })
         .def_property_readonly("summon_spell",      [](const PlacedAgent& p){ return p.summon_spell; })
         .def_property_readonly("removed_from_play", [](const PlacedAgent& p){ return p.removed_from_play; })
+        .def_property_readonly("faction",           [](const PlacedAgent& p){ return p.faction; })
         // Delegate actions back to C++
         .def("turn",       [](PlacedAgent& p){ p.agent->turn(); })
         .def("action",     [](PlacedAgent& p){ p.agent->action(); })
@@ -1067,6 +1068,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "The persistent effect re-centers on the caster each turn and whenever the caster moves.")
         .def_readwrite("requires_los", &Spell::requires_los,
              "If true, spell requires line of sight to the target or area origin.")
+        .def_readwrite("selective_targeting", &Spell::selective_targeting,
+             "Harm AoE that intrinsically affects only 'creatures of your choosing'\n"
+             "(e.g. Radiance of the Dawn): the caster's allies (same faction + claimed\n"
+             "neutrals) are auto-spared from the area without any Evoker/Careful feature.")
         .def_readwrite("check_los_on_center", &Spell::check_los_on_center,
              "If true, only the spell center needs line of sight (not all affected cells). User configurable.")
         .def_readwrite("requires_sight", &Spell::requires_sight,
@@ -2818,6 +2823,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("set_agent_summoner_idx", &BattleMap::setAgentSummonerIdx,
              py::arg("idx"), py::arg("summoner_idx"),
              "Tag agent[idx] as a summon controlled by summoner_idx (-1 to clear).")
+        .def("get_agent_faction", &BattleMap::getAgentFaction,
+             py::arg("idx"),
+             "Team/faction id of agent[idx] (0 = neutral/unassigned).")
+        .def("set_agent_faction", &BattleMap::setAgentFaction,
+             py::arg("idx"), py::arg("faction"),
+             "Assign agent[idx] to a team/faction (0 = neutral; 1+ = red/blue/...).")
         .def("get_agent_summon_spell", &BattleMap::getAgentSummonSpell,
              py::arg("idx"),
              "Name of the spell that summoned agent[idx] (empty if none).")

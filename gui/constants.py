@@ -2,6 +2,24 @@
 #  constants.py  –  Global color and layout constants
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Factions / teams ────────────────────────────────────────────────────────────
+# Encounter-side team ids (PlacedAgent.faction). 0 = neutral (its own faction,
+# hostile to everyone); 1+ = playable teams. Keep red/blue as the first two.
+FACTION_NAMES  = {0: "neutral", 1: "red", 2: "blue"}
+FACTION_COLORS = {
+    0: (160, 160, 160),   # grey – neutral / unassigned
+    1: (210,  70,  70),   # red team
+    2: ( 80, 120, 220),   # blue team
+}
+# Team ids offered in the GUI picker (neutral + the playable teams).
+FACTION_CHOICES = [0, 1, 2]
+
+def faction_name(fid: int) -> str:
+    return FACTION_NAMES.get(int(fid), f"faction {fid}")
+
+def faction_color(fid: int):
+    return FACTION_COLORS.get(int(fid), (200, 200, 60))
+
 # ── UI colors ──────────────────────────────────────────────────────────────────
 COL_BG          = (30,  30,  30)
 COL_PANEL_BG    = (45,  45,  55)

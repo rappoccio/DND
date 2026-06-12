@@ -469,6 +469,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         : resolveAoeTargets(agents, sp, action.caster_idx, center_col, center_row,
                             action.aoe_col2, action.aoe_row2);
 
+    // Faction rule 3 — beneficial (Heal) area/multi-target spells only affect the caster's
+    // allies (same faction, incl. the caster). Enemies are never healed/buffed by a
+    // "creatures of your choosing" heal. Single-target heals are left alone: the caster
+    // deliberately chose that one creature (allowing a cross-faction heal if intended).
+    // Only applies when the caster is on a real team — a neutral (faction 0) caster has no
+    // allies, so it keeps the legacy "affect everyone in the area" behavior (no regression
+    // for un-teamed encounters / old saves).
+    const int caster_faction = bm.getAgentFaction(action.caster_idx);
+    if (sp.type == Spell::Heal && sp.geometry != Spell::Single && caster_faction != 0) {
+        std::erase_if(targets, [&](int t) {
+            return !areAllies(bm, action.caster_idx, t);
+        });
+    }
+
     // Evoker safe targets fully exclude the caster's protected allies from AoE spells
     // (no save, no damage, no conditions). Metamagic Careful protects the chosen
     // creatures the same way for this one cast. Single/Multiple are directly targeted,
@@ -477,6 +491,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         auto it = safeTargets_.find(action.caster_idx);
         std::vector<int> safe = (it != safeTargets_.end()) ? it->second : std::vector<int>{};
         safe.insert(safe.end(), careful_set.begin(), careful_set.end());
+        // Faction rule 2 — "creatures of your choosing" harmful spells (e.g. Radiance of the
+        // Dawn) intrinsically spare the caster's allies (same faction + claimed neutrals).
+        // Ordinary AoEs (Fireball) leave selective_targeting false → friendly fire stays ON.
+        if (sp.type == Spell::Harm && sp.selective_targeting && caster_faction != 0) {
+            for (int t : targets)
+                if (areAllies(bm, action.caster_idx, t)) safe.push_back(t);
+        }
         if (!safe.empty()) {
             std::erase_if(targets, [&safe](int t) {
                 return std::find(safe.begin(), safe.end(), t) != safe.end();
