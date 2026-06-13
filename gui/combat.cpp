@@ -401,8 +401,66 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       break;
     }
 
-    // Other classes without resources (Rogue, Ranger)
-    // have no custom resources
+    case Ranger: {
+      // Ranger: WIS half-caster (kHalf slots already set via set_class_level).
+      // Saving-throw proficiencies: Strength + Dexterity (2024 PHB).
+      spellcasting_ability = 4;  // 4 = WIS (SaveAbility_t::SaveWis)
+      can_cast_spell = true;
+      save_prof_str = true;
+      save_prof_dex = true;
+
+      // Extra Attack (L5+): 2 attacks per action.
+      if (level >= 5) num_attacks = 2;
+
+      // Roving (L6+): +10 ft Speed; also gain Climb and Swim speeds equal to your Speed.
+      if (level >= 6) {
+        speed_walk += 10;
+        speed_climb = speed_walk;
+        speed_swim  = speed_walk;
+      }
+
+      // Favored Enemy (L1): Hunter's Mark is always prepared and can be cast without a
+      // spell slot a number of times equal to your Proficiency Bonus per Long Rest
+      // (uses scale 2→6 by level, matching PB). See Phase 2 for the on-hit rider.
+      int pb = 2 + (level - 1) / 4;
+      Resource fe("Favored Enemy", pb, 0);
+      fe.long_rest_regen = pb;
+      resources["Favored Enemy"] = fe;
+
+      // Foe Slayer (L20): the Hunter's Mark die becomes a d10 (set the default the
+      // marked-target rider seeds from; live state is set when the mark is cast).
+      if (level >= 20) hunters_mark_die_size = 10;
+
+      // ── Gloom Stalker (subclass) — Dread Ambusher + Iron Mind ───────────
+      if (ranger_subclass == GloomStalkerPath && level >= 3) {
+        // Initiative Bonus: add your WIS modifier to Initiative rolls (initiativeModifier).
+        dread_ambusher = true;
+        // Dreadful Strike: a class action that arms +2d6 Psychic on your next weapon hit this
+        // turn (+10 ft Speed that turn — Ambusher's Leap, applied GUI-side). Becomes 2d8 at L11
+        // (Stalker's Flurry). Uses = WIS modifier (min 1) per Long Rest, once per turn.
+        dreadful_strike_dice     = 2;
+        dreadful_strike_die_size = (level >= 11) ? 8 : 6;
+        int wis_mod = _mod(wis);
+        int uses = std::max(1, wis_mod);
+        Resource da("Dread Ambusher", uses, 0);
+        da.long_rest_regen = uses;
+        resources["Dread Ambusher"] = da;
+        // Iron Mind (L7): proficiency in Wisdom saving throws.
+        if (level >= 7) save_prof_wis = true;
+      }
+
+      // ── Fey Wanderer (subclass) — Dreadful Strikes ──────────────────────
+      // L3: a weapon hit deals +1d4 Psychic (→1d6 at L11), once per turn. No resource.
+      // L7 Beguiling Twist (Advantage on saves vs Charmed/Frightened) is gated inline at
+      // the spell-save site on ranger_subclass/char_level — no field needed here.
+      if (ranger_subclass == FeyWandererPath && level >= 3) {
+        fey_dreadful_strikes = true;
+        fey_dreadful_strikes_die_size = (level >= 11) ? 6 : 4;
+      }
+      break;
+    }
+
+    // Other classes without resources (Rogue) have no custom resources
     default:
       break;
   }

@@ -172,7 +172,8 @@ namespace rpg {
       // Initiative modifier: DEX mod [+ prof_bonus if initiative_prof].
       // CombatEngine::rollInitiative() adds a d20 on top of this.
       [[nodiscard]] int initiativeModifier() const noexcept {
-	return _mod(dex) + (initiative_prof ? prof_bonus : 0);
+	return _mod(dex) + (initiative_prof ? prof_bonus : 0)
+	     + (dread_ambusher ? _mod(wis) : 0);   // Gloom Stalker Dread Ambusher: Initiative Bonus
       }
 
       // ── Spell Save DCs (computed, read-only) ─────────────────────────
@@ -398,6 +399,30 @@ namespace rpg {
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
       ClericSubclass cleric_subclass{ClericSubclassNone};        // Cleric divine domain choice
       BlessedStrike blessed_strike{BlessedStrikeNone};           // Cleric L7 Blessed Strikes choice
+      RangerSubclass ranger_subclass{RangerSubclassNone};        // Ranger subclass choice
+      HunterPrey hunter_prey{HunterPreyNone};                    // Hunter L3 Hunter's Prey choice
+      DefensiveTactics defensive_tactics{DefensiveTacticsNone};  // Hunter L7 Defensive Tactics choice
+      PrimalCompanion primal_companion{PrimalCompanionNone};     // Beast Master L3 companion form (re-summon memory)
+
+      // ── Ranger: Hunter's Mark / marked-target rider (Phase 2) ───────────
+      // Generic "marked target" on-hit bonus damage (powers Hunter's Mark and Warlock Hex).
+      // Set when the mark spell resolves; cleared on concentration drop. hunters_mark_target
+      // is a BattleMap agent index (-1 = none).
+      int  hunters_mark_target{-1};                              // marked agent index (-1 = no active mark)
+      int  hunters_mark_dice{1};                                 // # of rider dice (HM 1d6; Foe Slayer L20 keeps 1 die but d10)
+      int  hunters_mark_die_size{6};                             // rider die size (6 = d6; 10 once Foe Slayer)
+      int  hunters_mark_damage_type{3};                          // MagicDamage_t (3 = Force for HM; 7 = Psychic for Hex)
+
+      // ── Gloom Stalker (Ranger subclass) — Dread Ambusher ────────────────
+      // Initiative Bonus (passive) + the Dreadful Strike class action (arms a one-hit Psychic rider).
+      bool dread_ambusher{false};        // +WIS modifier to Initiative rolls (set at GloomStalker L3+)
+      int  dreadful_strike_dice{2};      // Dreadful Strike rider: 2 dice (2d6 → 2d8 at L11 Stalker's Flurry)
+      int  dreadful_strike_die_size{6};  // 6 = d6; becomes 8 at L11
+
+      // ── Fey Wanderer (Ranger subclass) — Dreadful Strikes (distinct from Gloom's) ──
+      // L3: a weapon hit deals +1d4 Psychic (→1d6 at L11), once per turn, no resource.
+      bool fey_dreadful_strikes{false};      // set at FeyWanderer L3+
+      int  fey_dreadful_strikes_die_size{4}; // 4 = d4; becomes 6 at L11
 
       // ── Druid Features ────────────────────────────────────────────────
       // Wild Shape / Starry Form state
@@ -600,6 +625,15 @@ namespace rpg {
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
       bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)
       bool sentinel_guard_available{false}; // Sentinel feat (Guardian): an adjacent enemy attacked an ally; a nearby Sentinel may guard (set on the ATTACKER)
+      bool colossus_slayer_used{false};     // Hunter L3 Colossus Slayer: +1d8 already applied this turn (once/turn)
+      bool horde_breaker_available{false};  // Hunter L3 Horde Breaker: a weapon hit can grant an extra attack vs an adjacent creature (GUI prompt)
+      bool horde_breaker_used{false};       // Hunter L3 Horde Breaker already used this turn (once/turn)
+      bool superior_prey_used{false};       // Hunter L11 Superior Hunter's Prey: HM-damage splash already applied this turn (once/turn)
+      bool bestial_fury_used{false};        // Beast Master L11 Bestial Fury: companion's HM-marked Force splash already applied this turn (once/turn)
+      bool fey_dreadful_strikes_used{false}; // Fey Wanderer L3 Dreadful Strikes Psychic rider already applied this turn (once/turn)
+      std::vector<int> multiattack_def_hit_by{}; // Hunter L7 Multiattack Defense: indices of creatures that hit me this turn (their other attacks vs me get Disadvantage)
+      bool dreadful_strike_armed{false};    // Gloom Stalker Dread Ambusher: next weapon hit this turn deals +Xd6 Psychic (consumed on the hit)
+      bool dread_ambusher_used{false};      // Gloom Stalker Dread Ambusher class action already used this turn (once/turn)
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool vitality_used_this_turn{false};  // World Tree Vitality of the Tree turn-start grant used this turn
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
@@ -723,6 +757,15 @@ namespace rpg {
       conditions_.brutal_strike_used_this_turn = false;
       conditions_.brutal_strike_available      = false;
       conditions_.berserker_frenzy_used        = false;
+      conditions_.colossus_slayer_used         = false;
+      conditions_.horde_breaker_available      = false;
+      conditions_.horde_breaker_used           = false;
+      conditions_.superior_prey_used           = false;
+      conditions_.bestial_fury_used            = false;
+      conditions_.fey_dreadful_strikes_used    = false;
+      conditions_.multiattack_def_hit_by.clear();
+      conditions_.dreadful_strike_armed        = false;
+      conditions_.dread_ambusher_used          = false;
       conditions_.vitality_used_this_turn      = false;
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;

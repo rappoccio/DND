@@ -1440,3 +1440,58 @@ in `_resolve_summon`. Tests: `test_factions.py` (7 cases). Built + green 2026-06
   Fireball). Left as-is — out of scope for the faction work.
 - `selective_targeting` is loaded from spell JSON (`map_configs.cpp spellFromJson`) + bound; no spells in
   the catalog set it yet (set it on Radiance-of-the-Dawn-type entries when added).
+
+---
+
+## Ranger — Beast Master (Primal Companion) — IMPLEMENTED ✅ (2026-06-13, built + 71 suites green)
+
+L3 spawn wiring (button/menu/summon/dismiss/save/load) + L7/L11/L15 are done. Companion math lives in
+`helpers.compute_companion_loadout`; spawn/dismiss in `main.py` (`_summon_companion`/`_dismiss_companion`/
+`_find_companion_idx`); the L11 splash rider in `combat_attack.cpp` (after the Hunter's Mark rider).
+
+**Implemented:**
+- **L3 Primal Companion** — Land/Sea/Sky stat blocks (`primal_companions.json`); HP=base+per-lvl×level,
+  AC=13+PB, to-hit=Ranger spell-attack mod, dmg bonus=PB; faction/summoner-linked, tombstoned on death/
+  dismiss; chosen form round-trips (`primal_companion`).
+- **L7 Exceptional Training** — companion gains **Cunning Action** (`has_cunning_action=True` → bonus-action
+  Dash/Disengage/Hide buttons) and its natural weapon switches to **Force** (moved to `magic_damage_types`).
+- **L11 Bestial Fury** — 2 attacks (`num_attacks=2`) + once/turn the first hit on the Ranger's
+  Hunter's-Mark target deals +Force = the mark's dice (`bestial_fury_used` flag, reset in `turn()`).
+- **L15 Share Spells** — a Self-range buff (Single geometry, range 0) the Ranger casts on itself is
+  re-applied to the companion within 30 ft via `execute_spell` (no extra slot; ties to the same
+  concentration). GUI path: `_finish_cast` → `_share_spell_with_companion`.
+
+**Deferred / simplifications:**
+- **L7 bonus-action menu** is Cunning Action's Dash/Disengage/Hide (per user call); RAW also lists
+  **Dodge/Help** — not separately modeled (no per-companion Dodge/Help affordance).
+- **L7 Force is the default at L7+ with no opt-out**: against a Force-immune/resistant foe the player
+  cannot revert to the normal physical type. Rare; revisit only if it bites.
+- **L15 share is GUI-only** (`main.py`, not in the suite) and limited to true Self buffs — self-origin
+  AoEs (Burning Hands etc., Cone/Cube geometry) are intentionally excluded; concentration self-buffs work
+  because `executeSpell` re-affirms the same caster concentration with no terrain to drop.
+
+## Ranger — Fey Wanderer — IMPLEMENTED ✅ (2026-06-13, combat-core; awaiting build)
+
+`fey_dreadful_strikes`/`fey_dreadful_strikes_die_size` (Stats) + `fey_dreadful_strikes_used` (Conditions,
+reset in `turn()`), all bound. Seeded in `combat.cpp initializeClassResources` (FeyWanderer L3+). Tests in
+`test_ranger.py` (chassis, rider once/turn + d4→d6, Beguiling Twist statistical advantage + L7 gate).
+
+**Implemented:**
+- **L3 Dreadful Strikes** (distinct from Gloom Stalker's): the first weapon hit each turn deals **+1d4
+  Psychic (→1d6 at L11)**, no resource. Rider in `combat_attack.cpp` right after the Gloom Stalker
+  Dreadful Strike block; gated on `fey_dreadful_strikes && !fey_dreadful_strikes_used`.
+- **L7 Beguiling Twist (save half)** — **Advantage on a save vs a spell that applies Charmed/Frightened**.
+  Gated inline (no field) at BOTH spell-save sites in `combat_spells.cpp`: the Save-for-half site (scans
+  `sp.conditions` for Charmed/Frightened) and the fresh per-condition save site (checks the condition name).
+- **Always-prepared spells** via `main.py _grant_class_features` + `_RANGER_SUBCLASS_SPELLS`: Charm Person
+  (L3), Misty Step (L5), Dimension Door (L13), Mislead (L17).
+
+**Deferred / simplifications:**
+- **L9 Summon Fey** is NOT granted — the spell isn't in `spells.json` (`_grant_class_features` skips missing
+  names gracefully). Add a Summon Fey entry (reusing the summon system) to enable it.
+- **L7 Beguiling Twist reaction** (when you succeed on the save, a Reaction can turn the charm/fear back on
+  another creature within 60 ft) is NOT implemented — only the defensive save-advantage half. Needs an
+  OnSaveSucceed-style window + a redirect cast; deferred.
+- **L3 Otherworldly Glamour** (+WIS to CHA checks, extra skill prof) — out-of-combat social, not modeled.
+- **L11 Fey Reinforcements** (free Summon Fey) / **L15 Misty Wanderer** (free Misty Step + co-teleport a
+  willing ally) — utility free-cast resources, deferred (gated on Summon Fey / movement-co-teleport infra).

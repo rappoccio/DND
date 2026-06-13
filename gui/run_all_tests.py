@@ -100,6 +100,9 @@ test_scripts = [
 
     # Bard features
     "test_bard.py",
+
+    # Ranger features
+    "test_ranger.py",
 ]
 
 def run_tests():

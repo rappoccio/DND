@@ -1,0 +1,71 @@
+[
+  {
+    "form": "Land",
+    "name": "Beast of the Land",
+    "size": "Medium",
+    "str": 14,
+    "dex": 14,
+    "con": 15,
+    "intel": 8,
+    "wis": 14,
+    "cha": 11,
+    "speed_walk": 40,
+    "speed_swim": 0,
+    "speed_fly": 0,
+    "hp_per_level": 5,
+    "hp_base": 5,
+    "darkvision": 60,
+    "attack": {
+      "name": "Maul",
+      "num_dice": 1,
+      "die_size": 8,
+      "damage_type": "Slashing"
+    }
+  },
+  {
+    "form": "Sea",
+    "name": "Beast of the Sea",
+    "size": "Medium",
+    "str": 14,
+    "dex": 14,
+    "con": 15,
+    "intel": 8,
+    "wis": 14,
+    "cha": 11,
+    "speed_walk": 5,
+    "speed_swim": 40,
+    "speed_fly": 0,
+    "hp_per_level": 5,
+    "hp_base": 5,
+    "darkvision": 60,
+    "attack": {
+      "name": "Bite",
+      "num_dice": 1,
+      "die_size": 6,
+      "damage_type": "Piercing"
+    }
+  },
+  {
+    "form": "Sky",
+    "name": "Beast of the Sky",
+    "size": "Small",
+    "str": 6,
+    "dex": 16,
+    "con": 13,
+    "intel": 8,
+    "wis": 14,
+    "cha": 11,
+    "speed_walk": 10,
+    "speed_swim": 0,
+    "speed_fly": 60,
+    "hp_per_level": 4,
+    "hp_base": 4,
+    "darkvision": 60,
+    "attack": {
+      "name": "Beak",
+      "num_dice": 1,
+      "die_size": 4,
+      "damage_type": "Piercing"
+    }
+  }
+]

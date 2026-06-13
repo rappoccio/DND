@@ -48,7 +48,7 @@ from helpers import (
     _DEFAULT_ARMOR, _armor_to_dict, _dict_to_armor,
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
-    can_place_agent, summon_cell_placeable,
+    can_place_agent, summon_cell_placeable, compute_companion_loadout,
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog
 from dialogs_conditions import ConditionsDialog
@@ -875,6 +875,12 @@ class App:
         self.btn_cbt_telekinetic = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Telekinetic Movement",
                                           (140, 160, 210), (170, 190, 240), self.font_md)
+        self.btn_cbt_dread_ambusher = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Dread Ambusher",
+                                          (80, 90, 130), (110, 120, 170), self.font_md)
+        self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🐾 Primal Companion",
+                                          (90, 140, 90), (120, 175, 120), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1473,6 +1479,20 @@ class App:
             stats.bard_subclass = getattr(rpg.BardCollege, subclass_name)
         elif class_name == "Sorcerer" and subclass_name != "NONE":
             stats.sorcerer_subclass = getattr(rpg.SorcererSubclass, subclass_name)
+        elif class_name == "Ranger" and subclass_name != "NONE":
+            stats.ranger_subclass = getattr(rpg.RangerSubclass, subclass_name)
+            # Hunter L3 Hunter's Prey / L7 Defensive Tactics: default the choice when first set
+            # (preserved across later edits since stats start from the current agent). An in-dialog
+            # picker to swap them is a deferred GUI follow-up — see RANGER_PLAN.md.
+            if subclass_name == "Hunter":
+                if stats.hunter_prey == rpg.HunterPrey.NONE:
+                    stats.hunter_prey = rpg.HunterPrey.ColossusSlayer
+                if char_level >= 7 and stats.defensive_tactics == rpg.DefensiveTactics.NONE:
+                    stats.defensive_tactics = rpg.DefensiveTactics.EscapeTheHorde
+            # Beast Master L3 Primal Companion: default the form to Land when first set;
+            # the player picks Land/Sea/Sky each time via the in-combat companion menu.
+            if subclass_name == "BeastMaster" and stats.primal_companion == rpg.PrimalCompanion.NONE:
+                stats.primal_companion = rpg.PrimalCompanion.Land
 
         # Cleric Blessed Strikes choice (L7+)
         if class_name == "Cleric" and blessed_strike_name != "NONE":
@@ -4475,7 +4495,33 @@ class App:
                         continue  # not in spells.json — skip gracefully
                     cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
                     existing.add(name)
+
+        # Always-prepared Ranger subclass spells (regular spells from spells.json).
+        if class_name == "Ranger":
+            sub_table = self._RANGER_SUBCLASS_SPELLS.get(stats.ranger_subclass.name, {})
+            for min_lvl, names in sub_table.items():
+                if level < min_lvl:
+                    continue
+                for name in names:
+                    if name in existing:
+                        continue
+                    idx = self.spell_name_to_idx.get(name)
+                    if idx is None:
+                        continue  # not in spells.json (e.g. Summon Fey) — skip gracefully
+                    cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
+                    existing.add(name)
         return cpp_spells
+
+    # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
+    # (Summon Fey at L9 is intentionally omitted — not yet in spells.json; see known_limitations.)
+    _RANGER_SUBCLASS_SPELLS = {
+        "FeyWanderer": {
+            3: ["Charm Person"],
+            5: ["Misty Step"],
+            13: ["Dimension Door"],
+            17: ["Mislead"],
+        },
+    }
 
     # Always-prepared Cleric domain spells by domain and Cleric level (2024 PHB).
     _DOMAIN_SPELLS = {
@@ -5353,6 +5399,134 @@ class App:
         self.sprites.clear()
         self._consume_cast_slot(slot, caster_idx)
 
+    # ── Beast Master: Primal Companion (L3) ─────────────────────────────────
+    def _find_companion_idx(self, ranger_idx: int) -> int:
+        """Index of the Ranger's live Primal Companion, or -1 if none is active.
+        Tombstoned (dismissed/dead) companions are skipped."""
+        for i, pt in enumerate(self.bm.placed_agents):
+            if (pt.summoner_idx == ranger_idx and not pt.removed_from_play
+                    and pt.summon_spell == "Primal Companion"):
+                return i
+        return -1
+
+    def _show_companion_menu(self):
+        """Beast Master L3+: summon a Beast of the Land/Sea/Sky, or dismiss the
+        active companion. Mirrors the Wild Shape menu (context_menu)."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        if (stats.character_class != rpg.CharacterClass.Ranger or
+                stats.ranger_subclass != rpg.RangerSubclass.BeastMaster or
+                stats.char_level < 3):
+            self._combat_log_add("Only a Beast Master Ranger (L3+) has a Primal Companion.")
+            return
+        existing = self._find_companion_idx(idx)
+        if existing >= 0:
+            self._dismiss_companion(idx, existing)
+            return
+        items = [(f"🐾 Beast of the {form}",
+                  lambda f=form: self._summon_companion(idx, f))
+                 for form in ("Land", "Sea", "Sky")]
+        self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+
+    def _dismiss_companion(self, ranger_idx: int, companion_idx: int):
+        """Tombstone the companion (removed_from_play) like a dismissed summon: it
+        stays in placedAgents_/initiative so indices stay valid, but is skipped in
+        turns and rendering."""
+        name = self.bm.placed_agents[companion_idx].name
+        self.bm.set_agent_removed_from_play(companion_idx, True)
+        self._combat_log_add(f"{self.bm.placed_agents[ranger_idx].name} dismisses {name}.")
+        self.sprites.clear()
+
+    def _summon_companion(self, ranger_idx: int, form: str):
+        """Conjure the Beast Master's Primal Companion (Beast of the Land/Sea/Sky).
+
+        Scaled off the Ranger: HP = base + per-level x Ranger level, AC = 13 + PB,
+        attack to-hit = Ranger's spell-attack modifier (PB + WIS mod), damage bonus = PB
+        (RAW), independent of the beast's own ability mod. The companion is summon-linked
+        (faction/summoner) so it shares the Ranger's initiative and tombstones on dismissal/
+        death — same machinery as summon spells (memory `summoning_plan`)."""
+        if not (0 <= ranger_idx < len(self.bm.placed_agents)):
+            return
+        if self._find_companion_idx(ranger_idx) >= 0:
+            self._combat_log_add("A Primal Companion is already active — dismiss it first.")
+            return
+        import json
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(script_dir, "primal_companions.json")
+        try:
+            with open(path, 'r') as f:
+                blocks = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self._combat_log_add("Error loading primal_companions.json!")
+            return
+        block = next((b for b in blocks if b.get("form") == form), None)
+        if block is None:
+            self._combat_log_add(f"Unknown companion form '{form}'.")
+            return
+
+        rstats = self.combat.get_agent_stats(self.bm, ranger_idx)
+        ranger = self.bm.placed_agents[ranger_idx]
+        size = self._size_category_to_grid_size(block.get("size", "Medium"))
+        cell = self._find_free_cell_near(ranger.origin.col, ranger.origin.row, size)
+        if cell is None:
+            self._combat_log_add("No free space next to the Ranger to summon the companion.")
+            return
+
+        pb  = rstats.prof_bonus
+        lvl = rstats.char_level
+        stats_d, weapon_d = compute_companion_loadout(
+            block, pb, lvl, (rstats.wis - 10) // 2)
+
+        cfg = rpg.AgentConfig()
+        cfg.name        = block.get("name", "Primal Companion")
+        cfg.sprite_path = self._get_mob_sprite_path(cfg.name)
+        cfg.size        = size
+        cfg.start_col   = cell.col
+        cfg.start_row   = cell.row
+        new_idx = self.bm.spawn_agent(cfg)
+        if new_idx < 0:
+            self._combat_log_add("Could not place the companion.")
+            return
+
+        cs = rpg.Stats()
+        for field, val in stats_d.items():
+            setattr(cs, field, val)
+        self.combat.set_agent_stats(self.bm, new_idx, cs)
+        self.combat.set_agent_weapons(
+            self.bm, new_idx, [_dict_to_weapon(weapon_d), rpg.Weapon(), rpg.Weapon()])
+
+        # Link companion -> Ranger (faction/summoner/summon name) so it fights alongside
+        # the Ranger and tombstones on dismissal — same path as summon spells.
+        self.bm.set_agent_summoner_idx(new_idx, ranger_idx)
+        self.bm.set_agent_summon_spell(new_idx, "Primal Companion")
+        self.bm.set_agent_faction(new_idx, self.bm.get_agent_faction(ranger_idx))
+
+        # Remember the chosen form on the Ranger so it round-trips on save/load.
+        rstats.primal_companion = getattr(rpg.PrimalCompanion, form)
+        self.combat.set_agent_stats(self.bm, ranger_idx, rstats)
+
+        # Share the Ranger's initiative count (acts right after them), like a summon.
+        if self.combat_active and self.initiative_order:
+            rpos = next((p for p, e in enumerate(self.initiative_order)
+                         if e.agent_idx == ranger_idx), -1)
+            if rpos >= 0:
+                base = self.initiative_order[rpos]
+                entry = rpg.InitiativeEntry()
+                entry.agent_idx = new_idx
+                entry.d20       = base.d20
+                entry.modifier  = base.modifier
+                entry.total     = base.total
+                self.initiative_order.insert(rpos + 1, entry)
+
+        self.sprites.clear()
+        self._combat_log_add(
+            f"{ranger.name} summons a {cfg.name} (HP {stats_d['hp_max']}, "
+            f"AC {stats_d['base_ac']}"
+            f"{', 2 attacks' if stats_d['num_attacks'] > 1 else ''}).")
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -5387,7 +5561,14 @@ class App:
         # spell resolves (Shield vs Magic Missile). begin_cast resolves inline when no reaction is
         # offered (Completed) or parks at the reaction checkpoint (AwaitingDecision); _finish_cast does
         # the post-resolution logging in both cases.
-        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx, aoe=False)
+        # Beast Master L15 Share Spells: remember whether this was a Self-range buff cast on the
+        # Ranger itself (Single geometry, range 0, target == caster) so _finish_cast can duplicate
+        # it onto the Primal Companion within 30 ft after the cast resolves.
+        self_target = (sp.geometry == rpg.SpellGeometry.Single and sp.range == 0 and
+                       target_idx == caster_idx)
+        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx,
+                               aoe=False, self_target=self_target,
+                               slot_level=self.pending_spell_slot_level)
         self._reaction_finish = self._finish_cast
 
         self.pending_spell_slot        = ""
@@ -5434,9 +5615,51 @@ class App:
             self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
         else:
             self._log_spell_results(result, cast_name, caster_idx, ctx["spell_idx"])
+        # Beast Master L15 Share Spells: a Self-range buff the Ranger cast on itself also affects
+        # its Primal Companion within 30 ft.
+        if ctx.get("self_target"):
+            self._share_spell_with_companion(caster_idx, ctx["spell_idx"], ctx.get("slot_level", 0))
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
         self._consume_cast_slot(ctx["slot"], caster_idx)
+
+    def _companion_in_range(self, ranger_idx: int, comp_idx: int, ft: int) -> bool:
+        """Chebyshev footprint distance check (5 ft / cell), mirroring _vitality_in_range."""
+        agents = self.bm.placed_agents
+        if not (0 <= ranger_idx < len(agents) and 0 <= comp_idx < len(agents)) or ranger_idx == comp_idx:
+            return False
+        s = agents[ranger_idx]; o = agents[comp_idx]
+        dc = max(s.origin.col - o.origin.col, o.origin.col - (s.origin.col + s.size - 1), 0)
+        dr = max(s.origin.row - o.origin.row, o.origin.row - (s.origin.row + s.size - 1), 0)
+        return max(dc, dr) * 5 <= ft
+
+    def _share_spell_with_companion(self, caster_idx: int, spell_idx: int, slot_level: int):
+        """Beast Master L15 Share Spells: re-apply a Self-range buff to the Ranger's live Primal
+        Companion within 30 ft via execute_spell (no extra slot consumed; the duplicated effect ties
+        to the same concentration, so it drops with the original). Only true Self buffs qualify
+        (Single geometry, range 0) — self-origin AoEs (Burning Hands etc.) are Cone/Cube and excluded."""
+        stats = self.combat.get_agent_stats(self.bm, caster_idx)
+        if (stats.character_class != rpg.CharacterClass.Ranger or
+                stats.ranger_subclass != rpg.RangerSubclass.BeastMaster or
+                stats.char_level < 15):
+            return
+        comp = self._find_companion_idx(caster_idx)
+        if comp < 0 or not self._companion_in_range(caster_idx, comp, 30):
+            return
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        if not (0 <= spell_idx < len(spells)):
+            return
+        sp = spells[spell_idx]
+        if sp.geometry != rpg.SpellGeometry.Single or sp.range != 0:
+            return
+        action = rpg.SpellAction()
+        action.caster_idx     = caster_idx
+        action.spell_idx      = spell_idx
+        action.slot_level     = slot_level
+        action.target_indices = [comp]
+        self.combat.execute_spell(self.bm, action)
+        self._combat_log_add(
+            f"Share Spells: {sp.name} also affects {self.bm.placed_agents[comp].name}.")
 
     def _pending_spell(self):
         """The Spell object currently being aimed, or None."""
@@ -6086,6 +6309,10 @@ class App:
                 "agent_cleric_subclass": s.cleric_subclass.name,
                 "agent_bard_subclass": s.bard_subclass.name,
                 "agent_sorcerer_subclass": s.sorcerer_subclass.name,
+                "agent_ranger_subclass": s.ranger_subclass.name,
+                "agent_hunter_prey": s.hunter_prey.name,
+                "agent_defensive_tactics": s.defensive_tactics.name,
+                "agent_primal_companion": s.primal_companion.name,
                 "agent_eldritch_invocations": list(s.eldritch_invocations),
                 "agent_fiendish_resilience_type": s.fiendish_resilience_type,
                 # Druid state
@@ -8306,6 +8533,40 @@ class App:
                         self.btn_cbt_telekinetic.draw(self.screen)
                         y += B + gap
 
+            # Dread Ambusher button — Gloom Stalker Ranger (L3+): arm +2d6 Psychic on your next
+            # weapon hit this turn (+10 ft Speed). WIS-mod uses/long rest, once per turn. Shows uses left.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Ranger and
+                        stats.ranger_subclass == rpg.RangerSubclass.GloomStalker and
+                        stats.char_level >= 3):
+                    da = stats.get_resource("Dread Ambusher")
+                    cond = self.combat.get_agent_conditions(self.bm, cur_idx)
+                    if (da and da.current > 0 and not cond.dread_ambusher_used and
+                            not cond.dreadful_strike_armed):
+                        self.btn_cbt_dread_ambusher.text = f"Dread Ambusher ({da.current})"
+                        self.btn_cbt_dread_ambusher.rect.x = lx
+                        self.btn_cbt_dread_ambusher.rect.y = y
+                        self.btn_cbt_dread_ambusher.rect.w = W
+                        self.btn_cbt_dread_ambusher.draw(self.screen)
+                        y += B + gap
+
+            # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
+            # the Land/Sea/Sky, or dismiss the active companion (label toggles).
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Ranger and
+                        stats.ranger_subclass == rpg.RangerSubclass.BeastMaster and
+                        stats.char_level >= 3):
+                    active = self._find_companion_idx(cur_idx) >= 0
+                    self.btn_cbt_companion.text = ("🐾 Dismiss Companion" if active
+                                                   else "🐾 Primal Companion")
+                    self.btn_cbt_companion.rect.x = lx
+                    self.btn_cbt_companion.rect.y = y
+                    self.btn_cbt_companion.rect.w = W
+                    self.btn_cbt_companion.draw(self.screen)
+                    y += B + gap
+
 
         y += section_gap
 
@@ -8948,6 +9209,8 @@ class App:
                                 subclass_name = stats.bard_subclass.name
                             elif class_name == "Sorcerer":
                                 subclass_name = stats.sorcerer_subclass.name
+                            elif class_name == "Ranger":
+                                subclass_name = stats.ranger_subclass.name
                             blessed_strike_name = stats.blessed_strike.name if class_name == "Cleric" else "NONE"
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
@@ -9663,6 +9926,28 @@ class App:
                     if self.btn_cbt_telekinetic.clicked(event):
                         self.pending_telekinetic = True
                         self.hint = "Click a creature to move with Telekinetic Movement"
+                    if self.btn_cbt_dread_ambusher.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            da = stats.get_resource("Dread Ambusher")
+                            cond = self.combat.get_agent_conditions(self.bm, idx)
+                            if (da and da.current > 0 and not cond.dread_ambusher_used and
+                                    not cond.dreadful_strike_armed):
+                                if self.combat.spend_resource(self.bm, idx, "Dread Ambusher", 1):
+                                    cond.dreadful_strike_armed = True
+                                    cond.dread_ambusher_used = True
+                                    self.combat.set_agent_conditions(self.bm, idx, cond)
+                                    # Ambusher's Leap: +10 ft Speed this turn.
+                                    self.move_remaining_walk += 10
+                                    self._update_reach()
+                                    dn = stats.dreadful_strike_dice
+                                    dz = stats.dreadful_strike_die_size
+                                    self._combat_log_add(
+                                        f"{self.bm.placed_agents[idx].name}: Dread Ambusher — "
+                                        f"next weapon hit deals +{dn}d{dz} Psychic, +10 ft Speed.")
+                    if self.btn_cbt_companion.clicked(event):
+                        self._show_companion_menu()
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

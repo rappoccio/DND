@@ -251,6 +251,17 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         log_("Danger Sense: target has Advantage on DEX save");
     }
 
+    // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies Charmed/Frightened.
+    if (!target_cond.incapacitated && tgt_stats.character_class == CharacterClass::Ranger &&
+        tgt_stats.ranger_subclass == FeyWandererPath && tgt_stats.char_level >= 7) {
+        for (const auto& c : sp.conditions)
+            if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
+                target_adv = true;
+                log_("Beguiling Twist: {} has Advantage on the save vs charm/fear", agentName(bm, tgt_idx));
+                break;
+            }
+    }
+
     int save_d20;
     if (auto_fail) {
         save_d20 = 1;  // Automatic fail
@@ -992,7 +1003,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         // For other spell types, roll a new save for this condition
                         int save_dc = spellSaveDc(caster_stats);
 
-                        int save_d20 = roll(20);
+                        // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs Charmed/Frightened.
+                        const bool fey_twist =
+                            tgt_stats.character_class == CharacterClass::Ranger &&
+                            tgt_stats.ranger_subclass == FeyWandererPath &&
+                            tgt_stats.char_level >= 7 &&
+                            (spell_cond.condition_name == "Charmed" ||
+                             spell_cond.condition_name == "Frightened");
+                        int save_d20 = fey_twist ? rollAdvantage(20) : roll(20);
                         auto saveMod = [&](SaveAbility_t ab) -> int {
                             int score = 0; bool prof = false;
                             switch (ab) {
@@ -1133,6 +1151,25 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         cond.concentrating    = true;
         cond.concentrating_on = sp.name;
         bm.setAgentConditions(action.caster_idx, cond);
+    }
+
+    // Hunter's Mark / Hex: set the caster's marked-target rider state (cleared on concentration
+    // drop). The +Xd6 on-hit damage is applied generically in applyAttackResult. Keys on the
+    // single designated target (targets[0]); Foe Slayer (Ranger L20) upgrades the die to a d10.
+    if (should_concentrate && !targets.empty() &&
+        (sp.name == "Hunter's Mark" || sp.name == "Hex")) {
+        Agent::Stats cs = bm.getAgentStats(action.caster_idx);
+        cs.hunters_mark_target    = targets[0];
+        cs.hunters_mark_dice      = 1;
+        if (sp.name == "Hex") {
+            cs.hunters_mark_die_size    = 6;
+            cs.hunters_mark_damage_type = MagicDamage_t::Necrotic;  // 5
+        } else {  // Hunter's Mark
+            cs.hunters_mark_die_size    = (cs.character_class == CharacterClass::Ranger &&
+                                           cs.char_level >= 20) ? 10 : 6;  // Foe Slayer
+            cs.hunters_mark_damage_type = MagicDamage_t::Force;            // 3
+        }
+        bm.setAgentStats(action.caster_idx, cs);
     }
 
     // Create persistent spell effect if spell has AoE geometry and duration > 1
@@ -1486,6 +1523,13 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         if (sp.save_ability == SaveDex && !tc.incapacitated &&
             target_stats.character_class == CharacterClass::Barbarian && target_stats.char_level >= 2)
             adv = true;
+        // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies
+        // Charmed or Frightened (this is the Save-for-half site; the condition reuses tr.saved).
+        if (!tc.incapacitated && target_stats.character_class == CharacterClass::Ranger &&
+            target_stats.ranger_subclass == FeyWandererPath && target_stats.char_level >= 7) {
+            for (const auto& c : sp.conditions)
+                if (c.condition_name == "Charmed" || c.condition_name == "Frightened") { adv = true; break; }
+        }
 
         int save_d20;
         if (auto_fail)       save_d20 = 1;
@@ -1734,6 +1778,14 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
     if (!cond.concentrating)
         return false;  // Not concentrating, no save needed
 
+    // Relentless Hunter (Ranger L13+): taking damage can't break your concentration on Hunter's Mark.
+    {
+        const Agent::Stats& rs = pa.agent->getStats();
+        if (rs.character_class == CharacterClass::Ranger && rs.char_level >= 13 &&
+            cond.concentrating_on == "Hunter's Mark")
+            return false;  // Concentration automatically holds
+    }
+
     // DC is 10 or half damage, whichever is higher
     int dc = std::max(10, damage / 2);
     const Agent::Stats& cstats = pa.agent->getStats();
@@ -1814,6 +1866,14 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     cond.concentrating    = false;
     cond.concentrating_on = {};
     bm.setAgentConditions(agent_idx, cond);
+
+    // 4b. Clear the Hunter's Mark / Hex marked-target rider. The mark is only ever set by those
+    //     concentration spells, and a creature concentrates on one spell at a time, so dropping
+    //     concentration always ends the mark.
+    if (Agent::Stats cs = bm.getAgentStats(agent_idx); cs.hunters_mark_target >= 0) {
+        cs.hunters_mark_target = -1;
+        bm.setAgentStats(agent_idx, cs);
+    }
 
     // 5. Dismiss this caster's summoned creatures. They are TOMBSTONED
     //    (removed_from_play = true), not erased from placedAgents_, so every

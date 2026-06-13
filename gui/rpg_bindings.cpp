@@ -223,6 +223,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("ac_temporary_modifications", &Agent::Stats::ac_temporary_modifications)
         .def_readwrite("speed_walk",   &Agent::Stats::speed_walk)
         .def_readwrite("speed_swim",   &Agent::Stats::speed_swim)
+        .def_readwrite("speed_climb",  &Agent::Stats::speed_climb)
         .def_readwrite("speed_fly",    &Agent::Stats::speed_fly)
         .def_readwrite("speed_burrow", &Agent::Stats::speed_burrow)
         .def_readwrite("prof_bonus",      &Agent::Stats::prof_bonus)
@@ -387,6 +388,32 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Warlock patron subclass (only valid when character_class == Warlock)")
         .def_readwrite("rogue_subclass", &Agent::Stats::rogue_subclass,
              "Rogue subclass (only valid when character_class == Rogue)")
+        .def_readwrite("ranger_subclass", &Agent::Stats::ranger_subclass,
+             "Ranger subclass (only valid when character_class == Ranger)")
+        .def_readwrite("hunter_prey", &Agent::Stats::hunter_prey,
+             "Hunter L3 Hunter's Prey choice (Colossus Slayer / Horde Breaker)")
+        .def_readwrite("defensive_tactics", &Agent::Stats::defensive_tactics,
+             "Hunter L7 Defensive Tactics choice (Escape the Horde / Multiattack Defense)")
+        .def_readwrite("primal_companion", &Agent::Stats::primal_companion,
+             "Beast Master L3 Primal Companion form (Land / Sea / Sky); remembered for re-summon")
+        .def_readwrite("hunters_mark_target", &Agent::Stats::hunters_mark_target,
+             "Ranger/Warlock marked-target agent index for Hunter's Mark / Hex (-1 = none)")
+        .def_readwrite("hunters_mark_dice", &Agent::Stats::hunters_mark_dice,
+             "Number of marked-target rider dice")
+        .def_readwrite("hunters_mark_die_size", &Agent::Stats::hunters_mark_die_size,
+             "Marked-target rider die size (6=d6 Hunter's Mark, 10=d10 Foe Slayer)")
+        .def_readwrite("hunters_mark_damage_type", &Agent::Stats::hunters_mark_damage_type,
+             "Marked-target rider MagicDamage_t (3=Force HM, 7=Psychic Hex)")
+        .def_readwrite("dread_ambusher", &Agent::Stats::dread_ambusher,
+             "Gloom Stalker: add WIS modifier to Initiative rolls (Dread Ambusher Initiative Bonus)")
+        .def_readwrite("dreadful_strike_dice", &Agent::Stats::dreadful_strike_dice,
+             "Gloom Stalker Dreadful Strike rider dice (2d6 → 2d8 at L11)")
+        .def_readwrite("dreadful_strike_die_size", &Agent::Stats::dreadful_strike_die_size,
+             "Gloom Stalker Dreadful Strike die size (6=d6, 8 at L11 Stalker's Flurry)")
+        .def_readwrite("fey_dreadful_strikes", &Agent::Stats::fey_dreadful_strikes,
+             "Fey Wanderer L3 Dreadful Strikes: weapon hit adds Psychic once/turn")
+        .def_readwrite("fey_dreadful_strikes_die_size", &Agent::Stats::fey_dreadful_strikes_die_size,
+             "Fey Wanderer Dreadful Strikes die size (4=d4, 6 at L11)")
         .def_readwrite("cleric_subclass", &Agent::Stats::cleric_subclass,
              "Cleric divine domain (only valid when character_class == Cleric)")
         .def_readwrite("blessed_strike", &Agent::Stats::blessed_strike,
@@ -509,6 +536,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
         .def_readwrite("sentinel_guard_available", &Agent::Conditions::sentinel_guard_available)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
+        .def_readwrite("colossus_slayer_used", &Agent::Conditions::colossus_slayer_used)
+        .def_readwrite("horde_breaker_available", &Agent::Conditions::horde_breaker_available)
+        .def_readwrite("horde_breaker_used", &Agent::Conditions::horde_breaker_used)
+        .def_readwrite("superior_prey_used", &Agent::Conditions::superior_prey_used)
+        .def_readwrite("bestial_fury_used", &Agent::Conditions::bestial_fury_used)
+        .def_readwrite("fey_dreadful_strikes_used", &Agent::Conditions::fey_dreadful_strikes_used)
+        .def_readwrite("multiattack_def_hit_by", &Agent::Conditions::multiattack_def_hit_by)
+        .def_readwrite("dreadful_strike_armed", &Agent::Conditions::dreadful_strike_armed)
+        .def_readwrite("dread_ambusher_used", &Agent::Conditions::dread_ambusher_used)
         .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
@@ -892,6 +928,33 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("OathOftheMountedWarrior", OathOftheMountedWarriorPath)
         .value("OathOfRedemption", OathOfRedemptionPath)
         .value("OathOfVengeance", OathOfVengeancePath)
+        .export_values();
+
+    // ── Ranger Subclass Enum (2024 D&D) ──────────────────────────────────────
+    py::enum_<RangerSubclass>(m, "RangerSubclass")
+        .value("NONE", RangerSubclassNone)
+        .value("Hunter", HunterPath)
+        .value("BeastMaster", BeastMasterPath)
+        .value("FeyWanderer", FeyWandererPath)
+        .value("GloomStalker", GloomStalkerPath)
+        .export_values();
+
+    // ── Hunter subclass feature choices (2024 D&D) ───────────────────────────
+    py::enum_<HunterPrey>(m, "HunterPrey")
+        .value("NONE", HunterPreyNone)
+        .value("ColossusSlayer", ColossusSlayer)
+        .value("HordeBreaker", HordeBreaker)
+        .export_values();
+    py::enum_<DefensiveTactics>(m, "DefensiveTactics")
+        .value("NONE", DefensiveTacticsNone)
+        .value("EscapeTheHorde", EscapeTheHorde)
+        .value("MultiattackDefense", MultiattackDefense)
+        .export_values();
+    py::enum_<PrimalCompanion>(m, "PrimalCompanion")
+        .value("NONE", PrimalCompanionNone)
+        .value("Land", PrimalLand)
+        .value("Sea", PrimalSea)
+        .value("Sky", PrimalSky)
         .export_values();
 
     // ── Wizard Subclass Enum (2024 D&D) ──────────────────────────────────────

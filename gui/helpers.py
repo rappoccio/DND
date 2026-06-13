@@ -46,6 +46,80 @@ def summon_cell_placeable(bm, caster_origin, caster_size, cell, size, spell_rang
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Beast Master: Primal Companion scaling (shared by the GUI and unit tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def compute_companion_loadout(block: dict, pb: int, level: int, wis_mod: int):
+    """Build a (stats_dict, weapon_dict) for a Primal Companion from its base stat
+    `block` (one entry of primal_companions.json) and the owning Ranger's Proficiency
+    Bonus / level / WIS modifier. Pure (no pygame / no engine state), so it is unit-tested
+    directly.
+
+    Scaling (2024 Beast Master):
+      · HP  = hp_base + hp_per_level × Ranger level
+      · AC  = 13 + PB
+      · num_attacks = 2 at Ranger L11+ (Bestial Fury), else 1
+      · natural-weapon to-hit = Ranger's spell-attack modifier (PB + WIS mod)
+      · natural-weapon damage bonus = PB
+    The to-hit/damage targets are RAW-fixed regardless of the beast's own ability mod,
+    so weapon bonus_hit/bonus_damage cancel the mod the engine will re-add.
+    """
+    form = block.get("form", "Land")
+    finesse = (form == "Sky")   # Sky has STR 6 and strikes with DEX; Land/Sea use STR.
+    str_mod = _dnd_mod(block.get("str", 14))
+    dex_mod = _dnd_mod(block.get("dex", 14))
+    ability_mod = max(str_mod, dex_mod) if finesse else str_mod
+
+    hp = block.get("hp_base", 5) + block.get("hp_per_level", 5) * level
+    stats = {
+        "str":   block.get("str", 14),
+        "dex":   block.get("dex", 14),
+        "con":   block.get("con", 15),
+        "intel": block.get("intel", 8),
+        "wis":   block.get("wis", 14),
+        "cha":   block.get("cha", 11),
+        "hp_max": hp,
+        "hp_cur": hp,
+        "base_ac": 13 + pb,
+        "speed_walk": block.get("speed_walk", 30),
+        "speed_swim": block.get("speed_swim", 0),
+        "speed_fly":  block.get("speed_fly", 0),
+        "prof_bonus": pb,
+        "darkvision_range": block.get("darkvision", 60),
+        "is_npc": True,
+        "num_attacks": 2 if level >= 11 else 1,
+        # Exceptional Training (Ranger L7+): the companion may Dash/Disengage/Hide as a Bonus
+        # Action — reuse the Cunning Action machinery (surfaces those bonus-action buttons).
+        "has_cunning_action": level >= 7,
+    }
+    atk = block.get("attack", {})
+    roll = {
+        "type":     atk.get("damage_type", "Slashing"),
+        "num_dice": atk.get("num_dice", 1),
+        "die_size": atk.get("die_size", 8),
+    }
+    weapon = {
+        "name": atk.get("name", "Natural Weapon"),
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": True,
+        "finesse": finesse,
+        "bonus_hit":    (pb + wis_mod) - pb - ability_mod,
+        "bonus_damage": pb - ability_mod,
+        "physical_damage_types": [roll],
+        "magic_damage_types":    [],
+    }
+    # Exceptional Training (Ranger L7+): the companion's attacks may deal Force damage instead of
+    # their normal type. Force is a *magic* damage type, so the roll moves to magic_damage_types
+    # (the default at L7+ so it bypasses physical resistances — the only reason to keep the normal
+    # type is a Force-immune foe, which is rare; see known_limitations).
+    if level >= 7:
+        weapon["physical_damage_types"] = []
+        weapon["magic_damage_types"]    = [dict(roll, type="Force")]
+    return stats, weapon
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  D&D mechanics helpers
 # ─────────────────────────────────────────────────────────────────────────────
 

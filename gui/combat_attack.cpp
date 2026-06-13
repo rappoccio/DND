@@ -1284,6 +1284,37 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     bool adv = atk_pt.agent->hasAdvantage();
     bool dis = disadv || atk_pt.agent->hasDisadvantage();
 
+    // Precise Hunter (Ranger L17+): Advantage on attack rolls against your Hunter's Mark target.
+    {
+        const Agent::Stats& as = atk_pt.agent->getStats();
+        if (as.character_class == CharacterClass::Ranger && as.char_level >= 17 &&
+            as.hunters_mark_target == action.target_idx) {
+            adv = true;
+            log_("Precise Hunter: Advantage vs the marked target");
+        }
+    }
+
+    // Hunter L7 Defensive Tactics (defender = the target of this attack):
+    //   Escape the Horde — Opportunity Attacks against the Hunter have Disadvantage.
+    //   Multiattack Defense — a creature that already hit the Hunter this turn has Disadvantage
+    //   on its other attacks vs the Hunter.
+    {
+        const Agent::Stats& ds = tgt_pt.agent->getStats();
+        if (ds.character_class == CharacterClass::Ranger && ds.ranger_subclass == HunterPath &&
+            ds.char_level >= 7) {
+            if (ds.defensive_tactics == DefensiveTactics::EscapeTheHorde && action.opportunity) {
+                dis = true;
+                log_("Escape the Horde: Opportunity Attack vs the Hunter has Disadvantage");
+            } else if (ds.defensive_tactics == DefensiveTactics::MultiattackDefense) {
+                const auto& hb = tgt_pt.agent->getConditions().multiattack_def_hit_by;
+                if (std::find(hb.begin(), hb.end(), action.attacker_idx) != hb.end()) {
+                    dis = true;
+                    log_("Multiattack Defense: this attacker already hit the Hunter — Disadvantage");
+                }
+            }
+        }
+    }
+
     // Attacker conditions
     const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
 
@@ -2107,6 +2138,171 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // Mark Divine Fury as used this turn
         updated_atk_cond.berserker_frenzy_used = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Hunter's Mark / Hex marked-target rider — AUTOMATIC ───────────────
+    // Generic "marked target" on-hit bonus damage. When the attacker has an active mark
+    // (hunters_mark_target, set when Hunter's Mark or Hex resolves) and this attack-roll hit
+    // lands on that target, add the rider dice (Hunter's Mark = 1d6 Force; Foe Slayer L20 → d10;
+    // Hex = 1d6 Necrotic on Warlocks via the same fields). Applies on EVERY hit with an attack
+    // roll (no once-per-turn flag), matching RAW. Must run AFTER the base-damage application so
+    // it adds to the already-decremented tgt_stats. Spell-attack marks are deferred (this site
+    // covers weapon attack rolls, the Ranger's primary use).
+    if (r.hit && atk_stats.hunters_mark_target == action.target_idx &&
+        atk_stats.hunters_mark_dice > 0) {
+        const int type = std::clamp(atk_stats.hunters_mark_damage_type, 0,
+                                    static_cast<int>(MagicDamage_t::NumMagicDamage_t) - 1);
+        int raw = 0;
+        for (int i = 0; i < atk_stats.hunters_mark_dice; ++i)
+            raw += roll(atk_stats.hunters_mark_die_size);
+        const float mult = tgt_stats.magic_damage_multipliers[static_cast<std::size_t>(type)];
+        const int hm_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+        r.total_damage += hm_damage;
+        r.damage_breakdown.push_back({"hunter's mark", hm_damage});
+        r.magic_damage_types.push_back(static_cast<MagicDamage_t>(type));
+        int overflow = std::max(0, hm_damage - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - hm_damage);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+        log_("{} marked-target rider: +{} damage (Hunter's Mark/Hex)",
+             agentName(bm, action.attacker_idx), hm_damage);
+    }
+
+    // ── Bestial Fury (Beast Master Ranger L11) — companion Hunter's Mark splash ──
+    // When the attacker is a Ranger's Primal Companion, the first time each turn it hits the
+    // creature marked by the owning Ranger's Hunter's Mark, it deals extra damage equal to the
+    // mark's bonus dice (read off the OWNER's HM fields, type = the mark's type — Force for HM).
+    // Mirrors the marked-target rider's HP/temp-HP bookkeeping. Once/turn via bestial_fury_used.
+    if (r.hit && !updated_atk_cond.bestial_fury_used &&
+        bm.getAgentSummonSpell(action.attacker_idx) == "Primal Companion") {
+        const int owner = bm.getAgentSummonerIdx(action.attacker_idx);
+        if (owner >= 0 && owner < static_cast<int>(bm.placedAgents().size())) {
+            const Agent::Stats os = bm.getAgentStats(owner);
+            if (os.character_class == CharacterClass::Ranger &&
+                os.ranger_subclass == BeastMasterPath && os.char_level >= 11 &&
+                os.hunters_mark_target == action.target_idx && os.hunters_mark_dice > 0) {
+                const int type = std::clamp(os.hunters_mark_damage_type, 0,
+                                            static_cast<int>(MagicDamage_t::NumMagicDamage_t) - 1);
+                int raw = 0;
+                for (int i = 0; i < os.hunters_mark_dice; ++i)
+                    raw += roll(os.hunters_mark_die_size);
+                const float mult = tgt_stats.magic_damage_multipliers[static_cast<std::size_t>(type)];
+                const int bf_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+                r.total_damage += bf_damage;
+                r.damage_breakdown.push_back({"bestial fury", bf_damage});
+                r.magic_damage_types.push_back(static_cast<MagicDamage_t>(type));
+                int overflow = std::max(0, bf_damage - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - bf_damage);
+                tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+                r.hp_after = tgt_stats.hp_cur;
+                r.target_down = (r.hp_after <= 0);
+                updated_atk_cond.bestial_fury_used = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                log_("Bestial Fury: {} deals +{} damage to the Ranger's marked target",
+                     agentName(bm, action.attacker_idx), bf_damage);
+            }
+        }
+    }
+
+    // ── Hunter (Ranger subclass) on-hit features ──────────────────────────
+    const bool is_weapon_atk = (w.type == WeaponType::Melee || w.type == WeaponType::Ranged || w.thrown);
+    if (r.hit && atk_stats.character_class == CharacterClass::Ranger &&
+        atk_stats.ranger_subclass == HunterPath && is_weapon_atk) {
+
+        // Colossus Slayer (L3 prey): +1d8 once/turn if the target was already missing HP
+        // *before* this attack (RAW timing — a full-HP target's first hit doesn't qualify).
+        if (atk_stats.char_level >= 3 && atk_stats.hunter_prey == HunterPrey::ColossusSlayer &&
+            !updated_atk_cond.colossus_slayer_used && r.hp_before < tgt_stats.hp_max) {
+            int cs = roll(8);
+            r.total_damage += cs;
+            r.damage_breakdown.push_back({"colossus slayer", cs});
+            int overflow = std::max(0, cs - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - cs);
+            tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+            r.hp_after = tgt_stats.hp_cur;
+            r.target_down = (r.hp_after <= 0);
+            updated_atk_cond.colossus_slayer_used = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+            log_("Colossus Slayer: +{} damage to the wounded target", cs);
+        }
+
+        // Horde Breaker (L3 prey): once/turn a weapon hit lets you make another attack with the
+        // same weapon vs a different creature within 5 ft of the target. Flag availability; the GUI
+        // offers the extra attack (via _start_extra_attack) and sets horde_breaker_used.
+        if (atk_stats.char_level >= 3 && atk_stats.hunter_prey == HunterPrey::HordeBreaker &&
+            !updated_atk_cond.horde_breaker_used && !updated_atk_cond.horde_breaker_available) {
+            updated_atk_cond.horde_breaker_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
+    // Multiattack Defense (Hunter L7 Defensive Tactics): when a creature hits a Hunter who chose
+    // this option, that creature has Disadvantage on its OTHER attacks vs the Hunter this turn.
+    // Record the attacker on the defender; determineAdvantage consults the list.
+    if (r.hit && tgt_stats.character_class == CharacterClass::Ranger &&
+        tgt_stats.ranger_subclass == HunterPath && tgt_stats.char_level >= 7 &&
+        tgt_stats.defensive_tactics == DefensiveTactics::MultiattackDefense) {
+        Agent::Conditions tgt_upd = bm.getAgentConditions(action.target_idx);
+        auto& hb = tgt_upd.multiattack_def_hit_by;
+        if (std::find(hb.begin(), hb.end(), action.attacker_idx) == hb.end()) {
+            hb.push_back(action.attacker_idx);
+            bm.setAgentConditions(action.target_idx, tgt_upd);
+        }
+    }
+
+    // ── Gloom Stalker (Ranger subclass) — Dreadful Strike rider — AUTOMATIC ─
+    // The Dread Ambusher class action arms dreadful_strike_armed for one weapon hit this turn. On
+    // that hit, add 2d6 Psychic (2d8 at L11 Stalker's Flurry), apply the target's Psychic
+    // multiplier, then disarm. Mirrors the Hunter's Mark rider's HP/temp-HP bookkeeping; the
+    // updated condition is written back (the shared updated_atk_cond is persisted by later blocks).
+    if (r.hit && is_weapon_atk && updated_atk_cond.dreadful_strike_armed &&
+        atk_stats.dreadful_strike_dice > 0) {
+        const int type = static_cast<int>(MagicDamage_t::Psychic);
+        int raw = 0;
+        for (int i = 0; i < atk_stats.dreadful_strike_dice; ++i)
+            raw += roll(atk_stats.dreadful_strike_die_size);
+        const float mult = tgt_stats.magic_damage_multipliers[static_cast<std::size_t>(type)];
+        const int ds = static_cast<int>(static_cast<float>(raw) * mult);
+
+        r.total_damage += ds;
+        r.damage_breakdown.push_back({"dreadful strike", ds});
+        r.magic_damage_types.push_back(MagicDamage_t::Psychic);
+        int overflow = std::max(0, ds - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ds);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+        updated_atk_cond.dreadful_strike_armed = false;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        log_("Dreadful Strike: +{} Psychic ({}d{})", ds, atk_stats.dreadful_strike_dice,
+             atk_stats.dreadful_strike_die_size);
+    }
+
+    // ── Fey Wanderer (Ranger subclass) — Dreadful Strikes rider — AUTOMATIC ─
+    // L3: the first weapon hit each turn deals +1d4 Psychic (→1d6 at L11). No resource;
+    // once/turn via fey_dreadful_strikes_used. Distinct from the Gloom Stalker rider above
+    // (which is the armed Dread Ambusher one-shot); a creature only ever has one of the two.
+    if (r.hit && is_weapon_atk && atk_stats.fey_dreadful_strikes &&
+        !updated_atk_cond.fey_dreadful_strikes_used) {
+        const int type = static_cast<int>(MagicDamage_t::Psychic);
+        const int raw = roll(atk_stats.fey_dreadful_strikes_die_size);
+        const float mult = tgt_stats.magic_damage_multipliers[static_cast<std::size_t>(type)];
+        const int ds = static_cast<int>(static_cast<float>(raw) * mult);
+
+        r.total_damage += ds;
+        r.damage_breakdown.push_back({"dreadful strikes", ds});
+        r.magic_damage_types.push_back(MagicDamage_t::Psychic);
+        int overflow = std::max(0, ds - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ds);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+        updated_atk_cond.fey_dreadful_strikes_used = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        log_("Dreadful Strikes: +{} Psychic (1d{})", ds, atk_stats.fey_dreadful_strikes_die_size);
     }
 
     // ── Warlock Lifedrinker (on a pact-weapon hit) — AUTOMATIC ────────────

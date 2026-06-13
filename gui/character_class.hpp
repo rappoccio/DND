@@ -286,6 +286,31 @@ enum PaladinOath {
     NumPaladinOath
 };
 
+// ── Ranger Subclass Enum (2024 D&D) ─────────────────────────────────
+enum RangerSubclass {
+    RangerSubclassNone = 0,
+    HunterPath, BeastMasterPath, FeyWandererPath, GloomStalkerPath,
+    NumRangerSubclass
+};
+
+// ── Hunter subclass feature choices (2024 D&D) ──────────────────────
+// Hunter's Prey (L3) and Defensive Tactics (L7) each let you pick one option
+// (swappable on a rest). Stored on Stats; gate the combat hooks on them.
+enum HunterPrey {
+    HunterPreyNone = 0, ColossusSlayer, HordeBreaker, NumHunterPrey
+};
+enum DefensiveTactics {
+    DefensiveTacticsNone = 0, EscapeTheHorde, MultiattackDefense, NumDefensiveTactics
+};
+
+// ── Beast Master subclass: Primal Companion choice (2024 D&D) ────────
+// L3 conjures a Beast of the Land / Sea / Sky. The chosen form persists on the
+// Ranger's Stats so it can be re-summoned (the companion itself is a spawned
+// agent, summoner-linked like a summon). Land/Sea = Medium, Sky = Small flyer.
+enum PrimalCompanion {
+    PrimalCompanionNone = 0, PrimalLand, PrimalSea, PrimalSky, NumPrimalCompanion
+};
+
 // ── Origin Struct (Background with abilities, feat, and skills) ──────────
 struct Origin {
     Background background;
