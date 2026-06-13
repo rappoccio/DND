@@ -2341,18 +2341,28 @@ bool CombatEngine::canCastCounterspell(const BattleMap& bm, int idx, int caster_
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return false;
     if (idx == caster_idx) return false;                          // can't counter your own spell
+    if (areAllies(bm, idx, caster_idx)) return false;             // never counter a teammate's spell
     const Agent::Conditions cond = bm.getAgentConditions(idx);
     if (cond.reaction_used || cond.incapacitated) return false;
     const Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_cur <= 0) return false;
-    bool has_slot = false;                                        // Counterspell needs an L3+ slot
-    for (int i = 2; i < 9; ++i)
-        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { has_slot = true; break; }
-    if (!has_slot) return false;
+    // Must know Counterspell and be able to pay for it. NPC innate casters pay an N/day use of the
+    // spell itself (they have no spell slots); slot-based casters spend an L3+ spell slot.
     bool knows = false;
+    int cs_uses_max = 0, cs_uses_remaining = 0;
     for (const auto& sp : bm.getAgentSpells(idx))
-        if (sp.name == "Counterspell") { knows = true; break; }
+        if (sp.name == "Counterspell") {
+            knows = true; cs_uses_max = sp.uses_max; cs_uses_remaining = sp.uses_remaining; break;
+        }
     if (!knows) return false;
+    if (s.is_npc) {
+        if (cs_uses_max <= 0 || cs_uses_remaining <= 0) return false;
+    } else {
+        bool has_slot = false;                                    // Counterspell needs an L3+ slot
+        for (int i = 2; i < 9; ++i)
+            if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { has_slot = true; break; }
+        if (!has_slot) return false;
+    }
     // "when you see a creature within 60 feet casting a spell": LOS + 60 ft to the caster.
     const PlacedAgent& rpa = agents[static_cast<std::size_t>(idx)];
     const PlacedAgent& cpa = agents[static_cast<std::size_t>(caster_idx)];
@@ -2462,18 +2472,11 @@ bool CombatEngine::maybeDefenderShieldInlineSpell(BattleMap& bm, const SpellActi
 bool CombatEngine::applyCounterspell(BattleMap& bm, int reactor_idx, int caster_idx) noexcept
 {
     if (!canCastCounterspell(bm, reactor_idx, caster_idx)) return false;
-    // Spend the counterspeller's lowest L3+ slot + its reaction (regardless of the save outcome —
-    // Counterspell itself is cast and the slot is gone; only the *countered* spell keeps its slot).
-    Agent::Stats rs = bm.getAgentStats(reactor_idx);
-    for (int i = 2; i < 9; ++i)
-        if (rs.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) {
-            rs.spell_slots_remaining[static_cast<std::size_t>(i)] -= 1; break;
-        }
-    bm.setAgentStats(reactor_idx, rs);
-    Agent::Conditions rc = bm.getAgentConditions(reactor_idx);
-    rc.reaction_used = true;
-    bm.setAgentConditions(reactor_idx, rc);
+    // Spend the counterspeller's payment + its reaction (regardless of the save outcome — Counterspell
+    // itself is cast and the resource is gone; only the *countered* spell keeps its slot).
+    spendCounterspellCost(bm, reactor_idx);
     // 2024 Counterspell: the original caster makes a CON save vs the counterspeller's spell save DC.
+    const Agent::Stats rs = bm.getAgentStats(reactor_idx);
     const int dc = spellSaveDc(rs);
     const Agent::Stats cs = bm.getAgentStats(caster_idx);
     const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
@@ -2526,20 +2529,35 @@ bool CombatEngine::isCounterspellChoice(const ReactionCtx& ctx, const ReactionRe
     return opt.kind == ReactionOption::Feature && opt.feature == "Counterspell";
 }
 
-void CombatEngine::castCounterspell(BattleMap& bm, int reactor, int /*target_caster*/) noexcept
+// Spend the cost of casting Counterspell for this reactor and mark its reaction used. NPC innate
+// casters pay an N/day use of their Counterspell spell (they hold no spell slots); slot-based casters
+// spend their lowest L3+ slot. (Eligibility was validated by canCastCounterspell.)
+void CombatEngine::spendCounterspellCost(BattleMap& bm, int reactor) noexcept
 {
-    // Declaration only: spend the counterspeller's lowest L3+ slot + its reaction. The CON save is
-    // deferred to resolveCounterspellEffect (pop time) so a deeper Counterspell can negate this one
-    // first. (canCastCounterspell was already validated at enumeration/choice time.)
-    Agent::Stats rs = bm.getAgentStats(reactor);
-    for (int i = 2; i < 9; ++i)
-        if (rs.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) {
-            rs.spell_slots_remaining[static_cast<std::size_t>(i)] -= 1; break;
-        }
-    bm.setAgentStats(reactor, rs);
+    PlacedAgent& pa = bm.placedAgentMut(reactor);
+    Agent::Stats& s = pa.agent->getStats();
+    if (s.is_npc) {
+        for (auto& sp : pa.spells)
+            if (sp.name == "Counterspell" && sp.uses_max > 0) {
+                sp.uses_remaining = std::max(0, sp.uses_remaining - 1); break;
+            }
+    } else {
+        for (int i = 2; i < 9; ++i)
+            if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) {
+                s.spell_slots_remaining[static_cast<std::size_t>(i)] -= 1; break;
+            }
+    }
     Agent::Conditions rc = bm.getAgentConditions(reactor);
     rc.reaction_used = true;
     bm.setAgentConditions(reactor, rc);
+}
+
+void CombatEngine::castCounterspell(BattleMap& bm, int reactor, int /*target_caster*/) noexcept
+{
+    // Declaration only: spend the counterspeller's payment + its reaction. The CON save is deferred to
+    // resolveCounterspellEffect (pop time) so a deeper Counterspell can negate this one first.
+    // (canCastCounterspell was already validated at enumeration/choice time.)
+    spendCounterspellCost(bm, reactor);
     log_("{} casts Counterspell, interrupting the spell", agentName(bm, reactor));
 }
 

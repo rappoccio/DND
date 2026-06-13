@@ -3922,20 +3922,14 @@
   "description": "You place a curse on a creature that you can see within range. Until the spell ends, you deal an extra 1d6 Necrotic damage to the target whenever you hit it with an attack roll. Also, choose one ability when you cast the spell. The target has Disadvantage on ability checks made with the chosen ability. If the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action on a later turn to curse a new creature.",
   "type": "Harm",
   "geometry": "Single",
-  "attack_type": "AttackRoll",
+  "attack_type": "Automatic",
   "save_ability": "SaveDex",
   "range": 90,
   "radius": 0,
   "width": 0,
   "length": 0,
   "duration": 1,
-  "magic_damage_types": [
-   {
-    "type": "Necrotic",
-    "num_dice": 1,
-    "die_size": 6
-   }
-  ],
+  "magic_damage_types": [],
   "physical_damage_types": [],
   "level": 1,
   "upcast_dice_bonus": 0,
@@ -4101,20 +4095,15 @@
   "description": "You magically mark one creature you can see within range as your quarry. Until the spell ends, you deal an extra 1d6 Force damage to the target whenever you hit it with an attack roll. You also have Advantage on any Wisdom (Perception or Survival) check you make to find it. If the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action to move the mark to a new creature you can see within range.",
   "type": "Harm",
   "geometry": "Single",
-  "attack_type": "AttackRoll",
+  "attack_type": "Automatic",
   "save_ability": "SaveDex",
+  "casting_time": "BonusAction",     
   "range": 90,
   "radius": 0,
   "width": 0,
   "length": 0,
   "duration": 1,
-  "magic_damage_types": [
-   {
-    "type": "Force",
-    "num_dice": 1,
-    "die_size": 6
-   }
-  ],
+  "magic_damage_types": [],
   "physical_damage_types": [],
   "level": 1,
   "upcast_dice_bonus": 0,

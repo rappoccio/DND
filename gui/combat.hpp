@@ -1755,6 +1755,8 @@ private:
     // snapshot the bottom cast's result/countered when the stack empties.
     void finalizeAndPop(BattleMap& bm);
     // Counterspell-as-nested-cast:
+    //  spendCounterspellCost spends the reactor's payment (NPC innate use, else L3+ slot) + reaction.
+    void spendCounterspellCost(BattleMap& bm, int reactor) noexcept;
     //  castCounterspell spends the reactor's L3+ slot + reaction (declaration only — no save yet).
     void castCounterspell(BattleMap& bm, int reactor, int target_caster) noexcept;
     //  pushCounterspell pushes a Counterspell cast targeting target_caster onto cast_stack_.

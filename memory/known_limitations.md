@@ -1422,6 +1422,9 @@ N-faction team system (`PlacedAgent.faction`, int; 0 = neutral/unassigned). `Bat
   un-teamed encounters / old saves).
 - **Rule 4 (GUI confirm):** `_confirm_friendly_harm` pops a ContextMenu before a harmful weapon attack or
   Harm spell on a same-team target (`_pending_spell_is_harm` gates spells; heals never prompt).
+- **Rule 5 (opportunity attacks):** `detectProvokes` (combat_movement.cpp) skips `areAllies(bm, mover, r)`
+  reactors — teammates don't OA each other when an ally leaves their reach (added 2026-06-13; enemies and
+  neutrals still provoke). Regression: `test_reactions.py::test_ally_does_not_provoke_oa`.
 GUI: `_show_visible_targets_popup` annotates header + each line with team; `TeamPickerDialog` (dialogs.py,
 opened from an agent's right-click menu "Set Teams…") cycles each agent neutral→red→blue. Faction persists
 in save/load (top-level `"faction"` key; defaults 0 for old saves). Summons inherit the summoner's faction

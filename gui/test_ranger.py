@@ -927,6 +927,89 @@ def test_companion_movement_modes():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Phase 4 — Class utility (Tireless / Nature's Veil / Feral Senses)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _ranger_stats(level, wis=16):
+    """A bare Stats configured as a plain (no-subclass) Ranger of the given level."""
+    s = rpg.Stats()
+    s.wis = wis
+    s.set_class_level(rpg.CharacterClass.Ranger, level)
+    s.initialize_class_resources(rpg.CharacterClass.Ranger, level)
+    return s
+
+
+def test_tireless_resource_scales_with_wis():
+    # Uses = max(1, WIS mod) per Long Rest, only from L10.
+    assert _ranger_stats(9).get_resource("Tireless") is None, "no Tireless before L10"
+    s = _ranger_stats(10, wis=16)   # WIS +3
+    tl = s.get_resource("Tireless")
+    assert tl is not None and tl.max == 3, f"uses = WIS mod (3), got {tl.max if tl else None}"
+    low = _ranger_stats(10, wis=8)  # WIS -1 → min one use
+    tll = low.get_resource("Tireless")
+    assert tll is not None and tll.max == 1, f"at least 1 use even with negative WIS mod, got {tll.max}"
+    print("✅ test_tireless_resource_scales_with_wis")
+
+
+def test_natures_veil_resource_l14():
+    assert _ranger_stats(13).get_resource("Nature's Veil") is None, "no Nature's Veil before L14"
+    s = _ranger_stats(14, wis=16)   # WIS +3
+    nv = s.get_resource("Nature's Veil")
+    assert nv is not None and nv.max == 3, f"uses = WIS mod (3), got {nv.max if nv else None}"
+    print("✅ test_natures_veil_resource_l14")
+
+
+def test_feral_senses_blindsight_l18():
+    assert _ranger_stats(17).blindsight_range == 0, "no Blindsight before L18"
+    assert _ranger_stats(18).blindsight_range == 30, "Feral Senses grants Blindsight 30 ft at L18"
+    print("✅ test_feral_senses_blindsight_l18")
+
+
+def _hunters_mark_spell():
+    """Mirrors spells.json: Hunter's Mark just marks the quarry — Automatic (no attack roll / no save),
+    no on-cast damage. The +1d6 lives in the marked-target rider (applyAttackResult), not here."""
+    sp = rpg.Spell()
+    sp.name = "Hunter's Mark"
+    sp.level = 1
+    sp.geometry = rpg.SpellGeometry.Single
+    sp.attack_type = rpg.SpellAttack.Automatic
+    sp.range = 90
+    sp.duration = 1
+    sp.requires_concentration = True
+    return sp
+
+
+def test_hunters_mark_cast_no_attack_no_damage():
+    """Casting Hunter's Mark marks the quarry with no attack roll, no save, and no on-cast damage.
+    Regression: it used to be attack_type=AttackRoll carrying a 1d6, so a high-AC target could dodge
+    the mark and a hit dealt phantom damage on cast."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    ranger = _place(engine, bm, "Ranger", 5, 5)
+    quarry = _place(engine, bm, "Quarry", 6, 5)
+    engine.set_agent_spells(bm, ranger, [_hunters_mark_spell()])
+    rs = engine.get_agent_stats(bm, ranger)
+    rs.spell_slots_remaining = [9, 0, 0, 0, 0, 0, 0, 0, 0]
+    rs.spellcasting_ability = 4  # WIS
+    engine.set_agent_stats(bm, ranger, rs)
+    qs = engine.get_agent_stats(bm, quarry)
+    qs.hp_max = 50; qs.hp_cur = 50; qs.base_ac = 100   # unhittable by any attack roll
+    engine.set_agent_stats(bm, quarry, qs)
+
+    action = rpg.SpellAction()
+    action.caster_idx = ranger
+    action.spell_idx = 0
+    action.target_indices = [quarry]
+    engine.resolve_cast(bm, action)
+
+    assert engine.get_agent_stats(bm, quarry).hp_cur == 50, "Hunter's Mark deals no damage on cast"
+    assert engine.get_agent_stats(bm, ranger).hunters_mark_target == quarry, \
+        "the quarry is marked despite AC 100 (no attack roll gates the mark)"
+    c = engine.get_agent_conditions(bm, ranger)
+    assert c.concentrating and c.concentrating_on == "Hunter's Mark", "the caster concentrates on the mark"
+    print("✅ test_hunters_mark_cast_no_attack_no_damage")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

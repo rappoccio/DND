@@ -169,6 +169,28 @@ def test_used_reaction_blocks_oa():
     print("✅ test_used_reaction_blocks_oa passed")
 
 
+def test_ally_does_not_provoke_oa():
+    """A teammate (same non-zero faction) does not get an OA when an ally leaves its reach;
+    an enemy on a different faction still does."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m     = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
+    ally  = add_agent_to_battle(engine, bm, create_test_agent("Ally",  4, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Enemy", 6, 5))
+    bm.set_agent_faction(m, 1); bm.set_agent_faction(ally, 1)   # red team
+    bm.set_agent_faction(enemy, 2)                              # blue team
+    ready_mover(engine, bm, m)
+    equip_oa_weapon(engine, bm, ally); equip_oa_weapon(engine, bm, enemy)
+
+    dec = ScriptedDecider(pick_weapon)
+    engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(5, 8), rpg.MovementType.Walk)  # leaves both ally and enemy
+
+    reactors = [s[0] for s in dec.seen]
+    assert reactors == [enemy], f"only the enemy should provoke, got reactors={reactors}"
+    assert not reaction_used(engine, bm, ally), "the ally must not spend a reaction on a teammate"
+    print("✅ test_ally_does_not_provoke_oa passed")
+
+
 def test_incapacitated_reactor_makes_no_oa():
     bm = setup_battle_map(); engine = setup_combat_engine()
     m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
@@ -590,6 +612,7 @@ def run_all():
     test_leaving_both_threats_provokes_both()
     test_per_step_graze_provokes_even_when_destination_is_clear()
     test_used_reaction_blocks_oa()
+    test_ally_does_not_provoke_oa()
     test_incapacitated_reactor_makes_no_oa()
     test_disengage_suppresses_oa()
     test_sentinel_provokes_oa_despite_disengage()

@@ -878,6 +878,12 @@ class App:
         self.btn_cbt_dread_ambusher = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Dread Ambusher",
                                           (80, 90, 130), (110, 120, 170), self.font_md)
+        self.btn_cbt_tireless = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Tireless (Magic Action)",
+                                          (90, 150, 120), (120, 185, 155), self.font_md)
+        self.btn_cbt_natures_veil = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Nature's Veil (Bonus Action)",
+                                          (70, 120, 90), (100, 155, 120), self.font_md)
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
@@ -4122,6 +4128,49 @@ class App:
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
         self._combat_log_add(
             f"{self.bm.placed_agents[agent_idx].name}: Second Wind! Rolled {roll} + {stats.char_level} level = {healing} HP restored ({old_hp} → {stats.hp_cur}).")
+        self.bonus_used = True
+
+    def _use_tireless(self, agent_idx: int):
+        """Ranger L10 Tireless: Magic action, grant self 1d8 + WIS mod (min 1) temp HP."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        tl = stats.get_resource("Tireless")
+        if not (tl and tl.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: No Tireless uses left.")
+            return
+        wis_mod = (stats.wis - 10) // 2
+        amount = max(1, self.combat.roll(8) + wis_mod)
+        old_thp = stats.temp_hp
+        # Temp HP never stacks — take the higher (5e semantics).
+        if amount > stats.temp_hp:
+            stats.temp_hp = amount
+        tl.spend(1)
+        stats.resources["Tireless"] = tl
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
+        self._combat_log_add(
+            f"{self.bm.placed_agents[agent_idx].name}: Tireless — {amount} temp HP "
+            f"(was {old_thp}, now {stats.temp_hp}).")
+        self.action_used = True
+
+    def _use_natures_veil(self, agent_idx: int):
+        """Ranger L14 Nature's Veil: Bonus action, turn Invisible (drops on attack)."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        nv = stats.get_resource("Nature's Veil")
+        if not (nv and nv.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: No Nature's Veil uses left.")
+            return
+        nv.spend(1)
+        stats.resources["Nature's Veil"] = nv
+        self.combat.set_agent_stats(self.bm, agent_idx, stats)
+        cond = self.combat.get_agent_conditions(self.bm, agent_idx)
+        cond.invisible = True
+        self.combat.set_agent_conditions(self.bm, agent_idx, cond)
+        self._combat_log_add(
+            f"{self.bm.placed_agents[agent_idx].name}: Nature's Veil — now invisible "
+            f"until the end of your next turn.")
         self.bonus_used = True
 
     def _use_action_surge(self, agent_idx: int):
@@ -8551,6 +8600,34 @@ class App:
                         self.btn_cbt_dread_ambusher.draw(self.screen)
                         y += B + gap
 
+            # Tireless button — Ranger (L10+): Magic action, 1d8 + WIS-mod temp HP to self.
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Ranger and
+                        stats.char_level >= 10):
+                    tl = stats.get_resource("Tireless")
+                    if tl and tl.current > 0:
+                        self.btn_cbt_tireless.text = f"Tireless ({tl.current})"
+                        self.btn_cbt_tireless.rect.x = lx
+                        self.btn_cbt_tireless.rect.y = y
+                        self.btn_cbt_tireless.rect.w = W
+                        self.btn_cbt_tireless.draw(self.screen)
+                        y += B + gap
+
+            # Nature's Veil button — Ranger (L14+): Bonus action, turn Invisible.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Ranger and
+                        stats.char_level >= 14):
+                    nv = stats.get_resource("Nature's Veil")
+                    if nv and nv.current > 0:
+                        self.btn_cbt_natures_veil.text = f"Nature's Veil ({nv.current})"
+                        self.btn_cbt_natures_veil.rect.x = lx
+                        self.btn_cbt_natures_veil.rect.y = y
+                        self.btn_cbt_natures_veil.rect.w = W
+                        self.btn_cbt_natures_veil.draw(self.screen)
+                        y += B + gap
+
             # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
             # the Land/Sea/Sky, or dismiss the active companion (label toggles).
             if 0 <= cur_idx < len(agents):
@@ -9494,8 +9571,10 @@ class App:
 
             # ── Handle jump clicks ────────────────────────────────────────────
             if self.jump_overlay_active and event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                if on_map:
-                    cell = self._screen_to_cell(*event.pos)
+                cell = self._screen_to_cell(*event.pos) if on_map else None
+                # on_map only bounds the map image; _screen_to_cell still returns None for a
+                # click outside the detected grid, so guard against that before dereferencing.
+                if cell is not None:
                     # Check if clicked cell is in jump range (compare by coordinates)
                     is_jump_cell = any(c.col == cell.col and c.row == cell.row for c in self.jump_reachable_cells)
                     if is_jump_cell:
@@ -9946,6 +10025,14 @@ class App:
                                     self._combat_log_add(
                                         f"{self.bm.placed_agents[idx].name}: Dread Ambusher — "
                                         f"next weapon hit deals +{dn}d{dz} Psychic, +10 ft Speed.")
+                    if self.btn_cbt_tireless.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_tireless(idx)
+                    if self.btn_cbt_natures_veil.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_natures_veil(idx)
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()
                     if self.btn_cbt_pass_bonus.clicked(event):

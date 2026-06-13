@@ -457,6 +457,31 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         fey_dreadful_strikes = true;
         fey_dreadful_strikes_die_size = (level >= 11) ? 6 : 4;
       }
+
+      // ── Class utility (no subclass gate) ────────────────────────────────
+      // Tireless (L10): a Magic action grants yourself 1d8 + WIS mod (min 1) temp
+      // HP. Uses = max(1, WIS mod) per Long Rest. (The RAW Exhaustion-reduction on
+      // a short rest is omitted — no exhaustion-on-short-rest system.)
+      if (level >= 10) {
+        int uses = std::max(1, _mod(wis));
+        Resource tl("Tireless", uses, 0);
+        tl.long_rest_regen = uses;
+        resources["Tireless"] = tl;
+      }
+
+      // Nature's Veil (L14): a Bonus Action turns you Invisible until the end of
+      // your next turn. Uses = max(1, WIS mod) per Long Rest. (The "ends end of next
+      // turn" timer is approximated by the base Invisible drop-on-attack behaviour.)
+      if (level >= 14) {
+        int uses = std::max(1, _mod(wis));
+        Resource nv("Nature's Veil", uses, 0);
+        nv.long_rest_regen = uses;
+        resources["Nature's Veil"] = nv;
+      }
+
+      // Feral Senses (L18): gain Blindsight out to 30 ft (re-derived on init,
+      // honoured by piercesInvisibility). No save/load — recomputed like Roving.
+      if (level >= 18) blindsight_range = std::max(blindsight_range, 30);
       break;
     }
 

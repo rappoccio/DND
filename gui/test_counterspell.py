@@ -383,6 +383,76 @@ def test_counter_counterspell_begin_submit_path():
     print("✅ test_counter_counterspell_begin_submit_path passed")
 
 
+def _cs_uses(engine, bm, idx):
+    for sp in engine.get_agent_spells(bm, idx):
+        if sp.name == "Counterspell":
+            return sp.uses_remaining
+    return -1
+
+
+def test_npc_counterspell_uses_not_slots():
+    """An NPC innate caster holds no spell slots — it counters by spending an N/day USE of Counterspell.
+    Regression: canCastCounterspell used to require an L3+ spell slot, so NPCs (Archmage, etc.) never
+    got the window even though they know Counterspell."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster, victim, mage = _setup(engine, bm, high_dc=True, caster_con=1, l3_slots=0)
+    engine.init_npc_spell_groups(bm, mage, {3: ["Counterspell"]})  # is_npc=true, 3/day, no slots
+    assert _cs_uses(engine, bm, mage) == 3, "init seeded 3 daily uses"
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(caster, victim))
+
+    assert rpg.ReactionWindow.OnDeclareCast in dec.windows, "an NPC with a Counterspell USE opens the window"
+    assert engine.last_cast_countered(), "the NPC counters despite holding no spell slots"
+    assert _hp(engine, bm, victim) == 40, "countered Magic Missile deals no damage"
+    assert _cs_uses(engine, bm, mage) == 2, "one N/day Counterspell use is spent"
+    assert _l3(engine, bm, mage) == 0, "no spell slot was spent (it had none)"
+    assert _react(engine, bm, mage), "Counterspell still consumes the reaction"
+    print("✅ test_npc_counterspell_uses_not_slots passed")
+
+
+def test_npc_counterspell_exhausted_no_window():
+    """An NPC whose Counterspell has 0 uses left can't pay → no window."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster, victim, mage = _setup(engine, bm, high_dc=True, caster_con=1, l3_slots=0)
+    engine.init_npc_spell_groups(bm, mage, {3: ["Counterspell"]})
+    spells = engine.get_agent_spells(bm, mage)
+    spells[0].uses_remaining = 0                       # drain the daily uses
+    engine.set_agent_spells(bm, mage, spells)
+    assert _cs_uses(engine, bm, mage) == 0
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(caster, victim))
+    assert dec.windows == [], "no Counterspell uses left → no window"
+    assert _hp(engine, bm, victim) < 40, "spell resolves"
+    print("✅ test_npc_counterspell_exhausted_no_window passed")
+
+
+def test_ally_does_not_counter():
+    """A would-be counterspeller on the caster's own team is never offered the window.
+    Regression: Counterspell was enrolling teammates (no faction gate)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster, victim, mage = _setup(engine, bm, high_dc=True, caster_con=1)
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(mage, 1)                      # same team as the caster
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(caster, victim))
+    assert dec.windows == [], "an ally must not be offered to counter its teammate's spell"
+    assert _hp(engine, bm, victim) < 40, "the spell resolves uninterrupted"
+    print("✅ test_ally_does_not_counter passed")
+
+
+def test_enemy_still_counters_with_factions():
+    """Sanity: a counterspeller on a DIFFERENT team is still offered the window."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster, victim, mage = _setup(engine, bm, high_dc=True, caster_con=1)
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(mage, 2)                      # opposing team
+    dec = CounterspellDecider(cast=True); engine.set_decider(dec)
+    engine.resolve_cast(bm, _mm_action(caster, victim))
+    assert rpg.ReactionWindow.OnDeclareCast in dec.windows, "an enemy still counters across factions"
+    assert engine.last_cast_countered(), "the enemy's Counterspell lands"
+    print("✅ test_enemy_still_counters_with_factions passed")
+
+
 def run_all():
     test_counterspell_counters_on_failed_save()
     test_counterspell_fails_on_successful_save()
@@ -397,6 +467,10 @@ def run_all():
     test_counter_counterspell_depth3()
     test_cannot_counter_own_counterspell()
     test_counter_counterspell_begin_submit_path()
+    test_npc_counterspell_uses_not_slots()
+    test_npc_counterspell_exhausted_no_window()
+    test_ally_does_not_counter()
+    test_enemy_still_counters_with_factions()
     print("\nAll Counterspell (OnDeclareCast) tests passed ✅")
 
 
