@@ -545,6 +545,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("multiattack_def_hit_by", &Agent::Conditions::multiattack_def_hit_by)
         .def_readwrite("dreadful_strike_armed", &Agent::Conditions::dreadful_strike_armed)
         .def_readwrite("dread_ambusher_used", &Agent::Conditions::dread_ambusher_used)
+        .def_readwrite("sudden_strike_available", &Agent::Conditions::sudden_strike_available)
         .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
@@ -1200,6 +1201,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("damage_type_override", &SpellAction::damage_type_override,
              "Cast-time element choice (Chromatic Orb, Sorcerous Burst): MagicDamage value to set this\n"
              "cast's damage type to (-1 = use the spell's stored type). Rewrites every damage roll's type.")
+        .def_readwrite("chromatic_leap_targets", &SpellAction::chromatic_leap_targets,
+             "Chromatic Orb leap chain (GUI picker): ordered creatures the orb should leap to on\n"
+             "matching d8s, consumed one per leap. Each is validated (within 30 ft of the previous\n"
+             "hop, living non-ally, not already hit); empty/invalid entries fall back to nearest enemy.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
@@ -2228,6 +2233,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "reactor's reaction, and record the reduction in result.damage_breakdown. Re-validates\n"
              "can_uncanny_dodge. Returns True iff applied. The OnHit window (begin_attack/submit_decision)\n"
              "drives this for the GUI; auto/RL runs it inline via maybeDefenderOnHitInline.")
+        .def("can_superior_hunter_defense", &CombatEngine::canSuperiorHunterDefense,
+             py::arg("battle_map"), py::arg("target_idx"),
+             "True iff target_idx (Hunter Ranger L15+, reaction free, not incapacitated, alive) may use\n"
+             "Superior Hunter's Defense to resist (halve) the triggering damage. OnHit defender window gate.")
+        .def("apply_superior_hunter_defense", &CombatEngine::applySuperiorHunterDefense,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Superior Hunter's Defense (on-hit DEFENDER reaction): halve result.total_damage (round down),\n"
+             "spend the reactor's reaction, record the reduction. Re-validates can_superior_hunter_defense.\n"
+             "Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
         .def("can_defensive_duelist", &CombatEngine::canDefensiveDuelist,
              py::arg("battle_map"), py::arg("action"), py::arg("result"),
              "True iff action's target may use Defensive Duelist vs the just-resolved attack: has the feat,\n"

@@ -1010,6 +1010,133 @@ def test_hunters_mark_cast_no_attack_no_damage():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Phase 3 — Hunter L11 Superior Hunter's Prey (HM-damage splash within 30 ft)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_superior_hunters_prey_splashes_second_creature():
+    bm, engine, a, t, other = _fresh()
+    _make_hunter(engine, bm, a, 11)
+    _set_mark(engine, bm, a, t, dice=1, die=6)
+    before = engine.get_agent_stats(bm, other).hp_cur
+    _land(engine, bm, a, t)
+    after = engine.get_agent_stats(bm, other).hp_cur
+    assert after < before, \
+        f"Superior Hunter's Prey splashes HM damage to a 2nd creature within 30 ft ({before}->{after})"
+    assert engine.get_agent_conditions(bm, a).superior_prey_used, "the splash sets the once/turn flag"
+    print("✅ test_superior_hunters_prey_splashes_second_creature")
+
+
+def test_superior_hunters_prey_once_per_turn():
+    bm, engine, a, t, other = _fresh()
+    _make_hunter(engine, bm, a, 11)
+    _set_mark(engine, bm, a, t, dice=1, die=6)
+    _land(engine, bm, a, t)
+    h1 = engine.get_agent_stats(bm, other).hp_cur   # after the one allowed splash
+    # Same turn (no turn() reset): further hits on the mark must NOT splash again.
+    for _ in range(20):
+        _attack(engine, bm, a, t)
+        _target(engine, bm, t, hp=400)              # keep the mark alive so we keep hitting it
+    assert engine.get_agent_stats(bm, other).hp_cur == h1, "Superior Hunter's Prey is once per turn"
+    print("✅ test_superior_hunters_prey_once_per_turn")
+
+
+def test_superior_hunters_prey_requires_l11():
+    bm, engine, a, t, other = _fresh()
+    _make_hunter(engine, bm, a, 10)                 # one level short
+    _set_mark(engine, bm, a, t, dice=1, die=6)
+    before = engine.get_agent_stats(bm, other).hp_cur
+    _land(engine, bm, a, t)
+    assert engine.get_agent_stats(bm, other).hp_cur == before, "no splash before Hunter L11"
+    assert not engine.get_agent_conditions(bm, a).superior_prey_used
+    print("✅ test_superior_hunters_prey_requires_l11")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Phase 3 — Hunter L15 Superior Hunter's Defense (resist a hit — OnHit reaction)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _SHDDecider(rpg.CombatDecider):
+    """At an OnHit defender window, pick Superior Hunter's Defense (else Skip)."""
+    def __init__(self):
+        super().__init__()
+        self.onhit_offers = 0
+    def choose_reaction(self, ctx):
+        resp = rpg.ReactionResponse(); resp.option = -1
+        if ctx.window == rpg.ReactionWindow.OnHit:
+            self.onhit_offers += 1
+            for i, o in enumerate(ctx.options):
+                if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "SuperiorHuntersDefense":
+                    resp.option = i
+                    break
+        return resp
+
+
+def test_superior_hunters_defense_gate_l15():
+    bm, engine, a, t, other = _fresh()
+    _make_hunter(engine, bm, t, 14)
+    assert not engine.can_superior_hunter_defense(bm, t), "no Superior Hunter's Defense before L15"
+    _make_hunter(engine, bm, t, 15)
+    assert engine.can_superior_hunter_defense(bm, t), "Hunter L15 may use Superior Hunter's Defense"
+    # Spending the reaction closes the window.
+    c = engine.get_agent_conditions(bm, t); c.reaction_used = True; engine.set_agent_conditions(bm, t, c)
+    assert not engine.can_superior_hunter_defense(bm, t), "no reaction left → unavailable"
+    print("✅ test_superior_hunters_defense_gate_l15")
+
+
+def test_superior_hunters_defense_halves_damage():
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = _place(engine, bm, "Brute", 5, 5)
+    hunter = _place(engine, bm, "Hunter", 6, 5)
+    # Big, reliable damage so the halving is unambiguous.
+    w = _weapon(die=6)
+    w.bonus_damage = 100
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+    _make_hunter(engine, bm, hunter, 15)
+    ht = engine.get_agent_stats(bm, hunter); ht.base_ac = 10; ht.hp_max = 500; ht.hp_cur = 500
+    engine.set_agent_stats(bm, hunter, ht)
+
+    dec = _SHDDecider(); engine.set_decider(dec)
+    r = _land(engine, bm, atk, hunter)
+    assert dec.onhit_offers >= 1, "the OnHit defender window should have opened for the Hunter"
+    reduction = None
+    for label, amount in r.damage_breakdown:
+        if label == "superior hunter's defense":
+            reduction = amount
+    assert reduction is not None and reduction < 0, \
+        f"Superior Hunter's Defense records a negative reduction, got {reduction}"
+    assert sum(e[1] for e in r.damage_breakdown) == r.total_damage, "breakdown must sum to total_damage"
+    assert engine.get_agent_conditions(bm, hunter).reaction_used, "the reaction is consumed"
+    engine.set_decider(None)
+    print("✅ test_superior_hunters_defense_halves_damage")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Phase 3 — Gloom Stalker L11 Stalker's Flurry: Sudden Strike (free extra attack)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_sudden_strike_available_at_l11():
+    bm, engine, a, t, other = _fresh()
+    _make_gloom(engine, bm, a, level=11)
+    _arm_dreadful(engine, bm, a)
+    _land(engine, bm, a, t)
+    assert engine.get_agent_conditions(bm, a).sudden_strike_available, \
+        "a Dreadful Strike hit at L11 grants the Sudden Strike free extra attack"
+    print("✅ test_sudden_strike_available_at_l11")
+
+
+def test_sudden_strike_not_before_l11():
+    bm, engine, a, t, other = _fresh()
+    _make_gloom(engine, bm, a, level=10)            # Dreadful Strike fires, Stalker's Flurry does not
+    _arm_dreadful(engine, bm, a)
+    r = _land(engine, bm, a, t)
+    assert _dreadful_amount(r) is not None, "Dreadful Strike still fires at L10"
+    assert not engine.get_agent_conditions(bm, a).sudden_strike_available, \
+        "no Sudden Strike before Gloom Stalker L11"
+    print("✅ test_sudden_strike_not_before_l11")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

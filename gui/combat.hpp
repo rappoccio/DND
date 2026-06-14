@@ -147,6 +147,12 @@ struct SpellAction {
     // magic_damage_roll's type to this MagicDamage_t for this cast only (no persistent
     // mutation). Independent of Transmuted metamagic. -1 = use the spell's stored type.
     int damage_type_override = -1;
+    // Chromatic Orb leap chain (GUI picker): ordered creatures the player wants the orb to
+    // leap to, consumed one per leap as matching d8s occur. Each pick is still validated at
+    // its hop (within 30 ft of the previous target, a living non-ally, not already hit). When
+    // the list is empty/exhausted or a pick is invalid, the engine auto-selects the nearest
+    // eligible enemy — so NPC, RL and headless casts (which have no picker) still leap.
+    std::vector<int> chromatic_leap_targets;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1359,6 +1365,13 @@ public:
     // Apply Uncanny Dodge: halve r.total_damage (round down), spend the reactor's reaction, and record
     // the reduction in r.damage_breakdown (negative). Re-validates canUncannyDodge. Returns true on use.
     bool applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResult& r);
+
+    // Superior Hunter's Defense (Hunter Ranger L15) — OnHit defender reaction. When the Hunter takes
+    // damage it may spend its reaction to resist (halve) that damage. Eligibility + apply mirror
+    // Uncanny Dodge; the "Resistance to that type until end of turn" persistence is v1-simplified to
+    // the triggering instance (see known_limitations.md).
+    [[nodiscard]] bool canSuperiorHunterDefense(const BattleMap& bm, int target_idx) const;
+    bool applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, AttackResult& r);
 
     // Defensive Duelist (feat) — OnHit defender reaction. When a creature HITS the target with a MELEE
     // attack and the target wields a Finesse melee weapon, it may add its Proficiency Bonus to AC against

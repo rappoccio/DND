@@ -634,6 +634,7 @@ namespace rpg {
       std::vector<int> multiattack_def_hit_by{}; // Hunter L7 Multiattack Defense: indices of creatures that hit me this turn (their other attacks vs me get Disadvantage)
       bool dreadful_strike_armed{false};    // Gloom Stalker Dread Ambusher: next weapon hit this turn deals +Xd6 Psychic (consumed on the hit)
       bool dread_ambusher_used{false};      // Gloom Stalker Dread Ambusher class action already used this turn (once/turn)
+      bool sudden_strike_available{false};  // Gloom Stalker L11 Stalker's Flurry: a Dreadful Strike hit grants one free extra attack (GUI prompt)
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool vitality_used_this_turn{false};  // World Tree Vitality of the Tree turn-start grant used this turn
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
@@ -766,6 +767,7 @@ namespace rpg {
       conditions_.multiattack_def_hit_by.clear();
       conditions_.dreadful_strike_armed        = false;
       conditions_.dread_ambusher_used          = false;
+      conditions_.sudden_strike_available      = false;
       conditions_.vitality_used_this_turn      = false;
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;

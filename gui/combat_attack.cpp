@@ -553,6 +553,38 @@ bool CombatEngine::applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResul
     return true;
 }
 
+// Superior Hunter's Defense (Hunter Ranger L15): when you take damage, you may spend your reaction to
+// gain Resistance to that damage's type until the end of the turn. Modeled as a damage-reduction OnHit
+// reaction (halve the triggering damage instance), mirroring Uncanny Dodge — the dominant combat effect.
+// (v1: the triggering hit is resisted; the "rest of the turn, same type" persistence is not tracked —
+// see known_limitations.md. A single-type hit makes halving the instance equivalent to type Resistance.)
+bool CombatEngine::canSuperiorHunterDefense(const BattleMap& bm, int target_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(target_idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(target_idx);
+    if (s.hp_cur <= 0) return false;
+    return s.character_class == CharacterClass::Ranger &&
+           s.ranger_subclass == HunterPath && s.char_level >= 15;
+}
+
+bool CombatEngine::applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, AttackResult& r)
+{
+    if (!canSuperiorHunterDefense(bm, reactor_idx)) return false;
+    if (!r.hit || r.total_damage <= 0) return false;
+    const int before = r.total_damage;
+    r.total_damage   = before / 2;
+    Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
+    cond.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, cond);
+    r.damage_breakdown.push_back({"superior hunter's defense", r.total_damage - before});  // negative
+    log_("Superior Hunter's Defense: {} resists the damage ({} -> {})",
+         agentName(bm, reactor_idx), before, r.total_damage);
+    return true;
+}
+
 // Defensive Duelist (feat): on a non-crit MELEE hit, a wielder of a Finesse melee weapon may add its
 // Proficiency Bonus to AC against the attack (reaction), flipping the hit to a miss when +PB clears the
 // roll. Offered only when the +PB would actually flip the outcome and the reaction is free.
@@ -609,6 +641,9 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (r.hit && r.total_damage > 0 && canUncannyDodge(bm, action.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Uncanny Dodge (halve the damage)", "UncannyDodge"});
+    if (r.hit && r.total_damage > 0 && canSuperiorHunterDefense(bm, action.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Superior Hunter's Defense (resist the damage)", "SuperiorHuntersDefense"});
     if (canDefensiveDuelist(bm, action, r))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Defensive Duelist (+PB AC — the attack misses)", "DefensiveDuelist"});
@@ -645,6 +680,8 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
     }
     if (opt.feature == "UncannyDodge")
         return applyUncannyDodge(bm, action.target_idx, r);
+    if (opt.feature == "SuperiorHuntersDefense")
+        return applySuperiorHunterDefense(bm, action.target_idx, r);
     if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, action.target_idx)) {
             r.hit = false;                  // DM ruling: a Defensive-Duelist-negated hit is a genuine miss.
@@ -1113,6 +1150,8 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
         }
     } else if (opt.feature == "UncannyDodge") {
         applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
+    } else if (opt.feature == "SuperiorHuntersDefense") {
+        applySuperiorHunterDefense(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, ctx.reactor_idx))
             in_flight_attack_.r.hit = false;
@@ -2168,6 +2207,51 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         r.target_down = (r.hp_after <= 0);
         log_("{} marked-target rider: +{} damage (Hunter's Mark/Hex)",
              agentName(bm, action.attacker_idx), hm_damage);
+
+        // ── Superior Hunter's Prey (Hunter Ranger L11) — AUTOMATIC ───────────
+        // Once per turn, when you deal the Hunter's Mark extra damage to the mark, you also deal
+        // that extra damage to a DIFFERENT creature within 30 ft of the mark (a fresh roll of the
+        // same dice). Auto-targets the nearest eligible enemy (a living non-ally that isn't the
+        // mark) — the "different creature of your choice" a sane Ranger would pick. Applies the
+        // splash damage directly to that creature (it's not the attack's target, so it doesn't
+        // touch r), then handles its own 0-HP transition. Once/turn via superior_prey_used.
+        if (atk_stats.character_class == CharacterClass::Ranger &&
+            atk_stats.ranger_subclass == HunterPath && atk_stats.char_level >= 11 &&
+            !updated_atk_cond.superior_prey_used) {
+            const PlacedAgent& mark_pa = agents[static_cast<std::size_t>(action.target_idx)];
+            int splash_idx = -1, best = 999;
+            for (int cand = 0; cand < static_cast<int>(agents.size()); ++cand) {
+                if (cand == action.target_idx || cand == action.attacker_idx) continue;
+                if (areAllies(bm, action.attacker_idx, cand)) continue;
+                if (bm.getAgentStats(cand).hp_cur <= 0) continue;
+                const PlacedAgent& cpa = agents[static_cast<std::size_t>(cand)];
+                int d = footprintDistance(mark_pa.origin, mark_pa.agent->getSize(),
+                                          cpa.origin, cpa.agent->getSize());
+                if (d * 5 <= 30 && d < best) { best = d; splash_idx = cand; }
+            }
+            if (splash_idx >= 0) {
+                Agent::Stats vs = bm.getAgentStats(splash_idx);
+                Agent::Conditions vc = bm.getAgentConditions(splash_idx);
+                int sraw = 0;
+                for (int i = 0; i < atk_stats.hunters_mark_dice; ++i)
+                    sraw += roll(atk_stats.hunters_mark_die_size);
+                const float smult = vs.magic_damage_multipliers[static_cast<std::size_t>(type)];
+                const int sp_dmg = static_cast<int>(static_cast<float>(sraw) * smult);
+                int soverflow = std::max(0, sp_dmg - vs.temp_hp);
+                vs.temp_hp = std::max(0, vs.temp_hp - sp_dmg);
+                vs.hp_cur  = std::clamp(vs.hp_cur - soverflow, 0, vs.hp_max);
+                bm.setAgentStats(splash_idx, vs);
+                checkConcentrationOnDamage(bm, splash_idx, sp_dmg, action.attacker_idx);
+                processDamageTaken(bm, splash_idx, sp_dmg);
+                if (vs.hp_cur <= 0 && !vc.unconscious && !vc.dead)
+                    applyUnconscious(bm, splash_idx);
+                updated_atk_cond.superior_prey_used = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                log_("Superior Hunter's Prey: +{} {} to {} (within 30 ft of the mark)",
+                     sp_dmg, magicDamageName(static_cast<MagicDamage_t>(type)),
+                     agentName(bm, splash_idx));
+            }
+        }
     }
 
     // ── Bestial Fury (Beast Master Ranger L11) — companion Hunter's Mark splash ──
@@ -2276,6 +2360,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         r.hp_after = tgt_stats.hp_cur;
         r.target_down = (r.hp_after <= 0);
         updated_atk_cond.dreadful_strike_armed = false;
+        // Stalker's Flurry (Gloom Stalker L11): immediately after Dreadful Strike, you may make one
+        // additional weapon attack (Sudden Strike) against a creature within 5 ft of the target.
+        // Flag it so the GUI offers the free extra attack (mirrors Horde Breaker / GWM Hew).
+        if (atk_stats.ranger_subclass == GloomStalkerPath && atk_stats.char_level >= 11)
+            updated_atk_cond.sudden_strike_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         log_("Dreadful Strike: +{} Psychic ({}d{})", ds, atk_stats.dreadful_strike_dice,
              atk_stats.dreadful_strike_die_size);

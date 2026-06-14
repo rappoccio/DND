@@ -450,6 +450,25 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Upcast damage scaling: a spell cast from a slot above its base level rolls extra damage dice
+    // (upcast_dice_bonus dice per level above base). Applied here to the local `sp` copy so every
+    // resolution branch — and Chromatic Orb's leap-match check — sees the larger dice pool. The
+    // extra dice are added to the spell's primary damage rolls (its magic rolls, or its physical
+    // rolls if it has no magic damage). slot_level 0 = NPC / base-level cast → never scales.
+    if (action.slot_level > sp.level && sp.upcast_dice_bonus > 0) {
+        int extra = sp.upcast_dice_bonus * (action.slot_level - sp.level);
+        if (extra > 0) {
+            // Add to the spell's magic rolls, or its physical rolls if it deals no magic damage
+            // (the two roll vectors are distinct types, so handle them separately).
+            if (!sp.magic_damage_rolls.empty())
+                for (auto& r : sp.magic_damage_rolls) r.num_dice += extra;
+            else
+                for (auto& r : sp.physical_damage_rolls) r.num_dice += extra;
+            log_("Upcast: {} cast at level {} (+{} damage dice per roll)",
+                 sp.name, action.slot_level, extra);
+        }
+    }
+
     // Concentration management: check if casting a concentration spell
     if (sp.requires_concentration) {
         Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
@@ -545,6 +564,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     bool any_conditions_applied = false;
     bool any_kill = false;  // TASK A: Dark One's Blessing tracking
 
+    // Chromatic Orb leap counter. When two or more of the orb's damage d8s show the same
+    // number on a hit, the orb leaps to a new creature within 30 ft (a fresh attack + damage
+    // roll). The leap target is appended to `targets` below, so the normal loop resolves it.
+    // At base level the orb may leap only once; cast with a level-2+ slot it can keep leaping.
+    int chromatic_leaps_done = 0;
+
     // TASK D: Radiant Soul (Celestial L6): does this spell deal Radiant(8) or Fire(2) damage?
     // Computed once per cast; the +CHA bonus below applies to the first damaged target this turn.
     bool spell_radiant_or_fire = false;
@@ -554,7 +579,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         for (const auto& rinfo : sp.physical_damage_rolls)
             if (rinfo.type == 8 || rinfo.type == 2) { spell_radiant_or_fire = true; break; }
 
-    for (int tgt_idx : targets) {
+    // Index-based: the loop may append leap targets (Chromatic Orb) to `targets`, and
+    // re-reading targets.size() each iteration lets those new targets be resolved too.
+    for (std::size_t ti = 0; ti < targets.size(); ++ti) {
+        int tgt_idx = targets[ti];
         if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) continue;
 
         Agent::Stats tgt_stats = bm.getAgentStats(tgt_idx);
@@ -675,6 +703,69 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
                     tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
                     tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
+                }
+
+                // Chromatic Orb: if two or more of the damage d8s show the same number, the orb
+                // leaps to a different creature within 30 ft of this target, with its own attack
+                // roll and damage roll. Appending the chosen creature to `targets` lets the loop
+                // resolve the leap exactly like a normal target (fresh to-hit + damage). At base
+                // level the orb leaps at most once; a level-2+ slot lets it keep leaping (a fresh
+                // match each hop). The next target is auto-picked: the nearest not-yet-targeted
+                // enemy within 30 ft (the "different creature of your choice" — a sane caster aims
+                // at a foe). Match is checked on `dice` (the d8 results just rolled for this hit).
+                if (sp.name == "Chromatic Orb") {
+                    const bool upcast   = action.slot_level >= 2;
+                    const bool may_leap = (chromatic_leaps_done == 0) || upcast;
+                    bool matched = false;
+                    for (std::size_t a = 0; a < dice.size() && !matched; ++a)
+                        for (std::size_t b = a + 1; b < dice.size(); ++b)
+                            if (dice[a] == dice[b]) { matched = true; break; }
+                    // Debug: surface the exact d8 faces rolled and whether they produced a
+                    // leap-triggering match (the orb leaps only on two-or-more matching dice).
+                    std::string face_str;
+                    for (std::size_t k = 0; k < dice.size(); ++k)
+                        face_str += (k ? "," : "") + std::to_string(dice[k]);
+                    log_("[CHROMATIC ORB] d8s rolled: [{}] ({} dice) — match={}, may_leap={} (slot_level={})",
+                         face_str, dice.size(), matched ? "YES" : "no",
+                         may_leap ? "yes" : "no", action.slot_level);
+                    if (may_leap && matched && chromatic_leaps_done < 20) {
+                        const PlacedAgent& from_pa = agents[static_cast<std::size_t>(tgt_idx)];
+                        // A creature is a legal leap target if it's a living non-ally that hasn't
+                        // already been hit and sits within 30 ft of the creature we're leaping from.
+                        auto eligible = [&](int cand) -> int {  // returns hop distance in cells, or -1
+                            if (cand < 0 || cand >= static_cast<int>(agents.size())) return -1;
+                            if (cand == action.caster_idx) return -1;
+                            if (std::find(targets.begin(), targets.end(), cand) != targets.end()) return -1;
+                            if (areAllies(bm, action.caster_idx, cand)) return -1;
+                            if (bm.getAgentStats(cand).hp_cur <= 0) return -1;
+                            const PlacedAgent& cpa = agents[static_cast<std::size_t>(cand)];
+                            int d = footprintDistance(from_pa.origin, from_pa.agent->getSize(),
+                                                      cpa.origin, cpa.agent->getSize());
+                            return (d * 5 <= 30) ? d : -1;
+                        };
+                        int leap_to = -1, best = 999;
+                        // Player's chosen chain takes priority: the pick earmarked for this hop, if legal.
+                        if (chromatic_leaps_done < static_cast<int>(action.chromatic_leap_targets.size())) {
+                            int pick = action.chromatic_leap_targets[static_cast<std::size_t>(chromatic_leaps_done)];
+                            int d = eligible(pick);
+                            if (d >= 0) { leap_to = pick; best = d; }
+                        }
+                        // Otherwise (no/invalid pick) auto-select the nearest eligible enemy.
+                        if (leap_to < 0) {
+                            for (int cand = 0; cand < static_cast<int>(agents.size()); ++cand) {
+                                int d = eligible(cand);
+                                if (d >= 0 && d < best) { best = d; leap_to = cand; }
+                            }
+                        }
+                        if (leap_to >= 0) {
+                            targets.push_back(leap_to);
+                            ++chromatic_leaps_done;
+                            log_("Chromatic Orb leaps to {} ({} ft away — matching d8s)",
+                                 agentName(bm, leap_to), best * 5);
+                        } else {
+                            log_("Chromatic Orb's d8s match but no creature is within 30 ft to leap to");
+                        }
+                    }
                 }
             }
 

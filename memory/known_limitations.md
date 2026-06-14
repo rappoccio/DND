@@ -413,11 +413,18 @@ layer (main.py) rather than the C++ engine. This means:
   the stored placeholder; per-cast only). **Dragon's Breath still hardcoded to Fire** (Cone/Save geometry,
   not yet wired — same `damage_type_override` mechanism would serve it once `ELEMENT_CHOICE_SPELLS` is
   extended and the AoE resolve path forwards the field).
-- **Chromatic Orb "hop" / leap (DEFERRED — item 6).** RAW: if two or more of the d8s roll the same number,
-  the orb leaps to a new target within 30 ft (a fresh attack roll + damage roll), and can keep chaining.
-  Not modeled — Chromatic Orb is a plain single-target attack-roll spell for now. TODO: after the damage
-  roll, detect duplicate d8 faces and, if present, prompt/auto-pick a secondary target within 30 ft and
-  re-resolve (bounded to avoid infinite chains).
+- **Chromatic Orb "hop" / leap — IMPLEMENTED ✅ (2026-06-14, built + green, confirmed in live play).** RAW:
+  if two or more of the d8s roll the same number, the orb leaps to a new creature within 30 ft (fresh
+  attack + damage roll), chaining at a level-2+ slot. `executeSpell`'s AttackRoll target loop is index-based
+  so leap targets are appended mid-loop and resolved like normal targets; gate `may_leap = (done==0) ||
+  slot_level>=2`, match = a duplicate face in the just-rolled d8s. Leap target = the next entry of
+  `SpellAction.chromatic_leap_targets` (GUI sequential map-click picker) if legal, else the nearest eligible
+  enemy (living non-ally via `areAllies`, not already hit, `footprintDistance`≤30 ft); hard cap 20. NPC/RL/
+  headless casts (no picker) still leap via the auto-nearest fallback. Also fixed a general bug: `Spell::
+  upcast_dice_bonus` was stored/bound but never applied to damage, so upcast damage spells rolled base dice
+  (a L9 Chromatic Orb only got 3d8); `executeSpell` now scales the local spell copy by
+  `upcast_dice_bonus * (slot_level - level)`. Tests: `test_chromatic_orb.py` (10 cases). See memory
+  `chromatic_orb_leap.md`.
 - **Sorcerous Burst "explode on 8" (DEFERRED).** RAW: each d8 that rolls an 8 lets you add another d8 (up
   to your spellcasting modifier). Modeled as a flat 1d8 (no explosion / no level scaling for the cantrip).
 - **Ray of Enfeeblement — no direct damage (RAW).** 2024 RoE deals **no** damage; it's a debuff (target
@@ -1498,3 +1505,42 @@ reset in `turn()`), all bound. Seeded in `combat.cpp initializeClassResources` (
 - **L3 Otherworldly Glamour** (+WIS to CHA checks, extra skill prof) — out-of-combat social, not modeled.
 - **L11 Fey Reinforcements** (free Summon Fey) / **L15 Misty Wanderer** (free Misty Step + co-teleport a
   willing ally) — utility free-cast resources, deferred (gated on Summon Fey / movement-co-teleport infra).
+
+---
+
+## Ranger — Hunter & Gloom Stalker (Phase 3 leftovers) — IMPLEMENTED ✅ (2026-06-14, built + 71 suites green)
+
+**Implemented:**
+- **Hunter L11 Superior Hunter's Prey** — automatic engine rider extending the Hunter's Mark block in
+  `applyAttackResult` (`combat_attack.cpp`): once/turn (`superior_prey_used`), after the mark takes its HM
+  damage, splash a fresh roll of the same HM dice to the **nearest** eligible enemy within 30 ft of the
+  mark (`footprintDistance` + `areAllies`). Applied directly to the splash victim's Stats with its own
+  `processDamageTaken`/`checkConcentrationOnDamage`/`applyUnconscious`.
+- **Hunter L15 Superior Hunter's Defense** — OnHit DEFENDER reaction (`canSuperiorHunterDefense`/
+  `applySuperiorHunterDefense`), modeled like Uncanny Dodge and wired into the same `defenderOnHitOptions`/
+  `maybeDefenderOnHitInline`/`applyAttackReaction` window. GUI surfaces it free via the generic OnHit menu.
+- **Gloom Stalker L11 Sudden Strike** (one of the two Stalker's Flurry effects) — `sudden_strike_available`
+  Conditions flag set when the Dreadful Strike rider consumes at L≥11; GUI `_offer_sudden_strike` grants one
+  FREE extra attack (`_start_extra_attack(slot="action")`, no bonus cost).
+- **Hunter's Prey / Defensive Tactics in-dialog picker** — StatsDialog cycle pickers (mirror Cleric
+  blessed_strike); round-trip through `_on_stats_ok`'s new `hunter_prey_name`/`defensive_tactics_name` kwargs.
+
+**Deferred / simplifications:**
+- **Superior Hunter's Defense is v1-simplified to the triggering hit.** RAW grants Resistance to *that
+  damage type until the end of the current turn*; we resist only the one triggering instance (halve it,
+  like Uncanny Dodge). For a single-type hit this is equivalent; a later same-turn hit of the same type is
+  NOT auto-resisted. Lifting this needs a turn-scoped per-type resistance buff.
+- **Gloom Stalker L11 Mass Fear** (the OTHER Stalker's Flurry option — each creature within 10 ft of the
+  Dreadful Strike target makes a WIS save vs Frightened) is NOT implemented; only **Sudden Strike** is
+  offered. Mass Fear needs an AoE-save GUI flow keyed off the Dreadful Strike hit (reuse the AoE-save +
+  Frightened path). Sudden Strike covers the L11 extra for now.
+- **Gloom Stalker L15 Shadowy Dodge** (reaction: impose **Disadvantage** on an incoming attack roll, then
+  teleport up to 30 ft) is NOT implemented. It needs a **pre-roll, defender-side impose-Disadvantage
+  window** — a window shape the engine doesn't have (the OnD20Seen window is post-roll/lowering-only and
+  third-party; the OnHit window is post-roll). Deferred with the general "post-hoc reaction interrupts"
+  work (see the Architecture section) plus a teleport primitive.
+- **Gloom Stalker L3 Umbral Sight** (Darkvision +60; Invisible to creatures relying on Darkvision while in
+  Darkness) — needs a lighting/darkvision visibility model; deferred.
+- **Phase-2 follow-ups still open:** Favored Enemy free-cast GUI accounting (spend the resource instead of
+  a slot), re-mark-on-kill Bonus Action, spell-attack-roll marks (the HM rider is weapon-attack-only),
+  Roving's "not in Heavy armor" gate (currently unconditional).

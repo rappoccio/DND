@@ -1189,6 +1189,10 @@ class StatsDialog:
         self._subclass_name      = "None"
         self._blessed_strike_name = "NONE"   # Cleric L7 Blessed Strikes choice
         self._blessed_strike_rects: dict = {}
+        self._hunter_prey_name = "NONE"          # Hunter L3 Hunter's Prey choice
+        self._hunter_prey_rects: dict = {}
+        self._defensive_tactics_name = "NONE"    # Hunter L7 Defensive Tactics choice
+        self._defensive_tactics_rects: dict = {}
         self._char_level         = 1
         self._cb                 = None
         self.steppers: dict      = {}   # populated in open()
@@ -1214,13 +1218,15 @@ class StatsDialog:
         self._elemental_adept_types = []   # MagicDamage_t indices chosen for Elemental Adept
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE"):
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE", hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE"):
         self.active             = True
         self._agent_idx         = agent_idx
         self._agent_name        = agent_name
         self._class_name        = class_name
         self._subclass_name     = subclass_name
         self._blessed_strike_name = blessed_strike_name
+        self._hunter_prey_name  = hunter_prey_name
+        self._defensive_tactics_name = defensive_tactics_name
         self._char_level        = char_level
         self._cb                = callback
         self._is_npc            = is_npc
@@ -1461,6 +1467,25 @@ class StatsDialog:
                     self._blessed_strike_name = available[(idx + 1) % len(available)]
                     return True
 
+            # Hunter's Prey / Defensive Tactics cycle buttons (Hunter Ranger). Each picker stores its
+            # current name in an attribute; cycle it left/right within the available list.
+            for rects, attr in ((self._hunter_prey_rects, "_hunter_prey_name"),
+                                (self._defensive_tactics_rects, "_defensive_tactics_name")):
+                if not rects:
+                    continue
+                available = rects.get("available", [])
+                left_rect = rects.get("left")
+                right_rect = rects.get("right")
+                cur = getattr(self, attr)
+                if available and left_rect and left_rect.collidepoint(event.pos):
+                    idx = available.index(cur) if cur in available else 0
+                    setattr(self, attr, available[(idx - 1) % len(available)])
+                    return True
+                if available and right_rect and right_rect.collidepoint(event.pos):
+                    idx = available.index(cur) if cur in available else 0
+                    setattr(self, attr, available[(idx + 1) % len(available)])
+                    return True
+
             # Origin feat cycle buttons (PCs only)
             if self._origin_feat_rects:
                 available = self._origin_feat_rects.get("available", [])
@@ -1538,7 +1563,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types))
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -1741,17 +1766,52 @@ class StatsDialog:
                     self._blessed_strike_rects = {"left": left_bs_r, "right": right_bs_r,
                                                   "available": ["NONE", "DivineStrike", "PotentSpellcasting"]}
                     npc_checkbox_y = bs_y + 24
+                # Hunter's Prey (L3) + Defensive Tactics (L7) pickers (Hunter Ranger only). Each is a
+                # left/right cycle picker like Blessed Strikes; the chosen enum names round-trip to the
+                # engine (which already honors hunter_prey / defensive_tactics).
+                elif self._class_name == "Ranger" and self._subclass_name == "Hunter" and lvl >= 3:
+                    def _picker(name, label, available, y):
+                        screen.blit(self.font_sm.render(label, True, self.C_LABEL), (dlg.x + PAD, y))
+                        l_r = pygame.Rect(dlg.x + PAD + 75, y, 20, 16)
+                        r_r = pygame.Rect(dlg.right - PAD - 20, y, 20, 16)
+                        t_r = pygame.Rect(l_r.right + 4, y, r_r.left - l_r.right - 8, 16)
+                        for rr, txt in ((l_r, "<"), (t_r, "None" if name == "NONE" else name), (r_r, ">")):
+                            pygame.draw.rect(screen, (60, 55, 80), rr, border_radius=2)
+                            pygame.draw.rect(screen, (120, 100, 150), rr, 1, border_radius=2)
+                            _s = self.font_sm.render(txt, True, (220, 210, 240))
+                            screen.blit(_s, _s.get_rect(center=rr.center))
+                        return {"left": l_r, "right": r_r, "available": available}
+                    hp_y = subclass_y + 24
+                    self._hunter_prey_rects = _picker(
+                        self._hunter_prey_name, "Prey:",
+                        ["NONE", "ColossusSlayer", "HordeBreaker"], hp_y)
+                    if lvl >= 7:
+                        dt_y = hp_y + 24
+                        self._defensive_tactics_rects = _picker(
+                            self._defensive_tactics_name, "Defense:",
+                            ["NONE", "EscapeTheHorde", "MultiattackDefense"], dt_y)
+                        npc_checkbox_y = dt_y + 24
+                    else:
+                        self._defensive_tactics_rects = {}
+                        npc_checkbox_y = hp_y + 24
+                    self._blessed_strike_rects = {}
                 else:
                     self._blessed_strike_rects = {}
+                    self._hunter_prey_rects = {}
+                    self._defensive_tactics_rects = {}
                     npc_checkbox_y = subclass_y + 24
             else:
                 self._subclass_rects = {}
                 self._blessed_strike_rects = {}
+                self._hunter_prey_rects = {}
+                self._defensive_tactics_rects = {}
                 npc_checkbox_y = class_y + 24
         else:
             self._class_rects = {}
             self._subclass_rects = {}
             self._blessed_strike_rects = {}
+            self._hunter_prey_rects = {}
+            self._defensive_tactics_rects = {}
             npc_checkbox_y = dlg.y + self.HDR_H + self.PAD + 300
 
         # ── Warlock Eldritch Invocations ──────────────────────────────────

@@ -420,6 +420,13 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
+        # Chromatic Orb leap chain: after the primary target is chosen, the player clicks the
+        # orb's preferred leap path (each hop within 30 ft of the previous), then Enter to cast
+        # / Esc to cancel. The chain rides on SpellAction.chromatic_leap_targets; unpicked hops
+        # auto-target the nearest foe engine-side.
+        self.pending_chromatic_active  = False
+        self.pending_chromatic_primary = -1
+        self.pending_chromatic_chain   = []
         # Summoning: awaiting a cell click to place a summoned creature.
         self.pending_summon_slot       = ""    # "" | "action" | "bonus"
         self.pending_summon_idx        = 0     # spell index of the summon spell being cast
@@ -1430,7 +1437,7 @@ class App:
         for n in names:
             stats.add_feat(n)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE"):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1487,13 +1494,17 @@ class App:
             stats.sorcerer_subclass = getattr(rpg.SorcererSubclass, subclass_name)
         elif class_name == "Ranger" and subclass_name != "NONE":
             stats.ranger_subclass = getattr(rpg.RangerSubclass, subclass_name)
-            # Hunter L3 Hunter's Prey / L7 Defensive Tactics: default the choice when first set
-            # (preserved across later edits since stats start from the current agent). An in-dialog
-            # picker to swap them is a deferred GUI follow-up — see RANGER_PLAN.md.
+            # Hunter L3 Hunter's Prey / L7 Defensive Tactics: honor the in-dialog picker if it set a
+            # choice; otherwise default it the first time (preserved across later edits since stats
+            # start from the current agent). The StatsDialog picker passes the chosen enum names.
             if subclass_name == "Hunter":
-                if stats.hunter_prey == rpg.HunterPrey.NONE:
+                if hunter_prey_name not in (None, "NONE"):
+                    stats.hunter_prey = getattr(rpg.HunterPrey, hunter_prey_name)
+                elif stats.hunter_prey == rpg.HunterPrey.NONE:
                     stats.hunter_prey = rpg.HunterPrey.ColossusSlayer
-                if char_level >= 7 and stats.defensive_tactics == rpg.DefensiveTactics.NONE:
+                if defensive_tactics_name not in (None, "NONE"):
+                    stats.defensive_tactics = getattr(rpg.DefensiveTactics, defensive_tactics_name)
+                elif char_level >= 7 and stats.defensive_tactics == rpg.DefensiveTactics.NONE:
                     stats.defensive_tactics = rpg.DefensiveTactics.EscapeTheHorde
             # Beast Master L3 Primal Companion: default the form to Land when first set;
             # the player picks Land/Sea/Sky each time via the in-combat companion menu.
@@ -2573,6 +2584,7 @@ class App:
         has_interception = False
         has_sentinel_guard = False
         has_gwm_hew = False
+        has_sudden_strike = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             # Riposte is a DEFENDER reaction: the flag is set on the target, not the attacker.
@@ -2636,6 +2648,12 @@ class App:
             elif (atk_cond and atk_cond.gwm_hew_available and not self.bonus_used
                   and self._attack_sequence_slot != "bonus"):
                 has_gwm_hew = True
+            # Stalker's Flurry — Sudden Strike (Gloom Stalker L11): a Dreadful Strike hit grants one
+            # FREE extra weapon attack (no action/bonus cost). Flagged on the attacker by the engine
+            # when the Dreadful Strike rider fires; offered last (an attacker's own rider shadows it
+            # this swing, like GWM Hew). Mass Fear (the alternative) is deferred — see known_limitations.
+            elif atk_cond and atk_cond.sudden_strike_available:
+                has_sudden_strike = True
 
         # FLAG: Move to C++
         # Format attack message
@@ -2727,6 +2745,8 @@ class App:
             self._offer_cleave(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         elif has_gwm_hew:
             self._offer_gwm_hew(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
+        elif has_sudden_strike:
+            self._offer_sudden_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         else:
             self._combat_log_add(atk_msg)
 
@@ -2743,7 +2763,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew or has_sudden_strike
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -2993,6 +3013,38 @@ class App:
         options = [
             ("Hew: bonus-action attack", lambda: _apply(True)),
             ("Skip Hew", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_sudden_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+        """Stalker's Flurry — Sudden Strike (Gloom Stalker L11): immediately after a Dreadful Strike
+        hit, optionally make one FREE additional attack with the same weapon against a creature within
+        5 ft of the target. Routes through the shared extra-attack flow with slot="action" so it does
+        NOT consume the bonus action (it's a free attack granted by the feature). Clearing
+        sudden_strike_available stops a re-offer.
+
+        v1 sequencing: like GWM Hew, accepting forgoes any remaining Attack-action attacks (the extra
+        attack takes over the pending sequence). The "within 5 ft of the target" constraint is left to
+        the player's target click (noted in the prompt). Mass Fear (the alternative L11 effect) is
+        deferred — see known_limitations.md."""
+        def _apply(do):
+            self._combat_log_add(atk_msg)
+            c = self.combat.get_agent_conditions(self.bm, atk_idx)
+            c.sudden_strike_available = False
+            self.combat.set_agent_conditions(self.bm, atk_idx, c)
+            self._flush_combat_log()
+            if do:
+                # Forgo any leftover action attacks so the free Sudden Strike sets up cleanly.
+                self.attacks_remaining = 0
+                self._attack_sequence_slot = ""
+                self.pending_attack_slot = ""
+                self._start_extra_attack(weapon_idx=weapon_idx, offhand=False, slot="action",
+                                         label="Stalker's Flurry: Sudden Strike (target within 5 ft)")
+            self._update_attack_overlay()
+        options = [
+            ("Sudden Strike: free extra attack", lambda: _apply(True)),
+            ("Skip Sudden Strike", lambda: _apply(False)),
         ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
@@ -4651,6 +4703,11 @@ class App:
             sp_ = spells[si_]
             # Cleared for every fresh cast; only the element-choice branch below sets it.
             self.pending_spell_damage_type = -1
+            # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
+            # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
+            self.pending_chromatic_active  = False
+            self.pending_chromatic_primary = -1
+            self.pending_chromatic_chain   = []
 
             # Cast-time element choice (Chromatic Orb, Sorcerous Burst): pick one damage type via
             # the ElementPickerDialog, store it as the SpellAction override, then continue to the
@@ -5134,7 +5191,9 @@ class App:
                 # The OnHit defender window may offer Shield (negate) and/or Uncanny Dodge (halve).
                 feats = [o.feature for o in ctx.options
                          if o.kind == rpg.ReactionOptionKind.Feature]
-                names = {"Shield": "Shield", "UncannyDodge": "Uncanny Dodge"}
+                names = {"Shield": "Shield", "UncannyDodge": "Uncanny Dodge",
+                         "SuperiorHuntersDefense": "Superior Hunter's Defense",
+                         "DefensiveDuelist": "Defensive Duelist"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
@@ -5576,6 +5635,82 @@ class App:
             f"AC {stats_d['base_ac']}"
             f"{', 2 attacks' if stats_d['num_attacks'] > 1 else ''}).")
 
+    # ── Chromatic Orb leap chain (GUI picker) ──────────────────────────────────
+    def _is_chromatic_pending(self) -> bool:
+        """True when the spell currently being aimed is Chromatic Orb."""
+        sp = self._pending_spell()
+        return sp is not None and sp.name == "Chromatic Orb"
+
+    def _footprint_dist_ft(self, a_idx: int, b_idx: int) -> int:
+        """Chebyshev footprint distance in feet (5 ft / cell), or -1 for bad indices."""
+        agents = self.bm.placed_agents
+        if not (0 <= a_idx < len(agents) and 0 <= b_idx < len(agents)):
+            return -1
+        s = agents[a_idx]; o = agents[b_idx]
+        dc = max(s.origin.col - o.origin.col, o.origin.col - (s.origin.col + s.size - 1), 0)
+        dr = max(s.origin.row - o.origin.row, o.origin.row - (s.origin.row + s.size - 1), 0)
+        return max(dc, dr) * 5
+
+    def _chromatic_last_hop(self) -> int:
+        """The creature the next leap would spring from (primary, or the last chained hop)."""
+        return self.pending_chromatic_chain[-1] if self.pending_chromatic_chain \
+            else self.pending_chromatic_primary
+
+    def _enter_chromatic_chain(self, primary_idx: int):
+        """Primary target chosen — switch to leap-chain collection mode (no cast yet)."""
+        self.pending_chromatic_active  = True
+        self.pending_chromatic_primary = primary_idx
+        self.pending_chromatic_chain   = []
+        name = self.bm.placed_agents[primary_idx].name
+        self._combat_log_add(
+            f"Chromatic Orb → {name}. Click leap targets in order (≤30 ft each hop); "
+            f"Enter to cast, Esc to cancel.")
+
+    def _chromatic_add_leap(self, hit: int):
+        """Validate and append a clicked creature to the leap chain (or explain the rejection)."""
+        if hit < 0:
+            return
+        caster_idx = self._current_agent_idx()
+        if hit == caster_idx:
+            self._combat_log_add("The orb can't leap to its caster.")
+            return
+        if hit == self.pending_chromatic_primary or hit in self.pending_chromatic_chain:
+            self._combat_log_add("That creature is already in the chain.")
+            return
+        if self._are_allies(caster_idx, hit):
+            self._combat_log_add("The orb leaps to foes, not allies.")
+            return
+        if self.combat.get_agent_stats(self.bm, hit).hp_cur <= 0:
+            self._combat_log_add("That creature is already down.")
+            return
+        prev = self._chromatic_last_hop()
+        dist = self._footprint_dist_ft(prev, hit)
+        if dist < 0 or dist > 30:
+            self._combat_log_add(
+                f"Too far — {self.bm.placed_agents[hit].name} is {dist} ft from the previous hop (max 30).")
+            return
+        self.pending_chromatic_chain.append(hit)
+        self._combat_log_add(
+            f"  leap {len(self.pending_chromatic_chain)} → {self.bm.placed_agents[hit].name} ({dist} ft)")
+
+    def _finalize_chromatic_cast(self):
+        """Enter pressed — cast Chromatic Orb with the collected leap chain."""
+        primary = self.pending_chromatic_primary
+        if primary < 0:
+            return
+        self.pending_chromatic_active = False
+        # _resolve_spell_cast reads pending_chromatic_chain and clears the chain state.
+        self._resolve_spell_cast(primary)
+
+    def _cancel_chromatic_chain(self):
+        self.pending_chromatic_active  = False
+        self.pending_chromatic_primary = -1
+        self.pending_chromatic_chain   = []
+        self.pending_spell_slot        = ""
+        self.pending_spell_is_aoe      = False
+        self.spell_hover_cell          = None
+        self._combat_log_add("Chromatic Orb cancelled.")
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -5604,6 +5739,8 @@ class App:
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
         action.damage_type_override = self.pending_spell_damage_type  # cast-time element choice (-1 = none)
+        # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
+        action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         self._apply_pact_slot_level(caster_idx, sp, action)
 
         # Cast through the OnDeclareCast window (begin_cast): a targeted creature may react before the
@@ -5626,6 +5763,9 @@ class App:
         self.pending_spell_targets     = []
         self.pending_spell_damage_type = -1
         self.spell_hover_cell          = None
+        self.pending_chromatic_active  = False
+        self.pending_chromatic_primary = -1
+        self.pending_chromatic_chain   = []
 
         status = self.combat.begin_cast(self.bm, action)
         self._flush_combat_log()
@@ -6003,6 +6143,41 @@ class App:
         pygame.draw.circle(self.screen, (100, 150, 255, 100),
                           (int(caster_center_x), int(caster_center_y)),
                           int(range_px), 1)
+
+    def _draw_chromatic_chain(self, cpx: int):
+        """Overlay the orb's leap path while the player builds it: caster → primary → each hop,
+        with a numbered ring on every chosen leap target and a white ring on the primary."""
+        if not (self.pending_chromatic_active and self.pending_spell_slot):
+            return
+        agents = self.bm.placed_agents
+        caster_idx = self._current_agent_idx()
+
+        def _center(idx):
+            if not (0 <= idx < len(agents)):
+                return None
+            pt = agents[idx]
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            half = pt.size * cpx // 2
+            return (sx + half, sy + half)
+
+        path = [caster_idx, self.pending_chromatic_primary] + list(self.pending_chromatic_chain)
+        pts = [c for c in (_center(i) for i in path) if c is not None]
+        for i in range(len(pts) - 1):
+            pygame.draw.line(self.screen, (200, 130, 255), pts[i], pts[i + 1], 3)
+
+        ring = max(8, cpx // 3)
+        pc = _center(self.pending_chromatic_primary)
+        if pc is not None:
+            pygame.draw.circle(self.screen, (255, 255, 255), pc, ring, 2)
+        for n, idx in enumerate(self.pending_chromatic_chain, start=1):
+            c = _center(idx)
+            if c is None:
+                continue
+            pygame.draw.circle(self.screen, (200, 130, 255), c, ring, 3)
+            if getattr(self, "font_sm", None):
+                label = self.font_sm.render(str(n), True, (255, 255, 255))
+                self.screen.blit(label, (c[0] - label.get_width() // 2,
+                                         c[1] - label.get_height() // 2))
 
     def _draw_attack_overlays(self, cpx: int):
         """Draw melee / ranged-normal / ranged-long attack-range overlays."""
@@ -7767,6 +7942,7 @@ class App:
 
         # ── Spell AoE preview (above agents, below drag ghost) ───────────
         self._draw_spell_aoe_preview(cpx)
+        self._draw_chromatic_chain(cpx)
 
         # ── Draw drag ghost ───────────────────────────────────────────────
         if self.drag_idx >= 0 and self.drag_cell is not None:
@@ -9208,6 +9384,16 @@ class App:
                     self.summon_hover_cell         = None
                     self._combat_log_add("Summon cancelled.")
                     continue
+                # Enter casts Chromatic Orb with the leap chain collected so far (may be empty —
+                # the orb still leaps to the nearest foe on a match). Esc cancels the whole cast.
+                if self.pending_chromatic_active and self.pending_spell_slot \
+                        and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._finalize_chromatic_cast()
+                    continue
+                if self.pending_chromatic_active and self.pending_spell_slot \
+                        and event.key == pygame.K_ESCAPE:
+                    self._cancel_chromatic_chain()
+                    continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
@@ -9289,6 +9475,9 @@ class App:
                             elif class_name == "Ranger":
                                 subclass_name = stats.ranger_subclass.name
                             blessed_strike_name = stats.blessed_strike.name if class_name == "Cleric" else "NONE"
+                            is_hunter = (class_name == "Ranger" and subclass_name == "Hunter")
+                            hunter_prey_name = stats.hunter_prey.name if is_hunter else "NONE"
+                            defensive_tactics_name = stats.defensive_tactics.name if is_hunter else "NONE"
                             self.stats_dialog.open(
                                 self.screen, h, pt2.name, stats,
                                 class_name, char_level,
@@ -9297,7 +9486,9 @@ class App:
                                 npc_spell_groups=npc_spell_groups,
                                 armor_list=armor,
                                 subclass_name=subclass_name,
-                                blessed_strike_name=blessed_strike_name)
+                                blessed_strike_name=blessed_strike_name,
+                                hunter_prey_name=hunter_prey_name,
+                                defensive_tactics_name=defensive_tactics_name)
                         def _open_weapons(h=hit):
                             pt2 = self.bm.placed_agents[h]
                             weapon_array = self.combat.get_agent_weapons(self.bm, h)
@@ -9387,6 +9578,9 @@ class App:
                             self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
                             self._resolve_summon(cell)
+                        elif self.pending_chromatic_active and self.pending_spell_slot:
+                            # Collecting Chromatic Orb's leap chain: each click adds a hop.
+                            self._chromatic_add_leap(hit)
                         elif self.pending_spell_slot:
                             if self.pending_spell_is_aoe:
                                 if self._pending_spell_is_wall():
@@ -9412,6 +9606,10 @@ class App:
                                         self._combat_log_add("No line of sight to target!")
                                     elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
                                         self._combat_log_add("Cannot perceive target (invisible)!")
+                                    elif self._is_chromatic_pending():
+                                        # Chromatic Orb: the primary target opens leap-chain selection
+                                        # instead of casting immediately (confirm friendly harm first).
+                                        self._confirm_friendly_harm(hit, lambda h=hit: self._enter_chromatic_chain(h))
                                     elif self._pending_spell_is_harm():
                                         # Faction rule 4: confirm before a harmful spell on a teammate.
                                         self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_spell_cast(h))
