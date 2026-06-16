@@ -240,6 +240,21 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         bm.setAgentConditions(tgt_idx, clear_es);
     }
 
+    // Cleric Light Domain L17 — Corona of Light: enemies within 60 ft of the caster have Disadvantage
+    // on saves vs the caster's Fire/Radiant spells while the corona is active.
+    if (caster_stats.corona_of_light_turns > 0 && action.caster_idx != tgt_idx &&
+        !areAllies(bm, action.caster_idx, tgt_idx)) {
+        bool fire_rad = false;
+        for (const auto& d : sp.magic_damage_rolls)
+            if (d.type == MagicDamage_t::Fire || d.type == MagicDamage_t::Radiant) { fire_rad = true; break; }
+        if (fire_rad &&
+            footprintDistance(caster_pa.origin, caster_pa.agent->getSize(),
+                              target_pa.origin, target_pa.agent->getSize()) * 5 <= 60) {
+            target_dis = true;
+            log_("Corona of Light: {} has Disadvantage on the save", agentName(bm, tgt_idx));
+        }
+    }
+
     // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
     bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
                      (sp.save_ability == SaveStr || sp.save_ability == SaveDex);

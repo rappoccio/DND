@@ -50,7 +50,7 @@ from helpers import (
     _spell_to_dict, _dict_to_spell,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -326,8 +326,15 @@ class App:
         # Elemental Adept's feat picker; opened from _activate, single-select.
         self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
 
+        # Asks how many cells a sampled grid box spanned (manual-grid precision).
+        self._grid_span_dialog = GridSpanDialog(self.font_sm, self.font_md)
+        self._pending_grid_box = None   # (x0, y0, w, h) in image px, awaiting span input
+
         # Team/faction picker (opened from an agent's right-click menu → "Set Teams…").
         self.team_dialog = TeamPickerDialog(self.font_sm, self.font_md)
+
+        # Rename prompt (opened from an agent's right-click menu → "Edit Name…").
+        self.name_prompt = NamePromptDialog(self.font_sm, self.font_md)
 
         # ── NPC spell mechanics ──────────────────────────────────────────────
         self._agent_meta: dict[int, dict] = {}  # {agent_idx: {"npc_spell_groups": {...}}} — for stats dialog
@@ -335,6 +342,13 @@ class App:
         self._map_dir  = os.path.dirname(os.path.abspath(map_path)) or "/"
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
         self._walls_enabled = True   # auto-detected walls active? (toggle persists in terrain JSON)
+
+        # Manual grid (sample-a-tile) state. When _manual_grid is set the detected grid
+        # has been replaced by a uniform one; persisted in the terrain JSON.
+        self._manual_grid = None            # {"cell_px": int, "anchor": [x, y]} or None
+        self._grid_sample_mode  = False     # True while waiting for the user to drag a tile
+        self._grid_sample_start = None      # screen-space drag start (x, y)
+        self._grid_sample_cur   = None      # screen-space drag current (x, y)
 
         # An "encounter" = agents + terrain + lighting + effects, stored as four
         # sidecar JSON files that share one base name. The map PNG is shared (passed
@@ -651,7 +665,11 @@ class App:
         self.btn_toggle_walls = Button(pygame.Rect(px, toggle_walls_y, W, B),
                                        "Walls: ON" if self._walls_enabled else "Walls: OFF",
                                        (90, 80, 110), (125, 110, 150), font=self.font_md)
-        quit_y = toggle_walls_y + B + self._BTN_GAP
+        set_grid_y = toggle_walls_y + B + self._BTN_GAP
+        self.btn_set_grid = Button(pygame.Rect(px, set_grid_y, W, B),
+                                   "Set Grid…",
+                                   (80, 95, 95), (110, 130, 130), font=self.font_md)
+        quit_y = set_grid_y + B + self._BTN_GAP
         self.btn_quit = Button(pygame.Rect(px, quit_y, W, B),
                               "Quit",
                               COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
@@ -689,7 +707,9 @@ class App:
         self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
         toggle_walls_y = toggle_light_y + self._BTN_H + self._BTN_GAP
         self.btn_toggle_walls.rect.update(px, toggle_walls_y, W, self._BTN_H)
-        quit_y = toggle_walls_y + self._BTN_H + self._BTN_GAP
+        set_grid_y = toggle_walls_y + self._BTN_H + self._BTN_GAP
+        self.btn_set_grid.rect.update(px, set_grid_y, W, self._BTN_H)
+        quit_y = set_grid_y + self._BTN_H + self._BTN_GAP
         self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
         # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
         HW2 = W // 2 - 2
@@ -885,6 +905,9 @@ class App:
         self.btn_cbt_sacred_weapon = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Sacred Weapon (Bonus Action)",
                                           (200, 180, 110), (240, 220, 150), self.font_md)
+        self.btn_cbt_corona = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Corona of Light (Action)",
+                                          (235, 215, 120), (255, 240, 160), self.font_md)
         self.btn_cbt_telekinetic = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Telekinetic Movement",
                                           (140, 160, 210), (170, 190, 240), self.font_md)
@@ -1068,6 +1091,12 @@ class App:
         sd = mob_record.get("stats", {})
         stats = dict_to_stats(sd)
         apply_damage_multipliers(stats, sd)
+        # Monsters whose bonus action grants Dash/Disengage (e.g. the Vampire
+        # Spawn's "Deathless Agility") reuse the Cunning Action machinery, which
+        # is what surfaces the bonus-action Dash/Disengage buttons in the GUI.
+        ba = str(mob_record.get("meta", {}).get("bonus_action") or "").lower()
+        if "dash" in ba or "disengage" in ba:
+            stats.has_cunning_action = True
         return stats
 
     def _load_npc_spells_from_record(self, agent_idx: int, mob_record: dict):
@@ -2183,7 +2212,8 @@ class App:
                     rpg.VisibilityLevel.LightlyObscured: "Lightly Obscured",
                     rpg.VisibilityLevel.Dark: "Dark",
                     rpg.VisibilityLevel.MagicalDark: "Magical Darkness",
-                    rpg.VisibilityLevel.Blocked: "Blocked"
+                    rpg.VisibilityLevel.Blocked: "Blocked",
+                    rpg.VisibilityLevel.Sunlight: "Sunlight"
                 }.get(vis_level, "Unknown")
                 tgt_team = faction_name(self.bm.get_agent_faction(target_idx))
                 visibility_info += f"  • {agent.name} ({vis_name}, {tgt_team} team)\n"
@@ -4408,6 +4438,21 @@ class App:
         self.bonus_used = True
         self._combat_log_add(f"{name}: Sacred Weapon! +{bonus} to weapon attack rolls for 1 minute.")
 
+    def _use_corona_of_light(self, agent_idx: int):
+        """Cleric Light Domain (L17+) Corona of Light: Magic action, 1-minute aura giving enemies
+        within 60 ft Disadvantage on saves vs this caster's Fire/Radiant spells."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        ok = self.combat.activate_corona_of_light(self.bm, agent_idx)
+        name = self.bm.placed_agents[agent_idx].name
+        if not ok:
+            self._combat_log_add(f"{name}: Cannot use Corona of Light (needs Light Domain Cleric, level 17+).")
+            return
+        self.action_used = True
+        self._combat_log_add(
+            f"{name}: Corona of Light! Enemies within 60 ft have Disadvantage on saves vs its "
+            f"Fire/Radiant spells for 1 minute.")
+
     def _resolve_telekinetic(self, target_idx: int):
         """Psi Warrior Telekinetic Movement: push the clicked target up to 30 ft away (once per rest)."""
         self.pending_telekinetic = False
@@ -5308,7 +5353,7 @@ class App:
             elif ctx.window == rpg.ReactionWindow.OnD20Seen:
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may lower {agents[ctx.source_idx].name}'s "
-                    f"attack roll ({ctx.d20_value}) — Bend Luck / Cutting Words / Silvery Barbs!")
+                    f"attack roll ({ctx.d20_value}) — Bend Luck / Cutting Words / Silvery Barbs / Warding Flare!")
             elif ctx.window == rpg.ReactionWindow.OnSaveFail:
                 who = ("their own" if ctx.reactor_idx == ctx.source_idx
                        else f"{agents[ctx.source_idx].name}'s")
@@ -6374,6 +6419,7 @@ class App:
             "check_los_on_center":   s.check_los_on_center,
             "requires_sight":        s.requires_sight,
             "moves_with_caster":     s.moves_with_caster,
+            "selective_targeting":   s.selective_targeting,
             "resource_name":         s.resource_name or None,
             "resource_cost":         s.resource_cost,
             "teleportation_spell":   s.teleportation_spell,
@@ -6456,6 +6502,7 @@ class App:
 
         s.requires_concentration = d.get("requires_concentration", False)
         s.moves_with_caster = d.get("moves_with_caster", False)
+        s.selective_targeting = d.get("selective_targeting", False)
         s.resource_name = d.get("resource_name", "") or ""
         s.resource_cost = int(d.get("resource_cost", 1))
         s.requires_los = d.get("requires_los", False)
@@ -6579,6 +6626,7 @@ class App:
                     "has_branches_of_the_tree": s.has_branches_of_the_tree,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                     "temp_hp": s.temp_hp,
+                    "available_hit_points": s.available_hit_points,
                     "feats": list(s.feats),
                     "elemental_adept_types": list(s.elemental_adept_types),
                     "luck_points": s.luck_points,
@@ -6862,6 +6910,10 @@ class App:
         self.selected_idx = -1
         self.drag_idx     = -1
         self._spell_metadata.clear()
+        # _agent_meta is index-keyed; stale entries from the previous scene would
+        # otherwise bleed onto whatever agent lands at that index (e.g. a non-NPC
+        # written out as an NPC on the next save). It is repopulated below per agent.
+        self._agent_meta.clear()
         agent_data = data.get("agents", [])
         for t in agent_data:
             cfg = rpg.AgentConfig()
@@ -7140,12 +7192,25 @@ class App:
         path = path or self._terrain_path
         self._terrain_regions = []
         self._walls_enabled = True
+        self._manual_grid = None
         self.bm.reset_terrain_multipliers()
 
         if os.path.exists(path):
             try:
                 with open(path, 'r') as f:
                     data = json.load(f)
+                # A saved manual grid must be applied first: it resizes the per-cell
+                # terrain/light buffers, so it has to run before terrain regions are
+                # written into them.
+                mg = data.get("manual_grid")
+                if mg:
+                    try:
+                        self.bm.set_uniform_grid(int(mg["cell_px"]),
+                                                 int(mg["anchor"][0]),
+                                                 int(mg["anchor"][1]))
+                        self._manual_grid = mg
+                    except Exception:
+                        self._manual_grid = None
                 self._terrain_regions = data.get("regions", [])
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 self._apply_terrain_to_battle_map()
@@ -7165,8 +7230,80 @@ class App:
         """Save terrain data to JSON file (defaults to the active encounter's path)."""
         path = path or self._terrain_path
         data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
+        if self._manual_grid:
+            data["manual_grid"] = self._manual_grid
         with open(path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def _toggle_grid_sample_mode(self):
+        """Enter/leave 'sample a tile' mode for defining a manual uniform grid.
+
+        While active, the next left-drag on the map outlines a single tile; on
+        release the grid is rebuilt from that tile's size (square) and corner.
+        """
+        self._grid_sample_mode = not self._grid_sample_mode
+        self._grid_sample_start = None
+        self._grid_sample_cur   = None
+        self.btn_set_grid.text = "Drag one tile…" if self._grid_sample_mode else "Set Grid…"
+        if self._grid_sample_mode:
+            self._combat_log_add("Grid sample: drag a box over a single map tile.")
+
+    def _finalize_grid_sample(self, start, end):
+        """Capture a sampled box (screen-space drag start/end) and ask how many cells
+        it spanned. The drag is converted to image-pixel space (undoing pan + scale);
+        the box is then divided by the spanned cols/rows to recover the cell size.
+        """
+        self._grid_sample_mode = False
+        self.btn_set_grid.text = "Set Grid…"
+
+        s = self.map_scale
+        x0 = (min(start[0], end[0]) - self.pan_x) / s
+        y0 = (min(start[1], end[1]) - self.pan_y) / s
+        x1 = (max(start[0], end[0]) - self.pan_x) / s
+        y1 = (max(start[1], end[1]) - self.pan_y) / s
+        w, h = x1 - x0, y1 - y0
+        if w < 4 or h < 4:
+            self._combat_log_add("Grid sample too small — cancelled.")
+            return
+
+        self._pending_grid_box = (x0, y0, w, h)
+        self._grid_span_dialog.show(self._on_grid_span)
+
+    def _on_grid_span(self, result):
+        """Callback from GridSpanDialog: result is (cols, rows) spanned, or None.
+
+        Divides the sampled box by the spanned cell count to get a square cell size,
+        then rebuilds the grid. Replaces auto-detection, so wall auto-detect is forced
+        off and old (now-misindexed) terrain regions are dropped.
+        """
+        box = self._pending_grid_box
+        self._pending_grid_box = None
+        if result is None or box is None:
+            self._combat_log_add("Grid sample cancelled.")
+            return
+
+        cols_spanned, rows_spanned = result
+        x0, y0, w, h = box
+        cell_px  = int(round((w / cols_spanned + h / rows_spanned) / 2.0))  # square
+        anchor_x = int(round(x0))
+        anchor_y = int(round(y0))
+        if cell_px <= 0:
+            self._combat_log_add("Grid sample too small — cancelled.")
+            return
+        try:
+            self.bm.set_uniform_grid(cell_px, anchor_x, anchor_y)
+        except Exception as e:
+            self._combat_log_add(f"Grid sample failed: {e}")
+            return
+
+        self._manual_grid = {"cell_px": cell_px, "anchor": [anchor_x, anchor_y]}
+        self._terrain_regions = []
+        self._walls_enabled = False
+        self.btn_toggle_walls.text = "Walls: OFF"
+        self._build_overlay()
+        self._save_terrain()
+        self._combat_log_add(
+            f"Manual grid set: {self.bm.grid_cols}×{self.bm.grid_rows} cells, {cell_px}px/cell.")
 
     def _toggle_walls(self):
         """Turn auto-detected walls/obstacles on or off.
@@ -7255,6 +7392,7 @@ class App:
             rpg.VisibilityLevel.Dim: "DimLight",
             rpg.VisibilityLevel.Dark: "Darkness",
             rpg.VisibilityLevel.MagicalDark: "MagicalDarkness",
+            rpg.VisibilityLevel.Sunlight: "Sunlight",
         }
         default_str = light_str_map.get(default_light, "Darkness")
 
@@ -7276,6 +7414,7 @@ class App:
             "DimLight": rpg.VisibilityLevel.Dim,
             "Darkness": rpg.VisibilityLevel.Dark,
             "MagicalDarkness": rpg.VisibilityLevel.MagicalDark,
+            "Sunlight": rpg.VisibilityLevel.Sunlight,
         }
         return mapping.get(s, rpg.VisibilityLevel.Clear)
 
@@ -7340,6 +7479,14 @@ class App:
             # Draw lighting overlay if editor dialog toggle is on
             self._draw_lighting_overlay()
 
+        # Rubber-band box while sampling a tile for a manual grid
+        if (self._grid_sample_mode and self._grid_sample_start is not None
+                and self._grid_sample_cur is not None):
+            x0, y0 = self._grid_sample_start
+            x1, y1 = self._grid_sample_cur
+            box = pygame.Rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
+            pygame.draw.rect(self.screen, (255, 220, 60), box, 2)
+
     def _draw_lighting_overlay(self):
         """Draw the lighting visualization overlay on the map."""
         if not self.bm or not self.map_rect:
@@ -7373,6 +7520,7 @@ class App:
                     rpg.VisibilityLevel.Dim: 128,      # 50% of 255
                     rpg.VisibilityLevel.Dark: 230,      # 90% of 255
                     rpg.VisibilityLevel.MagicalDark: 255,
+                    rpg.VisibilityLevel.Sunlight: 45,  # faint warm tint (bright light, just flagged)
                 }.get(light_level, 0)
 
                 if opacity > 0:
@@ -7385,6 +7533,8 @@ class App:
                     # Color depends on light level
                     if light_level == rpg.VisibilityLevel.MagicalDark:
                         color = (0, 0, 0, opacity)  # Black for magical darkness
+                    elif light_level == rpg.VisibilityLevel.Sunlight:
+                        color = (255, 235, 130, opacity)  # warm yellow for sunlight
                     else:
                         color = (50, 50, 50, opacity)  # Dark grey for other darkness
 
@@ -7466,6 +7616,15 @@ class App:
             if temp_w > 0:
                 pygame.draw.rect(self.screen, (80, 200, 230),
                                  (bar_x + fill_w, bar_y, temp_w, bar_h))
+
+        # Drained max-HP overlay (dark red): the slice of the maximum currently unavailable
+        # (vampiric Bite life-drain, etc.), pinned to the right end of the bar.
+        drained = getattr(stats, "available_hit_points", 0)
+        if drained > 0:
+            drain_w = min(bar_w, int(round(bar_w * (drained / hp_max))))
+            if drain_w > 0:
+                pygame.draw.rect(self.screen, (90, 20, 20),
+                                 (bar_x + bar_w - drain_w, bar_y, drain_w, bar_h))
 
         # Outline for contrast over varied sprite art
         pygame.draw.rect(self.screen, (10, 10, 10), (bar_x, bar_y, bar_w, bar_h), 1)
@@ -8253,11 +8412,14 @@ class App:
                 pygame.draw.rect(self.screen, (100, 150, 255),
                                  pygame.Rect(lx + int(bar_width), y, int(temp_hp_width), 12), border_radius=3)
 
-            # Display HP text with temp HP indicator
+            # Display HP text with temp HP indicator (and any drained max-HP)
+            drained = getattr(stats, "available_hit_points", 0)
+            drain_sfx = f" [-{drained} max]" if drained > 0 else ""
+            eff_max = stats.hp_max - drained
             if stats.temp_hp > 0:
-                txt(f"HP {stats.hp_cur} (+{stats.temp_hp})", lx + W//2 - 40, y - 1)
+                txt(f"HP {stats.hp_cur} (+{stats.temp_hp}){drain_sfx}", lx + W//2 - 40, y - 1)
             else:
-                txt(f"HP {stats.hp_cur}/{stats.hp_max}", lx + W//2 - 22, y - 1)
+                txt(f"HP {stats.hp_cur}/{eff_max}{drain_sfx}", lx + W//2 - 22, y - 1)
             y += 12
 
             # ── Focus Points display (Monk) ────────────────────────────────────
@@ -8897,6 +9059,18 @@ class App:
                         self.btn_cbt_sacred_weapon.draw(self.screen)
                         y += B + gap
 
+            # Corona of Light button — Cleric Light Domain (L17+), Magic action, 1-minute aura
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Cleric and
+                        stats.cleric_subclass == rpg.ClericSubclass.LightDomain and
+                        stats.char_level >= 17 and stats.corona_of_light_turns == 0):
+                    self.btn_cbt_corona.rect.x = lx
+                    self.btn_cbt_corona.rect.y = y
+                    self.btn_cbt_corona.rect.w = W
+                    self.btn_cbt_corona.draw(self.screen)
+                    y += B + gap
+
             # Telekinetic Movement button — Psi Warrior (L3+), once per rest, push a creature 30 ft
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -9247,6 +9421,9 @@ class App:
         # ── Toggle Wall Auto-Detection button ──────────────────────────────
         self.btn_toggle_walls.draw(self.screen)
 
+        # ── Set Grid (sample a tile) button ────────────────────────────────
+        self.btn_set_grid.draw(self.screen)
+
         # ── Quit button ────────────────────────────────────────────────────
         self.btn_quit.draw(self.screen)
 
@@ -9286,7 +9463,8 @@ class App:
                 self.weapon_selection_dialog.visible or
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
-                self.mob_dialog.visible or self.context_menu.visible)
+                self.mob_dialog.visible or self.context_menu.visible or
+                self._grid_span_dialog.visible or self.name_prompt.visible)
 
     def _handle_events(self):
         for event in pygame.event.get():
@@ -9296,6 +9474,25 @@ class App:
             # Map-level pan input (wheel / arrow keys) is suppressed while any
             # menu is open, so scrolling a dialog doesn't also pan the map.
             map_input_allowed = not self._modal_active()
+
+            # ── Grid sample mode: drag one tile to define a uniform grid ──────
+            # Intercepts left-click drags on the map before any agent/placement
+            # handling. Panel clicks (e.g. cancelling via the button) fall through.
+            if self._grid_sample_mode and map_input_allowed and hasattr(event, "pos"):
+                on_map_evt = self.map_rect.move(self.pan_x, self.pan_y).collidepoint(event.pos)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map_evt:
+                    self._grid_sample_start = event.pos
+                    self._grid_sample_cur   = event.pos
+                    continue
+                if event.type == pygame.MOUSEMOTION and self._grid_sample_start is not None:
+                    self._grid_sample_cur = event.pos
+                    continue
+                if (event.type == pygame.MOUSEBUTTONUP and event.button == 1
+                        and self._grid_sample_start is not None):
+                    self._finalize_grid_sample(self._grid_sample_start, event.pos)
+                    self._grid_sample_start = None
+                    self._grid_sample_cur   = None
+                    continue
 
             # ── Mouse wheel for map panning ───────────────────────────────
             if map_input_allowed and event.type == pygame.MOUSEBUTTONDOWN:
@@ -9362,6 +9559,16 @@ class App:
             # ── Cast-time element picker is a top modal: consume events while open ──
             if self._element_dialog.visible:
                 self._element_dialog.handle(event)
+                continue
+
+            # ── Grid-span picker is a top modal: consume events while open ─────────
+            if self._grid_span_dialog.visible:
+                self._grid_span_dialog.handle(event)
+                continue
+
+            # ── Name prompt is a top modal: consume events while open ──────────────
+            if self.name_prompt.visible:
+                self.name_prompt.handle(event)
                 continue
 
             # ── Team picker is a top modal: consume events while open ──────────────
@@ -9457,30 +9664,19 @@ class App:
                         cfg = self.placement_config
                         cfg.start_col = self.placement_cell.col
                         cfg.start_row = self.placement_cell.row
-                        # Save full state for all existing agents before
-                        # apply_agent_configs() recreates them from scratch.
-                        # NOTE: spells, armor, and faction live on PlacedAgent (not
-                        # in stats), so they must be saved/restored explicitly or
-                        # they are lost (e.g. red/blue team assignments reset to
-                        # neutral every time a new mob is placed).
-                        existing = self.bm.placed_agents
-                        saved = [(self.combat.get_agent_stats(self.bm, i),
-                                  self.combat.get_agent_weapons(self.bm, i),
-                                  self.combat.get_agent_spells(self.bm, i),
-                                  self.combat.get_agent_armor(self.bm, i),
-                                  self.bm.get_agent_faction(i))
-                                 for i in range(len(existing))]
-                        self.combat.add_agent_config(self.bm, cfg)
-                        self.combat.apply_agent_configs(self.bm)
-                        # Restore previously saved stats + weapons + spells + armor + faction
-                        for i, (st, wps, spl, arm, fac) in enumerate(saved):
-                            self.combat.set_agent_stats(self.bm, i, st)
-                            self.combat.set_agent_weapons(self.bm, i, wps)
-                            self.combat.set_agent_spells(self.bm, i, spl)
-                            self.combat.set_agent_armor(self.bm, i, arm)
-                            self.bm.set_agent_faction(i, fac)
+                        # Append non-destructively, the same primitive paste/summon
+                        # use. Using spawn_agent instead of add_agent_config +
+                        # apply_agent_configs avoids rebuilding the whole roster from
+                        # the config list. That rebuild (applyAgentConfigs clears
+                        # placedAgents_) silently dropped every agent created via
+                        # spawn_agent — pasted clones and summons never enter the
+                        # config list — so placing one new mob wiped them, and the
+                        # next save then persisted only the rebuilt roster.
+                        idx = self.bm.spawn_agent(cfg)
+                        if idx < 0:
+                            self._flash_status("Could not place agent here")
+                            continue
                         # Apply mob stats and auto-weapons to the newly placed agent
-                        idx = len(self.bm.placed_agents) - 1
                         if self.selected_mob_stats:
                             d_d_stats = self._mob_stats_to_d_d_stats(self.selected_mob_stats)
                             self.combat.set_agent_stats(self.bm, idx, d_d_stats)
@@ -9691,7 +9887,24 @@ class App:
                                 f"Editing safe targets for {self.bm.placed_agents[h].name}: "
                                 f"click allies to toggle them safe from this Evoker's AoEs "
                                 f"(Esc or click empty space to finish).")
-                        _menu_opts = [("Edit Stats",   _open_stats),
+                        def _edit_name(h=hit):
+                            old = self.bm.placed_agents[h].name
+                            def _commit(new_name, hh=h, prev=old):
+                                self.bm.set_agent_name(hh, new_name)
+                                self._combat_log_add(f"Renamed '{prev}' → '{new_name}'.")
+                            self.name_prompt.show(old, _commit,
+                                                  title=f"Rename '{old}'")
+                        def _edit_sprite(h=hit):
+                            def _commit(path, hh=h):
+                                self.bm.set_agent_sprite(hh, path)
+                                self._combat_log_add(
+                                    f"{self.bm.placed_agents[hh].name}: sprite set to "
+                                    f"{os.path.basename(path)}.")
+                            start = self.sprites_dir if os.path.isdir(self.sprites_dir) else "."
+                            self.file_browser.open(start, _commit)
+                        _menu_opts = [("Edit Name…",   _edit_name),
+                                      ("Edit Sprite…", _edit_sprite),
+                                      ("Edit Stats",   _open_stats),
                                       ("Edit Weapons", _open_weapons),
                                       ("Edit Armor",   _open_armor),
                                       ("Edit Spells",  _open_spells),
@@ -10068,6 +10281,10 @@ class App:
                 if self.btn_toggle_walls.clicked(event):
                     self._toggle_walls()
 
+                # Set Grid (sample a tile to define a uniform grid)
+                if self.btn_set_grid.clicked(event):
+                    self._toggle_grid_sample_mode()
+
                 # Quit
                 if self.btn_quit.clicked(event):
                     return False
@@ -10366,6 +10583,10 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_sacred_weapon(idx)
+                    if self.btn_cbt_corona.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_corona_of_light(idx)
                     if self.btn_cbt_telekinetic.clicked(event):
                         self.pending_telekinetic = True
                         self.hint = "Click a creature to move with Telekinetic Movement"
@@ -10481,7 +10702,9 @@ class App:
             self.conditions_dialog.draw(self.screen)  # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
             self._element_dialog.draw(self.screen) # cast-time element picker — topmost modal
+            self._grid_span_dialog.draw(self.screen) # grid-span picker — topmost modal
             self.team_dialog.draw(self.screen)     # team picker — topmost modal
+            self.name_prompt.draw(self.screen)     # rename prompt — topmost modal
             pygame.display.flip()
             self.clock.tick(60)
         # Clean up temporary terrain effects before quitting

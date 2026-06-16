@@ -273,6 +273,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "D&D 5e rule: only one leveled spell (level >= 1) per turn. Reset at turn start.")
         .def_readwrite("temp_hp", &Agent::Stats::temp_hp,
              "Temporary hit points (absorbs damage before hp_cur).")
+        .def_readwrite("available_hit_points", &Agent::Stats::available_hit_points,
+             "Mirror of temp_hp: a non-negative reduction to the HP maximum (vampiric drain, etc.).\n"
+             "effective_max_hp = max(0, hp_max - available_hit_points); cleared on a long rest.")
+        .def_property_readonly("effective_max_hp", &Agent::Stats::effectiveMaxHp,
+             "Usable HP maximum after any reduction: max(0, hp_max - available_hit_points).")
         .def_readwrite("rage_thp_source_idx", &Agent::Stats::rage_thp_source_idx,
              "Index of the Barbarian whose Rage granted the current temp HP (World Tree Vitality of the\n"
              "Tree), or -1 for any other source. endRage clears temp HP tagged with the ending Barbarian.")
@@ -352,6 +357,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Paladin Oath of Devotion: Sacred Weapon attack-roll bonus (0 = inactive)")
         .def_readwrite("sacred_weapon_turns", &Agent::Stats::sacred_weapon_turns,
              "Sacred Weapon remaining duration in rounds (decrements at turn start)")
+        .def_readwrite("corona_of_light_turns", &Agent::Stats::corona_of_light_turns,
+             "Cleric Light Domain (L17) Corona of Light remaining duration in rounds (>0 = enemies in 60ft "
+             "have Disadvantage on saves vs the caster's Fire/Radiant spells)")
         .def_readwrite("innate_sorcery_turns", &Agent::Stats::innate_sorcery_turns,
              "Sorcerer Innate Sorcery remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)")
         .def_readwrite("shield_active", &Agent::Stats::shield_active,
@@ -1716,6 +1724,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "+CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires\n"
              "Oath of Devotion and an available Channel Oath use. Returns the bonus granted,\n"
              "or -1 if it could not be activated.")
+        .def("activate_corona_of_light",
+             &CombatEngine::activateCoronaOfLight,
+             py::arg("battle_map"), py::arg("idx"),
+             "Cleric Light Domain — Corona of Light (L17+): Magic action that, for 1 minute (10 rounds),\n"
+             "gives enemies within 60 ft Disadvantage on saves vs this caster's Fire/Radiant spells.\n"
+             "Returns True if activated, False if not eligible (wrong class/domain/level).")
         .def("activate_innate_sorcery",
              &CombatEngine::activateInnateSorcery,
              py::arg("battle_map"), py::arg("idx"),
@@ -2327,6 +2341,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("can_silvery_barbs", &CombatEngine::canSilveryBarbs,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
              "True iff reactor knows Silvery Barbs, has a L1+ slot, reaction free, 60ft+LoS of the roller.")
+        .def("can_warding_flare", &CombatEngine::canWardingFlare,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
+             "True iff reactor (L3+ Light Domain Cleric, >=1 Warding Flare use, reaction free, within\n"
+             "30ft + LoS of the roller) may use Warding Flare on the roller's attack roll.")
         .def("apply_bend_luck_to_attack", &CombatEngine::applyBendLuckToAttack,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend 1 Sorcery Point + reaction; subtract 1d4 from the in-flight attack result and\n"
@@ -2339,6 +2357,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend the lowest L1+ slot + reaction; reroll the d20 and re-evaluate (attacker uses the\n"
              "new roll). Mutates `result`. Returns True if applied.")
+        .def("apply_warding_flare_to_attack", &CombatEngine::applyWardingFlareToAttack,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Spend 1 Warding Flare use + reaction; impose Disadvantage (reroll the d20, take the lower)\n"
+             "and re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
         // ── OnSaveFail window eligibility gates. The window itself reuses
         //    begin_cast/resolve_cast/pending_decision/submit_decision/last_cast_result; these gates are for
         //    tests + GUI menu labels. ──
@@ -2851,6 +2873,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
                "Impenetrable / MagicalDarkness (needs devil's sight to see)")
         .value("Blocked",          VisibilityLevel::Blocked,
                "Cannot see at all (blocked by walls, full cover, etc.)")
+        .value("Sunlight",         VisibilityLevel::Sunlight,
+               "Sunlight: a bright-light category that behaves like Clear for vision, tracked "
+               "separately so vampire features (Sunlight Sensitivity) can detect it.")
         .export_values();
 
     // ── ActiveTerrainEffect struct ───────────────────────────────────────────
@@ -2904,6 +2929,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Grid analysis
         .def("analyze_grid",  &BattleMap::analyzeGrid,
              "Detect grid lines; call before detect_walls().")
+        .def("set_uniform_grid", &BattleMap::setUniformGrid,
+             py::arg("cell_px"), py::arg("anchor_x"), py::arg("anchor_y"),
+             "Replace the detected grid with a uniform grid of square cells `cell_px`\n"
+             "pixels on a side, phase-aligned to (anchor_x, anchor_y) in image pixels,\n"
+             "tiled across the whole map. Clears walls and resizes terrain buffers.")
         .def("detect_walls",  &BattleMap::detectWalls,
              "Detect thick walls and compute disallowed cells via flood fill.")
         .def("clear_walls",   &BattleMap::clearWalls,
@@ -2975,6 +3005,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("set_agent_faction", &BattleMap::setAgentFaction,
              py::arg("idx"), py::arg("faction"),
              "Assign agent[idx] to a team/faction (0 = neutral; 1+ = red/blue/...).")
+        .def("set_agent_name", &BattleMap::setAgentName,
+             py::arg("idx"), py::arg("name"),
+             "Rename placed agent[idx] (also patches its AgentConfig so it survives "
+             "save/load and config re-apply).")
+        .def("set_agent_sprite", &BattleMap::setAgentSprite,
+             py::arg("idx"), py::arg("sprite_path"),
+             "Set the sprite image path for placed agent[idx] (also patches its "
+             "AgentConfig so it survives save/load and config re-apply).")
         .def("get_agent_summon_spell", &BattleMap::getAgentSummonSpell,
              py::arg("idx"),
              "Name of the spell that summoned agent[idx] (empty if none).")

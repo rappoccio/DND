@@ -165,6 +165,16 @@ namespace rpg {
       // any other source. endRage clears temp_hp on creatures tagged with the ending Barbarian's
       // index. 5e temp HP never stacks, so temp_hp has exactly one source at a time.
       int rage_thp_source_idx{-1};
+      // The mirror image of temp_hp: a non-negative reduction to the creature's hit point maximum
+      // (e.g. a vampire's Bite life-drain). effectiveMaxHp() = max(0, hp_max - available_hit_points),
+      // and hp_cur can never exceed it. Unlike temp_hp this never absorbs damage — it just lowers the
+      // ceiling. Cleared on a long rest (see CombatEngine::applyLongRest).
+      int available_hit_points{0};
+
+      // The creature's current usable HP maximum after any max-HP reduction (vampiric drain, etc.).
+      [[nodiscard]] int effectiveMaxHp() const noexcept {
+        return std::max(0, hp_max - available_hit_points);
+      }
       // 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vuln; initialized in constructor
       std::array<float, NumMagicDamage_t> magic_damage_multipliers;
       std::array<float, NumPhysicalDamage_t> physical_damage_multipliers;
@@ -463,6 +473,7 @@ namespace rpg {
       int  bardic_inspiration_die_size{6};                       // Bard: the die size this bard GRANTS (d6/d8/d10/d12 by level), set in initializeClassResources
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
+      int  corona_of_light_turns{0};                             // Cleric Light Domain (L17): Corona of Light remaining duration in rounds (>0 = enemies in 60ft have Disadvantage on saves vs the caster's Fire/Radiant spells)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
       // Wild Magic Surge persistent effects (set by applyWildMagicSurgeEffect, tick at turn start)
       bool shield_active{false};                                 // Shield spell: +5 AC (via ac_temporary_modifications) until start of next turn + Magic Missile immunity
@@ -868,6 +879,10 @@ namespace rpg {
 
     // ── Optional: display name for the agent ──────────────────────────────
     [[nodiscard]] virtual std::string_view name() const noexcept = 0;
+
+    // Rename a placed agent in-flight. The name lives in the concrete subclass,
+    // so the base is a no-op and ConfiguredAgent overrides it.
+    virtual void setName(std::string /*name*/) {}
 
     // ── Optional: source for the agent (like "Dungeon Master's Guide", "Curse of Strahd", etc)
     [[nodiscard]] virtual std::string_view source() const noexcept = 0;

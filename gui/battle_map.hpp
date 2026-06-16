@@ -69,7 +69,13 @@ enum class VisibilityLevel {
     LightlyObscured,        // Obscured by fog/shadows (disadvantage on perception/attacks)
     Dark,                   // Heavily obscured / Darkness (needs darkvision to see)
     MagicalDark,            // Impenetrable / MagicalDarkness (needs devil's sight to see)
-    Blocked                 // Cannot see at all (blocked by walls, full cover, etc.)
+    Blocked,                // Cannot see at all (blocked by walls, full cover, etc.)
+    // Sunlight is a distinct brightness category that, for vision, behaves exactly like Clear
+    // (BrightLight). It is tracked separately so vampire features (Sunlight Sensitivity, etc.) can
+    // ask "is this cell in sunlight?". Appended at the end so the restrictiveness ordering of the
+    // values above is unchanged; brightness combining is handled by brighter() (Sunlight is the
+    // brightest), never by raw enum comparison.
+    Sunlight
 };
 
 // ── Active temporary terrain effect ────────────────────────────────────────
@@ -174,6 +180,14 @@ public:
     // ── Grid analysis ─────────────────────────────────────────────────────
     void analyzeGrid();
 
+    // Replace the auto-detected grid with a uniform grid of square cells `cellPx`
+    // pixels on a side, phase-aligned so (anchorX, anchorY) lands on a cell boundary,
+    // tiled across the whole map image. Lets the GUI define the grid by sampling one
+    // tile when line-detection mis-reads a map (e.g. textured maps with a border
+    // margin). Clears walls and resets the per-cell terrain/light buffers to the new
+    // dimensions.
+    void setUniformGrid(int cellPx, int anchorX, int anchorY);
+
     [[nodiscard]] int gridCols()      const noexcept { return cols_; }
     [[nodiscard]] int gridRows()      const noexcept { return rows_; }
     [[nodiscard]] int cellPixelSize() const noexcept { return cellPx_; }
@@ -258,6 +272,13 @@ public:
     // Faction / team accessors (0 = neutral). See PlacedAgent::faction.
     [[nodiscard]] int  getAgentFaction(int idx) const noexcept;
     void setAgentFaction(int idx, int faction) noexcept;
+
+    // Rename / re-sprite a placed agent in-flight (GUI right-click editors).
+    // Also patches the matching AgentConfig when one exists (idx < agentConfigs_),
+    // so a later applyAgentConfigs() rebuild and save/load preserve the change;
+    // spawn_agent'd entities (summons, pastes) live only in placedAgents_.
+    void setAgentName(int idx, std::string name) noexcept;
+    void setAgentSprite(int idx, std::string sprite_path) noexcept;
     [[nodiscard]] std::string getAgentSummonSpell(int idx) const noexcept;
     void setAgentSummonSpell(int idx, std::string spell_name) noexcept;
     [[nodiscard]] bool isAgentRemovedFromPlay(int idx) const noexcept;

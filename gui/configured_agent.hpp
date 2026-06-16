@@ -38,6 +38,7 @@ public:
 
   
     std::string_view name()             const noexcept override { return name_; }
+    void setName(std::string name)            noexcept override { name_ = std::move(name); }
     std::string_view source()           const noexcept override { return source_; }
     std::string_view mob_size()         const noexcept override { return mob_size_; }
     std::string_view mob_type()         const noexcept override { return mob_type_; }

@@ -57349,7 +57349,31 @@
         "conditions": [],
         "mastery": "None"
       },
-      "off_hand": "",
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "mastery": "None"
+      },
       "ranged": ""
     },
     "meta": {
@@ -63637,6 +63661,104 @@
       "immunities_conditions": [
         "Exhaustion",
         "Poisoned"
+      ],
+      "save_dc": null,
+      "saving_throws": [],
+      "action_notes": null,
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
+  },
+  "Zombie Clot":{
+    "name": "Zombie Clot",
+    "size": "Large",
+    "stats": {
+      "str": 20,
+      "dex": 10,
+      "con": 16,
+      "intel": 3,
+      "wis": 8,
+      "cha": 10,
+      "hp_max": 104,
+      "hp_cur": 104,
+      "ac": 12,
+      "speed_walk": 40,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 3,
+      "num_attacks": 2,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": true,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [
+        "Poison"
+      ],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": []
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Slam",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 0,
+        "long_range_ft": 0,
+        "proficient": true,
+        "bonus_damage": 5,
+        "physical_damage_types": [
+          {
+            "type": "Bludgeoning",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Undead (Zombie)",
+      "cr": "6",
+      "alignment": "Neutral Evil",
+      "source": "Dungeon Masters: Zombie Clot Play-Along Pack",
+      "traits": [
+        "Undead Fortitude"
+      ],
+      "languages": [
+        "What it knew in a past life"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 8,
+      "immunities_conditions": [
+        "Exhaustion",
+        "Poisoned",
+	"Charmed",
+	"Exhaustion",
+	"Paralyzed",
+	"Petrified",
+	"Prone",
+	"Stunned"
       ],
       "save_dc": null,
       "saving_throws": [],

@@ -86,6 +86,17 @@ def _make_silvery_caster(engine, bm, idx, slots=2):
     engine.set_agent_stats(bm, idx, s)
 
 
+def _make_light_cleric(engine, bm, idx, level=5, wis=16):
+    """Light Domain Cleric (L3+): Warding Flare = WIS-mod (min 1) reaction uses / long rest."""
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Cleric, level)
+    s.wis = wis; s.prof_bonus = 3
+    s.cleric_subclass = rpg.ClericSubclass.LightDomain   # before init so the resource is seeded
+    s.initialize_class_resources(rpg.CharacterClass.Cleric, level)
+    s.hp_max = 30; s.hp_cur = 30
+    engine.set_agent_stats(bm, idx, s)
+
+
 def _setup(engine, bm, make_reactor, *, tgt_ac=13, give_shield=False):
     """Attacker (STR 18, +7 to hit) at (5,5); defender at (6,5); reactor at (5,7) (≈10 ft, clear LoS).
     add_agent_to_battle's apply_agent_configs wipes earlier stats, so configure all AFTER every add."""
@@ -199,6 +210,66 @@ def test_silvery_barbs_reroll_can_miss():
             print("✅ test_silvery_barbs_reroll_can_miss passed")
             return
     assert False, "did not observe both a window and a reroll-to-miss case in 400 attacks"
+
+
+def test_warding_flare_disadvantage_can_miss():
+    """A Light Domain Cleric's Warding Flare is offered on a hit; imposing Disadvantage (reroll, take
+    the lower) can flip the hit to a miss, spending one Warding Flare use + the reaction. No damage on
+    a flipped miss."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, tgt, rea = _setup(engine, bm, _make_light_cleric)
+    dec = D20Decider("WardingFlare"); engine.set_decider(dec)
+    wf_max = engine.get_agent_stats(bm, rea).resources["Warding Flare"].max
+    saw_window = saw_miss = False
+    for _ in range(400):
+        _reset(engine, bm, tgt, rea, _make_light_cleric)
+        before = dec.d20_offers
+        r = _atk(engine, bm, atk, tgt)
+        if dec.d20_offers > before:                    # the window opened (a hit)
+            saw_window = True
+            assert engine.get_agent_conditions(bm, rea).reaction_used, "Warding Flare spends the reaction"
+            assert engine.get_agent_stats(bm, rea).resources["Warding Flare"].current == wf_max - 1, \
+                "Warding Flare spends one use"
+            if not r.hit:
+                saw_miss = True
+                assert _hp(engine, bm, tgt) == 60, "a Warding-Flare miss deals no damage"
+        if saw_window and saw_miss:
+            print("✅ test_warding_flare_disadvantage_can_miss passed")
+            return
+    assert False, "did not observe both a window and a flipped-to-miss case in 400 attacks"
+
+
+def test_warding_flare_gate():
+    """Deterministic eligibility checks for can_warding_flare (30 ft, subclass, resource, reaction)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Atk", 1, 1))
+    near = add_agent_to_battle(engine, bm, create_test_agent("Near", 1, 3))   # 10 ft
+    far  = add_agent_to_battle(engine, bm, create_test_agent("Far", 1, 9))    # 40 ft (>30, ≤60)
+    _make_light_cleric(engine, bm, near)
+    _make_light_cleric(engine, bm, far)
+
+    assert engine.can_warding_flare(bm, near, atk), "in-range Light cleric with a use is eligible"
+    assert not engine.can_warding_flare(bm, far, atk), "a cleric beyond 30 ft is NOT eligible"
+
+    # Drain the resource → not eligible.
+    s = engine.get_agent_stats(bm, near); s.resources["Warding Flare"].current = 0
+    engine.set_agent_stats(bm, near, s)
+    assert not engine.can_warding_flare(bm, near, atk), "no Warding Flare use → not eligible"
+
+    # Refill but spend the reaction → not eligible.
+    _make_light_cleric(engine, bm, near)
+    c = engine.get_agent_conditions(bm, near); c.reaction_used = True
+    engine.set_agent_conditions(bm, near, c)
+    assert not engine.can_warding_flare(bm, near, atk), "reaction already spent → not eligible"
+
+    # A non-Light cleric (Life Domain) is not eligible even in range with a free reaction.
+    _make_light_cleric(engine, bm, near)
+    c = engine.get_agent_conditions(bm, near); c.reaction_used = False
+    engine.set_agent_conditions(bm, near, c)
+    s = engine.get_agent_stats(bm, near); s.cleric_subclass = rpg.ClericSubclass.LifeDomain
+    engine.set_agent_stats(bm, near, s)
+    assert not engine.can_warding_flare(bm, near, atk), "non-Light Domain cleric → not eligible"
+    print("✅ test_warding_flare_gate passed")
 
 
 def test_lowering_to_miss_suppresses_shield():
@@ -355,6 +426,8 @@ def run_all():
     test_cutting_words_can_miss()
     test_bend_luck_spends_sp_and_can_miss()
     test_silvery_barbs_reroll_can_miss()
+    test_warding_flare_disadvantage_can_miss()
+    test_warding_flare_gate()
     test_lowering_to_miss_suppresses_shield()
     test_reaction_used_not_offered()
     test_no_resource_not_offered()

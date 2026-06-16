@@ -140,6 +140,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Cleric Light Domain — Corona of Light: tick down its 1-minute (10-round) duration.
+    if (stats.corona_of_light_turns > 0) {
+        --stats.corona_of_light_turns;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
     // Sorcerer Innate Sorcery: tick down its 1-minute (10-round) duration.
     if (stats.innate_sorcery_turns > 0) {
         --stats.innate_sorcery_turns;

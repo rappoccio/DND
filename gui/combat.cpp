@@ -255,6 +255,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         war_priest.long_rest_regen = wp;
         resources["War Priest"] = war_priest;
       }
+
+      // Light Domain — Warding Flare (L3+): WIS-mod (min 1) reaction uses per Long Rest.
+      if (cleric_subclass == LightDomain && level >= 3) {
+        int wf = std::max(1, _mod(wis));
+        Resource warding("Warding Flare", wf, 0);
+        warding.long_rest_regen = wf;   // no short-rest regen (RAW: Long Rest only)
+        resources["Warding Flare"] = warding;
+      }
       break;
     }
 

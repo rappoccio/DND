@@ -113,6 +113,49 @@ void BattleMap::analyzeGrid()
     std::cout << std::format("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
 
+void BattleMap::setUniformGrid(int cellPx, int anchorX, int anchorY)
+{
+    if (cellPx <= 0)
+        throw std::runtime_error{"BattleMap::setUniformGrid – cellPx must be > 0"};
+
+    cv::Mat img = cv::imread(mapImagePath_.string());
+    if (img.empty())
+        throw std::runtime_error{"BattleMap::setUniformGrid – cv::imread failed"};
+    const int W = img.cols, H = img.rows;
+
+    // Phase-align the grid so the sampled tile's corner sits on a cell boundary; the
+    // grid then tiles outward from that phase across the whole image.
+    auto phase = [cellPx](int anchor) {
+        int p = anchor % cellPx;
+        return p < 0 ? p + cellPx : p;
+    };
+    const int px = phase(anchorX);
+    const int py = phase(anchorY);
+
+    cols_ = (W - px) / cellPx;   // number of whole cells that fit
+    rows_ = (H - py) / cellPx;
+    if (cols_ <= 0 || rows_ <= 0)
+        throw std::runtime_error{"BattleMap::setUniformGrid – grid would be empty"};
+
+    hLines_.clear();
+    vLines_.clear();
+    for (int c = 0; c <= cols_; ++c) vLines_.push_back(px + c * cellPx);
+    for (int r = 0; r <= rows_; ++r) hLines_.push_back(py + r * cellPx);
+    cellPx_ = cellPx;
+
+    const std::size_t n = static_cast<std::size_t>(rows_ * cols_);
+    terrainMult_.assign(n, 1.0);
+    terrainType_.assign(n, TerrainType::Standard);
+    tempTerrainDiff_.assign(n, TerrainDifficulty::Normal);
+    baseVisibilityLevel_.assign(n, VisibilityLevel::Clear);
+    lightLevel_.assign(n, VisibilityLevel::Clear);
+
+    clearWalls();
+
+    std::cout << std::format("[BattleMap] Manual grid {}×{}, {}px/cell (phase {},{})\n",
+                 cols_, rows_, cellPx_, px, py);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Wall detection
 // ─────────────────────────────────────────────────────────────────────────────
@@ -759,6 +802,22 @@ void BattleMap::setAgentFaction(int idx, int faction) noexcept
     placedAgents_[static_cast<std::size_t>(idx)].faction = faction;
 }
 
+void BattleMap::setAgentName(int idx, std::string name) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    const auto i = static_cast<std::size_t>(idx);
+    if (i < agentConfigs_.size()) agentConfigs_[i].name = name;
+    placedAgents_[i].agent->setName(std::move(name));
+}
+
+void BattleMap::setAgentSprite(int idx, std::string sprite_path) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    const auto i = static_cast<std::size_t>(idx);
+    if (i < agentConfigs_.size()) agentConfigs_[i].spritePath = sprite_path;
+    placedAgents_[i].agent->setSprite(std::move(sprite_path));
+}
+
 std::string BattleMap::getAgentSummonSpell(int idx) const noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
@@ -1212,6 +1271,9 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
         for (int tc = 0; tc < tgt_size; ++tc) {
             Cell c{tgt_origin.col + tc, tgt_origin.row + tr};
             VisibilityLevel cell_light = getLightLevel(c);
+            // Sunlight is a bright-light category; for vision it behaves exactly like Clear (and must
+            // not dominate the "darkest cell wins" max, since its enum value is the highest).
+            if (cell_light == VisibilityLevel::Sunlight) cell_light = VisibilityLevel::Clear;
             if (static_cast<int>(cell_light) > static_cast<int>(effective_light)) {
                 effective_light = cell_light;
             }
@@ -1243,6 +1305,8 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
             return false;  // magical darkness blocks darkvision
         case VisibilityLevel::Blocked:
             return false;  // cannot see through walls/obstacles
+        case VisibilityLevel::Sunlight:
+            return true;   // bright light (normalized to Clear above; here for switch completeness)
     }
     return false;
 }
@@ -1274,6 +1338,7 @@ bool BattleMap::perceptionDisadvantage(Cell obs_origin, int obs_size,
         for (int tc = 0; tc < tgt_size; ++tc) {
             Cell c{tgt_origin.col + tc, tgt_origin.row + tr};
             VisibilityLevel cell_light = getLightLevel(c);
+            if (cell_light == VisibilityLevel::Sunlight) cell_light = VisibilityLevel::Clear;  // bright = Clear for vision
             if (static_cast<int>(cell_light) > static_cast<int>(effective_light)) {
                 effective_light = cell_light;
             }
@@ -1465,6 +1530,15 @@ bool BattleMap::hasActiveTerrainEffects() const noexcept {
 }
 
 // ── Lighting system ────────────────────────────────────────────────────────
+// Return the brighter of two light levels. Sunlight is the brightest category; for every other
+// value "brighter" means the smaller enum (Clear < Dim < ... < Blocked), matching std::min. Used
+// when light sources/effects raise a cell's light — Sunlight is never dimmed by a normal source.
+static VisibilityLevel brighter(VisibilityLevel a, VisibilityLevel b) noexcept {
+    if (a == VisibilityLevel::Sunlight || b == VisibilityLevel::Sunlight)
+        return VisibilityLevel::Sunlight;
+    return std::min(a, b);
+}
+
 void BattleMap::applyBaseLighting(VisibilityLevel default_light,
                                    const std::vector<std::tuple<int, int, int, int>>& sources) noexcept {
     // Initialize base lighting to default
@@ -1509,11 +1583,11 @@ void BattleMap::applyBaseLighting(VisibilityLevel default_light,
                 if (dist <= bright_cells) {
                     int idx = r * cols_ + c;
                     baseVisibilityLevel_[static_cast<std::size_t>(idx)] =
-                        std::min(baseVisibilityLevel_[static_cast<std::size_t>(idx)], VisibilityLevel::Clear);
+                        brighter(baseVisibilityLevel_[static_cast<std::size_t>(idx)], VisibilityLevel::Clear);
                 } else if (dist <= dim_cells) {
                     int idx = r * cols_ + c;
                     baseVisibilityLevel_[static_cast<std::size_t>(idx)] =
-                        std::min(baseVisibilityLevel_[static_cast<std::size_t>(idx)], VisibilityLevel::Dim);
+                        brighter(baseVisibilityLevel_[static_cast<std::size_t>(idx)], VisibilityLevel::Dim);
                 }
             }
         }
@@ -1533,7 +1607,7 @@ void BattleMap::updateLighting() noexcept {
         for (int idx : eff.cell_indices) {
             if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
                 lightLevel_[static_cast<std::size_t>(idx)] =
-                    std::min(lightLevel_[static_cast<std::size_t>(idx)], eff.light_level);
+                    brighter(lightLevel_[static_cast<std::size_t>(idx)], eff.light_level);
             }
         }
     }

@@ -46,6 +46,7 @@
   "type": "Harm",
   "geometry": "Sphere",
   "moves_with_caster": true,
+  "selective_targeting": true,
   "attack_type": "Save",
   "save_ability": "SaveCon",
   "school": "evocation",

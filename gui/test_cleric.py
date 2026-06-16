@@ -436,6 +436,123 @@ def test_guided_strike_auto_via_decider():
     raise AssertionError("never produced a guided miss in 40 attempts")
 
 
+# ── Corona of Light (Light Domain, L17) ───────────────────────────────────────
+def _light_cleric(engine, bm, idx, level=17, wis=16):
+    s = engine.get_agent_stats(bm, idx)
+    s.character_class = rpg.CharacterClass.Cleric
+    s.cleric_subclass = rpg.ClericSubclass.LightDomain
+    s.char_level = level
+    s.wis = wis; s.prof_bonus = 6
+    s.hp_max = 60; s.hp_cur = 60
+    s.can_cast_spell = True
+    s.initialize_class_resources(rpg.CharacterClass.Cleric, level)
+    engine.set_agent_stats(bm, idx, s)
+
+
+def _save_spell(name, dmg_type, num_dice=1, die_size=8):
+    s = rpg.Spell()
+    s.name = name
+    s.type = rpg.SpellType.Harm
+    s.geometry = rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.Save
+    s.save_ability = rpg.SaveAbility.Dexterity
+    s.range = 60
+    s.level = 0
+    roll = rpg.MagicDamageRoll(); roll.type = dmg_type; roll.num_dice = num_dice; roll.die_size = die_size
+    s.magic_damage_rolls = [roll]
+    return s
+
+
+def test_corona_activation_and_duration():
+    """activate_corona_of_light gates on L17 Light Domain Cleric and sets a 10-round duration that
+    ticks down at each turn start."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 5, 5)
+
+    # Wrong level → rejected.
+    _light_cleric(engine, bm, cleric, level=16)
+    assert not engine.activate_corona_of_light(bm, cleric), "L16 Light cleric cannot use Corona"
+
+    # Wrong subclass → rejected.
+    _light_cleric(engine, bm, cleric, level=17)
+    s = engine.get_agent_stats(bm, cleric); s.cleric_subclass = rpg.ClericSubclass.LifeDomain
+    engine.set_agent_stats(bm, cleric, s)
+    assert not engine.activate_corona_of_light(bm, cleric), "non-Light Domain cleric cannot use Corona"
+
+    # Eligible → activates, sets 10 rounds.
+    _light_cleric(engine, bm, cleric, level=17)
+    assert engine.activate_corona_of_light(bm, cleric), "L17 Light cleric activates Corona"
+    assert engine.get_agent_stats(bm, cleric).corona_of_light_turns == 10, "Corona lasts 10 rounds"
+
+    engine.begin_turn(bm, cleric)
+    assert engine.get_agent_stats(bm, cleric).corona_of_light_turns == 9, "first turn start ticks to 9"
+    for _ in range(9):
+        engine.begin_turn(bm, cleric)
+    assert engine.get_agent_stats(bm, cleric).corona_of_light_turns == 0, "duration expires after 10 turns"
+    print("✅ test_corona_activation_and_duration passed")
+
+
+def _save_rate(engine, bm, cleric, target, spell, trials=300):
+    """Cast a single-target Save spell `trials` times; return the fraction of successful saves."""
+    engine.set_agent_spells(bm, cleric, [spell])
+    saves = 0
+    for _ in range(trials):
+        t = engine.get_agent_stats(bm, target); t.hp_cur = t.hp_max  # keep it alive so the save is rolled
+        engine.set_agent_stats(bm, target, t)
+        action = rpg.SpellAction()
+        action.caster_idx = cleric; action.spell_idx = 0; action.target_indices = [target]
+        res = engine.execute_spell(bm, action)
+        for tr in res.target_results:
+            if tr.target_idx == target and tr.saved:
+                saves += 1
+    return saves / trials
+
+
+def test_corona_disadvantage_on_fire_radiant_saves():
+    """While Corona is active, an enemy within 60 ft saves LESS often vs the caster's Fire/Radiant
+    spells (Disadvantage), but is unaffected for non-Fire/Radiant spells or when out of range / allied."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    enemy  = _add(engine, bm, "Enemy", 1, 3, hp=100000)   # 10 ft, in range
+    _light_cleric(engine, bm, cleric)
+    e = engine.get_agent_stats(bm, enemy); e.dex = 18; e.hp_max = 100000; e.hp_cur = 100000
+    engine.set_agent_stats(bm, enemy, e)
+
+    radiant = _save_spell("Test Radiance", rpg.MagicDamage.Radiant)
+
+    off = _save_rate(engine, bm, cleric, enemy, radiant)         # Corona inactive
+    assert engine.activate_corona_of_light(bm, cleric)
+    on = _save_rate(engine, bm, cleric, enemy, radiant)          # Corona active → Disadvantage
+    assert on < off - 0.10, f"Corona should drop the save rate (off={off:.2f}, on={on:.2f})"
+
+    # A non-Fire/Radiant spell is unaffected by Corona (save rate ~ unchanged).
+    force = _save_spell("Test Force", rpg.MagicDamage.Force)
+    force_on = _save_rate(engine, bm, cleric, enemy, force)
+    assert force_on > off - 0.10, \
+        f"Corona must not touch non-Fire/Radiant saves (off={off:.2f}, force_on={force_on:.2f})"
+    print("✅ test_corona_disadvantage_on_fire_radiant_saves passed")
+
+
+def test_corona_spares_allies():
+    """Corona's Disadvantage is gated to ENEMIES: a same-faction ally in range is spared.
+    (The >60-ft range gate can't be exercised on the 12x12 test map, which tops out at ~55 ft.)"""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    ally   = _add(engine, bm, "Ally", 1, 3, hp=100000)
+    _light_cleric(engine, bm, cleric)
+    bm.set_agent_faction(cleric, 1)
+    bm.set_agent_faction(ally, 1)                                 # same team → not an enemy
+    a = engine.get_agent_stats(bm, ally); a.dex = 18; a.hp_max = 100000; a.hp_cur = 100000
+    engine.set_agent_stats(bm, ally, a)
+
+    radiant = _save_spell("Test Radiance", rpg.MagicDamage.Radiant)
+    off = _save_rate(engine, bm, cleric, ally, radiant)
+    assert engine.activate_corona_of_light(bm, cleric)
+    on = _save_rate(engine, bm, cleric, ally, radiant)
+    assert abs(on - off) < 0.12, f"an allied target must not get Disadvantage (off={off:.2f}, on={on:.2f})"
+    print("✅ test_corona_spares_allies passed")
+
+
 if __name__ == "__main__":
     test_channel_divinity_uses_by_level()
     test_divine_strike_adds_damage_once_per_turn()
@@ -448,4 +565,7 @@ if __name__ == "__main__":
     test_avatar_of_battle_resistance()
     test_guided_strike_turns_miss_to_hit()
     test_guided_strike_auto_via_decider()
+    test_corona_activation_and_duration()
+    test_corona_disadvantage_on_fire_radiant_saves()
+    test_corona_spares_allies()
     print("\n✅ All Cleric tests passed!")

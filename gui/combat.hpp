@@ -89,6 +89,10 @@ struct AttackResult {
     std::vector<PhysicalDamage_t> physical_damage_types;
     // Per-source damage breakdown, e.g. [("weapon",4),("rage",3)]. Sums to total_damage.
     std::vector<std::pair<std::string,int>> damage_breakdown;
+    // Per-magic-type damage actually dealt (after the target's resistance/immunity multiplier),
+    // indexed by MagicDamage_t. Read by on-hit riders that key off a specific type — e.g. the
+    // vampiric "reduceHPMax" rider drains the HP maximum by the Necrotic damage dealt.
+    std::array<int, NumMagicDamage_t> magic_damage_dealt{};
 
     // ── Target outcome ────────────────────────────────────────────────────
     int  hp_before    = 0;
@@ -681,6 +685,12 @@ public:
     // and an available Channel Oath use. Returns the attack bonus granted, or -1 if it could not
     // be activated (wrong oath, no resource, or already active).
     int activateSacredWeapon(BattleMap& bm, int idx) noexcept;
+
+    // Cleric Light Domain — Corona of Light (L17+): a Magic action that lights a 60-ft radius for 1
+    // minute (10 rounds). While active, enemies within 60 ft have Disadvantage on saves vs the
+    // caster's Fire/Radiant spells (applied in rollSpellSave). Returns true if activated, false if not
+    // eligible (wrong class/domain/level). Sets corona_of_light_turns; ticked down in beginTurn.
+    bool activateCoronaOfLight(BattleMap& bm, int idx) noexcept;
 
     // ── Sorcerer ──────────────────────────────────────────────────────────
     // Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save DC and
@@ -1853,6 +1863,7 @@ public:
     [[nodiscard]] bool canBendLuck    (const BattleMap& bm, int reactor, int roller) const; // L6+ WildMagic Sorc, ≥1 SP
     [[nodiscard]] bool canCuttingWords(const BattleMap& bm, int reactor, int roller) const; // L3+ Lore Bard, ≥1 Bardic use
     [[nodiscard]] bool canSilveryBarbs(const BattleMap& bm, int reactor, int roller) const; // knows Silvery Barbs + L1+ slot
+    [[nodiscard]] bool canWardingFlare(const BattleMap& bm, int reactor, int roller) const; // L3+ Light Domain Cleric, ≥1 Warding Flare use, within 30ft
     // Recompute r.hit / r.critical from r.d20 + r.total_roll vs r.target_ac (nat 20 hits/crits, nat 1
     // misses, else total >= AC). Additive reactions leave r.d20 untouched (crit preserved); the
     // Silvery Barbs reroll sets r.d20 to the new die.
@@ -1862,6 +1873,7 @@ public:
     bool applyBendLuckToAttack    (BattleMap& bm, int reactor, AttackResult& r);
     bool applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackResult& r);
     bool applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r);
+    bool applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackResult& r); // Disadvantage = reroll, take lower
 private:
     // The creatures (≠ attacker) that may lower this attack roll, in initiative order. Silvery Barbs is
     // only included on a hit (it triggers on a success). Empty when no lowering reaction could change

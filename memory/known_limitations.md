@@ -609,10 +609,39 @@ Requires creature summoning system.
 - Undead with **Frightened immunity** aren't spared (no creature condition-immunity system)
 - "Ends early if caster is Incapacitated or dies" isn't cascaded
 
-### Deferred — Light Domain (beyond Radiance of the Dawn)
-- **Warding Flare**: needs pre-roll reaction hook in `executeAction`
-- **Corona of Light**: needs aura/aura-save-modifier concept
-- **Radiance of the Dawn** ally-exclusion: needs red/blue team system
+### Light Domain — Warding Flare + Corona of Light — IMPLEMENTED ✅ (2026-06-15, built + 72 suites green)
+- **Warding Flare (L3)** — a consumer of the **OnD20Seen** reaction window (`combat_attack.cpp`),
+  modeled exactly like Silvery Barbs but as Disadvantage = reroll the d20 and take the lower. When a
+  creature within **30 ft** that the Cleric can see makes an attack roll **that hits**, the Cleric may
+  spend its reaction + 1 **Warding Flare** use to impose Disadvantage (lowering-only, can flip hit→miss).
+  Gate `canWardingFlare` reuses `d20ReactorBase` (60 ft + LoS + reaction-free) then tightens to 30 ft;
+  apply `applyWardingFlareToAttack`; wired into `d20SeenReactors`/`d20SeenOptions`/`applyD20SeenReaction`/
+  `maybeD20SeenInline`. Resource = `max(1, WIS mod)` uses / **Long Rest**, seeded in `initializeClassResources`
+  (Cleric `LightDomain && level>=3`). GUI: appears automatically in the generic OnD20Seen reaction menu;
+  the log line mentions it. Bindings `can_warding_flare` / `apply_warding_flare_to_attack`. Tests:
+  `test_d20seen.py` (`test_warding_flare_disadvantage_can_miss`, `test_warding_flare_gate`).
+  - *v1 simplifications:* offered **regardless of faction** (decider/human Skips for enemies — matches the
+    other OnD20Seen reactions; no `areAllies` gate); fires **on a hit only** (the window's lowering-only
+    contract — RAW imposes Disadvantage on any attack roll, but Disadvantage only matters when it could flip
+    a hit to a miss); the 30 ft gate is exercised in `test_warding_flare_gate` (40-ft cleric not offered).
+- **Corona of Light (L17)** — a Magic action (`activateCoronaOfLight`, `combat_resources.cpp`) that sets a
+  10-round duration (`Stats::corona_of_light_turns`, ticked down in `beginTurn`, mirroring Sacred Weapon).
+  While active, **enemies within 60 ft** (`!areAllies` + `footprintDistance`≤60) have **Disadvantage on
+  saves vs the caster's Fire/Radiant spells** — applied in `rollSpellSave` (`combat_spells.cpp`) right after
+  the Heightened/Eldritch-Strike blocks (sets `target_dis`). GUI: a "Corona of Light (Action)" button gated
+  on Cleric/LightDomain/L17/action-available (`_use_corona_of_light`, `btn_cbt_corona`). Bindings
+  `activate_corona_of_light` / `Stats.corona_of_light_turns`. Tests: `test_cleric.py`
+  (`test_corona_activation_and_duration`, `test_corona_disadvantage_on_fire_radiant_saves` [statistical
+  off-vs-on save rate + Force-spell control], `test_corona_spares_allies`).
+  - *v1 simplifications:* the actual **bright-light emission** into the lighting/vision system is NOT wired
+    (only the combat-relevant save-Disadvantage); the **>60-ft range gate is untested** (the 12×12 test map
+    tops out at ~55 ft, same as the Counterspell/d20-window range gaps).
+- **Radiance of the Dawn** ally-exclusion: **DONE 2026-06-15** — spares the caster's allies (teamed caster).
+  The engine logic was already correct (`combat_spells.cpp:527`, gated on `selective_targeting` + non-neutral
+  caster); the GUI just never carried the flag. Fixed: classfeatures.json Radiance entry now has
+  `"selective_targeting": true`, and `main.py`'s `_dict_to_spell`/`_spell_to_dict` now read/write the flag
+  (loader+data only, no rebuild). Still gated on `caster_faction != 0` — an all-neutral (default) caster
+  keeps the legacy affect-everyone behavior by design.
 
 ### Deferred — War Domain spells
 - **Crusader's Mantle**: needs ally-buff aura for +1d4 Radiant
@@ -1580,3 +1609,28 @@ reset in `turn()`), all bound. Seeded in `combat.cpp initializeClassResources` (
 - **Phase-2 follow-ups still open:** Favored Enemy free-cast GUI accounting (spend the resource instead of
   a slot), re-mark-on-kill Bonus Action, spell-attack-roll marks (the HM rider is weapon-attack-only),
   Roving's "not in Heavy armor" gate (currently unconditional).
+
+## Vampires / monster bite drain (2026-06-16, built + 73 suites green, confirmed in live play)
+
+DONE: `available_hit_points` (Stats) — a non-negative HP-maximum reduction mirroring `temp_hp`;
+`effectiveMaxHp()` = `max(0, hp_max - available_hit_points)`; healing caps to it; cleared on long
+rest; bound (`available_hit_points` + ro `effective_max_hp`); saved/loaded; GUI shows it on the HP
+bar + panel. `VisibilityLevel::Sunlight` — a bright-light category (vision == Clear) for vampire
+detection; `brighter()` combine; lighting save/load/overlay. `reduceHPMax` on-hit weapon rider —
+drains the target's HP max by the Necrotic damage dealt and heals the attacker (reads
+`AttackResult::magic_damage_dealt[Necrotic]`); Vampire Spawn bite wired in its `off_hand` slot
+(1d4+STR Piercing + 3d6 Necrotic + `reduceHPMax`). See memory `vampire-support`.
+
+**Deferred / simplifications:**
+- **Sunlight Sensitivity / Hypersensitivity NOT modeled** — the Sunlight *category* exists but no
+  creature reacts to it yet (no Disadvantage on attacks/ability checks in sunlight, no radiant
+  weakness / "destroyed in sunlight"). Needs an in-sunlight check at the attack-advantage and
+  per-turn-damage sites. Foundation only, per the prep decision.
+- **No lighting-editor UI to paint Sunlight** — set it via the encounter's `_lighting.json`
+  `default_light: "Sunlight"` (round-trips); the LightingEditorDialog can't pick a default category.
+- **Bite is an attack + on-hit rider, NOT a CON save**, and is **not gated** on the target being
+  Grappled/Incapacitated/Restrained (DM discretion). Per user's "on-hit rider" direction.
+- **No per-weapon attack cap** — `num_attacks` is global, so choosing the bite under the Attack
+  action offers num_attacks bites; the DM makes one. A per-weapon attack-count system would fix it.
+- **reduceHPMax keys on Necrotic only** (the vampiric case). A different drain type would need the
+  rider parameterized by damage type.

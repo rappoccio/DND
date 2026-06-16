@@ -40,6 +40,7 @@ def dict_to_stats(stats_dict):
     stats.num_attacks = int(stats_dict.get("num_attacks", 1))
     stats.weapon_mastery = int(stats_dict.get("weapon_mastery", 0))
     stats.is_npc = bool(stats_dict.get("is_npc", False))
+    stats.has_cunning_action = bool(stats_dict.get("has_cunning_action", False))
     stats.has_sentinel = bool(stats_dict.get("has_sentinel", False))
     stats.has_branches_of_the_tree = bool(stats_dict.get("has_branches_of_the_tree", False))
     stats.save_prof_str = bool(stats_dict.get("save_prof_str", False))
@@ -56,6 +57,7 @@ def dict_to_stats(stats_dict):
         else:
             stats.spellcasting_ability = int(ability_val) if ability_val else 5
     stats.temp_hp = int(stats_dict.get("temp_hp", 0))
+    stats.available_hit_points = int(stats_dict.get("available_hit_points", 0))
     # Feats: set the list directly (do NOT call add_feat on load — hp_max/luck_points are
     # already persisted with the feat bonuses folded in).
     stats.feats = list(stats_dict.get("feats", []))

@@ -86,7 +86,7 @@ int CombatEngine::healAgent(BattleMap& bm, int idx, int amount) noexcept
 {
     Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_max == 0 && s.hp_cur == 0) return 0;   // default-constructed → invalid idx
-    s.hp_cur = std::min(s.hp_max, s.hp_cur + amount);
+    s.hp_cur = std::min(s.effectiveMaxHp(), s.hp_cur + amount);  // can't heal past a drained max
     bm.setAgentStats(idx, s);
     reviveOnHeal(bm, idx);   // regaining HP from 0 returns a downed creature to consciousness
     return s.hp_cur;
@@ -130,7 +130,7 @@ int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int 
     if (tgt_stats.hp_max == 0 && tgt_stats.hp_cur == 0) return -1;  // invalid target idx
 
     // Clamp amount to: min(pool remaining, target HP deficit)
-    int hp_deficit = tgt_stats.hp_max - tgt_stats.hp_cur;
+    int hp_deficit = tgt_stats.effectiveMaxHp() - tgt_stats.hp_cur;
     int clamped = std::min(amount, std::min(pool->current, hp_deficit));
 
     if (clamped <= 0) return 0;  // Nothing to heal
@@ -199,7 +199,9 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         // Restore spell slots and all resources
         stats.restore_resources_long_rest();
 
-        // Long rest restores all Hit Points. The dead stay dead (not revived).
+        // Long rest restores all Hit Points and clears any max-HP reduction (vampiric drain, etc.).
+        // The dead stay dead (not revived).
+        stats.available_hit_points = 0;
         Agent::Conditions rest_cond = bm.getAgentConditions(agent_idx);
         if (!rest_cond.dead) {
             stats.hp_cur = stats.hp_max;
@@ -471,6 +473,23 @@ int CombatEngine::activateSacredWeapon(BattleMap& bm, int idx) noexcept
     return bonus;
 }
 
+bool CombatEngine::activateCoronaOfLight(BattleMap& bm, int idx) noexcept
+{
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.hp_max == 0 && stats.hp_cur == 0) return false;  // invalid idx
+
+    // Requires a Light Domain Cleric of level 17+.
+    if (stats.character_class != CharacterClass::Cleric ||
+        stats.cleric_subclass != LightDomain || stats.char_level < 17) return false;
+
+    stats.corona_of_light_turns = 10;  // 1 minute = 10 rounds
+    bm.setAgentStats(idx, stats);
+
+    log_("{} activates Corona of Light: enemies within 60 ft have Disadvantage on saves vs its "
+         "Fire/Radiant spells for 1 minute", agentName(bm, idx));
+    return true;
+}
+
 bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -561,8 +580,8 @@ int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx,
     bm.setAgentStats(healer_idx, healer_stats);
 
     Agent::Stats target_stats = bm.getAgentStats(target_idx);
-    int healed = std::min(total_healing, target_stats.hp_max - target_stats.hp_cur);
-    target_stats.hp_cur = std::min(target_stats.hp_max, target_stats.hp_cur + total_healing);
+    int healed = std::min(total_healing, target_stats.effectiveMaxHp() - target_stats.hp_cur);
+    target_stats.hp_cur = std::min(target_stats.effectiveMaxHp(), target_stats.hp_cur + total_healing);
     bm.setAgentStats(target_idx, target_stats);
     reviveOnHeal(bm, target_idx);   // a healed downed ally rejoins initiative
 

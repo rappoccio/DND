@@ -1,6 +1,6 @@
 # D&D 5e Combat Sim — Backlog
 
-_Last refreshed: 2026-06-04. High-level epics only. **Per-feature deferrals live in
+_Last refreshed: 2026-06-15. High-level epics only. **Per-feature deferrals live in
 `known_limitations.md`** (the authoritative source) — this file does NOT duplicate it._
 
 Status of live session work (Sorcerer / Bard / Eldritch Knight / Paladin / Bonus-Action
@@ -40,7 +40,9 @@ These gate multiple per-class features; each is a real project, not a quick task
 - [ ] **Everything else** — each class section in `known_limitations.md` carries its own
   `[DEFER]` / `🚫 not modeled` list (Warlock patrons, Rogue subclasses, Wizard L6 subclass
   features, Cleric domains, Wild Shape mechanics, etc.). That file is the checklist.
-- [ ] **Ranger** -- needs implementation.  
+- [x] **Ranger** — DONE (2024 Ranger COMPLETE: chassis + Hunter's Mark/Hex rider + all 4 subclasses
+  Hunter/Gloom Stalker/Beast Master/Fey Wanderer + class utility L10/14/18). See `known_limitations.md`
+  Ranger sections + memory `ranger_progress`. Root spec/handoff docs retired.
 - [ ] **Multiclassing support** -- needs implementation
 
 ## Data / bestiary
@@ -87,9 +89,11 @@ Per the "combat-sim only" scope rule, these are explicitly deferred, not active:
 ## Done (high level)
 
 Classes with chassis + core implemented & tested: Barbarian, Wizard, Rogue, Cleric, Warlock,
-Druid, Monk, Fighter (incl. Eldritch Knight), Paladin (incl. Divine Smite, Lay on Hands),
-Sorcerer (Phases 1–3 core), Bard (chassis + Bardic Inspiration + college core). Plus: forced
-movement, grapple, conditions/exhaustion/death saves, weapon mastery (9/9), persistent AoE +
-terrain, visibility/lighting, Bonus-Action Manager, checked combat replay, and the
-`combat.cpp` → `combat_*.cpp` translation-unit split. See `known_limitations.md` for the
-✅-marked detail per class.
+Druid, Monk, Fighter (incl. Eldritch Knight), Paladin (incl. Divine Smite, Lay on Hands, Auras),
+Sorcerer (Phases 1–3 core), Bard (chassis + Bardic Inspiration + college core), **Ranger (all 4
+subclasses, COMPLETE)**. Plus: forced movement, grapple, conditions/exhaustion/death saves, weapon
+mastery (9/9), persistent AoE + terrain, visibility/lighting, Bonus-Action Manager, checked combat
+replay, **N-faction Teams system**, **summoning**, general feats (G0–G5b), fighting styles, the
+**D&D Beyond importer**, and the `combat.cpp` → `combat_*.cpp` translation-unit split. Recent class
+work: **Cleric Light Domain — Warding Flare + Corona of Light (2026-06-15)**. See `known_limitations.md`
+for the ✅-marked detail per class.

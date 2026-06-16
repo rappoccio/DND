@@ -989,6 +989,110 @@ class ElementPickerDialog:
         surf.blit(dt, dt.get_rect(center=self._done_rect.center))
 
 
+class GridSpanDialog:
+    """Small modal asking how many cells the sampled box spanned (cols × rows).
+
+    Lets the user drag any rectangle — a single tile or a wider patch — then divide
+    the box by the spanned cell count to recover a precise per-cell size (a 5-cell
+    drag cuts per-tile drag error 5×). Defaults to 1×1 (a single tile). Calls back
+    with (cols, rows) on OK, or None on cancel/escape.
+    """
+    PAD   = 14
+    HDR_H = 34
+    ROW_H = 34
+    BTN_H = 30
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self._callback = None
+        self._cols = None
+        self._rows = None
+        self._ok_rect = None
+        self._cancel_rect = None
+        self._frames_since_show = 0
+
+    def show(self, callback):
+        self.visible = True
+        self._callback = callback
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 300
+        dlg_h = self.HDR_H + self.ROW_H * 2 + self.BTN_H + self.PAD * 4
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+        fld_w = 130
+        fx = self.rect.right - self.PAD - fld_w
+        y0 = self.rect.y + self.HDR_H + self.PAD
+        self._cols = IntStepper(pygame.Rect(fx, y0, fld_w, self.ROW_H - 6), 1, 1, 500, self.font_md)
+        self._rows = IntStepper(pygame.Rect(fx, y0 + self.ROW_H, fld_w, self.ROW_H - 6), 1, 1, 500, self.font_md)
+
+    def _dismiss(self, result):
+        cb = self._callback
+        self.visible = False
+        self._callback = None
+        if cb:
+            cb(result)
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        # Swallow the click that opened this dialog (one frame), like the other modals.
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        self._cols.handle(event)
+        self._rows.handle(event)
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                self._dismiss((self._cols.value, self._rows.value))
+            elif event.key == pygame.K_ESCAPE:
+                self._dismiss(None)
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._ok_rect and self._ok_rect.collidepoint(*event.pos):
+                self._dismiss((self._cols.value, self._rows.value))
+            elif self._cancel_rect and self._cancel_rect.collidepoint(*event.pos):
+                self._dismiss(None)
+            elif not self.rect.collidepoint(*event.pos):
+                self._dismiss(None)
+            return True
+        return True
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+        pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
+
+        hdr = self.font_md.render("Cells in sampled box", True, (220, 220, 235))
+        surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + 8))
+
+        y0 = self.rect.y + self.HDR_H + self.PAD
+        cl = self.font_md.render("Columns wide", True, (210, 210, 225))
+        surf.blit(cl, (self.rect.x + self.PAD, y0 + 6))
+        rl = self.font_md.render("Rows tall", True, (210, 210, 225))
+        surf.blit(rl, (self.rect.x + self.PAD, y0 + self.ROW_H + 6))
+        self._cols.draw(surf)
+        self._rows.draw(surf)
+
+        bw, bh = 96, self.BTN_H
+        by = self.rect.bottom - self.PAD - bh
+        self._ok_rect     = pygame.Rect(self.rect.right - self.PAD - bw, by, bw, bh)
+        self._cancel_rect = pygame.Rect(self.rect.x + self.PAD, by, bw, bh)
+        pygame.draw.rect(surf, (35, 90, 45), self._ok_rect, border_radius=6)
+        pygame.draw.rect(surf, (90, 45, 45), self._cancel_rect, border_radius=6)
+        ot = self.font_md.render("OK", True, (225, 225, 225))
+        ct = self.font_md.render("Cancel", True, (225, 225, 225))
+        surf.blit(ot, ot.get_rect(center=self._ok_rect.center))
+        surf.blit(ct, ct.get_rect(center=self._cancel_rect.center))
+
+
 class TeamPickerDialog:
     """Modal team/faction assignment. Lists every placed agent with a coloured team
     chip; clicking a row cycles its team (neutral → red → blue → …). Commits the
@@ -1119,6 +1223,107 @@ class TeamPickerDialog:
         pygame.draw.rect(surf, (35, 90, 45), self._done_rect, border_radius=6)
         dt = self.font_md.render("Done", True, (220, 220, 220))
         surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
+class NamePromptDialog:
+    """Tiny modal text prompt: a single editable line + OK/Cancel. Used by the
+    agent right-click menu to rename a placed agent. Commits `callback(new_name)`
+    on OK/Enter (only when non-empty); Esc/Cancel/click-outside dismisses."""
+    PAD   = 14
+    BTN_H = 28
+    INP_H = 30
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self._text = ""
+        self._title = ""
+        self._callback = None
+        self._ok_rect = None
+        self._cancel_rect = None
+        self._frames_since_show = 0
+
+    def show(self, current_text, callback, title="Rename Agent"):
+        self.visible = True
+        self._text = current_text or ""
+        self._title = title
+        self._callback = callback
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 380
+        dlg_h = self.PAD * 4 + 22 + self.INP_H + self.BTN_H
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def _commit(self):
+        new = self._text.strip()
+        if new and self._callback:
+            self._callback(new)
+        self.visible = False
+
+    def _dismiss(self):
+        self.visible = False
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        # Swallow the click that opened this dialog (one frame), like TeamPickerDialog.
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self._dismiss()
+            elif event.key == pygame.K_RETURN:
+                self._commit()
+            elif event.key == pygame.K_BACKSPACE:
+                self._text = self._text[:-1]
+            elif event.unicode and event.unicode.isprintable():
+                self._text += event.unicode
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._ok_rect and self._ok_rect.collidepoint(*event.pos):
+                self._commit()
+            elif self._cancel_rect and self._cancel_rect.collidepoint(*event.pos):
+                self._dismiss()
+            elif not self.rect.collidepoint(*event.pos):
+                self._dismiss()
+            return True
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+        pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
+
+        hdr = self.font_md.render(self._title, True, (220, 220, 235))
+        surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + self.PAD))
+
+        inp = pygame.Rect(self.rect.x + self.PAD, self.rect.y + self.PAD + 24,
+                          self.rect.w - self.PAD * 2, self.INP_H)
+        pygame.draw.rect(surf, (18, 18, 28), inp, border_radius=4)
+        pygame.draw.rect(surf, (140, 140, 170), inp, width=1, border_radius=4)
+        txt = self.font_md.render(self._text, True, (235, 235, 245))
+        surf.blit(txt, (inp.x + 6, inp.centery - txt.get_height() // 2))
+        cx = inp.x + 6 + self.font_md.size(self._text)[0] + 1  # caret
+        pygame.draw.line(surf, (235, 235, 245), (cx, inp.y + 4), (cx, inp.bottom - 4))
+
+        bw, bh = 90, self.BTN_H
+        by = self.rect.bottom - self.PAD - bh
+        self._ok_rect = pygame.Rect(self.rect.right - self.PAD - bw, by, bw, bh)
+        self._cancel_rect = pygame.Rect(self._ok_rect.x - self.PAD - bw, by, bw, bh)
+        pygame.draw.rect(surf, (35, 90, 45), self._ok_rect, border_radius=6)
+        pygame.draw.rect(surf, (90, 45, 45), self._cancel_rect, border_radius=6)
+        ot = self.font_md.render("OK", True, (220, 220, 220))
+        ct = self.font_md.render("Cancel", True, (220, 220, 220))
+        surf.blit(ot, ot.get_rect(center=self._ok_rect.center))
+        surf.blit(ct, ct.get_rect(center=self._cancel_rect.center))
 
 
 # Set of general-feat names (for splitting feats vector between origin + general pickers).

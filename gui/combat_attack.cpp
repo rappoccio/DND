@@ -314,6 +314,7 @@ void CombatEngine::rollDamage(const Weapon& w,
         float multiplier = effectiveMagicDamageMult(attacker, target, dmg_roll.type, false);
         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += modified_damage;
+        result.magic_damage_dealt[static_cast<std::size_t>(dmg_roll.type)] += modified_damage;
         result.magic_damage_types.push_back(dmg_roll.type);
         format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
                     magicDamageName(dmg_roll.type));
@@ -1001,6 +1002,23 @@ bool CombatEngine::canSilveryBarbs(const BattleMap& bm, int reactor, int roller)
     return false;
 }
 
+// Light Domain Cleric (L3+) Warding Flare: impose Disadvantage on an attack roll by a creature within
+// 30 ft it can see. Reuses d20ReactorBase (60 ft + LoS + reaction free + alive) then tightens to 30 ft.
+bool CombatEngine::canWardingFlare(const BattleMap& bm, int reactor, int roller) const
+{
+    if (!d20ReactorBase(bm, reactor, roller)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Cleric ||
+        s.cleric_subclass != LightDomain || s.char_level < 3) return false;
+    const auto& agents = bm.placedAgents();
+    const PlacedAgent& rpa = agents[static_cast<std::size_t>(reactor)];
+    const PlacedAgent& opa = agents[static_cast<std::size_t>(roller)];
+    if (footprintDistance(rpa.origin, rpa.agent->getSize(),
+                          opa.origin, opa.agent->getSize()) * 5 > 30) return false;  // 30 ft (not 60)
+    const Resource* wf = s.getResource("Warding Flare");
+    return wf && wf->current >= 1;
+}
+
 void CombatEngine::reevaluateAttackHit(AttackResult& r) const noexcept
 {
     r.fumble = (r.d20 == 1);
@@ -1088,6 +1106,32 @@ bool CombatEngine::applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackR
     return true;
 }
 
+bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackResult& r)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Cleric ||
+        s.cleric_subclass != LightDomain || s.char_level < 3) return false;
+    Resource* wf = s.getResource("Warding Flare");
+    if (!wf || wf->current < 1) return false;
+
+    wf->current -= 1;
+    cond.reaction_used = true;
+    const int old_d20 = r.d20;
+    const int rr      = roll(20);                          // Disadvantage = take the lower of the two d20s
+    r.d20        = std::min(old_d20, rr);
+    r.total_roll = r.d20 + r.attack_mod;                   // carries any earlier penalty (invariant)
+    reevaluateAttackHit(r);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses Warding Flare: Disadvantage, d20 {}/{}→{} (now {} vs AC {}) → {}", agentName(bm, reactor),
+         old_d20, rr, r.d20, r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+    return true;
+}
+
 // Which creatures may lower this attack roll, in index order. Only on a hit (a miss/fumble can't be
 // lowered further). Additive reactions (Bend Luck/Cutting Words) can't change a natural 20, so they
 // only count off a nat-20; Silvery Barbs' reroll can change anything (including a crit).
@@ -1101,7 +1145,7 @@ std::vector<int> CombatEngine::d20SeenReactors(const BattleMap& bm, const Attack
     for (int i = 0; i < n; ++i) {
         if (i == roller) continue;
         const bool additive = (r.d20 != 20) && (canBendLuck(bm, i, roller) || canCuttingWords(bm, i, roller));
-        const bool reroll   = canSilveryBarbs(bm, i, roller);
+        const bool reroll   = canSilveryBarbs(bm, i, roller) || canWardingFlare(bm, i, roller);
         if (additive || reroll) out.push_back(i);
     }
     return out;
@@ -1118,6 +1162,8 @@ std::vector<ReactionOption> CombatEngine::d20SeenOptions(const BattleMap& bm, in
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Cutting Words (-1 Bardic die)", "CuttingWords"});
     if (canSilveryBarbs(bm, reactor, roller))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Silvery Barbs (force a reroll)", "SilveryBarbs"});
+    if (canWardingFlare(bm, reactor, roller))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Warding Flare (impose Disadvantage)", "WardingFlare"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -1132,6 +1178,7 @@ void CombatEngine::applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, c
     if      (opt.feature == "BendLuck")     applyBendLuckToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "CuttingWords") applyCuttingWordsToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "SilveryBarbs") applySilveryBarbsToAttack(bm, ctx.reactor_idx, r);
+    else if (opt.feature == "WardingFlare") applyWardingFlareToAttack(bm, ctx.reactor_idx, r);
 }
 
 bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, AttackResult& r)
@@ -1156,6 +1203,7 @@ bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, Attac
         if      (o.feature == "BendLuck")     changed |= applyBendLuckToAttack(bm, reactor, r);
         else if (o.feature == "CuttingWords") changed |= applyCuttingWordsToAttack(bm, reactor, r);
         else if (o.feature == "SilveryBarbs") changed |= applySilveryBarbsToAttack(bm, reactor, r);
+        else if (o.feature == "WardingFlare") changed |= applyWardingFlareToAttack(bm, reactor, r);
     }
     return changed;
 }
@@ -2751,6 +2799,27 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             if (weapon_cond.condition_name == "Grappled") {
                 (void)resolveGrapple(bm, action.attacker_idx, action.target_idx,
                                      weapon_cond.contested, weapon_cond.escape_dc);
+                continue;
+            }
+
+            // Vampiric drain rider (e.g. a Vampire's Bite): this "condition" lowers the target's HP
+            // maximum by the Necrotic damage dealt this hit (per-type total tracked in rollDamage) and
+            // heals the attacker by the same amount. The target's HP was already persisted above, so
+            // re-fetch before adjusting available_hit_points and re-clamping current HP.
+            if (weapon_cond.condition_name == "reduceHPMax") {
+                int drain = r.magic_damage_dealt[static_cast<std::size_t>(MagicDamage_t::Necrotic)];
+                if (drain > 0) {
+                    Agent::Stats vt = bm.getAgentStats(action.target_idx);
+                    vt.available_hit_points += drain;
+                    vt.hp_cur = std::clamp(vt.hp_cur, 0, vt.effectiveMaxHp());
+                    bm.setAgentStats(action.target_idx, vt);
+                    r.hp_after = vt.hp_cur;
+                    r.target_down = (vt.hp_cur <= 0);
+                    int healer_hp = healAgent(bm, action.attacker_idx, drain);
+                    log_("{} drains {} from {}'s HP maximum and regains HP (now {})",
+                         agentName(bm, action.attacker_idx), drain,
+                         agentName(bm, action.target_idx), healer_hp);
+                }
                 continue;
             }
 

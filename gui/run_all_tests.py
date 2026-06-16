@@ -104,6 +104,9 @@ test_scripts = [
 
     # Ranger features
     "test_ranger.py",
+
+    # Vampire support (available_hit_points + reduceHPMax bite rider)
+    "test_vampire.py",
 ]
 
 def run_tests():
