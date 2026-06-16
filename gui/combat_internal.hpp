@@ -41,6 +41,17 @@ inline constexpr int abilityMod(int score) noexcept
                                 // because C++11 guarantees truncation.
 }
 
+// D&D ability modifier rounding toward negative infinity (floor). The free-function
+// abilityMod() above truncates toward zero, which is WRONG for odd scores below 10
+// (e.g. score 9 → abilityMod gives 0, D&D wants -1). Prefer dndMod at every DC/save
+// site. Lives here so all translation units share one correct implementation.
+inline constexpr int dndMod(int score) noexcept
+{
+    int m = (score - 10) / 2;
+    if (score < 10 && (score - 10) % 2 != 0) --m;
+    return m;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Geometry
 // ─────────────────────────────────────────────────────────────────────────────

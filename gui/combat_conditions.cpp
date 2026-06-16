@@ -170,6 +170,11 @@ void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
 
 void CombatEngine::applyFrightened(BattleMap& bm, int idx) noexcept
 {
+    // Aura of Courage (allied Paladin L10+ in range): immune to the Frightened condition.
+    if (hasAuraOfCourage(bm, idx)) {
+        log_("{} can't be Frightened (Aura of Courage)", agentName(bm, idx));
+        return;
+    }
     dropAgentWeapons(bm, idx);
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.frightened = true;

@@ -480,21 +480,6 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
     const Agent::Stats atk = bm.getAgentStats(attacker_idx);
     const int dc = spellSaveDcFromAbility(atk, SaveDex);  // 8 + prof + DEX mod
 
-    auto saveMod = [](const Agent::Stats& s, SaveAbility_t ab) -> int {
-        int score = 0; bool prof = false;
-        switch (ab) {
-            case SaveStr: score = s.str;   prof = s.save_prof_str;   break;
-            case SaveDex: score = s.dex;   prof = s.save_prof_dex;   break;
-            case SaveCon: score = s.con;   prof = s.save_prof_con;   break;
-            case SaveInt: score = s.intel; prof = s.save_prof_intel; break;
-            case SaveWis: score = s.wis;   prof = s.save_prof_wis;   break;
-            default:      score = s.cha;   prof = s.save_prof_cha;   break;
-        }
-        int m = (score - 10) / 2;
-        if (score < 10 && (score - 10) % 2 != 0) --m;
-        return m + (prof ? s.prof_bonus : 0);
-    };
-
     for (int e : effects) {
         if (e == 2) {  // Withdraw — no save; attacker moves without provoking opportunity attacks
             Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
@@ -518,7 +503,7 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
         const Agent::Conditions& tc0 = agents[static_cast<std::size_t>(target_idx)].agent->getConditions();
         bool auto_fail = (tc0.paralyzed || tc0.stunned) && (sa == SaveStr || sa == SaveDex);
         int d20 = auto_fail ? 1 : roll(20);
-        bool saved = auto_fail ? false : (d20 + saveMod(tgt, sa) >= dc);
+        bool saved = auto_fail ? false : (d20 + saveModFor(bm, target_idx, sa) >= dc);
         if (saved) {
             log_("Cunning Strike: {} resisted {} (DC {})", agentName(bm, target_idx), name, dc);
             continue;
@@ -571,29 +556,15 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
     bm.setAgentConditions(attacker_idx, ac);
 
     Agent::Stats as = bm.getAgentStats(attacker_idx);
-    Agent::Stats ts = bm.getAgentStats(target_idx);
 
-    // Save DC = 8 + prof + STR mod (melee Battle Master)
-    int str_atk_mod = (as.str - 10) / 2;
-    if (as.str < 10 && (as.str - 10) % 2 != 0) --str_atk_mod;
-    int dc = 8 + as.prof_bonus + str_atk_mod;
+    // Maneuver save DC = 8 + prof + the higher of STR or DEX mod (2024 PHB). Uses
+    // dndMod (floor) — abilityMod truncates toward zero and is wrong for odd scores < 10.
+    int dc = 8 + as.prof_bonus + std::max(dndMod(as.str), dndMod(as.dex));
     res.save_dc = dc;
-
-    auto saveMod = [](const Agent::Stats& s, SaveAbility_t ab) -> int {
-        int score = 0; bool prof = false;
-        switch (ab) {
-            case SaveStr: score = s.str; prof = s.save_prof_str; break;
-            case SaveWis: score = s.wis; prof = s.save_prof_wis; break;
-            default:      score = s.str; prof = s.save_prof_str; break;
-        }
-        int m = (score - 10) / 2;
-        if (score < 10 && (score - 10) % 2 != 0) --m;
-        return m + (prof ? s.prof_bonus : 0);
-    };
 
     if (maneuver_type == 0) {
         // Trip: STR save or Prone for 1 turn
-        res.save_roll = roll(20, saveMod(ts, SaveStr));
+        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveStr));
         if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.prone = true;
@@ -613,8 +584,12 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         }
     } else if (maneuver_type == 1) {
         // Menacing: WIS save or Frightened for 1 turn
-        res.save_roll = roll(20, saveMod(ts, SaveWis));
-        if (res.save_roll < dc) {
+        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveWis));
+        if (res.save_roll < dc && hasAuraOfCourage(bm, target_idx)) {
+            // Aura of Courage: the target can't be Frightened — the maneuver lands no condition.
+            log_("{} can't be Frightened (Aura of Courage) — Menacing Attack has no effect",
+                 agentName(bm, target_idx));
+        } else if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.frightened = true;
             bm.setAgentConditions(target_idx, tc);
@@ -638,9 +613,170 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         res.push_distance = cells_moved * 5;
         log_("{} is pushed back {} feet (Battle Master Pushing Attack)",
              agentName(bm, target_idx), res.push_distance);
+    } else if (maneuver_type == 3) {
+        // Goading Attack: WIS save or the target has Disadvantage attacking anyone other than
+        // you until the end of your next turn (goaded_by, expired in beginTurn).
+        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveWis));
+        if (res.save_roll < dc) {
+            Agent::Conditions tc = bm.getAgentConditions(target_idx);
+            tc.goaded_by = attacker_idx;
+            bm.setAgentConditions(target_idx, tc);
+            res.condition_applied = true;
+            log_("{} is Goaded (Disadvantage attacking anyone but {} — save {} vs DC {})",
+                 agentName(bm, target_idx), agentName(bm, attacker_idx), res.save_roll, dc);
+        } else {
+            log_("{} resists Goading Attack (Battle Master — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        }
+    } else if (maneuver_type == 4) {
+        // Distracting Strike: no save. The next attack vs the target by an attacker other than you
+        // (before the start of your next turn) has Advantage (distracted_by, consumed on use).
+        Agent::Conditions tc = bm.getAgentConditions(target_idx);
+        tc.distracted_by = attacker_idx;
+        bm.setAgentConditions(target_idx, tc);
+        res.condition_applied = true;
+        log_("{} is Distracted (the next attack against it by another creature has Advantage)",
+             agentName(bm, target_idx));
+    } else if (maneuver_type == 5) {
+        // Disarming Attack: STR save or the target drops its weapon — its weapon attacks resolve as
+        // improvised Unarmed Strikes until the start of your next turn (disarmed/disarmed_by).
+        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveStr));
+        if (res.save_roll < dc) {
+            Agent::Conditions tc = bm.getAgentConditions(target_idx);
+            tc.disarmed = true;
+            tc.disarmed_by = attacker_idx;
+            bm.setAgentConditions(target_idx, tc);
+            res.condition_applied = true;
+            log_("{} is Disarmed (must fight with improvised Unarmed Strikes — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        } else {
+            log_("{} resists Disarming Attack (Battle Master — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
+        }
     }
 
     return res;
+}
+
+ManeuverResult CombatEngine::applySweepingAttack(BattleMap& bm, const Attack& action,
+                                                 const AttackResult& result, int secondary_idx) noexcept
+{
+    ManeuverResult res;
+    res.maneuver_type = 6;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx;
+    if (atk < 0 || atk >= n || secondary_idx < 0 || secondary_idx >= n || secondary_idx == atk) return res;
+
+    Agent::Conditions ac = bm.getAgentConditions(atk);
+    if (!ac.maneuver_available) return res;          // only right after a qualifying hit
+
+    res.valid = true;
+    // Spend 1 Superiority Die and clear the per-attack flag (mirrors applyManeuverEffect).
+    spendResource(bm, atk, "Superiority Dice", 1);
+    ac.maneuver_available = false;
+    bm.setAgentConditions(atk, ac);
+
+    // The original attack roll must "would hit" the 2nd creature's AC.
+    const int secondary_ac = calculateAC(bm, secondary_idx);
+    res.save_dc  = secondary_ac;          // reuse save_dc to report the 2nd creature's AC
+    res.save_roll = result.total_roll;    // reuse save_roll to report the original attack roll
+    if (result.total_roll < secondary_ac) {
+        log_("Sweeping Attack misses {} (attack roll {} vs AC {})",
+             agentName(bm, secondary_idx), result.total_roll, secondary_ac);
+        return res;
+    }
+
+    // Roll the superiority die; deal it as the attack's damage type (use the wielded weapon's
+    // primary physical/magic type for the resistance multiplier; untyped if the weapon defines none).
+    Agent::Stats as = bm.getAgentStats(atk);
+    int die = roll(as.superiority_die_size);
+
+    Agent::Stats ts = bm.getAgentStats(secondary_idx);
+    const auto weapons = bm.getAgentWeapons(atk);
+    float mult = 1.0f;
+    if (action.weapon_idx >= 0 && action.weapon_idx < static_cast<int>(weapons.size())) {
+        const Weapon& w = weapons[static_cast<std::size_t>(action.weapon_idx)];
+        if (!w.physicalDamageRolls.empty())
+            mult = ts.physical_damage_multipliers[w.physicalDamageRolls.front().type];
+        else if (!w.magicDamageRolls.empty())
+            mult = effectiveMagicDamageMult(as, ts, w.magicDamageRolls.front().type, false);
+    }
+    int dmg = std::max(0, static_cast<int>(static_cast<float>(die) * mult));
+
+    res.condition_applied = true;
+    res.extra_damage = dmg;
+    int overflow = std::max(0, dmg - ts.temp_hp);
+    ts.temp_hp = std::max(0, ts.temp_hp - dmg);
+    ts.hp_cur  = std::clamp(ts.hp_cur - overflow, 0, ts.hp_max);
+    res.extra_target_down = (ts.hp_cur <= 0);
+    bm.setAgentStats(secondary_idx, ts);
+    log_("Sweeping Attack: {} takes {} damage (superiority die {}{})",
+         agentName(bm, secondary_idx), dmg, die, mult != 1.0f ? " x mult" : "");
+
+    if (dmg > 0) {
+        checkConcentrationOnDamage(bm, secondary_idx, dmg, atk);
+        processDamageTaken(bm, secondary_idx, dmg);
+    }
+    if (res.extra_target_down && !bm.getAgentConditions(secondary_idx).unconscious &&
+        !bm.getAgentConditions(secondary_idx).dead) {
+        applyUnconscious(bm, secondary_idx);
+    }
+    return res;
+}
+
+int CombatEngine::applyRally(BattleMap& bm, int fighter_idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (fighter_idx < 0 || fighter_idx >= n || target_idx < 0 || target_idx >= n) return 0;
+    Agent::Stats fs = bm.getAgentStats(fighter_idx);
+    const Resource* sd = fs.getResource("Superiority Dice");
+    if (!sd || sd->current <= 0) return 0;
+    spendResource(bm, fighter_idx, "Superiority Dice", 1);
+
+    const int amount = std::max(1, roll(fs.superiority_die_size) + dndMod(fs.cha));  // die + CHA mod (min 1)
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+    grantTempHp(ts, amount, -1);   // max() semantics, non-rage source
+    bm.setAgentStats(target_idx, ts);
+    log_("{}: Rally grants {} Temporary HP to {} (Battle Master, 1 Superiority Die)",
+         agentName(bm, fighter_idx), amount, agentName(bm, target_idx));
+    return amount;
+}
+
+bool CombatEngine::applyFeintingAttack(BattleMap& bm, int fighter_idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (fighter_idx < 0 || fighter_idx >= n || target_idx < 0 || target_idx >= n) return false;
+    Agent::Stats fs = bm.getAgentStats(fighter_idx);
+    const Resource* sd = fs.getResource("Superiority Dice");
+    if (!sd || sd->current <= 0) return false;
+    spendResource(bm, fighter_idx, "Superiority Dice", 1);
+
+    Agent::Conditions fc = bm.getAgentConditions(fighter_idx);
+    fc.feint_target_idx = target_idx;
+    bm.setAgentConditions(fighter_idx, fc);
+    log_("{}: Feinting Attack vs {} — Advantage on your next attack this turn (+1 die on a hit)",
+         agentName(bm, fighter_idx), agentName(bm, target_idx));
+    return true;
+}
+
+bool CombatEngine::prepareQuickToss(BattleMap& bm, int fighter_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (fighter_idx < 0 || fighter_idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats fs = bm.getAgentStats(fighter_idx);
+    const Resource* sd = fs.getResource("Superiority Dice");
+    if (!sd || sd->current <= 0) return false;
+    spendResource(bm, fighter_idx, "Superiority Dice", 1);
+
+    Agent::Conditions fc = bm.getAgentConditions(fighter_idx);
+    fc.quick_toss_die_pending = true;
+    bm.setAgentConditions(fighter_idx, fc);
+    log_("{}: Quick Toss — the next thrown-weapon attack this turn adds a superiority die to damage",
+         agentName(bm, fighter_idx));
+    return true;
 }
 
 void CombatEngine::applyPrecisionAttackEffect(BattleMap& bm, const Attack& action, AttackResult& result) noexcept
@@ -1513,9 +1649,8 @@ bool CombatEngine::applyBranchesOfTree(BattleMap& bm, int reactor, int source)
     bm.setAgentConditions(reactor, rc);
 
     const Agent::Stats rs = bm.getAgentStats(reactor);
-    const Agent::Stats ss = bm.getAgentStats(source);
     const int dc       = spellSaveDc(rs);
-    const int save_mod = abilityMod(ss.str) + (ss.save_prof_str ? ss.prof_bonus : 0);
+    const int save_mod = saveModFor(bm, source, SaveStr);   // incl. Aura of Protection
     const int d20      = roll(20);
     const int total    = d20 + save_mod;
     log_("{} uses Branches of the Tree on {} (reaction): STR save {} {:+} = {} vs DC {}",

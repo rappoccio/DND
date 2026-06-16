@@ -9,16 +9,6 @@ metadata:
 
 ## Architecture / Infrastructure
 
-### combat.cpp Refactoring [OPUS] — ✅ DONE (2026-06)
-**Status:** COMPLETED. The monolithic `combat.cpp` (~7600 lines) was split into translation units;
-`combat.cpp` is now a ~388-line orchestrator and the logic lives in the `combat_*.cpp` files:
-`combat_core.cpp`, `combat_attack.cpp`, `combat_spells.cpp`, `combat_movement.cpp`,
-`combat_conditions.cpp`, `combat_riders.cpp`, `combat_resources.cpp`, `combat_turn.cpp`,
-`combat_state.cpp`, `combat_visibility.cpp`. All remain methods of the single `CombatEngine` class
-(one class, many `.cpp`) — no header/API churn. Kept here only as a record that this is resolved.
-
----
-
 ### Render gate for the Invisible condition [TODO]
 **Status:** The render-suppression chokepoint now EXISTS (built for Summoning): `_draw_one_agent`
 returns early on `pt.removed_from_play`, and `_draw_agents` skips it for selection/highlight. What
@@ -298,21 +288,48 @@ path). The riposte fires *after* the triggering attack fully resolves, so it's a
 - **Damage type:** the +Superiority-Die is added directly to `total_damage` with no resistance
   multiplier (consistent with Divine Fury / Berserker Frenzy bonus dice).
 
-### Additional Maneuvers (beyond starter set)
-The following maneuvers are not yet implemented but will reuse `applyManeuverEffect`'s dispatch
-once the engine pattern is proven green:
-- Disarming Strike (STR/DEX save or drop weapon)
-- Feinting Attack (bonus action → advantage on next attack vs target)
-- Lunging Attack (extend reach by 5 ft for one attack)
-- Commander's Strike (bonus action + ally reaction → ally makes an attack)
-- Evasive Footwork (add superiority die to AC until end of move)
-- Goading Attack (WIS save or Disadvantage on attacks not targeting you)
-- Rally (bonus action: give temp HP to an ally)
+### Additional Maneuvers — IMPLEMENTED 2026-06-14 (test_fighter.py)
+The 2024 maneuver set is now wired across the three reuse buckets (see `BATTLE_MASTER_HANDOFF.md`).
+All save riders share `applyManeuverEffect`'s dispatch and the save DC `8 + PB + max(STR,DEX) mod`.
 
-### Battle Master save DC simplification
-Current implementation uses STR mod for the maneuver save DC. The 2024 rules allow
-STR *or* DEX (player's choice). This will be a minor enhancement once tested — just take
-`max(_mod(str), _mod(dex))` in `applyManeuverEffect`.
+- **On-hit save/effect riders** (`applyManeuverEffect` dispatch + `_offer_maneuver` menu):
+  - **Goading Attack** (type 3): WIS save or `goaded_by` → Disadvantage attacking anyone but you,
+    until the start of your next turn (checked in `determineAdvantage`, cleared in `beginTurn`).
+  - **Distracting Strike** (type 4): no save; `distracted_by` on the target → the next attack vs it
+    by another creature has Advantage (mirrors Vex; consumed in `applyAttackResult`).
+  - **Disarming Attack** (type 5): STR save or `disarmed` → the target's weapon attacks resolve as
+    improvised Unarmed Strikes (substituted in `determineAdvantage`) until the start of your next turn.
+    *Model note:* no ground-item system — "drops the weapon" is modeled as fighting unarmed for a round.
+  - **Sweeping Attack** (`applySweepingAttack`, dedicated fn — needs the original roll + 2nd target):
+    if the original attack roll would hit a 2nd creature within 5 ft, it takes superiority-die damage
+    of the attack's type. GUI 2nd-target picker mirrors Cleave (`pending_sweep`/`_resolve_sweep`).
+- **Bonus-action maneuvers** (one "Maneuver (Bonus Action)" GUI button → context menu):
+  - **Rally** (`applyRally`): grant a creature within 30 ft temp HP = die + CHA mod (min 1).
+  - **Feinting Attack** (`applyFeintingAttack`): `feint_target_idx` → Advantage on your next attack vs
+    it this turn + the die added to that hit's damage (both consumed in `applyAttackResult`).
+  - **Quick Toss** (`prepareQuickToss`): arms `quick_toss_die_pending`; the next thrown-weapon attack
+    this turn adds the die to damage. GUI then runs the thrown attack via `_start_extra_attack`.
+- **Reaction maneuver** (OnHit defender window, live eligibility like Uncanny Dodge — no flag):
+  - **Parry** (`canParry`/`applyParry`): on a melee hit that dealt damage, spend reaction + die to
+    reduce the damage by die + DEX mod. Offered in `defenderOnHitOptions`; handled in both
+    `maybeDefenderOnHitInline` (auto/RL) and `applyAttackReaction` (GUI resume).
+
+**Save DC fixed** to `8 + PB + max(STR,DEX) mod` via the shared `dndMod` (floor) helper, which was
+promoted from a file-local static in `combat_core.cpp` to `combat_internal.hpp` for all TUs.
+
+### Deferred maneuvers — need new engine infra (combat-sim scope: defer-new-infra)
+- **Lunging Attack** — +5 ft melee reach for one attack; needs a pre-attack reach-extension toggle
+  (no per-attack reach override exists; reach is a weapon property today).
+- **Commander's Strike** & **Maneuvering Attack** — grant an *ally* a reaction attack / reaction move
+  on command; there is no "grant an ally a reaction on your turn" window (the reaction windows are all
+  triggered by an event, not commanded).
+- **Bait and Switch** — swap places with a willing creature + temp AC; no position-swap primitive.
+- **Evasive Footwork** — add the die to AC *while moving*; no during-movement AC model.
+
+### Out of scope — skill/social maneuvers (no combat-sim mechanical effect)
+- **Ambush** (Stealth check / initiative bonus), **Commanding Presence** (Intimidation/Performance/
+  Persuasion check), **Tactical Assessment** (Investigation/History/Insight check). These resolve as
+  out-of-combat ability checks with no engine-modeled effect; intentionally not implemented.
 
 ---
 
@@ -340,16 +357,50 @@ Will reuse the existing `vex_target_idx` flag — trivial but out of scope for t
 - **Oath of Devotion — Sacred Weapon**: Bonus Action, spend 1 Channel Oath → +CHA mod (min +1)
   to weapon attack rolls for 1 minute (10 rounds). Engine `activateSacredWeapon` (`combat.cpp`),
   applied in `rollToHit`, duration decremented in `beginTurn`. GUI button + `test_paladin.py` coverage.
+- **Divine Smite** (IMPLEMENTED): Bonus-action radiant smite on a melee weapon hit — spends the hit +
+  bonus action + a spell slot, `(slot+1)d8` Radiant (+1d8 vs Undead/Fiend), once/turn, ranged excluded,
+  interlocked with the one-leveled-spell-per-turn rule. `applyDivineSmiteEffect` / `apply_divine_smite_effect`,
+  `divine_smite_used` reset in `turn()`. Tests: `test_paladin.py` (`test_divine_smite_*`).
 
-### Divine Smite [OPUS]
-**Rule**: Spell cast as a Bonus Action triggered by a melee weapon hit, consuming the Attack-action
-hit + bonus action + a spell slot, with radiant damage scaling by slot level.
-The triple-economy coupling (hit + bonus action + spell slot) is the hard piece.
-On-hit hook point exists; the economy wiring is deferred to [OPUS].
+### Auras (Aura of Protection L6, Aura of Courage L10) — IMPLEMENTED ✅ (2026-06-14, built + 72 suites green, confirmed in live play)
+Team-scoped emanations now that factions exist. A Paladin's aura reaches **itself and same-team allies**
+(`areAllies`) within **10 ft (30 ft at L18)**; it is suppressed while the Paladin is at 0 HP /
+unconscious / incapacitated. Engine in `combat_core.cpp`:
+- **`bestPaladinAura(bm, idx, min_level)`** — strongest CHA-mod (min 1) bonus from any qualifying Paladin
+  of level ≥ min_level reaching `idx` (no stacking — take the max); `footprintDistance` × 5 ≤ radius.
+- **Aura of Protection** = `auraSaveBonus` (= `bestPaladinAura(…, 6)`), folded into the new single
+  **`saveModFor(bm, idx, ability)`** helper which **replaced the ~9 duplicated per-site save-mod lambdas**
+  (rollSpellSave, the executeSpell condition-rider + zone saves, begin-turn re-saves, weapon-condition
+  riders, Cunning Strike, Battle Master maneuvers, Branches of the Tree). So the +CHA applies to **every**
+  saving throw, and the OnSaveFail reroll (`reevaluateSave`) carries it via the stored `save_mod`.
+- **Aura of Courage** = `hasAuraOfCourage` (= `bestPaladinAura(…, 10) > 0`): immunity to **Frightened**.
+  Gated at the central `applyFrightened` chokepoint (covers spell/condition fear) **and** the inline
+  Battle Master Menacing-Attack site.
+- **No flag/init needed** — read live from `character_class==Paladin && char_level` + CHA + faction, so it
+  works automatically once a Paladin has a team set (GUI TeamPicker) and is L6+/L10+.
+- **GUI:** a translucent **gold aura ring** is drawn under each L6+ Paladin (`_draw_paladin_auras`, radius
+  10 ft / 30 ft at L18, suppressed while the Paladin is down) so the reach is visible during play.
+- **Save log now shows the aura (fixed 2026-06-14):** `SpellTargetResult.save_mod` was added + populated
+  from `ss.save_mod` (was missing), and the combat-log line (`main.py` Save branch) now prints
+  `tr.save_mod` instead of **recomputing the modifier in Python without the aura** — that GUI recompute was
+  why the first smoke test showed an un-buffed save (the engine *was* applying it; only the display lied).
+  The line now also appends **" (incl. +N Aura of Protection)"** via `aura_save_bonus(bm, tr.target_idx)`
+  so the contribution is explicit. **Note:** allies only show the bonus if on the **same team** as the
+  Paladin (TeamPicker); an un-teamed (all-neutral) party means only the Paladin's own save shows it.
+- Bindings: `aura_save_bonus`, `has_aura_of_courage`, `save_mod_for`, `SpellTargetResult.save_mod`, plus
+  `apply_frightened` (test hook).
+  Tests: `test_paladin_auras.py` (12: range/L18/enemy-excluded/self/min-1/level-gate/suppressed-when-down/
+  strongest-wins/save-mod-fold/courage-levels/courage-blocks-frightened).
 
-### Auras (Aura of Protection, etc.) [DEFER]
-Requires a party/team aura system the engine currently lacks. Deferred until the team system
-is established.
+**v1 simplifications / deferred:**
+- **Other auras not modeled** — Oath-specific auras (Devotion *Aura of Devotion* charm immunity, Ancients
+  *Aura of Warding* spell resistance, Vengeance, etc.) and **Aura of Courage's "ends Frightened on those
+  already affected"** clause (it only *blocks* new Frightened; a creature frightened before entering the
+  aura keeps it until its own re-save). The radius/team machinery (`bestPaladinAura`) is reusable for them.
+- **Static/no-LoS** — the aura is pure range+team (no line-of-effect/sight check, matching the other
+  range-gated features); it updates continuously as agents move (re-evaluated at each save).
+- **Reusable for other team auras** — `bestPaladinAura` + `saveModFor` are the foundation the deferred
+  **Crusader's Mantle** (+1d4 Radiant ally aura) and **Sculpt/Evoker** ally-exclusion can build on.
 
 ---
 
@@ -523,24 +574,6 @@ engine.set_agent_stats(bm, idx, stats)
 
 ---
 
-## World Tree L6: Branches of the Tree
-**Status:** Complex reaction system required, deferred
-
-**Description:** 
-Reaction ability that triggers when a creature starts its turn within 30ft of the Barbarian while Raging.
-- Creature makes STR save (DC 8 + STR mod + Prof bonus)
-- On failure: teleports within 5ft of Barbarian (Barbarian can reduce creature's speed to 0)
-- On success: no effect
-
-**What's needed:**
-- Reaction trigger detection on turn start within 30ft range
-- STR save resolution with proper DC calculation
-- Teleport logic (similar to Branches' teleport mechanic)
-- Speed reduction option (can choose to reduce speed to 0)
-- Interaction with reaction economy (uses Barbarian's reaction)
-
----
-
 ## Wizard Features (Various)
 
 ### Illusionist L14: Illusory Reality [DEFER]
@@ -585,9 +618,6 @@ Requires creature summoning system.
 - **Crusader's Mantle**: needs ally-buff aura for +1d4 Radiant
 - **Steel Wind Strike**: needs multi-target teleport/attack
 - **War God's Blessing**: underlying spells (Shield of Faith, Spiritual Weapon) are hollow
-
-### Deferred — Weapon Mastery: Nick (action economy)
-- **Nick** off-hand benefit not modeled in turn economy. Requires three pieces: (1) off-hand doesn't consume bonus action, (2) tied to Attack action with Light weapon, (3) once-per-turn gate. Current TWF routes through Bonus button; Nick needs dedicated path.
 
 ---
 
@@ -660,7 +690,10 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 - **Topple** — CON save or Prone (once/turn, GUI prompt)
 - **Cleave** — extra attack vs 2nd creature within 5 ft (once/turn, GUI prompt)
 - **Graze** — on miss, deal ability mod damage (passive, per-miss)
-- **Nick** — action-economy benefit (NOT modeled in turn economy; needs refactor)
+- **Nick** — action-economy benefit (IMPLEMENTED 2026-06-11): the single per-turn off-hand attack
+  relocates into the Attack action (`offhand_attack_used` flag, reset in `turn()`), freeing the bonus
+  action; Dual Wielder then adds a 2nd bonus-action off-hand attack (3-attack turn). See the dual-wield
+  rework in `feat_system` memory.
 
 ---
 
@@ -740,7 +773,10 @@ double-advance). v1 limits:
 
 ### Deferred — Battle Master (remaining)
 - **Riposte** — IMPLEMENTED 2026-06-04 (see the Riposte section above + RIPOSTE_PLAN.md); v1 limits only.
-- **Additional maneuvers** beyond the starter set (Disarming, Feinting, Lunging, etc. — dispatch via `applyManeuverEffect` once needed)
+- **Additional maneuvers** — IMPLEMENTED 2026-06-14 (Goading/Distracting/Disarming/Sweeping/Rally/
+  Feinting/Quick Toss/Parry; see the "Additional Maneuvers" section above). Remaining deferrals
+  (Lunging, Commander's Strike, Maneuvering, Bait and Switch, Evasive Footwork) need new infra;
+  skill maneuvers (Ambush, Commanding Presence, Tactical Assessment) are out of scope.
 
 ### Deferred — Champion extras
 - **Remarkable Athlete** (bonus to non-proficient checks)

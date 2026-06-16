@@ -574,6 +574,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
         .def_readwrite("maneuver_available", &Agent::Conditions::maneuver_available)
         .def_readwrite("maneuver_precision_available", &Agent::Conditions::maneuver_precision_available)
+        .def_readwrite("goaded_by", &Agent::Conditions::goaded_by)
+        .def_readwrite("distracted_by", &Agent::Conditions::distracted_by)
+        .def_readwrite("disarmed", &Agent::Conditions::disarmed)
+        .def_readwrite("disarmed_by", &Agent::Conditions::disarmed_by)
+        .def_readwrite("feint_target_idx", &Agent::Conditions::feint_target_idx)
+        .def_readwrite("quick_toss_die_pending", &Agent::Conditions::quick_toss_die_pending)
         .def_readwrite("hamstrung", &Agent::Conditions::hamstrung)
         .def_readwrite("sundering_target_idx", &Agent::Conditions::sundering_target_idx)
         .def_readwrite("staggered_next_save", &Agent::Conditions::staggered_next_save)
@@ -1229,6 +1235,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("hp_after",      &SpellTargetResult::hp_after)
         .def_readonly("target_down",   &SpellTargetResult::target_down)
         .def_readonly("save_d20",      &SpellTargetResult::save_d20)
+        .def_readonly("save_mod",      &SpellTargetResult::save_mod)
         .def_readonly("save_dc",       &SpellTargetResult::save_dc)
         .def_readonly("log_message",   &SpellTargetResult::log_message)
         .def_readonly("concentration_checked", &SpellTargetResult::concentration_checked)
@@ -1297,7 +1304,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("save_dc",            &ManeuverResult::save_dc)
         .def_readonly("save_roll",          &ManeuverResult::save_roll)
         .def_readonly("condition_applied",  &ManeuverResult::condition_applied)
-        .def_readonly("push_distance",      &ManeuverResult::push_distance);
+        .def_readonly("push_distance",      &ManeuverResult::push_distance)
+        .def_readonly("extra_damage",       &ManeuverResult::extra_damage)
+        .def_readonly("extra_target_down",  &ManeuverResult::extra_target_down);
 
     // ── OpenHandRiderResult ───────────────────────────────────────────────────
     py::class_<OpenHandRiderResult>(m, "OpenHandRiderResult")
@@ -1893,6 +1902,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::calculateAC,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Calculate total AC for agent (base AC + armor + DEX + shield + temp mods).")
+
+        // ── Paladin auras (team-scoped) ──────────────────────────────────
+        .def("aura_save_bonus",
+             &CombatEngine::auraSaveBonus,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Protection: the bonus this agent adds to every saving throw from a Paladin\n"
+             "L6+ (itself or a same-team ally within 10 ft, 30 ft at L18). 0 if none in range.")
+        .def("has_aura_of_courage",
+             &CombatEngine::hasAuraOfCourage,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Courage: True iff this agent is immune to Frightened (a Paladin L10+ aura\n"
+             "reaches it — itself or a same-team ally in range).")
+        .def("save_mod_for",
+             &CombatEngine::saveModFor,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("ability"),
+             "Canonical saving-throw modifier for an agent vs an ability: ability mod + proficiency\n"
+             "+ aura bonuses. Single source of truth used by every save site.")
         .def("is_holding_shield",
              &CombatEngine::isHoldingShield,
              py::arg("battle_map"), py::arg("agent_idx"),
@@ -2242,6 +2268,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Superior Hunter's Defense (on-hit DEFENDER reaction): halve result.total_damage (round down),\n"
              "spend the reactor's reaction, record the reduction. Re-validates can_superior_hunter_defense.\n"
              "Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
+        .def("can_parry", &CombatEngine::canParry,
+             py::arg("battle_map"), py::arg("defender_idx"),
+             "True iff defender_idx (Battle Master, Superiority Die left, reaction free, not incapacitated,\n"
+             "alive) may Parry. The melee-attack gate is applied at the OnHit-window call site.")
+        .def("apply_parry", &CombatEngine::applyParry,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Battle Master Parry (on-hit DEFENDER reaction vs a melee hit): reduce result.total_damage by\n"
+             "(superiority die + DEX mod), spend the reaction + 1 die, record the reduction in\n"
+             "result.damage_breakdown. Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
         .def("can_defensive_duelist", &CombatEngine::canDefensiveDuelist,
              py::arg("battle_map"), py::arg("action"), py::arg("result"),
              "True iff action's target may use Defensive Duelist vs the just-resolved attack: has the feat,\n"
@@ -2376,13 +2411,47 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Monk Warrior of the Open Hand: after a qualifying Flurry hit (conditions.open_hand_rider_available),\n"
              "spend 1 Focus Point and apply one of three riders: 0=Knockdown (STR save or Prone),\n"
              "1=Push (5 feet), 2=Deny Reaction. Returns an OpenHandRiderResult.")
+        .def("apply_frightened",
+             &CombatEngine::applyFrightened,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Apply the Frightened condition to an agent (drops weapons, sets the flag). No-op if the\n"
+             "agent is protected by an allied Paladin's Aura of Courage (L10+ in range).")
         .def("apply_maneuver_effect",
              &CombatEngine::applyManeuverEffect,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("maneuver_type"),
              "Battle Master Maneuver: after a qualifying hit (conditions.maneuver_available),\n"
-             "spend 1 Superiority Die and apply one of three riders:\n"
-             "0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft).\n"
+             "spend 1 Superiority Die and apply one rider (DC = 8 + PB + max(STR,DEX) mod):\n"
+             "0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft),\n"
+             "3=Goading (WIS save or Disadvantage attacking anyone but you), 4=Distracting (next\n"
+             "attack vs target by another creature has Advantage), 5=Disarming (STR save or fights\n"
+             "with improvised Unarmed Strikes until your next turn).\n"
              "Returns a ManeuverResult with save details / push distance.")
+        .def("apply_sweeping_attack",
+             &CombatEngine::applySweepingAttack,
+             py::arg("battle_map"), py::arg("action"), py::arg("result"), py::arg("secondary_idx"),
+             "Battle Master Sweeping Attack: after a qualifying hit (conditions.maneuver_available),\n"
+             "spend 1 Superiority Die to splash the same attack onto a 2nd creature within 5 ft of the\n"
+             "original target. If the original attack roll (result.total_roll) would hit the 2nd\n"
+             "creature's AC, it takes superiority-die damage of the attack's type. Returns a\n"
+             "ManeuverResult (extra_damage / extra_target_down; save_dc=2nd AC, save_roll=orig roll).")
+        .def("apply_rally",
+             &CombatEngine::applyRally,
+             py::arg("battle_map"), py::arg("fighter_idx"), py::arg("target_idx"),
+             "Battle Master Rally (Bonus Action): spend 1 Superiority Die to grant a creature within\n"
+             "30 ft Temporary HP = superiority die + your CHA modifier (min 1). Returns temp HP granted\n"
+             "(0 = no die / bad index).")
+        .def("apply_feinting_attack",
+             &CombatEngine::applyFeintingAttack,
+             py::arg("battle_map"), py::arg("fighter_idx"), py::arg("target_idx"),
+             "Battle Master Feinting Attack (Bonus Action): spend 1 Superiority Die to feint a creature\n"
+             "within 5 ft — Advantage on your next attack vs it this turn, and that hit adds the die to\n"
+             "damage (conditions.feint_target_idx). Returns False if no die.")
+        .def("prepare_quick_toss",
+             &CombatEngine::prepareQuickToss,
+             py::arg("battle_map"), py::arg("fighter_idx"),
+             "Battle Master Quick Toss (Bonus Action): spend 1 Superiority Die to arm a superiority-die\n"
+             "damage bonus on your next thrown-weapon attack this turn (conditions.quick_toss_die_pending).\n"
+             "The GUI then makes the actual thrown attack. Returns False if no die.")
         .def("apply_precision_attack_effect",
              &CombatEngine::applyPrecisionAttackEffect,
              py::arg("battle_map"), py::arg("action"), py::arg("result"),

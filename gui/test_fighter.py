@@ -624,6 +624,160 @@ def test_arcane_charge():
     print("✅ test_arcane_charge passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Additional Battle Master maneuvers (2026-06-14)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_save_dc_uses_max_str_dex():
+    """Maneuver save DC = 8 + PB + max(STR,DEX) mod (2024)."""
+    bm, engine, atk, tgt = _setup(3, str_score=10)  # STR 10 (+0); _battle_master sets DEX 12 (+1)
+    cond = engine.get_agent_conditions(bm, atk)
+    cond.maneuver_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+    res = engine.apply_maneuver_effect(bm, atk, tgt, 0)  # Trip
+    assert res.save_dc == 11, f"DC should be 8 + PB(2) + max(+0,+1)=11, got {res.save_dc}"
+    print("✅ test_save_dc_uses_max_str_dex passed")
+
+
+def test_goading_attack_sets_goaded_by():
+    """Goading Attack (type 3): on a failed WIS save the target is goaded_by the attacker."""
+    bm, engine, atk, tgt = _setup(3)
+    engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    cond = engine.get_agent_conditions(bm, atk); cond.maneuver_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+    res = engine.apply_maneuver_effect(bm, atk, tgt, 3)
+    assert res.valid and res.maneuver_type == 3
+    tgt_cond = engine.get_agent_conditions(bm, tgt)
+    assert res.condition_applied == (tgt_cond.goaded_by == atk), \
+        "condition_applied must match goaded_by being set to the attacker"
+    s = engine.get_agent_stats(bm, atk); sd = s.get_resource("Superiority Dice")
+    assert sd.current == sd.max - 1, "Goading spends 1 Superiority Die"
+    print("✅ test_goading_attack_sets_goaded_by passed")
+
+
+def test_distracting_strike_grants_advantage():
+    """Distracting Strike (type 4): no save — the target is distracted_by the attacker."""
+    bm, engine, atk, tgt = _setup(3)
+    engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    cond = engine.get_agent_conditions(bm, atk); cond.maneuver_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+    res = engine.apply_maneuver_effect(bm, atk, tgt, 4)
+    assert res.valid and res.condition_applied, "Distracting Strike always applies (no save)"
+    assert engine.get_agent_conditions(bm, tgt).distracted_by == atk
+    print("✅ test_distracting_strike_grants_advantage passed")
+
+
+def test_disarming_makes_unarmed():
+    """A disarmed creature's weapon attacks resolve as improvised Unarmed Strikes (STR-mod only)."""
+    bm, engine, atk, tgt = _setup(3)  # atk STR 16 (+3), longsword (1d8 Slashing)
+    cond = engine.get_agent_conditions(bm, atk)
+    cond.disarmed = True
+    cond.disarmed_by = tgt
+    engine.set_agent_conditions(bm, atk, cond)
+    ts = engine.get_agent_stats(bm, tgt); ts.base_ac = 1; engine.set_agent_stats(bm, tgt, ts)
+    hits = 0
+    for _ in range(15):
+        ts = engine.get_agent_stats(bm, tgt); ts.hp_cur = ts.hp_max
+        engine.set_agent_stats(bm, tgt, ts)
+        r = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+        if r.hit:
+            hits += 1
+            assert rpg.PhysicalDamage.Slashing not in r.physical_damage_types, \
+                "a disarmed attack must not deal the longsword's Slashing damage"
+            assert r.total_damage == 3, f"unarmed should deal only the STR mod (3), got {r.total_damage}"
+    assert hits > 0, "expected at least one unarmed hit"
+    print("✅ test_disarming_makes_unarmed passed")
+
+
+def test_sweeping_attack_splashes_second():
+    """Sweeping Attack (type 6): the original roll splashes superiority-die damage to a 2nd creature."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("BM", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("T1", 6, 5))
+    sec = add_agent_to_battle(engine, bm, create_test_agent("T2", 7, 5))  # within 5 ft of T1
+    _battle_master(engine, bm, atk, 3)
+    _soft_target(engine, bm, tgt)
+    _soft_target(engine, bm, sec)
+    engine.set_agent_weapons(bm, atk, _longsword())
+    action = rpg.Attack(atk, tgt, 0)
+    result = engine.execute_action(bm, action)
+    assert result.hit
+    cond = engine.get_agent_conditions(bm, atk); cond.maneuver_available = True
+    engine.set_agent_conditions(bm, atk, cond)
+    sec_before = engine.get_agent_stats(bm, sec).hp_cur
+    res = engine.apply_sweeping_attack(bm, action, result, sec)
+    assert res.valid and res.maneuver_type == 6
+    assert res.condition_applied, "attack_bonus=50 → the high roll hits the 2nd creature"
+    assert res.extra_damage > 0
+    assert engine.get_agent_stats(bm, sec).hp_cur == sec_before - res.extra_damage
+    s = engine.get_agent_stats(bm, atk); sd = s.get_resource("Superiority Dice")
+    assert sd.current == sd.max - 1, "Sweeping spends 1 Superiority Die"
+    print("✅ test_sweeping_attack_splashes_second passed")
+
+
+def test_rally_grants_temp_hp():
+    """Rally: grant a creature temp HP = superiority die + CHA mod (min 1)."""
+    bm, engine, atk, tgt = _setup(3)
+    before = engine.get_agent_stats(bm, tgt).temp_hp
+    amount = engine.apply_rally(bm, atk, tgt)
+    assert amount >= 1, "Rally grants at least 1 temp HP"
+    assert engine.get_agent_stats(bm, tgt).temp_hp == max(before, amount), "grantTempHp uses max() semantics"
+    s = engine.get_agent_stats(bm, atk); sd = s.get_resource("Superiority Dice")
+    assert sd.current == sd.max - 1, "Rally spends 1 Superiority Die"
+    print("✅ test_rally_grants_temp_hp passed")
+
+
+def test_feinting_attack_adds_die_damage():
+    """Feinting Attack: Advantage + a superiority die on the next attack vs the feinted target."""
+    bm, engine, atk, tgt = _setup(3)
+    assert engine.apply_feinting_attack(bm, atk, tgt)
+    assert engine.get_agent_conditions(bm, atk).feint_target_idx == tgt
+    r = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert r.hit
+    labels = [lbl for lbl, _ in r.damage_breakdown]
+    assert "feint" in labels, f"feint die should appear in the damage breakdown, got {labels}"
+    assert engine.get_agent_conditions(bm, atk).feint_target_idx == -1, "feint is consumed by the attack"
+    print("✅ test_feinting_attack_adds_die_damage passed")
+
+
+def test_quick_toss_adds_die_to_thrown():
+    """Quick Toss: arm a superiority die on the next thrown-weapon attack this turn."""
+    bm, engine, atk, tgt = _setup(3)
+    w = rpg.Weapon(); w.name = "Handaxe"; w.type = rpg.WeaponType.Melee
+    w.thrown = True; w.proficient = True; w.attack_bonus = 50
+    w.reach_ft = 5; w.range_short_feet = 20; w.range_long_feet = 60
+    roll = rpg.PhysicalDamageRoll(); roll.type = rpg.PhysicalDamage.Slashing
+    roll.num_dice = 1; roll.die_size = 6
+    w.physical_damage_types = [roll]
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+    assert engine.prepare_quick_toss(bm, atk)
+    assert engine.get_agent_conditions(bm, atk).quick_toss_die_pending
+    r = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert r.hit
+    labels = [lbl for lbl, _ in r.damage_breakdown]
+    assert "quick toss" in labels, f"quick toss die should appear in the breakdown, got {labels}"
+    assert not engine.get_agent_conditions(bm, atk).quick_toss_die_pending, "quick toss die is consumed"
+    print("✅ test_quick_toss_adds_die_to_thrown passed")
+
+
+def test_parry_reduces_damage():
+    """Parry: a Battle Master defender reduces a melee hit's damage by die + DEX, spending reaction + die."""
+    bm, engine, atk, tgt = _setup(3)  # atk = BM (defender), tgt = soft (attacker)
+    engine.set_agent_weapons(bm, tgt, _longsword())
+    bm_s = engine.get_agent_stats(bm, atk); bm_s.base_ac = 1; bm_s.hp_cur = bm_s.hp_max
+    engine.set_agent_stats(bm, atk, bm_s)
+    result = engine.execute_action(bm, rpg.Attack(tgt, atk, 0))  # tgt strikes the BM
+    assert result.hit and result.total_damage > 0
+    assert engine.can_parry(bm, atk), "BM defender with a die + free reaction can Parry"
+    before = result.total_damage
+    assert engine.apply_parry(bm, atk, result)
+    assert result.total_damage < before, f"Parry should reduce damage ({before} → {result.total_damage})"
+    assert engine.get_agent_conditions(bm, atk).reaction_used, "Parry consumes the reaction"
+    s = engine.get_agent_stats(bm, atk); sd = s.get_resource("Superiority Dice")
+    assert sd.current == sd.max - 1, "Parry spends 1 Superiority Die"
+    print("✅ test_parry_reduces_damage passed")
+
+
 if __name__ == "__main__":
     test_superiority_dice_l3()
     test_superiority_dice_l10()
@@ -649,4 +803,13 @@ if __name__ == "__main__":
     test_available_war_magic_spells()
     test_improved_war_magic_l18()
     test_arcane_charge()
+    test_save_dc_uses_max_str_dex()
+    test_goading_attack_sets_goaded_by()
+    test_distracting_strike_grants_advantage()
+    test_disarming_makes_unarmed()
+    test_sweeping_attack_splashes_second()
+    test_rally_grants_temp_hp()
+    test_feinting_attack_adds_die_damage()
+    test_quick_toss_adds_die_to_thrown()
+    test_parry_reduces_damage()
     print("\n✅ All Fighter tests passed!")

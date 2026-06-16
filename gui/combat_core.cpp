@@ -201,6 +201,68 @@ int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ab
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Paladin auras (team-scoped emanations)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// dndMod (floor-rounding ability modifier) now lives in combat_internal.hpp so every
+// translation unit shares one correct implementation. See note there.
+
+int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return 0;
+    const PlacedAgent& self_pa = agents[static_cast<std::size_t>(agent_idx)];
+    const int self_size = self_pa.agent->getSize();
+
+    int best = 0;
+    for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
+        const PlacedAgent& ppa = agents[static_cast<std::size_t>(p)];
+        const Agent::Stats& ps = ppa.agent->getStats();
+        if (ps.character_class != CharacterClass::Paladin || ps.char_level < min_level) continue;
+        // The aura emanates only from a conscious Paladin.
+        if (ps.hp_cur <= 0) continue;
+        const Agent::Conditions& pc = ppa.agent->getConditions();
+        if (pc.unconscious || pc.incapacitated) continue;
+        // The Paladin always benefits from its own aura; others must be same-team allies.
+        if (p != agent_idx && !areAllies(bm, agent_idx, p)) continue;
+        const int radius_ft = (ps.char_level >= 18) ? 30 : 10;
+        const int d = footprintDistance(self_pa.origin, self_size,
+                                        ppa.origin, ppa.agent->getSize());
+        if (d * 5 > radius_ft) continue;
+        best = std::max(best, std::max(1, dndMod(ps.cha)));
+    }
+    return best;
+}
+
+int CombatEngine::auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept
+{
+    return bestPaladinAura(bm, agent_idx, 6);   // Aura of Protection (L6+)
+}
+
+bool CombatEngine::hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept
+{
+    return bestPaladinAura(bm, agent_idx, 10) > 0;   // Aura of Courage (L10+)
+}
+
+int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return 0;
+    const Agent::Stats& s = agents[static_cast<std::size_t>(agent_idx)].agent->getStats();
+    int score = 0; bool prof = false;
+    switch (ab) {
+        case SaveStr: score = s.str;   prof = s.save_prof_str;   break;
+        case SaveDex: score = s.dex;   prof = s.save_prof_dex;   break;
+        case SaveCon: score = s.con;   prof = s.save_prof_con;   break;
+        case SaveInt: score = s.intel; prof = s.save_prof_intel; break;
+        case SaveWis: score = s.wis;   prof = s.save_prof_wis;   break;
+        default:      score = s.cha;   prof = s.save_prof_cha;   break;
+    }
+    int m = dndMod(score) + (prof ? s.prof_bonus : 0);
+    return m + auraSaveBonus(bm, agent_idx);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Armor Class
 // ─────────────────────────────────────────────────────────────────────────────
 

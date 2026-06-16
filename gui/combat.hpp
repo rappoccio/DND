@@ -175,6 +175,7 @@ struct SpellTargetResult {
     int  hp_after     = 0;
     bool target_down  = false;
     int  save_d20     = 0;   // d20 rolled on a Save
+    int  save_mod     = 0;   // total save modifier used (ability + prof + auras)
     int  save_dc      = 0;   // spell save DC the target rolled against
     std::string log_message;   // formatted log message for this target
     bool concentration_checked = false;  // whether concentration save was checked
@@ -244,11 +245,13 @@ struct OpenHandRiderResult {
 // ─────────────────────────────────────────────────────────────────────────────
 struct ManeuverResult {
     bool valid = false;             // maneuver_available was set on the attacker
-    int  maneuver_type = -1;        // 0=Trip, 1=Menacing, 2=Pushing
-    int  save_dc = 0;               // save DC for Trip/Menacing
+    int  maneuver_type = -1;        // 0=Trip, 1=Menacing, 2=Pushing, 3=Goading, 4=Distracting, 5=Disarming, 6=Sweeping
+    int  save_dc = 0;               // save DC for Trip/Menacing/Goading/Disarming
     int  save_roll = 0;             // target's d20 + save modifier
-    bool condition_applied = false; // true if save failed (Prone/Frightened applied)
+    bool condition_applied = false; // true if the effect landed (save failed / condition applied / sweep hit)
     int  push_distance = 0;         // feet pushed (Pushing maneuver only)
+    int  extra_damage = 0;          // superiority-die damage dealt to the 2nd creature (Sweeping only)
+    bool extra_target_down = false; // the 2nd creature dropped to 0 HP (Sweeping only)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -587,6 +590,7 @@ struct InFlightAttack {
     bool tgt_unconscious_at_attack{false};
     bool consume_vex{false};
     bool consume_sap{false};
+    bool consume_distracted{false}; // Distracting Strike: this attack used the target's distracted_by Advantage
     bool attacker_was_hidden{false};
     int  atk_sz{1};
     int  tgt_sz{1};
@@ -1007,6 +1011,20 @@ public:
     // allies from selective AoEs, and restricting heals to allies.
     [[nodiscard]] bool areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
 
+    // ── Paladin auras (team-scoped emanations) ─────────────────────────────
+    // A Paladin's aura reaches itself and same-team allies within 10 ft (30 ft
+    // at L18). The aura is suppressed while the Paladin is unconscious/incapacitated.
+    // bestPaladinAura returns the strongest CHA-mod (min 1) bonus from any qualifying
+    // Paladin of level >= min_level reaching agent_idx, or 0 if none.
+    [[nodiscard]] int bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level) const noexcept;
+    // Aura of Protection (L6+): the bonus that agent_idx adds to every saving throw.
+    [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
+    // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
+    [[nodiscard]] bool hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept;
+    // Canonical saving-throw modifier for agent_idx vs ability `ab`: ability modifier +
+    // proficiency (if proficient) + aura bonuses. Single source of truth for every save site.
+    [[nodiscard]] int saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
+
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
     // reasons for conditions, etc.). Optional; null = silent.
@@ -1238,6 +1256,24 @@ public:
     // Clears maneuver_available. Returns a ManeuverResult with save details / push distance.
     ManeuverResult applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept;
 
+    // Battle Master Sweeping Attack (on-hit): spend 1 Superiority Die to splash the same attack onto a
+    // 2nd creature within 5 ft of the original target. If the original attack roll (result.total_roll)
+    // would hit the 2nd creature's AC, it takes superiority-die damage of the attack's damage type.
+    // Clears maneuver_available. action/result are the original (primary) attack.
+    ManeuverResult applySweepingAttack(BattleMap& bm, const Attack& action, const AttackResult& result,
+                                       int secondary_idx) noexcept;
+
+    // Battle Master bonus-action maneuvers. Each spends 1 Superiority Die (returns false / 0 if none).
+    //  · Rally: grant a creature within 30 ft Temporary HP = superiority die + your CHA modifier.
+    //    Returns the temp HP granted (0 = could not — no die or bad index).
+    int  applyRally(BattleMap& bm, int fighter_idx, int target_idx) noexcept;
+    //  · Feinting Attack: feint a creature within 5 ft → Advantage on your next attack vs it this turn
+    //    and that hit adds the die to damage (feint_target_idx; consumed in applyAttackResult).
+    bool applyFeintingAttack(BattleMap& bm, int fighter_idx, int target_idx) noexcept;
+    //  · Quick Toss: arm a superiority-die damage bonus on your next thrown-weapon attack this turn
+    //    (quick_toss_die_pending). The GUI then makes the actual thrown attack.
+    bool prepareQuickToss(BattleMap& bm, int fighter_idx) noexcept;
+
     // Battle Master Precision Attack (on-miss): spend 1 Superiority Die, add 1d8/d10 to the
     // attack roll, and recompute the hit (may convert a miss to a hit with full damage).
     // Clears maneuver_precision_available. Mutates result in place (mirrors applyGuidedStrike).
@@ -1372,6 +1408,12 @@ public:
     // the triggering instance (see known_limitations.md).
     [[nodiscard]] bool canSuperiorHunterDefense(const BattleMap& bm, int target_idx) const;
     bool applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, AttackResult& r);
+
+    // Battle Master Parry — OnHit defender reaction. When a melee attack damages the Battle Master, it
+    // may spend its reaction + 1 Superiority Die to reduce the damage by (die roll + DEX modifier).
+    // canParry gates class/die/reaction/alive; the melee-attack check is applied at the call site.
+    [[nodiscard]] bool canParry(const BattleMap& bm, int defender_idx) const;
+    bool applyParry(BattleMap& bm, int reactor_idx, AttackResult& r);
 
     // Defensive Duelist (feat) — OnHit defender reaction. When a creature HITS the target with a MELEE
     // attack and the target wields a Finesse melee weapon, it may add its Proficiency Bonus to AC against

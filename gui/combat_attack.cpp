@@ -440,23 +440,8 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount) noexce
             to_remove.push_back(cond.condition_id);
             log_("{} takes damage — {} ends.", agentName(bm, idx), cond.condition_name);
         } else if (cond.on_damage == OnDamage_t::RepeatSave) {
-            Agent::Stats s = bm.getAgentStats(idx);
-            auto saveMod = [&](SaveAbility_t ab) -> int {
-                int score = 0; bool prof = false;
-                switch (ab) {
-                    case SaveStr: score = s.str;   prof = s.save_prof_str;   break;
-                    case SaveDex: score = s.dex;   prof = s.save_prof_dex;   break;
-                    case SaveCon: score = s.con;   prof = s.save_prof_con;   break;
-                    case SaveInt: score = s.intel; prof = s.save_prof_intel; break;
-                    case SaveWis: score = s.wis;   prof = s.save_prof_wis;   break;
-                    default:      score = s.cha;   prof = s.save_prof_cha;   break;
-                }
-                int m = (score - 10) / 2;
-                if (score < 10 && (score - 10) % 2 != 0) --m;
-                return m + (prof ? s.prof_bonus : 0);
-            };
             // Damage-triggered save is made at Advantage (Tasha's Hideous Laughter).
-            int total = rollAdvantage(20, saveMod(cond.save_ability));
+            int total = rollAdvantage(20, saveModFor(bm, idx, cond.save_ability));
             if (total >= cond.save_dc) {
                 clearSpellConditionEffect(bm, cond);
                 to_remove.push_back(cond.condition_id);
@@ -585,6 +570,37 @@ bool CombatEngine::applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, At
     return true;
 }
 
+bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (defender_idx < 0 || defender_idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(defender_idx);
+    if (s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Fighter || s.fighter_subclass != BattleMasterPath) return false;
+    const Resource* sd = s.getResource("Superiority Dice");
+    return sd && sd->current > 0;
+}
+
+bool CombatEngine::applyParry(BattleMap& bm, int reactor_idx, AttackResult& r)
+{
+    if (!canParry(bm, reactor_idx)) return false;
+    if (!r.hit || r.total_damage <= 0) return false;
+    Agent::Stats s = bm.getAgentStats(reactor_idx);
+    const int reduction = roll(s.superiority_die_size) + dndMod(s.dex);
+    const int before = r.total_damage;
+    r.total_damage = std::max(0, before - reduction);
+    Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
+    cond.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, cond);
+    spendResource(bm, reactor_idx, "Superiority Dice", 1);
+    r.damage_breakdown.push_back({"parry", r.total_damage - before});  // negative: reduction
+    log_("Parry: {} reduces the attack by {} ({} -> {})",
+         agentName(bm, reactor_idx), before - r.total_damage, before, r.total_damage);
+    return true;
+}
+
 // Defensive Duelist (feat): on a non-crit MELEE hit, a wielder of a Finesse melee weapon may add its
 // Proficiency Bonus to AC against the attack (reaction), flipping the hit to a miss when +PB clears the
 // roll. Offered only when the +PB would actually flip the outcome and the reaction is free.
@@ -647,6 +663,15 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (canDefensiveDuelist(bm, action, r))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Defensive Duelist (+PB AC — the attack misses)", "DefensiveDuelist"});
+    // Battle Master Parry: only vs a melee weapon attack that dealt damage.
+    if (r.hit && r.total_damage > 0 && canParry(bm, action.target_idx)) {
+        const auto aw = bm.getAgentWeapons(action.attacker_idx);
+        const bool melee = action.weapon_idx >= 0 && action.weapon_idx < static_cast<int>(aw.size()) &&
+                           aw[static_cast<std::size_t>(action.weapon_idx)].type == WeaponType::Melee;
+        if (melee)
+            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                          "Parry (reduce the damage by 1 die + DEX)", "Parry"});
+    }
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -682,6 +707,8 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
         return applyUncannyDodge(bm, action.target_idx, r);
     if (opt.feature == "SuperiorHuntersDefense")
         return applySuperiorHunterDefense(bm, action.target_idx, r);
+    if (opt.feature == "Parry")
+        return applyParry(bm, action.target_idx, r);
     if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, action.target_idx)) {
             r.hit = false;                  // DM ruling: a Defensive-Duelist-negated hit is a genuine miss.
@@ -1152,6 +1179,8 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
         applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "SuperiorHuntersDefense") {
         applySuperiorHunterDefense(bm, ctx.reactor_idx, in_flight_attack_.r);
+    } else if (opt.feature == "Parry") {
+        applyParry(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, ctx.reactor_idx))
             in_flight_attack_.r.hit = false;
@@ -1278,6 +1307,17 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // Note: an off-hand (Two-Weapon Fighting) attack uses the same attack roll as any other —
     // proficiency to-hit DOES apply (RAW). The only off-hand penalty is on damage (no positive
     // ability mod unless the Two-Weapon Fighting style), handled in rollDamage via w.off_hand.
+
+    // Battle Master Disarming Attack: a disarmed creature dropped its weapon, so any real weapon
+    // attack resolves as an improvised Unarmed Strike (melee, 5 ft, proficient, ability-mod only)
+    // until the disarmer's next turn. Leave genuine Unarmed/MonkUnarmed strikes untouched.
+    if (atk_pt.agent->getConditions().disarmed &&
+        w.name != "Unarmed" && w.name != "MonkUnarmed") {
+        Weapon improvised;            // default-constructed: melee "Unarmed", no damage dice → STR-mod only
+        improvised.proficient = true;
+        w = improvised;
+        log_("{} is Disarmed — attacking with an improvised Unarmed Strike", agentName(bm, action.attacker_idx));
+    }
 
     int atk_sz = atk_pt.agent->getSize();
     int tgt_sz = tgt_pt.agent->getSize();
@@ -1557,6 +1597,25 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Disadvantage: attacker was Sapped");
     }
 
+    // ── Battle Master maneuvers carried from a prior hit ──
+    // Goading Attack: the attacker is Goaded and is striking someone other than the goader → Disadvantage.
+    if (atk_cond.goaded_by >= 0 && atk_cond.goaded_by != action.target_idx) {
+        dis = true;
+        log_("Disadvantage: Goaded (must attack {} or suffer Disadvantage)", agentName(bm, atk_cond.goaded_by));
+    }
+    // Distracting Strike: the target was Distracted by someone else — any other attacker gets Advantage (consumed).
+    bool consume_distracted = false;
+    if (tgt_cond.distracted_by >= 0 && tgt_cond.distracted_by != action.attacker_idx) {
+        adv = true; consume_distracted = true;
+        log_("Advantage: target was Distracted (Distracting Strike)");
+    }
+    // Feinting Attack: the attacker feinted this target as a Bonus Action — Advantage on this attack
+    // (consumed, and a superiority die added to damage on a hit, in applyAttackResult).
+    if (atk_cond.feint_target_idx == action.target_idx) {
+        adv = true;
+        log_("Advantage: Feinting Attack (you feinted this target)");
+    }
+
 
     // end of determination of advantage / disadvantage
 
@@ -1594,6 +1653,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     s.tgt_incapacitated_at_attack = tgt_incapacitated_at_attack;
     s.tgt_unconscious_at_attack   = tgt_unconscious_at_attack;
     s.consume_vex = consume_vex; s.consume_sap = consume_sap;
+    s.consume_distracted = consume_distracted;
     s.attacker_was_hidden = attacker_was_hidden;
     s.atk_sz = atk_sz; s.tgt_sz = tgt_sz;
     return true;
@@ -1653,6 +1713,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     const bool tgt_incapacitated_at_attack = s.tgt_incapacitated_at_attack;
     const bool tgt_unconscious_at_attack   = s.tgt_unconscious_at_attack;
     bool consume_vex = s.consume_vex, consume_sap = s.consume_sap;
+    bool consume_distracted = s.consume_distracted;
     bool attacker_was_hidden = s.attacker_was_hidden;
     int atk_sz = s.atk_sz, tgt_sz = s.tgt_sz;
     Agent::Stats atk_stats = bm.getAgentStats(action.attacker_idx);
@@ -2480,6 +2541,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     {
         bool dirty_atk = false;
         if (consume_vex) { updated_atk_cond.vex_target_idx = -1; dirty_atk = true; }
+        if (consume_distracted) {        // Distracting Strike Advantage is one-shot — clear it on the target
+            Agent::Conditions tdc = bm.getAgentConditions(action.target_idx);
+            tdc.distracted_by = -1;
+            bm.setAgentConditions(action.target_idx, tdc);
+        }
         if (consume_sap) { updated_atk_cond.sapped = false;       dirty_atk = true; }
 
         if (atk_stats.weapon_mastery > 0 && w.proficient &&
@@ -2568,6 +2634,30 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             }
         }
         if (dirty_atk) bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Battle Master bonus-action maneuver damage riders (Feinting Attack / Quick Toss) ──
+    // Each adds one superiority die to a qualifying hit's damage, then is consumed. Feinting also
+    // granted Advantage in determineAdvantage; it is "your next attack vs that target this turn".
+    {
+        const bool feint = (updated_atk_cond.feint_target_idx == action.target_idx);
+        const bool quick = (updated_atk_cond.quick_toss_die_pending && w.thrown);
+        bool dirty = false;
+        if (feint) { updated_atk_cond.feint_target_idx = -1; dirty = true; }   // consumed whether hit or miss
+        if (quick) { updated_atk_cond.quick_toss_die_pending = false; dirty = true; } // ditto (the thrown attack happened)
+        if (r.hit && (feint || quick)) {
+            const int die = roll(atk_stats.superiority_die_size);
+            const int overflow = std::max(0, die - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - die);
+            tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+            r.hp_after     = tgt_stats.hp_cur;
+            r.target_down  = (r.hp_after <= 0);
+            r.total_damage += die;
+            r.damage_breakdown.push_back({feint ? "feint" : "quick toss", die});
+            log_("{}: +{} superiority die damage to {}", feint ? "Feinting Attack" : "Quick Toss",
+                 die, agentName(bm, action.target_idx));
+        }
+        if (dirty) bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
     bm.setAgentStats(action.target_idx, tgt_stats);  // apply HP change
@@ -2673,28 +2763,12 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 // Target makes a save to resist the condition
                 int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
 
-                auto getSaveMod = [&](SaveAbility_t ability) -> int {
-                    int score = 0;
-                    bool prof = false;
-                    switch (ability) {
-                        case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-                        case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-                        case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-                        case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-                        case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
-                        default:             score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
-                    }
-                    int m = (score - 10) / 2;
-                    if (score < 10 && (score - 10) % 2 != 0) --m;
-                    return m + (prof ? tgt_stats.prof_bonus : 0);
-                };
-
                 // Check for auto-fail conditions (paralyzed, stunned auto-fail STR/DEX)
                 bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
                                 (weapon_cond.save_ability == SaveStr || weapon_cond.save_ability == SaveDex);
 
                 int save_d20 = auto_fail ? 1 : roll(20);
-                int save_mod = getSaveMod(weapon_cond.save_ability);
+                int save_mod = saveModFor(bm, action.target_idx, weapon_cond.save_ability);
                 bool saved = auto_fail ? false : (save_d20 + save_mod >= save_dc);
 
                 condition_applies = !saved;

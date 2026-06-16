@@ -413,6 +413,9 @@ class App:
         # Resolved out-of-band (no attacks_remaining / bonus-action accounting): Cleave is part of
         # the Attack action, not a bonus action.
         self.pending_cleave           = None
+        self.pending_sweep            = None   # Battle Master Sweeping Attack: awaiting 2nd-target click
+        self.pending_rally            = None   # Battle Master Rally: awaiting ally-target click
+        self.pending_feint            = None   # Battle Master Feinting Attack: awaiting target click
         self.attacks_remaining        = 0     # attacks left in current pending slot
         self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
         self.pending_spell_slot        = ""    # "" | "action" | "bonus"
@@ -864,6 +867,9 @@ class App:
         self.btn_cbt_second_wind = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Second Wind (Bonus Action)",
                                           (180, 150, 100), (220, 190, 130), self.font_md)
+        self.btn_cbt_bm_maneuver = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Maneuver (Bonus Action)",
+                                          (150, 120, 90), (190, 160, 120), self.font_md)
         self.btn_cbt_action_surge = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Action Surge",
                                           (220, 140, 90), (255, 170, 120), self.font_md)
@@ -1816,6 +1822,9 @@ class App:
         self.pending_attack_slot       = ""
         self.attacks_remaining         = 0
         self.pending_cleave            = None
+        self.pending_sweep             = None
+        self.pending_rally             = None
+        self.pending_feint             = None
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -1871,6 +1880,9 @@ class App:
         self.pending_attack_slot       = ""
         self.attacks_remaining         = 0
         self.pending_cleave            = None
+        self.pending_sweep             = None
+        self.pending_rally             = None
+        self.pending_feint             = None
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -2724,7 +2736,7 @@ class App:
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_maneuver:
-            self._offer_maneuver(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            self._offer_maneuver(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_precision:
             self._offer_precision_attack(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_reckless_reroll:
@@ -3468,21 +3480,19 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_maneuver(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Show Battle Master Maneuver menu after a qualifying hit.
-        Spend 1 Superiority Die for Trip (Prone), Menacing (Frightened), or Pushing (15 ft).
-        Mirrors _offer_open_hand_rider: log original attack, then note the rider outcome.
-        Calls _continue_attack_sequence_after_rider to preserve the Extra Attack chain.
-        """
-        def _apply_trip():
-            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 0)
+    def _offer_maneuver(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Show Battle Master Maneuver menu after a qualifying hit. Spend 1 Superiority Die for
+        Trip (Prone), Menacing (Frightened), Pushing (15 ft), Goading (Disadvantage vs others),
+        Distracting (allies get Advantage), Disarming (improvised Unarmed), or Sweeping (splash a
+        2nd creature). Mirrors _offer_open_hand_rider; preserves the Extra Attack chain via
+        _continue_attack_sequence_after_rider."""
+        def _apply_save_maneuver(mtype, label, save_name):
+            # Trip / Menacing / Goading / Disarming: a save-rider with a uniform log shape.
+            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, mtype)
             if res.valid:
-                if res.condition_applied:
-                    self._combat_log_add(
-                        f"  → Tripping Attack (STR save DC {res.save_dc}: rolled {res.save_roll}) — Prone!")
-                else:
-                    self._combat_log_add(
-                        f"  → Tripping Attack (STR save DC {res.save_dc}: rolled {res.save_roll}) — Resisted")
+                outcome = "applied!" if res.condition_applied else "Resisted"
+                self._combat_log_add(
+                    f"  → {label} ({save_name} save DC {res.save_dc}: rolled {res.save_roll}) — {outcome}")
             self._combat_log_add(atk_msg)
             self._flush_combat_log()
             if result.target_down:
@@ -3490,21 +3500,25 @@ class App:
             self._update_attack_overlay()
             self._continue_attack_sequence_after_rider(atk_idx)
 
-        def _apply_menacing():
-            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 1)
+        def _apply_distracting():
+            res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 4)
             if res.valid:
-                if res.condition_applied:
-                    self._combat_log_add(
-                        f"  → Menacing Attack (WIS save DC {res.save_dc}: rolled {res.save_roll}) — Frightened!")
-                else:
-                    self._combat_log_add(
-                        f"  → Menacing Attack (WIS save DC {res.save_dc}: rolled {res.save_roll}) — Resisted")
+                self._combat_log_add(
+                    f"  → Distracting Strike: the next attack vs {tgt_name} by another creature has Advantage")
             self._combat_log_add(atk_msg)
             self._flush_combat_log()
             if result.target_down:
                 self._drop_concentration_for_agent(target_idx)
             self._update_attack_overlay()
             self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _apply_sweeping():
+            # Mark the die-spend pending; the 2nd target is chosen by a follow-up map click.
+            self._combat_log_add(atk_msg)
+            self.pending_sweep = {"action": action, "result": result, "first": target_idx, "attacker": atk_idx}
+            self._combat_log_add(f"Sweeping Attack — click a 2nd creature within 5 ft of {tgt_name}.")
+            self._flush_combat_log()
+            self._update_attack_overlay()
 
         def _apply_pushing():
             res = self.combat.apply_maneuver_effect(self.bm, atk_idx, target_idx, 2)
@@ -3523,13 +3537,57 @@ class App:
             self._continue_attack_sequence_after_rider(atk_idx)
 
         options = [
-            ("Trip (1 die, STR save → Prone)", _apply_trip),
-            ("Menacing (1 die, WIS save → Frightened)", _apply_menacing),
+            ("Trip (1 die, STR save → Prone)",
+                lambda: _apply_save_maneuver(0, "Tripping Attack", "STR")),
+            ("Menacing (1 die, WIS save → Frightened)",
+                lambda: _apply_save_maneuver(1, "Menacing Attack", "WIS")),
             ("Pushing (1 die, 15 ft push)", _apply_pushing),
+            ("Goading (1 die, WIS save → Disadv. vs others)",
+                lambda: _apply_save_maneuver(3, "Goading Attack", "WIS")),
+            ("Distracting (1 die, allies get Advantage)", _apply_distracting),
+            ("Disarming (1 die, STR save → improvised unarmed)",
+                lambda: _apply_save_maneuver(5, "Disarming Attack", "STR")),
+            ("Sweeping (1 die, splash a 2nd creature)", _apply_sweeping),
             ("Skip", _skip_maneuver),
         ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _resolve_sweep(self, second_target: int):
+        """Resolve a pending Sweeping Attack against the clicked 2nd creature (within 5 ft of the
+        first target). Spends the superiority die; the original attack roll is reused to see if it
+        would hit the 2nd creature's AC. No new attack roll, no action/bonus consumed."""
+        info = self.pending_sweep
+        self.pending_sweep = None
+        if not info:
+            return
+        atk, first = info["attacker"], info["first"]
+        agents = self.bm.placed_agents
+        if not (0 <= second_target < len(agents)) or second_target in (atk, first):
+            self._combat_log_add("Sweeping Attack: must target a different creature.")
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk)
+            return
+        fo, so = agents[first].origin, agents[second_target].origin
+        if max(abs(fo.col - so.col), abs(fo.row - so.row)) > 1:
+            self._combat_log_add("Sweeping Attack: the 2nd creature must be within 5 ft of the first target.")
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk)
+            return
+        res = self.combat.apply_sweeping_attack(self.bm, info["action"], info["result"], second_target)
+        tgt2 = agents[second_target].name
+        if res.valid and res.condition_applied:
+            self._combat_log_add(
+                f"  → Sweeping Attack: {tgt2} takes {res.extra_damage} damage "
+                f"(roll {res.save_roll} vs AC {res.save_dc}){' — DOWN' if res.extra_target_down else ''}")
+            if res.extra_target_down:
+                self._drop_concentration_for_agent(second_target)
+        elif res.valid:
+            self._combat_log_add(
+                f"  → Sweeping Attack misses {tgt2} (roll {res.save_roll} vs AC {res.save_dc})")
+        self._flush_combat_log()
+        self._update_attack_overlay()
+        self._continue_attack_sequence_after_rider(atk)
 
     def _offer_precision_attack(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Show Battle Master Precision Attack menu after a non-fumble miss.
@@ -4181,6 +4239,72 @@ class App:
         self._combat_log_add(
             f"{self.bm.placed_agents[agent_idx].name}: Second Wind! Rolled {roll} + {stats.char_level} level = {healing} HP restored ({old_hp} → {stats.hp_cur}).")
         self.bonus_used = True
+
+    def _offer_bonus_maneuver(self, idx: int):
+        """Battle Master bonus-action maneuvers menu: Rally (ally temp HP), Feinting (Advantage +
+        die vs an adjacent creature), Quick Toss (thrown attack + die). Each spends 1 Superiority Die."""
+        def _rally():
+            self.pending_rally = idx
+            self._combat_log_add("Rally — click a creature within 30 ft to bolster.")
+            self._flush_combat_log()
+
+        def _feint():
+            self.pending_feint = idx
+            self._combat_log_add("Feinting Attack — click a creature within 5 ft to feint.")
+            self._flush_combat_log()
+
+        def _quick_toss():
+            if self.combat.prepare_quick_toss(self.bm, idx):
+                self.bonus_used = True
+                self._flush_combat_log()
+                self._start_extra_attack(weapon_idx=self.pending_weapon_idx, offhand=False,
+                                         resource=None, label="Quick Toss (thrown weapon)")
+            else:
+                self._combat_log_add("Quick Toss: no Superiority Dice left.")
+                self._flush_combat_log()
+
+        options = [
+            ("Rally (ally within 30 ft gains temp HP)", _rally),
+            ("Feinting Attack (creature within 5 ft)", _feint),
+            ("Quick Toss (thrown attack + die)", _quick_toss),
+        ]
+        px, py = self._agent_screen_pos(idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _resolve_rally(self, target_idx: int):
+        """Resolve a pending Rally against the clicked creature (within 30 ft)."""
+        fighter = self.pending_rally
+        self.pending_rally = None
+        agents = self.bm.placed_agents
+        if fighter is None or not (0 <= target_idx < len(agents)):
+            return
+        fo, to = agents[fighter].origin, agents[target_idx].origin
+        if max(abs(fo.col - to.col), abs(fo.row - to.row)) > 6:   # 30 ft = 6 cells (Chebyshev)
+            self._combat_log_add("Rally: the target must be within 30 ft.")
+            self._flush_combat_log()
+            return
+        amount = self.combat.apply_rally(self.bm, fighter, target_idx)
+        if amount > 0:
+            self.bonus_used = True
+        self._flush_combat_log()
+        self._update_attack_overlay()
+
+    def _resolve_feint(self, target_idx: int):
+        """Resolve a pending Feinting Attack against the clicked creature (within 5 ft)."""
+        fighter = self.pending_feint
+        self.pending_feint = None
+        agents = self.bm.placed_agents
+        if fighter is None or not (0 <= target_idx < len(agents)) or target_idx == fighter:
+            return
+        fo, to = agents[fighter].origin, agents[target_idx].origin
+        if max(abs(fo.col - to.col), abs(fo.row - to.row)) > 1:    # 5 ft = adjacent
+            self._combat_log_add("Feinting Attack: the target must be within 5 ft.")
+            self._flush_combat_log()
+            return
+        if self.combat.apply_feinting_attack(self.bm, fighter, target_idx):
+            self.bonus_used = True
+        self._flush_combat_log()
+        self._update_attack_overlay()
 
     def _use_tireless(self, agent_idx: int):
         """Ranger L10 Tireless: Magic action, grant self 1d8 + WIS mod (min 1) temp HP."""
@@ -5031,30 +5155,13 @@ class App:
                         rpg.SaveAbility.SaveCha: "CHA",
                     }
                     ability_str = save_ability_map.get(spell.save_ability, "???")
-                    ability_score_map = {
-                        rpg.SaveAbility.SaveStr: tgt_agent.stats.str,
-                        rpg.SaveAbility.SaveDex: tgt_agent.stats.dex,
-                        rpg.SaveAbility.SaveCon: tgt_agent.stats.con,
-                        rpg.SaveAbility.SaveInt: tgt_agent.stats.intel,
-                        rpg.SaveAbility.SaveWis: tgt_agent.stats.wis,
-                        rpg.SaveAbility.SaveCha: tgt_agent.stats.cha,
-                    }
-                    ability_score = ability_score_map.get(spell.save_ability, 10)
-                    save_prof_map = {
-                        rpg.SaveAbility.SaveStr: tgt_agent.stats.save_prof_str,
-                        rpg.SaveAbility.SaveDex: tgt_agent.stats.save_prof_dex,
-                        rpg.SaveAbility.SaveCon: tgt_agent.stats.save_prof_con,
-                        rpg.SaveAbility.SaveInt: tgt_agent.stats.save_prof_intel,
-                        rpg.SaveAbility.SaveWis: tgt_agent.stats.save_prof_wis,
-                        rpg.SaveAbility.SaveCha: tgt_agent.stats.save_prof_cha,
-                    }
-                    has_prof = save_prof_map.get(spell.save_ability, False)
-
-                    ability_mod = (ability_score - 10) // 2
-                    if ability_score < 10 and (ability_score - 10) % 2 != 0:
-                        ability_mod -= 1
-                    save_mod = ability_mod + (tgt_agent.stats.prof_bonus if has_prof else 0)
+                    # Use the engine's actual save modifier (ability + proficiency + Paladin
+                    # Aura of Protection), not a GUI recompute — otherwise auras stay invisible.
+                    save_mod = tr.save_mod
                     save_total = tr.save_d20 + save_mod
+                    # Surface the Aura of Protection contribution so it's visible in the log.
+                    aura_bonus = self.combat.aura_save_bonus(self.bm, tr.target_idx)
+                    aura_note = f" (incl. +{aura_bonus} Aura of Protection)" if aura_bonus > 0 else ""
 
                     result_str = "SAVED" if tr.saved else "FAILED"
                     dmg_str = f"{tr.total_healing} heal" if tr.total_healing else f"{tr.total_damage} dmg"
@@ -5081,7 +5188,7 @@ class App:
                         condition_suffix = f" → {condition_names}"
 
                     msg = (f"{cast_name}→{tgt_name}: {ability_str} save — "
-                           f"rolled {tr.save_d20} + {save_mod} = {save_total} vs DC {tr.save_dc} — "
+                           f"rolled {tr.save_d20} + {save_mod}{aura_note} = {save_total} vs DC {tr.save_dc} — "
                            f"{result_str}{condition_suffix} — {dmg_str}"
                            f"{' — DOWN' if tr.target_down else ''}")
                 else:
@@ -5193,7 +5300,7 @@ class App:
                          if o.kind == rpg.ReactionOptionKind.Feature]
                 names = {"Shield": "Shield", "UncannyDodge": "Uncanny Dodge",
                          "SuperiorHuntersDefense": "Superior Hunter's Defense",
-                         "DefensiveDuelist": "Defensive Duelist"}
+                         "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
@@ -7895,6 +8002,35 @@ class App:
         for idx in safe:
             _outline(idx, (60, 220, 80))     # safe allies (green)
 
+    def _draw_paladin_auras(self, cpx):
+        """Translucent gold ring around each Paladin showing its aura reach — Aura of
+        Protection (L6+) / Aura of Courage (L10+): 10 ft, or 30 ft at L18. Same-team
+        allies (and the Paladin) inside the ring get the aura; it vanishes while the
+        Paladin is down (matching the engine's suppression)."""
+        bm = self.bm
+        GOLD = (255, 215, 90)
+        clip = self.screen.get_clip()
+        self.screen.set_clip(self.map_rect)
+        for pt in bm.placed_agents:
+            if pt.removed_from_play:
+                continue
+            st = pt.stats
+            if st.character_class != rpg.CharacterClass.Paladin or st.char_level < 6:
+                continue
+            if pt.stats.hp_cur <= 0 or pt.conditions.unconscious or pt.conditions.incapacitated:
+                continue  # aura suppressed while the Paladin is down
+            radius_cells = 6 if st.char_level >= 18 else 2   # 30 ft / 10 ft (5 ft per cell)
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            half = (pt.size * cpx) / 2.0
+            r = int(radius_cells * cpx + half)
+            if r <= 0:
+                continue
+            surf = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
+            pygame.draw.circle(surf, (*GOLD, 22), (r, r), r)          # faint fill
+            pygame.draw.circle(surf, (*GOLD, 140), (r, r), r, 2)      # ring outline
+            self.screen.blit(surf, (int(sx + half) - r, int(sy + half) - r))
+        self.screen.set_clip(clip)
+
     def _draw_agents(self):
         bm    = self.bm
         s     = self.map_scale
@@ -7920,6 +8056,9 @@ class App:
 
         # ── Concentration-based terrain overlays (beneath all agents) ──────
         self._draw_concentration_terrain(cpx)
+
+        # ── Paladin aura rings (beneath all agents) ───────────────────────
+        self._draw_paladin_auras(cpx)
 
         # ── Draw items on the map ─────────────────────────────────────────
         self._draw_items(cpx)
@@ -8674,6 +8813,19 @@ class App:
                         self.btn_cbt_second_wind.draw(self.screen)
                         y += B + gap
 
+            # Maneuver (Bonus) button — Battle Master with a Superiority Die: Rally / Feinting / Quick Toss
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Fighter and
+                        stats.fighter_subclass == rpg.FighterSubclass.BattleMaster):
+                    sd = stats.get_resource("Superiority Dice")
+                    if sd and sd.current > 0:
+                        self.btn_cbt_bm_maneuver.rect.x = lx
+                        self.btn_cbt_bm_maneuver.rect.y = y
+                        self.btn_cbt_bm_maneuver.rect.w = W
+                        self.btn_cbt_bm_maneuver.draw(self.screen)
+                        y += B + gap
+
             # One with Shadows button — Warlock (invocation 8). Free Invisibility while the
             # Warlock stands in Dim Light/Darkness; the click enforces the lighting gate.
             if 0 <= cur_idx < len(agents):
@@ -9307,22 +9459,26 @@ class App:
                         cfg.start_row = self.placement_cell.row
                         # Save full state for all existing agents before
                         # apply_agent_configs() recreates them from scratch.
-                        # NOTE: spells and armor live on PlacedAgent (not in stats),
-                        # so they must be saved/restored explicitly or they are lost.
+                        # NOTE: spells, armor, and faction live on PlacedAgent (not
+                        # in stats), so they must be saved/restored explicitly or
+                        # they are lost (e.g. red/blue team assignments reset to
+                        # neutral every time a new mob is placed).
                         existing = self.bm.placed_agents
                         saved = [(self.combat.get_agent_stats(self.bm, i),
                                   self.combat.get_agent_weapons(self.bm, i),
                                   self.combat.get_agent_spells(self.bm, i),
-                                  self.combat.get_agent_armor(self.bm, i))
+                                  self.combat.get_agent_armor(self.bm, i),
+                                  self.bm.get_agent_faction(i))
                                  for i in range(len(existing))]
                         self.combat.add_agent_config(self.bm, cfg)
                         self.combat.apply_agent_configs(self.bm)
-                        # Restore previously saved stats + weapons + spells + armor
-                        for i, (st, wps, spl, arm) in enumerate(saved):
+                        # Restore previously saved stats + weapons + spells + armor + faction
+                        for i, (st, wps, spl, arm, fac) in enumerate(saved):
                             self.combat.set_agent_stats(self.bm, i, st)
                             self.combat.set_agent_weapons(self.bm, i, wps)
                             self.combat.set_agent_spells(self.bm, i, spl)
                             self.combat.set_agent_armor(self.bm, i, arm)
+                            self.bm.set_agent_faction(i, fac)
                         # Apply mob stats and auto-weapons to the newly placed agent
                         idx = len(self.bm.placed_agents) - 1
                         if self.selected_mob_stats:
@@ -9574,6 +9730,12 @@ class App:
                         # Pending attack: resolve against the clicked agent.
                         elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
+                        elif self.pending_sweep is not None and hit >= 0:
+                            self._resolve_sweep(hit)
+                        elif self.pending_rally is not None and hit >= 0:
+                            self._resolve_rally(hit)
+                        elif self.pending_feint is not None and hit >= 0:
+                            self._resolve_feint(hit)
                         elif self.pending_attack_slot and hit >= 0:
                             self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
@@ -10175,6 +10337,10 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_second_wind(idx)
+                    if self.btn_cbt_bm_maneuver.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._offer_bonus_maneuver(idx)
                     if self.btn_cbt_one_with_shadows.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

@@ -94,6 +94,7 @@ test_scripts = [
 
     # Paladin features
     "test_paladin.py",
+    "test_paladin_auras.py",
 
     # Sorcerer features
     "test_sorcerer.py",

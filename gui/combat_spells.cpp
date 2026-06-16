@@ -277,23 +277,8 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     } else {
         save_d20 = roll(20);
     }
-    auto saveMod = [&](SaveAbility_t ab) -> int {
-        int score = 0; bool prof = false;
-        switch (ab) {
-            case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-            case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-            case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-            case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-            case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
-            default:      score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
-        }
-        int m = (score - 10) / 2;
-        if (score < 10 && (score - 10) % 2 != 0) --m;
-        return m + (prof ? tgt_stats.prof_bonus : 0);
-    };
-
     ss.d20       = save_d20;
-    ss.save_mod  = saveMod(sp.save_ability);
+    ss.save_mod  = saveModFor(bm, tgt_idx, sp.save_ability);
     ss.bonus     = 0;
     ss.auto_fail = auto_fail;
     ss.total     = save_d20 + ss.save_mod;
@@ -803,6 +788,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             }
             if (ss.target_idx < 0) ss = rollSpellSave(bm, action, tgt_idx, applied_metamagic);
             tr.save_d20 = ss.d20;
+            tr.save_mod = ss.save_mod + ss.bonus;   // ability + prof + auras (+ any reaction bonus)
             tr.save_dc  = ss.dc;
             tr.saved    = ss.saved;
 
@@ -1102,30 +1088,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                             (spell_cond.condition_name == "Charmed" ||
                              spell_cond.condition_name == "Frightened");
                         int save_d20 = fey_twist ? rollAdvantage(20) : roll(20);
-                        auto saveMod = [&](SaveAbility_t ab) -> int {
-                            int score = 0; bool prof = false;
-                            switch (ab) {
-                                case SaveStr: score = tgt_stats.str;   prof = tgt_stats.save_prof_str;   break;
-                                case SaveDex: score = tgt_stats.dex;   prof = tgt_stats.save_prof_dex;   break;
-                                case SaveCon: score = tgt_stats.con;   prof = tgt_stats.save_prof_con;   break;
-                                case SaveInt: score = tgt_stats.intel; prof = tgt_stats.save_prof_intel; break;
-                                case SaveWis: score = tgt_stats.wis;   prof = tgt_stats.save_prof_wis;   break;
-                                default:      score = tgt_stats.cha;   prof = tgt_stats.save_prof_cha;   break;
-                            }
-                            int m = (score - 10) / 2;
-                            if (score < 10 && (score - 10) % 2 != 0) --m;
-                            return m + (prof ? tgt_stats.prof_bonus : 0);
-                        };
+                        int cond_save_mod = saveModFor(bm, tgt_idx, spell_cond.save_ability);
 
-                        bool save_succeeded = (save_d20 + saveMod(spell_cond.save_ability) >= save_dc);
+                        bool save_succeeded = (save_d20 + cond_save_mod >= save_dc);
                         target_failed_save = !save_succeeded;
                         condition_applies = target_failed_save;
 
                         log_("{} save vs {} condition: rolled {} + {} = {} vs DC {} — {}",
                              ability_name(spell_cond.save_ability),
                              spell_cond.condition_name,
-                             save_d20, saveMod(spell_cond.save_ability),
-                             save_d20 + saveMod(spell_cond.save_ability),
+                             save_d20, cond_save_mod,
+                             save_d20 + cond_save_mod,
                              save_dc,
                              save_succeeded ? "SAVED" : "FAILED");
                     }
@@ -1629,25 +1602,10 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         else if (dis)        save_d20 = rollDisadvantage(20);
         else                 save_d20 = roll(20);
 
-        auto saveMod = [&](SaveAbility_t ab) -> int {
-            int score = 0; bool prof = false;
-            switch (ab) {
-                case SaveStr: score = target_stats.str;   prof = target_stats.save_prof_str;   break;
-                case SaveDex: score = target_stats.dex;   prof = target_stats.save_prof_dex;   break;
-                case SaveCon: score = target_stats.con;   prof = target_stats.save_prof_con;   break;
-                case SaveInt: score = target_stats.intel; prof = target_stats.save_prof_intel; break;
-                case SaveWis: score = target_stats.wis;   prof = target_stats.save_prof_wis;   break;
-                default:      score = target_stats.cha;   prof = target_stats.save_prof_cha;   break;
-            }
-            int m = (score - 10) / 2;
-            if (score < 10 && (score - 10) % 2 != 0) --m;
-            return m + (prof ? target_stats.prof_bonus : 0);
-        };
-
         int dc = 0;
         if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
             dc = spellSaveDcFromAbility(bm.getAgentStats(effect.caster_idx), sp.save_ability);
-        saved = !auto_fail && (save_d20 + saveMod(sp.save_ability) >= dc);
+        saved = !auto_fail && (save_d20 + saveModFor(bm, target_idx, sp.save_ability) >= dc);
     }
 
     // Calculate total by rolling all damage types and applying multipliers (then halving on a save).

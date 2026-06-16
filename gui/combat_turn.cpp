@@ -118,6 +118,14 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (c.slasher_marked && c.slasher_marked_by == agent_idx) {
             c.slasher_marked = false; c.slasher_marked_by = -1; dirty = true;
         }
+        // Battle Master maneuvers that last "until the end of your next turn" — the mark lives on
+        // the victim tagged with the maneuvering Fighter's index, so expire it as that Fighter's
+        // turn begins (Goading Attack, Distracting Strike, Disarming Attack).
+        if (c.goaded_by == agent_idx)     { c.goaded_by = -1;                       dirty = true; }
+        if (c.distracted_by == agent_idx) { c.distracted_by = -1;                   dirty = true; }
+        if (c.disarmed && c.disarmed_by == agent_idx) {
+            c.disarmed = false; c.disarmed_by = -1;                                 dirty = true;
+        }
         if (dirty) bm.setAgentConditions(i, c);
     }
 
@@ -323,24 +331,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         // Check if it's time for a save
         if (active_cond.next_save_turn > 0) continue;
 
-        // Helper to get ability modifier
-        auto getSaveMod = [&](SaveAbility_t ability) -> int {
-            int score = 0;
-            bool prof = false;
-            switch (ability) {
-                case SaveStr: score = stats.str; prof = stats.save_prof_str; break;
-                case SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
-                case SaveCon: score = stats.con; prof = stats.save_prof_con; break;
-                case SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
-                case SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
-                default: score = stats.cha; prof = stats.save_prof_cha; break;
-            }
-            int mod = (score - 10) / 2;
-            if (score < 10 && (score - 10) % 2 != 0) --mod;
-            return mod + (prof ? stats.prof_bonus : 0);
-        };
-
-        int save_mod = getSaveMod(active_cond.save_ability);
+        // Save modifier (ability + proficiency + Aura of Protection).
+        int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
         int save_d20 = roll(20);
         int save_total = save_d20 + save_mod;
         int save_dc = active_cond.save_dc;
@@ -459,24 +451,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             continue;
         }
 
-        // Helper to get ability modifier
-        auto getSaveMod = [&](SaveAbility_t ability) -> int {
-            int score = 0;
-            bool prof = false;
-            switch (ability) {
-                case SaveStr: score = stats.str; prof = stats.save_prof_str; break;
-                case SaveDex: score = stats.dex; prof = stats.save_prof_dex; break;
-                case SaveCon: score = stats.con; prof = stats.save_prof_con; break;
-                case SaveInt: score = stats.intel; prof = stats.save_prof_intel; break;
-                case SaveWis: score = stats.wis; prof = stats.save_prof_wis; break;
-                default: score = stats.cha; prof = stats.save_prof_cha; break;
-            }
-            int mod = (score - 10) / 2;
-            if (score < 10 && (score - 10) % 2 != 0) --mod;
-            return mod + (prof ? stats.prof_bonus : 0);
-        };
-
-        int save_mod = getSaveMod(active_cond.save_ability);
+        // Save modifier (ability + proficiency + Aura of Protection).
+        int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
         int save_d20 = roll(20);
         int save_total = save_d20 + save_mod - (2 * agent_cond.exhaustion_level);
         int save_dc = active_cond.save_dc;

@@ -668,6 +668,18 @@ namespace rpg {
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
       bool maneuver_available{false};           // Battle Master: a qualifying hit can apply a Maneuver this attack
       bool maneuver_precision_available{false}; // Battle Master: this missed attack can apply Precision Attack
+      // ── Battle Master maneuvers (2024) beyond Trip/Menacing/Pushing/Precision/Riposte ──
+      int  goaded_by{-1};        // Goading Attack: this creature's attacks vs anyone other than goaded_by have
+                                 //   Disadvantage; cleared at the start of goaded_by's next turn.
+      int  distracted_by{-1};    // Distracting Strike: the next attack vs this creature by an attacker other than
+                                 //   distracted_by has Advantage (consumed); cleared at start of distracted_by's next turn.
+      bool disarmed{false};      // Disarming Attack: this creature dropped its weapon — its weapon attacks resolve as
+      int  disarmed_by{-1};      //   improvised Unarmed Strikes until the start of disarmed_by's next turn.
+      int  feint_target_idx{-1}; // Feinting Attack: Advantage on your next attack vs this target this turn, and that
+                                 //   hit adds a superiority die to damage. Consumed on that attack (reset each turn).
+      bool quick_toss_die_pending{false}; // Quick Toss: the next thrown-weapon attack this turn adds a superiority
+                                 //   die to its damage (consumed on that attack).
+      // (Parry needs no flag — like Uncanny Dodge it is offered live in the OnHit defender window via canParry.)
       // ── Weapon Mastery (2024) ──────────────────────────────────────────────
       bool sapped{false};                   // Sap: disadvantage on this creature's next attack roll
       bool sap_used_this_turn{false};       // Sap: once per turn
@@ -790,6 +802,11 @@ namespace rpg {
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;
       conditions_.riposte_available            = false;
+      // Per-turn maneuver flags. goaded_by / distracted_by / disarmed[_by] are cross-turn
+      // markers cleared in CombatEngine::beginTurn by the maneuvering Fighter's own turn (so
+      // they last "until the end of your next turn"); they are NOT reset here.
+      conditions_.feint_target_idx             = -1;
+      conditions_.quick_toss_die_pending       = false;
       conditions_.sentinel_guard_available     = false;
       // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
       // they are consumed on the next qualifying attack roll (and survive into this
