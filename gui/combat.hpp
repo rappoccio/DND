@@ -157,6 +157,15 @@ struct SpellAction {
     // the list is empty/exhausted or a pick is invalid, the engine auto-selects the nearest
     // eligible enemy — so NPC, RL and headless casts (which have no picker) still leap.
     std::vector<int> chromatic_leap_targets;
+    // Free cast (no spell slot expended). Set by features that grant a slot-free cast
+    // (Bard College of Glamour — Mantle of Majesty casts Command without a slot). When true,
+    // executeSpell skips the player slot decrement. The action economy (action/bonus) is still
+    // charged by the caller.
+    bool free_cast = false;
+    // Command spell word choice (only read when the cast is the Command spell): 0=Drop, 1=Flee,
+    // 2=Grovel, 3=Halt, 4=Approach. -1 = caller did not specify → engine defaults to Halt. Applied
+    // to each target that fails the save (see applyCommandEffect).
+    int  command_word = -1;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1353,6 +1362,39 @@ public:
     // amount subtracted, or 0 on failure (not a L3+ Lore Bard, or no use left).
     int bardCuttingWords(BattleMap& bm, int bard_idx) noexcept;
 
+    // College of Glamour — Mantle of Inspiration (Bard L3+): Bonus Action that expends one
+    // use of Bardic Inspiration and rolls the Bardic Inspiration die ONCE; each chosen creature
+    // gains Temporary HP equal to twice the number rolled (max() semantics, non-rage source).
+    // The caller (GUI) supplies the chosen targets and validates the 60 ft range per click; this
+    // caps the list to the bard's Charisma modifier (min 1) and skips the bard itself (2024 RAW:
+    // "other creatures"). Returns the Temporary HP granted to each recipient, or 0 on failure
+    // (not a L3+ College of Glamour Bard, or no Bardic Inspiration use left). The 2024 rider that
+    // lets each recipient Reaction-move up to its Speed without provoking OAs is not modeled.
+    int bardMantleOfInspiration(BattleMap& bm, int bard_idx,
+                                const std::vector<int>& targets) noexcept;
+
+    // College of Glamour — Mantle of Majesty (Bard L6+): Bonus Action that spends the once/long-rest
+    // "Mantle of Majesty" resource, opens a 1-minute (10-round) "unearthly appearance" window
+    // (mantle_majesty_turns = 10) and starts Concentration on the literal name "Mantle of Majesty"
+    // (replacing any prior concentration). While the window is active the bard may re-cast Command as
+    // a Bonus Action with no slot, and a creature Charmed by this bard auto-fails its save vs that
+    // Command. The free Command cast itself is driven separately by the caller (SpellAction.free_cast).
+    // Returns true on success, false if the agent is not a College of Glamour Bard L6+ or has no use.
+    [[nodiscard]] bool activateMantleOfMajesty(BattleMap& bm, int bard_idx) noexcept;
+
+    // Restore the expended "Mantle of Majesty" use by spending an unused level 3+ spell slot (no
+    // action). Mirrors bardRegainInspirationFromSlot. Returns the resource's new current count, or
+    // -1 on failure (not a Glamour Bard L6+, slot_level < 3, no such slot, or already full).
+    int bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
+
+    // Apply the chosen Command word to a target that failed its save vs the Command spell.
+    // word: 0=Drop, 1=Flee, 2=Grovel, 3=Halt, 4=Approach (anything else defaults to Halt). Reuses
+    // existing mechanics: Drop = drop-weapons + Disarmed (until the bard's next turn); Flee/Approach
+    // = a 1-turn movement restriction relative to the bard; Grovel = Prone; Halt = Incapacitated for
+    // one turn. The movement/incapacitation conditions are keyed to bard_idx with a 1-turn duration so
+    // they expire as the bard's next turn begins (tickAgentConditionsForCaster).
+    void applyCommandEffect(BattleMap& bm, int bard_idx, int target_idx, int word) noexcept;
+
     // ── Abjurer Wizard Arcane Ward ────────────────────────────────────────
     // Expend a spell slot as a bonus action to charge Arcane Ward (L3+).
     // Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).
@@ -1964,6 +2006,16 @@ private:
     // Apply a persistent zone effect to a target at most once per turn (D&D "a creature makes
     // this save only once per turn"). Returns true if applied, false if already applied this turn.
     bool applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;
+
+    // True if a target is NOT affected by a persistent zone effect, mirroring the faction
+    // rules executeSpell applies at cast time so the ongoing zone behaves the same:
+    //   • the caster never triggers their own zone;
+    //   • Heal zones only affect the caster's allies (faction rule 3);
+    //   • "creatures of your choice" harmful zones (selective_targeting, e.g. Spirit Guardians)
+    //     spare the caster's allies (faction rule 2) — plain zones keep friendly fire on;
+    //   • the caster's Evoker safe targets are fully excluded.
+    [[nodiscard]] bool zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect& effect,
+                                        int target_idx) const noexcept;
 
     // Post-damage hook: call after an agent takes > 0 damage from any source. Resolves
     // on-damage condition behavior — ends conditions flagged End, and re-rolls the save (at

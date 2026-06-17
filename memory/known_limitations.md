@@ -954,11 +954,46 @@ to spell saves this pass* — see the OnSaveFail entry under Architecture → Po
 - **Lore L3** — Cutting Words: `bard_cutting_words` reaction expends a Bardic Inspiration use to
   SUBTRACT the die from the next D20 Test (negative `pending_roll_bonus_`).
 - **Valor L6** — Extra Attack (`num_attacks = 2`) in the `case Bard:` chassis.
+- **Glamour L3** — Mantle of Inspiration: `bard_mantle_of_inspiration(bm, bard_idx, targets)`
+  (`combat_riders.cpp`, bound as `apply_mantle_of_inspiration`). Bonus Action, expends one Bardic
+  Inspiration use, rolls the die ONCE; each chosen recipient gains temp HP = **2× the roll** via the
+  shared `grantTempHp` (max() semantics). Engine caps the target list to the bard's CHA mod (min 1)
+  and skips the bard itself (2024 "other creatures"); the GUI validates the 60 ft range per click.
+  GUI: "Mantle of Inspiration (Bonus Action)" button (Glamour L3+ with a BI use, drawn under Grant
+  Inspiration) → multi-click recipient picker (`_start_mantle`/`_mantle_add_target`/`_finalize_mantle`,
+  Enter confirms / Esc cancels, mirrors the Chromatic Orb leap-chain UX with a numbered ring overlay
+  `_draw_mantle_overlay`). Tests in `test_bard.py` (double-die temp HP, CHA-mod cap + self-skip,
+  Glamour/L3/use gating). **DEFERRED rider:** the 2024 clause letting each recipient use its Reaction
+  to move up to its Speed without provoking OAs is NOT modeled (needs a new reaction window + a free
+  no-OA move for arbitrary creatures — see Architecture / Infrastructure).
+- **Glamour L6** — Mantle of Majesty (DONE): once/long-rest resource `"Mantle of Majesty"` (seeded in
+  `case Bard:` for Glamour L6+; long-rest regen), also restorable by spending a **level 3+** slot via
+  `bard_restore_mantle_of_majesty_from_slot(bm, idx, slot_level)` (no GUI button yet — see deferred).
+  `activate_mantle_of_majesty(bm, idx)` (combat_resources.cpp) spends the use, sets a 10-round window
+  `Stats.mantle_majesty_turns` and starts **Concentration on the literal name `"Mantle of Majesty"`**
+  (replacing any prior concentration). The window ticks down in `beginTurn` (combat_turn.cpp) and is
+  cleared by `dropConcentration` (a later concentration spell / damage-broken save ends it). During the
+  window the bard re-casts **Command** as a Bonus Action with **no slot** via `SpellAction.free_cast`
+  (executeSpell skips the player slot decrement). **Command is fully modeled** (was inert): a failed WIS
+  save applies the chosen word via `applyCommandEffect` (combat_conditions.cpp), `SpellAction.command_word`
+  0=Drop/1=Flee/2=Grovel/3=Halt/4=Approach — Drop=drop-weapons+Disarmed (Disarming-Strike path),
+  Flee/Approach=1-turn movement restriction toward/away from the bard (`CommandFlee`/`CommandApproach`
+  checked in `canMove`, keyed to the bard so they expire at its next turn), Grovel=Prone, Halt=Incapacitated
+  for one turn. **Auto-fail rider DONE:** a creature Charmed by THIS bard (`Conditions.charmed_by`, now set
+  at every Charmed-application site and cleared on expiry) auto-fails its save vs the bard's Command while
+  the window is active (rollSpellSave). Command is always-prepared for Glamour L6 (`_BARD_SUBCLASS_SPELLS`).
+  GUI: "Mantle of Majesty (Bonus Action)" button (`_start_mantle_majesty`) → word picker (reuses
+  ElementPickerDialog, `COMMAND_WORD_OPTIONS`) → single-target free Command cast. Tests in `test_bard.py`
+  (seed gating, activation/window/concentration, free-cast-skips-slot, slot-restore L3+ gating, auto-fail,
+  per-word effects, drop-concentration ends window). **DEFERRED sub-clauses:** the GUI slot-restore button
+  (engine `bard_restore_mantle_of_majesty_from_slot` is done + bound + tested, just no button yet — needs a
+  slot-level picker like Font of Inspiration); `mantle_majesty_turns` is session-only (not save/load
+  persisted, mirrors `sacred_weapon_turns`).
 
 **Deferred (per scope / size):**
 - **Dance**: Bardic Damage unarmed strike, Agile Strikes, L6 Inspiring Movement, L14 Leading Evasion.
-- **Glamour** (entire college): Mantle of Inspiration (multi-target temp HP — reuse temp-HP path),
-  Beguiling Magic, L6 Mantle of Majesty, L14 Unbreakable Majesty.
+- **Glamour**: Mantle-of-Inspiration Reaction-move rider (above), Beguiling Magic, L14 Unbreakable
+  Majesty. (L6 Mantle of Majesty is DONE — see above.)
 - **Lore**: L14 Peerless Skill (re-add die on the bard's own fail).
 - **Valor**: Combat Inspiration (+AC / +damage modes — the natural next reuse of the held die,
   needs a `pending_damage_bonus_` and an incoming-attack AC hook), Martial Training, L14 Battle Magic.

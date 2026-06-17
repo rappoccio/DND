@@ -76,6 +76,12 @@ ELEMENT_CHOICE_SPELLS = {
     "Sorcerous Burst": [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Psychic", 7), ("Thunder", 9)],
 }
 
+# Command spell word choices (label, SpellAction.command_word int), reused via the ElementPickerDialog.
+# 0=Drop, 1=Flee, 2=Grovel, 3=Halt, 4=Approach. The engine maps each to an existing mechanic on a
+# failed save (applyCommandEffect): Drop=drop weapons+Disarmed, Flee/Approach=1-turn movement
+# restriction toward/away from the bard, Grovel=Prone, Halt=Incapacitated for one turn.
+COMMAND_WORD_OPTIONS = [("Drop", 0), ("Flee", 1), ("Grovel", 2), ("Halt", 3), ("Approach", 4)]
+
 class App:
     # ── Bonus-action economy: a thin view over the C++ engine budget ──────────
     # `self.bonus_used` is NOT a plain flag — it reads/writes the active combatant's
@@ -458,6 +464,8 @@ class App:
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
+        self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
+        self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
@@ -504,6 +512,8 @@ class App:
         self.pending_spell_slot_level: int = 0          # slot level chosen for current spell cast
         self.pending_spell_damage_type: int = -1        # cast-time element choice (Chromatic Orb / Sorcerous
                                                         # Burst); -1 = use the spell's stored type
+        self.pending_spell_free_cast: bool = False      # Mantle of Majesty: cast Command with no slot
+        self.pending_spell_command_word: int = -1       # Command word (0=Drop..4=Approach); -1 = n/a
 
         # ── Agent config GUI state ────────────────────────────────────────
         # Combat panel first: it creates btn_show_terrain, which the config panel
@@ -902,6 +912,12 @@ class App:
         self.btn_cbt_use_inspiration = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Use Inspiration Die",
                                           (180, 150, 220), (215, 185, 250), self.font_md)
+        self.btn_cbt_mantle = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Mantle of Inspiration (Bonus Action)",
+                                          (210, 150, 230), (240, 190, 255), self.font_md)
+        self.btn_cbt_mantle_majesty = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Mantle of Majesty (Bonus Action)",
+                                          (190, 120, 220), (225, 175, 250), self.font_md)
         self.btn_cbt_sacred_weapon = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Sacred Weapon (Bonus Action)",
                                           (200, 180, 110), (240, 220, 150), self.font_md)
@@ -1399,18 +1415,20 @@ class App:
             swim_ft   = stats.speed_swim
             burrow_ft = stats.speed_burrow
 
+        # Pass idx so faction-spared difficult terrain (e.g. the agent's own / an ally's
+        # Spirit Guardians) does not shrink the previewed reach.
         if walk_ft > 0:
             self._reach_walk = self.bm.reachable_cells(
-                pt.origin, pt.size, walk_ft, rpg.MovementType.Walk)
+                pt.origin, pt.size, walk_ft, rpg.MovementType.Walk, idx)
         if fly_ft > 0:
             self._reach_fly = self.bm.reachable_cells(
-                pt.origin, pt.size, fly_ft, rpg.MovementType.Fly)
+                pt.origin, pt.size, fly_ft, rpg.MovementType.Fly, idx)
         if swim_ft > 0:
             self._reach_swim = self.bm.reachable_cells(
-                pt.origin, pt.size, swim_ft, rpg.MovementType.Swim)
+                pt.origin, pt.size, swim_ft, rpg.MovementType.Swim, idx)
         if burrow_ft > 0:
             self._reach_burrow = self.bm.reachable_cells(
-                pt.origin, pt.size, burrow_ft, rpg.MovementType.Burrow)
+                pt.origin, pt.size, burrow_ft, rpg.MovementType.Burrow, idx)
 
         # Drag validity uses only the selected movement type's reach.
         _reach_by_type = {
@@ -1854,6 +1872,8 @@ class App:
         self.pending_sweep             = None
         self.pending_rally             = None
         self.pending_feint             = None
+        self.pending_mantle_active     = False
+        self.pending_mantle_targets    = []
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -1912,6 +1932,8 @@ class App:
         self.pending_sweep             = None
         self.pending_rally             = None
         self.pending_feint             = None
+        self.pending_mantle_active     = False
+        self.pending_mantle_targets    = []
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -4558,6 +4580,140 @@ class App:
         if value > 0:
             self._combat_log_add(f"{name}: Bardic Inspiration (+{value}) will apply to the next D20 Test.")
 
+    def _mantle_cha_cap(self, bard_idx: int) -> int:
+        """Max recipients for Mantle of Inspiration = the bard's CHA modifier (min 1)."""
+        stats = self.combat.get_agent_stats(self.bm, bard_idx)
+        return max(1, (stats.cha - 10) // 2)
+
+    def _start_mantle(self, bard_idx: int):
+        """College of Glamour Mantle of Inspiration (bonus action): begin collecting up to
+        CHA-mod other creatures within 60 ft. Enter confirms / Esc cancels."""
+        stats = self.combat.get_agent_stats(self.bm, bard_idx)
+        bi = stats.get_resource("Bardic Inspiration")
+        if not (bi and bi.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[bard_idx].name}: no Bardic Inspiration uses left.")
+            self._flush_combat_log()
+            return
+        self.pending_mantle_active  = True
+        self.pending_mantle_targets = []
+        cap = self._mantle_cha_cap(bard_idx)
+        self._combat_log_add(
+            f"Mantle of Inspiration — click up to {cap} creature(s) within 60 ft, then Enter "
+            f"(Esc cancels).")
+        self._flush_combat_log()
+
+    def _mantle_add_target(self, hit: int):
+        """Add a clicked creature to the Mantle recipient list (within 60 ft, not the bard,
+        not already chosen, capped to CHA mod)."""
+        bard_idx = self._current_agent_idx()
+        agents = self.bm.placed_agents
+        if not (0 <= hit < len(agents)) or not (0 <= bard_idx < len(agents)):
+            return
+        if hit == bard_idx:
+            self._combat_log_add("Mantle of Inspiration affects other creatures, not yourself.")
+            self._flush_combat_log()
+            return
+        if hit in self.pending_mantle_targets:
+            return
+        cap = self._mantle_cha_cap(bard_idx)
+        if len(self.pending_mantle_targets) >= cap:
+            self._combat_log_add(f"Mantle of Inspiration: already chose {cap} creature(s) — Enter to confirm.")
+            self._flush_combat_log()
+            return
+        if self._footprint_dist_ft(bard_idx, hit) > 60:
+            self._combat_log_add("Mantle of Inspiration: that creature is more than 60 ft away.")
+            self._flush_combat_log()
+            return
+        self.pending_mantle_targets.append(hit)
+        self._combat_log_add(
+            f"  Mantle target {len(self.pending_mantle_targets)}/{cap} → {agents[hit].name}")
+        self._flush_combat_log()
+
+    def _finalize_mantle(self):
+        """Resolve Mantle of Inspiration on the collected recipients."""
+        bard_idx = self._current_agent_idx()
+        targets  = list(self.pending_mantle_targets)
+        self.pending_mantle_active  = False
+        self.pending_mantle_targets = []
+        if not (0 <= bard_idx < len(self.bm.placed_agents)) or not targets:
+            self._combat_log_add("Mantle of Inspiration cancelled (no targets).")
+            self._flush_combat_log()
+            return
+        thp = self.combat.apply_mantle_of_inspiration(self.bm, bard_idx, targets)
+        self._flush_combat_log()
+        if thp > 0:
+            self.bonus_used = True
+            bi = self.combat.get_agent_stats(self.bm, bard_idx).get_resource("Bardic Inspiration")
+            remaining = bi.current if bi else 0
+            self._combat_log_add(
+                f"{self.bm.placed_agents[bard_idx].name}: Mantle of Inspiration grants {thp} "
+                f"Temporary HP to {len(targets)} creature(s) ({remaining} uses left).")
+        self._update_attack_overlay()
+
+    def _cancel_mantle(self):
+        """Esc out of Mantle of Inspiration without spending the Bardic Inspiration use."""
+        self.pending_mantle_active  = False
+        self.pending_mantle_targets = []
+        self._combat_log_add("Mantle of Inspiration cancelled.")
+        self._flush_combat_log()
+
+    def _start_mantle_majesty(self, bard_idx: int):
+        """College of Glamour Mantle of Majesty (bonus action). The FIRST use spends the once/long-rest
+        resource, opens the 1-minute Concentration window, and casts Command for free; while the window
+        is already active, the button just re-casts Command for free (bonus action, no resource).
+
+        Flow: pick the Command word (ElementPickerDialog), then — only on confirm, so an Esc wastes
+        nothing — activate the window if needed and set up a free single-target Command cast."""
+        if self.bonus_used:
+            self._combat_log_add("Bonus action already used this turn.")
+            self._flush_combat_log()
+            return
+        stats = self.combat.get_agent_stats(self.bm, bard_idx)
+        if not (stats.bard_subclass == rpg.BardCollege.Glamour and stats.char_level >= 6):
+            return
+        window_active = stats.mantle_majesty_turns > 0
+        maj = stats.get_resource("Mantle of Majesty")
+        if not window_active and not (maj and maj.current > 0):
+            self._combat_log_add(
+                f"{self.bm.placed_agents[bard_idx].name}: no Mantle of Majesty use left.")
+            self._flush_combat_log()
+            return
+        spells = self.combat.get_agent_spells(self.bm, bard_idx)
+        command_idx = next((i for i, sp in enumerate(spells) if sp.name == "Command"), -1)
+        if command_idx < 0:
+            self._combat_log_add("Mantle of Majesty: Command spell not prepared.")
+            self._flush_combat_log()
+            return
+
+        def _on_word(chosen, bard_idx=bard_idx, command_idx=command_idx, window_active=window_active):
+            word = chosen[0] if chosen else 3   # default Halt
+            if not window_active:
+                if not self.combat.activate_mantle_of_majesty(self.bm, bard_idx):
+                    self._flush_combat_log()
+                    return
+                self._flush_combat_log()
+            # Free single-target Command cast (bonus action, no slot). The bonus action is charged in
+            # _consume_cast_slot; the slot is skipped in C++ via SpellAction.free_cast.
+            self.pending_spell_slot         = "bonus"
+            self.pending_spell_idx          = command_idx
+            self.pending_spell_slot_level   = 0
+            self.pending_spell_is_aoe       = False
+            self.pending_spell_targets      = []
+            self.pending_spell_num_targets  = 0
+            self.pending_spell_damage_type  = -1
+            self.pending_spell_free_cast    = True
+            self.pending_spell_command_word = word
+            self.pending_chromatic_active   = False
+            self.pending_chromatic_chain    = []
+            word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
+            self._combat_log_add(
+                f"Mantle of Majesty: casting Command ({word_name}) — click a target within 60 ft.")
+            self.hint = f"Command ({word_name}): click a target within 60 ft"
+            self._flush_combat_log()
+
+        self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None, multi=False,
+                                  title="Command: choose a word")
+
     def _set_fiendish_resilience(self, agent_idx: int, dmg_idx: int):
         """Fiend Warlock L10: set the chosen damage resistance (0.5x), clearing any prior choice."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -4780,7 +4936,28 @@ class App:
                         continue  # not in spells.json (e.g. Summon Fey) — skip gracefully
                     cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
                     existing.add(name)
+
+        # Always-prepared Bard college spells (regular spells from spells.json). Glamour L6 has
+        # Command always prepared (cast for free via Mantle of Majesty).
+        if class_name == "Bard":
+            sub_table = self._BARD_SUBCLASS_SPELLS.get(stats.bard_subclass.name, {})
+            for min_lvl, names in sub_table.items():
+                if level < min_lvl:
+                    continue
+                for name in names:
+                    if name in existing:
+                        continue
+                    idx = self.spell_name_to_idx.get(name)
+                    if idx is None:
+                        continue  # not in spells.json — skip gracefully
+                    cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
+                    existing.add(name)
         return cpp_spells
+
+    # Always-prepared Bard college spells by college and Bard level (2024 PHB).
+    _BARD_SUBCLASS_SPELLS = {
+        "Glamour": {6: ["Command"]},
+    }
 
     # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
     # (Summon Fey at L9 is intentionally omitted — not yet in spells.json; see known_limitations.)
@@ -4872,6 +5049,9 @@ class App:
             sp_ = spells[si_]
             # Cleared for every fresh cast; only the element-choice branch below sets it.
             self.pending_spell_damage_type = -1
+            # Normal casts are never free / never carry a Command word (only Mantle of Majesty does).
+            self.pending_spell_free_cast    = False
+            self.pending_spell_command_word = -1
             # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
             # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
             self.pending_chromatic_active  = False
@@ -5891,6 +6071,9 @@ class App:
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
         action.damage_type_override = self.pending_spell_damage_type  # cast-time element choice (-1 = none)
+        # Mantle of Majesty: free Command cast (no slot) + the chosen Command word.
+        action.free_cast      = self.pending_spell_free_cast
+        action.command_word   = self.pending_spell_command_word
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         self._apply_pact_slot_level(caster_idx, sp, action)
@@ -5914,6 +6097,8 @@ class App:
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
         self.pending_spell_damage_type = -1
+        self.pending_spell_free_cast   = False
+        self.pending_spell_command_word = -1
         self.spell_hover_cell          = None
         self.pending_chromatic_active  = False
         self.pending_chromatic_primary = -1
@@ -6326,6 +6511,25 @@ class App:
             if c is None:
                 continue
             pygame.draw.circle(self.screen, (200, 130, 255), c, ring, 3)
+            if getattr(self, "font_sm", None):
+                label = self.font_sm.render(str(n), True, (255, 255, 255))
+                self.screen.blit(label, (c[0] - label.get_width() // 2,
+                                         c[1] - label.get_height() // 2))
+
+    def _draw_mantle_overlay(self, cpx: int):
+        """Overlay a numbered ring on each chosen Mantle of Inspiration recipient while picking."""
+        if not self.pending_mantle_active:
+            return
+        agents = self.bm.placed_agents
+        ring = max(8, cpx // 3)
+        for n, idx in enumerate(self.pending_mantle_targets, start=1):
+            if not (0 <= idx < len(agents)):
+                continue
+            pt = agents[idx]
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            half = pt.size * cpx // 2
+            c = (sx + half, sy + half)
+            pygame.draw.circle(self.screen, (210, 150, 230), c, ring, 3)
             if getattr(self, "font_sm", None):
                 label = self.font_sm.render(str(n), True, (255, 255, 255))
                 self.screen.blit(label, (c[0] - label.get_width() // 2,
@@ -8241,6 +8445,7 @@ class App:
         # ── Spell AoE preview (above agents, below drag ghost) ───────────
         self._draw_spell_aoe_preview(cpx)
         self._draw_chromatic_chain(cpx)
+        self._draw_mantle_overlay(cpx)
 
         # ── Draw drag ghost ───────────────────────────────────────────────
         if self.drag_idx >= 0 and self.drag_cell is not None:
@@ -9035,6 +9240,29 @@ class App:
                         self.btn_cbt_grant_inspiration.draw(self.screen)
                         y += B + gap
 
+                    # Mantle of Inspiration button — College of Glamour Bard L3+ (bonus action):
+                    # spend a Bardic Inspiration use to grant temp HP to up-to-CHA-mod allies.
+                    if (bi and bi.current > 0 and stats.char_level >= 3 and
+                            stats.bard_subclass == rpg.BardCollege.Glamour):
+                        self.btn_cbt_mantle.rect.x = lx
+                        self.btn_cbt_mantle.rect.y = y
+                        self.btn_cbt_mantle.rect.w = W
+                        self.btn_cbt_mantle.draw(self.screen)
+                        y += B + gap
+
+                    # Mantle of Majesty button — College of Glamour Bard L6+ (bonus action):
+                    # shown when a "Mantle of Majesty" use is available (to activate) OR the
+                    # unearthly-appearance window is already active (to re-cast Command for free).
+                    if (stats.char_level >= 6 and not self.bonus_used and
+                            stats.bard_subclass == rpg.BardCollege.Glamour):
+                        maj = stats.get_resource("Mantle of Majesty")
+                        if (maj and maj.current > 0) or stats.mantle_majesty_turns > 0:
+                            self.btn_cbt_mantle_majesty.rect.x = lx
+                            self.btn_cbt_mantle_majesty.rect.y = y
+                            self.btn_cbt_mantle_majesty.rect.w = W
+                            self.btn_cbt_mantle_majesty.draw(self.screen)
+                            y += B + gap
+
             # Use Inspiration Die button — any creature currently holding a granted die
             # (free, no action). Primes a +die bonus on the holder's next d20 Test.
             if 0 <= cur_idx < len(agents):
@@ -9746,6 +9974,15 @@ class App:
                         and event.key == pygame.K_ESCAPE:
                     self._cancel_chromatic_chain()
                     continue
+                # Mantle of Inspiration: Enter resolves on the collected recipients, Esc cancels
+                # (without spending the Bardic Inspiration use).
+                if self.pending_mantle_active \
+                        and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._finalize_mantle()
+                    continue
+                if self.pending_mantle_active and event.key == pygame.K_ESCAPE:
+                    self._cancel_mantle()
+                    continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
@@ -9949,6 +10186,9 @@ class App:
                             self._resolve_rally(hit)
                         elif self.pending_feint is not None and hit >= 0:
                             self._resolve_feint(hit)
+                        elif self.pending_mantle_active and hit >= 0:
+                            # Collecting Mantle of Inspiration recipients: each click adds one.
+                            self._mantle_add_target(hit)
                         elif self.pending_attack_slot and hit >= 0:
                             self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
@@ -10575,6 +10815,15 @@ class App:
                     if self.btn_cbt_grant_inspiration.clicked(event):
                         self.pending_grant_inspiration = True
                         self.hint = "Click an ally to grant a Bardic Inspiration die"
+                    if self.btn_cbt_mantle.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._start_mantle(idx)
+                            self.hint = "Mantle of Inspiration: click recipients (≤CHA mod), Enter to confirm"
+                    if self.btn_cbt_mantle_majesty.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._start_mantle_majesty(idx)
                     if self.btn_cbt_use_inspiration.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

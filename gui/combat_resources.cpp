@@ -790,6 +790,65 @@ int CombatEngine::bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, in
     return bi->current;
 }
 
+bool CombatEngine::activateMantleOfMajesty(BattleMap& bm, int bard_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(bard_idx);
+    if (stats.character_class != CharacterClass::Bard ||
+        stats.bard_subclass != GlamourPath || stats.char_level < 6) return false;
+
+    Resource* maj = stats.getResource("Mantle of Majesty");
+    if (!maj || maj->current <= 0) return false;   // no use left → don't open the window
+
+    // Spend the use (spendResource re-reads/writes stats internally).
+    spendResource(bm, bard_idx, "Mantle of Majesty", 1);
+
+    // The "unearthly appearance" is Concentration: replace any prior concentration spell first,
+    // then concentrate on the literal window name so a later concentration spell / damage-broken
+    // save ends the window (dropConcentration clears mantle_majesty_turns).
+    (void)dropConcentration(bm, bard_idx);
+
+    stats = bm.getAgentStats(bard_idx);
+    stats.mantle_majesty_turns = 10;  // 1 minute = 10 rounds
+    bm.setAgentStats(bard_idx, stats);
+
+    Agent::Conditions cond = bm.getAgentConditions(bard_idx);
+    cond.concentrating    = true;
+    cond.concentrating_on = "Mantle of Majesty";
+    bm.setAgentConditions(bard_idx, cond);
+
+    log_("{} takes on an unearthly appearance (Mantle of Majesty): may cast Command as a Bonus "
+         "Action with no slot for 1 minute", agentName(bm, bard_idx));
+    return true;
+}
+
+int CombatEngine::bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 3 || slot_level > 9) return -1;          // restorable only with a level 3+ slot
+
+    Agent::Stats stats = bm.getAgentStats(bard_idx);
+    if (stats.character_class != CharacterClass::Bard ||
+        stats.bard_subclass != GlamourPath || stats.char_level < 6) return -1;
+
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    if (stats.spell_slots_remaining[si] <= 0) return -1;      // no slot of that level to spend
+
+    Resource* maj = stats.getResource("Mantle of Majesty");
+    if (!maj || maj->current >= maj->max) return -1;          // already full → don't waste a slot
+
+    stats.spell_slots_remaining[si] -= 1;
+    maj->gain(1);
+    bm.setAgentStats(bard_idx, stats);
+
+    log_("{} expends a level-{} slot to restore Mantle of Majesty: now {}/{}",
+         agentName(bm, bard_idx), slot_level, maj->current, maj->max);
+    return maj->current;
+}
+
 void CombatEngine::applySuperiorInspiration(BattleMap& bm) noexcept
 {
     auto agents = bm.placedAgents();

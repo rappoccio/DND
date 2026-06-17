@@ -255,9 +255,17 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         }
     }
 
+    // Mantle of Majesty (Bard College of Glamour, L6): during the bard's unearthly-appearance
+    // window, a creature Charmed by THIS bard automatically fails its save vs the Command the bard
+    // casts. Scoped to sp.name == "Command" so unrelated Commands / casters are unaffected.
+    const bool command_majesty_autofail =
+        sp.name == "Command" && caster_stats.mantle_majesty_turns > 0 &&
+        target_cond.charmed_by == action.caster_idx;
+
     // Paralyzed, Stunned, and Unconscious targets automatically fail STR and DEX saves
-    bool auto_fail = (target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
-                     (sp.save_ability == SaveStr || sp.save_ability == SaveDex);
+    bool auto_fail = command_majesty_autofail ||
+                     ((target_cond.paralyzed || target_cond.stunned || target_cond.unconscious) &&
+                      (sp.save_ability == SaveStr || sp.save_ability == SaveDex));
 
     // Barbarian Danger Sense (L2+): Advantage on DEX saves unless Incapacitated
     if (sp.save_ability == SaveDex && !target_cond.incapacitated &&
@@ -280,9 +288,14 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     int save_d20;
     if (auto_fail) {
         save_d20 = 1;  // Automatic fail
-        std::string reason = target_cond.paralyzed ? "paralyzed" : (target_cond.stunned ? "stunned" : "unconscious");
-        log_("Target is {}: automatically fails {} save",
-             reason, sp.save_ability == SaveStr ? "STR" : "DEX");
+        if (command_majesty_autofail) {
+            log_("Mantle of Majesty: {} is Charmed by {} and automatically fails its save vs Command",
+                 agentName(bm, tgt_idx), agentName(bm, action.caster_idx));
+        } else {
+            std::string reason = target_cond.paralyzed ? "paralyzed" : (target_cond.stunned ? "stunned" : "unconscious");
+            log_("Target is {}: automatically fails {} save",
+                 reason, sp.save_ability == SaveStr ? "STR" : "DEX");
+        }
     } else if (target_adv && target_dis) {
         save_d20 = roll(20);  // Cancel out
     } else if (target_adv) {
@@ -1178,6 +1191,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             }
         }
 
+        // Command: a target that fails its save obeys the chosen one-word command on its next turn.
+        // The word maps onto an existing mechanic via applyCommandEffect (Drop/Flee/Grovel/Halt/
+        // Approach). Command carries no sp.conditions, so this is its only mechanical effect.
+        if (sp.name == "Command" && !tr.saved && tgt_idx >= 0 &&
+            tgt_idx < static_cast<int>(agents.size())) {
+            applyCommandEffect(bm, action.caster_idx, tgt_idx, action.command_word);
+        }
+
         result.target_results.push_back(tr);
     }
 
@@ -1316,16 +1337,27 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         Cell caster_origin = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].origin;
         int caster_size = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].agent->getSize();
 
-        Cell endpoint = Cell{action.aoe_col2, action.aoe_row2};  // for oriented walls
-        auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint);
-        auto terrain_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
+        // A moving Sphere (Emanation, e.g. Spirit Guardians) centers its difficult terrain on
+        // the caster and follows them (anchored). Other shapes place static terrain at the aim.
+        std::vector<Cell> terrain_cells;
+        int anchor_idx = -1, anchor_radius = 0;
+        if (moving_sphere) {
+            terrain_cells = sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius);
+            anchor_idx    = action.caster_idx;
+            anchor_radius = sp.radius;
+        } else {
+            Cell endpoint = Cell{action.aoe_col2, action.aoe_row2};  // for oriented walls
+            auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint);
+            terrain_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
+        }
 
         if (!terrain_cells.empty()) {
             int terrain_id = bm.placeTerrainEffect(
                 sp.name, terrain_cells, sp.terrain_difficulty,
                 sp.duration, action.caster_idx,
                 sp.slip_save_dc, sp.slip_distance_feet,
-                action.spell_idx, sp.requires_concentration);
+                action.spell_idx, sp.requires_concentration,
+                anchor_idx, anchor_radius, sp.selective_targeting);
 
             if (terrain_id >= 0) {
                 result.terrain_effect_ids.push_back(terrain_id);
@@ -1393,10 +1425,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             }
         } else {
             log_("[DEBUG execute_spell] Player branch taken for agent {}", action.caster_idx);
-            // Player: decrement spell slot (if not a cantrip)
+            // Player: decrement spell slot (if not a cantrip). A free cast (e.g. Mantle of Majesty's
+            // Command) skips the slot decrement entirely — the caller still charges the action economy.
             int slot_level = action.slot_level > 0 ? action.slot_level : sp.level;
             log_("[DEBUG execute_spell] Calculated slot_level={}, checking if > 0 and <= 9", slot_level);
-            if (slot_level > 0 && slot_level <= 9) {
+            if (!action.free_cast && slot_level > 0 && slot_level <= 9) {
                 auto& slots = stats.spell_slots_remaining;
                 slots[static_cast<std::size_t>(slot_level - 1)] =
                     std::max(0, slots[static_cast<std::size_t>(slot_level - 1)] - 1);
@@ -1673,6 +1706,38 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
     }
 }
 
+bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect& effect,
+                                    int target_idx) const noexcept
+{
+    // A creature is never caught in its own Emanation/zone.
+    if (target_idx == effect.caster_idx) return true;
+
+    const Spell& sp = effect.spell;
+    // A neutral (faction 0) caster has no allies, so it keeps the legacy "affect everyone in
+    // the area" behavior — no regression for un-teamed encounters / old saves.
+    const int caster_faction = bm.getAgentFaction(effect.caster_idx);
+
+    // Faction rule 3 — beneficial (Heal) zones only affect the caster's allies (incl. self).
+    if (sp.type == Spell::Heal && caster_faction != 0 &&
+        !areAllies(bm, effect.caster_idx, target_idx))
+        return true;
+
+    // Faction rule 2 — "creatures of your choice" harmful zones (selective_targeting, e.g.
+    // Spirit Guardians) intrinsically spare the caster's allies. Ordinary zones (Wall of Fire)
+    // leave selective_targeting false → friendly fire stays ON.
+    if (sp.type == Spell::Harm && sp.selective_targeting && caster_faction != 0 &&
+        areAllies(bm, effect.caster_idx, target_idx))
+        return true;
+
+    // Evoker safe targets are fully excluded from this caster's AoE/zone effects.
+    auto it = safeTargets_.find(effect.caster_idx);
+    if (it != safeTargets_.end() &&
+        std::find(it->second.begin(), it->second.end(), target_idx) != it->second.end())
+        return true;
+
+    return false;
+}
+
 bool CombatEngine::applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept
 {
     const int64_t key = (static_cast<int64_t>(effect.effect_id) << 32)
@@ -1701,6 +1766,16 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
 
     for (const auto& [id, radius] : to_update)
         bm.setSpellEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
+
+    // The Emanation's difficult-terrain footprint (e.g. Spirit Guardians' halved Speed) is a
+    // separate anchored terrain effect — re-center it on the caster too.
+    std::vector<std::pair<int, int>> terrain_to_update;  // (terrain_effect_id, radius_ft)
+    for (const auto& te : bm.activeTerrainEffects())
+        if (te.anchor_agent_idx == agent_idx)
+            terrain_to_update.emplace_back(te.id, te.anchor_radius_ft);
+
+    for (const auto& [id, radius] : terrain_to_update)
+        bm.setTerrainEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
 }
 
 void CombatEngine::tickEffects(BattleMap& bm)
@@ -1927,9 +2002,21 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
         removeAgentCondition(cid);
 
     // 4. Clear C++ concentration state
+    const bool was_mantle_majesty = (cond.concentrating_on == "Mantle of Majesty");
     cond.concentrating    = false;
     cond.concentrating_on = {};
     bm.setAgentConditions(agent_idx, cond);
+
+    // 4a. Mantle of Majesty's "unearthly appearance" window IS the concentration — end it when
+    //     concentration drops (a later concentration spell, or a damage-broken save).
+    if (was_mantle_majesty) {
+        Agent::Stats ms = bm.getAgentStats(agent_idx);
+        if (ms.mantle_majesty_turns > 0) {
+            ms.mantle_majesty_turns = 0;
+            bm.setAgentStats(agent_idx, ms);
+            log_("{}'s unearthly appearance fades (Mantle of Majesty ends)", agentName(bm, agent_idx));
+        }
+    }
 
     // 4b. Clear the Hunter's Mark / Hex marked-target rider. The mark is only ever set by those
     //     concentration spells, and a creature concentrates on one spell at a time, so dropping
@@ -1975,7 +2062,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Blinded")       { ac.blinded = false; }
     else if (n == "Incapacitated") { ac.incapacitated = false; }
     else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; }
-    else if (n == "Charmed")       { ac.charmed = false; }
+    else if (n == "Charmed")       { ac.charmed = false; ac.charmed_by = -1; }
     else if (n == "Frightened")    { ac.frightened = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
     else if (n == "Prone")         { ac.prone = false; }

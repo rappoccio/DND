@@ -138,6 +138,98 @@ def test_once_per_turn_dedup():
     print("✅ test_once_per_turn_dedup passed")
 
 
+def test_zone_spares_allies_hits_enemies():
+    """Spirit Guardians is 'creatures of your choice' (selective_targeting): the ongoing
+    zone must spare the caster's allies the same way the cast does, while still damaging
+    enemies who enter it or start their turn in it."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5))
+    ally  = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 9, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 9, 6))
+
+    # add_agent_to_battle re-applies all configs (destructive), resetting earlier agents'
+    # stats — so set HP for everyone AFTER the last agent is placed.
+    for idx in (ally, enemy):
+        s = engine.get_agent_stats(bm, idx)
+        s.hp_max = 100
+        s.hp_cur = 100
+        engine.set_agent_stats(bm, idx, s)
+
+    # Put caster + ally on team 1, enemy on team 2.
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(enemy, 2)
+
+    spell = _emanation()
+    spell.selective_targeting = True
+    _arm_caster(engine, bm, caster, spell)
+    _cast(engine, bm, caster, aoe_col=5, aoe_row=5)  # zone centered on caster, out of reach of both
+
+    assert engine.get_agent_stats(bm, ally).hp_cur == 100, "ally outside zone at cast"
+    assert engine.get_agent_stats(bm, enemy).hp_cur == 100, "enemy outside zone at cast"
+
+    # Both walk adjacent to the caster, into the zone, on their own turns.
+    engine.begin_turn(bm, ally)
+    bm.placed_agents[ally].init_movement(60)
+    assert engine.move_agent(bm, ally, rpg.Cell(6, 5), rpg.MovementType.Walk)
+    assert engine.get_agent_stats(bm, ally).hp_cur == 100, \
+        "an ally must NOT be damaged by the caster's own selective_targeting zone"
+
+    engine.begin_turn(bm, enemy)
+    bm.placed_agents[enemy].init_movement(60)
+    assert engine.move_agent(bm, enemy, rpg.Cell(6, 6), rpg.MovementType.Walk)
+    assert engine.get_agent_stats(bm, enemy).hp_cur < 100, "an enemy entering the zone takes damage"
+
+    # And the ally starting its turn inside the zone is still spared.
+    ally_hp = engine.get_agent_stats(bm, ally).hp_cur
+    engine.begin_turn(bm, ally)
+    assert engine.get_agent_stats(bm, ally).hp_cur == ally_hp, \
+        "an ally starting its turn in the zone must not be damaged"
+    print("✅ test_zone_spares_allies_hits_enemies passed")
+
+
+def test_emanation_halves_enemy_speed_spares_allies():
+    """Spirit Guardians halves Speed in the Emanation — modeled as Halved difficult terrain.
+    It must slow enemies but NOT the caster's allies, and it must follow the caster."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5))
+    ally  = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 1, 1))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 1, 2))
+
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(enemy, 2)
+
+    spell = _emanation()
+    spell.selective_targeting = True
+    spell.terrain_difficulty = rpg.TerrainDifficulty.Halved
+    _arm_caster(engine, bm, caster, spell)
+    _cast(engine, bm, caster, aoe_col=5, aoe_row=5)
+
+    # A cell well inside the 15-ft (3-cell) zone.
+    in_zone = rpg.Cell(5, 5)
+    assert bm.get_terrain_multiplier(in_zone) == 0.5, "cast should lay Halved terrain over the zone"
+
+    # From the same origin and speed, an enemy (slowed) reaches fewer cells than an ally (spared).
+    origin, speed = rpg.Cell(5, 5), 30
+    reach_enemy = bm.reachable_cells(origin, 1, speed, rpg.MovementType.Walk, enemy)
+    reach_ally  = bm.reachable_cells(origin, 1, speed, rpg.MovementType.Walk, ally)
+    reach_caster = bm.reachable_cells(origin, 1, speed, rpg.MovementType.Walk, caster)
+    assert len(reach_enemy) < len(reach_ally), \
+        f"enemy should be slowed by the zone: enemy={len(reach_enemy)} ally={len(reach_ally)}"
+    assert len(reach_caster) == len(reach_ally), "the caster is never slowed by its own emanation"
+
+    # The terrain follows the caster: move the caster, the old center clears and the new one is Halved.
+    engine.begin_turn(bm, caster)
+    bm.placed_agents[caster].init_movement(60)
+    assert engine.move_agent(bm, caster, rpg.Cell(8, 8), rpg.MovementType.Walk)  # re-centers anchored terrain
+    assert bm.get_terrain_multiplier(rpg.Cell(8, 8)) == 0.5, "zone terrain should follow the caster"
+    assert bm.get_terrain_multiplier(rpg.Cell(5, 5)) == 1.0, "old zone terrain should clear after the move"
+    print("✅ test_emanation_halves_enemy_speed_spares_allies passed")
+
+
 def _save_zone_damage(caster_wis, target_wis):
     """Apply one Save-type zone tick to a target via begin_turn; return damage dealt.
     Both engines share seed 42, so the save d20 and the 3d8 are identical — only the
@@ -179,5 +271,7 @@ if __name__ == "__main__":
     test_caster_excluded_enemy_hit_at_cast()
     test_zone_follows_caster_onto_enemy()
     test_once_per_turn_dedup()
+    test_zone_spares_allies_hits_enemies()
+    test_emanation_halves_enemy_speed_spares_allies()
     test_save_for_half_on_tick()
     print("\n✅ All Emanation tests passed!")

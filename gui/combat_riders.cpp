@@ -744,6 +744,48 @@ int CombatEngine::applyRally(BattleMap& bm, int fighter_idx, int target_idx) noe
     return amount;
 }
 
+int CombatEngine::bardMantleOfInspiration(BattleMap& bm, int bard_idx,
+                                          const std::vector<int>& targets) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (bard_idx < 0 || bard_idx >= n) return 0;
+
+    Agent::Stats bs = bm.getAgentStats(bard_idx);
+    if (bs.character_class != CharacterClass::Bard ||
+        bs.bard_subclass != BardCollege::GlamourPath || bs.char_level < 3) {
+        log_("{} cannot use Mantle of Inspiration (not a L3+ College of Glamour Bard)",
+             agentName(bm, bard_idx));
+        return 0;
+    }
+    const Resource* bi = bs.getResource("Bardic Inspiration");
+    if (!bi || bi->current <= 0) {
+        log_("{} has no Bardic Inspiration use for Mantle of Inspiration", agentName(bm, bard_idx));
+        return 0;
+    }
+    spendResource(bm, bard_idx, "Bardic Inspiration", 1);
+
+    // Roll the Bardic Inspiration die ONCE; every recipient gets twice that roll.
+    const int rolled = roll(bs.bardic_inspiration_die_size);
+    const int thp    = 2 * rolled;
+    const int cap    = std::max(1, dndMod(bs.cha));   // up to CHA mod creatures (min 1)
+
+    int granted = 0;
+    for (int t : targets) {
+        if (granted >= cap) break;
+        if (t < 0 || t >= n || t == bard_idx) continue;   // 2024: "other creatures", not self
+        Agent::Stats ts = bm.getAgentStats(t);
+        grantTempHp(ts, thp, -1);                          // max() semantics, non-rage source
+        bm.setAgentStats(t, ts);
+        log_("{}: Mantle of Inspiration grants {} Temporary HP to {}",
+             agentName(bm, bard_idx), thp, agentName(bm, t));
+        ++granted;
+    }
+    log_("{} weaves Mantle of Inspiration (rolled {} on d{}): {} Temporary HP to {} creature(s)",
+         agentName(bm, bard_idx), rolled, bs.bardic_inspiration_die_size, thp, granted);
+    return thp;
+}
+
 bool CombatEngine::applyFeintingAttack(BattleMap& bm, int fighter_idx, int target_idx) noexcept
 {
     const auto& agents = bm.placedAgents();

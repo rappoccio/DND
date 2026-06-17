@@ -91,6 +91,13 @@ struct ActiveTerrainEffect {
     int                 slip_distance_feet{5};  // Feet moved before requiring save (default 5)
     int                 spell_idx{-1};                  // caster's spell index (-1 = none)
     bool                requires_concentration{false};  // terrain ends when caster drops concentration
+    // Moving emanation (e.g. Spirit Guardians): the difficult-terrain footprint follows this
+    // agent. -1 = static placement. anchor_radius_ft is the Sphere radius used to re-center.
+    int                 anchor_agent_idx{-1};
+    int                 anchor_radius_ft{0};
+    // "Creatures of your choice" sparing: when true, the source agent and its allies ignore
+    // this terrain (mirrors the spell's selective_targeting / the zone-damage faction rule).
+    bool                spares_source_allies{false};
 };
 
 // ── Active temporary light effect ──────────────────────────────────────────
@@ -296,8 +303,11 @@ public:
     // Walk: Dijkstra BFS through passable cells (5 ft per orthogonal or
     //       diagonal step — the simplified D&D optional rule).
     // Fly:  All origins within Chebyshev distance speedFt/5, ignoring terrain.
+    // mover_idx (default -1) lets the cost respect faction-sparing difficult terrain
+    // (e.g. an ally is not slowed by their own Spirit Guardians). -1 = no sparing.
     [[nodiscard]] CellSet reachableCells(Cell origin, int agentSize,
-                                        int speedFt, MovementType type) const;
+                                        int speedFt, MovementType type,
+                                        int mover_idx = -1) const;
 
     // ── Line-of-sight & attack range ──────────────────────────────────────
     // Bresenham ray from the centre of the `from` agent to the centre of
@@ -341,6 +351,10 @@ public:
     // Movement cost multiplier for each cell (default 1.0).
     // Used for difficult terrain, spells, etc. Stored as cols × rows.
     [[nodiscard]] double getTerrainMultiplier(Cell c, MovementType mt = MovementType::Walk) const noexcept;
+    // Mover-aware variant: difficult-terrain effects flagged spares_source_allies (e.g. Spirit
+    // Guardians) do not slow their source or its allies. mover_idx == -1 → no sparing (identical
+    // to getTerrainMultiplier). Iterates active effects (the precomputed overlay is faction-blind).
+    [[nodiscard]] double getTerrainMultiplierFor(Cell c, MovementType mt, int mover_idx) const noexcept;
     void setTerrainMultiplier(Cell c, double mult) noexcept;
     void setTerrainMultiplierRect(Cell topLeft, int width, int height, double mult) noexcept;
     void resetTerrainMultipliers() noexcept;
@@ -361,7 +375,13 @@ public:
                                          int slip_save_dc = 10,
                                          int slip_distance_feet = 5,
                                          int spell_idx = -1,
-                                         bool requires_concentration = false);
+                                         bool requires_concentration = false,
+                                         int anchor_agent_idx = -1,
+                                         int anchor_radius_ft = 0,
+                                         bool spares_source_allies = false);
+
+    // Re-point an anchored terrain effect's footprint (moving emanation follows the caster).
+    void setTerrainEffectCells(int effect_id, std::vector<Cell> cells) noexcept;
 
     // Decrement turns_remaining for effects sourced from the given agent.
     // Removes expired effects (turns_remaining <= 0).
@@ -518,7 +538,8 @@ private:
 
     // Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump).
     [[nodiscard]] CellSet pathfindMovement(Cell origin, int tokenSize,
-                                           int speedFt, MovementType type) const;
+                                           int speedFt, MovementType type,
+                                           int mover_idx = -1) const;
 
     std::filesystem::path mapImagePath_;
     int cols_{0}, rows_{0}, cellPx_{0};

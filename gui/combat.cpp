@@ -404,6 +404,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       if (bard_subclass == ValorPath && level >= 6) {
         num_attacks = 2;
       }
+      // Glamour L6 — Mantle of Majesty: once per long rest (also restorable by spending a L3+ slot,
+      // see bardRestoreMantleOfMajestyFromSlot). Activation casts Command free and opens a 1-minute
+      // Concentration window allowing further free Bonus-Action Command casts (activateMantleOfMajesty).
+      if (bard_subclass == GlamourPath && level >= 6) {
+        Resource maj("Mantle of Majesty", 1, 0);
+        maj.long_rest_regen = 1;
+        resources["Mantle of Majesty"] = maj;
+      }
       // Other college features (Glamour, Dance L6/L14, Lore Peerless Skill,
       // Valor Combat Inspiration / Battle Magic) are deferred — see known_limitations.md.
       break;

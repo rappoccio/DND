@@ -456,7 +456,7 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
 
                 // Apply crawling penalty if prone (2x cost in normal terrain, 3x in difficult)
                 if (pa.agent->getConditions().prone) {
-                    double terrain_mult = getTerrainMultiplier(next, type);
+                    double terrain_mult = getTerrainMultiplierFor(next, type, idx);
                     if (terrain_mult < 1.0) {  // difficult terrain (multiplier < 1)
                         step_cost = static_cast<int>(step_cost * 3);
                     } else {
@@ -464,7 +464,7 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
                     }
                 }
 
-                double terrain_mult = getTerrainMultiplier(next, type);
+                double terrain_mult = getTerrainMultiplierFor(next, type, idx);
                 int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
 
                 if (!dist.count(next) || dist[next] > new_cost) {
@@ -687,7 +687,8 @@ bool BattleMap::inBounds(Cell origin, int size) const noexcept
 
 // Helper: Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump)
 CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
-                                     int speedFt, MovementType type) const
+                                     int speedFt, MovementType type,
+                                     int mover_idx) const
 {
     CellSet result;
     using PQItem = std::pair<int, Cell>;
@@ -716,7 +717,7 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
 
                 // Orthogonal: 5 ft; Diagonal: 10 ft
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
-                double terrain_mult = getTerrainMultiplier(next, type);
+                double terrain_mult = getTerrainMultiplierFor(next, type, mover_idx);
                 int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
                 if (new_cost > speedFt) continue;
 
@@ -731,13 +732,13 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
 }
 
 CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
-                                   int speedFt, MovementType type) const
+                                   int speedFt, MovementType type, int mover_idx) const
 {
     CellSet result;
     if (speedFt <= 0 || !inBounds(origin, tokenSize)) return result;
 
     // All movement types use Dijkstra pathfinding (respects terrain/walls)
-    return pathfindMovement(origin, tokenSize, speedFt, type);
+    return pathfindMovement(origin, tokenSize, speedFt, type, mover_idx);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1191,6 +1192,42 @@ double BattleMap::getTerrainMultiplier(Cell c, MovementType mt) const noexcept {
     return std::min(staticMult, dynamicMult);
 }
 
+double BattleMap::getTerrainMultiplierFor(Cell c, MovementType mt, int mover_idx) const noexcept {
+    (void)mt;  // cost multipliers are movement-type-independent (kept for API consistency)
+    if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
+        return 1.0;
+
+    // No mover context → fall back to the faction-blind overlay (e.g. Python preview, DM tools).
+    if (mover_idx < 0)
+        return getTerrainMultiplier(c, mt);
+
+    const int idx = c.row * cols_ + c.col;
+    const int mover_faction = getAgentFaction(mover_idx);
+
+    // Recompute "most restrictive difficulty here" from the live effects, skipping any effect
+    // this creature is spared from (its own / an ally's selective_targeting emanation).
+    TerrainDifficulty worst = TerrainDifficulty::Normal;
+    for (const auto& e : activeTerrainEffects_) {
+        if (e.spares_source_allies) {
+            const int src = e.source_agent_idx;
+            const int src_faction = getAgentFaction(src);
+            const bool ally = (src == mover_idx) || (src_faction != 0 && src_faction == mover_faction);
+            if (ally) continue;  // source + allies ignore this terrain
+        }
+        if (std::find(e.cell_indices.begin(), e.cell_indices.end(), idx) != e.cell_indices.end())
+            worst = std::max(worst, e.difficulty);
+    }
+
+    double dynamicMult = 1.0;
+    switch (worst) {
+        case TerrainDifficulty::Halved:    dynamicMult = 0.5;  break;
+        case TerrainDifficulty::Quartered: dynamicMult = 0.25; break;
+        case TerrainDifficulty::Slipping:  dynamicMult = 1.0;  break;
+        case TerrainDifficulty::Normal:    dynamicMult = 1.0;  break;
+    }
+    return std::min(terrainMult_[idx], dynamicMult);
+}
+
 void BattleMap::setTerrainMultiplier(Cell c, double mult) noexcept {
     if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
         return;
@@ -1410,7 +1447,10 @@ int BattleMap::placeTerrainEffect(std::string name,
                                    int slip_save_dc,
                                    int slip_distance_feet,
                                    int spell_idx,
-                                   bool requires_concentration) {
+                                   bool requires_concentration,
+                                   int anchor_agent_idx,
+                                   int anchor_radius_ft,
+                                   bool spares_source_allies) {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -1434,12 +1474,28 @@ int BattleMap::placeTerrainEffect(std::string name,
         slip_save_dc,
         slip_distance_feet,
         spell_idx,
-        requires_concentration
+        requires_concentration,
+        anchor_agent_idx,
+        anchor_radius_ft,
+        spares_source_allies
     };
     activeTerrainEffects_.push_back(effect);
 
     updateTerrain();
     return id;
+}
+
+void BattleMap::setTerrainEffectCells(int effect_id, std::vector<Cell> cells) noexcept {
+    auto it = std::find_if(activeTerrainEffects_.begin(), activeTerrainEffects_.end(),
+        [effect_id](const ActiveTerrainEffect& e) { return e.id == effect_id; });
+    if (it == activeTerrainEffects_.end())
+        return;
+    std::vector<int> indices;
+    for (const auto& cell : cells)
+        if (cell.col >= 0 && cell.col < cols_ && cell.row >= 0 && cell.row < rows_)
+            indices.push_back(cell.row * cols_ + cell.col);
+    it->cell_indices = std::move(indices);
+    updateTerrain();
 }
 
 std::vector<int> BattleMap::tickTerrainEffects(int source_agent_idx) {

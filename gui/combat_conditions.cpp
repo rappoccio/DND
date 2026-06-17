@@ -351,6 +351,65 @@ void CombatEngine::applyGrappled(BattleMap& bm, int target_idx, int grappler_idx
     setAgentConditions(bm, target_idx, cond);
 }
 
+void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_idx, int word) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return;
+    if (word < 0 || word > 4) word = 3;  // default to Halt when the caller doesn't specify a word
+
+    // The movement / incapacitation effects are keyed to the bard with a 1-turn duration, so they
+    // expire when the bard's next turn begins (tickAgentConditionsForCaster) — i.e. they constrain
+    // exactly the target's one intervening "next turn", matching Command's RAW timing.
+    switch (word) {
+        case 0: {  // Drop — drops what it's holding (reuse the Disarming Strike path)
+            dropAgentWeapons(bm, target_idx);
+            Agent::Conditions tc = bm.getAgentConditions(target_idx);
+            tc.disarmed    = true;
+            tc.disarmed_by = bard_idx;
+            bm.setAgentConditions(target_idx, tc);
+            log_("Command (Drop): {} drops what it is holding", agentName(bm, target_idx));
+            break;
+        }
+        case 1: {  // Flee — moves away from the bard; modeled as a 1-turn "can't approach" restriction
+            ActiveAgentCondition c;
+            c.agent_idx       = target_idx;
+            c.caster_idx      = bard_idx;
+            c.condition_name  = "CommandFlee";
+            c.turns_remaining = 1;
+            (void)addAgentCondition(bm, c);
+            log_("Command (Flee): {} must move away from {} on its next turn",
+                 agentName(bm, target_idx), agentName(bm, bard_idx));
+            break;
+        }
+        case 2:    // Grovel — the target falls Prone and ends its turn
+            applyProne(bm, target_idx);
+            log_("Command (Grovel): {} falls Prone", agentName(bm, target_idx));
+            break;
+        case 3: {  // Halt — no move, no action, no Bonus Action next turn (Incapacitated for one turn)
+            ActiveAgentCondition c;
+            c.agent_idx        = target_idx;
+            c.caster_idx       = bard_idx;
+            c.condition_name   = "Incapacitated";
+            c.turns_remaining  = 1;
+            c.save_repeat_turns = -1;  // no save — the target simply skips its next turn
+            (void)addAgentCondition(bm, c);
+            log_("Command (Halt): {} won't move or act on its next turn", agentName(bm, target_idx));
+            break;
+        }
+        case 4: {  // Approach — moves toward the bard; modeled as a 1-turn "can't retreat" restriction
+            ActiveAgentCondition c;
+            c.agent_idx       = target_idx;
+            c.caster_idx      = bard_idx;
+            c.condition_name  = "CommandApproach";
+            c.turns_remaining = 1;
+            (void)addAgentCondition(bm, c);
+            log_("Command (Approach): {} must move toward {} on its next turn",
+                 agentName(bm, target_idx), agentName(bm, bard_idx));
+            break;
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Condition lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,6 +432,11 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyStunned(bm, cond.agent_idx);
             } else if (cond.condition_name == "Charmed") {
                 applyCharmed(bm, cond.agent_idx);
+                // Track the charm source so Mantle of Majesty can auto-fail Command for a creature
+                // Charmed by the casting bard.
+                auto cc = bm.getAgentConditions(cond.agent_idx);
+                cc.charmed_by = cond.caster_idx;
+                bm.setAgentConditions(cond.agent_idx, cc);
             } else if (cond.condition_name == "Frightened") {
                 applyFrightened(bm, cond.agent_idx);
             } else if (cond.condition_name == "Unconscious") {
@@ -439,6 +503,7 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.incapacitated = false;
                     } else if (cond.condition_name == "Charmed") {
                         agent_cond.charmed = false;
+                        agent_cond.charmed_by = -1;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
                     } else if (cond.condition_name == "Unconscious") {
@@ -498,6 +563,7 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
                         agent_cond.incapacitated = false;
                     } else if (cond.condition_name == "Charmed") {
                         agent_cond.charmed = false;
+                        agent_cond.charmed_by = -1;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
                     } else if (cond.condition_name == "Unconscious") {

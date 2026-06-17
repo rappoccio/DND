@@ -146,6 +146,22 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Bard College of Glamour — Mantle of Majesty: tick down the 1-minute (10-round) "unearthly
+    // appearance" window. When it expires, also drop the Concentration that holds it.
+    if (stats.mantle_majesty_turns > 0) {
+        --stats.mantle_majesty_turns;
+        bm.setAgentStats(agent_idx, stats);
+        if (stats.mantle_majesty_turns == 0) {
+            Agent::Conditions mc = bm.getAgentConditions(agent_idx);
+            if (mc.concentrating && mc.concentrating_on == "Mantle of Majesty") {
+                mc.concentrating    = false;
+                mc.concentrating_on = {};
+                bm.setAgentConditions(agent_idx, mc);
+            }
+            log_("{}'s unearthly appearance fades (Mantle of Majesty ends)", agent_name);
+        }
+    }
+
     // Sorcerer Innate Sorcery: tick down its 1-minute (10-round) duration.
     if (stats.innate_sorcery_turns > 0) {
         --stats.innate_sorcery_turns;
@@ -524,7 +540,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Apply begin-of-turn spell effects
     for (const auto& effect : bm.activeSpellEffects()) {
         if (!effect.spell.effects_on_begin_turn) continue;
-        if (effect.caster_idx == agent_idx) continue;  // don't damage self
+        if (zoneSparesTarget(bm, effect, agent_idx)) continue;  // self + allies (faction rules)
 
         // Check if agent occupies any cell in the effect (only apply once per effect)
         bool in_effect = false;
@@ -552,7 +568,7 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     for (const auto& effect : bm.activeSpellEffects()) {
         if (!effect.spell.effects_on_end_turn) continue;
-        if (effect.caster_idx == agent_idx) continue;  // don't damage self
+        if (zoneSparesTarget(bm, effect, agent_idx)) continue;  // self + allies (faction rules)
 
         // Check if agent occupies any cell in the effect (only apply once per effect)
         bool in_effect = false;

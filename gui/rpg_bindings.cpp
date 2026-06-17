@@ -362,6 +362,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "have Disadvantage on saves vs the caster's Fire/Radiant spells)")
         .def_readwrite("innate_sorcery_turns", &Agent::Stats::innate_sorcery_turns,
              "Sorcerer Innate Sorcery remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)")
+        .def_readwrite("mantle_majesty_turns", &Agent::Stats::mantle_majesty_turns,
+             "Bard College of Glamour (L6) Mantle of Majesty 'unearthly appearance' window in rounds "
+             "(>0 = may re-cast Command as a Bonus Action with no slot; tied to concentration)")
         .def_readwrite("shield_active", &Agent::Stats::shield_active,
              "Shield spell active: +5 AC (in ac_temporary_modifications) until start of next turn + MM immunity")
         .def_readwrite("wild_magic_shield_turns", &Agent::Stats::wild_magic_shield_turns,
@@ -518,6 +521,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("deafened",      &Agent::Conditions::deafened)
         .def_readwrite("stunned",       &Agent::Conditions::stunned)
         .def_readwrite("charmed",       &Agent::Conditions::charmed)
+        .def_readwrite("charmed_by",    &Agent::Conditions::charmed_by,
+             "Index of the creature that Charmed this one (-1 = none). Used by Mantle of Majesty.")
         .def_readwrite("frightened",    &Agent::Conditions::frightened)
         .def_readwrite("slipped_this_turn", &Agent::Conditions::slipped_this_turn)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
@@ -1219,6 +1224,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Chromatic Orb leap chain (GUI picker): ordered creatures the orb should leap to on\n"
              "matching d8s, consumed one per leap. Each is validated (within 30 ft of the previous\n"
              "hop, living non-ally, not already hit); empty/invalid entries fall back to nearest enemy.")
+        .def_readwrite("free_cast", &SpellAction::free_cast,
+             "Free cast: when true, executeSpell does not expend a spell slot (the caller still\n"
+             "charges the action economy). Used for Mantle of Majesty's slot-free Command casts.")
+        .def_readwrite("command_word", &SpellAction::command_word,
+             "Command spell word (only read for the Command spell): 0=Drop, 1=Flee, 2=Grovel,\n"
+             "3=Halt, 4=Approach. -1 = unspecified → engine defaults to Halt.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
@@ -2462,6 +2473,30 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Battle Master Rally (Bonus Action): spend 1 Superiority Die to grant a creature within\n"
              "30 ft Temporary HP = superiority die + your CHA modifier (min 1). Returns temp HP granted\n"
              "(0 = no die / bad index).")
+        .def("apply_mantle_of_inspiration",
+             &CombatEngine::bardMantleOfInspiration,
+             py::arg("battle_map"), py::arg("bard_idx"), py::arg("targets"),
+             "College of Glamour Mantle of Inspiration (Bonus Action): expend 1 Bardic Inspiration\n"
+             "use and roll the Bardic Inspiration die ONCE; each chosen creature gains Temporary HP =\n"
+             "twice the roll. 'targets' is a list of agent indices (the GUI validates the 60 ft range\n"
+             "per click); the engine caps it to the bard's CHA modifier (min 1) and skips the bard\n"
+             "itself. Returns the temp HP granted to each recipient (0 = not a L3+ Glamour Bard / no\n"
+             "Bardic Inspiration use).")
+        .def("activate_mantle_of_majesty",
+             &CombatEngine::activateMantleOfMajesty,
+             py::arg("battle_map"), py::arg("bard_idx"),
+             "College of Glamour Mantle of Majesty (Bonus Action): spend the once/long-rest 'Mantle of\n"
+             "Majesty' use, open a 1-minute (10-round) unearthly-appearance window (stats.mantle_majesty_turns\n"
+             "= 10) and start Concentration on 'Mantle of Majesty' (replacing any prior concentration).\n"
+             "While active the bard may re-cast Command as a Bonus Action with no slot (SpellAction.free_cast),\n"
+             "and a creature Charmed by this bard auto-fails its save vs that Command. The free Command cast\n"
+             "is driven separately by the caller. Returns False if not a Glamour Bard L6+ or no use left.")
+        .def("bard_restore_mantle_of_majesty_from_slot",
+             &CombatEngine::bardRestoreMantleOfMajestyFromSlot,
+             py::arg("battle_map"), py::arg("bard_idx"), py::arg("slot_level"),
+             "Restore the expended Mantle of Majesty use by spending an unused level 3+ spell slot (no\n"
+             "action). Returns the resource's new current count, or -1 (not a Glamour Bard L6+, slot_level\n"
+             "< 3, no such slot, or already full).")
         .def("apply_feinting_attack",
              &CombatEngine::applyFeintingAttack,
              py::arg("battle_map"), py::arg("fighter_idx"), py::arg("target_idx"),
@@ -2887,7 +2922,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("turns_remaining",   &ActiveTerrainEffect::turns_remaining)
         .def_readonly("source_agent_idx",  &ActiveTerrainEffect::source_agent_idx)
         .def_readonly("spell_idx",         &ActiveTerrainEffect::spell_idx)
-        .def_readonly("requires_concentration", &ActiveTerrainEffect::requires_concentration);
+        .def_readonly("requires_concentration", &ActiveTerrainEffect::requires_concentration)
+        .def_readonly("anchor_agent_idx",  &ActiveTerrainEffect::anchor_agent_idx)
+        .def_readonly("anchor_radius_ft",  &ActiveTerrainEffect::anchor_radius_ft)
+        .def_readonly("spares_source_allies", &ActiveTerrainEffect::spares_source_allies);
 
     // ── ActiveLightEffect struct ────────────────────────────────────────────
     py::class_<ActiveLightEffect>(m, "ActiveLightEffect")
@@ -3072,15 +3110,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Movement reach
         .def("reachable_cells",
              [](const BattleMap& bm, Cell origin, int agentSize,
-                int speedFt, MovementType type) {
+                int speedFt, MovementType type, int moverIdx) {
                  return cellSetToVec(bm.reachableCells(origin, agentSize,
-                                                       speedFt, type));
+                                                       speedFt, type, moverIdx));
              },
              py::arg("origin"), py::arg("agent_size"),
              py::arg("speed_ft"), py::arg("movement_type"),
+             py::arg("mover_idx") = -1,
              "Return a list of Cell origins reachable from origin.\n"
              "Walk: Dijkstra BFS through passable cells.\n"
-             "Fly:  Chebyshev radius ignoring terrain.")
+             "Fly:  Chebyshev radius ignoring terrain.\n"
+             "mover_idx>=0 lets faction-spared difficult terrain (Spirit Guardians)\n"
+             "not slow the moving agent or its allies.")
 
         .def_property_readonly("placed_agents", [](const BattleMap& bm){
             auto sp = bm.placedAgents();
@@ -3140,8 +3181,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("turns_remaining"), py::arg("source_agent_idx"),
              py::arg("slip_save_dc") = 10, py::arg("slip_distance_feet") = 5,
              py::arg("spell_idx") = -1, py::arg("requires_concentration") = false,
+             py::arg("anchor_agent_idx") = -1, py::arg("anchor_radius_ft") = 0,
+             py::arg("spares_source_allies") = false,
              "Place a temporary terrain effect covering the given cells.\n"
+             "anchor_agent_idx>=0 makes it follow that agent (moving emanation);\n"
+             "spares_source_allies excludes the source + its allies (selective_targeting).\n"
              "Returns unique effect id (for later removal/metadata).")
+        .def("set_terrain_effect_cells", &BattleMap::setTerrainEffectCells,
+             py::arg("effect_id"), py::arg("cells"),
+             "Re-point an anchored terrain effect's footprint (moving emanation).")
         .def("tick_terrain_effects", &BattleMap::tickTerrainEffects,
              py::arg("source_agent_idx"),
              "Decrement turns_remaining for effects from this source.\n"

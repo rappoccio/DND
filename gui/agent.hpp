@@ -475,6 +475,7 @@ namespace rpg {
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
       int  corona_of_light_turns{0};                             // Cleric Light Domain (L17): Corona of Light remaining duration in rounds (>0 = enemies in 60ft have Disadvantage on saves vs the caster's Fire/Radiant spells)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
+      int  mantle_majesty_turns{0};                              // Bard College of Glamour (L6) — Mantle of Majesty: "unearthly appearance" window in rounds (>0 = may re-cast Command as a Bonus Action with no slot; Command auto-fails for creatures Charmed by this bard). Tied to concentration on "Mantle of Majesty".
       // Wild Magic Surge persistent effects (set by applyWildMagicSurgeEffect, tick at turn start)
       bool shield_active{false};                                 // Shield spell: +5 AC (via ac_temporary_modifications) until start of next turn + Magic Missile immunity
       int  wild_magic_shield_turns{0};                           // Band 2 (spectral shield): +2 AC (via ac_temporary_modifications) + Magic Missile immunity, in rounds
@@ -616,6 +617,7 @@ namespace rpg {
       bool stunned{false};       // cannot act, auto-fail STR/DEX saves, attacks have advantage
       bool prone{false};         // crawling only, disadvantage on attacks; advantage for attackers within 5ft
       bool charmed{false};       // cannot attack the charmer or target with damaging abilities
+      int  charmed_by{-1};       // index of the creature that Charmed this one (-1 = none / unknown source). Set when a spell applies Charmed; used by Mantle of Majesty (Command auto-fails for a creature Charmed by the casting bard).
       bool frightened{false};    // disadvantage on attacks/checks when source in LOS; cannot move closer to source
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage

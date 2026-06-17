@@ -214,6 +214,31 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
         }
     }
 
+    // Command (Flee/Approach): the Bard's Command forces a one-turn movement direction relative to
+    // the bard. Flee = the target must move away (cannot decrease the distance); Approach = the
+    // target must move toward (cannot increase the distance). Both expire as the bard's next turn
+    // begins (1-turn duration keyed to the bard).
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.agent_idx != idx || ac.caster_idx < 0) continue;
+        const bool flee     = (ac.condition_name == "CommandFlee");
+        const bool approach = (ac.condition_name == "CommandApproach");
+        if (!flee && !approach) continue;
+        Cell src  = bm.placedAgents()[ac.caster_idx].origin;
+        int cur_d = std::max(std::abs(oldOrigin.col - src.col), std::abs(oldOrigin.row - src.row));
+        int new_d = std::max(std::abs(newOrigin.col - src.col), std::abs(newOrigin.row - src.row));
+        if (flee && new_d < cur_d) {
+            log_("Movement blocked: Command (Flee) — cannot move closer to {}",
+                 agentName(bm, ac.caster_idx));
+            return false;
+        }
+        if (approach && new_d > cur_d) {
+            log_("Movement blocked: Command (Approach) — cannot move away from {}",
+                 agentName(bm, ac.caster_idx));
+            return false;
+        }
+        break;
+    }
+
     // Delegate to BattleMap for pathfinding and movement budget logic
     if (!bm.moveAgent(idx, newOrigin, type))
         return false;
@@ -223,7 +248,7 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
     for (const auto& pathCell : pathCells) {
         for (const auto& effect : bm.activeSpellEffects()) {
-            if (effect.caster_idx == idx) continue;  // don't damage self
+            if (zoneSparesTarget(bm, effect, idx)) continue;  // self + allies (faction rules)
             if (std::find(effect.cells.begin(), effect.cells.end(), pathCell) != effect.cells.end())
                 applyZoneIfNewThisTurn(bm, effect, idx);
         }
@@ -245,7 +270,7 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
             if (e.effect_id == eff_id) { eff = &e; break; }
         if (!eff) continue;
         for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
-            if (j == idx) continue;  // the anchor is never affected by its own Emanation
+            if (zoneSparesTarget(bm, *eff, j)) continue;  // anchor + allies (faction rules)
             const PlacedAgent& other = agents[static_cast<std::size_t>(j)];
             if (footprintOverlapsCells(other, eff->cells) && !footprintOverlapsCells(other, oldCells))
                 applyZoneIfNewThisTurn(bm, *eff, j);
@@ -327,7 +352,7 @@ bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_run
     for (const auto& pathCell : pathCells) {
         for (const auto& effect : bm.activeSpellEffects()) {
             if (appliedEffects.count(effect.effect_id)) continue;
-            if (effect.caster_idx == idx) continue;
+            if (zoneSparesTarget(bm, effect, idx)) continue;  // self + allies (faction rules)
 
             auto it = std::find(effect.cells.begin(), effect.cells.end(), pathCell);
             if (it != effect.cells.end()) {
@@ -366,7 +391,7 @@ bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int tar
 
     // Check for spell effects at the destination
     for (const auto& effect : bm.activeSpellEffects()) {
-        if (effect.caster_idx == idx) continue;
+        if (zoneSparesTarget(bm, effect, idx)) continue;  // self + allies (faction rules)
         auto it = std::find(effect.cells.begin(), effect.cells.end(), targetCell);
         if (it != effect.cells.end()) {
             applySpellEffect(bm, effect, idx);

@@ -7004,7 +7004,11 @@
   "check_los_on_center": true,
   "school": "conjuration",
   "moves_with_caster": true,
-  "selective_targeting": true
+  "selective_targeting": true,
+  "terrain_effect": {
+   "type": "Difficult Terrain",
+   "difficulty": "Halved"
+  }
  },
  {
   "name": "Spiritual Weapon",
