@@ -52350,6 +52350,174 @@
       }
     }
   },
+  "Strahd von Zarovich": {
+    "name": "Strahd von Zarovich",
+    "size": "Medium",
+    "stats": {
+      "str": 18,
+      "dex": 18,
+      "con": 18,
+      "intel": 20,
+      "wis": 15,
+      "cha": 18,
+      "hp_max": 204,
+      "hp_cur": 204,
+      "ac": 16,
+      "speed_walk": 40,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 5,
+      "num_attacks": 3,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": true,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [
+        "Fire",
+        "Necrotic"
+      ],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": [],
+      "spellcasting_ability": "intel"
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Melee (Slashing)",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Slashing",
+            "num_dice": 3,
+            "die_size": 12
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],	  
+        "mastery": "None"
+      },
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
+      },
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Undead (Wizard)",
+      "cr": "14",
+      "alignment": "Lawful Evil",
+      "source": "Ravenloft: The Horrors Within",
+      "traits": [
+        "Misty Escape",
+        "Vampire Weakness",
+        "Forbiddance",
+        "Running Water",
+        "Stake to the Heart",
+        "Sunlight"
+      ],
+      "languages": [
+        "Common",
+        "Infernal"
+      ],
+      "senses": {
+        "darkvision": 120
+      },
+      "passive_perception": 18,
+      "immunities_conditions": [
+        "Poisoned"
+      ],
+      "save_dc": 18,
+      "saving_throws": [
+        "Constitution"
+      ],
+      "action_notes": "Atk 1 on hit grabbled, Bite one creature within 5ft on fail 22 piercing and necrotic and losses highest level spell slot",
+      "bonus_action": "Shape-Shift",
+      "reaction": null,
+      "legendary": {
+        "resistance": 3,
+        "resistance_in_lair": 4,
+        "actions": 3,
+        "actions_in_lair": 4,
+        "has_lair": true
+      }
+    },
+    "spell_indices": [
+      "Detect Magic",
+      "Detect Thoughts",
+      "Dispel Magic",
+      "Fireball",
+      "Mage Hand",
+      "Prestidigitation",
+      "Scrying",
+      "Wall of Fire",
+      "Polymorph",
+      "Gust of Wind",
+      "Animate Dead",
+      "Fog Cloud",
+      "Mirror Image",
+      "Charm Person Bonus"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Detect Thoughts",
+        "Dispel Magic",
+        "Fog Cloud",
+	"Charm Person Bonus"
+      ],
+      "2": [
+        "Scrying",
+	"Fireball",
+	"Gust of Wind",
+	"Mirror Image",
+	"Animate Dead"
+      ],
+      "1": [
+        "Wall of Fire",
+	"Greater Invisibility",
+	"Polymorph"
+      ]
+    }
+  },    
   "Stirge": {
     "name": "Stirge",
     "size": "Tiny",
@@ -56902,10 +57070,40 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],
         "mastery": "None"
       },
-      "off_hand": "",
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
+      },
       "ranged": ""
     },
     "meta": {
@@ -57002,7 +57200,32 @@
         "conditions": [],
         "mastery": "None"
       },
-      "off_hand": "",
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
+      },
       "ranged": {
         "name": "Ranged (Piercing)",
         "type": "ranged",
@@ -57110,10 +57333,40 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],	  
         "mastery": "None"
       },
-      "off_hand": "",
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
+      },
       "ranged": ""
     },
     "meta": {
@@ -57234,28 +57487,39 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],
         "mastery": "None"
       },
       "off_hand": {
-        "name": "Melee (Slashing)",
+        "name": "Bite",
         "type": "melee",
         "reach_ft": 5,
-        "normal_range_ft": 80,
-        "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 1,
+        "bonus_damage": 0,
         "physical_damage_types": [
           {
-            "type": "Slashing",
-            "num_dice": 5,
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
             "die_size": 6
           }
         ],
-        "magic_damage_types": [],
-        "conditions": [],
-        "mastery": "None",
-        "off_hand": true
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
       },
       "ranged": ""
     },
@@ -57377,6 +57641,7 @@
         "conditions": [
           "reduceHPMax"
         ],
+        "auto_hit_if_grappled": true,
         "mastery": "None"
       },
       "ranged": ""
@@ -57471,10 +57736,40 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],
         "mastery": "None"
       },
-      "off_hand": "",
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
+      },
       "ranged": {
         "name": "Ranged (Necrotic)",
         "type": "ranged",
@@ -57588,10 +57883,40 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],
         "mastery": "None"
       },
-      "off_hand": "",
+      "off_hand": {
+        "name": "Bite",
+        "type": "melee",
+        "reach_ft": 5,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "auto_hit_if_grappled": true,
+        "mastery": "None"
+      },
       "ranged": ""
     },
     "meta": {
@@ -63863,6 +64188,14 @@
       },
       "off_hand": "",
       "ranged": ""
+    },
+    "spell_indices": [
+      "ZombieClotEmanation"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "ZombieClotEmanation"
+      ]
     },
     "meta": {
       "type": "Undead (Zombie)",

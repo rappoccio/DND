@@ -7005,6 +7005,8 @@ class App:
                     "elemental_adept_types": list(s.elemental_adept_types),
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
+                    "primal_champion_applied": s.primal_champion_applied,
+                    "relentless_rage_dc": s.relentless_rage_dc,
                     "magic_resistances": [
                         name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
                         if s.get_magic_damage_multiplier(idx) == 0.5

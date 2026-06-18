@@ -251,6 +251,7 @@ def _weapon_to_dict(w) -> dict:
         "heavy":            w.heavy,
         "light":            w.light,
         "is_shield":        w.is_shield,
+        "auto_hit_if_grappled": w.auto_hit_if_grappled,
         "mastery":          w.mastery.name,
         "bonus_hit":        w.bonus_hit,
         "bonus_damage":     w.bonus_damage,
@@ -259,6 +260,19 @@ def _weapon_to_dict(w) -> dict:
                                    for r in w.physical_damage_types],
         "magic_damage_types":    [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
                                    for r in w.magic_damage_types],
+        # On-hit riders (Grappled/escape_dc, reduceHPMax, save-based conditions, etc.).
+        # MUST be serialized or they vanish on encounter save/reload (and weapon-dialog round-trips).
+        "conditions": [{"condition_name":     c.condition_name,
+                        "condition_duration":  c.condition_duration,
+                        "push_ft":             c.push_ft,
+                        "save_repeat_turns":   c.save_repeat_turns,
+                        "contested":           c.contested,
+                        "escape_dc":           c.escape_dc,
+                        "requires_save":       c.requires_save,
+                        "save_ability":        c.save_ability.name,
+                        "save_dc_ability":     c.save_dc_ability.name,
+                        "on_damage":           c.on_damage.name}
+                       for c in w.conditions],
     }
 
 
@@ -280,6 +294,7 @@ def _dict_to_weapon(d: dict):
     w.heavy           = bool(d.get("heavy",           False))
     w.light           = bool(d.get("light",           False))
     w.is_shield       = bool(d.get("is_shield",       False))
+    w.auto_hit_if_grappled = bool(d.get("auto_hit_if_grappled", False))
     w.mastery         = _parse_mastery(d.get("mastery", ""))
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
@@ -320,6 +335,14 @@ def _dict_to_weapon(d: dict):
             # Grappled rider: contested Athletics vs automatic-on-hit, + optional fixed escape DC.
             c.contested = bool(cond_entry.get("contested", False))
             c.escape_dc = int(cond_entry.get("escape_dc", 0))
+            if "requires_save" in cond_entry:
+                c.requires_save = bool(cond_entry["requires_save"])
+            on_damage_str = cond_entry.get("on_damage")
+            if on_damage_str:
+                try:
+                    c.on_damage = getattr(rpg.OnDamage, on_damage_str)
+                except AttributeError:
+                    pass
             # Parse save_ability string (target's save - e.g., "SaveDex" -> rpg.SaveAbility.SaveDex)
             save_ability_str = cond_entry.get("save_ability", "SaveDex")
             try:

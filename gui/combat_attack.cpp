@@ -398,6 +398,29 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
     s.hp_cur = std::max(0, s.hp_cur - overflow);
     bm.setAgentStats(idx, s);
 
+    // Barbarian L11 Relentless Rage: while raging, when damage would reduce you to 0 HP
+    // (not an outright kill), make a CON save DC 10 (or higher if already used). Success = drop to 1 HP instead.
+    // This runs BEFORE the concentration-drop check so a saved Barbarian keeps concentration.
+    if (s.hp_cur <= 0) {
+        Agent::Conditions cond = bm.getAgentConditions(idx);
+        if (cond.raging &&
+            s.character_class == CharacterClass::Barbarian &&
+            s.char_level >= 11) {
+            // Make a CON save vs Relentless Rage DC
+            int save_roll = roll(20, saveModFor(bm, idx, SaveCon));
+            if (save_roll >= s.relentless_rage_dc) {
+                // Success: drop to 1 HP instead of 0, and increase DC for next use
+                s.hp_cur = 1;
+                s.relentless_rage_dc += 5;
+                bm.setAgentStats(idx, s);
+                log_("{} makes a Relentless Rage save (DC {}, rolled {}) and drops to 1 HP! "
+                     "Next use: DC {}",
+                     agentName(bm, idx), s.relentless_rage_dc - 5, save_roll, s.relentless_rage_dc);
+                return s.hp_cur;
+            }
+        }
+    }
+
     // If agent is now dead, drop concentration
     if (s.hp_cur <= 0) {
         const auto& agents = bm.placedAgents();
@@ -443,6 +466,7 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount) noexce
         } else if (cond.on_damage == OnDamage_t::RepeatSave) {
             // Damage-triggered save is made at Advantage (Tasha's Hideous Laughter).
             int total = rollAdvantage(20, saveModFor(bm, idx, cond.save_ability));
+            total = applyIndomitableMight(bm, idx, cond.save_ability, total);
             if (total >= cond.save_dc) {
                 clearSpellConditionEffect(bm, cond);
                 to_remove.push_back(cond.condition_id);
@@ -1085,6 +1109,19 @@ bool CombatEngine::canWardingFlare(const BattleMap& bm, int reactor, int roller)
     return wf && wf->current >= 1;
 }
 
+// Force an auto-hit (e.g. a vampire's Bite vs a creature it has Grappled) after the roll: a missed
+// roll is promoted to a hit. The roll itself stands (a natural 20 still crits; a nat 1 that was
+// going to fumble is rescued), and this runs BEFORE the OnD20Seen/Shield windows so a defender can
+// still react. No-op when s.auto_hit is false or the attack already hit.
+void CombatEngine::forceAutoHit(BattleMap& bm, InFlightAttack& s)
+{
+    if (!s.auto_hit || s.r.hit) return;
+    s.r.hit    = true;
+    s.r.fumble = false;
+    log_("{} automatically hits the Grappled {} (Bite)",
+         agentName(bm, s.action.attacker_idx), agentName(bm, s.action.target_idx));
+}
+
 void CombatEngine::reevaluateAttackHit(AttackResult& r) const noexcept
 {
     r.fumble = (r.d20 == 1);
@@ -1321,6 +1358,7 @@ FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
     s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
     return advanceAttack(bm);
 }
 
@@ -1673,6 +1711,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: Grappler attacking a creature it has grappled");
     }
 
+    // Auto-hit weapons (e.g. a vampire's Bite) automatically hit a creature this attacker has
+    // Grappled — the roll is still made (a natural 20 still crits / OnD20 + Shield windows still
+    // open) but a miss is forced to a hit after the roll. Recorded here; applied in the caller.
+    bool auto_hit = (w.auto_hit_if_grappled &&
+                     tgt_cond.grappled && tgt_cond.grappler_idx == action.attacker_idx);
+
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
     if (tgt_cond.prone) {
         int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
@@ -1769,6 +1813,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // Phase A done — carry the pre-roll state across the (possible) defender reaction window. The
     // caller rolls the attack (resolveAttack) and may open the Shield window before applyAttackResult.
     s.w = w; s.adv = adv; s.dis = dis;
+    s.auto_hit                    = auto_hit;
     s.can_use_brutal_strike       = can_use_brutal_strike;
     s.tgt_incapacitated_at_attack = tgt_incapacitated_at_attack;
     s.tgt_unconscious_at_attack   = tgt_unconscious_at_attack;
@@ -1791,6 +1836,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
     s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
     // Auto/RL OnD20Seen window (inline): nearby creatures may LOWER the roll (Bend Luck / Cutting
     // Words / Silvery Barbs) before it commits — runs BEFORE Shield so a lowered-to-miss attack opens
     // no Shield window (shouldOfferDefenderShield is gated on r.hit).
@@ -2901,8 +2947,21 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             // escape DC, which the generic active-condition path does not. Range
             // is already satisfied (the attack hit), so no adjacency re-check.
             if (weapon_cond.condition_name == "Grappled") {
-                (void)resolveGrapple(bm, action.attacker_idx, action.target_idx,
-                                     weapon_cond.contested, weapon_cond.escape_dc);
+                GrappleResult gr = resolveGrapple(bm, action.attacker_idx, action.target_idx,
+                                                  weapon_cond.contested, weapon_cond.escape_dc);
+                if (weapon_cond.contested) {
+                    // Contested on-hit grapple: surface the Athletics contest and its result.
+                    log_("{} attempts to grapple {} (Athletics {} vs {}) — {}",
+                         agentName(bm, action.attacker_idx), agentName(bm, action.target_idx),
+                         gr.attacker_roll, gr.defender_roll,
+                         gr.success ? "GRAPPLED (escape DC " + std::to_string(gr.escape_dc) + ")"
+                                    : std::string("target resists"));
+                } else if (gr.success) {
+                    // Automatic on-hit grapple (no contest); still log the outcome + escape DC.
+                    log_("{} grapples {} on the hit (escape DC {})",
+                         agentName(bm, action.attacker_idx), agentName(bm, action.target_idx),
+                         gr.escape_dc);
+                }
                 continue;
             }
 
@@ -2942,7 +3001,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
 
                 int save_d20 = auto_fail ? 1 : roll(20);
                 int save_mod = saveModFor(bm, action.target_idx, weapon_cond.save_ability);
-                bool saved = auto_fail ? false : (save_d20 + save_mod >= save_dc);
+                int save_total = save_d20 + save_mod;
+                save_total = applyIndomitableMight(bm, action.target_idx, weapon_cond.save_ability, save_total);
+                bool saved = auto_fail ? false : (save_total >= save_dc);
 
                 condition_applies = !saved;
 

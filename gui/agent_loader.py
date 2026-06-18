@@ -64,6 +64,9 @@ def dict_to_stats(stats_dict):
     stats.elemental_adept_types = [int(t) for t in stats_dict.get("elemental_adept_types", [])]
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
+    # Barbarian L20 Primal Champion and L11 Relentless Rage
+    stats.primal_champion_applied = bool(stats_dict.get("primal_champion_applied", False))
+    stats.relentless_rage_dc = int(stats_dict.get("relentless_rage_dc", 10))
     return stats
 
 

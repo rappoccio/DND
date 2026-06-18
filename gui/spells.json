@@ -985,6 +985,38 @@
   "school": "enchantment"
  },
  {
+  "name": "Charm Person Bonus",
+  "description": "One Humanoid you can see within range makes a Wisdom saving throw. It does so with Advantage if you or your allies are fighting it. On a failed save, the target has the Charmed condition until the spell ends or until you or your allies damage it. The Charmed creature is Friendly to you. When the spell ends, the target knows it was Charmed by you. Cast as a bonus action",
+  "type": "Harm",
+  "geometry": "Multiple",
+  "attack_type": "Save",
+  "save_ability": "SaveWis",
+  "casting_time": "BonusAction",
+  "range": 30,
+  "radius": 0,
+  "width": 0,
+  "length": 0,
+  "duration": 10,
+  "magic_damage_types": [],
+  "physical_damage_types": [],
+  "level": 1,
+  "upcast_dice_bonus": 0,
+  "num_targets": 1,
+  "targets_per_upcast_level": 1,
+  "requires_concentration": true,
+  "requires_los": true,
+  "check_los_on_center": true,
+  "conditions": [
+   {
+    "condition_name": "Charmed",
+    "condition_duration": 0,
+    "save_repeat_turns": 1,
+    "save_dc_ability": "SaveSpellcasterMod"
+   }
+  ],
+  "school": "enchantment"
+ },
+ {
   "name": "Chill Touch",
   "description": "Channeling the chill of the grave, make a melee spell attack against a target within reach. On a hit, the target takes 1d10 Necrotic damage, and it can't regain Hit Points until the end of your next turn.",
   "type": "Harm",
@@ -8111,6 +8143,36 @@
   "check_los_on_center": true,
   "school": "conjuration"
  },
+ {
+  "name": "ZombieClotEmanation",
+  "description": "any creature that starts its turn in a 10-foot Emanation originating from the zombie. Failure: 9 (2d8) Poison damage, and the target has the Poisoned condition until the start of its next turn.",
+  "type": "Harm",
+  "geometry": "Sphere",
+  "attack_type": "Save",
+  "save_ability": "SaveCon",
+  "casting_time": "BonusAction",
+  "range": 0,
+  "radius": 10,
+  "width": 0,
+  "length": 0,
+  "duration": 99,
+  "magic_damage_types": [
+   {
+    "type": "Poison",
+    "num_dice": 2,
+    "die_size": 8
+   }
+  ],
+  "physical_damage_types": [],
+  "level": 3,
+  "upcast_dice_bonus": 1,
+  "requires_concentration": false,
+  "requires_los": false,
+  "check_los_on_center": true,
+  "school": "necromancy",
+  "moves_with_caster": true,
+  "selective_targeting": false
+ },    
  {
   "name": "Zone of Truth",
   "description": "You create a magical zone that guards against deception in a 15-foot-radius Sphere centered on a point within range. Until the spell ends, a creature that enters the spell's area for the first time on a turn or starts its turn there makes a Charisma saving throw. On a failed save, a creature can't speak a deliberate lie while in the radius. You know whether a creature succeeds or fails on this save. An affected creature is aware of the spell and can avoid answering questions to which it would normally respond with a lie. Such a creature can be evasive yet must be truthful.",

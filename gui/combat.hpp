@@ -592,6 +592,8 @@ struct InFlightAttack {
     AttackResult r{};               // the rolled result (filled by resolveAttack between the phases)
     bool adv{false};
     bool dis{false};
+    bool auto_hit{false};           // this attack auto-hits (vampire Bite vs a creature it has Grappled);
+                                    // forced after the roll, before the defender windows (a nat 20 still crits)
     bool onhit_offered{false};      // the OnHit defender window (Shield / Uncanny Dodge) has been opened once
     // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
@@ -670,7 +672,9 @@ public:
 
     // HP modifiers — clamp hp_cur to [0, hp_max] and write back to the map.
     // Return the resulting hp_cur, or 0 for an out-of-range idx.
-    static int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
+    // Non-static: the Relentless Rage (Barbarian L11) hook here needs the seeded roll(),
+    // log_, saveModFor (auras), and agentName — all instance members.
+    int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
     static int healAgent  (BattleMap& bm, int idx, int amount) noexcept;
 
     // Lay on Hands (Paladin): spends from the "Lay on Hands" pool resource to heal a target.
@@ -1043,6 +1047,9 @@ public:
     // Canonical saving-throw modifier for agent_idx vs ability `ab`: ability modifier +
     // proficiency (if proficient) + aura bonuses. Single source of truth for every save site.
     [[nodiscard]] int saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
+    // Indomitable Might (Barbarian L18): a STR saving throw total can't be lower than the
+    // Barbarian's STR score. Returns the (possibly raised) total.
+    [[nodiscard]] int applyIndomitableMight(const BattleMap& bm, int saver_idx, SaveAbility_t ab, int total) const noexcept;
 
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
@@ -1971,6 +1978,9 @@ public:
     // misses, else total >= AC). Additive reactions leave r.d20 untouched (crit preserved); the
     // Silvery Barbs reroll sets r.d20 to the new die.
     void reevaluateAttackHit(AttackResult& r) const noexcept;
+    // Promote a missed roll to a hit when s.auto_hit is set (vampire Bite vs a creature it has
+    // Grappled). Runs after resolveAttack, before the defender reaction windows. No-op otherwise.
+    void forceAutoHit(BattleMap& bm, InFlightAttack& s);
     // Apply one lowering reaction to the in-flight roll r (spends the resource + the reactor's reaction,
     // mutates r, reevaluates). Return true if r changed. Write to the in-flight r, not pending_roll_bonus_.
     bool applyBendLuckToAttack    (BattleMap& bm, int reactor, AttackResult& r);

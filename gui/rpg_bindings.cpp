@@ -347,6 +347,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wild Heart L6 Aspect choice (Owl/Panther/Salmon); set before combat or at long rest")
         .def_readwrite("brutal_strike_damage_dice", &Agent::Stats::brutal_strike_damage_dice,
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
+        .def_readwrite("primal_champion_applied", &Agent::Stats::primal_champion_applied,
+             "Barbarian L20 Primal Champion: +4 STR/CON (capped at 25) applied (idempotent flag)")
+        .def_readwrite("relentless_rage_dc", &Agent::Stats::relentless_rage_dc,
+             "Barbarian L11 Relentless Rage save DC (base 10, +5 per use in same Rage; reset on rage end)")
         .def_readwrite("crit_threshold", &Agent::Stats::crit_threshold,
              "d20 roll >= this is a critical hit (default 20, Champion lowers it to 19/18)")
         .def_readwrite("superiority_die_size", &Agent::Stats::superiority_die_size,
@@ -724,6 +728,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("heavy",            &Weapon::heavy)
         .def_readwrite("light",            &Weapon::light)
         .def_readwrite("is_shield",        &Weapon::is_shield)
+        .def_readwrite("auto_hit_if_grappled", &Weapon::auto_hit_if_grappled)
         .def_readwrite("mastery",          &Weapon::mastery)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
@@ -1713,7 +1718,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     py::arg("atk_origin"), py::arg("atk_size"),
                     py::arg("tgt_origin"), py::arg("tgt_size"),
                     "True iff the attack should be rolled at disadvantage.")
-        .def_static("damage_agent",
+        .def("damage_agent",
                     &CombatEngine::damageAgent,
                     py::arg("battle_map"), py::arg("idx"), py::arg("amount"),
                     "Reduce hp_cur of agent[idx] by amount (clamped to 0). "

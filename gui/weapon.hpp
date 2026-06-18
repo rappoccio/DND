@@ -60,6 +60,9 @@ struct Weapon {
                                                 // makes no attack, and counts as "holding a Shield" (Shield Master,
                                                 // Interception, Protection, Unarmed Fighting)
     WeaponMastery mastery        = WeaponMastery::None;  // 2024 Weapon Mastery property
+    bool         auto_hit_if_grappled = false;  // the attack automatically hits a creature this attacker
+                                                // has Grappled (e.g. a vampire's Bite) — skips the roll
+                                                // (a natural 20 still crits)
 
     std::vector<MagicDamageRoll>    magicDamageRolls;
     std::vector<PhysicalDamageRoll> physicalDamageRolls;

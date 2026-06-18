@@ -193,6 +193,25 @@ weapon) so the player can move and retarget between bonus strikes. See `_finish_
 `_continue_attack_sequence_after_rider` (the `pending_attack_slot == "bonus"` branches kept the old
 `_start_attack` auto-re-arm).
 
+### Weapon on-hit conditions survive save/load + on-hit grapple is logged — FIXED ✅ (2026-06-17, confirmed in live play)
+Two coupled fixes for on-hit weapon riders (surfaced by a Vampire Spawn Claw with a `Grappled`/`escape_dc:14`
+rider in `DND2024_MonsterStats.json` that "wasn't working" after an encounter reload):
+- **Root cause:** `helpers._weapon_to_dict` never serialized `Weapon.conditions`, so the encounter
+  save path (`main.py` ~7039, which round-trips every agent's weapons through `_weapon_to_dict`) silently
+  **dropped all on-hit riders** (Grappled, `reduceHPMax`, save-based conditions) on save→reload. The data
+  and the C++ routing (`combat_attack.cpp` ~2927 → `resolveGrapple` → `applyGrappled`) were always correct;
+  the bug was purely the lossy serializer. **Fix:** `_weapon_to_dict` now emits the full `conditions` list
+  (name, duration, push_ft, save_repeat_turns, contested, escape_dc, requires_save, save_ability,
+  save_dc_ability, on_damage); `_dict_to_weapon` now also parses `requires_save`/`on_damage` (previously
+  ignored) so every condition type round-trips. **Caveat:** saves written *before* the fix already lack the
+  data — re-place the creature fresh from the bestiary, then re-save.
+- **On-hit grapple now logs the contest + outcome.** The on-hit `Grappled` branch previously discarded the
+  result (`(void)resolveGrapple(...)`) so the combat log showed nothing. Now it logs at the rider call site:
+  contested → "X attempts to grapple Y (Athletics A vs D) — GRAPPLED (escape DC N)/target resists";
+  automatic (`contested=false`) → "X grapples Y on the hit (escape DC N)". Logged at the call site (not
+  inside `resolveGrapple`) so the standalone Grapple action + Punch-and-Grab paths (which log via Python)
+  don't double-log.
+
 ### Rider-laden Attack actions skip Frenzy / unarmed-weapon restore [minor]
 The Attack-action sequence advance (disarm between attacks, `action_used`, ending the sequence) is now
 done **centrally** in `_finish_attack` right after the attack-count decrement, so it runs for every
@@ -466,10 +485,47 @@ Guardians (`resolveAoeTargets`, `Spell::Sphere`) — NOT Chebyshev/Manhattan.
 - **Action-economy gotcha (fixed):** `spendBonusAction` re-reads + writes back stats, so it MUST run
   AFTER the function's final `setAgentStats(idx, stats)` or the bonus action gets refunded. Both
   functions persist `stats` first, then call `spendBonusAction` last.
-- **Deferred (still missing):** Berserker L14 Retaliation, Zealot L10 (other clauses) / L14 Rage of the
-  Gods, and the rest of the Barbarian subclass L14 tier + core L5/7/11/15/18/20 passives (Fast Movement,
-  Feral Instinct, Instinctive Pounce, Relentless Rage, Persistent Rage, Indomitable Might, Primal
-  Champion) — none implemented yet.
+- **Core passives — done:** Fast Movement (L5, `speed_walk += 10`), Extra Attack (L5), Brutal Strike
+  (L9/L17 dice) are all seeded in `Stats` level-up (`combat.cpp:43-59`).
+- **Relentless Rage (L11) + Primal Champion (L20) — IMPLEMENTED ✅ (2026-06-17, built + test_barbarian_l9_17.py green):**
+  - **Primal Champion (L20):** +4 STR & +4 CON, capped at 25, applied in `Stats::initializeClassResources`
+    (`combat.cpp:61-67`). Idempotent via a bound+saved `bool primal_champion_applied` (`agent.hpp`),
+    gated `if (level >= 20 && !primal_champion_applied)`. Safe across reloads (`agent_loader.dict_to_stats`
+    sets the flag *before* it calls `initialize_class_resources`) and dialog reopens (`_on_stats_ok` sources
+    `stats` from the live agent, preserving the flag). Old saves migrate cleanly (flag absent → applied once).
+  - **Relentless Rage (L11):** while raging, damage that would drop you to 0 HP triggers a CON save
+    (`saveModFor(bm, idx, SaveCon)`, so Aura of Protection applies) vs a `relentless_rage_dc` (10, **+5 per
+    use in the same Rage**, reset to 10 in `endRage`); success → `hp_cur = 1`. Hooked in `damageAgent`
+    (`combat_attack.cpp:401-422`), **before** the concentration-drop block (early-returns so a saved
+    Barbarian keeps concentration). `relentless_rage_dc` is a bound+saved `int` on `Stats`.
+  - **⚠️ `damageAgent` is now NON-static** (`combat.hpp:673`; binding changed `def_static`→`def`,
+    `rpg_bindings.cpp:1720`) so the Relentless Rage hook can use the seeded `roll`, `log_`, `saveModFor`,
+    and `agentName` instance members. All C++ callers are non-static members and both Python callers use
+    `engine.damage_agent(...)`, so the change is transparent — but future static-context callers must note this.
+- **Core Passives: Feral Instinct (L7), Instinctive Pounce (L7), Indomitable Might (L18) — IMPLEMENTED**
+  (awaiting build/test by Opus 2026-06-17):
+  - **Feral Instinct (L7):** Initiative rolls at Advantage. `combat_turn.cpp:rollInitiative` checks
+    `char_level >= 7 && character_class == Barbarian` → `e.d20 = std::max(roll(20), roll(20))`.
+  - **Instinctive Pounce (L7):** On Rage activation, grant half-speed movement THIS turn.
+    `combat_resources.cpp:activateRage` adds `walkRemaining_[idx] += stats.speed_walk / 2` for L7+.
+  - **Indomitable Might (L18):** STR saving throw total can't be lower than STR score. New helper
+    `CombatEngine::applyIndomitableMight(bm, saver_idx, ab, total)` declared in `combat.hpp:1049`,
+    defined in `combat_core.cpp:265`. Wired into all STR-save sites: `combat_turn.cpp` (lines 384, 504),
+    `combat_attack.cpp` (lines 468, 2970), `combat_riders.cpp` (lines 507, 568, 645), `combat_spells.cpp`
+    (lines 322, 1128). Tests: `test_barbarian_l9_17.py` (L7 chassis, Pounce deterministic movement delta,
+    L18 chassis + STR verification; Feral Instinct is smoke-tested via initiative presence).
+- **Deferred (still missing, verified 2026-06-17):** Berserker L14 Retaliation, Zealot L10 (other clauses)
+  / L14 Rage of the Gods, and the rest of the Barbarian subclass L14 tier.
+- **Persistent Rage (L15) — INERT BY DESIGN, no code (verified against the engine 2026-06-17):** Persistent
+  Rage's only mechanical effect is to *remove* Rage's early-end triggers (Rage normally ends if you don't
+  attack a hostile creature or take damage on your turn, or after 10 minutes). In this engine Rage has **no
+  modeled early-end at all**: `Resource "Rage".duration_remaining` is set to full on `activateRage`/`extendRage`
+  and zeroed only by `endRage` (manual), and is **never decremented per-turn anywhere** (`grep duration_remaining`
+  = activate/extend/end sites only; no tick in `combat_turn.cpp`). There is no "did you attack / take damage this
+  turn" tracking. So the conditions Persistent Rage suppresses do not exist, and the feature is a guaranteed no-op
+  in the current model. Writing code for it would be dead code — **documented as inert rather than implemented**
+  (per fix-root-cause / combat-sim-scope: don't add a per-turn early-end mechanic just to then suppress it). If a
+  real Rage early-end is ever modeled, gate it on `char_level < 15 || subclass-equivalent` to honor this feature.
 
 ## Spell mechanics
 - _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.
@@ -613,11 +669,20 @@ Requires spellbook system separate from prepared spells.
 ### L3: Arcane Ward (Abjurer) [DEFER]
 Requires parallel ward HP system separate from temp HP.
 
-### L3: Portent (Diviner) [DEFER]
-Requires d20 roll hook system to intercept/override rolls.
+### L3: Portent (Diviner) — IMPLEMENTED ✅
+- `CombatEngine::usePortentDie` (`combat_resources.cpp`): a Diviner Wizard banks a deque of d20 rolls
+  (`Stats::portent_dice`, regenerated on long rest via `regenerate_portent_dice`); spending one sets
+  `pending_portent_die` so the next `CombatEngine::roll()` returns it (the d20-roll hook this entry once
+  said was missing now exists). One use per round (`agent_portent_round_used_`). Bindings
+  `use_portent_die` / `regenerate_portent_dice` / `portent_dice` (`rpg_bindings.cpp:2604`).
 
-### L6: Sculpt Spells (Evoker) [DEFER]
-Requires team/faction system to distinguish allies vs enemies in AoE.
+### L6: Sculpt Spells (Evoker) — IMPLEMENTED ✅
+- The faction system this entry waited on now exists. An Evoker's **safe targets**
+  (`CombatEngine::safeTargets_`, `caster_idx → excluded indices`; `setSafeTargets`/`getSafeTargets`,
+  bindings `set_safe_targets`) are **fully excluded** from that caster's AoE/zone effects — no save, no
+  damage, no conditions — checked at the area-resolve sites in `combat_spells.cpp` (~430, 535, 1751).
+  Allies are selected manually in the GUI for now (see `[[evoker-safe-targets]]`); the same exclusion
+  path backs Careful Spell (`careful_targets`) and faction-based auto-sparing.
 
 ### L6: Phantasmal Creatures (Illusionist) [DEFER]
 Requires creature summoning system.
@@ -633,9 +698,28 @@ Requires creature summoning system.
 ### Deferred — Trickery Domain
 - **Invoke Duplicity** and related features need illusory-entity concept
 
-### Turn Undead — minor fidelity gaps
-- Undead with **Frightened immunity** aren't spared (no creature condition-immunity system)
-- "Ends early if caster is Incapacitated or dies" isn't cascaded
+### Turn Undead (L2) + Sear Undead (L5) — IMPLEMENTED ✅
+- **Turn Undead** is a Channel Divinity Magic action (`CombatEngine::useTurnUndead`,
+  `combat_resources.cpp`). Gated on Cleric **L2+** with a `Channel Divinity` use available; spends one
+  use. Each `is_undead` agent within **30 ft** (Euclidean cell distance, matching Sphere targeting) makes
+  a **WIS save** vs `spellSaveDcFromAbility(caster, SaveWis)`; on a fail it gains **Frightened +
+  Incapacitated** for 1 minute (`turns_remaining = 10`) with `on_damage = OnDamage_t::End` (any damage
+  ends it). `caster_idx` is stored on the `ActiveAgentCondition` as the fear source so the Frightened
+  "move as far away as possible" movement rule keys off the cleric.
+- **Sear Undead (L5+)** rolls `max(1, WIS mod)` **d8 once**, dealing that Radiant total to *each* undead
+  that fails — applied **before** the conditions so the on-damage end-rule doesn't immediately cancel the
+  Frightened/Incapacitated it's about to add (matches "this damage doesn't end the turn effect").
+- Returns `TurnUndeadResult {valid, save_dc, sear_damage, turned[], resisted[]}`. Bindings
+  `use_turn_undead` / `TurnUndeadResult` (`rpg_bindings.cpp`). GUI: `btn_cbt_turn_undead` button calls the
+  engine, logs `Turn Undead (DC X): N turned[, M Radiant each]`, and consumes the action (`main.py`).
+  Tests: `test_cleric.py` (`test_turn_undead_frightens_sears_and_filters`, `test_turn_undead_ends_on_damage`).
+- *Deferred fidelity gaps (v1 simplifications):*
+  - Targets **all** undead in range — "Each Undead **of your choice**" isn't modeled, so an allied/friendly
+    undead (e.g. a necromancer's summons) can't be spared. Would mirror Spirit Guardians' faction-aware
+    `zoneSparesTarget`, or a GUI target picker.
+  - Undead with **Frightened immunity** aren't spared (no creature condition-immunity system).
+  - "Ends early if the **caster** is Incapacitated or dies" isn't cascaded (only the takes-damage
+    end-trigger fires).
 
 ### Light Domain — Warding Flare + Corona of Light — IMPLEMENTED ✅ (2026-06-15, built + 72 suites green)
 - **Warding Flare (L3)** — a consumer of the **OnD20Seen** reaction window (`combat_attack.cpp`),
@@ -1711,6 +1795,22 @@ drains the target's HP max by the Necrotic damage dealt and heals the attacker (
 `AttackResult::magic_damage_dealt[Necrotic]`); Vampire Spawn bite wired in its `off_hand` slot
 (1d4+STR Piercing + 3d6 Necrotic + `reduceHPMax`). See memory `vampire-support`.
 
+**Vampire Bite auto-hits a Grappled target — DONE ✅ (2026-06-17)**
+New data-driven weapon flag `Weapon::auto_hit_if_grappled` (bound, serialized in `helpers._weapon_to_dict`/
+`_dict_to_weapon`): when an attack with this flag targets a creature **this attacker has Grappled**
+(`tgt_cond.grappled && grappler_idx == attacker`), a missed roll is promoted to a hit. The roll is still
+made (a nat 20 still crits; the OnD20Seen / Shield / Uncanny-Dodge defender windows still open — the auto-hit
+fires *after* `resolveAttack`, *before* those windows, so a Shield can still negate it). Implemented as
+`CombatEngine::forceAutoHit(bm, s)` called at BOTH `resolveAttack` call sites (`executeAction` auto/RL path +
+`beginAttack` GUI path); `InFlightAttack::auto_hit` carries the decision computed in `determineAdvantage`.
+The Barbarian Reckless-reroll `resolveAttack` (3rd call site) is gated on `!r.hit` + Barbarian, so a forced
+bite hit never reaches it. Set `"auto_hit_if_grappled": true` on the 5 vampire drain Bites in
+`DND2024_MonsterStats.json` (Vampire, Familiar, Spawn, Umbral Lord, Warden — the off_hand Bites with the
+`reduceHPMax` rider; Infernalist/Nightbringer have no Bite). Combo: the vampire's Claw grapples (escape DC 14)
+→ the Bite then auto-hits + drains. Tests: `test_vampire.py::test_bite_auto_hits_grappled_target` +
+`test_bite_no_auto_hit_when_grappled_by_other`. **Awaiting build.** Still NOT *gated* on Grappled (any
+target can be bitten; the auto-hit is just a bonus when the target IS grappled) — per the on-hit-rider direction.
+
 **Deferred / simplifications:**
 - **Sunlight Sensitivity / Hypersensitivity NOT modeled** — the Sunlight *category* exists but no
   creature reacts to it yet (no Disadvantage on attacks/ability checks in sunlight, no radiant
@@ -1719,7 +1819,9 @@ drains the target's HP max by the Necrotic damage dealt and heals the attacker (
 - **No lighting-editor UI to paint Sunlight** — set it via the encounter's `_lighting.json`
   `default_light: "Sunlight"` (round-trips); the LightingEditorDialog can't pick a default category.
 - **Bite is an attack + on-hit rider, NOT a CON save**, and is **not gated** on the target being
-  Grappled/Incapacitated/Restrained (DM discretion). Per user's "on-hit rider" direction.
+  Grappled/Incapacitated/Restrained (DM discretion). Per user's "on-hit rider" direction. (It does
+  now AUTO-HIT a Grappled target via `auto_hit_if_grappled` — see the DONE entry above — but is not
+  *restricted* to one.)
 - **No per-weapon attack cap** — `num_attacks` is global, so choosing the bite under the Attack
   action offers num_attacks bites; the DM makes one. A per-weapon attack-count system would fix it.
 - **reduceHPMax keys on Necrotic only** (the vampiric case). A different drain type would need the

@@ -41,7 +41,12 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
 
         InitiativeEntry e;
         e.agent_idx = i;
-        e.d20       = roll(20);
+        // Feral Instinct (Barbarian L7): roll Initiative at Advantage
+        if (s.character_class == CharacterClass::Barbarian && s.char_level >= 7) {
+            e.d20 = std::max(roll(20), roll(20));
+        } else {
+            e.d20 = roll(20);
+        }
         e.modifier  = s.initiativeModifier();
         e.total     = e.d20 + e.modifier;
         entries.push_back(e);
@@ -379,6 +384,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
         int save_d20 = roll(20);
         int save_total = save_d20 + save_mod;
+        save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
 
         auto ability_name = [](SaveAbility_t ab) -> std::string {
@@ -499,6 +505,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
         int save_d20 = roll(20);
         int save_total = save_d20 + save_mod - (2 * agent_cond.exhaustion_level);
+        save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
 
         auto ability_name = [](SaveAbility_t ab) -> std::string {

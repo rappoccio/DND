@@ -503,7 +503,9 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
         const Agent::Conditions& tc0 = agents[static_cast<std::size_t>(target_idx)].agent->getConditions();
         bool auto_fail = (tc0.paralyzed || tc0.stunned) && (sa == SaveStr || sa == SaveDex);
         int d20 = auto_fail ? 1 : roll(20);
-        bool saved = auto_fail ? false : (d20 + saveModFor(bm, target_idx, sa) >= dc);
+        int total = d20 + saveModFor(bm, target_idx, sa);
+        total = applyIndomitableMight(bm, target_idx, sa, total);
+        bool saved = auto_fail ? false : (total >= dc);
         if (saved) {
             log_("Cunning Strike: {} resisted {} (DC {})", agentName(bm, target_idx), name, dc);
             continue;
@@ -564,7 +566,9 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
 
     if (maneuver_type == 0) {
         // Trip: STR save or Prone for 1 turn
-        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveStr));
+        int save_total = roll(20, saveModFor(bm, target_idx, SaveStr));
+        save_total = applyIndomitableMight(bm, target_idx, SaveStr, save_total);
+        res.save_roll = save_total;
         if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.prone = true;
@@ -640,7 +644,9 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
     } else if (maneuver_type == 5) {
         // Disarming Attack: STR save or the target drops its weapon — its weapon attacks resolve as
         // improvised Unarmed Strikes until the start of your next turn (disarmed/disarmed_by).
-        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveStr));
+        int save_total = roll(20, saveModFor(bm, target_idx, SaveStr));
+        save_total = applyIndomitableMight(bm, target_idx, SaveStr, save_total);
+        res.save_roll = save_total;
         if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.disarmed = true;

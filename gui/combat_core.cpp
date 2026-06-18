@@ -262,6 +262,19 @@ int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t a
     return m + auraSaveBonus(bm, agent_idx);
 }
 
+int CombatEngine::applyIndomitableMight(const BattleMap& bm, int saver_idx, SaveAbility_t ab, int total) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (saver_idx < 0 || static_cast<std::size_t>(saver_idx) >= agents.size()) return total;
+    const Agent::Stats& s = agents[static_cast<std::size_t>(saver_idx)].agent->getStats();
+
+    // Indomitable Might (Barbarian L18): STR saving throw total can't be lower than STR score
+    if (ab == SaveStr && s.character_class == CharacterClass::Barbarian && s.char_level >= 18) {
+        return std::max(total, s.str);
+    }
+    return total;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Armor Class
 // ─────────────────────────────────────────────────────────────────────────────

@@ -471,6 +471,10 @@ namespace rpg {
       int  psionic_die_size{6};                                  // Psi Warrior: Psionic Energy die size (d6/d8/d10/d12 by level)
       int  bardic_inspiration_die{0};                            // Bard: SIZE of the held Bardic Inspiration die (0 = none; 6/8/10/12). One at a time; persists across turns until used or long rest.
       int  bardic_inspiration_die_size{6};                       // Bard: the die size this bard GRANTS (d6/d8/d10/d12 by level), set in initializeClassResources
+      // ── Barbarian L20 Primal Champion ────────────────────────────────────────
+      bool primal_champion_applied{false};                       // Primal Champion (L20): +4 STR/CON (capped at 25) applied; idempotent flag
+      // ── Barbarian L11 Relentless Rage ───────────────────────────────────────
+      int  relentless_rage_dc{10};                               // Relentless Rage save DC (10 base, +5 per use in same Rage); reset on rage end
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
       int  corona_of_light_turns{0};                             // Cleric Light Domain (L17): Corona of Light remaining duration in rounds (>0 = enemies in 60ft have Disadvantage on saves vs the caster's Fire/Radiant spells)

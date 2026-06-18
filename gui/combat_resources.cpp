@@ -336,6 +336,12 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
         }
     }
 
+    // Instinctive Pounce (L7): grant up to half speed of extra movement THIS turn
+    if (stats.char_level >= 7) {
+        walkRemaining_[idx] += stats.speed_walk / 2;
+        log_("{} Instinctive Pounce: +{} ft movement", agentName(bm, idx), stats.speed_walk / 2);
+    }
+
     bm.setAgentConditions(idx, cond);
     bm.setAgentStats(idx, stats);
     log_("{} activates Rage: raging=true, BPS resistance (0.5x)", agentName(bm, idx));
@@ -369,6 +375,9 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
     // Clear raging flag
     cond.raging = false;
     cond.reckless_attack = false;
+
+    // Reset Relentless Rage DC to base (10) when rage ends
+    stats.relentless_rage_dc = 10;
 
     // Restore normal damage multipliers for BPS (1.0x)
     stats.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)] = 1.0f;

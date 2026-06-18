@@ -58,6 +58,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         brutal_strike_damage_dice = 2;
       }
 
+      // Primal Champion (L20): +4 STR & +4 CON (capped at 25)
+      // Idempotent: only apply once per lifecycle (save/load safe)
+      if (level >= 20 && !primal_champion_applied) {
+        str = std::min(25, str + 4);
+        con = std::min(25, con + 4);
+        primal_champion_applied = true;
+      }
+
       // Path of the Berserker (L10): Intimidating Presence — PB uses per long rest
       if (barbarian_subclass == BerserkerPath && level >= 10) {
         int ip_uses = 2 + (level - 1) / 4;  // PB = 2 at L1-4, +1 at L5, +1 at L9, +1 at L13, +1 at L17

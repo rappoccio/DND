@@ -316,6 +316,7 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     ss.bonus     = 0;
     ss.auto_fail = auto_fail;
     ss.total     = save_d20 + ss.save_mod;
+    ss.total     = applyIndomitableMight(bm, tgt_idx, sp.save_ability, ss.total);
     ss.saved     = auto_fail ? false : (ss.total >= ss.dc);
     return ss;
 }
@@ -1123,8 +1124,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                              spell_cond.condition_name == "Frightened");
                         int save_d20 = fey_twist ? rollAdvantage(20) : roll(20);
                         int cond_save_mod = saveModFor(bm, tgt_idx, spell_cond.save_ability);
+                        int cond_save_total = save_d20 + cond_save_mod;
+                        cond_save_total = applyIndomitableMight(bm, tgt_idx, spell_cond.save_ability, cond_save_total);
 
-                        bool save_succeeded = (save_d20 + cond_save_mod >= save_dc);
+                        bool save_succeeded = (cond_save_total >= save_dc);
                         target_failed_save = !save_succeeded;
                         condition_applies = target_failed_save;
 
@@ -1132,7 +1135,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                              ability_name(spell_cond.save_ability),
                              spell_cond.condition_name,
                              save_d20, cond_save_mod,
-                             save_d20 + cond_save_mod,
+                             cond_save_total,
                              save_dc,
                              save_succeeded ? "SAVED" : "FAILED");
                     }

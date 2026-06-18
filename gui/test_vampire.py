@@ -160,9 +160,86 @@ def test_no_necrotic_no_drain():
     print("✅ reduceHPMax with no Necrotic damage drains nothing")
 
 
+def test_bite_auto_hits_grappled_target():
+    """A Bite weapon with auto_hit_if_grappled lands automatically against a creature the
+    attacker has Grappled — even with a hopeless attack bonus vs a sky-high AC."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    # Weak attacker (low STR → low to-hit) vs an unhittable AC: only the auto-hit can land.
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 5, 5), str=1, hp=50)
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Victim", 6, 5), hp=60, ac=40)
+
+    w = _bite_weapon()
+    w.auto_hit_if_grappled = True
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+
+    action = rpg.Attack()
+    action.attacker_idx = atk
+    action.target_idx = tgt
+    action.weapon_idx = 0
+
+    # Not grappled yet: against AC 40 the bite cannot hit (barring a nat 20). Verify the common case.
+    misses = 0
+    for _ in range(20):
+        st = engine.get_agent_stats(bm, tgt); st.hp_cur = 60; st.hp_max = 60
+        engine.set_agent_stats(bm, tgt, st)
+        r = engine.execute_action(bm, action)
+        if not r.hit:
+            misses += 1
+    assert misses >= 18, f"un-grappled bite vs AC 40 should mostly miss, only {20 - misses} missed"
+
+    # Now grapple the target with this attacker → every bite auto-hits.
+    cond = engine.get_agent_conditions(bm, tgt)
+    cond.grappled = True
+    cond.grappler_idx = atk
+    engine.set_agent_conditions(bm, tgt, cond)
+
+    for _ in range(20):
+        st = engine.get_agent_stats(bm, tgt); st.hp_cur = 60; st.hp_max = 60
+        engine.set_agent_stats(bm, tgt, st)
+        r = engine.execute_action(bm, action)
+        assert r.hit, "Bite vs a Grappled target must auto-hit"
+    print("✅ Bite auto-hits a creature the attacker has Grappled")
+
+
+def test_bite_no_auto_hit_when_grappled_by_other():
+    """auto_hit only applies vs a creature THIS attacker grapples — not one held by someone else."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 5, 5), str=1, hp=50)
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Victim", 6, 5), hp=60, ac=40)
+
+    w = _bite_weapon()
+    w.auto_hit_if_grappled = True
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+
+    # Grappled, but by a different creature (index 99, not the attacker).
+    cond = engine.get_agent_conditions(bm, tgt)
+    cond.grappled = True
+    cond.grappler_idx = 99
+    engine.set_agent_conditions(bm, tgt, cond)
+
+    action = rpg.Attack()
+    action.attacker_idx = atk
+    action.target_idx = tgt
+    action.weapon_idx = 0
+
+    misses = 0
+    for _ in range(20):
+        st = engine.get_agent_stats(bm, tgt); st.hp_cur = 60; st.hp_max = 60
+        engine.set_agent_stats(bm, tgt, st)
+        r = engine.execute_action(bm, action)
+        if not r.hit:
+            misses += 1
+    assert misses >= 18, "no auto-hit when the target is grappled by someone other than the attacker"
+    print("✅ no auto-hit when the target is grappled by a different creature")
+
+
 if __name__ == "__main__":
     test_available_hit_points_basics()
     test_long_rest_clears_drain()
     test_bite_drains_max_and_heals_attacker()
     test_no_necrotic_no_drain()
+    test_bite_auto_hits_grappled_target()
+    test_bite_no_auto_hit_when_grappled_by_other()
     print("\n✅ All vampire-feature tests passed!")
