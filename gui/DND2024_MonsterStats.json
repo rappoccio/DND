@@ -1229,7 +1229,7 @@
       "type": "Dragon",
       "cr": "11",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -1823,7 +1823,7 @@
       "type": "Dragon",
       "cr": "15",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -2863,7 +2863,7 @@
       "type": "Dragon",
       "cr": "18",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -3471,7 +3471,7 @@
       "type": "Dragon",
       "cr": "22",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -4519,7 +4519,7 @@
       "type": "Monstrosity",
       "cr": "2",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Spider Climb",
         "Web Walker"
@@ -6660,7 +6660,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Barbed Devil": {
     "name": "Barbed Devil",
@@ -7298,7 +7299,7 @@
       "type": "Monstrosity",
       "cr": "11",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Amphibious",
         "Divine Immortality",
@@ -7609,7 +7610,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Berserker": {
     "name": "Berserker",
@@ -7921,7 +7923,7 @@
       "type": "Elemental (Genie)",
       "cr": "12",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Amphibious",
         "Elemental Restoration",
@@ -9049,7 +9051,8 @@
         "Detect Thoughts",
         "Lightning Bolt"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Boromar Smuggler": {
     "name": "Boromar Smuggler",
@@ -10311,7 +10314,7 @@
       "type": "Construct",
       "cr": "4",
       "alignment": "Unaligned",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Disintegration",
         "Magic Resistance"
@@ -12807,7 +12810,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Crocodile": {
     "name": "Crocodile",
@@ -13356,7 +13360,7 @@
       "type": "Humanoid",
       "cr": "9",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Determined Survivor"
       ],
@@ -13474,7 +13478,7 @@
       "type": "Humanoid",
       "cr": "7",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Blood-Soaked Resolved"
       ],
@@ -13596,7 +13600,7 @@
       "type": "Humanoid",
       "cr": "11",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Nearer to the Dead"
       ],
@@ -14441,7 +14445,7 @@
       "type": "Humanoid",
       "cr": "16",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Culling Aura",
         "Magic Resistance"
@@ -14817,7 +14821,8 @@
       "2": [
         "Dispel Magic"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Death Knight Aspirant": {
     "name": "Death Knight Aspirant",
@@ -14928,7 +14933,8 @@
       "1": [
         "Dispel Magic"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Death Slaad": {
     "name": "Death Slaad",
@@ -15153,7 +15159,8 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
-    }
+    },
+    "is_undead": true
   },
   "Deep Dragon Wyrmling": {
     "name": "Deep Dragon Wyrmling",
@@ -15219,7 +15226,7 @@
       "type": "Dragon",
       "cr": "1",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Draconic"
@@ -15459,7 +15466,8 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
-    }
+    },
+    "is_undead": true
   },
   "Demobat": {
     "name": "Demobat",
@@ -16662,7 +16670,8 @@
         "Create Undead",
         "Finger of Death"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Draft Horse": {
     "name": "Draft Horse",
@@ -17381,7 +17390,7 @@
       "type": "Humaniod (Elf)",
       "cr": "5",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -17504,7 +17513,7 @@
       "type": "Humaniod (Elf)",
       "cr": "7",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -17631,7 +17640,7 @@
       "type": "Humaniod (Elf)",
       "cr": "1/4",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -17733,7 +17742,7 @@
       "type": "Humaniod (Elf)",
       "cr": "8",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -18549,7 +18558,7 @@
       "type": "Construct",
       "cr": "6",
       "alignment": "Chaotic Neutral",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -20556,7 +20565,8 @@
       "1": [
         "Fireball"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Flaming Skeleton": {
     "name": "Flaming Skeleton",
@@ -20673,7 +20683,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Flesh Golem": {
     "name": "Flesh Golem",
@@ -21958,7 +21969,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Ghast Gravecaller": {
     "name": "Ghast Gravecaller",
@@ -22102,7 +22114,8 @@
       "99": [
         "Speak with Dead"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Ghost": {
     "name": "Ghost",
@@ -22216,7 +22229,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Ghoul": {
     "name": "Ghoul",
@@ -22328,7 +22342,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Giant Ape": {
     "name": "Giant Ape",
@@ -27319,7 +27334,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Gray Ooze": {
     "name": "Gray Ooze",
@@ -29195,7 +29211,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Hawk": {
     "name": "Hawk",
@@ -32416,7 +32433,7 @@
       "type": "Humanoid (Human)",
       "cr": "8",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Evasion"
       ],
@@ -33734,7 +33751,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Lamia": {
     "name": "Lamia",
@@ -34203,7 +34221,8 @@
         "Power Word Kill",
         "Scrying"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Lion": {
     "name": "Lion",
@@ -35645,7 +35664,7 @@
       "type": "Humanoid (Human, Wizard)",
       "cr": "13",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Magic Resistance"
       ],
@@ -37672,7 +37691,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Modron Duodrone": {
     "name": "Modron Duodrone",
@@ -38487,7 +38507,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Mummy Lord": {
     "name": "Mummy Lord",
@@ -38626,7 +38647,8 @@
         "Harm",
         "Insect Plague"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Myconid Adult": {
     "name": "Myconid Adult",
@@ -39461,7 +39483,7 @@
       "type": "Construct",
       "cr": "2",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Evasion"
       ],
@@ -39576,7 +39598,7 @@
       "type": "Construct",
       "cr": "3",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Evasion"
       ],
@@ -39691,7 +39713,7 @@
       "type": "Construct",
       "cr": "7",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Evasion",
         "Magic Resistance"
@@ -40750,7 +40772,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Ogrillon Ogre": {
     "name": "Ogrillon Ogre",
@@ -42017,7 +42040,7 @@
       "type": "Aberration",
       "cr": "8",
       "alignment": "Neutral Evil",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42169,7 +42192,7 @@
       "type": "Aberration",
       "cr": "14",
       "alignment": "Neutral Evil",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42291,7 +42314,7 @@
       "type": "Aberration",
       "cr": "1/4",
       "alignment": "Neutral Evil",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42410,7 +42433,7 @@
       "type": "Aberration",
       "cr": "2",
       "alignment": "Neutral Evil",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42517,7 +42540,7 @@
       "type": "Aberration",
       "cr": "1/4",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Magic Resistance"
       ],
@@ -42635,7 +42658,7 @@
       "type": "Aberration",
       "cr": "8",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Magic Resistance"
       ],
@@ -44005,7 +44028,7 @@
       "type": "Elemental",
       "cr": "3",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Misty Slithering"
       ],
@@ -44161,7 +44184,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Pony": {
     "name": "Pony",
@@ -45358,7 +45382,7 @@
       "type": "Construct",
       "cr": "10",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Inspiring Presence",
         "Magic Resistance"
@@ -46276,7 +46300,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Rhinoceros": {
     "name": "Rhinoceros",
@@ -46910,7 +46935,7 @@
       "type": "Construct",
       "cr": "9",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -47041,7 +47066,7 @@
       "type": "Construct",
       "cr": "4",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common"
@@ -47131,7 +47156,7 @@
       "type": "Construct",
       "cr": "14",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -47973,7 +47998,7 @@
       "type": "Undead",
       "cr": "22",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Life Suppression",
         "Magic Resistance",
@@ -48038,7 +48063,8 @@
         "Create Undead",
         "Power Word Kill"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Sammaster (Lich Form)": {
     "name": "Sammaster (Lich Form)",
@@ -48143,7 +48169,7 @@
       "type": "Undead (Wizard)",
       "cr": "22",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Life Suppression",
         "Magic Resistance",
@@ -48212,7 +48238,8 @@
         "Disintegrate",
         "Power Word Kill"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Satyr": {
     "name": "Satyr",
@@ -49174,7 +49201,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Shadow Demon": {
     "name": "Shadow Demon",
@@ -50218,7 +50246,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Slaad Tadpole": {
     "name": "Slaad Tadpole",
@@ -50871,7 +50900,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Sphinx of Lore": {
     "name": "Sphinx of Lore",
@@ -51600,7 +51630,7 @@
       "type": "Dragon",
       "cr": "2",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -51832,7 +51862,7 @@
       "type": "Plant",
       "cr": "12",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Explosive Core",
         "Rolling Mass"
@@ -52410,7 +52440,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],	  
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -52502,22 +52532,23 @@
         "Detect Thoughts",
         "Dispel Magic",
         "Fog Cloud",
-	"Charm Person Bonus"
+        "Charm Person Bonus"
       ],
       "2": [
         "Scrying",
-	"Fireball",
-	"Gust of Wind",
-	"Mirror Image",
-	"Animate Dead"
+        "Fireball",
+        "Gust of Wind",
+        "Mirror Image",
+        "Animate Dead"
       ],
       "1": [
         "Wall of Fire",
-	"Greater Invisibility",
-	"Polymorph"
+        "Greater Invisibility",
+        "Polymorph"
       ]
-    }
-  },    
+    },
+    "is_undead": true
+  },
   "Stirge": {
     "name": "Stirge",
     "size": "Tiny",
@@ -53143,7 +53174,7 @@
       "type": "Fey",
       "cr": "14",
       "alignment": "Neutral Good",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Flyby"
       ],
@@ -53491,7 +53522,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Swarm of Dretches": {
     "name": "Swarm of Dretches",
@@ -54819,7 +54851,7 @@
       "type": "Construct",
       "cr": "8",
       "alignment": "Unaligned",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Disintegration",
         "Magic Resistance"
@@ -56941,7 +56973,7 @@
       "type": "Undead (Wizard)",
       "cr": "21",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Spirit Gem"
       ],
@@ -57015,7 +57047,8 @@
         "Power Word Kill",
         "Scrying"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Vampire": {
     "name": "Vampire",
@@ -57075,7 +57108,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -57142,7 +57175,8 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
-    }
+    },
+    "is_undead": true
   },
   "Vampire Familiar": {
     "name": "Vampire Familiar",
@@ -57338,7 +57372,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],	  
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -57431,7 +57465,8 @@
       "1": [
         "Wall of Fire"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Vampire Nightbringer": {
     "name": "Vampire Nightbringer",
@@ -57492,7 +57527,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -57555,7 +57590,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Vampire Spawn": {
     "name": "Vampire Spawn",
@@ -57615,7 +57651,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -57680,7 +57716,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Vampire Umbral Lord": {
     "name": "Vampire Umbral Lord",
@@ -57741,7 +57778,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -57827,7 +57864,8 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
-    }
+    },
+    "is_undead": true
   },
   "Vampire Warden": {
     "name": "Vampire Warden",
@@ -57888,7 +57926,7 @@
             "condition_name": "Grappled",
             "escape_dc": 14
           }
-	],
+        ],
         "mastery": "None"
       },
       "off_hand": {
@@ -57966,7 +58004,8 @@
       "99": [
         "Compulsion"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Venomous Snake": {
     "name": "Venomous Snake",
@@ -58501,7 +58540,7 @@
       "type": "Construct",
       "cr": "6",
       "alignment": "Unaligned",
-      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Disintegration",
         "Magic Resistance"
@@ -59122,7 +59161,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Warrior Commander": {
     "name": "Warrior Commander",
@@ -60212,7 +60252,7 @@
         "has_lair": false
       }
     }
-  },    
+  },
   "Weretiger": {
     "name": "Weretiger",
     "size": "Medium or Small",
@@ -60561,7 +60601,7 @@
       "type": "Dragon (Lycanthrope)",
       "cr": "8",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Flyby"
       ],
@@ -60798,10 +60838,11 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
-  "Will-o’-Wisp": {
-    "name": "Will-o’-Wisp",
+  "Will-o\u2019-Wisp": {
+    "name": "Will-o\u2019-Wisp",
     "size": "Tiny",
     "stats": {
       "str": 0,
@@ -60910,7 +60951,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Winged Kobold": {
     "name": "Winged Kobold",
@@ -61388,7 +61430,8 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
   "Wyvern": {
     "name": "Wyvern",
@@ -62395,7 +62438,7 @@
       "type": "Dragon",
       "cr": "5",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -62953,7 +62996,7 @@
       "type": "Dragon",
       "cr": "8",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common",
@@ -63745,7 +63788,7 @@
       "type": "Humanoid",
       "cr": "4",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Aura of Dread"
       ],
@@ -63858,7 +63901,7 @@
       "type": "Humanoid",
       "cr": "1",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [],
       "languages": [
         "Common"
@@ -63974,7 +64017,7 @@
       "type": "Undead (Wizard)",
       "cr": "18",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faerûn",
+      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
       "traits": [
         "Chardalyn Sense",
         "Magic Resistance",
@@ -64036,7 +64079,8 @@
         "Befuddlement",
         "Disintegrate"
       ]
-    }
+    },
+    "is_undead": true
   },
   "Zombie": {
     "name": "Zombie",
@@ -64128,9 +64172,10 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   },
-  "Zombie Clot":{
+  "Zombie Clot": {
     "name": "Zombie Clot",
     "size": "Large",
     "stats": {
@@ -64215,12 +64260,12 @@
       "immunities_conditions": [
         "Exhaustion",
         "Poisoned",
-	"Charmed",
-	"Exhaustion",
-	"Paralyzed",
-	"Petrified",
-	"Prone",
-	"Stunned"
+        "Charmed",
+        "Exhaustion",
+        "Paralyzed",
+        "Petrified",
+        "Prone",
+        "Stunned"
       ],
       "save_dc": null,
       "saving_throws": [],
@@ -64234,6 +64279,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    }
+    },
+    "is_undead": true
   }
 }
