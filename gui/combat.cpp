@@ -57,6 +57,21 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       if (level >= 17) {
         brutal_strike_damage_dice = 2;
       }
+
+      // Path of the Berserker (L10): Intimidating Presence — PB uses per long rest
+      if (barbarian_subclass == BerserkerPath && level >= 10) {
+        int ip_uses = 2 + (level - 1) / 4;  // PB = 2 at L1-4, +1 at L5, +1 at L9, +1 at L13, +1 at L17
+        Resource ip("Intimidating Presence", ip_uses, 0);
+        ip.long_rest_regen = ip_uses;
+        resources["Intimidating Presence"] = ip;
+      }
+
+      // Path of the Zealot (L10): Zealous Presence — 1 use per long rest
+      if (barbarian_subclass == ZealotPath && level >= 10) {
+        Resource zp("Zealous Presence", 1, 0);
+        zp.long_rest_regen = 1;
+        resources["Zealous Presence"] = zp;
+      }
       break;
     }
 
@@ -404,6 +419,15 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       if (bard_subclass == ValorPath && level >= 6) {
         num_attacks = 2;
       }
+      // Glamour L3 — Beguiling Magic: once per long rest, after casting an Enchantment/Illusion spell
+      // with a slot, a creature within 60 ft makes a WIS save or is Charmed/Frightened for 1 minute
+      // (see bardBeguilingMagic). The use is restorable by spending one Bardic Inspiration use
+      // (bardRestoreBeguilingMagic). Charm Person + Mirror Image are always prepared (GUI side).
+      if (bard_subclass == GlamourPath && level >= 3) {
+        Resource beg("Beguiling Magic", 1, 0);
+        beg.long_rest_regen = 1;
+        resources["Beguiling Magic"] = beg;
+      }
       // Glamour L6 — Mantle of Majesty: once per long rest (also restorable by spending a L3+ slot,
       // see bardRestoreMantleOfMajestyFromSlot). Activation casts Command free and opens a 1-minute
       // Concentration window allowing further free Bonus-Action Command casts (activateMantleOfMajesty).
@@ -411,6 +435,15 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         Resource maj("Mantle of Majesty", 1, 0);
         maj.long_rest_regen = 1;
         resources["Mantle of Majesty"] = maj;
+      }
+      // Glamour L14 — Unbreakable Majesty: once per long rest (also restorable by spending a L3+ slot,
+      // see bardRestoreUnbreakableMajestyFromSlot). Activation opens a 1-minute Concentration window
+      // of "majestic presence": melee attacks against the bard trigger Psychic damage and a CHA save
+      // (activateUnbreakableMajesty).
+      if (bard_subclass == GlamourPath && level >= 14) {
+        Resource um("Unbreakable Majesty", 1, 0);
+        um.long_rest_regen = 1;
+        resources["Unbreakable Majesty"] = um;
       }
       // Other college features (Glamour, Dance L6/L14, Lore Peerless Skill,
       // Valor Combat Inspiration / Battle Magic) are deferred — see known_limitations.md.

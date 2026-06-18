@@ -475,6 +475,13 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     if (r.hit) {
         rollDamage(w, attacker.getStats(), target.getStats(), r, suppress_positive_mod);
 
+        // Combat Inspiration damage mode (Valor Bard L3+): consume pending die bonus to this damage roll
+        int inspiration_bonus = consumePendingDamageBonus();
+        if (inspiration_bonus > 0) {
+            r.total_damage += inspiration_bonus;
+            r.damage_breakdown.push_back({"combat inspiration", inspiration_bonus});
+        }
+
         // Barbarian Rage damage bonus (STR-based attacks only)
         // Applies to melee and thrown weapons (where STR is the primary damage ability)
         if (attacker.getConditions().raging &&
@@ -645,6 +652,49 @@ bool CombatEngine::applyDefensiveDuelist(BattleMap& bm, int reactor_idx) noexcep
     return true;
 }
 
+bool CombatEngine::canCombatInspirationAC(const BattleMap& bm, const Attack& action, const AttackResult& r) const
+{
+    if (!r.hit || r.critical) return false;
+    const int tgt = action.target_idx;
+    const auto& agents = bm.placedAgents();
+    if (tgt < 0 || tgt >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats ts = bm.getAgentStats(tgt);
+    if (ts.bardic_inspiration_die <= 0) return false;  // must hold a Bardic Inspiration die
+    if (ts.hp_cur <= 0) return false;
+    const Agent::Conditions tc = bm.getAgentConditions(tgt);
+    if (tc.reaction_used || tc.incapacitated) return false;
+    // Check if rolling the die + adding it to AC would flip the hit to a miss. The die value
+    // is uncertain, so we optimistically check if the die's MAXIMUM could flip the hit.
+    if (r.total_roll >= r.target_ac + ts.bardic_inspiration_die) return false;
+    return true;
+}
+
+// Returns the rolled die value on success, or -1 on failure. Always spends the reaction + die.
+int CombatEngine::applyCombatInspirationAC(BattleMap& bm, int reactor_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor_idx < 0 || reactor_idx >= static_cast<int>(agents.size())) return -1;
+    Agent::Stats ts = bm.getAgentStats(reactor_idx);
+    int d = ts.bardic_inspiration_die;
+    if (d <= 0) return -1;
+
+    Agent::Conditions c = bm.getAgentConditions(reactor_idx);
+    if (c.reaction_used) return -1;
+
+    int rolled_value = roll(d);
+    // Consume the die
+    ts.bardic_inspiration_die = 0;
+    bm.setAgentStats(reactor_idx, ts);
+
+    // Mark the reaction as spent
+    c.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, c);
+
+    log_("{} uses Combat Inspiration d{}: rolled {} to AC (reaction spent)",
+         agentName(bm, reactor_idx), d, rolled_value);
+    return rolled_value;
+}
+
 // The defender's OnHit options against a just-resolved attack: Shield (negate) and/or Uncanny Dodge
 // (halve). Both cost the one reaction, so the menu lists every legal one and the chosen reaction
 // spends the reaction (foreclosing the others). Always appended with Skip when non-empty.
@@ -664,6 +714,9 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (canDefensiveDuelist(bm, action, r))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Defensive Duelist (+PB AC — the attack misses)", "DefensiveDuelist"});
+    if (canCombatInspirationAC(bm, action, r))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Combat Inspiration (add die to AC — attack may miss)", "CombatInspirationAC"});
     // Battle Master Parry: only vs a melee weapon attack that dealt damage.
     if (r.hit && r.total_damage > 0 && canParry(bm, action.target_idx)) {
         const auto aw = bm.getAgentWeapons(action.attacker_idx);
@@ -713,6 +766,19 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
     if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, action.target_idx)) {
             r.hit = false;                  // DM ruling: a Defensive-Duelist-negated hit is a genuine miss.
+            return true;
+        }
+        return false;
+    }
+    if (opt.feature == "CombatInspirationAC") {
+        int die_val = applyCombatInspirationAC(bm, action.target_idx);
+        if (die_val >= 0) {
+            if (r.total_roll < r.target_ac + die_val) {
+                r.hit = false;              // DM ruling: a Combat-Inspiration-negated hit is a genuine miss.
+                log_("{} Combat Inspiration +{} reduced the attack to a miss!", agentName(bm, action.target_idx), die_val);
+            } else {
+                log_("{} Combat Inspiration +{} didn't negate the hit (still hit)", agentName(bm, action.target_idx), die_val);
+            }
             return true;
         }
         return false;
@@ -1451,6 +1517,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         adv = true;
     }
 
+    // Zealot Zealous Presence (L10): creature with zealous_blessing gets Advantage on attacks
+    if (atk_cond.zealous_blessing) {
+        adv = true;
+        log_("Advantage: Zealous Presence");
+    }
+
     // Attacker blinded: attacks have disadvantage
     if (atk_cond.blinded) {
         dis = true;
@@ -1768,6 +1840,38 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
     const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
+
+    // ── Bard College of Glamour — Unbreakable Majesty (L14) ──────────────
+    // When the bard has an active majestic presence (Concentration window), any melee attack
+    // that hits the bard is automatically negated (the attack is wasted). Per-turn gate prevents
+    // multiple negations in one turn. Like Shield, this runs automatically with no reaction cost.
+    // On a successful save vs the bard's spell save DC, trigger the success-rider TODO (Disadvantage
+    // on next save vs the bard's spells).
+    if (r.hit && w.type == WeaponType::Melee &&
+        tgt_stats.majestic_presence_turns > 0 && !tgt_stats.majesty_checked_this_turn) {
+        tgt_stats.majesty_checked_this_turn = true;
+        bm.setAgentStats(action.target_idx, tgt_stats);
+
+        // Save vs bard's spell save DC (CHA, to override the rider)
+        const int dc = spellSaveDcFromAbility(tgt_stats, SaveCha);
+        const int atk_save_mod = saveModFor(bm, action.attacker_idx, SaveCha);
+        const int atk_save_d20 = roll(20);
+        const int atk_save_total = atk_save_d20 + atk_save_mod;
+        const bool atk_saved = atk_save_total >= dc;
+
+        r.hit = false;  // negate the attack (like Shield)
+
+        if (!atk_saved) {
+            // Failed save: TODO set majesty_disadv_save_vs rider for next spell save vs this bard
+            log_("{}'s majestic presence causes {} to waste a melee attack (CHA save DC {}: rolled {} → "
+                 "failed)", agentName(bm, action.target_idx), agentName(bm, action.attacker_idx),
+                 dc, atk_save_total);
+        } else {
+            log_("{}'s majestic presence is resisted by {} (CHA save DC {}: rolled {} → succeeded; "
+                 "TODO: Disadvantage on next save vs {}'s spells)", agentName(bm, action.target_idx),
+                 agentName(bm, action.attacker_idx), dc, atk_save_total, agentName(bm, action.target_idx));
+        }
+    }
 
     // Set Brutal Strike flag if eligible and attack hits
     Agent::Conditions updated_atk_cond = atk_cond;

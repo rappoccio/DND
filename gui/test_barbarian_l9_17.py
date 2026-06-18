@@ -312,6 +312,144 @@ def test_hamstrung_reset():
     print("✅ test_hamstrung_reset passed")
 
 
+def test_intimidating_presence_berserker_l10():
+    """Verify Intimidating Presence (Berserker L10) fails WIS save -> Frightened"""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    config_barb = create_test_agent("Berserker10", 5, 5)
+    idx_barb = add_agent_to_battle(engine, bm, config_barb)
+
+    config_enemy = create_test_agent("Enemy", 6, 5)
+    idx_enemy = add_agent_to_battle(engine, bm, config_enemy)
+
+    # Setup Berserker
+    stats = engine.get_agent_stats(bm, idx_barb)
+    stats.character_class = rpg.CharacterClass.Barbarian
+    stats.char_level = 10
+    stats.barbarian_subclass = rpg.BarbianSubclass.Berserker
+    stats.str = 18  # +4 STR mod
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 10)
+    engine.set_agent_stats(bm, idx_barb, stats)
+
+    # Setup enemy with low WIS (will fail save)
+    enemy_stats = engine.get_agent_stats(bm, idx_enemy)
+    enemy_stats.wis = 8  # -1 WIS mod
+    engine.set_agent_stats(bm, idx_enemy, enemy_stats)
+
+    # Use Intimidating Presence
+    result = engine.use_intimidating_presence(bm, idx_barb)
+    assert result, "Intimidating Presence should succeed"
+
+    # Verify enemy is Frightened
+    enemy_cond = engine.get_agent_conditions(bm, idx_enemy)
+    assert enemy_cond.frightened, "Enemy should be Frightened on failed save"
+    print("✅ test_intimidating_presence_berserker_l10 passed")
+
+
+def test_intimidating_presence_allies_spared():
+    """Verify Intimidating Presence does NOT affect allies"""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    config_barb = create_test_agent("Berserker10", 5, 5)
+    idx_barb = add_agent_to_battle(engine, bm, config_barb)
+
+    config_ally = create_test_agent("Ally", 6, 5)
+    idx_ally = add_agent_to_battle(engine, bm, config_ally)
+
+    # Setup Berserker
+    stats = engine.get_agent_stats(bm, idx_barb)
+    stats.character_class = rpg.CharacterClass.Barbarian
+    stats.char_level = 10
+    stats.barbarian_subclass = rpg.BarbianSubclass.Berserker
+    stats.str = 18
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 10)
+    engine.set_agent_stats(bm, idx_barb, stats)
+
+    # Set faction so they are allies
+    bm.set_agent_faction(idx_barb, 1)
+    bm.set_agent_faction(idx_ally, 1)
+
+    # Use Intimidating Presence
+    result = engine.use_intimidating_presence(bm, idx_barb)
+    assert result, "Intimidating Presence should succeed"
+
+    # Verify ally is NOT Frightened
+    ally_cond = engine.get_agent_conditions(bm, idx_ally)
+    assert not ally_cond.frightened, "Ally should NOT be Frightened"
+    print("✅ test_intimidating_presence_allies_spared passed")
+
+
+def test_zealous_presence_zealot_l10():
+    """Verify Zealous Presence (Zealot L10) grants Advantage on attacks and saves"""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    config_zealot = create_test_agent("Zealot10", 5, 5)
+    idx_zealot = add_agent_to_battle(engine, bm, config_zealot)
+
+    config_ally = create_test_agent("Ally", 6, 5)
+    idx_ally = add_agent_to_battle(engine, bm, config_ally)
+
+    # Setup Zealot
+    stats = engine.get_agent_stats(bm, idx_zealot)
+    stats.character_class = rpg.CharacterClass.Barbarian
+    stats.char_level = 10
+    stats.barbarian_subclass = rpg.BarbianSubclass.Zealot
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 10)
+    engine.set_agent_stats(bm, idx_zealot, stats)
+
+    # Set faction so they are allies
+    bm.set_agent_faction(idx_zealot, 1)
+    bm.set_agent_faction(idx_ally, 1)
+
+    # Use Zealous Presence
+    result = engine.use_zealous_presence(bm, idx_zealot)
+    assert result, "Zealous Presence should succeed"
+
+    # Verify ally has zealous_blessing
+    ally_cond = engine.get_agent_conditions(bm, idx_ally)
+    assert ally_cond.zealous_blessing, "Ally should have zealous_blessing for Advantage"
+    print("✅ test_zealous_presence_zealot_l10 passed")
+
+
+def test_zealous_presence_expires_at_turn_start():
+    """Verify Zealous Presence expires at start of next turn"""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    config_zealot = create_test_agent("Zealot10", 5, 5)
+    idx_zealot = add_agent_to_battle(engine, bm, config_zealot)
+
+    config_ally = create_test_agent("Ally", 6, 5)
+    idx_ally = add_agent_to_battle(engine, bm, config_ally)
+
+    # Setup
+    stats = engine.get_agent_stats(bm, idx_zealot)
+    stats.character_class = rpg.CharacterClass.Barbarian
+    stats.char_level = 10
+    stats.barbarian_subclass = rpg.BarbianSubclass.Zealot
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 10)
+    engine.set_agent_stats(bm, idx_zealot, stats)
+
+    bm.set_agent_faction(idx_zealot, 1)
+    bm.set_agent_faction(idx_ally, 1)
+
+    # Use Zealous Presence
+    engine.use_zealous_presence(bm, idx_zealot)
+    ally_cond = engine.get_agent_conditions(bm, idx_ally)
+    assert ally_cond.zealous_blessing, "Ally should have zealous_blessing initially"
+
+    # Begin the Zealot's next turn (which resets the turn flags)
+    engine.begin_turn(bm, idx_zealot)
+
+    # Verify zealous_blessing is reset
+    ally_cond = engine.get_agent_conditions(bm, idx_ally)
+    assert not ally_cond.zealous_blessing, "zealous_blessing should be reset at start of next turn"
+    print("✅ test_zealous_presence_expires_at_turn_start passed")
+
+
 if __name__ == "__main__":
     test_brutal_strike_damage_dice_l9()
     test_brutal_strike_damage_dice_l17()
@@ -324,4 +462,8 @@ if __name__ == "__main__":
     test_brutal_strike_multi_effect_l17()
     test_brutal_strike_flag_reset()
     test_hamstrung_reset()
-    print("\n✅ All L9-17 Brutal Strike tests passed!")
+    test_intimidating_presence_berserker_l10()
+    test_intimidating_presence_allies_spared()
+    test_zealous_presence_zealot_l10()
+    test_zealous_presence_expires_at_turn_start()
+    print("\n✅ All L9-17 Barbarian tests passed!")

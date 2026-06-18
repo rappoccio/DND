@@ -289,7 +289,7 @@ path). The riposte fires *after* the triggering attack fully resolves, so it's a
   multiplier (consistent with Divine Fury / Berserker Frenzy bonus dice).
 
 ### Additional Maneuvers — IMPLEMENTED 2026-06-14 (test_fighter.py)
-The 2024 maneuver set is now wired across the three reuse buckets (see `BATTLE_MASTER_HANDOFF.md`).
+The 2024 maneuver set is now wired across the three reuse buckets (on-hit save riders, bonus-action, reaction).
 All save riders share `applyManeuverEffect`'s dispatch and the save DC `8 + PB + max(STR,DEX) mod`.
 
 - **On-hit save/effect riders** (`applyManeuverEffect` dispatch + `_offer_maneuver` menu):
@@ -442,6 +442,34 @@ layer (main.py) rather than the C++ engine. This means:
   hit (eligibility computed before reckless is set); the GUI apply path does. (b) post-hoc activation
   isn't logged for replay (pre-declare logs `log_event("reckless")`). (c) the post-hoc path ignores
   `raging` while the pre-declare GUI prompt requires it — minor inconsistency.
+
+## Barbarian subclass L10 "Presence" abilities — IMPLEMENTED ✅ (2026-06-17, built + test_barbarian_l9_17.py green)
+Both are Bonus-Action emanations modeled on the Spirit Guardians emanation + Paladin-aura faction
+logic (`areAllies`, `saveModFor`). Engine in `combat_resources.cpp`; bound in `rpg_bindings.cpp`;
+GUI Bonus-Action buttons in `main.py` (gated on subclass + L10, label shows uses, hidden once
+`bonus_used`). Distance uses the **Euclidean** emanation metric `sqrt(dx²+dy²)*5` to match Spirit
+Guardians (`resolveAoeTargets`, `Spell::Sphere`) — NOT Chebyshev/Manhattan.
+- **Intimidating Presence (Berserker L10):** `useIntimidatingPresence` — 30-ft emanation, enemies
+  only (`areAllies` spares allies), each rolls a WIS save (DC 8 + STR mod + PB); on fail →
+  Frightened until the end of the Barbarian's next turn via `addAgentCondition("Frightened",
+  turns_remaining=2)` (which routes through `applyFrightened`, so Aura of Courage immunity is
+  honored automatically — do NOT also call applyFrightened). Resource: PB uses/long rest, falls
+  back to spending one Rage use.
+- **Zealous Presence (Zealot L10):** `useZealousPresence` — 60-ft emanation, up to 10 allies
+  (incl. self), grants Advantage on attack rolls **and** saving throws. New `Conditions.zealous_blessing`
+  bool consumed in `determineAdvantage` (attacks) and `rollSpellSave` (spell saves). Resource:
+  1 use/long rest or one Rage use.
+- **Granter-relative expiry (the right pattern):** the buff lasts "until the start of the GRANTING
+  Zealot's next turn", so it is tagged with `Conditions.zealous_blessing_by = caster_idx` and cleared
+  in `CombatEngine::beginTurn` when that Zealot's turn begins (mirrors `goaded_by`/`distracted_by`).
+  It is NOT reset in the buffed creature's own `Agent::turn()`.
+- **Action-economy gotcha (fixed):** `spendBonusAction` re-reads + writes back stats, so it MUST run
+  AFTER the function's final `setAgentStats(idx, stats)` or the bonus action gets refunded. Both
+  functions persist `stats` first, then call `spendBonusAction` last.
+- **Deferred (still missing):** Berserker L14 Retaliation, Zealot L10 (other clauses) / L14 Rage of the
+  Gods, and the rest of the Barbarian subclass L14 tier + core L5/7/11/15/18/20 passives (Fast Movement,
+  Feral Instinct, Instinctive Pounce, Relentless Rage, Persistent Rage, Indomitable Might, Primal
+  Champion) — none implemented yet.
 
 ## Spell mechanics
 - _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.
@@ -953,7 +981,33 @@ to spell saves this pass* — see the OnSaveFail entry under Architecture → Po
 - **Dance L3** — Unarmored Defense (AC = 10 + DEX + CHA, unarmored), in `computeAC` (`combat_core.cpp`).
 - **Lore L3** — Cutting Words: `bard_cutting_words` reaction expends a Bardic Inspiration use to
   SUBTRACT the die from the next D20 Test (negative `pending_roll_bonus_`).
-- **Valor L6** — Extra Attack (`num_attacks = 2`) in the `case Bard:` chassis.
+- **Valor L3/L6/L14 — IMPLEMENTED 2026-06-17** (built + 73 suites green, `test_bard.py`):
+  - **L3 Combat Inspiration** — a held Bardic die can be spent two new ways. *Damage mode:*
+    `useBardicDieForDamage` rolls the die into a new additive `pending_damage_bonus_`
+    (`consumePendingDamageBonus()`, mirrors `pending_roll_bonus_`), consumed at the next weapon
+    damage roll (`resolveAttack`, shows as a `"combat inspiration"` line in `damage_breakdown`).
+    *AC mode:* an OnHit defender reaction mirroring Defensive Duelist — `canCombatInspirationAC` /
+    `applyCombatInspirationAC`, offered in `defenderOnHitOptions` + dispatched in
+    `maybeDefenderOnHitInline` (rolls the die, flips `r.hit=false` if it covers the margin; the die +
+    reaction are spent either way). **Gating is self-contained** (deliberate simplification): the
+    engine fns only require the actor to hold a Bardic die — NO cross-creature "which bard granted
+    it / is that bard Valor L3+" lookup; the GUI surfaces the buttons for Valor parties only.
+  - **L6 Extra Attack** (`num_attacks = 2`) in the `case Bard:` chassis.
+  - **L14 Battle Magic** — casting a Bard spell via the Magic action sets
+    `Conditions.battle_magic_available` (gated on `result.valid` + Valor L14+ in `executeSpell`),
+    reset in `turn()`; the GUI offers one bonus-action weapon attack via the generic
+    `_start_extra_attack` flow. **Martial Training (L3) = documented no-op** (weapon proficiency is
+    per-weapon `Weapon::proficient`, not class-gated; no armor-proficiency subsystem to hook).
+  - Bindings: `use_bardic_die_for_damage`, `can_combat_inspiration_ac`, `apply_combat_inspiration_ac`,
+    plus `Conditions.battle_magic_available`. **Also fixed two pre-existing Glamour gaps surfaced by
+    these tests:** `Stats::majestic_presence_turns` was never bound (added), and `dropConcentration`
+    cleared `mantle_majesty_turns` but NOT `majestic_presence_turns` — Unbreakable Majesty's window
+    now ends on concentration drop (step 4a', mirrors Mantle of Majesty). The prior session's
+    Unbreakable-Majesty tests had never actually run green; they do now.
+  - **TEST NOTE:** `AttackResult` is a read-only output struct — tests build real ones via
+    `execute_action` + a finder loop (see `_find_attack` in `test_bard.py`), never by construction.
+    And add ALL agents before `set_agent_spells` (`add_agent_to_battle` → `apply_agent_configs` wipes
+    the directly-set spell list — the [[agent_dual_list_gotcha]]).
 - **Glamour L3** — Mantle of Inspiration: `bard_mantle_of_inspiration(bm, bard_idx, targets)`
   (`combat_riders.cpp`, bound as `apply_mantle_of_inspiration`). Bonus Action, expends one Bardic
   Inspiration use, rolls the die ONCE; each chosen recipient gains temp HP = **2× the roll** via the
@@ -992,11 +1046,12 @@ to spell saves this pass* — see the OnSaveFail entry under Architecture → Po
 
 **Deferred (per scope / size):**
 - **Dance**: Bardic Damage unarmed strike, Agile Strikes, L6 Inspiring Movement, L14 Leading Evasion.
-- **Glamour**: Mantle-of-Inspiration Reaction-move rider (above), Beguiling Magic, L14 Unbreakable
-  Majesty. (L6 Mantle of Majesty is DONE — see above.)
+- **Glamour**: Mantle-of-Inspiration Reaction-move rider (above) only. (Mantle of Inspiration L3,
+  Beguiling Magic L3, Mantle of Majesty L6, and Unbreakable Majesty L14 are all DONE — see above.
+  Glamour is complete except the no-OA Reaction-move clause, which needs new infra.)
 - **Lore**: L14 Peerless Skill (re-add die on the bard's own fail).
-- **Valor**: Combat Inspiration (+AC / +damage modes — the natural next reuse of the held die,
-  needs a `pending_damage_bonus_` and an incoming-attack AC hook), Martial Training, L14 Battle Magic.
+- **Valor**: fully implemented (L3 Combat Inspiration + L6 Extra Attack + L14 Battle Magic;
+  Martial Training = no-op) — see the **Implemented** list above. Nothing deferred.
 - **[KNOWN LIMITATION] Out-of-combat / flavor**: Jack of All Trades, Expertise, Magical Secrets,
   Words of Creation — no combat-sim path; not implemented (per scope rule).
 

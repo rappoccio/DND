@@ -126,6 +126,11 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (c.disarmed && c.disarmed_by == agent_idx) {
             c.disarmed = false; c.disarmed_by = -1;                                 dirty = true;
         }
+        // Zealot Zealous Presence — the Advantage buff lasts "until the start of the granting
+        // Zealot's next turn", so expire it as that Zealot's turn begins (tagged on each ally).
+        if (c.zealous_blessing && c.zealous_blessing_by == agent_idx) {
+            c.zealous_blessing = false; c.zealous_blessing_by = -1;                 dirty = true;
+        }
         if (dirty) bm.setAgentConditions(i, c);
     }
 
@@ -159,6 +164,23 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 bm.setAgentConditions(agent_idx, mc);
             }
             log_("{}'s unearthly appearance fades (Mantle of Majesty ends)", agent_name);
+        }
+    }
+
+    // Bard College of Glamour — Unbreakable Majesty: tick down the 1-minute (10-round) "majestic
+    // presence" window. Reset the per-turn gate. When it expires, also drop the Concentration.
+    if (stats.majestic_presence_turns > 0) {
+        --stats.majestic_presence_turns;
+        stats.majesty_checked_this_turn = false;  // reset gate for the new turn
+        bm.setAgentStats(agent_idx, stats);
+        if (stats.majestic_presence_turns == 0) {
+            Agent::Conditions mc = bm.getAgentConditions(agent_idx);
+            if (mc.concentrating && mc.concentrating_on == "Unbreakable Majesty") {
+                mc.concentrating    = false;
+                mc.concentrating_on = {};
+                bm.setAgentConditions(agent_idx, mc);
+            }
+            log_("{}'s majestic presence fades (Unbreakable Majesty ends)", agent_name);
         }
     }
 

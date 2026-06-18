@@ -158,6 +158,27 @@ def test_sorcerous_burst_lands_as_chosen_type():
     print("✅ test_sorcerous_burst_lands_as_chosen_type passed")
 
 
+def test_dict_to_spell_parses_school():
+    """Regression: spells.json stores schools lowercase ("enchantment") but the SpellSchool enum
+    members are capitalized. _dict_to_spell must normalize so school resolves (was silently NONE for
+    every spells.json spell, which broke Glamour Beguiling Magic's Enchantment/Illusion gate)."""
+    catalog = json.load(open(_SPELLS_JSON))
+    by_name = {s["name"]: s for s in catalog}
+    cases = [
+        ("Charm Person",  rpg.SpellSchool.Enchantment),
+        ("Mirror Image",  rpg.SpellSchool.Illusion),
+        ("Fireball",      rpg.SpellSchool.Evocation),
+    ]
+    for name, expected in cases:
+        if name not in by_name:
+            continue
+        sp = helpers._dict_to_spell(by_name[name])
+        assert sp.school == expected, f"{name}: expected {expected}, got {sp.school}"
+    # A spell dict with no school stays NONE rather than erroring.
+    assert helpers._dict_to_spell({"name": "x"}).school == rpg.SpellSchool.NONE
+    print("✅ test_dict_to_spell_parses_school passed")
+
+
 def main():
     print("Running cast-time element choice tests (Chromatic Orb / Sorcerous Burst)...\n")
     test_override_field_binding()
@@ -165,6 +186,7 @@ def main():
     test_chromatic_orb_override_replaces_stored_type()
     test_override_is_per_cast_only()
     test_sorcerous_burst_lands_as_chosen_type()
+    test_dict_to_spell_parses_school()
     print("\n" + "=" * 60)
     print("✅ All cast-time element choice tests passed!")
     print("=" * 60)

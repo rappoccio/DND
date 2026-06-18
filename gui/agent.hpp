@@ -476,6 +476,9 @@ namespace rpg {
       int  corona_of_light_turns{0};                             // Cleric Light Domain (L17): Corona of Light remaining duration in rounds (>0 = enemies in 60ft have Disadvantage on saves vs the caster's Fire/Radiant spells)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
       int  mantle_majesty_turns{0};                              // Bard College of Glamour (L6) — Mantle of Majesty: "unearthly appearance" window in rounds (>0 = may re-cast Command as a Bonus Action with no slot; Command auto-fails for creatures Charmed by this bard). Tied to concentration on "Mantle of Majesty".
+      int  majestic_presence_turns{0};                            // Bard College of Glamour (L14) — Unbreakable Majesty: "majestic presence" window in rounds (>0 = negates incoming attacks automatically like Shield, no reaction). Tied to concentration on "Unbreakable Majesty".
+      bool majesty_checked_this_turn{false};                      // Unbreakable Majesty: per-turn gate — only check/negate once per turn
+      int  majesty_disadv_save_vs{-1};                            // Unbreakable Majesty: success-rider; spell index whose save gets Disadvantage (TODO: full rider impl); -1 = none
       // Wild Magic Surge persistent effects (set by applyWildMagicSurgeEffect, tick at turn start)
       bool shield_active{false};                                 // Shield spell: +5 AC (via ac_temporary_modifications) until start of next turn + Magic Missile immunity
       int  wild_magic_shield_turns{0};                           // Band 2 (spectral shield): +2 AC (via ac_temporary_modifications) + Magic Missile immunity, in rounds
@@ -713,6 +716,7 @@ namespace rpg {
       bool piercer_reroll_used_this_turn{false};     // Piercer: Puncture damage-die reroll once per turn
       bool slasher_slow_used_this_turn{false};       // Slasher: Hamstring −10 ft Speed once per turn
       bool gwm_hew_available{false};   // Great Weapon Master Hew: a melee crit/kill offers a bonus attack (GUI prompt)
+      bool battle_magic_available{false};  // Battle Magic (Valor Bard L14+): a Magic action casting a Bard spell offers a bonus weapon attack (GUI prompt)
       // ── General feats — enhanced-crit marks (cross-turn; NOT reset in turn()) ────────
       // Set on the VICTIM by a critical hit; expire at the start of the feat-user's next turn
       // (cleared in CombatEngine::beginTurn for the agent whose index matches *_marked_by).
@@ -728,6 +732,9 @@ namespace rpg {
       // Weapon Mastery feature) — in the Attack action, freeing the Bonus Action. Dual Wielder
       // grants an ADDITIONAL bonus-action off-hand attack (only useful once Nick frees the bonus).
       bool offhand_attack_used{false};      // the per-turn off-hand extra attack has been spent
+      // ── Barbarian L10 subclass features ─────────────────────────────────────
+      bool zealous_blessing{false};         // Zealot Zealous Presence: grants Advantage on attack rolls and saves until the granter's next turn
+      int  zealous_blessing_by{-1};         // index of the Zealot who granted zealous_blessing; cleared in CombatEngine::beginTurn as that Zealot's turn begins (mirrors goaded_by)
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -833,12 +840,16 @@ namespace rpg {
       conditions_.cleave_available             = false;
       conditions_.cleave_used_this_turn        = false;
       conditions_.offhand_attack_used          = false;
+      // zealous_blessing is NOT reset here: it lasts "until the start of the GRANTING Zealot's
+      // next turn", so it is cleared in CombatEngine::beginTurn (tagged via zealous_blessing_by),
+      // mirroring goaded_by / distracted_by — not on the buffed creature's own turn.
       conditions_.savage_attacker_used_this_turn     = false;
       conditions_.tavern_brawler_push_used_this_turn = false;
       conditions_.crusher_push_used_this_turn        = false;
       conditions_.piercer_reroll_used_this_turn      = false;
       conditions_.slasher_slow_used_this_turn        = false;
       conditions_.gwm_hew_available                  = false;
+      conditions_.battle_magic_available             = false;
       takeTurn();
     }
 

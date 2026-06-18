@@ -460,12 +460,14 @@ class App:
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
-        self.pending_unarmed_type      = ""    # "" | "punch" | "grapple" | "push"
+        self.pending_unarmed_type      = ""    # "" | "grapple" | "push" (Damage routes via pending_attack_slot)
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
+        self.pending_beguiling         = False # Glamour Bard Beguiling Magic: awaiting target click after cast
+        self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
@@ -736,7 +738,6 @@ class App:
         TW2_shove = (W - 4) // 2
         self.btn_cbt_shove_push.rect.update(  px,           self.btn_cbt_shove_push.rect.y,  TW2_shove, self._BTN_H)
         self.btn_cbt_shove_prone.rect.update( px+TW2_shove+4, self.btn_cbt_shove_prone.rect.y, TW2_shove, self._BTN_H)
-        self.btn_cbt_grapple.rect.update(     px,            self.btn_cbt_grapple.rect.y,     TW2_shove, self._BTN_H)
         self.btn_cbt_grapple_esc.rect.update( px+TW2_shove+4, self.btn_cbt_grapple_esc.rect.y, TW2_shove, self._BTN_H)
         self.btn_cbt_spell_action.rect.update(px,          self.btn_cbt_spell_action.rect.y,  W,  self._BTN_H)
         self.btn_cbt_end_turn.rect.update(    px,          self.btn_cbt_end_turn.rect.y,       W,  self._BTN_H)
@@ -806,9 +807,9 @@ class App:
         self.btn_cbt_shove_prone = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "⬇ Shove (Prone)",
                                           (140, 100, 150), (160, 120, 170), self.font_md)
-        self.btn_cbt_grapple     = Button(pygame.Rect(px,       dummy_y, HW, B),
-                                          "✊ Grapple",
-                                          (150, 120, 80), (180, 150, 110), self.font_md)
+        # Grapple is no longer a bonus action — it is an Unarmed Strike option (see
+        # _show_unarmed_menu) that counts against the Attack action's attack budget. Only the
+        # Escape-from-grapple bonus action survives here.
         self.btn_cbt_grapple_esc = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "💨 Escape",
                                           (150, 120, 80), (180, 150, 110), self.font_md)
@@ -918,6 +919,12 @@ class App:
         self.btn_cbt_mantle_majesty = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Mantle of Majesty (Bonus Action)",
                                           (190, 120, 220), (225, 175, 250), self.font_md)
+        self.btn_cbt_unbreakable_majesty = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Unbreakable Majesty (Bonus Action)",
+                                          (190, 110, 210), (225, 165, 245), self.font_md)
+        self.btn_cbt_beguiling_restore = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Restore Beguiling Magic (1 Inspiration)",
+                                          (170, 130, 200), (205, 165, 235), self.font_md)
         self.btn_cbt_sacred_weapon = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Sacred Weapon (Bonus Action)",
                                           (200, 180, 110), (240, 220, 150), self.font_md)
@@ -930,6 +937,12 @@ class App:
         self.btn_cbt_dread_ambusher = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Dread Ambusher",
                                           (80, 90, 130), (110, 120, 170), self.font_md)
+        self.btn_cbt_intimidating_presence = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Intimidating Presence (Bonus Action)",
+                                          (180, 80, 60), (220, 110, 90), self.font_md)
+        self.btn_cbt_zealous_presence = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Zealous Presence (Bonus Action)",
+                                          (140, 100, 180), (170, 130, 210), self.font_md)
         self.btn_cbt_tireless = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Tireless (Magic Action)",
                                           (90, 150, 120), (120, 185, 155), self.font_md)
@@ -1874,6 +1887,8 @@ class App:
         self.pending_feint             = None
         self.pending_mantle_active     = False
         self.pending_mantle_targets    = []
+        self.pending_beguiling         = False
+        self.pending_beguiling_bard    = -1
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -1934,6 +1949,8 @@ class App:
         self.pending_feint             = None
         self.pending_mantle_active     = False
         self.pending_mantle_targets    = []
+        self.pending_beguiling         = False
+        self.pending_beguiling_bard    = -1
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -4195,59 +4212,135 @@ class App:
     def _show_unarmed_menu(self, mouse_pos):
         """Show the unarmed strike options menu at mouse position."""
         items = [
-            ("👊 Punch", lambda: self._start_unarmed_punch()),
-            ("🤝 Grapple", lambda: self._start_unarmed_grapple()),
-            ("🔨 Push", lambda: self._start_unarmed_push()),
+            ("💥 Damage (1 + STR)", lambda: self._start_unarmed_punch()),
+            ("🤝 Grapple",          lambda: self._start_unarmed_grapple()),
+            ("🤜 Shove (push 5 ft)", lambda: self._start_unarmed_push()),
         ]
-        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+        # Diagnostic: confirm the handler fired even if the popup somehow fails to render.
+        self._combat_log_add("Unarmed Strike: choose Damage / Grapple / Shove from the popup.")
+        # Anchor the menu over the map (left of the panel) so it can't render under the
+        # right-side combat panel where the Unarmed button lives.
+        px, py = mouse_pos
+        panel_left = self._panel_x()
+        if px >= panel_left:
+            px = max(8, panel_left - self.context_menu.MIN_W - 8)
+        self.context_menu.show((px, py), items, self.screen.get_size())
 
     def _start_unarmed_punch(self):
-        """Start an unarmed punch attack (1 + STR bludgeoning)."""
+        """Damage option of an Unarmed Strike (1 + STR Bludgeoning). Resolved as a normal attack
+        with a synthetic unarmed weapon in slot 0, so it counts against the Attack action's attacks
+        and the real weapons are restored afterward by _finish_attack."""
         idx = self._current_agent_idx()
         if idx < 0:
             return
         unarmed = self._create_unarmed_punch_weapon()
         orig_weapons = self.combat.get_agent_weapons(self.bm, idx)
-        new_weapons = [unarmed] + orig_weapons[1:]
+        new_weapons = [unarmed] + list(orig_weapons[1:])
         self.combat.set_agent_weapons(self.bm, idx, new_weapons)
         self._unarmed_strike_original_weapons = (idx, orig_weapons)
-        self.pending_unarmed_type = "punch"
-        self._combat_log_add("Click a target to punch.")
+        # Seed the Attack-action budget on a fresh action, then arm a normal attack with the
+        # unarmed weapon (slot 0). The standard attack dispatch (pending_attack_slot) +
+        # _finish_attack handle decrementing the count and restoring the weapons.
+        if self.attacks_remaining == 0:
+            stats = self.combat.get_agent_stats(self.bm, idx)
+            self.attacks_remaining = max(1, stats.num_attacks)
+            self._attack_sequence_slot = "action"
+        self.pending_attack_slot     = "action"
+        self.pending_weapon_idx      = 0
+        self.pending_attack_offhand  = None
+        self.pending_attack_resource = None
+        self.pending_unarmed_type    = ""   # routed through the normal attack path, not _resolve_unarmed_option
+        self._combat_log_add("Click a target to strike (Unarmed Strike — Damage).")
 
     def _start_unarmed_grapple(self):
-        """Start an unarmed grapple action (requires target selection)."""
+        """Grapple option of an Unarmed Strike (requires target selection)."""
         if self._current_agent_idx() < 0:
             return
         self.pending_unarmed_type = "grapple"
-        self._combat_log_add("Click a target to grapple.")
+        self._combat_log_add("Click a target to grapple (Unarmed Strike — counts as one attack).")
 
     def _start_unarmed_push(self):
-        """Start an unarmed push action (requires target selection)."""
+        """Shove (push 5 ft) option of an Unarmed Strike (requires target selection)."""
         if self._current_agent_idx() < 0:
             return
         self.pending_unarmed_type = "push"
-        self._combat_log_add("Click a target to push.")
+        self._combat_log_add("Click a target to shove 5 ft (Unarmed Strike — counts as one attack).")
 
     def _resolve_unarmed_option(self, target_idx: int):
-        """Route unarmed option to appropriate resolver."""
+        """Route an Unarmed Strike option to its resolver. The Damage option is handled through the
+        normal attack path (pending_attack_slot); only Grapple and Shove land here."""
         if not self.pending_unarmed_type:
             return
 
-        if self.pending_unarmed_type == "punch":
-            self._resolve_combat_attack(target_idx)
-        elif self.pending_unarmed_type == "grapple":
-            self.pending_grapple_slot = "action"  # Set before resolver checks it
-            self._resolve_grapple(target_idx)
-            self.bonus_used = False  # _resolve_grapple marks bonus_used, but this is an action
-            self.action_used = True
+        if self.pending_unarmed_type == "grapple":
+            self._resolve_unarmed_grapple(target_idx)
         elif self.pending_unarmed_type == "push":
-            self.pending_shove_slot = "action"
-            self.pending_shove_type = "push"
-            self._resolve_shove(target_idx)
-            self.bonus_used = False  # _resolve_shove marks bonus_used, but this is an action
-            self.action_used = True
+            self._resolve_unarmed_push(target_idx)
 
         self.pending_unarmed_type = ""
+
+    def _spend_unarmed_attack(self, atk_idx: int) -> bool:
+        """Charge an Unarmed Strike option (Grapple / Push) against the Attack action's attack
+        budget. Seeds the budget on a fresh action (so a lone Unarmed Strike costs the whole
+        Attack action), spends one attack, and commits the Action. Returns True if attacks remain
+        (Extra Attack) so the caller can let the player continue — the standing "⚔ Attack (N)" and
+        Unarmed buttons resume the sequence."""
+        if self.attacks_remaining == 0:
+            stats = self.combat.get_agent_stats(self.bm, atk_idx)
+            self.attacks_remaining = max(1, stats.num_attacks)
+            self._attack_sequence_slot = "action"
+        self.attacks_remaining -= 1
+        self.action_used = True
+        if self.attacks_remaining > 0:
+            atk_name = self.bm.placed_agents[atk_idx].name
+            self._combat_log_add(
+                f"{atk_name}: {self.attacks_remaining} attack"
+                f"{'s' if self.attacks_remaining != 1 else ''} remaining — "
+                f"move if you wish, then click Attack or Unarmed to continue.")
+            return True
+        self._attack_sequence_slot = ""
+        return False
+
+    def _resolve_unarmed_grapple(self, target_idx: int):
+        """Grapple as an Unarmed Strike (counts against the Attack action's attacks). The grapple
+        itself runs in C++ via execute_grapple (contested check + computed escape DC). An invalid
+        grapple (out of reach) is treated as a misclick and does NOT spend an attack."""
+        atk_idx = self._current_agent_idx()
+        if atk_idx < 0:
+            return
+        action = rpg.GrappleAction()
+        action.attacker_idx = atk_idx
+        action.target_idx   = target_idx
+        result = self.combat.execute_grapple(self.bm, action)
+        if result.valid:
+            self._combat_log_add(result.log_message)
+            if result.success:
+                self._update_reach()
+                self._update_attack_overlay()
+            self._spend_unarmed_attack(atk_idx)
+        else:
+            self._combat_log_add(f"Grapple failed: {result.log_message}")
+
+    def _resolve_unarmed_push(self, target_idx: int):
+        """Shove (push 5 ft) as an Unarmed Strike (counts against the Attack action's attacks). The
+        retained Shove bonus action is separate. An invalid shove (out of reach) is a misclick and
+        does NOT spend an attack."""
+        atk_idx = self._current_agent_idx()
+        if atk_idx < 0:
+            return
+        action = rpg.ShoveAction()
+        action.attacker_idx = atk_idx
+        action.target_idx   = target_idx
+        action.knock_prone  = False  # the unarmed Push option pushes 5 ft (Shove-Prone uses the bonus action)
+        result = self.combat.execute_shove(self.bm, action)
+        if result.valid:
+            self._combat_log_add(result.log_message)
+            if result.push_ft_applied > 0 or result.knocked_prone:
+                self._update_reach()
+                self._update_attack_overlay()
+            self._spend_unarmed_attack(atk_idx)
+        else:
+            self._combat_log_add(f"Shove failed: {result.log_message}")
 
     def _resolve_healing_light(self, target_idx: int):
         """Celestial Warlock Healing Light: spend max(1, CHA mod) d6 on the clicked target."""
@@ -4714,6 +4807,37 @@ class App:
         self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None, multi=False,
                                   title="Command: choose a word")
 
+    def _start_unbreakable_majesty(self, bard_idx: int):
+        """College of Glamour Unbreakable Majesty (bonus action, L14+). Spend the once/long-rest resource
+        to open a 1-minute Concentration window of "majestic presence": melee attacks against the bard
+        trigger Psychic damage and a CHA save (no reaction). While the window is active the button is
+        just a display (clicking does nothing, since the feature runs automatically)."""
+        if self.bonus_used:
+            self._combat_log_add("Bonus action already used this turn.")
+            self._flush_combat_log()
+            return
+        stats = self.combat.get_agent_stats(self.bm, bard_idx)
+        if not (stats.bard_subclass == rpg.BardCollege.Glamour and stats.char_level >= 14):
+            return
+        window_active = stats.majestic_presence_turns > 0
+        if window_active:
+            # Already active — button is just informational (the feature runs automatically)
+            self._combat_log_add(f"{self.bm.placed_agents[bard_idx].name}'s majestic presence is already active.")
+            self._flush_combat_log()
+            return
+        um = stats.get_resource("Unbreakable Majesty")
+        if not (um and um.current > 0):
+            self._combat_log_add(
+                f"{self.bm.placed_agents[bard_idx].name}: no Unbreakable Majesty use left.")
+            self._flush_combat_log()
+            return
+        if not self.combat.activate_unbreakable_majesty(self.bm, bard_idx):
+            self._flush_combat_log()
+            return
+        self.bonus_used = True
+        self._combat_log_add(f"{self.bm.placed_agents[bard_idx].name} takes on a majestic presence (Unbreakable Majesty).")
+        self._flush_combat_log()
+
     def _set_fiendish_resilience(self, agent_idx: int, dmg_idx: int):
         """Fiend Warlock L10: set the chosen damage resistance (0.5x), clearing any prior choice."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -4793,44 +4917,6 @@ class App:
         # Mark bonus action as used
         self.pending_shove_slot = ""
         self.pending_shove_type = ""
-        self.bonus_used = True
-
-    def _start_grapple(self):
-        """Start a grapple action (requires target selection)."""
-        if self.bonus_used:
-            return
-        self.pending_grapple_slot = "bonus"
-        self._combat_log_add("Click a target to grapple.")
-
-    def _resolve_grapple(self, target_idx: int):
-        """Execute the pending grapple action."""
-        if not self.pending_grapple_slot:
-            return
-
-        atk_idx = self._current_agent_idx()
-        if atk_idx < 0:
-            self.pending_grapple_slot = ""
-            return
-
-        # Create GrappleAction
-        action = rpg.GrappleAction()
-        action.attacker_idx = atk_idx
-        action.target_idx = target_idx
-
-        # Execute grapple
-        result = self.combat.execute_grapple(self.bm, action)
-
-        # Log result
-        if result.valid:
-            self._combat_log_add(result.log_message)
-            if result.success:
-                self._update_reach()
-                self._update_attack_overlay()
-        else:
-            self._combat_log_add(f"Grapple failed: {result.log_message}")
-
-        # Mark bonus action as used
-        self.pending_grapple_slot = ""
         self.bonus_used = True
 
     # FLAG: Move to C++
@@ -4956,7 +5042,7 @@ class App:
 
     # Always-prepared Bard college spells by college and Bard level (2024 PHB).
     _BARD_SUBCLASS_SPELLS = {
-        "Glamour": {6: ["Command"]},
+        "Glamour": {3: ["Charm Person", "Mirror Image"], 6: ["Command"]},
     }
 
     # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
@@ -6089,7 +6175,8 @@ class App:
                        target_idx == caster_idx)
         self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx,
                                aoe=False, self_target=self_target,
-                               slot_level=self.pending_spell_slot_level)
+                               slot_level=self.pending_spell_slot_level,
+                               free_cast=action.free_cast)
         self._reaction_finish = self._finish_cast
 
         self.pending_spell_slot        = ""
@@ -6148,6 +6235,86 @@ class App:
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
         self._consume_cast_slot(ctx["slot"], caster_idx)
+        # College of Glamour Beguiling Magic: offer the once/long-rest rider after a slot-fueled
+        # Enchantment/Illusion cast (a free Mantle-of-Majesty Command uses no slot, so it's excluded).
+        if not ctx.get("free_cast"):
+            self._maybe_offer_beguiling_magic(caster_idx, ctx["spell_idx"])
+
+    def _maybe_offer_beguiling_magic(self, caster_idx: int, spell_idx: int):
+        """If a L3+ College of Glamour bard just cast an Enchantment or Illusion spell using a spell
+        slot (not a cantrip / free cast) and still has a Beguiling Magic use, begin the target-pick
+        flow: click a creature within 60 ft, then choose Charmed or Frightened."""
+        if not (0 <= caster_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, caster_idx)
+        if (stats.character_class != rpg.CharacterClass.Bard or
+                stats.bard_subclass != rpg.BardCollege.Glamour or stats.char_level < 3):
+            return
+        beg = stats.get_resource("Beguiling Magic")
+        if not (beg and beg.current > 0):
+            return
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        if not (0 <= spell_idx < len(spells)):
+            return
+        sp = spells[spell_idx]
+        if sp.school not in (rpg.SpellSchool.Enchantment, rpg.SpellSchool.Illusion):
+            return
+        if sp.level < 1:   # cantrips don't use a slot
+            return
+        self.pending_beguiling      = True
+        self.pending_beguiling_bard = caster_idx
+        self._combat_log_add(
+            "Beguiling Magic — click a creature within 60 ft to force a WIS save (Esc declines).")
+        self._flush_combat_log()
+
+    def _beguiling_pick_target(self, hit: int):
+        """A creature was clicked for Beguiling Magic: validate range, then open the Charmed/Frightened
+        picker and resolve the WIS save through the engine on confirm."""
+        bard_idx = self.pending_beguiling_bard
+        agents = self.bm.placed_agents
+        if not (0 <= hit < len(agents)) or not (0 <= bard_idx < len(agents)):
+            return
+        if hit == bard_idx:
+            self._combat_log_add("Beguiling Magic affects another creature, not yourself.")
+            self._flush_combat_log()
+            return
+        if self._footprint_dist_ft(bard_idx, hit) > 60:
+            self._combat_log_add("Beguiling Magic: that creature is more than 60 ft away.")
+            self._flush_combat_log()
+            return
+
+        def _on_choice(chosen, bard_idx=bard_idx, hit=hit):
+            self.pending_beguiling      = False
+            self.pending_beguiling_bard = -1
+            if not chosen:   # Esc/no pick → decline without spending the use
+                self._combat_log_add("Beguiling Magic declined.")
+                self._flush_combat_log()
+                self._update_attack_overlay()
+                return
+            use_frightened = (chosen[0] == 1)
+            self.combat.bard_beguiling_magic(self.bm, bard_idx, hit, use_frightened)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        self._element_dialog.show(_on_choice, [("Charmed", 0), ("Frightened", 1)],
+                                  current_values=None, multi=False, title="Beguiling Magic")
+
+    def _cancel_beguiling(self):
+        """Esc out of Beguiling Magic without using it (the spell was already cast normally)."""
+        self.pending_beguiling      = False
+        self.pending_beguiling_bard = -1
+        self._combat_log_add("Beguiling Magic declined.")
+        self._flush_combat_log()
+
+    def _restore_beguiling_magic(self, bard_idx: int):
+        """College of Glamour: spend one Bardic Inspiration use (no action) to regain the expended
+        Beguiling Magic use."""
+        new_cur = self.combat.bard_restore_beguiling_magic(self.bm, bard_idx)
+        self._flush_combat_log()
+        if new_cur < 0:
+            self._combat_log_add("Cannot restore Beguiling Magic (no Bardic Inspiration use, or already full).")
+            self._flush_combat_log()
+        self._update_attack_overlay()
 
     def _companion_in_range(self, ranger_idx: int, comp_idx: int, ft: int) -> bool:
         """Chebyshev footprint distance check (5 ft / cell), mirroring _vitality_in_range."""
@@ -6640,7 +6807,10 @@ class App:
         s.geometry     = getattr(rpg.SpellGeometry, d.get("geometry",     "Single"),   rpg.SpellGeometry.Single)
         s.attack_type  = getattr(rpg.SpellAttack,   d.get("attack_type",  "AttackRoll"), rpg.SpellAttack.AttackRoll)
         s.save_ability = getattr(rpg.SaveAbility,   d.get("save_ability") or "SaveDex", rpg.SaveAbility.SaveDex)
-        s.school       = getattr(rpg.SpellSchool,   d.get("school",       "NONE"),     rpg.SpellSchool.NONE)
+        # spells.json stores the school lowercase ("enchantment"); the enum members are capitalized
+        # ("Enchantment"). Normalize so getattr resolves (and save-file round-trips of the capitalized
+        # enum name still work). Was silently NONE for every spells.json spell before this.
+        s.school       = getattr(rpg.SpellSchool,   d.get("school",       "NONE").capitalize(), rpg.SpellSchool.NONE)
         s.range        = int(d.get("range")  or 30)
         s.radius       = int(d.get("radius") or 10)
         s.width        = int(d.get("width")  or  5)
@@ -8988,26 +9158,16 @@ class App:
                 self.btn_cbt_shove_prone.draw(self.screen)
                 y += B + gap
 
-            # Grapple buttons (only if there are adjacent enemies)
-            if _has_adjacent:
-                TW2_grapple = (W - gap) // 2
-                # Check if current agent is grappled
-                if 0 <= cur_idx < len(agents):
-                    cur_conds = self.combat.get_agent_conditions(self.bm, cur_idx)
-                    if cur_conds.grappled:
-                        # Show escape button (full width, can't initiate new grapple while grappled)
-                        self.btn_cbt_grapple_esc.rect.x = lx
-                        self.btn_cbt_grapple_esc.rect.y = y
-                        self.btn_cbt_grapple_esc.rect.w = W
-                        self.btn_cbt_grapple_esc.draw(self.screen)
-                        y += B + gap
-                    else:
-                        # Show initiate grapple button (split width with pass/escape placeholder)
-                        self.btn_cbt_grapple.rect.x = lx
-                        self.btn_cbt_grapple.rect.y = y
-                        self.btn_cbt_grapple.rect.w = TW2_grapple
-                        self.btn_cbt_grapple.draw(self.screen)
-                        y += B + gap
+            # Escape-from-grapple bonus action (only when adjacent and currently grappled).
+            # Initiating a grapple is now an Unarmed Strike option, not a bonus action.
+            if _has_adjacent and 0 <= cur_idx < len(agents):
+                cur_conds = self.combat.get_agent_conditions(self.bm, cur_idx)
+                if cur_conds.grappled:
+                    self.btn_cbt_grapple_esc.rect.x = lx
+                    self.btn_cbt_grapple_esc.rect.y = y
+                    self.btn_cbt_grapple_esc.rect.w = W
+                    self.btn_cbt_grapple_esc.draw(self.screen)
+                    y += B + gap
 
             # Telekinetic Shove (general feat) — bonus action, 30 ft range (not gated on adjacency).
             if 0 <= cur_idx < len(agents):
@@ -9074,6 +9234,36 @@ class App:
                         self.btn_cbt_rage.rect.y = y
                         self.btn_cbt_rage.rect.w = W
                         self.btn_cbt_rage.draw(self.screen)
+                        y += B + gap
+
+            # Intimidating Presence button — Berserker Barbarian (L10+), bonus-action Frightened AoE
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Barbarian and
+                        stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and
+                        stats.char_level >= 10):
+                    ip = stats.get_resource("Intimidating Presence")
+                    if ip and ip.current > 0:
+                        self.btn_cbt_intimidating_presence.text = f"Intimidating Presence ({ip.current})"
+                        self.btn_cbt_intimidating_presence.rect.x = lx
+                        self.btn_cbt_intimidating_presence.rect.y = y
+                        self.btn_cbt_intimidating_presence.rect.w = W
+                        self.btn_cbt_intimidating_presence.draw(self.screen)
+                        y += B + gap
+
+            # Zealous Presence button — Zealot Barbarian (L10+), bonus-action Advantage buff for allies
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Barbarian and
+                        stats.barbarian_subclass == rpg.BarbianSubclass.Zealot and
+                        stats.char_level >= 10):
+                    zp = stats.get_resource("Zealous Presence")
+                    if zp and zp.current > 0:
+                        self.btn_cbt_zealous_presence.text = f"Zealous Presence ({zp.current})"
+                        self.btn_cbt_zealous_presence.rect.x = lx
+                        self.btn_cbt_zealous_presence.rect.y = y
+                        self.btn_cbt_zealous_presence.rect.w = W
+                        self.btn_cbt_zealous_presence.draw(self.screen)
                         y += B + gap
 
             # Magical Cunning button - Warlock (L2+) with the feature still available this long rest
@@ -9263,6 +9453,31 @@ class App:
                             self.btn_cbt_mantle_majesty.draw(self.screen)
                             y += B + gap
 
+                    # Unbreakable Majesty button — College of Glamour Bard L14+ (bonus action):
+                    # shown when a "Unbreakable Majesty" use is available (to activate) OR the
+                    # majestic-presence window is already active (negate incoming melee attacks).
+                    if (stats.char_level >= 14 and not self.bonus_used and
+                            stats.bard_subclass == rpg.BardCollege.Glamour):
+                        um = stats.get_resource("Unbreakable Majesty")
+                        if (um and um.current > 0) or stats.majestic_presence_turns > 0:
+                            self.btn_cbt_unbreakable_majesty.rect.x = lx
+                            self.btn_cbt_unbreakable_majesty.rect.y = y
+                            self.btn_cbt_unbreakable_majesty.rect.w = W
+                            self.btn_cbt_unbreakable_majesty.draw(self.screen)
+                            y += B + gap
+
+                    # Restore Beguiling Magic button — College of Glamour Bard L3+ (free, no action):
+                    # spend one Bardic Inspiration use to regain the expended Beguiling Magic use.
+                    if (bi and bi.current > 0 and stats.char_level >= 3 and
+                            stats.bard_subclass == rpg.BardCollege.Glamour):
+                        beg = stats.get_resource("Beguiling Magic")
+                        if beg and beg.current < beg.max:
+                            self.btn_cbt_beguiling_restore.rect.x = lx
+                            self.btn_cbt_beguiling_restore.rect.y = y
+                            self.btn_cbt_beguiling_restore.rect.w = W
+                            self.btn_cbt_beguiling_restore.draw(self.screen)
+                            y += B + gap
+
             # Use Inspiration Die button — any creature currently holding a granted die
             # (free, no action). Primes a +die bonus on the holder's next d20 Test.
             if 0 <= cur_idx < len(agents):
@@ -9442,14 +9657,10 @@ class App:
         elif self.pending_shove_slot:
             txt("→ Click a target to shove", lx, y, (190, 190, 150))
             y += 14
-        elif self.pending_grapple_slot:
-            txt("→ Click a target to grapple", lx, y, (190, 190, 150))
-            y += 14
         elif self.pending_unarmed_type:
             hint_text = {
-                "punch": "→ Click a target to punch",
                 "grapple": "→ Click a target to grapple",
-                "push": "→ Click a target to push",
+                "push": "→ Click a target to shove 5 ft",
             }.get(self.pending_unarmed_type, "→ Click a target")
             txt(hint_text, lx, y, (190, 190, 150))
             y += 14
@@ -9983,6 +10194,10 @@ class App:
                 if self.pending_mantle_active and event.key == pygame.K_ESCAPE:
                     self._cancel_mantle()
                     continue
+                # Beguiling Magic: Esc declines the rider (the spell was already cast normally).
+                if self.pending_beguiling and event.key == pygame.K_ESCAPE:
+                    self._cancel_beguiling()
+                    continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
@@ -10189,6 +10404,9 @@ class App:
                         elif self.pending_mantle_active and hit >= 0:
                             # Collecting Mantle of Inspiration recipients: each click adds one.
                             self._mantle_add_target(hit)
+                        elif self.pending_beguiling and hit >= 0:
+                            # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
+                            self._beguiling_pick_target(hit)
                         elif self.pending_attack_slot and hit >= 0:
                             self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
@@ -10234,8 +10452,6 @@ class App:
                                     self._resolve_spell_cast(hit)
                         elif self.pending_shove_slot and hit >= 0:
                             self._resolve_shove(hit)
-                        elif self.pending_grapple_slot and hit >= 0:
-                            self._resolve_grapple(hit)
                         elif self.pending_unarmed_type and hit >= 0:
                             self._resolve_unarmed_option(hit)
                         elif self.pending_heal_light and hit >= 0:
@@ -10559,9 +10775,11 @@ class App:
                 if _nick_idx >= 0 and self.btn_cbt_nick.clicked(event):
                     self._start_extra_attack(weapon_idx=_nick_idx, offhand=True, slot="action",
                                              label="Nick: off-hand attack (part of Attack action)")
+                # Unarmed Strike (Punch/Grapple/Push) is part of the Attack action, so it also
+                # resumes mid-sequence (Extra Attack: grapple, then strike, or vice versa).
+                if (not self.action_used or _mid_seq_atk) and self.btn_cbt_unarmed.clicked(event):
+                    self._show_unarmed_menu(pygame.mouse.get_pos())
                 if not self.action_used:
-                    if self.btn_cbt_unarmed.clicked(event):
-                        self._show_unarmed_menu(pygame.mouse.get_pos())
                     if self.btn_cbt_pass_action.clicked(event):
                         self.action_used = True
                     if self.btn_cbt_dash.clicked(event):
@@ -10637,8 +10855,6 @@ class App:
                         self._start_shove("push")
                     if self.btn_cbt_shove_prone.clicked(event):
                         self._start_shove("prone")
-                    if self.btn_cbt_grapple.clicked(event):
-                        self._start_grapple()
                     if self.btn_cbt_grapple_esc.clicked(event):
                         self._execute_grapple_escape()
                     if self.btn_cbt_telekinetic.clicked(event):
@@ -10705,6 +10921,22 @@ class App:
                             agent = self.bm.placed_agents[idx]
                             self._combat_log_add(f"{agent.name}: Enters a rage!")
                         self.bonus_used = True
+                    if self.btn_cbt_intimidating_presence.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.use_intimidating_presence(self.bm, idx):
+                                self._flush_combat_log()
+                                self.bonus_used = True
+                            else:
+                                self._combat_log_add("Intimidating Presence unavailable.")
+                    if self.btn_cbt_zealous_presence.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.use_zealous_presence(self.bm, idx):
+                                self._flush_combat_log()
+                                self.bonus_used = True
+                            else:
+                                self._combat_log_add("Zealous Presence unavailable.")
                     if self.btn_cbt_reckless.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -10824,6 +11056,14 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_mantle_majesty(idx)
+                    if self.btn_cbt_unbreakable_majesty.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._start_unbreakable_majesty(idx)
+                    if self.btn_cbt_beguiling_restore.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._restore_beguiling_magic(idx)
                     if self.btn_cbt_use_inspiration.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

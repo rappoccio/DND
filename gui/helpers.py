@@ -504,6 +504,8 @@ def _dict_to_spell(d: dict):
     s.geometry     = getattr(rpg.SpellGeometry, d.get("geometry",     "Single"),   rpg.SpellGeometry.Single)
     s.attack_type  = getattr(rpg.SpellAttack,   d.get("attack_type",  "AttackRoll"), rpg.SpellAttack.AttackRoll)
     s.save_ability = getattr(rpg.SaveAbility,   d.get("save_ability") or "SaveDex", rpg.SaveAbility.SaveDex)
+    # spells.json stores the school lowercase ("enchantment"); the enum members are capitalized.
+    s.school       = getattr(rpg.SpellSchool,   d.get("school",       "NONE").capitalize(), rpg.SpellSchool.NONE)
     s.range        = int(d.get("range")  or 30)
     s.radius       = int(d.get("radius") or 10)
     s.width        = int(d.get("width")  or  5)

@@ -420,6 +420,187 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
     log_("{} ends Rage: raging=false, BPS resistance cleared, reckless_attack cleared", agentName(bm, idx));
 }
 
+bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+
+    // Gate on Berserker L10+
+    if (stats.character_class != CharacterClass::Barbarian ||
+        stats.barbarian_subclass != BerserkerPath ||
+        stats.char_level < 10) {
+        return false;
+    }
+
+    // Check bonus action availability
+    if (!hasBonusAction(bm, idx)) {
+        return false;
+    }
+
+    // Check resource availability (uses per long rest, or spend Rage)
+    Resource* ip_resource = stats.getResource("Intimidating Presence");
+    bool has_ip_uses = ip_resource && ip_resource->current > 0;
+    bool can_spend_rage = stats.resources.count("Rage") && stats.resources.at("Rage").current > 0;
+
+    if (!has_ip_uses && !can_spend_rage) {
+        return false;
+    }
+
+    const PlacedAgent& barbarian_pa = agents[static_cast<std::size_t>(idx)];
+    const int origin_col = barbarian_pa.origin.col;
+    const int origin_row = barbarian_pa.origin.row;
+    const int radius_ft = 30;
+
+    // Calculate save DC: 8 + STR mod + PB
+    int str_mod = (stats.str - 10) / 2;
+    if (stats.str < 10 && (stats.str - 10) % 2 != 0) --str_mod;
+    const int save_dc = 8 + str_mod + stats.prof_bonus;
+
+    // Scan all creatures within 30 ft; skip self and skip allies
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        const int target_idx = static_cast<int>(i);
+        if (target_idx == idx) continue;  // Skip self
+
+        const PlacedAgent& target_pa = agents[i];
+        // Euclidean emanation radius, matching Spirit Guardians (resolveAoeTargets, Spell::Sphere).
+        const float dx = static_cast<float>(target_pa.origin.col - origin_col);
+        const float dy = static_cast<float>(target_pa.origin.row - origin_row);
+        const float dist_ft = std::sqrt(dx * dx + dy * dy) * 5.0f;
+
+        if (dist_ft > static_cast<float>(radius_ft)) continue;  // Out of range
+
+        if (areAllies(bm, idx, target_idx)) continue;  // Skip allies (enemies only)
+
+        // Roll WIS save for the target
+        const int wis_save_mod = saveModFor(bm, target_idx, SaveWis);
+
+        const int save_d20 = roll(20);
+        const int save_total = save_d20 + wis_save_mod;
+        const bool failed = save_total < save_dc;
+
+        log_("{} makes a WIS save vs Intimidating Presence (DC {}): {} + {} = {} ({})",
+             agentName(bm, target_idx), save_dc, save_d20, wis_save_mod, save_total,
+             failed ? "FAILED" : "PASSED");
+
+        if (failed) {
+            // Apply Frightened until end of Barbarian's next turn. addAgentCondition routes
+            // through applyFrightened internally (which also honors Aura of Courage immunity),
+            // so we do NOT call applyFrightened separately here.
+            ActiveAgentCondition aac{};
+            aac.agent_idx = target_idx;
+            aac.condition_name = "Frightened";
+            aac.caster_idx = idx;
+            aac.turns_remaining = 2;  // until end of next turn (turn starts, runs, then starts next turn)
+            (void)addAgentCondition(bm, aac);
+        }
+    }
+
+    // Spend resource (IP use or Rage use)
+    if (has_ip_uses) {
+        ip_resource->spend(1);
+        stats.resources["Intimidating Presence"] = *ip_resource;
+    } else {
+        Resource& rage = stats.resources.at("Rage");
+        rage.current--;
+    }
+
+    // Persist the resource spend, THEN consume the bonus action. spendBonusAction re-reads
+    // fresh stats and writes them back, so it must run AFTER setAgentStats or it would be
+    // clobbered (and the bonus action effectively refunded).
+    bm.setAgentStats(idx, stats);
+    spendBonusAction(bm, idx);
+
+    log_("{} uses Intimidating Presence (save DC {})", agentName(bm, idx), save_dc);
+    return true;
+}
+
+bool CombatEngine::useZealousPresence(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+
+    // Gate on Zealot L10+
+    if (stats.character_class != CharacterClass::Barbarian ||
+        stats.barbarian_subclass != ZealotPath ||
+        stats.char_level < 10) {
+        return false;
+    }
+
+    // Check bonus action availability
+    if (!hasBonusAction(bm, idx)) {
+        return false;
+    }
+
+    // Check resource availability (1 use per long rest, or spend Rage)
+    Resource* zp_resource = stats.getResource("Zealous Presence");
+    bool has_zp_uses = zp_resource && zp_resource->current > 0;
+    bool can_spend_rage = stats.resources.count("Rage") && stats.resources.at("Rage").current > 0;
+
+    if (!has_zp_uses && !can_spend_rage) {
+        return false;
+    }
+
+    const PlacedAgent& zealot_pa = agents[static_cast<std::size_t>(idx)];
+    const int origin_col = zealot_pa.origin.col;
+    const int origin_row = zealot_pa.origin.row;
+    const int radius_ft = 60;
+    const int max_targets = 10;
+
+    int targets_buffed = 0;
+
+    // Scan all creatures within 60 ft; select ALLIES (up to 10, including self)
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        const int target_idx = static_cast<int>(i);
+
+        // Allow self and allies only
+        if (target_idx != idx && !areAllies(bm, idx, target_idx)) continue;
+
+        const PlacedAgent& target_pa = agents[i];
+        // Euclidean emanation radius, matching Spirit Guardians (resolveAoeTargets, Spell::Sphere).
+        const float dx = static_cast<float>(target_pa.origin.col - origin_col);
+        const float dy = static_cast<float>(target_pa.origin.row - origin_row);
+        const float dist_ft = std::sqrt(dx * dx + dy * dy) * 5.0f;
+
+        if (dist_ft > static_cast<float>(radius_ft)) continue;  // Out of range
+
+        if (targets_buffed >= max_targets) break;  // Hit cap
+
+        // Grant zealous_blessing: will be read in determineAdvantage (attacks) and rollSpellSave (saves)
+        Agent::Conditions target_cond = bm.getAgentConditions(target_idx);
+        target_cond.zealous_blessing = true;
+        target_cond.zealous_blessing_by = idx;  // expires as this Zealot's next turn begins (beginTurn sweep)
+        bm.setAgentConditions(target_idx, target_cond);
+        targets_buffed++;
+
+        log_("{} gains Zealous Presence: Advantage on attack rolls and saves until start of {}'s next turn",
+             agentName(bm, target_idx), agentName(bm, idx));
+    }
+
+    // Spend resource (ZP use or Rage use)
+    if (has_zp_uses) {
+        zp_resource->spend(1);
+        stats.resources["Zealous Presence"] = *zp_resource;
+    } else {
+        Resource& rage = stats.resources.at("Rage");
+        rage.current--;
+    }
+
+    // Persist the resource spend, THEN consume the bonus action. spendBonusAction re-reads
+    // fresh stats and writes them back, so it must run AFTER setAgentStats or it would be
+    // clobbered (and the bonus action effectively refunded).
+    bm.setAgentStats(idx, stats);
+    spendBonusAction(bm, idx);
+
+    log_("{} uses Zealous Presence: {} creature(s) gain Advantage on attacks and saves",
+         agentName(bm, idx), targets_buffed);
+    return true;
+}
+
 bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept
 {
     auto agents = bm.placedAgents();
@@ -766,6 +947,28 @@ int CombatEngine::useBardicDie(BattleMap& bm, int agent_idx) noexcept
     return value;
 }
 
+int CombatEngine::useBardicDieForDamage(BattleMap& bm, int agent_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+    int d = stats.bardic_inspiration_die;
+    if (d <= 0) {
+        log_("{} has no Bardic Inspiration die to spend", agentName(bm, agent_idx));
+        return 0;
+    }
+
+    int value = roll(d);                   // roll the held die (1..d)
+    pending_damage_bonus_ = value;         // fold into the attacker's NEXT weapon damage roll
+    stats.bardic_inspiration_die = 0;     // consumed
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("{} spends Bardic Inspiration d{}: +{} to the next weapon damage roll",
+         agentName(bm, agent_idx), d, value);
+    return value;
+}
+
 int CombatEngine::bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept
 {
     auto agents = bm.placedAgents();
@@ -847,6 +1050,154 @@ int CombatEngine::bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx
     log_("{} expends a level-{} slot to restore Mantle of Majesty: now {}/{}",
          agentName(bm, bard_idx), slot_level, maj->current, maj->max);
     return maj->current;
+}
+
+bool CombatEngine::activateUnbreakableMajesty(BattleMap& bm, int bard_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(bard_idx);
+    if (stats.character_class != CharacterClass::Bard ||
+        stats.bard_subclass != GlamourPath || stats.char_level < 14) return false;
+
+    Resource* maj = stats.getResource("Unbreakable Majesty");
+    if (!maj || maj->current <= 0) return false;   // no use left
+
+    // Spend the use
+    spendResource(bm, bard_idx, "Unbreakable Majesty", 1);
+
+    // The "majestic presence" is Concentration: replace any prior concentration spell first,
+    // then concentrate on the literal window name so a later concentration spell / damage-broken
+    // save ends the window (dropConcentration clears majestic_presence_turns).
+    (void)dropConcentration(bm, bard_idx);
+
+    stats = bm.getAgentStats(bard_idx);
+    stats.majestic_presence_turns = 10;  // 1 minute = 10 rounds
+    stats.majesty_checked_this_turn = false;  // fresh turn, ready to check
+    bm.setAgentStats(bard_idx, stats);
+
+    Agent::Conditions cond = bm.getAgentConditions(bard_idx);
+    cond.concentrating    = true;
+    cond.concentrating_on = "Unbreakable Majesty";
+    bm.setAgentConditions(bard_idx, cond);
+
+    log_("{} takes on a majestic presence (Unbreakable Majesty): melee attacks against {} trigger "
+         "Psychic damage and a CHA save for 1 minute", agentName(bm, bard_idx), agentName(bm, bard_idx));
+    return true;
+}
+
+int CombatEngine::bardRestoreUnbreakableMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 3 || slot_level > 9) return -1;          // restorable only with a level 3+ slot
+
+    Agent::Stats stats = bm.getAgentStats(bard_idx);
+    if (stats.character_class != CharacterClass::Bard ||
+        stats.bard_subclass != GlamourPath || stats.char_level < 14) return -1;
+
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    if (stats.spell_slots_remaining[si] <= 0) return -1;      // no slot of that level to spend
+
+    Resource* maj = stats.getResource("Unbreakable Majesty");
+    if (!maj || maj->current >= maj->max) return -1;          // already full → don't waste a slot
+
+    stats.spell_slots_remaining[si] -= 1;
+    maj->gain(1);
+    bm.setAgentStats(bard_idx, stats);
+
+    log_("{} expends a level-{} slot to restore Unbreakable Majesty: now {}/{}",
+         agentName(bm, bard_idx), slot_level, maj->current, maj->max);
+    return maj->current;
+}
+
+bool CombatEngine::bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_idx,
+                                      bool use_frightened) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (bard_idx < 0 || bard_idx >= n || target_idx < 0 || target_idx >= n || target_idx == bard_idx)
+        return false;
+
+    Agent::Stats bs = bm.getAgentStats(bard_idx);
+    if (bs.character_class != CharacterClass::Bard ||
+        bs.bard_subclass != BardCollege::GlamourPath || bs.char_level < 3) {
+        log_("{} cannot use Beguiling Magic (not a L3+ College of Glamour Bard)", agentName(bm, bard_idx));
+        return false;
+    }
+    const Resource* beg = bs.getResource("Beguiling Magic");
+    if (!beg || beg->current <= 0) {
+        log_("{} has no Beguiling Magic use available", agentName(bm, bard_idx));
+        return false;
+    }
+    // Must be a creature the bard can see within 60 ft (the GUI also gates LOS/perception).
+    const int dist_ft = footprintDistance(agents[bard_idx].origin, agents[bard_idx].agent->getSize(),
+                                          agents[target_idx].origin, agents[target_idx].agent->getSize()) * 5;
+    if (dist_ft > 60) {
+        log_("Beguiling Magic: {} is more than 60 ft away", agentName(bm, target_idx));
+        return false;
+    }
+
+    // Using the benefit spends the use whether or not the target ultimately fails its save.
+    spendResource(bm, bard_idx, "Beguiling Magic", 1);
+
+    const char* cond_name = use_frightened ? "Frightened" : "Charmed";
+    const int   dc        = spellSaveDc(bs);
+    const int   save_mod  = saveModFor(bm, target_idx, SaveWis);
+    const int   save_roll = roll(20, save_mod);
+
+    if (save_roll >= dc) {
+        log_("{} resists Beguiling Magic (WIS save {} vs DC {})", agentName(bm, target_idx), save_roll, dc);
+        return true;
+    }
+    // Frightened can be refused outright by Aura of Courage — the use is still spent.
+    if (use_frightened && hasAuraOfCourage(bm, target_idx)) {
+        log_("{} can't be Frightened (Aura of Courage) — Beguiling Magic has no effect",
+             agentName(bm, target_idx));
+        return true;
+    }
+
+    ActiveAgentCondition cond;
+    cond.agent_idx        = target_idx;
+    cond.caster_idx       = bard_idx;
+    cond.condition_name   = cond_name;
+    cond.turns_remaining  = 10;            // 1 minute = 10 rounds (ticked on the bard's turns)
+    cond.save_ability     = SaveWis;
+    cond.save_dc          = dc;
+    cond.save_repeat_turns = 1;            // repeats at the start of each of the target's turns
+    cond.next_save_turn   = 0;
+    (void)addAgentCondition(bm, cond);
+    log_("{} fails vs Beguiling Magic and is {} for 1 minute (WIS save {} vs DC {})",
+         agentName(bm, target_idx), cond_name, save_roll, dc);
+    return true;
+}
+
+int CombatEngine::bardRestoreBeguilingMagic(BattleMap& bm, int bard_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return -1;
+
+    Agent::Stats bs = bm.getAgentStats(bard_idx);
+    if (bs.character_class != CharacterClass::Bard ||
+        bs.bard_subclass != BardCollege::GlamourPath || bs.char_level < 3) return -1;
+
+    Resource* beg = bs.getResource("Beguiling Magic");
+    if (!beg || beg->current >= beg->max) return -1;   // already full → don't waste an Inspiration
+    const Resource* bi = bs.getResource("Bardic Inspiration");
+    if (!bi || bi->current <= 0) return -1;            // no Bardic Inspiration use to spend
+
+    spendResource(bm, bard_idx, "Bardic Inspiration", 1);
+    // Re-read stats: spendResource mutated them; gain on a fresh copy and write back.
+    bs = bm.getAgentStats(bard_idx);
+    beg = bs.getResource("Beguiling Magic");
+    if (!beg) return -1;
+    beg->gain(1);
+    bm.setAgentStats(bard_idx, bs);
+
+    log_("{} expends a Bardic Inspiration use to restore Beguiling Magic: now {}/{}",
+         agentName(bm, bard_idx), beg->current, beg->max);
+    return beg->current;
 }
 
 void CombatEngine::applySuperiorInspiration(BattleMap& bm) noexcept

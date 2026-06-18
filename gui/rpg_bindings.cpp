@@ -365,6 +365,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("mantle_majesty_turns", &Agent::Stats::mantle_majesty_turns,
              "Bard College of Glamour (L6) Mantle of Majesty 'unearthly appearance' window in rounds "
              "(>0 = may re-cast Command as a Bonus Action with no slot; tied to concentration)")
+        .def_readwrite("majestic_presence_turns", &Agent::Stats::majestic_presence_turns,
+             "Bard College of Glamour (L14) Unbreakable Majesty 'majestic presence' window in rounds "
+             "(>0 = melee attacks against the bard trigger Psychic damage + a CHA save; tied to concentration)")
         .def_readwrite("shield_active", &Agent::Stats::shield_active,
              "Shield spell active: +5 AC (in ac_temporary_modifications) until start of next turn + MM immunity")
         .def_readwrite("wild_magic_shield_turns", &Agent::Stats::wild_magic_shield_turns,
@@ -513,6 +516,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("dodging",       &Agent::Conditions::dodging)
         .def_readwrite("disengaging",   &Agent::Conditions::disengaging)
         .def_readwrite("reaction_used", &Agent::Conditions::reaction_used)
+        .def_readwrite("battle_magic_available", &Agent::Conditions::battle_magic_available,
+             "Battle Magic (Valor Bard L14+): set after casting a Bard spell via the Magic action; "
+             "enables a bonus-action weapon attack. Reset at the start of the agent's turn.")
         .def_readwrite("hidden",        &Agent::Conditions::hidden)
         .def_readwrite("invisible",     &Agent::Conditions::invisible)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
@@ -610,6 +616,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("piercer_reroll_used_this_turn", &Agent::Conditions::piercer_reroll_used_this_turn)
         .def_readwrite("slasher_slow_used_this_turn", &Agent::Conditions::slasher_slow_used_this_turn)
         .def_readwrite("gwm_hew_available", &Agent::Conditions::gwm_hew_available)
+        .def_readwrite("zealous_blessing", &Agent::Conditions::zealous_blessing)
+        .def_readwrite("zealous_blessing_by", &Agent::Conditions::zealous_blessing_by)
         .def_readwrite("crusher_marked", &Agent::Conditions::crusher_marked)
         .def_readwrite("crusher_marked_by", &Agent::Conditions::crusher_marked_by)
         .def_readwrite("slasher_marked", &Agent::Conditions::slasher_marked)
@@ -2200,6 +2208,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::endRage,
              py::arg("battle_map"), py::arg("agent_idx"),
              "End Barbarian Rage: set raging=false, restore normal damage multipliers, clear reckless_attack.")
+        .def("use_intimidating_presence",
+             &CombatEngine::useIntimidatingPresence,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Barbarian Path of the Berserker L10 — Intimidating Presence (Bonus Action):\n"
+             "Each creature of the Barbarian's choice within a 30-ft emanation makes a WIS save\n"
+             "(DC 8 + STR mod + PB) or is Frightened until the end of the Barbarian's next turn.\n"
+             "Usable PB times per long rest, or expend one Rage use. Spends a bonus action.")
+        .def("use_zealous_presence",
+             &CombatEngine::useZealousPresence,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Barbarian Path of the Zealot L10 — Zealous Presence (Bonus Action):\n"
+             "Up to 10 creatures of the Barbarian's choice (allies) within 60 ft gain Advantage on\n"
+             "attack rolls and saving throws until the start of the Barbarian's next turn.\n"
+             "Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.")
         .def("apply_brutal_strike_effect",
              &CombatEngine::applyBrutalStrikeEffect,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
@@ -2497,6 +2519,38 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Restore the expended Mantle of Majesty use by spending an unused level 3+ spell slot (no\n"
              "action). Returns the resource's new current count, or -1 (not a Glamour Bard L6+, slot_level\n"
              "< 3, no such slot, or already full).")
+        .def("activate_unbreakable_majesty",
+             &CombatEngine::activateUnbreakableMajesty,
+             py::arg("battle_map"), py::arg("bard_idx"),
+             "College of Glamour Unbreakable Majesty (Bonus Action, Bard L14+): spend the once/long-rest\n"
+             "'Unbreakable Majesty' use, open a 1-minute (10-round) majestic-presence window\n"
+             "(stats.majestic_presence_turns = 10) and start Concentration on 'Unbreakable Majesty'\n"
+             "(replacing any prior concentration). While active any melee attack against the bard triggers\n"
+             "Psychic damage equal to the bard's CHA modifier (min 1) and forces a CHA save vs the bard's\n"
+             "spell save DC; on a failure the attacker gains Disadvantage on the next save vs the bard's\n"
+             "spells (TODO: full rider). The Psychic damage is applied automatically (no reaction).\n"
+             "Returns False if not a Glamour Bard L14+ or no use left.")
+        .def("bard_restore_unbreakable_majesty_from_slot",
+             &CombatEngine::bardRestoreUnbreakableMajestyFromSlot,
+             py::arg("battle_map"), py::arg("bard_idx"), py::arg("slot_level"),
+             "Restore the expended Unbreakable Majesty use by spending an unused level 3+ spell slot (no\n"
+             "action). Returns the resource's new current count, or -1 (not a Glamour Bard L14+, slot_level\n"
+             "< 3, no such slot, or already full).")
+        .def("bard_beguiling_magic",
+             &CombatEngine::bardBeguilingMagic,
+             py::arg("battle_map"), py::arg("bard_idx"), py::arg("target_idx"), py::arg("use_frightened"),
+             "College of Glamour Beguiling Magic (Bard L3+): fire the once/long-rest benefit after the\n"
+             "bard casts an Enchantment/Illusion spell with a slot (the caller gates school/slot). Spends\n"
+             "the 'Beguiling Magic' resource, then forces a WIS save (vs the bard's spell save DC) on the\n"
+             "target within 60 ft; on a failure the target is Charmed (use_frightened=False) or Frightened\n"
+             "(True) for 1 minute, repeating the save each of its turns. Returns True if used (resource\n"
+             "spent), False if it could not be used (not a L3+ Glamour Bard, no use, bad/out-of-range target).")
+        .def("bard_restore_beguiling_magic",
+             &CombatEngine::bardRestoreBeguilingMagic,
+             py::arg("battle_map"), py::arg("bard_idx"),
+             "Restore the expended Beguiling Magic use by spending one Bardic Inspiration use (no action).\n"
+             "Returns the resource's new current count, or -1 (not a Glamour Bard L3+, no Bardic Inspiration\n"
+             "use, or already full).")
         .def("apply_feinting_attack",
              &CombatEngine::applyFeintingAttack,
              py::arg("battle_map"), py::arg("fighter_idx"), py::arg("target_idx"),
@@ -2575,6 +2629,27 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Spend the held Bardic Inspiration die: rolls it, folds the result into the\n"
              "agent's NEXT d20 Test (roll / roll_advantage / roll_disadvantage / roll_to_hit),\n"
              "then clears the held die. Returns the rolled value (0 if none held).")
+        .def("use_bardic_die_for_damage",
+             &CombatEngine::useBardicDieForDamage,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Combat Inspiration damage mode (Valor Bard L3+, any held die): rolls the held\n"
+             "Bardic Inspiration die and folds it into pending_damage_bonus_ so the NEXT\n"
+             "weapon damage roll adds it, then clears the held die. Returns the rolled value\n"
+             "(0 if no die held).")
+        .def("can_combat_inspiration_ac",
+             &CombatEngine::canCombatInspirationAC,
+             py::arg("battle_map"), py::arg("attack"), py::arg("attack_result"),
+             "Combat Inspiration AC mode gate (Valor Bard L3+): checks if the reactor holds\n"
+             "a Bardic Inspiration die and whether rolling it + adding to AC could flip the\n"
+             "hit to a miss. Returns true if the feature can be offered as an OnHit reaction\n"
+             "option. Do not call applyCombatInspirationAC without checking this first.")
+        .def("apply_combat_inspiration_ac",
+             &CombatEngine::applyCombatInspirationAC,
+             py::arg("battle_map"), py::arg("reactor_idx"),
+             "Combat Inspiration AC mode apply: rolls the held die, spends it + the reaction.\n"
+             "Returns the rolled value on success, or -1 on failure (no die, reaction already\n"
+             "spent). The caller compares the value to the attack roll to determine if the\n"
+             "hit is negated (DM ruling: a negated hit is a genuine miss).")
         .def("bard_regain_inspiration_from_slot",
              &CombatEngine::bardRegainInspirationFromSlot,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("slot_level"),

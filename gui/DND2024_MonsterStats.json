@@ -57331,22 +57331,27 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Slashing)",
+        "name": "Claw",
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 3,
         "physical_damage_types": [
           {
             "type": "Slashing",
-            "num_dice": 1,
-            "die_size": 10
+            "num_dice": 2,
+            "die_size": 4
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Grappled",
+            "escape_dc": 14
+          }
+	],
         "mastery": "None"
       },
       "off_hand": {
@@ -59759,6 +59764,130 @@
       }
     }
   },
+  "Wereraven": {
+    "name": "Wereraven",
+    "size": "Medium or Small",
+    "stats": {
+      "str": 10,
+      "dex": 15,
+      "con": 11,
+      "intel": 13,
+      "wis": 15,
+      "cha": 14,
+      "hp_max": 54,
+      "hp_cur": 54,
+      "ac": 12,
+      "speed_walk": 30,
+      "speed_fly": 50,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 2,
+      "num_attacks": 2,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": true,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": []
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Scratch",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 2,
+        "physical_damage_types": [
+          {
+            "type": "Slashing",
+            "num_dice": 2,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": {
+        "name": "Scratch",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Slashing",
+            "num_dice": 2,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None",
+        "off_hand": true
+      },
+      "ranged": {
+        "name": "Shortbow",
+        "type": "ranged",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 2,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 2,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      }
+    },
+    "meta": {
+      "type": "Monstrosity (Lycanthrope)",
+      "cr": "5",
+      "alignment": "Neutral Good",
+      "source": "2024 Monster Manual",
+      "traits": [],
+      "languages": [
+        "Common"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 17,
+      "immunities_conditions": [],
+      "save_dc": 14,
+      "saving_throws": [
+        "Constitution"
+      ],
+      "action_notes": "Atk 1 on fail cursed if target drops to 0hp it becomes a werebear",
+      "bonus_action": "Shape-shift",
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
+  },    
   "Weretiger": {
     "name": "Weretiger",
     "size": "Medium or Small",

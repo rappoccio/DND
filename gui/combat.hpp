@@ -1153,6 +1153,18 @@ public:
     // End Rage: set raging=false, clear BPS resistance (restore 1.0x multiplier)
     void endRage(BattleMap& bm, int idx);
 
+    // Barbarian Path of the Berserker L10 — Intimidating Presence (Bonus Action):
+    // Each creature of the Barbarian's choice within a 30-ft emanation makes a WIS save
+    // (DC 8 + STR mod + PB) or is Frightened until the end of the Barbarian's next turn.
+    // Usable PB times per long rest, or expend one Rage use. Spends a bonus action.
+    bool useIntimidatingPresence(BattleMap& bm, int idx) noexcept;
+
+    // Barbarian Path of the Zealot L10 — Zealous Presence (Bonus Action):
+    // Up to 10 creatures of the Barbarian's choice (allies) within 60 ft gain Advantage on attack
+    // rolls and saving throws until the start of the Barbarian's next turn.
+    // Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.
+    bool useZealousPresence(BattleMap& bm, int idx) noexcept;
+
     // Apply Brutal Strike effects: damage + chosen effects (Forceful/Hamstring/Staggering/Sundering)
     // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)
     void applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
@@ -1346,6 +1358,21 @@ public:
     // held die. Returns the rolled value (0 if the agent holds no die).
     int useBardicDie(BattleMap& bm, int agent_idx) noexcept;
 
+    // Combat Inspiration damage mode (Valor Bard L3+, any held die): roll the held Bardic
+    // Inspiration die and fold it into pending_damage_bonus_ so the NEXT weapon damage roll
+    // adds it, then clear the held die. Returns the rolled value (0 if no die held).
+    int useBardicDieForDamage(BattleMap& bm, int agent_idx) noexcept;
+
+    // Combat Inspiration AC mode (Valor Bard L3+, any held die): check if rolling the held
+    // die + adding it to the target's AC would flip a hit to a miss. Actor must hold a die,
+    // action must have hit, attack is not a crit. Returns true if the die WOULD flip the hit.
+    bool canCombatInspirationAC(const BattleMap& bm, const Attack& action, const AttackResult& r) const;
+
+    // Combat Inspiration AC mode apply: roll the held die, consume it, spend the reaction. Returns
+    // the rolled value on success, or -1 on failure (no die, reaction already spent). The caller
+    // compares the rolled value to the attack roll to determine if the hit is negated.
+    int applyCombatInspirationAC(BattleMap& bm, int reactor_idx) noexcept;
+
     // Font of Inspiration (Bard L5+): expend a spell slot of slot_level (no action) to
     // regain one expended use of Bardic Inspiration. Returns the new Bardic Inspiration
     // count, or -1 on failure (not a L5+ Bard, no such slot, or already at max).
@@ -1373,6 +1400,20 @@ public:
     int bardMantleOfInspiration(BattleMap& bm, int bard_idx,
                                 const std::vector<int>& targets) noexcept;
 
+    // College of Glamour — Beguiling Magic (Bard L3+): the once/long-rest benefit fired immediately
+    // after the bard casts an Enchantment or Illusion spell with a slot (the GUI gates the school/slot
+    // condition). Spends the "Beguiling Magic" resource, then forces a WIS save (vs the bard's spell
+    // save DC) on the chosen target within 60 ft; on a failure the target gains the Charmed (use_frightened
+    // == false) or Frightened (true) condition for 1 minute (10 rounds), repeating the WIS save at the
+    // start of each of its turns. Returns true if the benefit was used (resource spent + save attempted),
+    // false if it could not be used (not a L3+ Glamour Bard, no use left, bad/own/out-of-range target).
+    bool bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_idx, bool use_frightened) noexcept;
+
+    // Restore the expended "Beguiling Magic" use by spending one Bardic Inspiration use (no action).
+    // Returns the resource's new current count, or -1 on failure (not a Glamour Bard L3+, no Bardic
+    // Inspiration use, or already full).
+    int bardRestoreBeguilingMagic(BattleMap& bm, int bard_idx) noexcept;
+
     // College of Glamour — Mantle of Majesty (Bard L6+): Bonus Action that spends the once/long-rest
     // "Mantle of Majesty" resource, opens a 1-minute (10-round) "unearthly appearance" window
     // (mantle_majesty_turns = 10) and starts Concentration on the literal name "Mantle of Majesty"
@@ -1386,6 +1427,21 @@ public:
     // action). Mirrors bardRegainInspirationFromSlot. Returns the resource's new current count, or
     // -1 on failure (not a Glamour Bard L6+, slot_level < 3, no such slot, or already full).
     int bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
+
+    // College of Glamour — Unbreakable Majesty (Bard L14): Bonus Action that spends the once/long-rest
+    // "Unbreakable Majesty" resource, opens a 1-minute (10-round) "majestic presence" window
+    // (majestic_presence_turns = 10) and starts Concentration on the literal name "Unbreakable Majesty"
+    // (replacing any prior concentration). While the window is active any creature that hits the bard
+    // with a melee attack takes Psychic damage equal to the bard's CHA modifier (min 1) automatically,
+    // and must succeed at a CHA save vs the bard's spell save DC or gain Disadvantage on the next save
+    // throw vs the bard's spells (TODO: full rider impl). Returns true on success, false if the agent
+    // is not a College of Glamour Bard L14+ or has no use.
+    [[nodiscard]] bool activateUnbreakableMajesty(BattleMap& bm, int bard_idx) noexcept;
+
+    // Restore the expended "Unbreakable Majesty" use by spending an unused level 3+ spell slot (no
+    // action). Mirrors bardRestoreMantleOfMajestyFromSlot. Returns the resource's new current count, or
+    // -1 on failure (not a Glamour Bard L14+, slot_level < 3, no such slot, or already full).
+    int bardRestoreUnbreakableMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
 
     // Apply the chosen Command word to a target that failed its save vs the Command spell.
     // word: 0=Drop, 1=Flee, 2=Grovel, 3=Halt, 4=Approach (anything else defaults to Halt). Reuses
@@ -1800,6 +1856,11 @@ private:
     // Unlike Portent (which replaces the d20), this is additive. Set by useBardicDie.
     int pending_roll_bonus_{0};
     int consumePendingRollBonus() noexcept { int b = pending_roll_bonus_; pending_roll_bonus_ = 0; return b; }
+
+    // Combat Inspiration damage bonus: a flat bonus folded into the NEXT weapon damage roll.
+    // Set by useBardicDieForDamage, mirroring pending_roll_bonus_ for the damage roll.
+    int pending_damage_bonus_{0};
+    int consumePendingDamageBonus() noexcept { int b = pending_damage_bonus_; pending_damage_bonus_ = 0; return b; }
 
     // One-shot advantage/disadvantage on the NEXT D20 Test (+1 = advantage, -1 = disadvantage,
     // 0 = none). General mechanism for "advantage on your next roll" (Tides of Chaos, etc.);

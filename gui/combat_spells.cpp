@@ -285,6 +285,12 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
             }
     }
 
+    // Zealot Zealous Presence (L10): target with zealous_blessing gets Advantage on saving throws
+    if (target_cond.zealous_blessing) {
+        target_adv = true;
+        log_("Zealous Presence: {} has Advantage on the save", agentName(bm, tgt_idx));
+    }
+
     int save_d20;
     if (auto_fail) {
         save_d20 = 1;  // Automatic fail
@@ -1478,6 +1484,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         bm.setAgentStats(action.caster_idx, stats);
     }
 
+    // Battle Magic (Valor Bard L14+): casting a Bard spell via the Magic action sets a flag
+    // enabling a bonus-action weapon attack. Gate on Valor L14+ (no class-feature check; we
+    // assume this is called only for Bard spells; the GUI enforces that).
+    if (result.valid && caster_pa.agent->getStats().character_class == CharacterClass::Bard &&
+        caster_pa.agent->getStats().bard_subclass == ValorPath &&
+        caster_pa.agent->getStats().char_level >= 14) {
+        Agent::Conditions c = bm.getAgentConditions(action.caster_idx);
+        c.battle_magic_available = true;
+        bm.setAgentConditions(action.caster_idx, c);
+        log_("{} casts a Bard spell (Battle Magic available for bonus-action weapon attack)",
+             agentName(bm, action.caster_idx));
+    }
+
     return result;
 }
 
@@ -1990,19 +2009,27 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     for (int eid : result.removed_spell_effect_ids)
         bm.removeSpellEffect(eid);
 
-    // 3. Remove conditions applied by this agent's concentration spells
+    // 3. Remove conditions applied by this agent's concentration spells.
+    //    clearSpellConditionEffect REVERSES the condition's effect on the target
+    //    (clears incapacitated/charmed/etc. flags so speed/actions are restored);
+    //    removeAgentCondition only erases the tracking entry. Both are required —
+    //    otherwise e.g. Hypnotic Pattern targets stay Incapacitated with speed 0
+    //    after the caster's concentration drops.
     const auto& spells = bm.getAgentSpells(agent_idx);
     for (const auto& ac : activeAgentConditions_) {
         if (ac.caster_idx == agent_idx &&
             ac.spell_idx >= 0 && ac.spell_idx < static_cast<int>(spells.size()) &&
-            spells[static_cast<std::size_t>(ac.spell_idx)].requires_concentration)
+            spells[static_cast<std::size_t>(ac.spell_idx)].requires_concentration) {
+            clearSpellConditionEffect(bm, ac);
             result.removed_condition_ids.push_back(ac.condition_id);
+        }
     }
     for (int cid : result.removed_condition_ids)
         removeAgentCondition(cid);
 
     // 4. Clear C++ concentration state
-    const bool was_mantle_majesty = (cond.concentrating_on == "Mantle of Majesty");
+    const bool was_mantle_majesty       = (cond.concentrating_on == "Mantle of Majesty");
+    const bool was_unbreakable_majesty  = (cond.concentrating_on == "Unbreakable Majesty");
     cond.concentrating    = false;
     cond.concentrating_on = {};
     bm.setAgentConditions(agent_idx, cond);
@@ -2015,6 +2042,17 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
             ms.mantle_majesty_turns = 0;
             bm.setAgentStats(agent_idx, ms);
             log_("{}'s unearthly appearance fades (Mantle of Majesty ends)", agentName(bm, agent_idx));
+        }
+    }
+
+    // 4a'. Unbreakable Majesty's "majestic presence" window IS the concentration — end it the
+    //      same way (mirrors Mantle of Majesty above).
+    if (was_unbreakable_majesty) {
+        Agent::Stats ms = bm.getAgentStats(agent_idx);
+        if (ms.majestic_presence_turns > 0) {
+            ms.majestic_presence_turns = 0;
+            bm.setAgentStats(agent_idx, ms);
+            log_("{}'s majestic presence fades (Unbreakable Majesty ends)", agentName(bm, agent_idx));
         }
     }
 
