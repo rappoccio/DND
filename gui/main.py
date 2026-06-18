@@ -7794,6 +7794,44 @@ class App:
         }
         return mapping.get(s, rpg.VisibilityLevel.Clear)
 
+    def _apply_light_effects(self, light_sources):
+        """Apply editor-placed light effects to the battle map."""
+        if not light_sources:
+            return
+
+        # Clear existing DM-placed light effects
+        for eff in self.bm.active_light_effects:
+            if eff.source_agent_idx == -1:  # DM-placed
+                self.bm.remove_light_effect(eff.id)
+
+        # Place new light effects
+        for light in light_sources:
+            level = light.get("level", rpg.VisibilityLevel.Sunlight)
+            x, y = light.get("x", 0), light.get("y", 0)
+            radius = light.get("radius", 5)
+
+            # Convert pixel coords to grid cell
+            cell = self._screen_to_cell(x, y)
+            if not cell or cell.col < 0 or cell.row < 0:
+                continue
+
+            # Create a sphere of cells around the light
+            cells = []
+            for row in range(max(0, cell.row - radius), min(self.bm.grid_rows, cell.row + radius + 1)):
+                for col in range(max(0, cell.col - radius), min(self.bm.grid_cols, cell.col + radius + 1)):
+                    # Chebyshev distance for square radius
+                    if abs(col - cell.col) <= radius and abs(row - cell.row) <= radius:
+                        cells.append(rpg.Cell(col, row))
+
+            # Place the light effect
+            self.bm.place_light_effect(
+                light.get("name", "Light"),
+                cells,
+                level,
+                -1,  # -1 = permanent
+                -1   # -1 = DM-placed (no source agent)
+            )
+
     def _clear_temporary_terrain(self):
         """Remove spell-created temporary terrain (regions with 'source' field)."""
         self._terrain_regions = [r for r in self._terrain_regions if "source" not in r]
@@ -8238,6 +8276,63 @@ class App:
                 self.screen.blit(jump_surf,   (sx, sy))
                 self.screen.blit(border_surf, (sx, sy))
 
+    def _draw_light_effects(self, cpx: int):
+        """Draw light effect overlays (Daylight, Darkness, etc.)."""
+        if not self.bm.has_active_light_effects():
+            return
+
+        s = self.map_scale
+        raw_h = self.bm.h_line_positions
+        raw_v = self.bm.v_line_positions
+
+        for effect in self.bm.active_light_effects:
+            # Color by light level: Sunlight (bright yellow), Dark/MagicalDark (dark blue)
+            if effect.light_level == rpg.VisibilityLevel.Sunlight:
+                color = (255, 255, 100, 50)  # Bright yellow with transparency
+            elif effect.light_level == rpg.VisibilityLevel.MagicalDark:
+                color = (50, 50, 120, 50)  # Dark blue with transparency
+            elif effect.light_level == rpg.VisibilityLevel.Dark:
+                color = (40, 40, 80, 50)   # Darker blue
+            elif effect.light_level == rpg.VisibilityLevel.Dim:
+                color = (100, 100, 150, 40)  # Dim purple
+            else:
+                color = (150, 150, 150, 30)  # Gray default
+
+            # Create surfaces for fill and border
+            fill_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
+            fill_surf.fill(color)
+            border_color = tuple(min(c + 60, 255) for c in color[:3]) + (color[3],)
+            border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
+            pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
+
+            # Render each cell of the light effect
+            map_w, map_h = self.map_rect.width, self.map_rect.height
+            for cell_idx in effect.cell_indices:
+                # Convert flat index back to (col, row)
+                col = cell_idx % self.bm.grid_cols
+                row = cell_idx // self.bm.grid_cols
+                if col < 0 or row < 0 or col >= len(raw_v) or row >= len(raw_h):
+                    continue
+                sx, sy = self._cell_to_screen(col, row)
+                if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
+                    continue
+                self.screen.blit(fill_surf, (sx, sy))
+                self.screen.blit(border_surf, (sx, sy))
+
+            # Draw light effect name and duration as a small label in the first cell
+            if effect.cell_indices and effect.turns_remaining >= 0:
+                first_idx = effect.cell_indices[0]
+                col = first_idx % self.bm.grid_cols
+                row = first_idx // self.bm.grid_cols
+                if col >= 0 and row >= 0 and col < len(raw_v) and row < len(raw_h):
+                    sx, sy = self._cell_to_screen(col, row)
+                    # Draw light name and duration
+                    txt = self.font_sm.render(
+                        f"{effect.name} ({effect.turns_remaining})",
+                        True, (255, 255, 255)
+                    )
+                    self.screen.blit(txt, (sx + 2, sy + 2))
+
     def _draw_temp_terrain_overlays(self, cpx: int):
         """Draw temporary terrain effect overlays."""
         if not self.bm.has_active_terrain_effects():
@@ -8582,6 +8677,9 @@ class App:
 
         # ── Attack range overlays (beneath all agents) ────────────────────
         self._draw_attack_overlays(cpx)
+
+        # ── Light effects overlays (beneath all agents) ───────────────────
+        self._draw_light_effects(cpx)
 
         # ── Temporary terrain effects overlays (beneath all agents) ────────
         self._draw_temp_terrain_overlays(cpx)

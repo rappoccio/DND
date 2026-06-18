@@ -257,6 +257,35 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         return result;
     }
 
+    // Vampire Sunlight Vulnerability: vampires take 20 radiant damage at the start
+    // of their turn if they're in Sunlight (VisibilityLevel::Sunlight).
+    if (stats.is_vampire && stats.hp_cur > 0) {
+        int cell_index = agent.origin.row * bm.gridCols() + agent.origin.col;
+        const auto& light_effects = bm.activeLightEffects();
+        for (const auto& effect : light_effects) {
+            if (effect.light_level == VisibilityLevel::Sunlight) {
+                // Check if this agent's origin cell is in the Sunlight effect
+                if (std::find(effect.cell_indices.begin(), effect.cell_indices.end(),
+                              cell_index) != effect.cell_indices.end()) {
+                    // Deal 20 radiant damage
+                    stats.hp_cur = std::max(0, stats.hp_cur - 20);
+                    bm.setAgentStats(agent_idx, stats);
+                    log_("{} takes 20 radiant damage from Sunlight exposure → {}/{}", agent_name,
+                         stats.hp_cur, stats.hp_max);
+                    if (stats.hp_cur == 0) {
+                        cond.dead = true;
+                        cond.unconscious = true;
+                        bm.setAgentConditions(agent_idx, cond);
+                        log_("{} dies from Sunlight exposure", agent_name);
+                        result.save_roll_message = "Sunlight Exposure: Death";
+                        return result;
+                    }
+                    break;  // Only take damage once per turn
+                }
+            }
+        }
+    }
+
     // Death saves: roll CON save DC 10 if unconscious at 0 HP
     if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
         int con_mod = (stats.con - 10) / 2;

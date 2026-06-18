@@ -465,6 +465,7 @@ namespace rpg {
 
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
+      bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+

@@ -517,6 +517,8 @@ def _spell_to_dict(s) -> dict:
         "hatch_pattern":         s.hatch_pattern if hasattr(s, 'hatch_pattern') else None,
         "terrain_color":         s.terrain_color if hasattr(s, 'terrain_color') else None,
         "requires_concentration": s.requires_concentration,
+        "moves_with_caster":     s.moves_with_caster,
+        "light_level":           s.light_level,
     }
 
 
@@ -582,6 +584,8 @@ def _dict_to_spell(d: dict):
     s.physical_damage_rolls = phys_rolls
 
     s.requires_concentration = d.get("requires_concentration", False)
+    s.moves_with_caster = d.get("moves_with_caster", False)
+    s.light_level = int(d.get("light_level", -1))
 
     # Parse spell conditions - same format as weapon conditions
     conditions = []

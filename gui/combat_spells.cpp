@@ -1397,6 +1397,35 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Light effect placement: if spell creates a light effect (e.g., Daylight, Light, Darkness)
+    if (result.valid && sp.light_level >= 0) {
+        Cell center = Cell{action.aoe_col, action.aoe_row};
+        Cell caster_origin = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].origin;
+        int caster_size = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].agent->getSize();
+
+        // Light effects follow the same emanation rules as terrain: moving Sphere centers on caster,
+        // other shapes place static light at the aim.
+        std::vector<Cell> light_cells;
+        if (moving_sphere) {
+            light_cells = sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius);
+        } else {
+            Cell endpoint = Cell{action.aoe_col2, action.aoe_row2};
+            auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint);
+            light_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
+        }
+
+        if (!light_cells.empty()) {
+            int light_id = bm.placeLightEffect(
+                sp.name, light_cells,
+                static_cast<VisibilityLevel>(sp.light_level),
+                sp.duration, action.caster_idx);
+
+            if (light_id >= 0) {
+                result.light_effect_ids.push_back(light_id);
+            }
+        }
+    }
+
     // If caster was hidden and cast a spell, reveal them
     if (result.valid && action.caster_idx >= 0 && action.caster_idx < static_cast<int>(agents.size())) {
         const Agent::Conditions& caster_cond = agents[static_cast<std::size_t>(action.caster_idx)].agent->getConditions();

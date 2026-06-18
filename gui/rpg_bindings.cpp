@@ -469,6 +469,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Creature type is Undead (a valid Turn Undead target).")
         .def_readwrite("is_fiend", &Agent::Stats::is_fiend,
              "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
+        .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
+             "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
         .def_readwrite("weapon_mastery", &Agent::Stats::weapon_mastery,
              "Number of Weapon Mastery properties known (>0 = the feature is active).")
         .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,
@@ -1157,6 +1159,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Slipping terrain: DEX save DC.")
         .def_readwrite("slip_distance_feet",   &Spell::slip_distance_feet,
              "Slipping terrain: feet moved before a save is required.")
+        .def_readwrite("light_level",           &Spell::light_level,
+             "Light effect level created by this spell (VisibilityLevel enum value, -1 = no light effect).\n"
+             "E.g., 6 = Sunlight (Daylight spell), 0 = Clear/BrightLight (Light spell).")
         .def_readwrite("requires_concentration", &Spell::requires_concentration,
              "If true, caster must maintain concentration; breaks on damage (CON save).")
         .def_readwrite("moves_with_caster", &Spell::moves_with_caster,
@@ -1291,6 +1296,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("prev_concentration_spell",   &SpellResult::prev_concentration_spell)
         .def_readonly("terrain_effect_ids",         &SpellResult::terrain_effect_ids,
              "IDs of terrain effects placed by this spell (for Python render cache).")
+        .def_readonly("light_effect_ids",           &SpellResult::light_effect_ids,
+             "IDs of light effects placed by this spell (for Python render cache).")
         .def_readonly("cast_as_bonus_action",       &SpellResult::cast_as_bonus_action,
              "Metamagic Quickened: this cast was made as a Bonus Action.")
         .def("__repr__", [](const SpellResult& r){

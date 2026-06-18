@@ -297,6 +297,7 @@ struct SpellResult {
     bool        concentration_replaced     = false;   // caster dropped previous concentration
     std::string prev_concentration_spell   = {};      // name of dropped spell
     std::vector<int> terrain_effect_ids    = {};      // ids of new terrain effects placed by this spell
+    std::vector<int> light_effect_ids      = {};      // ids of new light effects placed by this spell
     bool cast_as_bonus_action              = false;   // Metamagic Quickened: cast as a Bonus Action this turn
 };
 

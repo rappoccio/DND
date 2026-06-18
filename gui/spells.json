@@ -1807,7 +1807,8 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "evocation"
+  "school": "evocation",
+  "light_level": 4
  },
  {
   "name": "Darkvision",
@@ -1849,7 +1850,8 @@
   "requires_concentration": false,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "evocation"
+  "school": "evocation",
+  "light_level": 6
  },
  {
   "name": "Death Ward",

@@ -52524,7 +52524,8 @@
       "Animate Dead",
       "Fog Cloud",
       "Mirror Image",
-      "Charm Person Bonus"
+      "Charm Person Bonus",
+      "Greater Invisibility"
     ],
     "npc_spell_groups": {
       "99": [
@@ -57084,7 +57085,9 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -57212,7 +57215,8 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -57348,7 +57352,9 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "intel"
+      "spellcasting_ability": "intel",
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -57503,7 +57509,9 @@
       ],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -57627,7 +57635,9 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -57754,7 +57764,9 @@
       ],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -57902,7 +57914,9 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "cha"
+      "spellcasting_ability": "cha",
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {

@@ -50,6 +50,11 @@ namespace rpg {
       int slip_save_dc{10};       // Slipping terrain: DEX save DC
       int slip_distance_feet{5};  // Slipping terrain: feet moved before a save is required
 
+      // Light effect created by this spell (e.g., Daylight, Light, Darkness)
+      // If light_level is -1, no light effect is created.
+      // The light effect duration is the same as the spell's duration (in rounds).
+      int light_level{-1};  // VisibilityLevel enum value (-1 = none)
+
       bool requires_concentration{false};  // Caster must maintain concentration; breaks on damage
       // Sphere whose center follows the caster (D&D 2024 "Emanation"). The persistent
       // effect re-centers on the caster each turn / whenever the caster moves.

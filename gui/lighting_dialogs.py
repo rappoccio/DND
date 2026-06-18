@@ -20,10 +20,17 @@ class LightingEditorDialog:
 
         # Lighting configuration
         self.default_light = rpg.VisibilityLevel.Dark
-        self.light_sources = []  # list of {"name": str, "x": int, "y": int, "bright": int, "dim": int}
+        self.light_sources = []  # list of {"name": str, "level": VisibilityLevel, "cells": [...]}
         self.selected_source_idx = -1
         self.placing_light = False
-        self.pending_light_pos = None
+        self.pending_light_level = rpg.VisibilityLevel.Sunlight  # Default to Sunlight
+        self.light_level_choices = [
+            (rpg.VisibilityLevel.Clear, "Clear/BrightLight"),
+            (rpg.VisibilityLevel.Dim, "Dim Light"),
+            (rpg.VisibilityLevel.Dark, "Dark"),
+            (rpg.VisibilityLevel.MagicalDark, "Magical Darkness"),
+            (rpg.VisibilityLevel.Sunlight, "Sunlight"),
+        ]
         self.show_overlay = True  # Toggle for lighting visualization
 
         # UI elements
@@ -34,8 +41,9 @@ class LightingEditorDialog:
         """Initialize dialog buttons."""
         self.buttons['add'] = Button(pygame.Rect(10, 10, 100, 30), "Add Light", font=self.font_sm)
         self.buttons['remove'] = Button(pygame.Rect(120, 10, 80, 30), "Remove", font=self.font_sm)
-        self.buttons['done'] = Button(pygame.Rect(10, 50, 100, 30), "Done", font=self.font_sm)
-        self.buttons['cancel'] = Button(pygame.Rect(120, 50, 80, 30), "Cancel", font=self.font_sm)
+        self.buttons['cycle_level'] = Button(pygame.Rect(10, 50, 190, 30), "Light Level: Sunlight", font=self.font_sm)
+        self.buttons['done'] = Button(pygame.Rect(10, 90, 100, 30), "Done", font=self.font_sm)
+        self.buttons['cancel'] = Button(pygame.Rect(120, 90, 80, 30), "Cancel", font=self.font_sm)
 
     def open(self, map_surf, bm, app, light_sources):
         """Open the dialog for editing lighting."""
@@ -100,21 +108,34 @@ class LightingEditorDialog:
             if self.selected_source_idx >= 0:
                 self.light_sources.pop(self.selected_source_idx)
                 self.selected_source_idx = -1
+        elif button_name == 'cycle_level':
+            # Cycle through light levels
+            current_idx = next((i for i, (lvl, _) in enumerate(self.light_level_choices)
+                               if lvl == self.pending_light_level), 4)  # Default to Sunlight (idx 4)
+            next_idx = (current_idx + 1) % len(self.light_level_choices)
+            self.pending_light_level, _ = self.light_level_choices[next_idx]
+            self._update_level_button()
         elif button_name == 'done':
             self.active = False
             if self.app:
-                self.app._save_lighting(self.light_sources, self.default_light)
+                self.app._apply_light_effects(self.light_sources)
         elif button_name == 'cancel':
             self.close()
+
+    def _update_level_button(self):
+        """Update the level button text."""
+        level_name = next((name for lvl, name in self.light_level_choices
+                          if lvl == self.pending_light_level), "Unknown")
+        self.buttons['cycle_level'].text = f"Light Level: {level_name}"
 
     def _add_light_at(self, px, py):
         """Add a light source at the given pixel coordinates."""
         light = {
             "name": f"Light {len(self.light_sources) + 1}",
+            "level": self.pending_light_level,
             "x": px,
             "y": py,
-            "bright_radius": 20,
-            "dim_radius": 40
+            "radius": 5  # Default 5-cell radius for editor-placed lights
         }
         self.light_sources.append(light)
 
@@ -143,11 +164,13 @@ class LightingEditorDialog:
             screen.blit(text, (200, 85))
 
             # Draw list of light sources
-            y = 100
+            y = 130
             for i, light in enumerate(self.light_sources):
                 color = (255, 255, 0) if i == self.selected_source_idx else (200, 200, 200)
+                level_name = next((name for lvl, name in self.light_level_choices
+                                  if lvl == light.get("level", rpg.VisibilityLevel.Sunlight)), "Unknown")
                 text = self.font_sm.render(
-                    f"{light['name']}: ({light['x']}, {light['y']}) br:{light['bright_radius']} dim:{light['dim_radius']}",
+                    f"{light['name']}: {level_name} (r:{light.get('radius', 5)})",
                     True, color
                 )
                 text_rect = screen.blit(text, (220, y))

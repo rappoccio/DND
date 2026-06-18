@@ -118,6 +118,20 @@ static Spell spellFromJson(const json& j) noexcept {
     spell.effects_on_begin_turn = j.value("effects_on_begin_turn", true);
     spell.effects_on_end_turn = j.value("effects_on_end_turn", false);
 
+    // Parse terrain difficulty
+    std::string terrain_str = j.value("terrain_difficulty", "Normal");
+    if (terrain_str == "Halved") spell.terrain_difficulty = TerrainDifficulty::Halved;
+    else if (terrain_str == "Quartered") spell.terrain_difficulty = TerrainDifficulty::Quartered;
+    else if (terrain_str == "Slipping") spell.terrain_difficulty = TerrainDifficulty::Slipping;
+    else spell.terrain_difficulty = TerrainDifficulty::Normal;
+
+    spell.slip_save_dc = j.value("slip_save_dc", 10);
+    spell.slip_distance_feet = j.value("slip_distance_feet", 5);
+    spell.moves_with_caster = j.value("moves_with_caster", false);
+
+    // Parse light level (-1 = no light effect)
+    spell.light_level = j.value("light_level", -1);
+
     return spell;
 }
 
