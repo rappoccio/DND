@@ -70,6 +70,28 @@ def dict_to_stats(stats_dict):
     # Barbarian L20 Primal Champion and L11 Relentless Rage
     stats.primal_champion_applied = bool(stats_dict.get("primal_champion_applied", False))
     stats.relentless_rage_dc = int(stats_dict.get("relentless_rage_dc", 10))
+
+    # Legendary Actions & Resistance (from bestiary meta.legendary)
+    legendary_data = stats_dict.get("legendary", {})
+    if isinstance(legendary_data, dict):
+        is_in_lair = legendary_data.get("has_lair", False)
+        # Use lair values if in_lair and they exist; otherwise use base values
+        stat_max = legendary_data.get("actions_in_lair") if is_in_lair else legendary_data.get("actions")
+        stats.legendary_actions_max = int(stat_max) if stat_max is not None else 0
+        # Start the encounter with a full round of legendary actions (they refill at the creature's
+        # own turn start in C++ beginTurn, but should be available before its first turn too).
+        stats.legendary_actions_current = stats.legendary_actions_max
+        res_max = legendary_data.get("resistance_in_lair") if is_in_lair else legendary_data.get("resistance")
+        stats.legendary_resistance_max = int(res_max) if res_max is not None else 0
+        stats.legendary_resistance_current = stats.legendary_resistance_max  # reset to max on load
+        stats.is_in_lair = bool(is_in_lair)
+        stats.has_legendary_actions = stats.legendary_actions_max > 0
+        # Legendary action names from the legendary block
+        stats.legendary_action_names = list(legendary_data.get("action_names", []))
+    else:
+        # Also check for legendary_action_names at top level (for saved agents)
+        stats.legendary_action_names = list(stats_dict.get("legendary_action_names", []))
+
     return stats
 
 

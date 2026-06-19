@@ -486,6 +486,15 @@ class App:
         # it's set before begin_move/begin_cast and invoked by _submit_reaction on completion.
         self._reaction_finish     = lambda: None
         self._turn_start_idx      = -1    # agent whose turn-start window (OnTurnStartNearby) is parked
+        # Legendary Actions: after a creature's turn ends, eligible legendary creatures (enemies of
+        # the just-ended creature, with actions left) may each spend legendary actions before the
+        # next turn begins. _legendary_queue holds those creature indices, drained one at a time.
+        self._legendary_queue        = []    # creature indices still owed a legendary-action offer
+        self._legendary_actor        = -1    # creature currently being offered / resolving an action
+        self._legendary_target_pick  = False # armed: next map click picks the legendary attack target
+        self._legendary_attack_name  = ""    # the chosen attack option (for the target-pick prompt)
+        self._legendary_attack_widx  = -1    # weapon index the chosen attack resolves through
+        self._legendary_move_active  = False # armed: a legendary Dash/DashHalf move is in progress
         self._cast_post           = {}    # context the parked cast needs for post-resolve logging
         self._attack_post         = {}    # context the parked attack needs for post-resolve rider chain
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
@@ -1123,12 +1132,16 @@ class App:
         shape (ability scores, speeds, save profs, resist/immune/vuln lists,
         is_npc), so this just loads it and applies the damage multipliers."""
         sd = mob_record.get("stats", {})
+        # Add legendary data from meta.legendary to the stats dict for dict_to_stats to consume
+        meta = mob_record.get("meta", {})
+        if "legendary" in meta:
+            sd["legendary"] = meta["legendary"]
         stats = dict_to_stats(sd)
         apply_damage_multipliers(stats, sd)
         # Monsters whose bonus action grants Dash/Disengage (e.g. the Vampire
         # Spawn's "Deathless Agility") reuse the Cunning Action machinery, which
         # is what surfaces the bonus-action Dash/Disengage buttons in the GUI.
-        ba = str(mob_record.get("meta", {}).get("bonus_action") or "").lower()
+        ba = str(meta.get("bonus_action") or "").lower()
         if "dash" in ba or "disengage" in ba:
             stats.has_cunning_action = True
         return stats
@@ -2026,6 +2039,15 @@ class App:
             self._combat_log_add(f"[END TURN] {prev_name}")
             self.combat.end_turn(self.bm, prev_idx)
 
+        # Legendary Actions: after an (enemy) creature's turn ends, every eligible legendary
+        # creature may spend a legendary action (or pass). This phase is interactive — it may park
+        # on modal menus / target picks / a Dash move — so the new turn only begins once the phase
+        # completes, via _proceed_to_new_turn (the queue-drain continuation).
+        self._begin_legendary_phase(prev_idx)
+
+    def _proceed_to_new_turn(self):
+        """Begin the next combatant's turn. Runs after _advance_turn ends the previous turn and the
+        legendary-action phase (if any) finishes draining."""
         # Reset action economy and per-turn conditions for the new combatant.
         self.action_used           = False
         self.bonus_used            = False
@@ -2061,6 +2083,213 @@ class App:
             self._show_pending_reaction_menu()   # _submit_reaction → _finish_turn_start on completion
             return
         self._finish_turn_start()
+
+    # ── Legendary Actions ──────────────────────────────────────────────────────
+    # After a creature's turn ends, each legendary creature that is its enemy and still has
+    # legendary actions left may spend one (or pass), repeatedly, until it passes or runs out.
+    # Actions are driven entirely from the GUI: an attack-named option reuses begin_attack (with the
+    # legendary creature as the explicit attacker), and Dash/DashHalf seed an out-of-turn movement
+    # budget and reuse the normal drag-to-move flow. The budget resets at the creature's own turn
+    # start (C++ beginTurn). The phase is a continuation of _advance_turn → _proceed_to_new_turn.
+
+    def _legendary_action_names_for(self, idx: int, st) -> list:
+        """The list of legendary-action option names to offer creature idx. Uses the explicit
+        bestiary action_names when present; otherwise falls back to a sensible default so any
+        creature with legendary actions is still usable: each distinct named weapon (resolved as an
+        attack) plus a half-speed move."""
+        names = [n for n in st.legendary_action_names if str(n).strip()]
+        if names:
+            return names
+        out, seen = [], set()
+        for w in self.combat.get_agent_weapons(self.bm, idx):
+            nm = (w.name or "").strip()
+            if nm and nm.lower() not in seen:
+                seen.add(nm.lower()); out.append(nm)
+        out.append("DashHalf")
+        return out
+
+    def _legendary_eligible(self, idx: int, prev_idx: int) -> bool:
+        """True if creature idx may take a legendary action after prev_idx's turn ended."""
+        agents = self.bm.placed_agents
+        if not (0 <= idx < len(agents)) or idx == prev_idx:
+            return False
+        if self.bm.is_agent_removed_from_play(idx):
+            return False
+        try:
+            st = self.combat.get_agent_stats(self.bm, idx)
+        except Exception:
+            return False
+        if not getattr(st, "has_legendary_actions", False):
+            return False
+        if st.legendary_actions_current <= 0 or st.hp_cur <= 0:
+            return False
+        # Legendary actions fire after an *enemy's* turn (not an ally's).
+        return not self._are_allies(idx, prev_idx)
+
+    def _begin_legendary_phase(self, prev_idx: int):
+        """Build the queue of legendary creatures eligible after prev_idx's turn, then drain it.
+        Falls straight through to the new turn when nothing is eligible (the common case)."""
+        self._legendary_queue = []
+        self._legendary_actor = -1
+        self._legendary_target_pick = False
+        self._legendary_move_active = False
+        if self.combat_active and prev_idx >= 0:
+            for i in range(len(self.bm.placed_agents)):
+                if self._legendary_eligible(i, prev_idx):
+                    self._legendary_queue.append(i)
+        self._offer_next_legendary()
+
+    def _offer_next_legendary(self):
+        """Show the front-of-queue legendary creature its action menu, skipping any that are no
+        longer eligible. When the queue empties, begin the next combatant's turn."""
+        while self._legendary_queue:
+            idx = self._legendary_queue[0]
+            agents = self.bm.placed_agents
+            if not (0 <= idx < len(agents)) or self.bm.is_agent_removed_from_play(idx):
+                self._legendary_queue.pop(0); continue
+            st = self.combat.get_agent_stats(self.bm, idx)
+            if st.hp_cur <= 0 or st.legendary_actions_current <= 0:
+                self._legendary_queue.pop(0); continue
+            self._legendary_actor = idx
+            self._show_legendary_action_menu(idx, st)
+            return
+        self._legendary_actor = -1
+        self._proceed_to_new_turn()
+
+    def _show_legendary_action_menu(self, idx: int, st):
+        """Context menu for creature idx: one entry per available action name + Pass."""
+        name = self.bm.placed_agents[idx].name
+        remaining = st.legendary_actions_current
+        self._combat_log_add(
+            f"{name}: {remaining} legendary action(s) available — choose one or pass.")
+        self._flush_combat_log()
+        options = [(a, (lambda a=a: self._choose_legendary_action(a)))
+                   for a in self._legendary_action_names_for(idx, st)]
+        options.append((f"Pass ({remaining} left)", self._pass_legendary))
+        px, py = self._agent_screen_pos(idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _pass_legendary(self):
+        """The current legendary creature declines further actions; move to the next in the queue."""
+        if self._legendary_queue:
+            self._legendary_queue.pop(0)
+        self._legendary_actor = -1
+        self._offer_next_legendary()
+
+    def _spend_legendary_action(self, idx: int) -> int:
+        """Decrement the creature's per-round legendary-action budget; return the remaining count."""
+        st = self.combat.get_agent_stats(self.bm, idx)
+        st.legendary_actions_current = max(0, st.legendary_actions_current - 1)
+        self.combat.set_agent_stats(self.bm, idx, st)
+        return st.legendary_actions_current
+
+    def _after_legendary_action(self, idx: int):
+        """A creature may take only ONE legendary action per turn-end window. Drop it from the queue
+        after it acts and move on to the next eligible creature (or the new turn). Its remaining
+        budget (legendary_actions_current) still lets it act again after the NEXT creature's turn,
+        since the queue is rebuilt at every turn end (_begin_legendary_phase)."""
+        if self._legendary_queue and self._legendary_queue[0] == idx:
+            self._legendary_queue.pop(0)
+        self._legendary_actor = -1
+        self._offer_next_legendary()
+
+    def _choose_legendary_action(self, action_name: str):
+        """Dispatch a chosen legendary action: Dash/DashHalf → movement; otherwise treat the name as
+        a weapon attack (matched by weapon name) and enter target-pick mode."""
+        idx = self._legendary_actor
+        if idx < 0 or idx >= len(self.bm.placed_agents):
+            self._offer_next_legendary(); return
+        key = action_name.strip().lower()
+        if key in ("dash", "dashhalf", "dash half"):
+            self._begin_legendary_dash(idx, half=(key != "dash"))
+            return
+        # Attack-type: find the matching weapon by (case-insensitive) name.
+        weapons = self.combat.get_agent_weapons(self.bm, idx)
+        widx = next((i for i, w in enumerate(weapons)
+                     if w.name.strip().lower() == key), -1)
+        if widx < 0:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[idx].name}: no weapon matches legendary action "
+                f"'{action_name}' — pick another or pass.")
+            self._flush_combat_log()
+            self._offer_next_legendary()   # re-show the menu; the action isn't consumed
+            return
+        self._legendary_attack_name = action_name
+        self._legendary_attack_widx = widx
+        self._legendary_target_pick = True
+        self._combat_log_add(
+            f"{self.bm.placed_agents[idx].name}: click a target for legendary {action_name}.")
+        self._flush_combat_log()
+
+    def _resolve_legendary_attack(self, target_idx: int):
+        """Resolve the pending legendary attack against target_idx via begin_attack (explicit
+        attacker), reusing the full to-hit / Shield / on-hit pipeline. Spends one legendary action."""
+        idx = self._legendary_actor
+        agents = self.bm.placed_agents
+        if idx < 0 or idx >= len(agents):
+            self._legendary_target_pick = False
+            self._offer_next_legendary(); return
+        if not (0 <= target_idx < len(agents)) or target_idx == idx:
+            self._combat_log_add("Pick a valid target.")
+            self._flush_combat_log()
+            return  # keep target-pick armed
+        if self.combat.get_agent_stats(self.bm, target_idx).hp_cur <= 0:
+            self._combat_log_add("Target is already down — pick another.")
+            self._flush_combat_log()
+            return
+        self._legendary_target_pick = False
+        widx = self._legendary_attack_widx
+        action = rpg.Attack(idx, target_idx, widx)
+        action.attack_slot = "legendary"   # resolves like a normal attack; no turn-economy cost
+        # The attempt costs one legendary action regardless of hit/miss.
+        self._spend_legendary_action(idx)
+        self._reaction_finish = lambda i=idx: self._finish_legendary_attack(i)
+        status = self.combat.begin_attack(self.bm, action)
+        self._flush_combat_log()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()   # target's Shield etc.; resumes via _reaction_finish
+        else:
+            self._finish_legendary_attack(idx)
+
+    def _finish_legendary_attack(self, idx: int):
+        """Post-resolution of a legendary attack (immediate or after a defender reaction window).
+        The hit/miss, damage and on-hit riders were applied in C++; just refresh and re-offer."""
+        self._flush_combat_log()
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+        self._after_legendary_action(idx)
+
+    def _begin_legendary_dash(self, idx: int, half: bool):
+        """Seed an out-of-turn movement budget for a legendary Dash (full Speed) or DashHalf (half
+        Speed) and enter a legendary-move mode that reuses the normal drag-to-move flow. One
+        committed move resolves the action; the creature is then re-offered."""
+        st = self.combat.get_agent_stats(self.bm, idx)
+        div = 2 if half else 1
+        walk   = st.speed_walk   // div
+        fly    = st.speed_fly    // div
+        swim   = st.speed_swim   // div
+        burrow = st.speed_burrow // div
+        # Seed BOTH budgets: agent-side init_movement drives the reachable-cell overlay; the
+        # engine-side seed_move_budgets drives begin_move's spend/clamp. beginTurn was not called
+        # for this out-of-turn creature, so neither would otherwise be set.
+        self.bm.placed_agents[idx].init_movement(walk, fly, swim, burrow)
+        self.combat.seed_move_budgets(idx, walk, fly, swim, burrow)
+        self.selected_idx          = idx
+        self.move_remaining_walk   = walk
+        self.move_remaining_fly    = fly
+        self.move_remaining_swim   = swim
+        self.move_remaining_burrow = burrow
+        self.move_type = (rpg.MovementType.Walk if walk > 0 else
+                          rpg.MovementType.Fly if fly > 0 else
+                          rpg.MovementType.Swim if swim > 0 else
+                          rpg.MovementType.Burrow)
+        self._legendary_move_active = True
+        self._spend_legendary_action(idx)   # the Dash costs one legendary action
+        label = "DashHalf (move up to half Speed)" if half else "Dash (move up to full Speed)"
+        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: {label} — drag it to move.")
+        self._flush_combat_log()
+        self._update_reach()
+        self._update_attack_overlay()
 
     def _finish_turn_start(self):
         """Continuation of _advance_turn after the OnTurnStartNearby reaction window closes
@@ -5784,6 +6013,11 @@ class App:
         self.selected_idx          = idx
         self._update_reach()
         self._update_attack_overlay()
+        # A committed legendary Dash resolves that action; re-offer the creature (it may Dash again
+        # or pass) and resume draining the legendary-action queue.
+        if self._legendary_move_active and idx == self._legendary_actor:
+            self._legendary_move_active = False
+            self._after_legendary_action(idx)
 
     # FLAG: Move to C++
     def _apply_pact_slot_level(self, caster_idx: int, sp, action):
@@ -7016,6 +7250,17 @@ class App:
                     "luck_points_max": s.luck_points_max,
                     "primal_champion_applied": s.primal_champion_applied,
                     "relentless_rage_dc": s.relentless_rage_dc,
+                    # Legendary Actions & Resistance — written in the bestiary meta.legendary shape so
+                    # dict_to_stats reloads it. The resolved per-round / per-day maxes are stored in
+                    # BOTH the base and in-lair slots so the reload is independent of the lair branch.
+                    "legendary": {
+                        "resistance": s.legendary_resistance_max,
+                        "resistance_in_lair": s.legendary_resistance_max,
+                        "actions": s.legendary_actions_max,
+                        "actions_in_lair": s.legendary_actions_max,
+                        "has_lair": s.is_in_lair,
+                        "action_names": list(s.legendary_action_names),
+                    },
                     "magic_resistances": [
                         name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
                         if s.get_magic_damage_multiplier(idx) == 0.5
@@ -10567,6 +10812,8 @@ class App:
                         elif self.pending_beguiling and hit >= 0:
                             # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
                             self._beguiling_pick_target(hit)
+                        elif self._legendary_target_pick and hit >= 0:
+                            self._resolve_legendary_attack(hit)
                         elif self.pending_attack_slot and hit >= 0:
                             self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
@@ -10627,9 +10874,12 @@ class App:
                         elif self.pending_vitality_target and hit >= 0:
                             self._resolve_vitality_target(hit)
                         else:
-                            # When paused, allow dragging any agent; otherwise only the current combatant.
+                            # When paused, allow dragging any agent; otherwise only the current
+                            # combatant — or the legendary creature performing an out-of-turn Dash.
                             cur = self._current_agent_idx()
-                            allow_drag = (hit >= 0) and (self.combat_paused or hit == cur)
+                            allow_drag = (hit >= 0) and (
+                                self.combat_paused or hit == cur
+                                or (self._legendary_move_active and hit == self._legendary_actor))
                             if allow_drag:
                                 pt = self.bm.placed_agents[hit]
                                 self.drag_idx    = hit

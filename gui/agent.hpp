@@ -466,6 +466,16 @@ namespace rpg {
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
       bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
+
+      // ── Legendary Actions & Resistance ──────────────────────────────────
+      int  legendary_resistance_max{0};                          // uses per day (resets on long rest)
+      int  legendary_resistance_current{0};                      // remaining uses this day
+      int  legendary_actions_max{0};                             // actions per round
+      int  legendary_actions_current{0};                         // remaining actions this round (resets at start of creature's turn)
+      bool has_legendary_actions{false};                         // gate for legendary action offer window
+      bool is_in_lair{false};                                    // affects legendary_resistance/actions counts if different
+      std::vector<std::string> legendary_action_names{};         // available actions: ["Bite", "Claw", "Dash", "DashHalf", ...]
+
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+

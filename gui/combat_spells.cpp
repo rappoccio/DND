@@ -2488,8 +2488,34 @@ bool CombatEngine::applyIndomitableToSave(BattleMap& bm, int reactor, SpellSave&
     return true;
 }
 
+bool CombatEngine::canLegendaryResist(const BattleMap& bm, int reactor, int save_target) const
+{
+    if (reactor != save_target) return false;                     // creature uses it on its OWN save
+    if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/false)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    return s.legendary_resistance_current >= 1;
+}
+
+bool CombatEngine::applyLegendaryResistanceToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.hp_cur <= 0) return false;
+    if (s.legendary_resistance_current < 1) return false;
+
+    s.legendary_resistance_current -= 1;                          // spend one legendary resistance use
+    ss.bonus = 99;                                                // +99 ensures success on a failed save
+    reevaluateSave(ss);
+    bm.setAgentStats(reactor, s);
+    log_("{} uses Legendary Resistance: the save {} vs DC {} → {}",
+         agentName(bm, reactor), ss.total, ss.dc,
+         ss.saved ? "SUCCEEDS" : "still fails");
+    return true;
+}
+
 // Everyone eligible for ANY reroll-save reaction vs one FAILED save, in index order: the target itself
-// (Indomitable) + bards within 30 ft on a charm/frighten spell (Countercharm).
+// (Indomitable / Legendary Resistance) + bards within 30 ft on a charm/frighten spell (Countercharm).
 std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const SpellAction& action,
                                                 const SpellSave& ss) const
 {
@@ -2497,7 +2523,7 @@ std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const Spell
     if (ss.saved || ss.auto_fail) return out;                     // nothing to reroll
     const int n = static_cast<int>(bm.placedAgents().size());
     for (int i = 0; i < n; ++i)
-        if (canIndomitable(bm, i, ss.target_idx) || canCountercharm(bm, i, ss.target_idx, action))
+        if (canIndomitable(bm, i, ss.target_idx) || canLegendaryResist(bm, i, ss.target_idx) || canCountercharm(bm, i, ss.target_idx, action))
             out.push_back(i);
     return out;
 }
@@ -2511,6 +2537,9 @@ std::vector<ReactionOption> CombatEngine::saveFailOptions(const BattleMap& bm, i
     if (canIndomitable(bm, reactor, ss.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Use Indomitable (reroll your failed save)", "Indomitable"});
+    if (canLegendaryResist(bm, reactor, ss.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use Legendary Resistance (succeed on the failed save)", "LegendaryResistance"});
     if (canCountercharm(bm, reactor, ss.target_idx, action))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Use Countercharm (reroll the failed save with advantage)", "Countercharm"});
@@ -2529,8 +2558,9 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
     for (auto& p : topCast().save_prerolls)
         if (p.target_idx == ctx.source_idx) { ss = &p; break; }
     if (!ss) return;
-    if      (opt.feature == "Countercharm") applyCountercharmToSave(bm, ctx.reactor_idx, *ss);
-    else if (opt.feature == "Indomitable")  applyIndomitableToSave (bm, ctx.reactor_idx, *ss);
+    if      (opt.feature == "Countercharm")         applyCountercharmToSave(bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "Indomitable")          applyIndomitableToSave (bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "LegendaryResistance")  applyLegendaryResistanceToSave(bm, ctx.reactor_idx, *ss);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

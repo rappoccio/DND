@@ -595,6 +595,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Reset leveled spell cast flag
     auto new_stats = stats;
     new_stats.resetLeveledSpellCastFlag();
+    // Legendary Actions: a creature regains all of its legendary actions at the start of its turn.
+    if (new_stats.has_legendary_actions)
+        new_stats.legendary_actions_current = new_stats.legendary_actions_max;
     bm.setAgentStats(agent_idx, new_stats);
 
     // Refill the bonus-action budget for the new turn (general action economy).

@@ -800,6 +800,16 @@ public:
     int spendSwim(int agent_idx, int feet) noexcept;
     int spendBurrow(int agent_idx, int feet) noexcept;
 
+    // Seed the engine-side movement budgets for an out-of-turn move (legendary Dash / DashHalf).
+    // beginTurn normally seeds these; a legendary action grants movement outside the creature's
+    // own turn, so the GUI seeds the budgets directly (feet, clamped to >= 0) before the move.
+    void seedMoveBudgets(int agent_idx, int walk, int fly, int swim, int burrow) noexcept {
+        walkRemaining_  [agent_idx] = std::max(0, walk);
+        flyRemaining_   [agent_idx] = std::max(0, fly);
+        swimRemaining_  [agent_idx] = std::max(0, swim);
+        burrowRemaining_[agent_idx] = std::max(0, burrow);
+    }
+
     // Clear all movement budgets (call at end of combat or start of new round).
     void clearMovement() noexcept;
 
@@ -2015,14 +2025,19 @@ public:
     // Fighter L9+, ≥1 "Indomitable" use, alive, and reactor == save_target (you reroll your OWN save).
     // No range/LoS test (it's self); does NOT require a free reaction (RAW "no action" — see §6).
     [[nodiscard]] bool canIndomitable(const BattleMap& bm, int reactor, int save_target) const;
+    // Creature with Legendary Resistance, ≥1 use remaining, alive, and reactor == save_target.
+    // No range/LoS test (it's self); does NOT require a free reaction.
+    [[nodiscard]] bool canLegendaryResist(const BattleMap& bm, int reactor, int save_target) const;
     // Recompute ss.total / ss.saved from ss.d20 + ss.save_mod + ss.bonus vs ss.dc (pass/fail only).
     void reevaluateSave(SpellSave& ss) const noexcept;
     // Apply one reroll reaction to a pre-rolled save (spends the resource, mutates ss, reevaluates).
     // Return true iff ss changed. Countercharm rerolls WITH ADVANTAGE + spends the bard's reaction;
     // Indomitable rerolls + adds the Fighter level to ss.bonus + spends 1 "Indomitable" use (not the
-    // reaction). Each rolls its d20 directly (no fresh save → no recursive OnSaveFail).
+    // reaction); Legendary Resistance adds +99 to the save to make it succeed + spends 1 use/day.
+    // Each rolls its d20 directly (no fresh save → no recursive OnSaveFail).
     bool applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave& ss);
     bool applyIndomitableToSave (BattleMap& bm, int reactor, SpellSave& ss);
+    bool applyLegendaryResistanceToSave(BattleMap& bm, int reactor, SpellSave& ss);
 private:
     // The creatures eligible for ANY reroll-save reaction vs one FAILED save (ss.saved==false,
     // !ss.auto_fail), in initiative order: the target itself (Indomitable) + bards within 30 ft on a

@@ -52393,7 +52393,7 @@
       "hp_max": 204,
       "hp_cur": 204,
       "ac": 16,
-      "speed_walk": 40,
+      "speed_walk": 30,
       "speed_fly": 0,
       "speed_swim": 0,
       "speed_burrow": 0,
@@ -52426,15 +52426,22 @@
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Slashing",
-            "num_dice": 3,
-            "die_size": 12
+            "num_dice": 1,
+            "die_size": 8
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 4,
+            "die_size": 6
+          }
+	    
+	],
         "conditions": [
           {
             "condition_name": "Grappled",
@@ -52448,12 +52455,12 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Piercing",
             "num_dice": 1,
-            "die_size": 4
+            "die_size": 6
           }
         ],
         "magic_damage_types": [
@@ -52525,7 +52532,8 @@
       "Fog Cloud",
       "Mirror Image",
       "Charm Person Bonus",
-      "Greater Invisibility"
+      "Greater Invisibility",
+      "Command"
     ],
     "npc_spell_groups": {
       "99": [
@@ -52533,7 +52541,8 @@
         "Detect Thoughts",
         "Dispel Magic",
         "Fog Cloud",
-        "Charm Person Bonus"
+        "Charm Person Bonus",
+	"Command"
       ],
       "2": [
         "Scrying",

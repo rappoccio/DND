@@ -471,6 +471,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
         .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
              "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
+        .def_readwrite("legendary_resistance_max", &Agent::Stats::legendary_resistance_max,
+             "Legendary Resistance uses per day (resets on a Long Rest).")
+        .def_readwrite("legendary_resistance_current", &Agent::Stats::legendary_resistance_current,
+             "Legendary Resistance uses remaining today.")
+        .def_readwrite("legendary_actions_max", &Agent::Stats::legendary_actions_max,
+             "Legendary Actions available per round (resets at the start of the creature's turn).")
+        .def_readwrite("legendary_actions_current", &Agent::Stats::legendary_actions_current,
+             "Legendary Actions remaining this round.")
+        .def_readwrite("has_legendary_actions", &Agent::Stats::has_legendary_actions,
+             "Gate: this creature may take Legendary Actions after other creatures' turns.")
+        .def_readwrite("is_in_lair", &Agent::Stats::is_in_lair,
+             "Creature is in its lair (uses the in-lair legendary counts).")
+        .def_readwrite("legendary_action_names", &Agent::Stats::legendary_action_names,
+             "Available Legendary Action option names (e.g. ['Bite','Claw','Dash','DashHalf']).")
         .def_readwrite("weapon_mastery", &Agent::Stats::weapon_mastery,
              "Number of Weapon Mastery properties known (>0 = the feature is active).")
         .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,
@@ -2013,6 +2027,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::spendBurrow,
              py::arg("agent_idx"), py::arg("feet"),
              "Deduct feet from burrow budget (clamped to 0). Returns amount spent.")
+        .def("seed_move_budgets",
+             &CombatEngine::seedMoveBudgets,
+             py::arg("agent_idx"), py::arg("walk"), py::arg("fly"),
+             py::arg("swim"), py::arg("burrow"),
+             "Seed the engine-side movement budgets (feet, clamped >=0) for an out-of-turn move "
+             "(legendary Dash / DashHalf), since beginTurn was not called for this creature.")
         .def("clear_movement",
              &CombatEngine::clearMovement,
              "Clear all movement budgets (call at end of combat).")
