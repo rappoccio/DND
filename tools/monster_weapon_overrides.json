@@ -1,0 +1,390 @@
+{
+  "__schema__": "Authoritative weapon-damage overrides for monsters whose source-data averages are wrong/ambiguous (multi-component riders, data typos, condition-only attacks). Keyed by monster name -> attack-slot index (string '0'..'3') -> spec. Spec fields: 'name' (book attack name, reference only), 'damage' (list of {type, num_dice, die_size} dice groups; the ability modifier is NOT included here), 'mod' (the book +M ability modifier; the converter sets bonus_damage = mod - engine_auto_mod so the total lands on dice+mod regardless of buggy source PB), 'condition_only' (true => no damage roll, but the attack still lands its conditions). On-hit riders: 'conditions' (list of {condition_name, condition_duration?, escape_dc?, contested?} applied on a hit; 'Poisoned' uses the active-condition system, 'Grappled' routes through the shared grapple core — escape_dc overrides the computed 10+STR+prof, contested=true rolls Athletics instead of auto-applying), and 'mastery' (a WeaponMastery name; 'Topple' is how on-hit Prone is modelled — the bestiary auto-enables weapon_mastery for the monster). The converter (Monster.to_weapons) consults this before falling back to average-reconstruction.",
+  "Arcanaloth": {
+    "1": {
+      "name": "Banishing Claw",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 4},
+        {"type": "Psychic", "num_dice": 3, "die_size": 12}
+      ],
+      "mod": 5
+    }
+  },
+  "Mind Flayer Arcanist": {
+    "1": {
+      "name": "Arcane Tentacles",
+      "damage": [
+        {"type": "Psychic", "num_dice": 4, "die_size": 10}
+      ],
+      "mod": 5
+    }
+  },
+  "Roper": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 3, "die_size": 8}
+      ],
+      "mod": 4
+    },
+    "1": {
+      "name": "Tentacle",
+      "condition_only": true,
+      "conditions": [
+        {"condition_name": "Grappled", "escape_dc": 14},
+        {"condition_name": "Poisoned"}
+      ]
+    }
+  },
+  "Ancient Silver Dragon": {
+    "1": {
+      "name": "Rend",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 8},
+        {"type": "Cold", "num_dice": 2, "die_size": 8}
+      ],
+      "mod": 10
+    }
+  },
+  "Azer Sentinel": {
+    "0": {
+      "name": "Burning Hammer",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 1, "die_size": 10},
+        {"type": "Fire", "num_dice": 1, "die_size": 6}
+      ],
+      "mod": 3
+    }
+  },
+  "Blue Dragon Wyrmling": {
+    "0": {
+      "name": "Rend",
+      "damage": [
+        {"type": "Slashing", "num_dice": 1, "die_size": 10},
+        {"type": "Lightning", "num_dice": 1, "die_size": 6}
+      ],
+      "mod": 3
+    }
+  },
+  "Bone Devil": {
+    "1": {
+      "name": "Infernal Sting",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 10},
+        {"type": "Poison", "num_dice": 4, "die_size": 8}
+      ],
+      "mod": 4,
+      "conditions": [
+        {"condition_name": "Poisoned", "condition_duration": 1}
+      ]
+    }
+  },
+  "Centaur Warden": {
+    "0": {
+      "name": "Forest Staff",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 2, "die_size": 8},
+        {"type": "Poison", "num_dice": 4, "die_size": 6}
+      ],
+      "mod": 4
+    }
+  },
+  "Dragon Turtle": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 3, "die_size": 12}
+      ],
+      "mod": 7
+    }
+  },
+  "Giant Corrupted Rat": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 1, "die_size": 6},
+        {"type": "Acid", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 3
+    }
+  },
+  "Giant Toad": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 1, "die_size": 6},
+        {"type": "Poison", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 2,
+      "conditions": [
+        {"condition_name": "Grappled", "escape_dc": 12}
+      ]
+    }
+  },
+  "Giant Wasp": {
+    "0": {
+      "name": "Sting",
+      "damage": [
+        {"type": "Piercing", "num_dice": 1, "die_size": 6},
+        {"type": "Poison", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 2
+    }
+  },
+  "Green Dragon Wyrmling": {
+    "0": {
+      "name": "Rend",
+      "damage": [
+        {"type": "Slashing", "num_dice": 1, "die_size": 10},
+        {"type": "Poison", "num_dice": 1, "die_size": 6}
+      ],
+      "mod": 2
+    }
+  },
+  "Iron Golem": {
+    "0": {
+      "name": "Bladed Arm",
+      "damage": [
+        {"type": "Slashing", "num_dice": 3, "die_size": 8},
+        {"type": "Fire", "num_dice": 3, "die_size": 6}
+      ],
+      "mod": 7
+    }
+  },
+  "Manes Vaporspawn": {
+    "0": {
+      "name": "Claw",
+      "damage": [
+        {"type": "Slashing", "num_dice": 1, "die_size": 6},
+        {"type": "Necrotic", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 2
+    }
+  },
+  "Mimic": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 1, "die_size": 8},
+        {"type": "Acid", "num_dice": 1, "die_size": 8}
+      ],
+      "mod": 3
+    },
+    "1": {
+      "name": "Pseudopod",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 1, "die_size": 8},
+        {"type": "Acid", "num_dice": 1, "die_size": 8}
+      ],
+      "mod": 3,
+      "conditions": [
+        {"condition_name": "Grappled", "escape_dc": 13}
+      ]
+    }
+  },
+  "Nycaloth": {
+    "0": {
+      "name": "Mercurial Axe",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 12},
+        {"type": "Force", "num_dice": 3, "die_size": 6}
+      ],
+      "mod": 5
+    },
+    "1": {
+      "name": "Mercurial Axe (thrown)",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 12},
+        {"type": "Force", "num_dice": 3, "die_size": 6}
+      ],
+      "mod": 5
+    }
+  },
+  "Pegasus": {
+    "0": {
+      "name": "Hooves",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 1, "die_size": 6},
+        {"type": "Radiant", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 4
+    }
+  },
+  "Priest": {
+    "0": {
+      "name": "Mace",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 1, "die_size": 6},
+        {"type": "Radiant", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 3
+    }
+  },
+  "Questing Knight": {
+    "0": {
+      "name": "Greatsword",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 6},
+        {"type": "Radiant", "num_dice": 5, "die_size": 8}
+      ],
+      "mod": 5
+    }
+  },
+  "Red Dragon Wyrmling": {
+    "0": {
+      "name": "Rend",
+      "damage": [
+        {"type": "Slashing", "num_dice": 1, "die_size": 10},
+        {"type": "Fire", "num_dice": 1, "die_size": 6}
+      ],
+      "mod": 4
+    }
+  },
+  "Salamander Inferno Master": {
+    "0": {
+      "name": "Flame Trident",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 8},
+        {"type": "Fire", "num_dice": 4, "die_size": 6}
+      ],
+      "mod": 7
+    },
+    "1": {
+      "name": "Flame Trident (thrown)",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 8},
+        {"type": "Fire", "num_dice": 4, "die_size": 6}
+      ],
+      "mod": 7
+    }
+  },
+  "Sammaster (Dracolich Form)": {
+    "0": {
+      "name": "Corrosive Burst",
+      "damage": [
+        {"type": "Necrotic", "num_dice": 5, "die_size": 12}
+      ],
+      "mod": 6
+    }
+  },
+  "Shambling Mound": {
+    "0": {
+      "name": "Charged Tendril",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 1, "die_size": 6},
+        {"type": "Lightning", "num_dice": 2, "die_size": 4}
+      ],
+      "mod": 4
+    }
+  },
+  "Spider": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 1, "die_size": 1},
+        {"type": "Poison", "num_dice": 1, "die_size": 4}
+      ],
+      "mod": 0
+    }
+  },
+  "Wight": {
+    "0": {
+      "name": "Necrotic Sword",
+      "damage": [
+        {"type": "Slashing", "num_dice": 1, "die_size": 8},
+        {"type": "Necrotic", "num_dice": 1, "die_size": 8}
+      ],
+      "mod": 2
+    }
+  },
+  "Wyvern": {
+    "0": {
+      "name": "Bite",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 8}
+      ],
+      "mod": 4
+    },
+    "1": {
+      "name": "Sting",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 6},
+        {"type": "Poison", "num_dice": 7, "die_size": 6}
+      ],
+      "mod": 4,
+      "conditions": [
+        {"condition_name": "Poisoned", "condition_duration": 1}
+      ]
+    }
+  },
+  "Young Black Dragon": {
+    "0": {
+      "name": "Rend",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 4},
+        {"type": "Acid", "num_dice": 1, "die_size": 6}
+      ],
+      "mod": 4
+    }
+  },
+  "Zlan": {
+    "0": {
+      "name": "Slam",
+      "damage": [
+        {"type": "Bludgeoning", "num_dice": 3, "die_size": 4},
+        {"type": "Necrotic", "num_dice": 4, "die_size": 10}
+      ],
+      "mod": 5
+    }
+  },
+  "Djinni": {
+    "0": {
+      "name": "Storm Blade",
+      "damage": [
+        {"type": "Slashing", "num_dice": 2, "die_size": 6},
+        {"type": "Lightning", "num_dice": 2, "die_size": 6}
+      ],
+      "mod": 5
+    },
+    "1": {
+      "name": "Storm Bolt",
+      "damage": [
+        {"type": "Thunder", "num_dice": 3, "die_size": 8}
+      ],
+      "mod": 0,
+      "mastery": "Topple"
+    }
+  },
+  "Hobgoblin Warlord": {
+    "0": {
+      "name": "Javelin",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 6}
+      ],
+      "mod": 4
+    },
+    "1": {
+      "name": "Javelin (thrown)",
+      "damage": [
+        {"type": "Piercing", "num_dice": 2, "die_size": 6}
+      ],
+      "mod": 4
+    }
+  },
+  "Wereboar": {
+    "1": {
+      "name": "Javelin",
+      "damage": [
+        {"type": "Piercing", "num_dice": 3, "die_size": 6}
+      ],
+      "mod": 3
+    },
+    "2": {
+      "name": "Javelin (thrown)",
+      "damage": [
+        {"type": "Piercing", "num_dice": 3, "die_size": 6}
+      ],
+      "mod": 3
+    }
+  }
+}
