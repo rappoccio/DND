@@ -808,8 +808,35 @@ Requires creature summoning system.
 ### Deferred — Phase 2 continued
 - **Daze** (Devious Strikes L14): needs per-turn action-economy tracking
 
+### Thief subclass — IMPLEMENTED ✅ (2026-06-19, built + 75 suites green, `test_rogue_thief.py`)
+2024 Thief, combat-relevant slice. Mostly reused existing infra (no 2nd bonus action — 2024 Thief
+doesn't grant one).
+- **Second-Story Work (L3) — Climber:** `speed_climb = max(speed_climb, speed_walk)` in the
+  `case Rogue:` chassis (`combat.cpp`), gated `ThiefPath && level>=3`. Reused the climb-speed field
+  (Wild Heart Panther / Ranger Roving). *Jumper (DEX for jump distance) = not modeled — no
+  jump-by-ability system.*
+- **Supreme Sneak (L9) — Stealth Attack:** a new Cunning Strike option (**effect 6**, cost 1d6,
+  min level 9) in the `cunningStrikeCost`/`cunningStrikeMinLevel` tables. Gated **Thief-only AND
+  only when the strike came from stealth** — new per-turn flag `Conditions.attacked_while_invisible`
+  (set in `applyAttackResult` when an attack ends Invisibility, `combat_attack.cpp:3079`; reset in
+  `Agent::turn()`; bound). Validation gate in `applyCunningStrikeEffect`; the rider handler
+  (`applyCunningStrikeRiders`, attacker-side like Withdraw) **restores `invisible=true`** so the
+  Thief stays hidden after the strike. GUI: `_offer_cunning_strike` adds "Stealth Attack (1 die)"
+  when Thief L9+ and `attacked_while_invisible`. *v1: the RAW "end the turn behind Three-Quarters/
+  Total Cover" clause is NOT modeled — Stealth Attack just keeps you hidden.*
+- **Thief's Reflexes (L17):** two turns during the first round. **Pure GUI initiative**
+  (`main.py`): `_apply_thief_reflexes` (called in `_start_combat`) inserts a 2nd `InitiativeEntry`
+  at (Initiative − 10) for each Thief L17+ via the On-Deck sorted-insert pattern;
+  `_remove_thief_reflexes` (from `_advance_turn` when `round_num` hits 1) drops the bonus entries
+  and re-points `turn_idx`. **No engine call → not in checked replay, not covered by
+  run_all_tests.py (manual in-app verification).**
+- **Fast Hands (L3) — DEFERRED:** blocked on the **Doors & locking / object-interaction infra**
+  (see TODO.md). Sleight-of-Hand-to-pick-locks / Use-an-Object have no engine primitive yet.
+- **Use Magic Device (L13) — DEFERRED:** out-of-combat flavor (attunement, scroll casting, charge
+  rerolls) + needs the items/scroll system.
+
 ### Deferred — Phase 3 (subclasses)
-- Assassin, Arcane Trickster, Soulknife, Thief subclass mechanics
+- Assassin, Arcane Trickster, Soulknife subclass mechanics (Thief DONE — see above)
 
 ### Deferred — need NEW hooks
 - *Stroke of Luck* (L20): turn failed d20 into 20 → needs roll-replace hook
@@ -1837,3 +1864,36 @@ Sunlight level, checks if agent's origin cell (flat index = row * gridCols() + c
 20 damage, logs & sets death conditions if HP ≤ 0. Reuses light-effect framework (Daylight spell, manual editor placement).
 Tests: `test_vampire_sunlight_damage()` (in Sunlight → 100→80 HP) + `test_vampire_outside_sunlight_no_damage()` (outside
 Sunlight → no change). See memory `vampire-sunlight-vulnerability`.
+
+**On Deck / phased-battle reinforcements — DONE ✅ (2026-06-19, built + 74 suites green, confirmed in live play)**
+Reserve combatants that the DM deploys mid-battle. C++: `PlacedAgent.on_deck` bool +
+`BattleMap::isAgentOnDeck/setAgentOnDeck` (bound `is_agent_on_deck`/`set_agent_on_deck`);
+`CombatEngine::rollInitiative` skips on-deck agents; new `rollInitiativeFor(bm, idx)`
+(bound `roll_initiative_for`) rolls ONE entry so a whole spawn shares an Initiative
+(Feral-Instinct/Diviner-aware). GUI (main.py): right-click a placed agent (pre-combat) →
+"Send to On Deck" / "Recall from On Deck"; on-deck agents render dimmed (alpha 110) with an
+"ON DECK" badge but are out of initiative; combat panel shows "🎴 On Deck — click to deploy"
+grouped by name with ×count (`_on_deck_groups`, `_draw_on_deck_section`,
+`on_deck_item_rects`); clicking deploys (`_deploy_on_deck_group`): clears the flag, rolls one
+shared Initiative, partial-sorted-inserts all members into `initiative_order` (after
+equal-or-higher entries, preserving summon-after-summoner adjacency) and re-points turn_idx at
+the same actor. `on_deck` round-trips in save/load (`_save_agents`/`_load_agents`, defaults
+False for old saves).
+**On-deck reserves take NO reactions or legendary actions until deployed** (added 2026-06-19,
+confirmed in live play): every reaction `can*` predicate early-returns false when
+`bm.isAgentOnDeck(reactor)`, consolidated through the two shared bases `d20ReactorBase` (Bend
+Luck / Cutting Words / Silvery Barbs / Warding Flare) and `saveReactorBase` (Countercharm /
+Indomitable / Legendary Resistance), plus per-predicate gates in canUncannyDodge /
+canSuperiorHunterDefense / canParry / canRiposte / canDefensiveDuelist / canCombatInspirationAC /
+canSentinelGuard / canIntercept / canGuidedStrike / canCastShield / canCastCounterspell /
+canBranchesOfTree / canVitalityOfTheTree, and `detectProvokes` (reserves make no opportunity
+attacks). The deferred-flag reactions (riposte_available / guided_strike_available /
+sentinel_guard_available) are set behind those gated can* so a reserve never receives the flag.
+Python: `_legendary_eligible` and `_can_protective_field` both reject `is_agent_on_deck`. The
+gates are purely additive early-returns — default `on_deck=false` agents are unaffected, so the
+existing suites stand unchanged.
+**Limitations:** on-deck agents are still on the map, so they CAN be
+targeted by attacks/AoEs/seen before deployment (DM stages them out of range — excluding
+reserves from all targeting would be a large multi-site change); deploy is one-way during
+combat (no recall mid-combat — recall is pre-combat only via the context menu). **GUI-only
+paths are NOT covered by run_all_tests.py — needs manual in-app verification.**

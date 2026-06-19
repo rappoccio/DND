@@ -161,6 +161,11 @@ struct PlacedAgent {
     // (its own faction, hostile to everyone). 1+ = red/blue/... Used for hide vs only
     // enemies, sparing allies from selective AoEs, and restricting heals to allies.
     int         faction           = 0;
+    // ── On Deck / reinforcements (phased battles) ──────────────────────────
+    // true = a reserve combatant: placed on the map and still rendered, but
+    // EXCLUDED from initiative (rollInitiative skips it) until the DM deploys
+    // it. Deploying clears this flag and inserts the agent into the live order.
+    bool        on_deck           = false;
 };
 
 // ── Agent configuration (supplied from Python GUI) ─────────────────────────
@@ -290,6 +295,11 @@ public:
     void setAgentSummonSpell(int idx, std::string spell_name) noexcept;
     [[nodiscard]] bool isAgentRemovedFromPlay(int idx) const noexcept;
     void setAgentRemovedFromPlay(int idx, bool removed) noexcept;
+
+    // On-deck (reserve) accessors. See PlacedAgent::on_deck. An on-deck agent is
+    // skipped by rollInitiative until the DM deploys it (clears the flag).
+    [[nodiscard]] bool isAgentOnDeck(int idx) const noexcept;
+    void setAgentOnDeck(int idx, bool on_deck) noexcept;
 
     // Spell accessors (by index into placedAgents()).
     [[nodiscard]] std::vector<Spell> getAgentSpells(int idx) const noexcept;

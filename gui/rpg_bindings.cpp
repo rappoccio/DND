@@ -590,6 +590,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
         .def_readwrite("cunning_strike_available", &Agent::Conditions::cunning_strike_available)
+        .def_readwrite("attacked_while_invisible", &Agent::Conditions::attacked_while_invisible)
         .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
         .def_readwrite("stunning_strike_available", &Agent::Conditions::stunning_strike_available)
         .def_readwrite("stunning_strike_used", &Agent::Conditions::stunning_strike_used)
@@ -1855,6 +1856,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Roll d20 + DEX mod [+ prof_bonus if initiative_prof] for every\n"
              "living agent.  Returns a list of InitiativeEntry sorted highest\n"
              "first.  Call once at combat start; reuse the order each round.")
+
+        .def("roll_initiative_for",
+             &CombatEngine::rollInitiativeFor,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Roll a single InitiativeEntry for one agent. Used to deploy an on-deck\n"
+             "reinforcement group mid-combat: roll once, then copy the total onto every\n"
+             "member of the spawn (same type → same Initiative).")
 
         .def("swap_initiative",
              &CombatEngine::swapInitiative,
@@ -3170,6 +3178,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("set_agent_removed_from_play", &BattleMap::setAgentRemovedFromPlay,
              py::arg("idx"), py::arg("removed"),
              "Tombstone/un-tombstone agent[idx]. Kept in placedAgents_ so indices stay valid.")
+        .def("is_agent_on_deck", &BattleMap::isAgentOnDeck,
+             py::arg("idx"),
+             "True if agent[idx] is an on-deck reserve: rendered but excluded from\n"
+             "initiative until the DM deploys it.")
+        .def("set_agent_on_deck", &BattleMap::setAgentOnDeck,
+             py::arg("idx"), py::arg("on_deck"),
+             "Flag/unflag agent[idx] as an on-deck reserve (phased-battle reinforcement).")
         .def("apply_dash",         &BattleMap::applyDash,
              py::arg("idx"),
              "Set dashing condition and add base speeds to remaining movement for agent[idx].")

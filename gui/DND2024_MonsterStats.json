@@ -52416,7 +52416,9 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "intel"
+      "spellcasting_ability": "intel",
+      "is_vampire": true,
+      "is_undead": true
     },
     "weapons": {
       "main_hand": {
@@ -52440,8 +52442,7 @@
             "num_dice": 4,
             "die_size": 6
           }
-	    
-	],
+        ],
         "conditions": [
           {
             "condition_name": "Grappled",
@@ -52542,7 +52543,7 @@
         "Dispel Magic",
         "Fog Cloud",
         "Charm Person Bonus",
-	"Command"
+        "Command"
       ],
       "2": [
         "Scrying",

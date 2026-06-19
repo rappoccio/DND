@@ -45,7 +45,7 @@ class LightingEditorDialog:
         self.buttons['done'] = Button(pygame.Rect(10, 90, 100, 30), "Done", font=self.font_sm)
         self.buttons['cancel'] = Button(pygame.Rect(120, 90, 80, 30), "Cancel", font=self.font_sm)
 
-    def open(self, map_surf, bm, app, light_sources):
+    def open(self, map_surf, bm, app, light_sources, default_light=None):
         """Open the dialog for editing lighting."""
         self.active = True
         self.map_surf = map_surf
@@ -55,6 +55,9 @@ class LightingEditorDialog:
         self.selected_source_idx = -1
         self.placing_light = False
         self.pending_light_pos = None
+        # Store default light level if provided, otherwise use current default
+        if default_light is not None:
+            self.default_light = default_light
 
     def close(self):
         """Close the dialog without saving."""
@@ -77,18 +80,10 @@ class LightingEditorDialog:
                 if self.placing_light:
                     cell = self.app._screen_to_cell(event.pos[0], event.pos[1]) if self.app else None
                     if cell and cell.col >= 0 and cell.row >= 0:
-                        col, row = cell.col, cell.row
-                        # Convert grid to pixel coords (approximate center of cell)
-                        h_lines = self.bm.h_line_positions
-                        v_lines = self.bm.v_line_positions
-                        if col < len(v_lines) - 1 and row < len(h_lines) - 1:
-                            px = (v_lines[col] + v_lines[col + 1]) // 2
-                            py = (h_lines[row] + h_lines[row + 1]) // 2
-
-                            # Show simple input dialog for light properties
-                            self._add_light_at(px, py)
-                            self.placing_light = False
-                            return True
+                        # Store grid coordinates directly (col, row) instead of pixel coords
+                        self._add_light_at(cell.col, cell.row)
+                        self.placing_light = False
+                        return True
 
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -118,7 +113,10 @@ class LightingEditorDialog:
         elif button_name == 'done':
             self.active = False
             if self.app:
+                # Apply effects to the battle map first
                 self.app._apply_light_effects(self.light_sources)
+                # Then save the configuration to disk (without reloading, since we just applied)
+                self.app._save_lighting_no_reload(self.light_sources, self.default_light)
         elif button_name == 'cancel':
             self.close()
 
@@ -128,13 +126,13 @@ class LightingEditorDialog:
                           if lvl == self.pending_light_level), "Unknown")
         self.buttons['cycle_level'].text = f"Light Level: {level_name}"
 
-    def _add_light_at(self, px, py):
-        """Add a light source at the given pixel coordinates."""
+    def _add_light_at(self, col, row):
+        """Add a light source at the given grid coordinates (col, row)."""
         light = {
             "name": f"Light {len(self.light_sources) + 1}",
             "level": self.pending_light_level,
-            "x": px,
-            "y": py,
+            "col": col,
+            "row": row,
             "radius": 5  # Default 5-cell radius for editor-placed lights
         }
         self.light_sources.append(light)

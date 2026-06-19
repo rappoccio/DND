@@ -36,6 +36,7 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
     entries.reserve(static_cast<std::size_t>(n));
 
     for (int i = 0; i < n; ++i) {
+        if (agents[static_cast<std::size_t>(i)].on_deck) continue;  // reserve: deployed later by the DM
         const Agent::Stats& s = bm.getAgentStats(i);
         if (s.hp_cur <= 0) continue;   // dead / incapacitated before combat starts
 
@@ -62,6 +63,28 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
     });
 
     return entries;
+}
+
+// Roll a single Initiative entry for one agent. Used when the DM deploys an on-deck
+// reinforcement group mid-combat: every member of a spawn shares one roll (the
+// "same type → same initiative" rule), so the GUI rolls once via this and copies the
+// total onto each member. Mirrors the per-agent logic in rollInitiative (Feral
+// Instinct advantage, Diviner-aware roll()).
+InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_idx)
+{
+    InitiativeEntry e;
+    e.agent_idx = agent_idx;
+    const auto agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return e;
+    const Agent::Stats& s = bm.getAgentStats(agent_idx);
+    if (s.character_class == CharacterClass::Barbarian && s.char_level >= 7)
+        e.d20 = std::max(roll(20), roll(20));
+    else
+        e.d20 = roll(20);
+    e.modifier = s.initiativeModifier();
+    e.total    = e.d20 + e.modifier;
+    return e;
 }
 
 // Alert (Origin feat) — Initiative Swap: exchange the Initiative totals of two agents

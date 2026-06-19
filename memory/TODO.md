@@ -29,6 +29,15 @@ These gate multiple per-class features; each is a real project, not a quick task
 - [ ] **Class-object refactor (incremental)** — move scattered `if (character_class == …)`
   conditionals into per-class virtual dispatch. Step 1 (stats homogenized into `Agent`) is
   done. Pragmatic/incremental, not a big-bang rewrite. See `architecture_agent_as_character`.
+- [ ] **Doors & locking (interactable map objects)** — genuinely missing infra. Today cells are
+  only passable/wall; there's no door object that can be open/closed/locked/broken, and no
+  "interact with an object" action. Needs: a door/object concept on the map (state: open/closed,
+  locked + lock DC, optionally trapped), open/close toggling that updates passability + line of
+  sight, and a generic "use/interact with an object" action. **Gates Thief L3 Fast Hands**
+  (Sleight of Hand to pick a lock / disarm a trap; Use an Object) and is also the right home for
+  the BUGS items "OAs should not be triggered if there is a wall between agents" and "If you drop
+  weapons you cannot pick them back up" (ground-item pickup is the same interact primitive). Real
+  cross-cutting epic (C++ map model + bindings + GUI placement/interaction UI); do as its own design pass.
 
 ## Per-class near-term (open mechanics)
 

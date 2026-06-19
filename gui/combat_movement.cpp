@@ -604,6 +604,7 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
         if (r == mover_idx) continue;
         if (areAllies(bm, mover_idx, r)) continue;  // teammates don't provoke OAs from each other
         const PlacedAgent& ra = agents[static_cast<std::size_t>(r)];
+        if (ra.on_deck) continue;                    // a reserve held On Deck makes no opportunity attacks
         if (ra.agent->getConditions().incapacitated) continue;
         if (ra.agent->getStats().hp_cur <= 0) continue;
         if (bm.getAgentConditions(r).reaction_used) continue;

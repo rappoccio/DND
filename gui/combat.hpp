@@ -1656,6 +1656,8 @@ public:
     // then by agent_idx.  Call once at combat start; reuse the order for
     // all subsequent runRound() calls.
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
+    // Single-agent Initiative roll for deploying on-deck reinforcements (see .cpp).
+    InitiativeEntry rollInitiativeFor(const BattleMap& bm, int agent_idx);
 
     // Alert (Origin feat) — Initiative Swap: immediately after rolling Initiative, swap
     // your Initiative with a willing ally's. Returns a copy of `order` with the two agents'

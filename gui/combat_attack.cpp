@@ -548,6 +548,7 @@ bool CombatEngine::canUncannyDodge(const BattleMap& bm, int target_idx) const
 {
     const auto& agents = bm.placedAgents();
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(target_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(target_idx);
     if (cond.reaction_used || cond.incapacitated) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
@@ -579,6 +580,7 @@ bool CombatEngine::canSuperiorHunterDefense(const BattleMap& bm, int target_idx)
 {
     const auto& agents = bm.placedAgents();
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(target_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(target_idx);
     if (cond.reaction_used || cond.incapacitated) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
@@ -606,6 +608,7 @@ bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
 {
     const auto& agents = bm.placedAgents();
     if (defender_idx < 0 || defender_idx >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(defender_idx)) return false;     // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
     if (cond.reaction_used || cond.incapacitated) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
@@ -642,6 +645,7 @@ bool CombatEngine::canDefensiveDuelist(const BattleMap& bm, const Attack& action
     const int tgt = action.target_idx;
     const auto& agents = bm.placedAgents();
     if (tgt < 0 || tgt >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(tgt)) return false;              // On Deck reserves take no reactions until deployed
     const Agent::Stats ts = bm.getAgentStats(tgt);
     if (!ts.hasFeat("Defensive Duelist")) return false;
     if (ts.hp_cur <= 0) return false;
@@ -682,6 +686,7 @@ bool CombatEngine::canCombatInspirationAC(const BattleMap& bm, const Attack& act
     const int tgt = action.target_idx;
     const auto& agents = bm.placedAgents();
     if (tgt < 0 || tgt >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(tgt)) return false;              // On Deck reserves take no reactions until deployed
     const Agent::Stats ts = bm.getAgentStats(tgt);
     if (ts.bardic_inspiration_die <= 0) return false;  // must hold a Bardic Inspiration die
     if (ts.hp_cur <= 0) return false;
@@ -824,6 +829,7 @@ bool CombatEngine::canRiposte(const BattleMap& bm, int defender_idx, int attacke
     const int n = static_cast<int>(agents.size());
     if (defender_idx < 0 || defender_idx >= n || attacker_idx < 0 || attacker_idx >= n) return false;
     if (defender_idx == attacker_idx) return false;
+    if (bm.isAgentOnDeck(defender_idx)) return false;     // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
     if (cond.reaction_used || cond.incapacitated) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
@@ -883,6 +889,7 @@ bool CombatEngine::canSentinelGuard(const BattleMap& bm, const Attack& action, i
     const int tgt = action.target_idx;
     if (sentinel_idx < 0 || sentinel_idx >= n || atk < 0 || atk >= n) return false;
     if (sentinel_idx == atk || sentinel_idx == tgt) return false;   // the attack must be against someone OTHER than the Sentinel
+    if (bm.isAgentOnDeck(sentinel_idx)) return false;     // On Deck reserves take no reactions until deployed
     const Agent::Stats ss = bm.getAgentStats(sentinel_idx);
     if (!ss.has_sentinel || ss.hp_cur <= 0) return false;
     const Agent::Conditions sc = bm.getAgentConditions(sentinel_idx);
@@ -905,6 +912,7 @@ bool CombatEngine::canIntercept(const BattleMap& bm, const Attack& action,
     if (interceptor_idx < 0 || interceptor_idx >= n || atk < 0 || atk >= n || tgt < 0 || tgt >= n)
         return false;
     if (interceptor_idx == atk || interceptor_idx == tgt) return false;  // protect a creature OTHER than yourself
+    if (bm.isAgentOnDeck(interceptor_idx)) return false;  // On Deck reserves take no reactions until deployed
     if (damage_taken <= 0) return false;
 
     const Agent::Stats is = bm.getAgentStats(interceptor_idx);
@@ -996,6 +1004,7 @@ bool CombatEngine::canGuidedStrike(const BattleMap& bm, const Attack& action, in
     const int n = static_cast<int>(agents.size());
     const int atk = action.attacker_idx;
     if (cleric_idx < 0 || cleric_idx >= n || atk < 0 || atk >= n) return false;
+    if (bm.isAgentOnDeck(cleric_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Stats cs = bm.getAgentStats(cleric_idx);
     if (cs.character_class != CharacterClass::Cleric ||
         cs.cleric_subclass != WarDomain || cs.char_level < 3) return false;
@@ -1049,6 +1058,7 @@ static bool d20ReactorBase(const BattleMap& bm, int reactor, int roller)
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
     if (reactor < 0 || reactor >= n || roller < 0 || roller >= n || reactor == roller) return false;
+    if (bm.isAgentOnDeck(reactor)) return false;          // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (cond.reaction_used || cond.incapacitated) return false;
     if (bm.getAgentStats(reactor).hp_cur <= 0) return false;
@@ -3067,6 +3077,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         Agent::Conditions cond = bm.getAgentConditions(action.attacker_idx);
         if (cond.invisible && !cond.invisible_persists_on_action) {
             cond.invisible = false;
+            cond.attacked_while_invisible = true;  // Thief Supreme Sneak gate (cleared at turn start)
             bm.setAgentConditions(action.attacker_idx, cond);
             log_("{}'s invisibility ends (made an attack)", agents[action.attacker_idx].agent->name());
         }

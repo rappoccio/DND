@@ -2405,6 +2405,7 @@ static bool saveReactorBase(const BattleMap& bm, int reactor, int save_target,
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
     if (reactor < 0 || reactor >= n || save_target < 0 || save_target >= n) return false;
+    if (bm.isAgentOnDeck(reactor)) return false;          // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (cond.incapacitated) return false;
     if (require_reaction && cond.reaction_used) return false;
@@ -2573,6 +2574,7 @@ bool CombatEngine::canCastShield(const BattleMap& bm, int idx) const
 {
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(idx)) return false;              // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(idx);
     if (cond.reaction_used || cond.incapacitated) return false;
     const Agent::Stats s = bm.getAgentStats(idx);
@@ -2592,6 +2594,7 @@ bool CombatEngine::canCastCounterspell(const BattleMap& bm, int idx, int caster_
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return false;
     if (idx == caster_idx) return false;                          // can't counter your own spell
+    if (bm.isAgentOnDeck(idx)) return false;                      // On Deck reserves take no reactions until deployed
     if (areAllies(bm, idx, caster_idx)) return false;             // never counter a teammate's spell
     const Agent::Conditions cond = bm.getAgentConditions(idx);
     if (cond.reaction_used || cond.incapacitated) return false;

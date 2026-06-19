@@ -431,6 +431,11 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
     for (int e : effects) {
         int c = cunningStrikeCost(e);
         if (c <= 0 || atk_stats.char_level < cunningStrikeMinLevel(e)) { effects_ok = false; break; }
+        // Stealth Attack (Thief Supreme Sneak): Thief-only, and only if this strike came from
+        // stealth (the attack just ended the Hide/Invisible condition this turn).
+        if (e == 6 && (atk_stats.rogue_subclass != ThiefPath || !atk_cond.attacked_while_invisible)) {
+            effects_ok = false; break;
+        }
         cost += c;
     }
     if (!effects_ok || cost > sneak_dice) { effects_ok = false; cost = 0; }
@@ -486,6 +491,17 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
             ac.disengaging = true;
             bm.setAgentConditions(attacker_idx, ac);
             log_("Cunning Strike (Withdraw): {} won't provoke opportunity attacks",
+                 agentName(bm, attacker_idx));
+            continue;
+        }
+
+        if (e == 6) {  // Stealth Attack (Thief Supreme Sneak) — the Sneak Attack doesn't end your Hide.
+            Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+            ac.invisible = true;          // remain hidden after the strike (restores the just-ended Hide)
+            ac.hidden    = true;
+            // v1: the RAW "end the turn behind Three-Quarters/Total Cover" clause is not modeled.
+            bm.setAgentConditions(attacker_idx, ac);
+            log_("Cunning Strike (Stealth Attack): {} remains hidden after the strike",
                  agentName(bm, attacker_idx));
             continue;
         }
@@ -1647,6 +1663,7 @@ bool CombatEngine::canBranchesOfTree(const BattleMap& bm, int reactor, int sourc
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
     if (reactor < 0 || reactor >= n || source < 0 || source >= n || reactor == source) return false;
+    if (bm.isAgentOnDeck(reactor)) return false;          // On Deck reserves take no reactions until deployed
     const Agent::Stats s = bm.getAgentStats(reactor);
     if (!s.has_branches_of_the_tree) return false;
     if (s.hp_cur <= 0) return false;
@@ -1720,6 +1737,7 @@ bool CombatEngine::canVitalityOfTheTree(const BattleMap& bm, int source) const
 {
     const int n = static_cast<int>(bm.placedAgents().size());
     if (source < 0 || source >= n) return false;
+    if (bm.isAgentOnDeck(source)) return false;           // On Deck reserves take no reactions until deployed
     const Agent::Stats s = bm.getAgentStats(source);
     if (s.character_class != Barbarian || s.barbarian_subclass != WorldTreePath) return false;
     if (s.char_level < 3 || s.hp_cur <= 0) return false;

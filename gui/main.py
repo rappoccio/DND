@@ -422,6 +422,7 @@ class App:
         self.combat_paused        = False  # True when paused between turns
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
+        self.on_deck_item_rects   = []    # list[(pygame.Rect, name)], clickable Deploy rows for On Deck groups
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
@@ -534,6 +535,7 @@ class App:
         self._init_config_panel()
         self.scroll_y = 0         # scroll offset for agent list
         self.initiative_scroll_offset = 0  # scroll offset for initiative tracker
+        self._initiative_autopaged_turn = -1  # last turn_idx auto-paged into view
 
         # ── Map panning (mouse scroll) ────────────────────────────────────
         self.pan_x = 0            # horizontal pan offset in pixels
@@ -677,9 +679,12 @@ class App:
         self.btn_load_terrain = Button(pygame.Rect(px + HW + 4, save_ter_y, HW, B), "Load Terrain",
                                        (50, 75, 120), (70, 100, 155), font=self.font_md)
         light_y = save_ter_y + B + self._BTN_GAP
-        self.btn_edit_lighting = Button(pygame.Rect(px, light_y, W, B),
+        self.btn_edit_lighting = Button(pygame.Rect(px, light_y, HW, B),
                                         "Edit Lighting",
                                         (120, 100, 80), (160, 130, 110), font=self.font_md)
+        self.btn_load_lighting = Button(pygame.Rect(px + HW + 4, light_y, HW, B),
+                                        "Load Lighting",
+                                        (50, 75, 120), (70, 100, 155), font=self.font_md)
         toggle_light_y = light_y + B + self._BTN_GAP
         self.btn_toggle_lighting = Button(pygame.Rect(px, toggle_light_y, W, B),
                                           "Lighting: OFF",
@@ -725,7 +730,8 @@ class App:
         self.btn_save_terrain.rect.update(px, save_ter_y, SW, self._BTN_H)
         self.btn_load_terrain.rect.update(px + SW + 4, save_ter_y, SW, self._BTN_H)
         light_y = save_ter_y + self._BTN_H + self._BTN_GAP
-        self.btn_edit_lighting.rect.update(px, light_y, W, self._BTN_H)
+        self.btn_edit_lighting.rect.update(px, light_y, SW, self._BTN_H)
+        self.btn_load_lighting.rect.update(px + SW + 4, light_y, SW, self._BTN_H)
         toggle_light_y = light_y + self._BTN_H + self._BTN_GAP
         self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
         toggle_walls_y = toggle_light_y + self._BTN_H + self._BTN_GAP
@@ -1200,6 +1206,21 @@ class App:
             return rpg.Cell(c, r)
         return None
 
+    def _pixel_to_cell(self, ix, iy):
+        """Convert image pixel coordinates to a grid Cell, or None if outside.
+        Unlike _screen_to_cell, this works with raw image pixels (no pan/scale adjustment)."""
+        raw_v = self.bm.v_line_positions
+        raw_h = self.bm.h_line_positions
+        if not raw_v or not raw_h:
+            return None
+        # Binary-search which column/row we're in
+        import bisect
+        c = bisect.bisect_right(raw_v, ix) - 1
+        r = bisect.bisect_right(raw_h, iy) - 1
+        if 0 <= c < self.bm.grid_cols and 0 <= r < self.bm.grid_rows:
+            return rpg.Cell(c, r)
+        return None
+
     def _cell_to_screen(self, col, row):
         """Return top-left screen pixel of a grid cell."""
         s     = self.map_scale
@@ -1310,6 +1331,25 @@ class App:
             self._update_reach()
             self._update_attack_overlay()
         self._flash_status(f"Terrain loaded: {os.path.basename(path)}")
+
+    def _on_load_lighting_chosen(self, path: str):
+        """Import lighting from a chosen _lighting.json into the current scene (it then
+        saves with this encounter)."""
+        # Load shows every .json, so refuse a non-lighting pick (no "light_sources" key)
+        # rather than clearing the current lighting with an empty source list.
+        try:
+            with open(path) as f:
+                if "light_sources" not in json.load(f):
+                    self._flash_status(f"Not a lighting file: {os.path.basename(path)}")
+                    return
+        except Exception as e:
+            self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
+            return
+        self._load_lighting(path)
+        # Auto-enable the lighting overlay so the user can see the loaded lighting
+        self.show_lighting_overlay = True
+        self.btn_toggle_lighting.text = "Lighting: ON"
+        self._flash_status(f"Lighting loaded: {os.path.basename(path)}")
 
     # ─────────────────────────────────────────────────────────────────────
     #  Copy / paste agents (pre-combat encounter building)
@@ -1897,6 +1937,9 @@ class App:
         self.turn_idx            = 0
         self.round_num           = 0
         self.initiative_scroll_offset = 0  # reset initiative scroll when combat starts
+        self._initiative_autopaged_turn = -1  # re-arm auto-paging for the new combat
+        # Thief's Reflexes (Rogue Thief L17): a second turn during the first round at Initiative-10.
+        self._apply_thief_reflexes()
         self.action_used          = False
         self.bonus_used           = False
         self.pending_attack_slot       = ""
@@ -1995,6 +2038,120 @@ class App:
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
 
+    # ── On Deck (phased-battle reinforcements) ─────────────────────────────
+    def _on_deck_groups(self):
+        """Reserves grouped by name, in first-placed order: list of (name, count).
+        Tombstoned (dismissed) agents are excluded."""
+        groups = {}          # name -> count
+        order  = []          # names in first-seen order
+        for i, pt in enumerate(self.bm.placed_agents):
+            if pt.removed_from_play or not self.bm.is_agent_on_deck(i):
+                continue
+            if pt.name not in groups:
+                order.append(pt.name)
+                groups[pt.name] = 0
+            groups[pt.name] += 1
+        return [(nm, groups[nm]) for nm in order]
+
+    def _deploy_on_deck_group(self, name):
+        """Bring an on-deck reinforcement group (all reserves sharing `name`) into the
+        battle. Clears their on-deck flag; if combat is live, every member shares ONE
+        freshly-rolled Initiative (the 'same type → same roll' rule) and is inserted into
+        the order without disturbing the current actor or existing summon adjacencies."""
+        idxs = [i for i, pt in enumerate(self.bm.placed_agents)
+                if not pt.removed_from_play and self.bm.is_agent_on_deck(i)
+                and pt.name == name]
+        if not idxs:
+            return
+        for i in idxs:
+            self.bm.set_agent_on_deck(i, False)
+
+        if self.combat_active and self.initiative_order:
+            cur_aidx = self._current_agent_idx()   # preserve whose turn it is
+            base = self.combat.roll_initiative_for(self.bm, idxs[0])
+            total = base.total
+            # Insert just before the first existing entry with a strictly lower total,
+            # so the group acts after equal-or-higher combatants (a partial sorted insert
+            # that leaves summon-after-summoner adjacencies intact).
+            pos = len(self.initiative_order)
+            for p, e in enumerate(self.initiative_order):
+                if e.total < total:
+                    pos = p
+                    break
+            new_entries = []
+            for i in idxs:
+                e = rpg.InitiativeEntry()
+                e.agent_idx = i
+                e.d20       = base.d20
+                e.modifier  = base.modifier
+                e.total     = total
+                new_entries.append(e)
+            self.initiative_order[pos:pos] = new_entries
+            # Re-point turn_idx at the same actor (its list position may have shifted).
+            self.turn_idx = next((p for p, e in enumerate(self.initiative_order)
+                                  if e.agent_idx == cur_aidx), self.turn_idx)
+            self._combat_log_add(
+                f"⚔ Reinforcements deploy: {name} ×{len(idxs)} (Initiative {total}).")
+        else:
+            self._combat_log_add(
+                f"{name} ×{len(idxs)} removed from On Deck — will roll Initiative at combat start.")
+
+    # ── Thief's Reflexes (Rogue Thief L17) ─────────────────────────────────
+    def _apply_thief_reflexes(self):
+        """Insert a second initiative entry at (Initiative - 10) for each Thief L17+ so it takes
+        two turns during the first round. The bonus entries are removed once round 1 ends
+        (_remove_thief_reflexes, called from _advance_turn). Pure GUI initiative manipulation —
+        no engine call, so it does not affect checked replay."""
+        self._thief_reflexes_extra = {}   # agent_idx -> reduced total (the bonus entry to drop)
+        if not self.initiative_order:
+            return
+        pending = []
+        for e in list(self.initiative_order):
+            if e.agent_idx in self._thief_reflexes_extra:
+                continue
+            st = self.combat.get_agent_stats(self.bm, e.agent_idx)
+            if (st.character_class == rpg.CharacterClass.Rogue
+                    and st.rogue_subclass == rpg.RogueSubclass.Thief
+                    and st.char_level >= 17):
+                reduced = e.total - 10
+                self._thief_reflexes_extra[e.agent_idx] = reduced
+                pending.append((e.agent_idx, e.d20, e.modifier, reduced))
+        for aidx, d20, mod, total in pending:
+            ne = rpg.InitiativeEntry()
+            ne.agent_idx = aidx
+            ne.d20       = d20
+            ne.modifier  = mod
+            ne.total     = total
+            # Sorted insert: just before the first entry with a strictly lower total.
+            pos = len(self.initiative_order)
+            for p, x in enumerate(self.initiative_order):
+                if x.total < total:
+                    pos = p
+                    break
+            self.initiative_order[pos:pos] = [ne]
+            nm = self.bm.placed_agents[aidx].name if 0 <= aidx < len(self.bm.placed_agents) else "?"
+            self._combat_log_add(f"{nm}: Thief's Reflexes — extra turn this round at Initiative {total}.")
+
+    def _remove_thief_reflexes(self):
+        """Drop the bonus first-round turns and re-point turn_idx at the current actor."""
+        if not getattr(self, "_thief_reflexes_extra", None):
+            return
+        cur_aidx = self._current_agent_idx()
+        to_drop = dict(self._thief_reflexes_extra)   # agent_idx -> reduced total (drop one each)
+        new_order = []
+        for e in self.initiative_order:
+            if e.agent_idx in to_drop and e.total == to_drop[e.agent_idx]:
+                del to_drop[e.agent_idx]   # remove exactly the one bonus (reduced-total) entry
+                continue
+            new_order.append(e)
+        self.initiative_order = new_order
+        self._thief_reflexes_extra = {}
+        if self.initiative_order:
+            self.turn_idx = next((p for p, e in enumerate(self.initiative_order)
+                                  if e.agent_idx == cur_aidx), 0)
+        else:
+            self.turn_idx = 0
+
     def _advance_turn(self):
         """Advance to the next living combatant in initiative order."""
         if not self.initiative_order:
@@ -2025,6 +2182,9 @@ class App:
         # Round advancement: when turn_idx wraps to 0
         if self.turn_idx < prev_turn_idx:
             self.round_num += 1
+            # Thief's Reflexes: the bonus first-round turns expire once round 1 ends.
+            if self.round_num == 1 and getattr(self, "_thief_reflexes_extra", None):
+                self._remove_thief_reflexes()
             # Tick DM-placed effects at round boundary
             expired_dm = self.bm.tick_dm_terrain_effects()
             for effect_id in expired_dm:
@@ -2114,6 +2274,10 @@ class App:
         if not (0 <= idx < len(agents)) or idx == prev_idx:
             return False
         if self.bm.is_agent_removed_from_play(idx):
+            return False
+        # On-deck reserves are out of the fight (not in initiative) → no legendary
+        # actions until the DM deploys them.
+        if self.bm.is_agent_on_deck(idx):
             return False
         try:
             st = self.combat.get_agent_stats(self.bm, idx)
@@ -3598,6 +3762,12 @@ class App:
                 ("Knock Out (6 dice)", lambda: _apply([4])),
                 ("Obscure (3 dice)", lambda: _apply([5])),
             ]
+        # Supreme Sneak (Thief L9+): Stealth Attack — spend 1 die to stay hidden after the strike.
+        # Only meaningful if this attack came from stealth (it just ended the Hide/Invisible condition).
+        atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
+        if (level >= 9 and atk_stats.rogue_subclass == rpg.RogueSubclass.Thief
+                and atk_cond.attacked_while_invisible):
+            options.append(("Stealth Attack (1 die) — stay hidden", lambda: _apply([6])))
         options.append(("Sneak Attack only", lambda: _apply([])))
 
         px, py = self._agent_screen_pos(atk_idx)
@@ -4069,6 +4239,8 @@ class App:
         known_limitations.md). apply_protective_field re-validates everything in C++."""
         agents = self.bm.placed_agents
         if not (0 <= target_idx < len(agents)):
+            return False
+        if self.bm.is_agent_on_deck(target_idx):   # On Deck reserves take no reactions until deployed
             return False
         if not (result.hit and result.total_damage > 0) or result.target_down:
             return False
@@ -7222,6 +7394,7 @@ class App:
                 "col":         pt.origin.col,
                 "row":         pt.origin.row,
                 "faction":     pt.faction,
+                "on_deck":     self.bm.is_agent_on_deck(i),
                 "stats": {
                     "str": s.str, "dex": s.dex, "con": s.con,
                     "intel": s.intel, "wis": s.wis, "cha": s.cha,
@@ -7237,6 +7410,12 @@ class App:
                     "save_prof_wis":   s.save_prof_wis,
                     "save_prof_cha":      s.save_prof_cha,
                     "num_attacks":        s.num_attacks,
+                    # Creature-type flags — must round-trip or saved monsters silently lose them
+                    # (e.g. a reloaded Vampire stops taking Sunlight radiant damage). dict_to_stats
+                    # reads all three back from this stats block.
+                    "is_undead":  s.is_undead,
+                    "is_fiend":   s.is_fiend,
+                    "is_vampire": s.is_vampire,
                     "has_cunning_action": s.has_cunning_action,
                     "has_offhand_attack": s.has_offhand_attack,
                     "has_sentinel":             s.has_sentinel,
@@ -7621,6 +7800,9 @@ class App:
             # Restore team/faction (0 = neutral for older saves that predate factions).
             self.bm.set_agent_faction(i, int(t.get("faction", 0)))
 
+            # Restore on-deck reserve flag (older saves default to False = in the fight).
+            self.bm.set_agent_on_deck(i, bool(t.get("on_deck", False)))
+
         # Restore weapons — load from weapons dict (slot format) or legacy formats
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
@@ -7989,33 +8171,76 @@ class App:
                 "cells": [(c.col, c.row) for c in effect.cells]
             }
 
-    def _load_lighting(self):
+    def _load_lighting(self, path: str | None = None):
         """Load lighting data from JSON file if it exists.
 
         When the encounter has no lighting file, reset to a fully-lit default so a
         previous encounter's darkness/sources don't bleed through on a swap.
         """
-        if os.path.exists(self._lighting_path):
+        path = path or self._lighting_path
+        # Clear existing DM-placed light effects before loading new ones
+        for eff in self.bm.active_light_effects:
+            if eff.source_agent_idx == -1:  # DM-placed
+                self.bm.remove_light_effect(eff.id)
+
+        if os.path.exists(path):
             try:
-                with open(self._lighting_path, 'r') as f:
+                with open(path, 'r') as f:
                     data = json.load(f)
-                default_str = data.get("default_light", "BrightLight")
-                default_lvl = self._parse_light_level(default_str)
-                sources = []
+                # Apply the whole-map default light level (e.g. "Darkness" for a dark
+                # dungeon). Per-source lights are placed as explicit light effects below
+                # (so each keeps its own level, e.g. Sunlight); pass no sources here.
+                default_lvl = self._parse_light_level(data.get("default_light", "BrightLight"))
+                self.bm.apply_base_lighting(default_lvl, [])
+                # Load light sources using place_light_effect (same as dialog)
                 for src in data.get("light_sources", []):
-                    lvl = self._parse_light_level(src.get("light_level", "BrightLight"))
-                    sources.append((int(src["x"]), int(src["y"]),
-                                   int(src.get("bright_radius", 20)),
-                                   int(src.get("dim_radius", 40))))
-                self.bm.apply_base_lighting(default_lvl, sources)
+                    level_str = src.get("light_level", "Sunlight")
+                    level = self._parse_light_level(level_str)
+                    radius = src.get("bright_radius", 5)
+
+                    # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
+                    if "col" in src and "row" in src:
+                        # New format: grid coordinates
+                        col = src.get("col", 0)
+                        row = src.get("row", 0)
+                    else:
+                        # Old format: pixel coordinates - convert to grid
+                        x = src.get("x", 0)
+                        y = src.get("y", 0)
+                        cell = self._pixel_to_cell(x, y)
+                        if not cell:
+                            continue
+                        col = cell.col
+                        row = cell.row
+
+                    if col < 0 or col >= self.bm.grid_cols or row < 0 or row >= self.bm.grid_rows:
+                        continue
+
+                    # Create a sphere of cells around the light
+                    cells = []
+                    for r in range(max(0, row - radius), min(self.bm.grid_rows, row + radius + 1)):
+                        for c in range(max(0, col - radius), min(self.bm.grid_cols, col + radius + 1)):
+                            # Chebyshev distance for square radius
+                            if abs(c - col) <= radius and abs(r - row) <= radius:
+                                cells.append(rpg.Cell(c, r))
+
+                    # Place the light effect
+                    self.bm.place_light_effect(
+                        src.get("name", "Light"),
+                        cells,
+                        level,
+                        -1,  # -1 = permanent
+                        -1   # -1 = DM-placed (no source agent)
+                    )
             except Exception as e:
                 print(f"[App] Error loading lighting: {e}")
         else:
-            # No lighting file for this encounter: clean, fully-lit default.
+            # No lighting file for this encounter: reset to a clean, fully-lit default
+            # so a previous encounter's darkness/sources don't bleed through on a swap.
             self.bm.apply_base_lighting(rpg.VisibilityLevel.Clear, [])
 
-    def _save_lighting(self, light_sources, default_light):
-        """Save lighting data to JSON file."""
+    def _save_lighting_no_reload(self, light_sources, default_light):
+        """Save lighting data to JSON file without reloading (used by dialog after apply)."""
         # Convert enum to string
         light_str_map = {
             rpg.VisibilityLevel.Clear: "BrightLight",
@@ -8026,13 +8251,36 @@ class App:
         }
         default_str = light_str_map.get(default_light, "Darkness")
 
+        # Convert light sources format: "level" (enum) -> "light_level" (string)
+        # and store grid coordinates (col, row)
+        converted_sources = []
+        for src in light_sources:
+            level_enum = src.get("level", rpg.VisibilityLevel.Sunlight)
+            level_str = light_str_map.get(level_enum, "Sunlight")
+            radius = src.get("radius", 5)
+            # Use grid coordinates (col, row) with fallback to old (x, y) format
+            col = src.get("col", src.get("x", 0))
+            row = src.get("row", src.get("y", 0))
+            converted_src = {
+                "name": src.get("name", "Light"),
+                "col": col,
+                "row": row,
+                "light_level": level_str,
+                "bright_radius": radius,
+                "dim_radius": radius + 1,
+            }
+            converted_sources.append(converted_src)
+
         data = {
             "default_light": default_str,
-            "light_sources": light_sources
+            "light_sources": converted_sources
         }
         with open(self._lighting_path, 'w') as f:
             json.dump(data, f, indent=2)
 
+    def _save_lighting(self, light_sources, default_light):
+        """Save lighting data to JSON file and reload into battle map."""
+        self._save_lighting_no_reload(light_sources, default_light)
         # Reload lighting into battle map
         self._load_lighting()
 
@@ -8061,21 +8309,33 @@ class App:
         # Place new light effects
         for light in light_sources:
             level = light.get("level", rpg.VisibilityLevel.Sunlight)
-            x, y = light.get("x", 0), light.get("y", 0)
             radius = light.get("radius", 5)
 
-            # Convert pixel coords to grid cell
-            cell = self._screen_to_cell(x, y)
-            if not cell or cell.col < 0 or cell.row < 0:
+            # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
+            if "col" in light and "row" in light:
+                # New format: grid coordinates
+                col = light.get("col", 0)
+                row = light.get("row", 0)
+            else:
+                # Old format: pixel coordinates - convert to grid
+                x = light.get("x", 0)
+                y = light.get("y", 0)
+                cell = self._pixel_to_cell(x, y)
+                if not cell:
+                    continue
+                col = cell.col
+                row = cell.row
+
+            if col < 0 or col >= self.bm.grid_cols or row < 0 or row >= self.bm.grid_rows:
                 continue
 
             # Create a sphere of cells around the light
             cells = []
-            for row in range(max(0, cell.row - radius), min(self.bm.grid_rows, cell.row + radius + 1)):
-                for col in range(max(0, cell.col - radius), min(self.bm.grid_cols, cell.col + radius + 1)):
+            for r in range(max(0, row - radius), min(self.bm.grid_rows, row + radius + 1)):
+                for c in range(max(0, col - radius), min(self.bm.grid_cols, col + radius + 1)):
                     # Chebyshev distance for square radius
-                    if abs(col - cell.col) <= radius and abs(row - cell.row) <= radius:
-                        cells.append(rpg.Cell(col, row))
+                    if abs(c - col) <= radius and abs(r - row) <= radius:
+                        cells.append(rpg.Cell(c, r))
 
             # Place the light effect
             self.bm.place_light_effect(
@@ -8957,7 +9217,20 @@ class App:
             if pt.removed_from_play:
                 continue    # tombstoned (dismissed summon): not rendered, not selectable
             sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
-            self._draw_one_agent(pt, sx, sy, cpx, agent_idx=i)
+            # On-deck reserves are still drawn (the DM placed them), but dimmed with an
+            # "ON DECK" badge so it's clear they aren't in the initiative yet.
+            on_deck = self.bm.is_agent_on_deck(i)
+            self._draw_one_agent(pt, sx, sy, cpx, alpha=110 if on_deck else 255, agent_idx=i)
+            if on_deck:
+                size_px = cpx * pt.size
+                badge = self.font_sm.render("ON DECK", True, (255, 235, 150))
+                bg = pygame.Surface((badge.get_width() + 4, badge.get_height() + 2),
+                                    pygame.SRCALPHA)
+                bg.fill((40, 30, 0, 200))
+                bx = sx + (size_px - bg.get_width()) // 2
+                by = sy - bg.get_height() - 1
+                self.screen.blit(bg, (bx, by))
+                self.screen.blit(badge, (bx + 2, by + 1))
 
             # Selection highlight (yellow border)
             if i == self.selected_idx:
@@ -9044,6 +9317,27 @@ class App:
         caster = self.bm.placed_agents[caster_idx]
         return summon_cell_placeable(self.bm, caster.origin, caster.size, cell, size, sp.range)
 
+    def _draw_on_deck_section(self, lx, W, px, y):
+        """Render the On Deck reserve list (grouped by name); each row deploys that group
+        on click. Returns the new y. Resets on_deck_item_rects every call so a row that is
+        no longer drawn can't capture clicks at a stale location."""
+        self.on_deck_item_rects = []
+        groups = self._on_deck_groups()
+        if not groups:
+            return y
+        pygame.draw.line(self.screen, COL_PANEL_BORDER,
+                         (px + 6, y), (px + PANEL_W - 6, y))
+        y += 8
+        self.screen.blit(self.font_sm.render("🎴 On Deck — click to deploy", True,
+                                             (210, 180, 90)), (lx, y))
+        y += 16
+        for name, count in groups:
+            label = f"  ⮕ {name}" + (f" ×{count}" if count > 1 else "")
+            self.screen.blit(self.font_sm.render(label, True, COL_TEXT), (lx, y))
+            self.on_deck_item_rects.append((pygame.Rect(lx, y, W, 16), name))
+            y += 16
+        return y
+
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active."""
         # Stale-rect guard: every combat-action button below is (re)positioned only on the
@@ -9101,6 +9395,16 @@ class App:
         init_list_scroll_region = pygame.Rect(lx, init_list_start_y, W, init_list_height)
         self.initiative_scroll_region = init_list_scroll_region  # store for event handling
 
+        # Auto-page: when the turn advances to a combatant outside the visible
+        # window, jump to the page holding the current turn. Tracked per turn so
+        # manual scrolling between turns is preserved (we only re-page on change).
+        if self.turn_idx != self._initiative_autopaged_turn:
+            self._initiative_autopaged_turn = self.turn_idx
+            if not (self.initiative_scroll_offset <= self.turn_idx
+                    < self.initiative_scroll_offset + init_list_max_visible):
+                page = self.turn_idx // init_list_max_visible
+                self.initiative_scroll_offset = page * init_list_max_visible
+
         # Clamp scroll offset to valid range
         max_scroll = max(0, len(self.initiative_order) - init_list_max_visible)
         self.initiative_scroll_offset = min(self.initiative_scroll_offset, max_scroll)
@@ -9138,6 +9442,9 @@ class App:
             scroll_info = f"↑↓ {self.initiative_scroll_offset + init_list_max_visible}/{len(self.initiative_order)}"
             txt(scroll_info, lx, y, COL_LABEL)
             y += 16
+
+        # ── On Deck reinforcements (deploy reserves into the live order) ────
+        y = self._draw_on_deck_section(lx, W, px, y)
 
         y += section_gap
 
@@ -10162,6 +10469,10 @@ class App:
             self._draw_combat_panel()
             return
 
+        # Setup panel has no Deploy rows; clear any stale combat-panel rects so they
+        # can't capture clicks here. Reserves are managed pre-combat via right-click.
+        self.on_deck_item_rects = []
+
         sw, sh = self.screen.get_size()
         px  = self._panel_x()
         lx  = px + self._PANEL_PAD          # left edge for text
@@ -10239,6 +10550,7 @@ class App:
 
         # ── Edit Lighting button ───────────────────────────────────────────
         self.btn_edit_lighting.draw(self.screen)
+        self.btn_load_lighting.draw(self.screen)
 
         # ── Toggle Lighting Overlay button ─────────────────────────────────
         self.btn_toggle_lighting.draw(self.screen)
@@ -10759,13 +11071,22 @@ class App:
                                     f"{os.path.basename(path)}.")
                             start = self.sprites_dir if os.path.isdir(self.sprites_dir) else "."
                             self.file_browser.open(start, _commit)
+                        def _toggle_on_deck(h=hit):
+                            now_reserve = not self.bm.is_agent_on_deck(h)
+                            self.bm.set_agent_on_deck(h, now_reserve)
+                            nm = self.bm.placed_agents[h].name
+                            self._combat_log_add(
+                                f"{nm}: {'moved to On Deck (reserve)' if now_reserve else 'recalled to the battle'}.")
+                        _on_deck_label = ("Recall from On Deck" if self.bm.is_agent_on_deck(hit)
+                                          else "Send to On Deck")
                         _menu_opts = [("Edit Name…",   _edit_name),
                                       ("Edit Sprite…", _edit_sprite),
                                       ("Edit Stats",   _open_stats),
                                       ("Edit Weapons", _open_weapons),
                                       ("Edit Armor",   _open_armor),
                                       ("Edit Spells",  _open_spells),
-                                      ("Set Teams…",   self._open_team_picker)]
+                                      ("Set Teams…",   self._open_team_picker),
+                                      (_on_deck_label, _toggle_on_deck)]
                         # Evoker Wizards only: manage the set of creatures safe from their AoEs.
                         _hs = self.combat.get_agent_stats(self.bm, hit)
                         if (_hs.character_class == rpg.CharacterClass.Wizard and
@@ -11132,14 +11453,53 @@ class App:
                 # Edit Lighting
                 if self.btn_edit_lighting.clicked(event):
                     light_sources = []
+                    default_light = rpg.VisibilityLevel.Clear
                     if os.path.exists(self._lighting_path):
                         try:
                             with open(self._lighting_path, 'r') as f:
                                 data = json.load(f)
-                                light_sources = data.get("light_sources", [])
+                                # Convert saved format (with "light_level" string) to dialog format (with "level" enum)
+                                saved_sources = data.get("light_sources", [])
+                                for src in saved_sources:
+                                    level_str = src.get("light_level", "Sunlight")
+
+                                    # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
+                                    if "col" in src and "row" in src:
+                                        # New format: grid coordinates
+                                        col = src.get("col", 0)
+                                        row = src.get("row", 0)
+                                    else:
+                                        # Old format: pixel coordinates - convert to grid
+                                        x = src.get("x", 0)
+                                        y = src.get("y", 0)
+                                        cell = self._pixel_to_cell(x, y)
+                                        if not cell:
+                                            continue
+                                        col = cell.col
+                                        row = cell.row
+
+                                    light_sources.append({
+                                        "name": src.get("name", "Light"),
+                                        "col": col,
+                                        "row": row,
+                                        "level": self._parse_light_level(level_str),
+                                        "radius": src.get("bright_radius", 5),
+                                    })
+                                default_light_str = data.get("default_light", "BrightLight")
+                                default_light = self._parse_light_level(default_light_str)
                         except:
                             light_sources = []
-                    self.lighting_editor.open(self.map_surf, self.bm, self, light_sources)
+                            default_light = rpg.VisibilityLevel.Clear
+                    self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
+
+                # Load Lighting
+                if self.btn_load_lighting.clicked(event):
+                    start = os.path.dirname(self._lighting_path) or self._map_dir
+                    self.file_browser.open(
+                        start, self._on_load_lighting_chosen,
+                        save_mode=False,
+                        extensions=JSON_EXTS,
+                    )
 
                 # Toggle Lighting Overlay
                 if self.btn_toggle_lighting.clicked(event):
@@ -11159,8 +11519,17 @@ class App:
                     return False
 
             else:
-                # ── Initiative list click detection ────────────────────────────
+                # ── On Deck deploy click detection (checked before initiative) ─
+                _deployed_click = False
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for item_rect, group_name in self.on_deck_item_rects:
+                        if item_rect.collidepoint(event.pos):
+                            self._deploy_on_deck_group(group_name)
+                            _deployed_click = True
+                            break
+
+                # ── Initiative list click detection ────────────────────────────
+                if not _deployed_click and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for item_rect, agent_idx in self.initiative_item_rects:
                         if item_rect.collidepoint(event.pos):
                             # Show conditions dialog for clicked agent

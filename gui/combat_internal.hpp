@@ -284,6 +284,7 @@ inline int cunningStrikeCost(int effect) noexcept {
         case 2: return 1;  // Withdraw
         case 4: return 6;  // Knock Out
         case 5: return 3;  // Obscure
+        case 6: return 1;  // Stealth Attack (Thief Supreme Sneak)
         default: return 0; // 3=Daze deferred, anything else invalid
     }
 }
@@ -292,6 +293,7 @@ inline int cunningStrikeMinLevel(int effect) noexcept {
     switch (effect) {
         case 0: case 1: case 2: return 5;   // Cunning Strike
         case 4: case 5:         return 14;  // Devious Strikes
+        case 6:                 return 9;   // Stealth Attack (Thief Supreme Sneak)
         default:                return 99;  // invalid
     }
 }

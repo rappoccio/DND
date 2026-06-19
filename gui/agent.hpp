@@ -624,6 +624,7 @@ namespace rpg {
       bool hidden{false};        // enemies cannot detect; attacks from hiding have advantage
       bool invisible{false};     // enemies cannot see this agent (pierced by Truesight/Blindsight)
       bool invisible_persists_on_action{false}; // Greater Invisibility: does NOT end on attack/cast (else Invisibility ends after the actor attacks/deals damage/casts)
+      bool attacked_while_invisible{false}; // set when an attack ends this agent's Invisibility (per-turn); gates Thief Supreme Sneak (Stealth Attack)
       bool incapacitated{false}; // cannot act, movement speed 0
       bool concentrating{false}; // concentrating on a spell; breaks on damage CON save failure
       std::string concentrating_on{}; // name of the spell being concentrated on
@@ -820,6 +821,7 @@ namespace rpg {
       conditions_.radiant_soul_used            = false;
       conditions_.sneak_attack_used            = false;
       conditions_.cunning_strike_available     = false;
+      conditions_.attacked_while_invisible     = false;
       conditions_.steady_aim                   = false;
       conditions_.divine_strike_available      = false;
       conditions_.divine_strike_used           = false;

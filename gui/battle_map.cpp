@@ -803,6 +803,18 @@ void BattleMap::setAgentFaction(int idx, int faction) noexcept
     placedAgents_[static_cast<std::size_t>(idx)].faction = faction;
 }
 
+bool BattleMap::isAgentOnDeck(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
+    return placedAgents_[static_cast<std::size_t>(idx)].on_deck;
+}
+
+void BattleMap::setAgentOnDeck(int idx, bool on_deck) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].on_deck = on_deck;
+}
+
 void BattleMap::setAgentName(int idx, std::string name) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;

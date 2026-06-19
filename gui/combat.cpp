@@ -115,6 +115,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         save_prof_wis = true;
         save_prof_cha = true;
       }
+      // ── Thief (subclass) ──────────────────────────────────────────────
+      // Second-Story Work (L3): Climber — gain a Climb Speed equal to your Speed.
+      // (Jumper — use DEX for jump distance — is not modeled: no engine jump-by-ability.)
+      // Supreme Sneak (L9) is a Cunning Strike option (effect 6); Thief's Reflexes (L17)
+      // is GUI initiative; neither needs a resource here.
+      if (rogue_subclass == ThiefPath && level >= 3) {
+        speed_climb = std::max(speed_climb, speed_walk);
+      }
       break;
     }
 
