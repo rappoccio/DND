@@ -64343,18 +64343,18 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Piercing)",
+        "name": "Battleaxe",
         "type": "melee",
         "reach_ft": 5,
-        "normal_range_ft": 80,
-        "long_range_ft": 320,
+        "normal_range_ft": 0,
+        "long_range_ft": 0,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
-            "type": "Piercing",
+            "type": "Slashing",
             "num_dice": 2,
-            "die_size": 6
+            "die_size": 10
           }
         ],
         "magic_damage_types": [],
@@ -64363,21 +64363,22 @@
       },
       "off_hand": "",
       "ranged": {
-        "name": "Ranged (Piercing)",
+        "name": "Hurl Flame",
         "type": "ranged",
         "reach_ft": 5,
-        "normal_range_ft": 20,
+        "normal_range_ft": 60,
         "long_range_ft": 60,
         "proficient": true,
-        "bonus_damage": 2,
+        "bonus_damage": 0,
         "physical_damage_types": [
+        ],
+        "magic_damage_types": [
           {
-            "type": "Piercing",
-            "num_dice": 2,
+            "type": "Fire",
+            "num_dice": 3,
             "die_size": 6
           }
-        ],
-        "magic_damage_types": [],
+	],
         "conditions": [],
         "mastery": "None"
       }
