@@ -1,0 +1,349 @@
+{
+  "regions": [
+    {
+      "type": "Difficult Terrain",
+      "x": 158,
+      "y": 89,
+      "width": 150,
+      "height": 99,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 258,
+      "y": 188,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 308,
+      "y": 288,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 408,
+      "y": 338,
+      "width": 50,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 458,
+      "y": 388,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 508,
+      "y": 488,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 508,
+      "y": 538,
+      "width": 250,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 658,
+      "y": 588,
+      "width": 200,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 808,
+      "y": 638,
+      "width": 249,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 408,
+      "y": 89,
+      "width": 100,
+      "height": 99,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 458,
+      "y": 188,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 508,
+      "y": 238,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 558,
+      "y": 288,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 658,
+      "y": 288,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 658,
+      "y": 338,
+      "width": 50,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 708,
+      "y": 388,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 758,
+      "y": 438,
+      "width": 200,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 858,
+      "y": 488,
+      "width": 199,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Wall",
+      "x": 608,
+      "y": 89,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 758,
+      "y": 89,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 89,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 758,
+      "y": 188,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 608,
+      "y": 238,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 758,
+      "y": 338,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 388,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 508,
+      "y": 138,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 908,
+      "y": 238,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 958,
+      "y": 338,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 1008,
+      "y": 438,
+      "width": 49,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 958,
+      "y": 138,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 308,
+      "y": 89,
+      "width": 100,
+      "height": 99,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 358,
+      "y": 188,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 408,
+      "y": 288,
+      "width": 150,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 458,
+      "y": 238,
+      "width": 50,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 458,
+      "y": 338,
+      "width": 200,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 558,
+      "y": 388,
+      "width": 100,
+      "height": 150,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 658,
+      "y": 438,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 758,
+      "y": 488,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 758,
+      "y": 538,
+      "width": 299,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Difficult Terrain",
+      "x": 858,
+      "y": 588,
+      "width": 199,
+      "height": 50,
+      "multiplier": 0.5
+    },
+    {
+      "type": "Wall",
+      "x": 758,
+      "y": 238,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 338,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 608,
+      "y": 138,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.0
+    }
+  ],
+  "walls_enabled": false
+}

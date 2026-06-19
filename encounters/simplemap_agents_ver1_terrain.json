@@ -1,0 +1,85 @@
+{
+  "regions": [
+    {
+      "type": "Water",
+      "x": 308,
+      "y": 89,
+      "width": 350,
+      "height": 99,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 458,
+      "y": 188,
+      "width": 350,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 658,
+      "y": 89,
+      "width": 399,
+      "height": 99,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 1008,
+      "y": 188,
+      "width": 49,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 608,
+      "y": 288,
+      "width": 449,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 658,
+      "y": 388,
+      "width": 399,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 708,
+      "y": 488,
+      "width": 349,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 758,
+      "y": 588,
+      "width": 299,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 858,
+      "y": 688,
+      "width": 199,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Water",
+      "x": 958,
+      "y": 788,
+      "width": 99,
+      "height": 99,
+      "multiplier": 0.0
+    }
+  ],
+  "walls_enabled": false
+}
