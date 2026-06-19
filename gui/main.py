@@ -1696,16 +1696,12 @@ class App:
         # them for Homing Strikes / Rend Mind. (Manifesting on the Attack action is simplified to a
         # standing equip, like PactBlade.)
         stats_chk = self.combat.get_agent_stats(self.bm, agent_idx)
-        if (stats_chk.character_class == rpg.CharacterClass.Rogue and
-                stats_chk.rogue_subclass == rpg.RogueSubclass.Soulknife and
-                stats_chk.char_level >= 3):
-            current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
-            if current_weapons and current_weapons[0].name != "PsychicBlade":
-                current_weapons[0] = self._create_psychic_blade_weapon(die_size=6, off_hand=False)
-                current_weapons[1] = self._create_psychic_blade_weapon(die_size=4, off_hand=True)
-                self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
-                stats_chk.has_offhand_attack = True
-                self.combat.set_agent_stats(self.bm, agent_idx, stats_chk)
+        current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+        current_weapons, blades_changed = self._apply_psychic_blades(stats_chk, current_weapons)
+        if blades_changed:
+            self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
+            stats_chk.has_offhand_attack = True
+            self.combat.set_agent_stats(self.bm, agent_idx, stats_chk)
 
         # Store NPC metadata if provided, and initialize spell uses via C++
         if npc_data:
@@ -1737,10 +1733,16 @@ class App:
         Convert each to an rpg.Weapon and push the list into the C++ layer.
         """
         cpp_weapons = [_dict_to_weapon(d) for d in weapons]
-        self.combat.set_agent_weapons(self.bm, agent_idx, cpp_weapons)
         # Update has_offhand_attack based on whether any weapon is off-hand
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
-        stats.has_offhand_attack = any(d.get("off_hand", False) for d in weapons)
+        offhand = any(d.get("off_hand", False) for d in weapons)
+        # Re-manifest a Soulknife's Psychic Blades — the synthetic blade isn't in weapons.json, so the
+        # Weapon dialog would otherwise overwrite slots 0/1 with whatever it holds (see _apply_psychic_blades).
+        cpp_weapons, blades_changed = self._apply_psychic_blades(stats, cpp_weapons)
+        if blades_changed:
+            offhand = True
+        self.combat.set_agent_weapons(self.bm, agent_idx, cpp_weapons)
+        stats.has_offhand_attack = offhand
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
         # Refresh attack overlay if this is the currently selected agent.
         if agent_idx == self.selected_idx:
@@ -4538,6 +4540,22 @@ class App:
         dmg_roll.bonus = 0
         blade.magic_damage_types = [dmg_roll]
         return blade
+
+    def _apply_psychic_blades(self, stats, weapons):
+        """Soulknife Rogue (L3+): ensure slots 0/1 hold Psychic Blades (1d6 main + 1d4 off-hand).
+
+        Pure mutator on the passed weapons list — returns (weapons, changed). Callers that get
+        a True must persist the list AND set has_offhand_attack. Mirrors the Pact-of-the-Blade
+        re-conjure so the blades survive save/load and a Weapon-dialog round-trip (the synthetic
+        blade isn't in weapons.json, so the dialog would otherwise overwrite it)."""
+        if (stats.character_class == rpg.CharacterClass.Rogue and
+                stats.rogue_subclass == rpg.RogueSubclass.Soulknife and
+                stats.char_level >= 3 and
+                len(weapons) >= 2 and weapons[0].name != "PsychicBlade"):
+            weapons[0] = self._create_psychic_blade_weapon(die_size=6, off_hand=False)
+            weapons[1] = self._create_psychic_blade_weapon(die_size=4, off_hand=True)
+            return weapons, True
+        return weapons, False
 
     def _show_portent_dice_menu(self):
         """Show available portent dice for selection."""
@@ -8020,6 +8038,14 @@ class App:
             if (stats.character_class == rpg.CharacterClass.Warlock and
                     stats.has_invocation(13) and cpp_weapons[0].name != "PactBlade"):
                 cpp_weapons[0] = self._create_pact_blade_weapon()
+
+            # Soulknife (L3+): re-manifest the Psychic Blades. Saves made before the psychic_blade
+            # binding existed (or while the grant failed) restored an empty default weapon — this
+            # re-equips real blades so loaded Soulknives deal Psychic damage.
+            cpp_weapons, sk_changed = self._apply_psychic_blades(stats, cpp_weapons)
+            if sk_changed:
+                stats.has_offhand_attack = True
+                self.combat.set_agent_stats(self.bm, i, stats)
 
             self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
 

@@ -835,9 +835,22 @@ doesn't grant one).
 - **Use Magic Device (L13) — DEFERRED:** out-of-combat flavor (attunement, scroll casting, charge
   rerolls) + needs the items/scroll system.
 
-### Soulknife subclass — IMPLEMENTED ✅ (2026-06-19, built + 76 suites green, `test_rogue_soulknife.py`)
+### Soulknife subclass — IMPLEMENTED ✅ (2026-06-19, built + 76 suites green + CONFIRMED IN LIVE PLAY, `test_rogue_soulknife.py`)
 2024 Soulknife. Reused the Psi Warrior Psionic Energy infra (`psionic_die_size` + `"Psionic Energy"`
 Resource) heavily.
+
+> **Live-play hardening (2026-06-19):** `rollDamage` reads **only** the weapon's `magic/physicalDamageRolls`
+> vectors, NEVER the `damage_dice` convenience fields — an empty default `rpg.Weapon()` therefore deals 0
+> "untyped" damage (`Damage: — -1 = 0`). The blade grant originally lived only in `_on_stats_ok`, so a
+> Soulknife whose blade was never set (configured before the `psychic_blade` binding shipped → grant threw
+> mid-build; or Weapon dialog Done-clicked → `_on_weapon_done` rebuilds slots from weapons.json with no
+> synthetic blade; or loaded from such a save) ended up unarmed. **Fix:** idempotent reusable
+> `_apply_psychic_blades(stats, weapons)→(weapons, changed)` (skips if slot 0 is already `PsychicBlade`),
+> now called from **all three** weapon-touch sites — `_on_stats_ok`, `_on_weapon_done`, `_load_agents`
+> (after the Pact-Blade re-conjure). Python-only. **General rule: every synthetic class weapon
+> (PsychicBlade / PactBlade / MonkUnarmed / Alter Self claws) must be re-granted on load AND survive the
+> Weapon dialog.** Test gap that hid it: `test_rogue_soulknife.py` builds its own local blade, never the
+> GUI `_create_psychic_blade_weapon`.
 - **Psionic Power (L3):** Psionic Energy Dice in the `case Rogue:` chassis. Soulknife counts
   4/6/8/8/10/12 at L3/5/9/11/13/17; die size d6/d8/d8/d10/d10/d12. *v1 regen mirrors Psi Warrior
   (1 on short rest, all on long rest) — NOT the RAW "regain all when you roll Initiative".*
