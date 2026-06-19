@@ -524,6 +524,7 @@ class App:
         self._init_combat_panel()
         self._init_config_panel()
         self.scroll_y = 0         # scroll offset for agent list
+        self.initiative_scroll_offset = 0  # scroll offset for initiative tracker
 
         # ── Map panning (mouse scroll) ────────────────────────────────────
         self.pan_x = 0            # horizontal pan offset in pixels
@@ -1882,6 +1883,7 @@ class App:
         self.safe_target_edit_idx = -1  # exit any safe-target editing when combat starts
         self.turn_idx            = 0
         self.round_num           = 0
+        self.initiative_scroll_offset = 0  # reset initiative scroll when combat starts
         self.action_used          = False
         self.bonus_used           = False
         self.pending_attack_slot       = ""
@@ -1943,6 +1945,7 @@ class App:
         self.combat_active         = False
         self.combat_paused         = False
         self.initiative_order    = []
+        self.initiative_scroll_offset = 0  # reset scroll when combat ends
         self.turn_idx            = 0
         self.round_num           = 0
         self.action_used          = False
@@ -8845,7 +8848,26 @@ class App:
         y += 16
         agents = self.bm.placed_agents
         self.initiative_item_rects = []  # Reset for this frame
-        for i, entry in enumerate(self.initiative_order[:8]):
+
+        # Define scrollable region: max 8 entries visible
+        init_list_start_y = y
+        init_list_max_visible = 8
+        init_list_height = init_list_max_visible * 16
+        init_list_scroll_region = pygame.Rect(lx, init_list_start_y, W, init_list_height)
+        self.initiative_scroll_region = init_list_scroll_region  # store for event handling
+
+        # Clamp scroll offset to valid range
+        max_scroll = max(0, len(self.initiative_order) - init_list_max_visible)
+        self.initiative_scroll_offset = min(self.initiative_scroll_offset, max_scroll)
+
+        for i, entry in enumerate(self.initiative_order):
+            # Skip entries before scroll offset
+            if i < self.initiative_scroll_offset:
+                continue
+            # Stop after showing max visible entries
+            if i >= self.initiative_scroll_offset + init_list_max_visible:
+                break
+
             aidx   = entry.agent_idx
             is_cur = (i == self.turn_idx)
             col    = COL_INITIATIVE_CUR if is_cur else COL_TEXT
@@ -8865,8 +8887,11 @@ class App:
             item_rect = pygame.Rect(lx, y, W, 16)
             self.initiative_item_rects.append((item_rect, aidx))
             y += 16
-        if len(self.initiative_order) > 8:
-            txt(f"  …+{len(self.initiative_order)-8} more", lx, y, COL_LABEL)
+
+        # Show scroll indicator if there are more entries
+        if len(self.initiative_order) > init_list_max_visible:
+            scroll_info = f"↑↓ {self.initiative_scroll_offset + init_list_max_visible}/{len(self.initiative_order)}"
+            txt(scroll_info, lx, y, COL_LABEL)
             y += 16
 
         y += section_gap
@@ -10050,8 +10075,26 @@ class App:
                     self._grid_sample_cur   = None
                     continue
 
+            # ── Mouse wheel: check for initiative tracker scrolling first ────
+            mouse_pos = pygame.mouse.get_pos()
+            over_initiative = (hasattr(self, 'initiative_scroll_region') and
+                              self.initiative_scroll_region.collidepoint(mouse_pos))
+
+            if over_initiative and event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 4:  # Scroll up
+                    self.initiative_scroll_offset = max(0, self.initiative_scroll_offset - 1)
+                elif event.button == 5:  # Scroll down
+                    max_scroll = max(0, len(self.initiative_order) - 8)
+                    self.initiative_scroll_offset = min(self.initiative_scroll_offset + 1, max_scroll)
+            elif over_initiative and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+                if event.y > 0:  # Scroll up
+                    self.initiative_scroll_offset = max(0, self.initiative_scroll_offset - 1)
+                elif event.y < 0:  # Scroll down
+                    max_scroll = max(0, len(self.initiative_order) - 8)
+                    self.initiative_scroll_offset = min(self.initiative_scroll_offset + 1, max_scroll)
+
             # ── Mouse wheel for map panning ───────────────────────────────
-            if map_input_allowed and event.type == pygame.MOUSEBUTTONDOWN:
+            if map_input_allowed and not over_initiative and event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 4:  # Scroll up
                     if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                         self.pan_x += 30
@@ -10063,7 +10106,7 @@ class App:
                     else:
                         self.pan_y -= 30
             # Newer pygame versions use MOUSEWHEEL event
-            elif map_input_allowed and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+            elif map_input_allowed and not over_initiative and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
                 if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                     self.pan_x += event.x * 30
                 else:
@@ -10584,9 +10627,10 @@ class App:
                         elif self.pending_vitality_target and hit >= 0:
                             self._resolve_vitality_target(hit)
                         else:
-                            # Only allow dragging the current combatant.
+                            # When paused, allow dragging any agent; otherwise only the current combatant.
                             cur = self._current_agent_idx()
-                            if hit == cur and hit >= 0:
+                            allow_drag = (hit >= 0) and (self.combat_paused or hit == cur)
+                            if allow_drag:
                                 pt = self.bm.placed_agents[hit]
                                 self.drag_idx    = hit
                                 self.drag_origin = rpg.Cell(pt.origin.col, pt.origin.row)
@@ -10594,7 +10638,9 @@ class App:
                                                     cell.row - pt.origin.row)
                                 self.drag_cell   = rpg.Cell(pt.origin.col, pt.origin.row)
                                 self.drag_valid  = True
-                                # Keep selected_idx on the current combatant.
+                                # During pause, allow selecting other agents; otherwise keep on current.
+                                if self.combat_paused:
+                                    self.selected_idx = hit
                     else:
                         # Normal mode: drag any agent or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
@@ -10636,10 +10682,10 @@ class App:
                     self.drag_cell  = rpg.Cell(tcol, trow)
                     self.drag_valid = self._can_place(
                         self.drag_cell, pt.size, exclude_idx=self.drag_idx)
-                    # The movement-range clamp applies only in combat. Before combat the
-                    # agent can be repositioned anywhere it legally fits (DM free placement);
-                    # placement validity (bounds + no overlap) was checked just above.
-                    if self.drag_valid and self.combat_active:
+                    # The movement-range clamp applies only in active combat (not paused).
+                    # Before combat or when paused, the agent can be repositioned anywhere it
+                    # legally fits (DM free placement); placement validity was checked above.
+                    if self.drag_valid and self.combat_active and not self.combat_paused:
                         if self._reach_set:
                             self.drag_valid = (
                                 self.drag_cell.col, self.drag_cell.row
@@ -10649,8 +10695,8 @@ class App:
 
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.drag_idx >= 0:
-                    if self.drag_valid and self.drag_cell is not None and not self.combat_active:
-                        # Free pre-combat repositioning: placement validity was already
+                    if self.drag_valid and self.drag_cell is not None and (not self.combat_active or self.combat_paused):
+                        # Free pre-combat repositioning or paused DM repositioning: placement validity was already
                         # checked (_can_place), so bypass the movement rules (speed / range /
                         # pathing) entirely and set the agent's position directly.
                         if self.bm.set_agent_position(self.drag_idx, self.drag_cell):
