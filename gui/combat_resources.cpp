@@ -115,6 +115,61 @@ bool CombatEngine::applyOneWithShadows(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+// Soulknife Rogue — Psychic Veil (L13): a Magic action → gain Invisible. Once per Long Rest, or by
+// expending 1 Psionic Energy Die. v1: "ends when you deal damage or force a save" is approximated by
+// the base Invisibility (ends on the next attack); the force-a-save end-trigger is not tracked.
+bool CombatEngine::activatePsychicVeil(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Rogue ||
+        s.rogue_subclass != SoulknifePath || s.char_level < 13) return false;
+    Resource* pv  = s.getResource("Psychic Veil");
+    Resource* ped = s.getResource("Psionic Energy");
+    if (pv && pv->current >= 1)        pv->current  -= 1;     // free use first
+    else if (ped && ped->current >= 1) ped->current -= 1;     // else 1 Psionic Energy Die
+    else return false;
+    bm.setAgentStats(idx, s);
+
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.invisible = true;
+    c.invisible_persists_on_action = false;
+    bm.setAgentConditions(idx, c);
+    log_("{}: Psychic Veil — gains the Invisible condition", agentName(bm, idx));
+    return true;
+}
+
+// Soulknife Rogue — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
+// and teleport up to (10 × roll) feet to an unoccupied cell. Grid distance is Chebyshev × 5 ft. The
+// die is spent only on a successful (in-range, legal) teleport.
+bool CombatEngine::psychicTeleportation(BattleMap& bm, int idx, int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Rogue ||
+        s.rogue_subclass != SoulknifePath || s.char_level < 9) return false;
+    Resource* ped = s.getResource("Psionic Energy");
+    if (!ped || ped->current < 1) return false;
+
+    const Cell from = agents[static_cast<std::size_t>(idx)].origin;
+    const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
+    const int die    = roll(s.psionic_die_size);
+    const int max_ft = 10 * die;
+    if (dcells * 5 > max_ft) {
+        log_("{}: Psychic Teleportation rolled {} ({} ft) — destination too far ({} ft)",
+             agentName(bm, idx), die, max_ft, dcells * 5);
+        return false;                                          // die not spent (bad pick)
+    }
+    if (!teleportAgent(bm, idx, target_col, target_row)) return false;
+    ped->current -= 1;
+    bm.setAgentStats(idx, s);
+    log_("{}: Psychic Teleportation — teleports {} ft (rolled {} → up to {} ft)",
+         agentName(bm, idx), dcells * 5, die, max_ft);
+    return true;
+}
+
 int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept
 {
     // Fetch caster's Lay on Hands pool

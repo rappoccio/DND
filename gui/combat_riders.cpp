@@ -552,6 +552,130 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Soulknife Rogue — Soul Blades & Rend Mind
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Homing Strikes (L9): convert a MISS with a Psychic Blade into a hit by adding a Psionic Energy Die
+// to the attack roll. The die is spent only when it converts (RAW). On a convert, fresh damage is
+// rolled and applied (temp HP first), with a concentration check. v1: a converted hit does not open
+// the Sneak Attack window.
+bool CombatEngine::applyHomingStrike(BattleMap& bm, int attacker_idx, int target_idx,
+                                     int weapon_idx, AttackResult& result) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return false;
+    if (result.hit) return false;                              // only a miss can be homed
+    if (weapon_idx < 0 || weapon_idx > 2) return false;
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    if (atk_stats.character_class != CharacterClass::Rogue ||
+        atk_stats.rogue_subclass != SoulknifePath || atk_stats.char_level < 9) return false;
+    Resource* ped = atk_stats.getResource("Psionic Energy");
+    if (!ped || ped->current < 1) return false;
+
+    const std::array<Weapon, 3> weapons = bm.getAgentWeapons(attacker_idx);
+    const Weapon& w = weapons[static_cast<std::size_t>(weapon_idx)];
+    if (!w.psychic_blade) return false;
+
+    const int die = roll(atk_stats.psionic_die_size);
+    result.attack_mod += die;
+    result.total_roll += die;
+    reevaluateAttackHit(result);
+    log_("{} uses Homing Strikes: +{} (now {} vs AC {})", agentName(bm, attacker_idx), die,
+         result.total_roll, result.target_ac);
+    if (!result.hit) {
+        // Did not connect → the die is NOT expended (RAW: spent only if it causes a hit).
+        log_("{}: Homing Strikes still misses — the die is not expended", agentName(bm, attacker_idx));
+        return false;
+    }
+
+    // Converted to a hit: spend the die, roll + apply damage.
+    ped->current -= 1;
+    bm.setAgentStats(attacker_idx, atk_stats);
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+    result.total_damage = 0;
+    result.damage_breakdown.clear();
+    rollDamage(w, atk_stats, tgt_stats, result, false);
+    const int dmg = result.total_damage;
+    const int overflow = std::max(0, dmg - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - dmg);
+    tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    result.hp_after    = tgt_stats.hp_cur;
+    result.target_down = (result.hp_after <= 0);
+    bm.setAgentStats(target_idx, tgt_stats);
+    log_("Homing Strikes connects for {} damage", dmg);
+
+    (void)checkConcentrationOnDamage(bm, target_idx, dmg, attacker_idx);
+    Agent::Conditions tc = bm.getAgentConditions(target_idx);
+    if (result.hp_after <= 0 && !tc.unconscious && !tc.dead) applyUnconscious(bm, target_idx);
+    return true;
+}
+
+bool CombatEngine::canRendMind(const BattleMap& bm, int attacker_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(attacker_idx);
+    if (s.character_class != CharacterClass::Rogue ||
+        s.rogue_subclass != SoulknifePath || s.char_level < 17) return false;
+    const Resource* rm  = s.getResource("Rend Mind");
+    const Resource* ped = s.getResource("Psionic Energy");
+    const bool have_use = rm && rm->current >= 1;
+    const bool have_ped = ped && ped->current >= 3;
+    return have_use || have_ped;
+}
+
+// Rend Mind (L17): WIS save (DC 8 + DEX + PB) or Stunned for 1 minute (repeat save end of each turn).
+// Cost: a "Rend Mind" use, or 3 Psionic Energy Dice if the use is spent. Returns true iff Stunned.
+bool CombatEngine::applyRendMind(BattleMap& bm, int attacker_idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return false;
+    if (!canRendMind(bm, attacker_idx)) return false;
+
+    Agent::Stats atk = bm.getAgentStats(attacker_idx);
+    Resource* rm  = atk.getResource("Rend Mind");
+    Resource* ped = atk.getResource("Psionic Energy");
+    if (rm && rm->current >= 1)            rm->current -= 1;       // free use first
+    else if (ped && ped->current >= 3)     ped->current -= 3;      // else 3 Psionic Energy Dice
+    else                                   return false;
+    bm.setAgentStats(attacker_idx, atk);
+
+    const int dc = spellSaveDcFromAbility(atk, SaveDex);           // 8 + PB + DEX mod
+    const Agent::Conditions tc0 = bm.getAgentConditions(target_idx);
+    const bool auto_fail = tc0.paralyzed || tc0.stunned;
+    const int d20   = auto_fail ? 1 : roll(20);
+    const int total = applyIndomitableMight(bm, target_idx, SaveWis, d20 + saveModFor(bm, target_idx, SaveWis));
+    if (!auto_fail && total >= dc) {
+        log_("Rend Mind: {} resists (WIS {} vs DC {})", agentName(bm, target_idx), total, dc);
+        return false;
+    }
+
+    Agent::Conditions tc = bm.getAgentConditions(target_idx);
+    tc.stunned = true;
+    tc.incapacitated = true;
+    bm.setAgentConditions(target_idx, tc);
+
+    ActiveAgentCondition cond;
+    cond.agent_idx         = target_idx;
+    cond.caster_idx        = attacker_idx;
+    cond.spell_idx         = -1;
+    cond.condition_name    = "Stunned";
+    cond.save_ability      = SaveWis;
+    cond.turns_remaining   = 10;
+    cond.save_dc           = dc;
+    cond.save_repeat_turns = 1;
+    cond.next_save_turn    = 0;
+    (void)addAgentCondition(bm, cond);
+    log_("Rend Mind: {} fails its WIS save ({} vs DC {}) → Stunned", agentName(bm, target_idx),
+         auto_fail ? 0 : total, dc);
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Maneuvers & save riders
 // ─────────────────────────────────────────────────────────────────────────────
 

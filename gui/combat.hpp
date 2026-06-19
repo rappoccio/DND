@@ -1196,6 +1196,30 @@ public:
     void applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                   const std::vector<int>& effects, AttackResult& result) noexcept;
 
+    // ── Soulknife Rogue (subclass) ──────────────────────────────────────────
+    // Soul Blades — Homing Strikes (L9): after a MISS with a Psychic Blade, spend 1 Psionic Energy
+    // Die, roll it and add the result to the attack roll; if that converts the miss to a hit, roll
+    // damage and apply it (the die is expended only when it causes a hit). Returns true iff it
+    // converted to a hit. v1: a Homing-converted hit does NOT open the Sneak Attack window.
+    bool applyHomingStrike(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx,
+                           AttackResult& result) noexcept;
+
+    // Soul Blades — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
+    // and teleport up to (10 × roll) feet to the target cell. Returns true on success (in range +
+    // unoccupied). Spends the die only on a successful teleport.
+    bool psychicTeleportation(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // Psychic Veil (L13): a Magic action → gain the Invisible condition. Once per Long Rest, or by
+    // expending 1 Psionic Energy Die. Returns true if activated.
+    bool activatePsychicVeil(BattleMap& bm, int idx) noexcept;
+
+    // Rend Mind (L17): after a Psychic-Blade Sneak Attack, force a WIS save (DC 8 + DEX + PB) or be
+    // Stunned for 1 minute (repeat the save at end of each of its turns). Once per Long Rest, or by
+    // expending 3 Psionic Energy Dice. canRendMind gates availability; applyRendMind resolves it and
+    // returns true iff the target is Stunned.
+    [[nodiscard]] bool canRendMind(const BattleMap& bm, int attacker_idx) const noexcept;
+    bool applyRendMind(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
+
     // Cleric Blessed Strikes — Divine Strike: out-of-band rider after a qualifying weapon hit
     // (divine_strike_available). Rolls 1d8 (2d8 at L14) Radiant or Necrotic (radiant flag), adds it
     // to result/damage and the target's HP, marks Divine Strike used for the turn. Mirrors

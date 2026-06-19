@@ -835,8 +835,35 @@ doesn't grant one).
 - **Use Magic Device (L13) — DEFERRED:** out-of-combat flavor (attunement, scroll casting, charge
   rerolls) + needs the items/scroll system.
 
+### Soulknife subclass — IMPLEMENTED ✅ (2026-06-19, built + 76 suites green, `test_rogue_soulknife.py`)
+2024 Soulknife. Reused the Psi Warrior Psionic Energy infra (`psionic_die_size` + `"Psionic Energy"`
+Resource) heavily.
+- **Psionic Power (L3):** Psionic Energy Dice in the `case Rogue:` chassis. Soulknife counts
+  4/6/8/8/10/12 at L3/5/9/11/13/17; die size d6/d8/d8/d10/d10/d12. *v1 regen mirrors Psi Warrior
+  (1 on short rest, all on long rest) — NOT the RAW "regain all when you roll Initiative".*
+- **Psychic Blades (weapon):** GUI grants two `psychic_blade`-flagged weapons (new `Weapon::psychic_blade`
+  flag) on a Soulknife L3+: a 1d6 Psychic finesse/thrown main-hand blade (Vex mastery) + a 1d4 off-hand
+  blade (the bonus second blade, free via the existing dual-wield off-hand bonus attack). `_create_psychic_blade_weapon`.
+  *v1: the bonus blade is the off-hand weapon, so it drops the ability mod unless TWF (RAW keeps it) —
+  minor. Damage is modeled as magic Psychic; the ability mod is still added via `damageAbilityMod`.*
+- **Soul Blades — Homing Strikes (L9):** `applyHomingStrike` (combat_riders.cpp) converts a MISS with a
+  Psychic Blade to a hit by adding a Psionic Energy Die to the roll (`reevaluateAttackHit`); the die is
+  spent **only if it converts**, then fresh damage is rolled (`rollDamage` + temp-HP apply +
+  `checkConcentrationOnDamage`). GUI: an on-miss offer in `_finish_attack` (`_offer_homing_strike` /
+  `_can_homing_strike`). *v1: a Homing-converted hit does NOT re-open the Sneak Attack window.*
+- **Soul Blades — Psychic Teleportation (L9):** `psychicTeleportation` (combat_resources.cpp) — Bonus
+  Action, spend 1 die, teleport up to 10×roll ft (Chebyshev×5 grid distance) via `teleportAgent`; die
+  spent only on a successful in-range teleport. GUI: bonus-action button → cell-pick (`pending_psychic_teleport`
+  / `_resolve_psychic_teleport`, mirrors Arcane Charge).
+- **Psychic Veil (L13):** `activatePsychicVeil` — Magic action → Invisible; free use, else 1 die. GUI
+  button (`_use_psychic_veil`). *v1: "ends when you deal damage / force a save" is approximated by the
+  base Invisibility (ends on the next attack); the force-a-save end-trigger isn't tracked.*
+- **Rend Mind (L17):** `canRendMind`/`applyRendMind` — after a Psychic-Blade Sneak Attack, WIS save
+  (DC 8 + DEX + PB) or Stunned 1 min (repeat save). Cost: a "Rend Mind" use, else 3 dice. GUI: offered
+  after a psychic-blade Cunning Strike (`_offer_rend_mind`, hooked in `_offer_cunning_strike`).
+
 ### Deferred — Phase 3 (subclasses)
-- Assassin, Arcane Trickster, Soulknife subclass mechanics (Thief DONE — see above)
+- Assassin, Arcane Trickster subclass mechanics (Thief + Soulknife DONE — see above)
 
 ### Deferred — need NEW hooks
 - *Stroke of Luck* (L20): turn failed d20 into 20 → needs roll-replace hook

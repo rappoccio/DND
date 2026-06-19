@@ -123,6 +123,36 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       if (rogue_subclass == ThiefPath && level >= 3) {
         speed_climb = std::max(speed_climb, speed_walk);
       }
+      // ── Soulknife (subclass) ──────────────────────────────────────────
+      // Psionic Power (L3): Psionic Energy Dice (reuses Psi Warrior's psionic_die_size + the
+      // "Psionic Energy" Resource). Soulknife counts: 4/6/8/8/10/12 at L3/5/9/11/13/17; die
+      // size d6/d8/d8/d10/d10/d12. Powered features: Homing Strikes + Psychic Teleportation (L9),
+      // Psychic Veil (L13), Rend Mind (L17). v1 regen mirrors Psi Warrior (1 on short rest, all on
+      // long rest) rather than the RAW "regain all when you roll Initiative".
+      if (rogue_subclass == SoulknifePath && level >= 3) {
+        int ped_count = (level >= 17) ? 12 : (level >= 13) ? 10 : (level >= 11) ? 8
+                      : (level >= 9) ? 8 : (level >= 5) ? 6 : 4;
+        psionic_die_size = (level >= 17) ? 12 : (level >= 13) ? 10 : (level >= 11) ? 10
+                         : (level >= 5) ? 8 : 6;
+        Resource ped("Psionic Energy", ped_count, 0);
+        ped.short_rest_regen = 1;
+        ped.long_rest_regen  = ped_count;
+        resources["Psionic Energy"] = ped;
+
+        // Psychic Veil (L13): a Magic action → Invisible; once/long rest, refreshable by 1 PED.
+        if (level >= 13) {
+          Resource pv("Psychic Veil", 1, 0);
+          pv.long_rest_regen = 1;
+          resources["Psychic Veil"] = pv;
+        }
+        // Rend Mind (L17): Psychic-Blade Sneak Attack → WIS save or Stunned; once/long rest,
+        // refreshable by 3 PED.
+        if (level >= 17) {
+          Resource rm("Rend Mind", 1, 0);
+          rm.long_rest_regen = 1;
+          resources["Rend Mind"] = rm;
+        }
+      }
       break;
     }
 

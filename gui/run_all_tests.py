@@ -83,6 +83,7 @@ test_scripts = [
     "test_rogue_l1_18.py",
     "test_rogue_phase2.py",
     "test_rogue_thief.py",
+    "test_rogue_soulknife.py",
 
     # Monk features
     "test_monk.py",

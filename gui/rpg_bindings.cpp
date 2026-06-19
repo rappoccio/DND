@@ -739,6 +739,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("finesse",          &Weapon::finesse)
         .def_readwrite("thrown",           &Weapon::thrown)
         .def_readwrite("pact_weapon",      &Weapon::pact_weapon)
+        .def_readwrite("psychic_blade",    &Weapon::psychic_blade)
         .def_readwrite("proficient",       &Weapon::proficient)
         .def_readwrite("off_hand",         &Weapon::off_hand)
         .def_readwrite("two_handed",       &Weapon::two_handed)
@@ -2272,8 +2273,32 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
              "Apply Rogue Sneak Attack + optional Cunning Strike riders after a qualifying hit\n"
              "(conditions.cunning_strike_available). effects: rider codes (0=Poison, 1=Trip, 2=Withdraw,\n"
-             "4=KnockOut, 5=Obscure); empty = full Sneak Attack with no rider. Rolls (sneak dice − cost)d6,\n"
-             "folds it into the AttackResult and target HP, then applies any rider conditions.")
+             "4=KnockOut, 5=Obscure, 6=Stealth Attack [Thief]); empty = full Sneak Attack with no rider.\n"
+             "Rolls (sneak dice − cost)d6, folds it into the AttackResult and target HP, then applies riders.")
+        .def("apply_homing_strike",
+             &CombatEngine::applyHomingStrike,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             py::arg("weapon_idx"), py::arg("result"),
+             "Soulknife Soul Blades — Homing Strikes (L9): convert a missed Psychic-Blade attack to a hit\n"
+             "by adding a Psionic Energy Die to the roll (die spent only if it converts). Returns True iff hit.")
+        .def("psychic_teleportation",
+             &CombatEngine::psychicTeleportation,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             "Soulknife Soul Blades — Psychic Teleportation (L9): spend 1 Psionic Energy Die, roll it, and\n"
+             "teleport up to (10 × roll) ft. Returns True on a successful (in-range, legal) teleport.")
+        .def("activate_psychic_veil",
+             &CombatEngine::activatePsychicVeil,
+             py::arg("battle_map"), py::arg("idx"),
+             "Soulknife Psychic Veil (L13): Magic action → Invisible. Once/Long Rest or by 1 Psionic Energy Die.")
+        .def("can_rend_mind",
+             &CombatEngine::canRendMind,
+             py::arg("battle_map"), py::arg("attacker_idx"),
+             "Soulknife Rend Mind (L17) availability: L17+ Soulknife with a Rend Mind use or ≥3 Psionic Energy Dice.")
+        .def("apply_rend_mind",
+             &CombatEngine::applyRendMind,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             "Soulknife Rend Mind (L17): after a Psychic-Blade Sneak Attack, WIS save (DC 8+DEX+PB) or Stunned\n"
+             "1 minute. Costs a Rend Mind use or 3 Psionic Energy Dice. Returns True iff the target is Stunned.")
         .def("apply_divine_strike_effect",
              &CombatEngine::applyDivineStrikeEffect,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("radiant"), py::arg("result"),

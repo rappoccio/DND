@@ -459,6 +459,7 @@ class App:
         self.pending_summon_monster    = ""    # monster-JSON key to spawn
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
+        self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
@@ -969,6 +970,12 @@ class App:
         self.btn_cbt_natures_veil = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Nature's Veil (Bonus Action)",
                                           (70, 120, 90), (100, 155, 120), self.font_md)
+        self.btn_cbt_psychic_veil = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Psychic Veil (Magic Action)",
+                                          (110, 90, 150), (140, 120, 185), self.font_md)
+        self.btn_cbt_psychic_teleport = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Psychic Teleportation (Bonus)",
+                                          (110, 90, 150), (140, 120, 185), self.font_md)
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
@@ -1684,6 +1691,22 @@ class App:
                 current_weapons[0] = self._create_pact_blade_weapon()
                 self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
 
+        # Soulknife Rogue (L3+): manifest Psychic Blades — a 1d6 Psychic finesse/thrown blade in the
+        # main hand and a 1d4 off-hand blade (the bonus second blade). psychic_blade=True identifies
+        # them for Homing Strikes / Rend Mind. (Manifesting on the Attack action is simplified to a
+        # standing equip, like PactBlade.)
+        stats_chk = self.combat.get_agent_stats(self.bm, agent_idx)
+        if (stats_chk.character_class == rpg.CharacterClass.Rogue and
+                stats_chk.rogue_subclass == rpg.RogueSubclass.Soulknife and
+                stats_chk.char_level >= 3):
+            current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+            if current_weapons and current_weapons[0].name != "PsychicBlade":
+                current_weapons[0] = self._create_psychic_blade_weapon(die_size=6, off_hand=False)
+                current_weapons[1] = self._create_psychic_blade_weapon(die_size=4, off_hand=True)
+                self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
+                stats_chk.has_offhand_attack = True
+                self.combat.set_agent_stats(self.bm, agent_idx, stats_chk)
+
         # Store NPC metadata if provided, and initialize spell uses via C++
         if npc_data:
             self._agent_meta[agent_idx] = npc_data
@@ -2223,6 +2246,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
         self.arcane_charge_pending     = False
+        self.pending_psychic_teleport  = False
         self._reaction_mover_idx       = -1
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++). The turn start
@@ -3068,6 +3092,7 @@ class App:
         has_sentinel_guard = False
         has_gwm_hew = False
         has_sudden_strike = False
+        has_homing_strike = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
             # Riposte is a DEFENDER reaction: the flag is set on the target, not the attacker.
@@ -3098,6 +3123,10 @@ class App:
                 has_precision = True
             elif (not result.hit) and atk_cond and atk_cond.reckless_reroll_available:
                 has_reckless_reroll = True
+            # Homing Strikes (Soulknife L9): on a miss with a Psychic Blade, spend a Psionic Energy
+            # Die to add to the roll and (maybe) convert it to a hit.
+            elif (not result.hit) and self._can_homing_strike(atk_idx, action):
+                has_homing_strike = True
             # Riposte is offered LAST among on-miss options (v1): an attacker on-miss rider above
             # shadows the defender's riposte this swing (see known_limitations.md; full chaining is v2).
             elif (not result.hit) and tgt_cond and tgt_cond.riposte_available:
@@ -3212,6 +3241,8 @@ class App:
             self._offer_precision_attack(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_reckless_reroll:
             self._offer_reckless_reroll(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_homing_strike:
+            self._offer_homing_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_riposte:
             self._offer_riposte(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_protective_field:
@@ -3747,6 +3778,10 @@ class App:
             if result.target_down:
                 self._drop_concentration_for_agent(target_idx)
             self._update_attack_overlay()
+            # Rend Mind (Soulknife L17): a Psychic-Blade Sneak Attack can Stun the target.
+            if (not result.target_down and self._has_psychic_blade(atk_idx)
+                    and self.combat.can_rend_mind(self.bm, atk_idx)):
+                self._offer_rend_mind(atk_idx, target_idx, tgt_name)
 
         options = []
         if level >= 5:
@@ -4137,6 +4172,78 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _can_homing_strike(self, atk_idx, action):
+        """Soulknife L9+ holding a Psionic Energy Die, whose missed attack used a Psychic Blade."""
+        if not (0 <= atk_idx < len(self.bm.placed_agents)):
+            return False
+        stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        if (stats.character_class != rpg.CharacterClass.Rogue or
+                stats.rogue_subclass != rpg.RogueSubclass.Soulknife or stats.char_level < 9):
+            return False
+        ped = stats.get_resource("Psionic Energy")
+        if not (ped and ped.current > 0):
+            return False
+        weapons = self.combat.get_agent_weapons(self.bm, atk_idx)
+        wi = action.weapon_idx
+        return 0 <= wi < len(weapons) and weapons[wi].psychic_blade
+
+    def _has_psychic_blade(self, atk_idx):
+        if not (0 <= atk_idx < len(self.bm.placed_agents)):
+            return False
+        return any(w.psychic_blade for w in self.combat.get_agent_weapons(self.bm, atk_idx))
+
+    def _offer_homing_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Soulknife L9 Homing Strikes: after a Psychic-Blade miss, spend a Psionic Energy Die to add
+        to the attack roll; the die is spent only if it converts the miss to a hit. Mirrors
+        _offer_reckless_reroll (the engine mutates `result` in place and rolls damage on a convert)."""
+        def _apply():
+            converted = self.combat.apply_homing_strike(self.bm, atk_idx, target_idx,
+                                                        action.weapon_idx, result)
+            self._flush_combat_log()   # engine logged the +N roll and the outcome
+            if converted and result.hit:
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: Homing Strikes → HIT {result.total_damage}"
+                    f"{self._damage_breakdown_str(result)} {dmg_type_str}"
+                    f"{' — DOWN' if result.target_down else ''}")
+                if result.target_down:
+                    self._drop_concentration_for_agent(target_idx)
+            else:
+                self._combat_log_add(f"{atk_name}→{tgt_name}: Homing Strikes — still a miss.")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Homing Strikes — spend a Psionic Energy Die to add to the roll", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_rend_mind(self, atk_idx, target_idx, tgt_name):
+        """Soulknife L17 Rend Mind: after a Psychic-Blade Sneak Attack, optionally force a WIS save or
+        be Stunned (1 minute). Costs the free Rend Mind use, else 3 Psionic Energy Dice."""
+        def _apply():
+            if self.combat.apply_rend_mind(self.bm, atk_idx, target_idx):
+                self._flush_combat_log()
+            else:
+                self._combat_log_add(f"{tgt_name}: resists Rend Mind.")
+                self._flush_combat_log()
+        options = [
+            ("Rend Mind — force a WIS save or Stun the target", _apply),
+            ("Skip", lambda: None),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Offer a Battle Master DEFENDER a Riposte after a melee attack misses them: spend the
         reaction + 1 Superiority Die to make a melee attack back at the attacker, adding the die to
@@ -4406,6 +4513,30 @@ class App:
         dmg_roll.die_size = 8
         dmg_roll.bonus = 0
         blade.physical_damage_types = [dmg_roll]
+        return blade
+
+    def _create_psychic_blade_weapon(self, die_size=6, off_hand=False):
+        """Soulknife Psychic Blade — a Simple Melee finesse/thrown blade dealing die_size Psychic +
+        the attack ability mod, with the Vex mastery. The bonus second blade uses a d4. psychic_blade
+        identifies it for Homing Strikes / Rend Mind."""
+        blade = rpg.Weapon()
+        blade.name = "PsychicBlade"
+        blade.type = rpg.WeaponType.Melee
+        blade.proficient = True
+        blade.finesse = True
+        blade.thrown = True
+        blade.psychic_blade = True
+        blade.off_hand = off_hand
+        blade.reach_ft = 5
+        blade.range_short_feet = 60
+        blade.range_long_feet = 120
+        blade.mastery = rpg.WeaponMastery.Vex
+        dmg_roll = rpg.MagicDamageRoll()
+        dmg_roll.type = rpg.MagicDamage.Psychic
+        dmg_roll.num_dice = 1
+        dmg_roll.die_size = die_size
+        dmg_roll.bonus = 0
+        blade.magic_damage_types = [dmg_roll]
         return blade
 
     def _show_portent_dice_menu(self):
@@ -4903,6 +5034,41 @@ class App:
             f"{self.bm.placed_agents[agent_idx].name}: Nature's Veil — now invisible "
             f"until the end of your next turn.")
         self.bonus_used = True
+
+    def _use_psychic_veil(self, agent_idx: int):
+        """Soulknife L13 Psychic Veil: Magic action → Invisible. Free use first, then a Psionic die."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        if self.combat.activate_psychic_veil(self.bm, agent_idx):
+            self._flush_combat_log()
+            self.action_used = True
+        else:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[agent_idx].name}: cannot use Psychic Veil (no use or dice).")
+
+    def _resolve_psychic_teleport(self, cell):
+        """Soulknife L9 Psychic Teleportation: roll a Psionic die, teleport up to 10×roll ft to the
+        clicked cell. Click your own cell to cancel. Engine validates range/legality + spends the die."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_psychic_teleport = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_psychic_teleport = False
+            self._combat_log_add("Psychic Teleportation cancelled.")
+            return
+        if self.combat.psychic_teleportation(self.bm, idx, cell.col, cell.row):
+            self.pending_psychic_teleport = False
+            self._flush_combat_log()
+            self.bonus_used = True
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+        else:
+            # Out of (rolled) range or illegal cell — keep the prompt up so the player can retry closer.
+            self._flush_combat_log()
+            self._combat_log_add("Psychic Teleportation: out of range or blocked — pick a closer cell.")
 
     def _use_action_surge(self, agent_idx: int):
         """Fighter Action Surge: spend resource, regain an Action this turn."""
@@ -10266,6 +10432,33 @@ class App:
                         self.btn_cbt_natures_veil.draw(self.screen)
                         y += B + gap
 
+            # Soulknife Rogue: Psychic Teleportation (L9+, Bonus Action) and Psychic Veil
+            # (L13+, Magic Action). Both can also be fueled by Psionic Energy Dice; the engine
+            # picks the free use first, then a die.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Rogue and
+                        stats.rogue_subclass == rpg.RogueSubclass.Soulknife):
+                    ped = stats.get_resource("Psionic Energy")
+                    ped_n = ped.current if ped else 0
+                    if stats.char_level >= 9 and not self.bonus_used and ped_n > 0:
+                        self.btn_cbt_psychic_teleport.text = f"Psychic Teleport ({ped_n} dice)"
+                        self.btn_cbt_psychic_teleport.rect.x = lx
+                        self.btn_cbt_psychic_teleport.rect.y = y
+                        self.btn_cbt_psychic_teleport.rect.w = W
+                        self.btn_cbt_psychic_teleport.draw(self.screen)
+                        y += B + gap
+                    if stats.char_level >= 13 and not self.action_used:
+                        pv = stats.get_resource("Psychic Veil")
+                        if (pv and pv.current > 0) or ped_n > 0:
+                            uses = (pv.current if pv else 0)
+                            self.btn_cbt_psychic_veil.text = f"Psychic Veil ({uses}+{ped_n}d)"
+                            self.btn_cbt_psychic_veil.rect.x = lx
+                            self.btn_cbt_psychic_veil.rect.y = y
+                            self.btn_cbt_psychic_veil.rect.w = W
+                            self.btn_cbt_psychic_veil.draw(self.screen)
+                            y += B + gap
+
             # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
             # the Land/Sea/Sky, or dismiss the active companion (label toggles).
             if 0 <= cur_idx < len(agents):
@@ -11118,6 +11311,9 @@ class App:
                         # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
                         if self.arcane_charge_pending:
                             self._resolve_arcane_charge(cell)
+                        # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
+                        elif self.pending_psychic_teleport:
+                            self._resolve_psychic_teleport(cell)
                         # Pending attack: resolve against the clicked agent.
                         elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
@@ -11889,6 +12085,17 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_natures_veil(idx)
+                    if self.btn_cbt_psychic_veil.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_psychic_veil(idx)
+                    if self.btn_cbt_psychic_teleport.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_psychic_teleport = True
+                            self.hint = "Psychic Teleportation: click a destination cell"
+                            self._combat_log_add(
+                                "Psychic Teleportation: click a destination (or click yourself to cancel).")
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()
                     if self.btn_cbt_pass_bonus.clicked(event):

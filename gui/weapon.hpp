@@ -47,6 +47,7 @@ struct Weapon {
     bool         finesse         = false;       // use STR or DEX (whichever is higher)
     bool         thrown          = false;       // ranged but uses STR
     bool         pact_weapon     = false;       // Warlock Pact of the Blade: may use CHA for attack/damage
+    bool         psychic_blade   = false;       // Soulknife Rogue: identifies the Psychic Blade for Homing Strikes / Rend Mind
                                                 // (and identifies the pact weapon for Thirsting Blade /
                                                 //  Eldritch Smite / Lifedrinker)
 
