@@ -3,21 +3,21 @@
     "name": "Aarakocra Aeromancer",
     "size": "Medium",
     "stats": {
-      "str": 10,
-      "dex": 16,
-      "con": 12,
-      "intel": 12,
-      "wis": 16,
-      "cha": 12,
-      "hp_max": 66,
-      "hp_cur": 66,
-      "ac": 16,
-      "speed_walk": 20,
-      "speed_fly": 50,
+      "str": 18,
+      "dex": 15,
+      "con": 16,
+      "intel": 10,
+      "wis": 9,
+      "cha": 15,
+      "hp_max": 112,
+      "hp_cur": 112,
+      "ac": 14,
+      "speed_walk": 30,
+      "speed_fly": 0,
       "speed_swim": 0,
       "speed_burrow": 0,
-      "prof_bonus": 2,
-      "num_attacks": 3,
+      "prof_bonus": 3,
+      "num_attacks": 2,
       "save_prof_str": false,
       "save_prof_dex": false,
       "save_prof_con": false,
@@ -36,18 +36,18 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Bludgeoning)",
+        "name": "Battleaxe",
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 3,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
-            "type": "Bludgeoning",
-            "num_dice": 6,
-            "die_size": 4
+            "type": "Slashing",
+            "num_dice": 2,
+            "die_size": 10
           }
         ],
         "magic_damage_types": [],
@@ -56,21 +56,22 @@
       },
       "off_hand": "",
       "ranged": {
-        "name": "Ranged (Bludgeoning)",
+        "name": "Hurl Flame",
         "type": "ranged",
         "reach_ft": 5,
-        "normal_range_ft": 120,
-        "long_range_ft": 480,
+        "normal_range_ft": 60,
+        "long_range_ft": 60,
         "proficient": true,
         "bonus_damage": 0,
         "physical_damage_types": [
-          {
-            "type": "Bludgeoning",
-            "num_dice": 6,
-            "die_size": 4
-          }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types":[
+	  {
+	    "type": "Fire",
+	    "num_dice": 3,
+	    "die_size": 6
+          }
+	],
         "conditions": [],
         "mastery": "None"
       }
@@ -64305,5 +64306,108 @@
       }
     },
     "is_undead": true
-  }
+  },
+  "Izek Strazni": {
+    "name": "Izek Strazni",
+    "size": "Medium",
+    "stats": {
+      "str": 18,
+      "dex": 14,
+      "con": 16,
+      "intel": 10,
+      "wis": 12,
+      "cha": 14,
+      "hp_max": 112,
+      "hp_cur": 112,
+      "ac": 16,
+      "speed_walk": 30,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 3,
+      "num_attacks": 3,
+      "save_prof_str": true,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": []
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Melee (Piercing)",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 2,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": {
+        "name": "Ranged (Piercing)",
+        "type": "ranged",
+        "reach_ft": 5,
+        "normal_range_ft": 20,
+        "long_range_ft": 60,
+        "proficient": true,
+        "bonus_damage": 2,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 2,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      }
+    },
+    "meta": {
+      "type": "Humanoid",
+      "cr": "5",
+      "alignment": "Neutral",
+      "source": "2024 Monster Manual",
+      "traits": [],
+      "languages": [
+        "Common"
+      ],
+      "senses": {},
+      "passive_perception": 11,
+      "immunities_conditions": [],
+      "save_dc": 15,
+      "saving_throws": [
+        "Strength"
+      ],
+      "action_notes": "Shield Bash within 5ft on fail 9 bludgeoning damage and prone",
+      "bonus_action": null,
+      "reaction": "Parry hit by  melee +3 to AC",
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
+  }    
 }
