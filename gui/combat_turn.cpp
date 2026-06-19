@@ -259,6 +259,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // Vampire Sunlight Vulnerability: vampires take 20 radiant damage at the start
     // of their turn if they're in Sunlight (VisibilityLevel::Sunlight).
+    // They also receive disadvantage on all attack rolls. 
     if (stats.is_vampire && stats.hp_cur > 0) {
         int cell_index = agent.origin.row * bm.gridCols() + agent.origin.col;
         const auto& light_effects = bm.activeLightEffects();
@@ -269,7 +270,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                               cell_index) != effect.cell_indices.end()) {
                     // Deal 20 radiant damage
                     stats.hp_cur = std::max(0, stats.hp_cur - 20);
+		    cond.has_disadvantage = true;
                     bm.setAgentStats(agent_idx, stats);
+		    bm.setAgentConditions(agent_idx, cond);
                     log_("{} takes 20 radiant damage from Sunlight exposure → {}/{}", agent_name,
                          stats.hp_cur, stats.hp_max);
                     if (stats.hp_cur == 0) {
@@ -282,6 +285,11 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     }
                     break;  // Only take damage once per turn
                 }
+		// If the vampire didn't start in sunlight, clear the disadvantage flag. 
+		else {
+		  cond.has_disadvantage = false;     // This should NOT clear "sap" disadvantage. 
+		  bm.setAgentConditions(agent_idx, cond); 
+		}
             }
         }
     }

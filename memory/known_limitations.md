@@ -1826,3 +1826,14 @@ target can be bitten; the auto-hit is just a bonus when the target IS grappled) 
   action offers num_attacks bites; the DM makes one. A per-weapon attack-count system would fix it.
 - **reduceHPMax keys on Necrotic only** (the vampiric case). A different drain type would need the
   rider parameterized by damage type.
+
+**Vampire Sunlight Vulnerability — DONE ✅ (2026-06-18, all tests green)**
+Vampires take 20 radiant damage at the start of their turn if standing in a Sunlight light effect
+(VisibilityLevel::Sunlight). Implementation: Agent::Stats `bool is_vampire{false}` field; DND2024_MonsterStats.json
+adds `"is_vampire": true` to all 6 true vampire types (Vampire, Spawn, Infernalist, Nightbringer, Umbral Lord, Warden;
+NOT Vampire Familiar); agent_loader.py `dict_to_stats()` reads it; rpg_bindings.cpp binds it; combat_turn.cpp `beginTurn()`
+checks `stats.is_vampire` after exhaustion death but before turn-start effects, loops `bm.activeLightEffects()` for
+Sunlight level, checks if agent's origin cell (flat index = row * gridCols() + col) is in the effect's cell_indices, deals
+20 damage, logs & sets death conditions if HP ≤ 0. Reuses light-effect framework (Daylight spell, manual editor placement).
+Tests: `test_vampire_sunlight_damage()` (in Sunlight → 100→80 HP) + `test_vampire_outside_sunlight_no_damage()` (outside
+Sunlight → no change). See memory `vampire-sunlight-vulnerability`.

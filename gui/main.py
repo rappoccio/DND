@@ -10003,7 +10003,8 @@ class App:
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
                 self.mob_dialog.visible or self.context_menu.visible or
-                self._grid_span_dialog.visible or self.name_prompt.visible)
+                self._grid_span_dialog.visible or self.name_prompt.visible or
+                self.team_dialog.visible)
 
     def _handle_events(self):
         for event in pygame.event.get():
