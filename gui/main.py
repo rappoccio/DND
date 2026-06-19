@@ -419,6 +419,7 @@ class App:
 
         # ── Combat widget state ───────────────────────────────────────────
         self.combat_active        = False
+        self.combat_paused        = False  # True when paused between turns
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
         self.turn_idx             = 0     # index into initiative_order
@@ -838,6 +839,9 @@ class App:
         self.btn_cbt_standup     = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Stand Up",
                                           (150, 180, 100), (180, 220, 130), self.font_md)
+        self.btn_cbt_pause_resume = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "⏸ Pause",
+                                          (200, 150, 80), (230, 180, 110), self.font_md)
         self.btn_cbt_end_turn    = Button(pygame.Rect(px, dummy_y, W, B),
                                           "End Turn",
                                           COL_BTN_ENDTURN, COL_BTN_ENDTURN_HOV, self.font_md)
@@ -1874,6 +1878,7 @@ class App:
         self.combat.apply_superior_inspiration(self.bm)
         self.initiative_order    = order
         self.combat_active       = True
+        self.combat_paused       = False
         self.safe_target_edit_idx = -1  # exit any safe-target editing when combat starts
         self.turn_idx            = 0
         self.round_num           = 0
@@ -1936,6 +1941,7 @@ class App:
         self.move_remaining_burrow = 0
         self.move_type             = rpg.MovementType.Walk
         self.combat_active         = False
+        self.combat_paused         = False
         self.initiative_order    = []
         self.turn_idx            = 0
         self.round_num           = 0
@@ -8824,6 +8830,16 @@ class App:
         txt("⚔  Combat", lx, y, COL_INITIATIVE_CUR, self.font_lg)
         y += 28
 
+        # ── Pause button ───────────────────────────────────────────────────
+        HW = W // 2 - 2
+        pause_label = "▶ Resume" if self.combat_paused else "⏸ Pause"
+        self.btn_cbt_pause_resume.text = pause_label
+        self.btn_cbt_pause_resume.rect.x = lx
+        self.btn_cbt_pause_resume.rect.y = y
+        self.btn_cbt_pause_resume.rect.w = HW
+        self.btn_cbt_pause_resume.draw(self.screen)
+        y += self._BTN_H + 8
+
         # ── Initiative list ────────────────────────────────────────────────
         txt("Initiative Order", lx, y, COL_LABEL)
         y += 16
@@ -11230,9 +11246,12 @@ class App:
                     self.show_spell_effects = not self.show_spell_effects
                 if self.btn_show_visible_targets.clicked(event):
                     self._show_visible_targets_popup()
+                if self.btn_cbt_pause_resume.clicked(event):
+                    self.combat_paused = not self.combat_paused
                 if self.btn_cbt_end_turn.clicked(event):
-                    self._advance_turn()
-                    self._flush_combat_log()
+                    if not self.combat_paused:
+                        self._advance_turn()
+                        self._flush_combat_log()
                 if self.btn_cbt_end_combat.clicked(event):
                     self._end_combat()
                 if self.btn_cbt_drop_concentration.clicked(event):
