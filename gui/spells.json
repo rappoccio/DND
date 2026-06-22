@@ -1164,7 +1164,8 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "conjuration"
+  "school": "conjuration",
+  "light_level": 7
  },
  {
   "name": "Color Spray",
@@ -3188,7 +3189,8 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "conjuration"
+  "school": "conjuration",
+  "light_level": 7
  },
  {
   "name": "Forbiddance",
@@ -4336,7 +4338,8 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "conjuration"
+  "school": "conjuration",
+  "light_level": 7
  },
  {
   "name": "Inflict Wounds",
@@ -6809,7 +6812,8 @@
    255
   ],
   "hatch_pattern": "||",
-  "school": "conjuration"
+  "school": "conjuration",
+  "light_level": 7
  },
  {
   "name": "Slow",
@@ -7117,7 +7121,8 @@
   "requires_concentration": true,
   "requires_los": false,
   "check_los_on_center": true,
-  "school": "conjuration"
+  "school": "conjuration",
+  "light_level": 7
  },
  {
   "name": "Stone Shape",

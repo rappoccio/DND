@@ -288,13 +288,27 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        // Apply target's resistance/vulnerability/immunity multiplier
-        float multiplier = target.physical_damage_multipliers[dmg_roll.type];
-        int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
-        raw += modified_damage;
-        result.physical_damage_types.push_back(dmg_roll.type);
-        format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
-                    physicalDamageName(dmg_roll.type));
+        // Monk L6 Empowered Strikes: unarmed strikes may deal Force instead of Bludgeoning
+        bool use_force = (w.name == "MonkUnarmed" && attacker.character_class == CharacterClass::Monk &&
+                          attacker.char_level >= 6 && attacker.monk_empowered_strikes_damage_type == 1);
+
+        if (use_force) {
+            // Force is a magic damage type, not physical
+            float multiplier = target.magic_damage_multipliers[Force];
+            int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+            raw += modified_damage;
+            result.magic_damage_dealt[Force] += modified_damage;
+            result.magic_damage_types.push_back(Force);
+            format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice, "Force");
+        } else {
+            // Normal physical damage
+            float multiplier = target.physical_damage_multipliers[dmg_roll.type];
+            int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+            raw += modified_damage;
+            result.physical_damage_types.push_back(dmg_roll.type);
+            format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
+                        physicalDamageName(dmg_roll.type));
+        }
     }
 
     // Roll magic damage types and apply target's multipliers
@@ -636,6 +650,46 @@ bool CombatEngine::applyParry(BattleMap& bm, int reactor_idx, AttackResult& r)
     return true;
 }
 
+// Monk Deflect Attacks (L3+) — OnHit defender reaction. When hit by an attack that deals Bludgeoning,
+// Piercing, or Slashing damage, the Monk may spend its reaction to reduce that damage by
+// 1d10 + DEX modifier + Monk level. At L13 (Deflect Energy) the reaction applies to an attack of ANY
+// damage type. No Focus cost for the reduction; the redirect-as-a-ranged-attack clause (spend 1 Focus
+// when the damage drops to 0) is deferred — see known_limitations.md. canDeflectAttacks gates
+// class/level/reaction/alive; the damage-type gate (and L13 widening) is enforced in apply and at the
+// offer site (it needs the AttackResult).
+bool CombatEngine::canDeflectAttacks(const BattleMap& bm, int defender_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (defender_idx < 0 || defender_idx >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(defender_idx)) return false;     // On Deck reserves take no reactions until deployed
+    const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(defender_idx);
+    if (s.hp_cur <= 0) return false;
+    return s.character_class == CharacterClass::Monk && s.char_level >= 3;
+}
+
+bool CombatEngine::applyDeflectAttacks(BattleMap& bm, int reactor_idx, AttackResult& r)
+{
+    if (!canDeflectAttacks(bm, reactor_idx)) return false;
+    if (!r.hit || r.total_damage <= 0) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor_idx);
+    // L3–12: only an attack that dealt Bludgeoning/Piercing/Slashing. L13 Deflect Energy: any type.
+    if (s.char_level < 13 && r.physical_damage_types.empty()) return false;
+    const int reduction = roll(10) + dndMod(s.dex) + s.char_level;
+    const int before = r.total_damage;
+    r.total_damage = std::max(0, before - reduction);
+    Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
+    cond.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, cond);
+    const char* label = s.char_level >= 13 ? "Deflect Energy" : "Deflect Attacks";
+    r.damage_breakdown.push_back({s.char_level >= 13 ? "deflect energy" : "deflect attacks",
+                                  r.total_damage - before});  // negative: reduction
+    log_("{}: {} reduces the attack by {} ({} -> {})", label,
+         agentName(bm, reactor_idx), before - r.total_damage, before, r.total_damage);
+    return true;
+}
+
 // Defensive Duelist (feat): on a non-crit MELEE hit, a wielder of a Finesse melee weapon may add its
 // Proficiency Bonus to AC against the attack (reaction), flipping the hit to a miss when +PB clears the
 // roll. Offered only when the +PB would actually flip the outcome and the reaction is free.
@@ -740,6 +794,15 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (r.hit && r.total_damage > 0 && canSuperiorHunterDefense(bm, action.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Superior Hunter's Defense (resist the damage)", "SuperiorHuntersDefense"});
+    // Monk Deflect Attacks (L3+) / Deflect Energy (L13+): reduce B/P/S (any type at L13) by 1d10+DEX+level.
+    if (r.hit && r.total_damage > 0 && canDeflectAttacks(bm, action.target_idx)) {
+        const Agent::Stats ds = bm.getAgentStats(action.target_idx);
+        if (ds.char_level >= 13 || !r.physical_damage_types.empty())
+            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                ds.char_level >= 13 ? "Deflect Energy (reduce the damage by 1d10 + DEX + level)"
+                                    : "Deflect Attacks (reduce the damage by 1d10 + DEX + level)",
+                "DeflectAttacks"});
+    }
     if (canDefensiveDuelist(bm, action, r))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Defensive Duelist (+PB AC — the attack misses)", "DefensiveDuelist"});
@@ -790,6 +853,8 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
         return applyUncannyDodge(bm, action.target_idx, r);
     if (opt.feature == "SuperiorHuntersDefense")
         return applySuperiorHunterDefense(bm, action.target_idx, r);
+    if (opt.feature == "DeflectAttacks")
+        return applyDeflectAttacks(bm, action.target_idx, r);
     if (opt.feature == "Parry")
         return applyParry(bm, action.target_idx, r);
     if (opt.feature == "DefensiveDuelist") {
@@ -1340,6 +1405,8 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
         applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "SuperiorHuntersDefense") {
         applySuperiorHunterDefense(bm, ctx.reactor_idx, in_flight_attack_.r);
+    } else if (opt.feature == "DeflectAttacks") {
+        applyDeflectAttacks(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "Parry") {
         applyParry(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "DefensiveDuelist") {
@@ -1484,6 +1551,11 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     int atk_sz = atk_pt.agent->getSize();
     int tgt_sz = tgt_pt.agent->getSize();
 
+    // Warrior of Shadow L11 Improved Shadow Step: +5 ft reach on next attack after Shadow Step
+    if (w.type == WeaponType::Melee && atk_pt.agent->getConditions().bonus_reach_available) {
+        w.reach_ft += 5;
+    }
+
     if (!canAttack(w, bm, atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz))
         return false;
 
@@ -1532,6 +1604,40 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
             as.hunters_mark_target == action.target_idx) {
             adv = true;
             log_("Precise Hunter: Advantage vs the marked target");
+        }
+    }
+
+    // Assassinate (Assassin Rogue L3+): Advantage on attack rolls against any creature that
+    // hasn't taken a turn in the current combat yet (flag set in beginTurn, reset at combat start).
+    {
+        const Agent::Stats& as = atk_pt.agent->getStats();
+        if (as.character_class == CharacterClass::Rogue && as.rogue_subclass == AssassinPath &&
+            as.char_level >= 3 && !tgt_pt.agent->getConditions().has_taken_turn_this_combat) {
+            adv = true;
+            log_("Assassinate: Advantage vs a creature that hasn't acted yet");
+        }
+    }
+
+    // Versatile Trickster (Arcane Trickster Rogue L13+): if a creature is within 5 ft of the AT's
+    // Mage Hand summon, the AT has Advantage on attack rolls against it (which in turn drives Sneak
+    // Attack and enables the Trip Cunning Strike via that hit). The hand gives us a real position to
+    // measure from because Mage Hand Legerdemain is modeled as a summon.
+    {
+        const Agent::Stats& as = atk_pt.agent->getStats();
+        if (as.character_class == CharacterClass::Rogue && as.rogue_subclass == ArcaneTricksterPath &&
+            as.char_level >= 13) {
+            for (int i = 0; i < n; ++i) {
+                const PlacedAgent& h = agents[static_cast<std::size_t>(i)];
+                if (h.removed_from_play || h.summoner_idx != action.attacker_idx ||
+                    h.summon_spell != "Mage Hand")
+                    continue;
+                if (footprintDistance(h.origin, h.agent->getSize(),
+                                      tgt_pt.origin, tgt_pt.agent->getSize()) <= 1) {
+                    adv = true;
+                    log_("Versatile Trickster: Advantage — target is next to your Mage Hand");
+                    break;
+                }
+            }
         }
     }
 
@@ -1639,6 +1745,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (atk_cond.steady_aim) {
         adv = true;
         log_("Advantage: Steady Aim");
+    }
+
+    // Warrior of Shadow Shadow Step (L6+): next attack after Shadow Step has Advantage
+    if (atk_cond.shadow_step_advantage) {
+        adv = true;
+        log_("Advantage: Shadow Step");
     }
 
     // Wild Heart Wolf Form: allies within 5ft of the Barbarian get advantage on attacks
@@ -1969,6 +2081,14 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
+    // Consume Warrior of Shadow Shadow Step advantage: granted on the attack following Shadow Step.
+    if (atk_cond.shadow_step_advantage) {
+        updated_atk_cond.shadow_step_advantage = false;
+        // Also consume bonus_reach_available (L11 Improved Shadow Step) if set
+        updated_atk_cond.bonus_reach_available = false;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     // ── Rogue Sneak Attack / Cunning Strike eligibility ───────────────────
     // Once per turn, a hit with a Finesse or Ranged weapon while having advantage qualifies for
     // Sneak Attack. Like Brutal Strike, the dice and any Cunning Strike rider are applied out of
@@ -2001,6 +2121,20 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
         action.attack_slot == "bonus") {
         updated_atk_cond.open_hand_rider_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Monk Warrior of Mercy — Hand of Harm eligibility ─────────────────────
+    // After an unarmed hit, a Mercy Monk (L3+) may spend 1 Focus Point to add Necrotic damage. Like the
+    // other on-hit riders, the dice (and the L6 Poisoned rider) are applied out of band via
+    // applyHandOfHarmEffect() AFTER this attack resolves. Below L11 it's once per turn; at L11 (Flurry of
+    // Healing and Harm) the once-per-turn gate lifts (the effect itself enforces once-per-target).
+    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+        atk_stats.monk_subclass == WarriorOfMercyPath &&
+        (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
+        atk_stats.char_level >= 3 &&
+        (atk_stats.char_level >= 11 || !atk_cond.hand_of_harm_used)) {
+        updated_atk_cond.hand_of_harm_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 

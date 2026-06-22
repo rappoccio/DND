@@ -484,6 +484,9 @@ namespace rpg {
       int  bardic_inspiration_die_size{6};                       // Bard: the die size this bard GRANTS (d6/d8/d10/d12 by level), set in initializeClassResources
       // ── Barbarian L20 Primal Champion ────────────────────────────────────────
       bool primal_champion_applied{false};                       // Primal Champion (L20): +4 STR/CON (capped at 25) applied; idempotent flag
+      // ── Monk Phase 0 Features ────────────────────────────────────────────────
+      bool monk_body_mind_applied{false};                        // Body and Mind (L20): +4 DEX/WIS (capped at 25) applied; idempotent flag
+      int  monk_empowered_strikes_damage_type{0};                // L6: 0=Bludgeoning (default), 1=Force (L6+). Controls unarmed strike damage type
       // ── Barbarian L11 Relentless Rage ───────────────────────────────────────
       int  relentless_rage_dc{10};                               // Relentless Rage save DC (10 base, +5 per use in same Rage); reset on rage end
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
@@ -519,6 +522,17 @@ namespace rpg {
       std::vector<std::string> feats{};
       [[nodiscard]] bool hasFeat(const std::string& f) const noexcept {
           return std::find(feats.begin(), feats.end(), f) != feats.end();
+      }
+
+      // ── Spell Thief (Arcane Trickster Rogue L17) ────────────────────────
+      // Spell names this caster currently CANNOT cast because an Arcane Trickster stole them with
+      // Spell Thief (the caster failed the INT save). Checked at the top of executeSpell; cleared on
+      // a long rest (RAW: the lock lasts 8 hours). The "the AT may now cast the stolen spell once"
+      // half is deferred (flavor — needs spell-list mutation the GUI doesn't expose).
+      std::vector<std::string> stolen_spell_names{};
+      [[nodiscard]] bool spellIsStolen(const std::string& n) const noexcept {
+          return std::find(stolen_spell_names.begin(), stolen_spell_names.end(), n)
+                 != stolen_spell_names.end();
       }
 
       // ── Elemental Adept (general feat) ──────────────────────────────────
@@ -688,6 +702,9 @@ namespace rpg {
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
+      bool hand_of_harm_available{false};   // Warrior of Mercy L3: a qualifying unarmed hit can apply Hand of Harm this attack
+      bool hand_of_harm_used{false};        // Warrior of Mercy L3: Hand of Harm already used this turn (once; L11 lifts the limit to once per target)
+      int  hand_of_harm_last_target{-1};    // Warrior of Mercy L11: index of the last creature struck by Hand of Harm this turn (can't reuse on the same target)
       bool grappler_punch_grab_available{false}; // Grappler feat: an Unarmed-Strike hit (Attack action) can also Grapple this attack
       bool grappler_punch_grab_used{false};      // Grappler feat: Punch-and-Grab already used this turn (once per turn)
       bool divine_smite_available{false};   // Paladin: a melee/unarmed hit can apply Divine Smite this attack
@@ -751,6 +768,15 @@ namespace rpg {
       // ── Barbarian L10 subclass features ─────────────────────────────────────
       bool zealous_blessing{false};         // Zealot Zealous Presence: grants Advantage on attack rolls and saves until the granter's next turn
       int  zealous_blessing_by{-1};         // index of the Zealot who granted zealous_blessing; cleared in CombatEngine::beginTurn as that Zealot's turn begins (mirrors goaded_by)
+      // ── Per-COMBAT marker (NOT reset in turn()) ─────────────────────────────
+      bool has_taken_turn_this_combat{false}; // set true at the start of this agent's first turn (CombatEngine::beginTurn); drives Assassin "Assassinate" Advantage vs creatures that haven't acted yet. Reset to false at combat start (GUI _start_combat).
+      // ── Monk Phase 0 Features ────────────────────────────────────────────────
+      bool uncanny_metabolism_used_this_combat{false}; // L2: restore Focus + heal on initiative roll (once per combat)
+      bool superior_defense_active{false};  // L18: currently under Superior Defense resistance (set by action, expires end of turn)
+      // ── Warrior of Shadow (Phase 1) ──────────────────────────────────────
+      bool shadow_step_advantage{false};    // L6 Shadow Step: next attack this turn has Advantage (consumed on attack)
+      bool bonus_reach_available{false};    // L11 Improved Shadow Step: +5 ft reach on next attack (consumed on attack)
+      bool cloak_of_shadows_active{false};  // L17 Cloak of Shadows: currently Invisible (set by action, expires on light level change or turn end)
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -827,6 +853,9 @@ namespace rpg {
       conditions_.divine_strike_used           = false;
       conditions_.psionic_strike_available     = false;
       conditions_.psionic_strike_used          = false;
+      conditions_.hand_of_harm_available       = false;
+      conditions_.hand_of_harm_used            = false;
+      conditions_.hand_of_harm_last_target     = -1;
       conditions_.grappler_punch_grab_available = false;
       conditions_.grappler_punch_grab_used      = false;
       conditions_.divine_smite_available       = false;

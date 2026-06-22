@@ -156,49 +156,11 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
 
     Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;
 
-    // Check if agent is grappling someone - double movement cost
-    int move_dist_ft = std::max(std::abs(newOrigin.col - oldOrigin.col),
-                                std::abs(newOrigin.row - oldOrigin.row)) * 5;
-    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
-        if (i == idx) continue;
-        Agent::Conditions target_cond = bm.getAgentConditions(i);
-        if (target_cond.grappled && target_cond.grappler_idx == idx) {
-            // Grappler paying extra movement cost to drag (same as movement type being used)
-            int extra_cost = move_dist_ft;
-            int remaining = 0;
-
-            if (type == MovementType::Walk) {
-                remaining = getWalkRemaining(idx);
-                if (remaining < extra_cost) {
-                    log_("Not enough movement to drag grappled creature");
-                    return false;
-                }
-                spendWalk(idx, extra_cost);
-            } else if (type == MovementType::Fly) {
-                remaining = getFlyRemaining(idx);
-                if (remaining < extra_cost) {
-                    log_("Not enough movement to drag grappled creature");
-                    return false;
-                }
-                spendFly(idx, extra_cost);
-            } else if (type == MovementType::Swim) {
-                remaining = getSwimRemaining(idx);
-                if (remaining < extra_cost) {
-                    log_("Not enough movement to drag grappled creature");
-                    return false;
-                }
-                spendSwim(idx, extra_cost);
-            } else if (type == MovementType::Burrow) {
-                remaining = getBurrowRemaining(idx);
-                if (remaining < extra_cost) {
-                    log_("Not enough movement to drag grappled creature");
-                    return false;
-                }
-                spendBurrow(idx, extra_cost);
-            }
-            break;
-        }
-    }
+    // Grappling a creature doubles the cost of every foot of movement (you drag it along). That
+    // surcharge is charged inside BattleMap::moveAgent against the agent's own movement budget — the
+    // same one a Dash, exhaustion, and every speed modifier flow through — so it scales with them.
+    // (It used to be charged here against the CombatEngine's separate per-turn walkRemaining_ map,
+    // which never received a Dash bonus and so capped a grappler at base speed even after Dashing.)
 
     // Check if agent is Frightened and would move toward fear source
     for (const auto& ac : activeAgentConditions_) {

@@ -7,6 +7,33 @@ metadata:
 
 # Known Limitations
 
+## Grapple drag-movement double cost charged against the wrong budget — FIXED ✅ (2026-06-19)
+
+**Symptom (from live play):** a grappler that Cunning-Action **Dashed** appeared to have its movement
+"turn off" mid-turn (often noticed right after an opportunity attack) while the displayed budget still
+showed feet remaining.
+
+**Root cause — dual movement budgets.** Movement tracks *two* parallel budgets:
+the **agent's own** `Agent::speed_walk_remaining_` (seeded by the GUI via `init_movement`, the one
+`BattleMap::moveAgent` actually spends, the one `apply_dash` adds to, and the one the GUI displays as
+`walk_remaining`) **and** the CombatEngine's separate `walkRemaining_[idx]` map (seeded by `beginTurn`,
+used only for grapple-drag surcharge, standup cost, Instinctive Pounce). The grapple drag-surcharge
+("dragging a creature doubles cost per foot") was charged against the **second** budget — which never
+receives a Dash. So while Dashing, the surcharge budget capped a grappler at base Speed even though the
+real (displayed) budget had double; once the engine budget hit 0 further drags failed while the bar
+still showed feet. It was *also* over-permissive **without** Dash (let a grappler drag a full 30 ft
+instead of 15, since the double cost was split across two full budgets instead of 2× one budget).
+
+**Fix:** charge the 2× drag cost against the **single agent budget** inside `BattleMap::moveAgent`
+(scan `placedAgents_` for a creature `grappled && grappler_idx == idx`; `charge = actual_cost * 2`).
+Removed the broken separate-budget surcharge block from `CombatEngine::moveAgent` (grapple auto-end
+checks untouched). GUI `_update_reach` halves the previewed reach when the selected agent is grappling
+so the highlighted cells match enforcement. Now the one displayed number drains at the true 2× rate and
+honors Dash/exhaustion/all speed modifiers. Tests: `test_grapple.py::test_grapple_drag_costs_double_no_dash`
++ `::test_grapple_drag_scales_with_dash`. Built + grapple suite green (14/14).
+
+---
+
 ## Architecture / Infrastructure
 
 ### Render gate for the Invisible condition [TODO]
@@ -508,6 +535,13 @@ Guardians (`resolveAoeTargets`, `Spell::Sphere`) — NOT Chebyshev/Manhattan.
     `char_level >= 7 && character_class == Barbarian` → `e.d20 = std::max(roll(20), roll(20))`.
   - **Instinctive Pounce (L7):** On Rage activation, grant half-speed movement THIS turn.
     `combat_resources.cpp:activateRage` adds `walkRemaining_[idx] += stats.speed_walk / 2` for L7+.
+    **⚠️ Latent budget bug (found 2026-06-19):** this bumps the CombatEngine's *separate*
+    `walkRemaining_` map, but real moves spend the **agent's own** budget (`Agent::speed_walk_remaining_`
+    via `BattleMap::moveAgent`) and the GUI displays/reaches off that one — so the Pounce bonus is
+    effectively **invisible** to actual movement (the deterministic test only checks `get_walk_remaining`,
+    the engine map). To make it real it must call `init_movement`/`addMovement` on the agent budget
+    (like `apply_dash` does), not `walkRemaining_[idx]`. Same dual-budget trap as the grapple fix at the
+    top of this file.
   - **Indomitable Might (L18):** STR saving throw total can't be lower than STR score. New helper
     `CombatEngine::applyIndomitableMight(bm, saver_idx, ab, total)` declared in `combat.hpp:1049`,
     defined in `combat_core.cpp:265`. Wired into all STR-save sites: `combat_turn.cpp` (lines 384, 504),
@@ -875,12 +909,67 @@ Resource) heavily.
   (DC 8 + DEX + PB) or Stunned 1 min (repeat save). Cost: a "Rend Mind" use, else 3 dice. GUI: offered
   after a psychic-blade Cunning Strike (`_offer_rend_mind`, hooked in `_offer_cunning_strike`).
 
-### Deferred — Phase 3 (subclasses)
-- Assassin, Arcane Trickster subclass mechanics (Thief + Soulknife DONE — see above)
+### Assassin subclass — IMPLEMENTED ✅ (2026-06-19, built + 77 suites green, `test_rogue_assassin.py`)
+2024 Assassin. No new infra — reused the initiative-advantage pattern (Feral Instinct), the
+Cunning Strike / Sneak Attack out-of-band path, the Poisoner resistance-ignore idiom, and DEX-save DCs.
+New per-COMBAT marker `Conditions.has_taken_turn_this_combat` (set in `beginTurn`, NOT reset in
+`turn()`, cleared at combat start in GUI `_start_combat`).
+- **Assassinate (L3) — Initiative:** Assassin L3+ rolls Initiative at Advantage (`rollInitiative` +
+  `rollInitiativeFor`, same branch as Barbarian Feral Instinct).
+- **Assassinate (L3) — Advantage vs not-acted:** `determineAdvantage` grants Advantage when the target's
+  `has_taken_turn_this_combat == false`. (Detected in tests via `cunning_strike_available`, which only
+  flags when the hit had Advantage.)
+- **Assassinate (L3) — round-1 bonus:** a Sneak hit during the first round (`round_num == 0`, passed from
+  the GUI through `apply_cunning_strike_effect`) adds +Rogue-level flat damage (breakdown "Assassinate").
+- **Envenom Weapons (L13):** the Poison Cunning Strike option costs **0** Sneak Attack dice (die refunded
+  in `applyCunningStrikeEffect`) and, on a failed save, deals **2d6 Poison ignoring Resistance** (folded
+  into the result/HP in `applyCunningStrikeRiders`; breakdown "Envenom (Poison)"; Immunity/Vulnerability
+  still apply). The rider-call guard changed from `cost > 0` to `!effects.empty()` so a free (cost-0)
+  Poison rider still resolves.
+- **Death Strike (L17):** a first-round Sneak hit forces a CON save (DC 8 + DEX + PB); on a failure the
+  whole attack's damage is **doubled** (runs last in `applyCunningStrikeEffect`, after riders, so it
+  doubles base + Sneak + Assassinate + Envenom together; breakdown "Death Strike (doubled)").
+
+> **Scope note (v1):** Assassinate bonus damage + Death Strike are folded into the **Sneak Attack path**
+> (`applyCunningStrikeEffect`), so they fire on a qualifying Sneak hit rather than on *any* attack roll in
+> round 1 (RAW Death Strike applies to any hit). In practice the Assassinate not-acted Advantage makes
+> nearly every round-1 hit Sneak-eligible. Infiltration Expertise (L9, identity/disguise) is out of
+> combat-sim scope. The Envenom GUI menu still labels Poison "(costs 1 die)" — cosmetic only; the engine
+> refunds it.
+
+### Arcane Trickster subclass — IMPLEMENTED ✅ (2026-06-19, built + 78 suites green, `test_rogue_arcane_trickster.py`)
+2024 Arcane Trickster — the last Rogue subclass. Mostly reused existing infra.
+- **Spellcasting (L3):** third-caster, INT, Wizard list. `initializeClassResources` `case Rogue:` now
+  overrides the slot table via `compute_third_caster_slots` + sets `spellcasting_ability = INT` +
+  `can_cast_spell` when `rogue_subclass == ArcaneTrickster && level >= 3` (mirrors Eldritch Knight; the
+  `compute_class_slots(Rogue)` table can't see the subclass). Cantrips/spells come from the normal
+  spell-assignment UI. ArcaneTrickster already in the GUI subclass dropdown; `rogue_subclass` round-trips.
+- **Mage Hand Legerdemain (L3):** the spectral hand is modeled as a **summon** (`SUMMON_SPELL_TO_MONSTER["Mage Hand"]`
+  + synthetic `MAGE_HAND_STATBLOCK`, Tiny/1 HP, deep-copied per cast) so it has a real grid position. Cast
+  it like any summon spell (click a cell within range). Not concentration → it persists until manually
+  dismissed (v1). Its only mechanical payoff is anchoring Versatile Trickster.
+- **Magical Ambush (L9):** one clause in `rollSpellSave` — if the AT caster is `hidden || invisible` when
+  casting a save spell, the target rolls the save at Disadvantage (Eldritch-Strike/Corona pattern).
+- **Versatile Trickster (L13):** `determineAdvantage` grants Advantage on attacks vs any creature within
+  5 ft (footprintDistance ≤ 1) of the AT's Mage Hand summon (scans for `summon_spell == "Mage Hand"` +
+  `summoner_idx == attacker`). That Advantage drives Sneak Attack and enables the Trip Cunning Strike.
+- **Spell Thief (L17):** an **OnDeclareCast reaction** (sibling of Counterspell). `canSpellThief` (AT L17+,
+  reaction free, sees the caster ≤ 60 ft, not the caster/an ally) enrolls the AT in `declareCastReactors`;
+  `stepTopCast` offers the "SpellThief" option. On choose (`applyCastReaction`): the caster makes an INT
+  save vs the AT's spell save DC (`spellSaveDc`); the reaction is spent regardless. On a **failure** the
+  cast is **countered** (`topCast().countered = true`, the same fizzle Counterspell uses — slot kept) AND
+  the spell name is pushed onto the caster's new `Stats.stolen_spell_names` (round-trips via
+  `feats`-style serialization; checked at the top of `executeSpell` to refuse a re-cast; cleared in
+  `applyLongRest`). The GUI surfaces the option automatically via the generic OnDeclareCast menu.
+
+> **Scope note (v1):** Spell Thief's "the AT may now cast the stolen spell once within 8 hours" half is
+> **deferred** (flavor — needs spell-list mutation + a per-cast use counter the GUI doesn't expose); the
+> 8-hour timer is approximated by the long-rest clear. Like Counterspell, `canSpellThief` does **not**
+> require the spell to target the AT (RAW does) — a simplification. Mage Hand's utility tricks
+> (sleight-of-hand, object manipulation) and ritual casting are out of combat-sim scope.
 
 ### Deferred — need NEW hooks
 - *Stroke of Luck* (L20): turn failed d20 into 20 → needs roll-replace hook
-- *Spell Thief*, *Thief's Reflexes*: need reaction-on-cast and initiative hooks
 
 ### Not modeled (combat simulator only) 🚫
 - Expertise, Reliable Talent, Thieves' Cant, weapon proficiencies, skill features
@@ -937,13 +1026,19 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 - **Stunning Strike** (spend 1 Focus on a qualifying unarmed hit → CON save or Stunned) — on-hit rider: eligibility flag set in `executeAction` (`combat.cpp:1963`), applied out-of-band via `applyStunningStrike` (`combat.cpp:4595`)
 
 ### Deferred — Monk features
-- **Subclass mechanics**: Shadow Arts, Four Elements
+- **Subclass mechanics**: Four Elements (Shadow is fully implemented — see Phase 1 in MONK_IMPLEMENTATION_PLAN.md).
+- **Deflect Attacks — redirect clause** (L3): the damage-reduction half is implemented (`canDeflectAttacks`/`applyDeflectAttacks`, OnHit defender reaction reducing a hit by `1d10 + DEX + level`; B/P/S below L13, any type at L13 Deflect Energy). The RAW redirect — when the damage is reduced to 0, spend 1 Focus to make a ranged Unarmed Strike / throw the caught weapon at a creature within 5 ft — is **deferred** (no follow-up reaction-attack-from-defender plumbing). The reduction is the dominant combat effect; the redirect adds a single conditional attack.
 
-### Deferred — Warrior of Mercy [OPUS]
-- **Hand of Healing** (L3): classfeature.json entry created with Focus Points cost, but bonus-action casting needs wiring
-- **Hand of Harm** (L3): deferred on-hit rider pattern with necrotic damage + Poisoned save. Requires chained-rider logic to work alongside Stunning Strike (two riders on same unarmed hit).
-- **Physician's Touch** (L6): Hand of Harm adds Stunned on failed save (L6 enhancement)
-- **Deferred because**: Hand of Harm's chained-rider logic (one rider triggering another) is not yet established in the engine. Establishing the pattern in Battle Master maneuvers is lower risk.
+### Warrior of Mercy ✅ COMPLETE (2026-06-22)
+- **Hand of Healing** (L3): `handOfHealing` — BA + 1 Focus → heal `MA die + WIS` (`healAgent`). GUI button + `_resolve_hand_of_healing` (mirrors Lay on Hands). Tested in `test_monk.py`.
+- **Hand of Harm** (L3): `applyHandOfHarmEffect` — deferred on-hit rider (clone of `applyPsionicStrikeEffect`), `MA die + WIS` Necrotic; eligibility `hand_of_harm_available` set on an unarmed hit; GUI `_offer_hand_of_harm`. Coexists with Stunning Strike because both are deferred out-of-band effects (no inline chaining).
+- **Physician's Touch** (L6): Hand of Harm also Poisons (`applyPoisoned`); Hand of Healing also ends one of Blinded/Deafened/Paralyzed/Poisoned/Stunned.
+- **Flurry of Healing and Harm** (L11): Hand of Harm is free + once per target; `executeFlurryOfBlows` auto-folds a free Hand of Harm onto a Mercy hit. `handOfHealing(free=true)` skips Focus + Bonus Action.
+- Martial Arts die size computed in C++ (`martialArtsDieSize`: d6/d8/d10/d12 by level).
+
+### Deferred — Warrior of Mercy
+- **Hand of Ultimate Mercy** (L17): out-of-combat mass revive — flavor/out-of-scope (combat-sim only).
+- **Flurry heal-replacement GUI picker** (L11): the engine primitive `handOfHealing(free=true)` exists, but there is no per-strike GUI flow to replace individual Flurry unarmed strikes with Hand of Healing (would need a heal-vs-strike target picker mid-flurry). The free Hand of Harm fold IS wired; the free-heal fold is engine-only for now.
 
 ---
 
@@ -1463,8 +1558,11 @@ must apply *during* the victim's turn). Single source tracked (last critter wins
   riders). **Advantage** on attack rolls vs a creature you've grappled is in `determineAdvantage`
   (tgt grappled + `grappler_idx == attacker` + `hasFeat("Grappler")`). Tests in `test_general_feats.py`.
   *Deferred:* **Fast Wrestler** (no Speed reduction dragging a grappled creature of your size or smaller)
-  is a **no-op** — the engine has no drag-movement system (a grappled creature has Speed 0 and the
-  grappler can't pull it along), so there's nothing to discount. Revisit if drag-movement is ever added.
+  is a **no-op** — but note the engine *does* now have a drag-movement system (`BattleMap::moveAgent`
+  drags the grappled creature along and charges **2× movement cost**, see the 2026-06-19 grapple-budget
+  FIXED entry at the top of this file). Fast Wrestler would remove that double cost (vs same-or-smaller
+  targets); it's simply not wired up yet. Implementable now: gate the `charge = actual_cost * 2` doubling
+  on `!hasFeat("Fast Wrestler")` (plus a size comparison against the dragged creature).
 
 **G3 — Reaction feats + shield-in-off-hand foundation — MOSTLY DONE 2026-06-10.**
 - **Shield-in-off-hand foundation.** `Weapon.is_shield` (+ existing `ac_bonus`) lets a Shield occupy a

@@ -65,6 +65,26 @@ from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon
 # Extend this dict as more summon spells/stat blocks are added.
 SUMMON_SPELL_TO_MONSTER = {
     "Summon Dragon": "Spirit Dragon Wyrmling",
+    # Arcane Trickster's Mage Hand Legerdemain is modeled as a tiny, controllable summon so it has a
+    # real grid position — that anchors Versatile Trickster (L13: Advantage vs creatures next to it).
+    # Not in the bestiary, so it uses the synthetic MAGE_HAND_STATBLOCK below (see _resolve_summon).
+    "Mage Hand": "Mage Hand",
+}
+
+# Synthetic stat block for the Mage Hand summon (it isn't in DND2024_MonsterStats.json). Tiny, ~1 HP,
+# no attacks; exists only to occupy a cell the player drags around. Shape matches the engine-ready
+# bestiary record consumed by _mob_stats_to_d_d_stats (a "stats" sub-dict in dict_to_stats form).
+MAGE_HAND_STATBLOCK = {
+    "name": "Mage Hand",
+    "size": "Tiny",
+    "stats": {
+        "ac": 10, "hp_cur": 1, "hp_max": 1,
+        "str": 1, "dex": 10, "con": 10, "intel": 10, "wis": 10, "cha": 10,
+        "prof_bonus": 2, "num_attacks": 0, "is_npc": True,
+        "speed_walk": 30, "speed_fly": 30,
+    },
+    "weapons": [],
+    "meta": {},
 }
 
 # Spells whose damage type is chosen per cast (not fixed in spells.json). Each maps to the
@@ -460,12 +480,15 @@ class App:
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
+        self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
+        self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""    # "" | "grapple" | "push" (Damage routes via pending_attack_slot)
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
+        self.pending_hand_of_healing   = False # Monk Warrior of Mercy Hand of Healing: awaiting target click
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
@@ -807,6 +830,9 @@ class App:
         self.btn_cbt_step_of_wind = Button(pygame.Rect(px,   dummy_y, HW, B),
                                           "Step of the Wind",
                                           (160, 180, 200), (190, 210, 230), self.font_md)
+        self.btn_cbt_hand_of_healing = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Hand of Healing",
+                                          (150, 200, 160), (180, 230, 190), self.font_md)
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
@@ -976,6 +1002,15 @@ class App:
         self.btn_cbt_psychic_teleport = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Psychic Teleportation (Bonus)",
                                           (110, 90, 150), (140, 120, 185), self.font_md)
+        self.btn_cbt_shadow_step = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Shadow Step (Bonus)",
+                                          (80, 60, 120), (110, 90, 150), self.font_md)
+        self.btn_cbt_cloak_of_shadows = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Cloak of Shadows (Bonus)",
+                                          (60, 40, 100), (90, 70, 130), self.font_md)
+        self.btn_cbt_shadow_arts_darkness = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Shadow Arts: Darkness (1 Focus)",
+                                          (50, 35, 85), (80, 60, 120), self.font_md)
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
@@ -1182,7 +1217,7 @@ class App:
                 "hatch_pattern": spell_dict.get("hatch_pattern"),
                 "terrain_color": spell_dict.get("terrain_color"),
             }
-            cpp_spells.append(self._dict_to_spell(agent_idx, spell_dict))
+            cpp_spells.append(_dict_to_spell(spell_dict))
         self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
 
         npc_spell_groups = mob_record.get("npc_spell_groups", {})
@@ -1492,6 +1527,15 @@ class App:
             fly_ft    = stats.speed_fly
             swim_ft   = stats.speed_swim
             burrow_ft = stats.speed_burrow
+
+        # Dragging a grappled creature costs double per foot (BattleMap::moveAgent), so the agent
+        # can only reach half as far. Halve the previewed budget so the overlay matches enforcement.
+        if any(o.conditions.grappled and o.conditions.grappler_idx == idx
+               for j, o in enumerate(self.bm.placed_agents) if j != idx):
+            walk_ft   //= 2
+            fly_ft    //= 2
+            swim_ft   //= 2
+            burrow_ft //= 2
 
         # Pass idx so faction-spared difficult terrain (e.g. the agent's own / an ally's
         # Spirit Guardians) does not shrink the previewed reach.
@@ -2008,6 +2052,12 @@ class App:
         # Apply armor multipliers for all agents at combat start
         for i in range(len(self.bm.placed_agents)):
             self.combat.apply_armor_multipliers(self.bm, i)
+            # Clear the per-combat "has taken a turn" marker (drives Assassin's Assassinate
+            # Advantage vs creatures that haven't acted yet). beginTurn re-sets it each turn.
+            cond = self.combat.get_agent_conditions(self.bm, i)
+            if cond.has_taken_turn_this_combat:
+                cond.has_taken_turn_this_combat = False
+                self.combat.set_agent_conditions(self.bm, i, cond)
         first = self._current_agent_idx()
         self.selected_idx = first
         self._reset_movement(first)
@@ -2518,6 +2568,9 @@ class App:
             conc_name = self.bm.placed_agents[new_idx].name
             self._combat_log_add(f"{conc_name}'s {tick.concentration.spell_name or 'spell'} effect expired.")
 
+        # Phase 3: Tick light effects (Darkness, fog spells) at turn start
+        self.combat.tick_light_effects_for_turn(self.bm, new_idx)
+
         self._update_reach()
         self._update_attack_overlay()
 
@@ -2679,6 +2732,7 @@ class App:
                     rpg.VisibilityLevel.LightlyObscured: "Lightly Obscured",
                     rpg.VisibilityLevel.Dark: "Dark",
                     rpg.VisibilityLevel.MagicalDark: "Magical Darkness",
+                    rpg.VisibilityLevel.HeavilyObscured: "Heavily Obscured (fog)",
                     rpg.VisibilityLevel.Blocked: "Blocked",
                     rpg.VisibilityLevel.Sunlight: "Sunlight"
                 }.get(vis_level, "Unknown")
@@ -2795,7 +2849,6 @@ class App:
         elif slot != self._attack_sequence_slot:
             # Can't start a different slot while attacks are pending
             return
-        # print(f"[DEBUG _start_attack] idx={idx} slot={slot} stats.num_attacks={stats.num_attacks} n_atk={n_atk} attacks_remaining={self.attacks_remaining}")
 
         def _activate(s, wi_):
             self.pending_attack_slot = s
@@ -3036,29 +3089,6 @@ class App:
                 tail = (f" ({rem} attack{'s' if rem != 1 else ''} remaining)" if rem > 0 else "")
                 self._combat_log_add(
                     f"{atk_name}: out of range — move closer or click Attack to retry{tail}")
-                # ── DEBUG: why was this attack invalid? Surface the weapon + geometry so a
-                # ranged ("out of range") rejection can be diagnosed live (range vs LoS).
-                try:
-                    if 0 <= atk_idx < len(agents) and 0 <= target_idx < len(agents):
-                        wi = action.weapon_idx
-                        wlist = self.combat.get_agent_weapons(self.bm, atk_idx)
-                        w = wlist[wi] if 0 <= wi < len(wlist) else None
-                        ao = agents[atk_idx].origin; asz = agents[atk_idx].size
-                        to = agents[target_idx].origin; tsz = agents[target_idx].size
-                        dist_cells = max(abs(ao.col - to.col), abs(ao.row - to.row))
-                        los = self.bm.has_line_of_sight(ao, asz, to, tsz)
-                        if w is not None:
-                            wtype = "Ranged" if w.type == rpg.WeaponType.Ranged else "Melee"
-                            reach = w.long_range_ft if w.type == rpg.WeaponType.Ranged else w.reach_ft
-                            self._combat_log_add(
-                                f"  [debug] weapon slot {wi}='{w.name}' type={wtype} "
-                                f"reach/range={reach}ft (reach_ft={w.reach_ft}, "
-                                f"normal={w.normal_range_ft}, long={w.long_range_ft})")
-                        self._combat_log_add(
-                            f"  [debug] dist={dist_cells} cells ({dist_cells*5}ft), "
-                            f"LoS={los}, target={tgt_name}")
-                except Exception as _e:
-                    self._combat_log_add(f"  [debug] (diagnostics failed: {_e})")
                 self.pending_attack_slot = ""
             return
 
@@ -3081,6 +3111,7 @@ class App:
         has_cleave = False
         has_stunning_strike = False
         has_open_hand_rider = False
+        has_hand_of_harm = False
         has_maneuver = False
         has_precision = False
         has_psionic_strike = False
@@ -3107,6 +3138,8 @@ class App:
                 has_stunning_strike = True
             elif result.hit and atk_cond and atk_cond.open_hand_rider_available:
                 has_open_hand_rider = True
+            elif result.hit and atk_cond and atk_cond.hand_of_harm_available:
+                has_hand_of_harm = True
             elif result.hit and atk_cond and atk_cond.divine_strike_available:
                 has_divine_strike = True
             elif result.hit and atk_cond and atk_cond.psionic_strike_available:
@@ -3223,6 +3256,8 @@ class App:
             self._offer_stunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_open_hand_rider:
             self._offer_open_hand_rider(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_hand_of_harm:
+            self._offer_hand_of_harm(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_brutal_strike:
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_strike:
@@ -3279,7 +3314,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew or has_sudden_strike
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew or has_sudden_strike
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -3610,6 +3645,46 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _offer_hand_of_harm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a qualifying unarmed hit, offer Monk Warrior of Mercy Hand of Harm (extra Necrotic,
+        MA die + WIS). At L6 (Physician's Touch) the target is also Poisoned; at L11 it's free. The extra
+        damage is applied in C++ via apply_hand_of_harm_effect. Mirrors _offer_psionic_strike."""
+        atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        free = atk_stats.char_level >= 11
+        fp = atk_stats.get_resource("Focus Points")
+        if not free and (not fp or fp.current <= 0):
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+            return
+
+        def _apply(use_it):
+            if use_it:
+                self.combat.apply_hand_of_harm_effect(self.bm, atk_idx, target_idx, result)
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{atk_name}→{tgt_name}: HIT {result.total_damage}{self._damage_breakdown_str(result)} "
+                    f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+                if result.target_down:
+                    self._drop_concentration_for_agent(target_idx)
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._continue_attack_sequence_after_rider(atk_idx)
+            self._update_attack_overlay()
+
+        label = "Hand of Harm (free → Necrotic)" if free else "Hand of Harm (1 FP → Necrotic)"
+        if atk_stats.char_level >= 6:
+            label = label[:-1] + ", Poisoned)"
+        options = [
+            (label, lambda: _apply(True)),
+            ("Skip Hand of Harm", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _offer_punch_and_grab(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After an Unarmed-Strike hit in the Attack action, offer the Grappler feat's Punch-and-Grab:
         ALSO attempt a Grapple this attack (normally damage OR grapple), once per turn. The contested
@@ -3767,7 +3842,10 @@ class App:
         level = atk_stats.char_level
 
         def _apply(effects):
-            self.combat.apply_cunning_strike_effect(self.bm, atk_idx, target_idx, effects, result)
+            # round_num drives the Assassin's round-1 features (Assassinate +level damage, Envenom
+            # free Poison rider, Death Strike CON-save double). round_num == 0 is the first round.
+            self.combat.apply_cunning_strike_effect(
+                self.bm, atk_idx, target_idx, effects, result, self.round_num)
             dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
             dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
             updated_msg = (f"{atk_name}→{tgt_name}: "
@@ -5088,6 +5166,51 @@ class App:
             self._flush_combat_log()
             self._combat_log_add("Psychic Teleportation: out of range or blocked — pick a closer cell.")
 
+    def _resolve_shadow_step(self, cell):
+        """Warrior of Shadow L6+ Shadow Step: teleport up to 30 ft to the clicked cell.
+        L6 requires dim/dark light; L11+ works from any light. Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_shadow_step = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_shadow_step = False
+            self._combat_log_add("Shadow Step cancelled.")
+            return
+        if self.combat.shadow_step_teleport(self.bm, idx, cell.col, cell.row):
+            self.pending_shadow_step = False
+            self._flush_combat_log()
+            self.bonus_used = True
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+        else:
+            # Out of range, blocked, or light-level gate failed — keep the prompt up for retry.
+            self._flush_combat_log()
+            self._combat_log_add("Shadow Step: out of range, blocked, or light requirement not met — pick a closer cell.")
+
+    def _resolve_shadow_darkness(self, cell):
+        """Warrior of Shadow L3 Shadow Arts: Darkness — fill a 15-ft Sphere centered on the clicked
+        cell with magical Darkness (1 Focus, Magic action). Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_shadow_darkness = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_shadow_darkness = False
+            self._combat_log_add("Shadow Arts: Darkness cancelled.")
+            return
+        if self.combat.shadow_arts_darkness(self.bm, idx, cell.col, cell.row) >= 0:
+            self.pending_shadow_darkness = False
+            self._flush_combat_log()
+            self.action_used = True
+            self._update_attack_overlay()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Shadow Arts: Darkness: requires the Warrior of Shadow subclass (L3) and 1 Focus Point.")
+
     def _use_action_surge(self, agent_idx: int):
         """Fighter Action Surge: spend resource, regain an Action this turn."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -5219,6 +5342,30 @@ class App:
         self._combat_log_add(
             f"{healer_name}: Lay on Hands restores {actual_healed} HP to {tgt_name} ({pool_remaining} pool remaining).")
         self.action_used = True
+
+    def _resolve_hand_of_healing(self, target_idx: int):
+        """Monk Warrior of Mercy Hand of Healing: spend a bonus action + 1 Focus Point to heal the
+        clicked target (Martial Arts die + WIS). At L6 (Physician's Touch) it also ends a condition."""
+        self.pending_hand_of_healing = False
+        healer_idx = self._current_agent_idx()
+        if not (0 <= healer_idx < len(self.bm.placed_agents)):
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+
+        res = self.combat.hand_of_healing(self.bm, healer_idx, target_idx)
+        if not res.valid:
+            self._combat_log_add(f"{self.bm.placed_agents[healer_idx].name}: Hand of Healing unavailable.")
+            return
+
+        healer_name = self.bm.placed_agents[healer_idx].name
+        tgt_name = self.bm.placed_agents[target_idx].name
+        msg = f"{healer_name}: Hand of Healing restores {res.amount_healed} HP to {tgt_name}"
+        if res.condition_cleared:
+            msg += f" and ends {res.cleared_condition}"
+        self._combat_log_add(msg + ".")
+        self.bonus_used = True
+        self._update_attack_overlay()
 
     def _resolve_grant_inspiration(self, target_idx: int):
         """Bard Grant Inspiration (bonus action): spend a Bardic Inspiration use to give
@@ -5547,7 +5694,7 @@ class App:
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
         cpp_spells = []
         for j, d in enumerate(spells):
-            cpp_spells.append(self._dict_to_spell(agent_idx, d))
+            cpp_spells.append(_dict_to_spell(d))
             # Store all metadata for this spell (terrain, level, upcast)
             meta = {
                 "terrain_effect": d.get("terrain_effect"),
@@ -5582,7 +5729,7 @@ class App:
             name = feat.get("name")
             if name in existing:
                 continue
-            sp = self._dict_to_spell(agent_idx, feat)
+            sp = _dict_to_spell(feat)
             self._apply_feature_scaling(sp, feat, level, stats)
             cpp_spells.append(sp)
             existing.add(name)
@@ -5599,7 +5746,7 @@ class App:
                     idx = self.spell_name_to_idx.get(name)
                     if idx is None:
                         continue  # not in spells.json — skip gracefully
-                    cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
+                    cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
 
         # Always-prepared Ranger subclass spells (regular spells from spells.json).
@@ -5614,7 +5761,7 @@ class App:
                     idx = self.spell_name_to_idx.get(name)
                     if idx is None:
                         continue  # not in spells.json (e.g. Summon Fey) — skip gracefully
-                    cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
+                    cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
 
         # Always-prepared Bard college spells (regular spells from spells.json). Glamour L6 has
@@ -5630,7 +5777,7 @@ class App:
                     idx = self.spell_name_to_idx.get(name)
                     if idx is None:
                         continue  # not in spells.json — skip gracefully
-                    cpp_spells.append(self._dict_to_spell(agent_idx, self.all_spells[idx]))
+                    cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
         return cpp_spells
 
@@ -6205,6 +6352,7 @@ class App:
                          if o.kind == rpg.ReactionOptionKind.Feature]
                 names = {"Shield": "Shield", "UncannyDodge": "Uncanny Dodge",
                          "SuperiorHuntersDefense": "Superior Hunter's Defense",
+                         "DeflectAttacks": "Deflect Attacks",
                          "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
                 self._combat_log_add(
@@ -6432,7 +6580,10 @@ class App:
             return
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells[spell_idx] if 0 <= spell_idx < len(spells) else None
-        mob_stats = self.mob_stats_json.get(monster)
+        # Mage Hand isn't in the bestiary — use its synthetic block (deep-copied so dict_to_stats'
+        # in-place legendary tweak in _mob_stats_to_d_d_stats can't mutate the shared constant).
+        mob_stats = (copy.deepcopy(MAGE_HAND_STATBLOCK) if monster == "Mage Hand"
+                     else self.mob_stats_json.get(monster))
         if sp is None or not mob_stats:
             self._combat_log_add(f"Summon failed: missing spell or '{monster}' stat block.")
             return
@@ -7398,165 +7549,10 @@ class App:
             "conditions":            conditions,
         }
 
-    def _dict_to_spell(self, agent_idx: int, d: dict):
-        """Convert dict to C++ Spell, storing metadata separately."""
-        s = rpg.Spell()
-        s.name         = d.get("name",         "Unnamed Spell")
-        s.type         = getattr(rpg.SpellType,     d.get("type",         "Harm"),     rpg.SpellType.Harm)
-        s.geometry     = getattr(rpg.SpellGeometry, d.get("geometry",     "Single"),   rpg.SpellGeometry.Single)
-        s.attack_type  = getattr(rpg.SpellAttack,   d.get("attack_type",  "AttackRoll"), rpg.SpellAttack.AttackRoll)
-        s.save_ability = getattr(rpg.SaveAbility,   d.get("save_ability") or "SaveDex", rpg.SaveAbility.SaveDex)
-        # spells.json stores the school lowercase ("enchantment"); the enum members are capitalized
-        # ("Enchantment"). Normalize so getattr resolves (and save-file round-trips of the capitalized
-        # enum name still work). Was silently NONE for every spells.json spell before this.
-        s.school       = getattr(rpg.SpellSchool,   d.get("school",       "NONE").capitalize(), rpg.SpellSchool.NONE)
-        s.range        = int(d.get("range")  or 30)
-        s.radius       = int(d.get("radius") or 10)
-        s.width        = int(d.get("width")  or  5)
-        s.length       = int(d.get("length") or 30)
-        s.duration     = int(d.get("duration",   1))
-
-        # Parse magic damage types - handle both new (object) and old (string) formats
-        magic_dmg_raw = d.get("magic_damage_types", [])
-        magic_rolls = []
-        for dmg in magic_dmg_raw:
-            if isinstance(dmg, dict):
-                # New format: {"type": "Fire", "num_dice": 2, "die_size": 6, "bonus": 1}
-                dmg_type = _parse_magic_damage(dmg.get("type", "Fire"))
-                roll = rpg.MagicDamageRoll()
-                roll.type = dmg_type
-                roll.num_dice = int(dmg.get("num_dice", 1))
-                roll.die_size = int(dmg.get("die_size", 6))
-                roll.bonus = int(dmg.get("bonus", 0))
-                magic_rolls.append(roll)
-            else:
-                # Old format: just the string "Fire"
-                dmg_type = _parse_magic_damage(dmg)
-                roll = rpg.MagicDamageRoll()
-                roll.type = dmg_type
-                roll.num_dice = int(d.get("num_dice", 1))
-                roll.die_size = int(d.get("die_size", 6))
-                roll.bonus = int(d.get("bonus", 0))
-                magic_rolls.append(roll)
-        s.magic_damage_rolls = magic_rolls
-
-        # Parse physical damage types - handle both new (object) and old (string) formats
-        phys_dmg_raw = d.get("physical_damage_types", [])
-        phys_rolls = []
-        for dmg in phys_dmg_raw:
-            if isinstance(dmg, dict):
-                # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8, "bonus": 0}
-                dmg_type = _parse_physical_damage(dmg.get("type", "Bludgeoning"))
-                roll = rpg.PhysicalDamageRoll()
-                roll.type = dmg_type
-                roll.num_dice = int(dmg.get("num_dice", 1))
-                roll.die_size = int(dmg.get("die_size", 6))
-                roll.bonus = int(dmg.get("bonus", 0))
-                phys_rolls.append(roll)
-            else:
-                # Old format: just the string "Slashing"
-                dmg_type = _parse_physical_damage(dmg)
-                roll = rpg.PhysicalDamageRoll()
-                roll.type = dmg_type
-                roll.num_dice = int(d.get("num_dice", 1))
-                roll.die_size = int(d.get("die_size", 6))
-                roll.bonus = int(d.get("bonus", 0))
-                phys_rolls.append(roll)
-        s.physical_damage_rolls = phys_rolls
-
-        # Parse healing type (for Heal spells)
-        healing_raw = d.get("healing_type")
-        if healing_raw and isinstance(healing_raw, dict):
-            healing = rpg.HealingRoll()
-            healing.num_dice = int(healing_raw.get("num_dice", 1))
-            healing.die_size = int(healing_raw.get("die_size", 6))
-            healing.bonus = int(healing_raw.get("bonus", 0))
-            s.healing_type = healing
-
-        s.requires_concentration = d.get("requires_concentration", False)
-        s.moves_with_caster = d.get("moves_with_caster", False)
-        s.selective_targeting = d.get("selective_targeting", False)
-        s.resource_name = d.get("resource_name", "") or ""
-        s.resource_cost = int(d.get("resource_cost", 1))
-        s.requires_los = d.get("requires_los", False)
-        s.check_los_on_center = d.get("check_los_on_center", True)
-        s.level = int(d.get("level", 0))
-        s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
-        s.num_targets = int(d.get("num_targets", 1))
-        s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
-        s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
-        s.effects_on_end_turn = d.get("effects_on_end_turn", False)
-
-        # Parse terrain effect (Grease, Spike Growth, etc.) onto the C++ Spell.
-        # Cosmetic color/hatch stay in _spell_metadata for rendering.
-        te = d.get("terrain_effect")
-        if te:
-            if te.get("type") == "Slipping":
-                s.terrain_difficulty = rpg.TerrainDifficulty.Slipping
-                s.slip_save_dc       = int(te.get("slip_save_dc", 10))
-                s.slip_distance_feet = int(te.get("slip_distance_feet", 5))
-            else:
-                m = float(te.get("multiplier", 0.5))
-                s.terrain_difficulty = (rpg.TerrainDifficulty.Quartered if m <= 0.25
-                                        else rpg.TerrainDifficulty.Halved)
-
-        # Parse conditions applied by this spell (e.g., Hold Person applies Paralyzed)
-        conditions = []
-        for cond_entry in d.get("conditions", []):
-            if isinstance(cond_entry, dict):
-                # Full condition spec: {"condition_name": "Paralyzed", "condition_duration": 10, ...}
-                c = rpg.AttackCondition()
-                c.condition_name = cond_entry.get("condition_name", "")
-                c.condition_duration = int(cond_entry.get("condition_duration", 0))
-                c.push_ft = int(cond_entry.get("push_ft", 0))
-                c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
-                c.requires_save = ("save_ability" in cond_entry)
-                # Parse save_ability string (target's save) - defaults to spell's save_ability
-                save_ability_str = cond_entry.get("save_ability")
-                if save_ability_str:
-                    try:
-                        c.save_ability = getattr(rpg.SaveAbility, save_ability_str)
-                    except AttributeError:
-                        c.save_ability = s.save_ability  # fallback to spell's ability
-                else:
-                    c.save_ability = s.save_ability  # use spell's ability as default
-                # Parse save_dc_ability string (caster's ability for DC)
-                save_dc_ability_str = cond_entry.get("save_dc_ability", "SaveSpellcasterMod")
-                try:
-                    c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
-                except AttributeError:
-                    c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
-                # on_damage: "end" ends the condition on any damage; "repeat_save" re-rolls at advantage
-                od = str(cond_entry.get("on_damage", "") or "").lower()
-                if od == "end":
-                    c.on_damage = rpg.OnDamage.End
-                elif od in ("repeat_save", "repeatsave", "repeat-save"):
-                    c.on_damage = rpg.OnDamage.RepeatSave
-                conditions.append(c)
-            else:
-                # Simple string: just the condition name (legacy support)
-                c = rpg.AttackCondition()
-                c.condition_name = str(cond_entry)
-                c.condition_duration = 0  # will use spell duration
-                c.push_ft = 0
-                c.save_repeat_turns = 1
-                c.requires_save = False
-                c.save_ability = s.save_ability  # use spell's ability for legacy conditions
-                c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
-                conditions.append(c)
-        s.conditions = conditions
-
-        # Parse teleportation spell fields
-        s.teleportation_spell = d.get("teleportation_spell", False)
-        s.max_teleport_targets = int(d.get("max_teleport_targets", 0))
-        s.teleport_range_ft = int(d.get("teleport_range_ft", 0))
-
-        # Parse casting time
-        casting_time_str = d.get("casting_time", "Action")
-        s.casting_time = getattr(rpg.CastingTime, casting_time_str, rpg.CastingTime.Action)
-
-        return s
-
+    # NOTE: dict -> rpg.Spell conversion lives in helpers._dict_to_spell (imported above)
+    # as the single source of truth. There used to be a near-identical copy here; new
+    # spell fields were only ever added to one side, which silently dropped `school` and
+    # later `light_level` from the other. All callers use the free function directly.
 
     # FLAG: Move to C++
     def _save_agents(self, path: str | None = None):
@@ -7608,6 +7604,7 @@ class App:
                     "temp_hp": s.temp_hp,
                     "available_hit_points": s.available_hit_points,
                     "feats": list(s.feats),
+                    "stolen_spell_names": list(s.stolen_spell_names),
                     "elemental_adept_types": list(s.elemental_adept_types),
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
@@ -8067,7 +8064,7 @@ class App:
                     if spell_name in self.spell_name_to_idx:
                         idx = self.spell_name_to_idx[spell_name]
                         spell_dict = self.all_spells[idx]
-                        cpp_spell = self._dict_to_spell(i, spell_dict)
+                        cpp_spell = _dict_to_spell(spell_dict)
                         cpp_spells.append(cpp_spell)
                         # Store metadata (terrain, hatch, color)
                         meta = {
@@ -8088,7 +8085,7 @@ class App:
                 for j, item in enumerate(spell_data):
                     # Handle both old formats: spell dicts or spell names (strings)
                     if isinstance(item, dict):
-                        cpp_spells.append(self._dict_to_spell(i, item))
+                        cpp_spells.append(_dict_to_spell(item))
                         # Store metadata from dict
                         meta = {
                             "terrain_effect": item.get("terrain_effect"),
@@ -8102,7 +8099,7 @@ class App:
                         if item in self.spell_name_to_idx:
                             idx = self.spell_name_to_idx[item]
                             spell_dict = self.all_spells[idx]
-                            cpp_spells.append(self._dict_to_spell(i, spell_dict))
+                            cpp_spells.append(_dict_to_spell(spell_dict))
                             # Store metadata
                             meta = {
                                 "terrain_effect": spell_dict.get("terrain_effect"),
@@ -8439,6 +8436,7 @@ class App:
             rpg.VisibilityLevel.Dim: "DimLight",
             rpg.VisibilityLevel.Dark: "Darkness",
             rpg.VisibilityLevel.MagicalDark: "MagicalDarkness",
+            rpg.VisibilityLevel.HeavilyObscured: "HeavilyObscured",
             rpg.VisibilityLevel.Sunlight: "Sunlight",
         }
         default_str = light_str_map.get(default_light, "Darkness")
@@ -8484,6 +8482,7 @@ class App:
             "DimLight": rpg.VisibilityLevel.Dim,
             "Darkness": rpg.VisibilityLevel.Dark,
             "MagicalDarkness": rpg.VisibilityLevel.MagicalDark,
+            "HeavilyObscured": rpg.VisibilityLevel.HeavilyObscured,
             "Sunlight": rpg.VisibilityLevel.Sunlight,
         }
         return mapping.get(s, rpg.VisibilityLevel.Clear)
@@ -8640,6 +8639,7 @@ class App:
                     rpg.VisibilityLevel.Dim: 128,      # 50% of 255
                     rpg.VisibilityLevel.Dark: 230,      # 90% of 255
                     rpg.VisibilityLevel.MagicalDark: 255,
+                    rpg.VisibilityLevel.HeavilyObscured: 220,  # dense pale fog
                     rpg.VisibilityLevel.Sunlight: 45,  # faint warm tint (bright light, just flagged)
                 }.get(light_level, 0)
 
@@ -8653,6 +8653,8 @@ class App:
                     # Color depends on light level
                     if light_level == rpg.VisibilityLevel.MagicalDark:
                         color = (0, 0, 0, opacity)  # Black for magical darkness
+                    elif light_level == rpg.VisibilityLevel.HeavilyObscured:
+                        color = (200, 205, 210, opacity)  # pale grey-white for fog/smoke
                     elif light_level == rpg.VisibilityLevel.Sunlight:
                         color = (255, 235, 130, opacity)  # warm yellow for sunlight
                     else:
@@ -8671,20 +8673,25 @@ class App:
         v_lines = self.bm.v_line_positions
 
         for light_src in self.lighting_editor.light_sources:
-            px = light_src["x"]
-            py = light_src["y"]
+            # Handle both old format (x, y pixel coords) and new format (col, row grid coords)
+            if "col" in light_src and "row" in light_src:
+                grid_c = light_src["col"]
+                grid_r = light_src["row"]
+            else:
+                px = light_src["x"]
+                py = light_src["y"]
 
-            # Find grid cell containing this pixel
-            grid_c = -1
-            grid_r = -1
-            for c in range(len(v_lines) - 1):
-                if px >= v_lines[c] and px < v_lines[c + 1]:
-                    grid_c = c
-                    break
-            for r in range(len(h_lines) - 1):
-                if py >= h_lines[r] and py < h_lines[r + 1]:
-                    grid_r = r
-                    break
+                # Find grid cell containing this pixel
+                grid_c = -1
+                grid_r = -1
+                for c in range(len(v_lines) - 1):
+                    if px >= v_lines[c] and px < v_lines[c + 1]:
+                        grid_c = c
+                        break
+                for r in range(len(h_lines) - 1):
+                    if py >= h_lines[r] and py < h_lines[r + 1]:
+                        grid_r = r
+                        break
 
             if grid_c >= 0 and grid_r >= 0:
                 # Draw a circle marker at the light source center
@@ -10108,6 +10115,21 @@ class App:
                         self.btn_cbt_step_of_wind.draw(self.screen)
                         y += B + gap
 
+            # Hand of Healing button — Warrior of Mercy Monk (L3+), bonus action + 1 Focus Point;
+            # heals a clicked target (Martial Arts die + WIS), and at L6 also ends a condition.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Monk and
+                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfMercy and
+                        stats.char_level >= 3):
+                    fp = stats.get_resource("Focus Points")
+                    if fp and fp.current > 0:
+                        self.btn_cbt_hand_of_healing.rect.x = lx
+                        self.btn_cbt_hand_of_healing.rect.y = y
+                        self.btn_cbt_hand_of_healing.rect.w = W
+                        self.btn_cbt_hand_of_healing.draw(self.screen)
+                        y += B + gap
+
             # Rage button - only if agent is Barbarian, not raging, and has uses
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -10231,12 +10253,15 @@ class App:
                     self.btn_cbt_martial_arts.draw(self.screen)
                     y += B + gap
 
-            # Flurry of Blows button — Monk (L1+) with Focus Points, two bonus-action unarmed strikes
+            # Flurry of Blows button — Monk (L1+) with Focus Points, two bonus-action unarmed strikes (3 at L10+)
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
                 if stats.character_class == rpg.CharacterClass.Monk:
                     fp = stats.get_resource("Focus Points")
                     if fp and fp.current > 0:
+                        # L10 Heightened Focus: Flurry grants 3 strikes instead of 2
+                        num_attacks = 3 if stats.char_level >= 10 else 2
+                        self.btn_cbt_flurry_of_blows.text = f"Flurry of Blows ({num_attacks} Attacks)"
                         self.btn_cbt_flurry_of_blows.rect.x = lx
                         self.btn_cbt_flurry_of_blows.rect.y = y
                         self.btn_cbt_flurry_of_blows.rect.w = W
@@ -10484,6 +10509,35 @@ class App:
                             self.btn_cbt_psychic_veil.rect.w = W
                             self.btn_cbt_psychic_veil.draw(self.screen)
                             y += B + gap
+
+            # Warrior of Shadow Monk: Shadow Step (L6+, Bonus) and Cloak of Shadows (L17+, Bonus)
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Monk and
+                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfShadow):
+                    if stats.char_level >= 6 and not self.bonus_used:
+                        self.btn_cbt_shadow_step.text = "Shadow Step (Bonus)"
+                        self.btn_cbt_shadow_step.rect.x = lx
+                        self.btn_cbt_shadow_step.rect.y = y
+                        self.btn_cbt_shadow_step.rect.w = W
+                        self.btn_cbt_shadow_step.draw(self.screen)
+                        y += B + gap
+                    if stats.char_level >= 17 and not self.bonus_used:
+                        self.btn_cbt_cloak_of_shadows.text = "Cloak of Shadows (Bonus)"
+                        self.btn_cbt_cloak_of_shadows.rect.x = lx
+                        self.btn_cbt_cloak_of_shadows.rect.y = y
+                        self.btn_cbt_cloak_of_shadows.rect.w = W
+                        self.btn_cbt_cloak_of_shadows.draw(self.screen)
+                        y += B + gap
+                    # Shadow Arts: Darkness (L3, Magic action, 1 Focus)
+                    fp_d = stats.get_resource("Focus Points")
+                    if stats.char_level >= 3 and not self.action_used and fp_d and fp_d.current > 0:
+                        self.btn_cbt_shadow_arts_darkness.text = f"Shadow Arts: Darkness ({fp_d.current} Focus)"
+                        self.btn_cbt_shadow_arts_darkness.rect.x = lx
+                        self.btn_cbt_shadow_arts_darkness.rect.y = y
+                        self.btn_cbt_shadow_arts_darkness.rect.w = W
+                        self.btn_cbt_shadow_arts_darkness.draw(self.screen)
+                        y += B + gap
 
             # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
             # the Land/Sea/Sky, or dismiss the active companion (label toggles).
@@ -11340,6 +11394,10 @@ class App:
                         # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
                         elif self.pending_psychic_teleport:
                             self._resolve_psychic_teleport(cell)
+                        elif self.pending_shadow_step:
+                            self._resolve_shadow_step(cell)
+                        elif self.pending_shadow_darkness:
+                            self._resolve_shadow_darkness(cell)
                         # Pending attack: resolve against the clicked agent.
                         elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
@@ -11408,6 +11466,8 @@ class App:
                             self._resolve_healing_light(hit)
                         elif self.pending_lay_on_hands and hit >= 0:
                             self._resolve_lay_on_hands(hit)
+                        elif self.pending_hand_of_healing and hit >= 0:
+                            self._resolve_hand_of_healing(hit)
                         elif self.pending_grant_inspiration and hit >= 0:
                             self._resolve_grant_inspiration(hit)
                         elif self.pending_telekinetic and hit >= 0:
@@ -11918,6 +11978,9 @@ class App:
                                 self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
                                 self._update_reach()
                             self.bonus_used = True
+                    if self.btn_cbt_hand_of_healing.clicked(event):
+                        self.pending_hand_of_healing = True
+                        self.hint = "Click target for Hand of Healing"
                     if self.btn_cbt_rage.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -12122,6 +12185,30 @@ class App:
                             self.hint = "Psychic Teleportation: click a destination cell"
                             self._combat_log_add(
                                 "Psychic Teleportation: click a destination (or click yourself to cancel).")
+                    if self.btn_cbt_shadow_step.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_shadow_step = True
+                            self.hint = "Shadow Step: click a destination cell (up to 30 ft)"
+                            self._combat_log_add(
+                                "Shadow Step: click a destination (or click yourself to cancel).")
+                    if self.btn_cbt_cloak_of_shadows.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.cloak_of_shadows(self.bm, idx):
+                                self.bonus_used = True
+                                self._combat_log_add(
+                                    f"{self.bm.placed_agents[idx].name}: Cloak of Shadows activated.")
+                            else:
+                                self._combat_log_add(
+                                    f"{self.bm.placed_agents[idx].name}: cannot use Cloak of Shadows (not in dim/dark light).")
+                    if self.btn_cbt_shadow_arts_darkness.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_shadow_darkness = True
+                            self.hint = "Shadow Arts: Darkness: click the center of the 15-ft Sphere"
+                            self._combat_log_add(
+                                "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()
                     if self.btn_cbt_pass_bonus.clicked(event):

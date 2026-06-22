@@ -356,6 +356,70 @@ def test_onhit_grapple_computes_escape_dc_when_unset():
     print("✅ test_onhit_grapple_computes_escape_dc_when_unset passed")
 
 
+def _force_grapple(engine, bm, grp_idx, tgt_idx):
+    """Deterministically set the grapple condition (no contested roll), grappler grabbing target."""
+    tc = engine.get_agent_conditions(bm, tgt_idx)
+    tc.grappled = True
+    tc.grappler_idx = grp_idx
+    tc.grapple_range_ft = 5
+    engine.set_agent_conditions(bm, tgt_idx, tc)
+
+
+def _set_speed(engine, bm, idx, walk):
+    s = engine.get_agent_stats(bm, idx)
+    s.speed_walk = walk
+    engine.set_agent_stats(bm, idx, s)
+
+
+def test_grapple_drag_costs_double_no_dash():
+    """Dragging a grappled creature costs double per foot, charged against the grappler's OWN
+    movement budget (not the CombatEngine's separate per-turn map). With a 30 ft Speed and no Dash
+    the grappler can drag at most 15 ft."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    grp = add_agent_to_battle(engine, bm, create_test_agent("Grappler", 2, 5), str=18)
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 2, 6), str=6)  # south, off the E/W path
+    _set_speed(engine, bm, grp, 30)
+    bm.placed_agents[grp].init_movement(30)   # GUI seeds the agent budget each turn
+    _force_grapple(engine, bm, grp, tgt)
+
+    # 4 cells east = 20 ft, doubled = 40 ft > 30 ft budget → must fail.
+    assert not engine.move_agent(bm, grp, rpg.Cell(6, 5), rpg.MovementType.Walk), \
+        "Dragging 20 ft (cost 40) should exceed a 30 ft budget"
+    # 3 cells east = 15 ft, doubled = 30 ft == budget → succeeds and drains it fully.
+    assert engine.move_agent(bm, grp, rpg.Cell(5, 5), rpg.MovementType.Walk), \
+        "Dragging 15 ft (cost 30) should fit a 30 ft budget"
+    assert bm.placed_agents[grp].walk_remaining == 0, \
+        "Dragging 15 ft should drain the whole 30 ft budget (double cost)"
+    print("✅ test_grapple_drag_costs_double_no_dash passed")
+
+
+def test_grapple_drag_scales_with_dash():
+    """Regression for the reported bug: the drag surcharge is charged against the grappler's own
+    (Dash-aware) budget, not a separate per-turn map that ignored Dash. After a Cunning-Action Dash a
+    30 ft-Speed grappler can drag a full 30 ft over the turn. Previously the surcharge hit the engine's
+    un-Dashed budget, so movement 'turned off' at 15 ft while the displayed budget still showed feet."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    grp = add_agent_to_battle(engine, bm, create_test_agent("Grappler", 2, 5), str=18)
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 2, 6), str=6)
+    _set_speed(engine, bm, grp, 30)
+    bm.placed_agents[grp].init_movement(30)
+    bm.apply_dash(grp)                         # Dash doubles the agent budget: 30 -> 60 ft
+    assert bm.placed_agents[grp].walk_remaining == 60, "Dash should double the walk budget to 60"
+    _force_grapple(engine, bm, grp, tgt)
+
+    # Two 15 ft drags (cost 30 each) = 60 ft, exactly the Dashed budget — both must succeed.
+    assert engine.move_agent(bm, grp, rpg.Cell(5, 5), rpg.MovementType.Walk), \
+        "First 15 ft drag should succeed after Dash"
+    assert bm.placed_agents[grp].walk_remaining == 30, \
+        "One 15 ft drag (cost 30) of a 60 ft Dashed budget leaves 30 ft"
+    assert engine.move_agent(bm, grp, rpg.Cell(8, 5), rpg.MovementType.Walk), \
+        "Second 15 ft drag must still succeed — the Dash bonus is honoured (regression)"
+    assert bm.placed_agents[grp].walk_remaining == 0
+    print("✅ test_grapple_drag_scales_with_dash passed")
+
+
 def run_all_tests():
     """Run all grapple tests."""
     tests = [
@@ -369,6 +433,8 @@ def run_all_tests():
         test_grappled_agent_cannot_move,
         test_grapple_badge_in_repr,
         test_grappler_movement_drags_target,
+        test_grapple_drag_costs_double_no_dash,
+        test_grapple_drag_scales_with_dash,
         test_onhit_grapple_automatic_with_escape_dc,
         test_onhit_grapple_computes_escape_dc_when_unset,
     ]

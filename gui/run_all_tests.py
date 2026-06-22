@@ -15,6 +15,8 @@ test_scripts = [
     "test_spells.py",
     "test_movement.py",
     "test_visibility.py",
+    "test_heavily_obscured.py",
+    "test_fog_cloud.py",
     "test_frightened.py",
     "test_unconscious.py",
     "test_deafened.py",
@@ -84,6 +86,8 @@ test_scripts = [
     "test_rogue_phase2.py",
     "test_rogue_thief.py",
     "test_rogue_soulknife.py",
+    "test_rogue_assassin.py",
+    "test_rogue_arcane_trickster.py",
 
     # Monk features
     "test_monk.py",

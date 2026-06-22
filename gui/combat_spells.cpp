@@ -240,6 +240,17 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         bm.setAgentConditions(tgt_idx, clear_es);
     }
 
+    // Arcane Trickster L9 — Magical Ambush: if the AT is Hidden/Invisible (unseen) when casting a
+    // spell that forces a save, the target has Disadvantage on that save.
+    if (caster_stats.character_class == CharacterClass::Rogue &&
+        caster_stats.rogue_subclass == ArcaneTricksterPath && caster_stats.char_level >= 9) {
+        const Agent::Conditions& cc = caster_pa.agent->getConditions();
+        if (cc.hidden || cc.invisible) {
+            target_dis = true;
+            log_("Magical Ambush: {} has Disadvantage on the save", agentName(bm, tgt_idx));
+        }
+    }
+
     // Cleric Light Domain L17 — Corona of Light: enemies within 60 ft of the caster have Disadvantage
     // on saves vs the caster's Fire/Radiant spells while the corona is active.
     if (caster_stats.corona_of_light_turns > 0 && action.caster_idx != tgt_idx &&
@@ -340,6 +351,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // damage type, Quickened changes the casting time). The agent's stored spell
     // is untouched, and persistent effects copy this (already-modified) sp below.
     Spell sp = spells[static_cast<std::size_t>(action.spell_idx)];
+
+    // Spell Thief (Arcane Trickster L17): a caster whose spell was stolen can't cast that spell
+    // until its next long rest (the lock clears in applyLongRest). Refuse before any effect/slot.
+    if (caster_pa.agent->getStats().spellIsStolen(sp.name)) {
+        log_("{} can't cast {} — the spell was stolen (Spell Thief)",
+             agentName(bm, action.caster_idx), sp.name);
+        return result;   // valid == false → no effect
+    }
 
     // Cast-time element choice (Chromatic Orb, Sorcerous Burst): the caster picks the
     // damage type per cast. Rewrite every magic-damage roll's type on this local copy
@@ -1415,10 +1434,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         if (!light_cells.empty()) {
+            // Light effects from spells persist for their full duration, which for
+            // these spells (Darkness 10 min, Fog Cloud/Daylight 1 hr) far exceeds any
+            // combat. Concentration light spells (Darkness, Fog Cloud) are removed when
+            // concentration drops (dropConcentration -> removeLightEffectsBySource), so
+            // they are placed as permanent (-1) here. Non-concentration light spells
+            // (Daylight) also outlast combat, so they persist for the encounter.
+            // spells.json carries a placeholder `duration` of 1 round for most spells;
+            // a value > 1 is treated as an explicit rounds-based lifetime, otherwise the
+            // effect is permanent-for-encounter rather than expiring after one round.
+            int light_turns = (sp.duration > 1) ? sp.duration : -1;
             int light_id = bm.placeLightEffect(
                 sp.name, light_cells,
                 static_cast<VisibilityLevel>(sp.light_level),
-                sp.duration, action.caster_idx);
+                light_turns, action.caster_idx);
 
             if (light_id >= 0) {
                 result.light_effect_ids.push_back(light_id);
@@ -1439,7 +1468,6 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     // Decrement resources (uses or spell slots) after successful cast
     if (result.valid) {
-        log_("[DEBUG execute_spell] result.valid=true, slot_level={}, caster_idx={}", action.slot_level, action.caster_idx);
         PlacedAgent& pa = bm.placedAgentMut(action.caster_idx);
         Spell& spell_mut = pa.spells[static_cast<std::size_t>(action.spell_idx)];
         Agent::Stats& stats = pa.agent->getStats();
@@ -1456,17 +1484,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (res) res->spend(cost);
             log_("{} spends {} {}", agentName(bm, action.caster_idx), cost, spell_mut.resource_name);
         } else if (stats.is_npc) {
-            log_("[DEBUG execute_spell] NPC branch taken for agent {}", action.caster_idx);
             // NPC: decrement N/day uses
             if (spell_mut.uses_max > 0) {
                 spell_mut.uses_remaining = std::max(0, spell_mut.uses_remaining - 1);
             }
         } else {
-            log_("[DEBUG execute_spell] Player branch taken for agent {}", action.caster_idx);
             // Player: decrement spell slot (if not a cantrip). A free cast (e.g. Mantle of Majesty's
             // Command) skips the slot decrement entirely — the caller still charges the action economy.
             int slot_level = action.slot_level > 0 ? action.slot_level : sp.level;
-            log_("[DEBUG execute_spell] Calculated slot_level={}, checking if > 0 and <= 9", slot_level);
             if (!action.free_cast && slot_level > 0 && slot_level <= 9) {
                 auto& slots = stats.spell_slots_remaining;
                 slots[static_cast<std::size_t>(slot_level - 1)] =
@@ -1474,14 +1499,6 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Wizard Diviner L6: Expert Divination
                 // Cast Divination spell with L2+ slot → regain highest-level lower-level slot (max L5)
-                log_("[EXPERT DIVINATION DEBUG] Spell: {}, School: {}, IsWizard: {}, IsDiviner: {}, IsL2Plus: {}",
-                     spell_mut.name, static_cast<int>(spell_mut.school),
-                     (stats.character_class == Wizard ? 1 : 0),
-                     (stats.wizard_subclass == DivinierPath ? 1 : 0),
-                     (slot_level >= 2 ? 1 : 0));
-                log_("[EXPERT DIVINATION DEBUG] Spell::Divination value: {}, Match: {}",
-                     static_cast<int>(Spell::Divination), (spell_mut.school == Spell::Divination ? 1 : 0));
-
                 if (stats.character_class == Wizard && stats.wizard_subclass == DivinierPath &&
                     spell_mut.school == Spell::Divination && slot_level >= 2) {
                     log_("[EXPERT DIVINATION] Restoring spell slot for spell: {}", spell_mut.name);
@@ -2040,6 +2057,9 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     }
     for (int eid : result.removed_spell_effect_ids)
         bm.removeSpellEffect(eid);
+
+    // 2a. Remove this caster's concentration light effects (Darkness, Fog Cloud, etc.)
+    [[maybe_unused]] auto removed_light_ids = bm.removeLightEffectsBySource(agent_idx);
 
     // 3. Remove conditions applied by this agent's concentration spells.
     //    clearSpellConditionEffect REVERSES the condition's effect on the target
@@ -2627,6 +2647,31 @@ bool CombatEngine::canCastCounterspell(const BattleMap& bm, int idx, int caster_
     return true;
 }
 
+bool CombatEngine::canSpellThief(const BattleMap& bm, int idx, int caster_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return false;
+    if (idx == caster_idx) return false;                          // can't steal your own spell
+    if (bm.isAgentOnDeck(idx)) return false;                      // On Deck reserves take no reactions until deployed
+    if (areAllies(bm, idx, caster_idx)) return false;            // never steal a teammate's spell
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Rogue ||
+        s.rogue_subclass != ArcaneTricksterPath || s.char_level < 17) return false;
+    if (s.hp_cur <= 0) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    // "when you see a creature within 60 feet casting a spell": LOS + 60 ft to the caster (mirrors
+    // canCastCounterspell). Spell Thief is a class feature, so no slot/known-spell requirement.
+    const PlacedAgent& rpa = agents[static_cast<std::size_t>(idx)];
+    const PlacedAgent& cpa = agents[static_cast<std::size_t>(caster_idx)];
+    if (footprintDistance(rpa.origin, rpa.agent->getSize(),
+                          cpa.origin, cpa.agent->getSize()) * 5 > 60) return false;
+    if (!bm.hasLineOfSight(rpa.origin, rpa.agent->getSize(),
+                           cpa.origin, cpa.agent->getSize())) return false;
+    return true;
+}
+
 std::vector<int>
 CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action) const
 {
@@ -2644,6 +2689,14 @@ CombatEngine::declareCastReactors(const BattleMap& bm, const SpellAction& action
     // i == caster, so a caster can't counter its own Counterspell.
     for (int i = 0; i < static_cast<int>(agents.size()); ++i)
         if (i != action.caster_idx && canCastCounterspell(bm, i, action.caster_idx))
+            reactors.push_back(i);
+
+    // Spell Thief (Arcane Trickster L17): an AT who sees the cast within 60 ft may try to steal it
+    // (caster INT save vs the AT's DC). Enroll alongside counterspellers; dedup so an AT who also
+    // knows Counterspell is offered both options in stepTopCast.
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i)
+        if (i != action.caster_idx && canSpellThief(bm, i, action.caster_idx) &&
+            std::find(reactors.begin(), reactors.end(), i) == reactors.end())
             reactors.push_back(i);
 
     // Then Shield: only Magic Missile opens a Shield reaction (for each distinct target that can
@@ -2754,6 +2807,41 @@ void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, cons
     if (opt.kind != ReactionOption::Feature) return;
     // Counterspell is NOT handled here — it pushes a nested cast (see submitDecision / stepTopCast),
     // so a deeper Counterspell can negate it before it resolves.
+    if (opt.feature == "SpellThief") {
+        // Spell Thief (Arcane Trickster L17): the caster (ctx.source_idx) makes an INT save vs the
+        // AT's spell save DC. The reaction is spent regardless of the outcome. On a failure the cast
+        // is countered (fizzles, slot kept) AND the caster can't recast that spell until a long rest.
+        if (!canSpellThief(bm, ctx.reactor_idx, ctx.source_idx)) return;
+        Agent::Conditions rc = bm.getAgentConditions(ctx.reactor_idx);
+        rc.reaction_used = true;
+        bm.setAgentConditions(ctx.reactor_idx, rc);
+
+        const Agent::Stats at_stats = bm.getAgentStats(ctx.reactor_idx);
+        const int dc    = spellSaveDc(at_stats);
+        const int total = roll(20) + saveModFor(bm, ctx.source_idx, SaveInt);
+        // Resolve the spell name from the in-flight cast (ctx.spell_idx on the caster's list).
+        std::string castName;
+        const auto& spells = bm.getAgentSpells(ctx.source_idx);
+        if (ctx.spell_idx >= 0 && ctx.spell_idx < static_cast<int>(spells.size()))
+            castName = spells[static_cast<std::size_t>(ctx.spell_idx)].name;
+        if (total >= dc) {
+            log_("Spell Thief: {} succeeds on the INT save ({} vs DC {}) — the spell is not stolen",
+                 agentName(bm, ctx.source_idx), total, dc);
+        } else {
+            if (castActive()) topCast().countered = true;       // fizzle the cast (slot kept), like Counterspell
+            if (!castName.empty()) {
+                Agent::Stats cs = bm.getAgentStats(ctx.source_idx);
+                if (!cs.spellIsStolen(castName)) {
+                    cs.stolen_spell_names.push_back(castName);
+                    bm.setAgentStats(ctx.source_idx, cs);
+                }
+            }
+            log_("Spell Thief: {} fails the INT save ({} vs DC {}) — {} steals {} (it can't be recast "
+                 "until a long rest)", agentName(bm, ctx.source_idx), total, dc,
+                 agentName(bm, ctx.reactor_idx), castName);
+        }
+        return;
+    }
     if (opt.feature == "Shield") {
         if (applyShield(bm, ctx.reactor_idx) && ctx.window == ReactionWindow::OnHit &&
             topCast().has_preroll && topCast().preroll_target == ctx.reactor_idx) {
@@ -2877,6 +2965,10 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
             ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
                 "Cast Counterspell vs " + agentName(bm, c.action.caster_idx) + "'s " + castName,
                 "Counterspell"});
+        if (canSpellThief(bm, reactor, c.action.caster_idx))
+            ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                "Spell Thief: steal " + agentName(bm, c.action.caster_idx) + "'s " + castName +
+                " (it makes an INT save)", "SpellThief"});
         if (castName == "Magic Missile" && canCastShield(bm, reactor) &&
             std::find(c.action.target_indices.begin(), c.action.target_indices.end(), reactor)
                 != c.action.target_indices.end())

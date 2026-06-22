@@ -3,14 +3,6 @@
     {
       "type": "Wall",
       "x": 158,
-      "y": 138,
-      "width": 850,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 158,
       "y": 188,
       "width": 50,
       "height": 600,
@@ -26,26 +18,26 @@
     },
     {
       "type": "Wall",
-      "x": 408,
+      "x": 208,
+      "y": 188,
+      "width": 800,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 588,
+      "width": 50,
+      "height": 200,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
       "y": 238,
       "width": 50,
-      "height": 500,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 458,
-      "y": 688,
-      "width": 400,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 458,
-      "y": 238,
-      "width": 400,
-      "height": 50,
+      "height": 250,
       "multiplier": 0.0
     }
   ],

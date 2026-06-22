@@ -478,6 +478,19 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
     if (actual_cost < 0 || actual_cost > 200)  // 200 is practical max
         return false;
 
+    // Grappling a creature doubles the cost of every foot of movement (you drag it along). Charge
+    // the double cost against this same (agent) movement budget — the one Dash, exhaustion, and every
+    // other speed modifier already flow through — so the surcharge scales with them. (The CombatEngine's
+    // separate per-turn walkRemaining_ map is NOT used for this; charging it instead left the surcharge
+    // blind to a Dash, which capped a grappler at base speed even after Dashing.)
+    bool dragging_grappled = false;
+    for (std::size_t i = 0; i < placedAgents_.size(); ++i) {
+        if (static_cast<int>(i) == idx) continue;
+        const auto& c = placedAgents_[i].agent->getConditions();
+        if (c.grappled && c.grappler_idx == idx) { dragging_grappled = true; break; }
+    }
+    const int charge = dragging_grappled ? actual_cost * 2 : actual_cost;
+
     // Check movement budget based on type
     int remaining = 0;
     switch (type) {
@@ -487,15 +500,15 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
         default: return false;
     }
 
-    if (actual_cost > remaining)
+    if (charge > remaining)
         return false;
 
-    // Deduct the actual cost
+    // Deduct the (possibly doubled) cost
     pa.agent->addMovement(
-        (type == MovementType::Walk ? -actual_cost : 0),
+        (type == MovementType::Walk ? -charge : 0),
         0,
-        (type == MovementType::Swim ? -actual_cost : 0),
-        (type == MovementType::Burrow ? -actual_cost : 0)
+        (type == MovementType::Swim ? -charge : 0),
+        (type == MovementType::Burrow ? -charge : 0)
     );
 
     pa.origin = newOrigin;
@@ -1273,10 +1286,46 @@ void BattleMap::setTerrainType(Cell c, TerrainType t) noexcept {
 }
 
 // ── Light levels (visibility & darkvision) ────────────────────────────────────
+// Combine two light levels, brightest wins (defined below; forward-declared for getLightLevelFor).
+static VisibilityLevel brighter(VisibilityLevel a, VisibilityLevel b) noexcept;
+
 VisibilityLevel BattleMap::getLightLevel(Cell c) const noexcept {
     if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
         return VisibilityLevel::Clear;  // out-of-bounds is bright
     return lightLevel_[c.row * cols_ + c.col];
+}
+
+VisibilityLevel BattleMap::getLightLevelFor(Cell c, int observer_idx) const noexcept {
+    const VisibilityLevel actual = getLightLevel(c);
+    // Only magical darkness can be "seen through"; anything else is the same for everyone.
+    if (observer_idx < 0 || actual != VisibilityLevel::MagicalDark)
+        return actual;
+    if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_)
+        return actual;
+
+    const int flat = c.row * cols_ + c.col;
+    bool darkened_by_other = false;  // a MagicalDark effect here that the observer canNOT see through
+    bool sees_through_here = false;  // the observer's own see-through Darkness covers this cell
+    for (const auto& eff : activeLightEffects_) {
+        if (eff.light_level != VisibilityLevel::MagicalDark) continue;
+        if (std::find(eff.cell_indices.begin(), eff.cell_indices.end(), flat) == eff.cell_indices.end())
+            continue;
+        if (eff.see_through_agent_idx == observer_idx) sees_through_here = true;
+        else darkened_by_other = true;
+    }
+    // If any darkness here is opaque to the observer (or none is see-through), it stays MagicalDark.
+    if (darkened_by_other || !sees_through_here)
+        return VisibilityLevel::MagicalDark;
+
+    // The only darkness here is the observer's own: recompute the light without the magical-dark
+    // layer (base lighting + non-magical effects, brightest wins).
+    VisibilityLevel result = baseVisibilityLevel_[static_cast<std::size_t>(flat)];
+    for (const auto& eff : activeLightEffects_) {
+        if (eff.light_level == VisibilityLevel::MagicalDark) continue;
+        if (std::find(eff.cell_indices.begin(), eff.cell_indices.end(), flat) != eff.cell_indices.end())
+            result = brighter(result, eff.light_level);
+    }
+    return result;
 }
 
 void BattleMap::setLightLevel(Cell c, VisibilityLevel lvl) noexcept {
@@ -1334,9 +1383,12 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
     if (truesight_ft > 0 && dist_ft <= truesight_ft)
         return true;
 
-    // Devil's Sight: sees in darkness and magical darkness (120ft max normally, but respecting range)
+    // Devil's Sight: sees in darkness and magical darkness (120ft max normally, but respecting
+    // range). It does NOT pierce HeavilyObscured fog/smoke — that is a physical obscurement, not a
+    // darkness, so only Truesight/Blindsight defeats it (Truesight already returned above).
     if (devilssight_ft > 0 && dist_ft <= devilssight_ft &&
-        effective_light != VisibilityLevel::Clear && effective_light != VisibilityLevel::Dim)
+        effective_light != VisibilityLevel::Clear && effective_light != VisibilityLevel::Dim &&
+        effective_light != VisibilityLevel::HeavilyObscured)
         return true;
 
     // Normal visibility by light condition
@@ -1352,6 +1404,8 @@ bool BattleMap::canSee(Cell obs_origin, int obs_size,
             return darkvision_ft > 0 && dist_ft <= darkvision_ft;
         case VisibilityLevel::MagicalDark:
             return false;  // magical darkness blocks darkvision
+        case VisibilityLevel::HeavilyObscured:
+            return false;  // fog/smoke: only Truesight/Blindsight sees through (handled above)
         case VisibilityLevel::Blocked:
             return false;  // cannot see through walls/obstacles
         case VisibilityLevel::Sunlight:
@@ -1668,10 +1722,13 @@ void BattleMap::updateLighting() noexcept {
     // Step 1: reset computed lighting to base
     lightLevel_ = baseVisibilityLevel_;
 
-    // Step 2: apply normal light effects (brightest wins = std::min)
+    // Step 2: apply normal light effects (brightest wins = std::min). MagicalDark and
+    // HeavilyObscured are override levels (handled below) — bright light cannot dispel them, so they
+    // must not flow through the brighter() combine here.
     for (const auto& eff : activeLightEffects_) {
-        if (eff.light_level == VisibilityLevel::MagicalDark)
-            continue;  // Handle magical darkness in step 3
+        if (eff.light_level == VisibilityLevel::MagicalDark ||
+            eff.light_level == VisibilityLevel::HeavilyObscured)
+            continue;  // Handle overrides in steps 3–4
         for (int idx : eff.cell_indices) {
             if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
                 lightLevel_[static_cast<std::size_t>(idx)] =
@@ -1680,7 +1737,20 @@ void BattleMap::updateLighting() noexcept {
         }
     }
 
-    // Step 3: apply magical darkness (always wins = override)
+    // Step 3: apply heavy obscurement / fog (override; survives bright light). Applied before
+    // magical darkness so that, where both overlap, MagicalDark (more restrictive — also blocks
+    // devil's sight) wins.
+    for (const auto& eff : activeLightEffects_) {
+        if (eff.light_level != VisibilityLevel::HeavilyObscured)
+            continue;
+        for (int idx : eff.cell_indices) {
+            if (idx >= 0 && static_cast<std::size_t>(idx) < lightLevel_.size()) {
+                lightLevel_[static_cast<std::size_t>(idx)] = VisibilityLevel::HeavilyObscured;
+            }
+        }
+    }
+
+    // Step 4: apply magical darkness (always wins = override)
     for (const auto& eff : activeLightEffects_) {
         if (eff.light_level != VisibilityLevel::MagicalDark)
             continue;
@@ -1694,7 +1764,8 @@ void BattleMap::updateLighting() noexcept {
 
 int BattleMap::placeLightEffect(std::string name, std::vector<Cell> cells,
                                  VisibilityLevel level, int turns_remaining,
-                                 int source_agent_idx) noexcept {
+                                 int source_agent_idx,
+                                 int see_through_agent_idx) noexcept {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -1714,7 +1785,8 @@ int BattleMap::placeLightEffect(std::string name, std::vector<Cell> cells,
         std::move(indices),
         level,
         turns_remaining,
-        source_agent_idx
+        source_agent_idx,
+        see_through_agent_idx
     });
 
     updateLighting();
@@ -1832,69 +1904,6 @@ void BattleMap::clearSpellEffects() noexcept {
     nextSpellEffectId_ = 0;
 }
 
-int BattleMap::addObscurationEffect(ActiveObscurationEffect effect) noexcept {
-    effect.id = nextObscurationEffectId_++;
-    activeObscurationEffects_.push_back(effect);
-    return effect.id;
-}
-
-void BattleMap::removeObscurationEffect(int effect_id) noexcept {
-    auto it = std::find_if(activeObscurationEffects_.begin(), activeObscurationEffects_.end(),
-        [effect_id](const ActiveObscurationEffect& e) { return e.id == effect_id; });
-    if (it != activeObscurationEffects_.end()) {
-        activeObscurationEffects_.erase(it);
-    }
-}
-
-const std::vector<ActiveObscurationEffect>& BattleMap::activeObscurationEffects() const noexcept {
-    return activeObscurationEffects_;
-}
-
-VisibilityLevel BattleMap::getObscurationAtCell(const Cell& c) const noexcept {
-    // Check all obscuration effects to find the highest obscuration level at this cell
-    VisibilityLevel highest = VisibilityLevel::Clear;
-
-    for (const auto& effect : activeObscurationEffects_) {
-        // Check if this cell is in the effect
-        if (std::find(effect.cells.begin(), effect.cells.end(), c) != effect.cells.end()) {
-            // MagicalDarkness is highest priority (most obscuring)
-            if (effect.obscuration_level == VisibilityLevel::MagicalDark) {
-                return VisibilityLevel::MagicalDark;
-            }
-            // PartiallyObscured is next
-            if (effect.obscuration_level == VisibilityLevel::LightlyObscured &&
-                highest != VisibilityLevel::MagicalDark) {
-                highest = VisibilityLevel::LightlyObscured;
-            }
-        }
-    }
-
-    return highest;
-}
-
-std::vector<int> BattleMap::tickObscurationEffects() noexcept {
-    std::vector<int> removed_ids;
-    std::vector<ActiveObscurationEffect> remaining;
-
-    for (auto& effect : activeObscurationEffects_) {
-        if (effect.turns_remaining == -1) {
-            // Permanent effect (e.g., concentration-based)
-            remaining.push_back(effect);
-        } else if (--effect.turns_remaining <= 0) {
-            removed_ids.push_back(effect.id);
-        } else {
-            remaining.push_back(effect);
-        }
-    }
-
-    activeObscurationEffects_ = remaining;
-    return removed_ids;
-}
-
-void BattleMap::clearObscurationEffects() noexcept {
-    activeObscurationEffects_.clear();
-    nextObscurationEffectId_ = 0;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Map items (weapons on the ground)

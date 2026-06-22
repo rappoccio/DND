@@ -254,6 +254,16 @@ struct OpenHandRiderResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Result of Monk Warrior of Mercy — Hand of Healing (a Bonus Action heal)
+// ─────────────────────────────────────────────────────────────────────────────
+struct HandOfHealingResult {
+    bool valid = false;                 // gate passed (Mercy Monk L3+, Focus Point, Bonus Action)
+    int  amount_healed = 0;             // HP actually restored to the target
+    bool condition_cleared = false;     // L6 Physician's Touch: a condition was also ended
+    std::string cleared_condition = {}; // name of the condition ended (empty if none)
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Result of a Battle Master Maneuver (Trip, Menacing, Pushing)
 // ─────────────────────────────────────────────────────────────────────────────
 struct ManeuverResult {
@@ -273,8 +283,10 @@ struct ManeuverResult {
 struct FlurryResult {
     AttackResult attack1;              // first unarmed strike
     AttackResult attack2;              // second unarmed strike
+    AttackResult attack3;              // third unarmed strike (Monk L10 Heightened Focus)
     OpenHandRiderResult rider1;        // rider applied on first hit (if Way of Open Hand)
     OpenHandRiderResult rider2;        // rider applied on second hit (if Way of Open Hand)
+    OpenHandRiderResult rider3;        // rider applied on third hit (if Way of Open Hand)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -956,9 +968,11 @@ public:
     // Static (touches only bm) so the static heal utilities (healAgent/layOnHands) can call it.
     static void reviveOnHeal(BattleMap& bm, int idx) noexcept;
     // Rogue Cunning Strike rider application (save + condition): Poison/Trip/Withdraw/KnockOut/Obscure.
-    // Internal helper called by applyCunningStrikeEffect after the Sneak Attack dice are spent.
+    // Internal helper called by applyCunningStrikeEffect after the Sneak Attack dice are spent. result
+    // is forwarded so the Assassin's Envenom Weapons (L13+) bonus 2d6 Poison (on a failed Poison save,
+    // ignoring Poison Resistance) folds into the same AttackResult/target HP.
     void applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,
-                                  const std::vector<int>& effects) noexcept;
+                                  const std::vector<int>& effects, AttackResult& result) noexcept;
     void applyPoisoned(BattleMap& bm, int idx) noexcept;  // disadvantage on attacks and ability checks
     void applyDeafened(BattleMap& bm, int idx) noexcept;  // cannot hear; auto-fail ability checks requiring hearing
     void applyPetrified(BattleMap& bm, int idx) noexcept;  // incapacitated, speed 0, resistance to all damage, immune to poisoned
@@ -1193,8 +1207,17 @@ public:
     // target's HP, marks Sneak Attack used, then applies any rider conditions. effects: rider codes
     // (0=Poison 1=Trip 2=Withdraw 4=KnockOut 5=Obscure); empty = full Sneak Attack with no rider.
     // Invalid/over-budget rider sets are ignored (full Sneak Attack still applies, no rider).
+    //
+    // round_num (default -1 = caller doesn't track rounds): the current combat round (0 = first
+    // round). Drives the Assassin subclass round-1 features folded into this Sneak Attack:
+    //   · Assassinate (L3+): +Rogue-level flat damage on a first-round Sneak hit.
+    //   · Envenom Weapons (L13+): the Poison rider costs 0 Sneak dice and adds 2d6 Poison ignoring
+    //     Resistance (applied in applyCunningStrikeRiders on a failed save).
+    //   · Death Strike (L17+): a first-round Sneak hit forces a CON save (DC 8 + DEX + PB); on a
+    //     failure the whole attack's damage is doubled.
     void applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                  const std::vector<int>& effects, AttackResult& result) noexcept;
+                                  const std::vector<int>& effects, AttackResult& result,
+                                  int round_num = -1) noexcept;
 
     // ── Soulknife Rogue (subclass) ──────────────────────────────────────────
     // Soul Blades — Homing Strikes (L9): after a MISS with a Psychic Blade, spend 1 Psionic Energy
@@ -1212,6 +1235,23 @@ public:
     // Psychic Veil (L13): a Magic action → gain the Invisible condition. Once per Long Rest, or by
     // expending 1 Psionic Energy Die. Returns true if activated.
     bool activatePsychicVeil(BattleMap& bm, int idx) noexcept;
+
+    // Shadow Step (L6+): a Bonus Action teleport for Warrior of Shadow Monks. L6 requires dim/dark,
+    // L11+ works from any light level. Sets shadow_step_advantage flag for next attack. Returns true
+    // iff teleport succeeds. The GUI handles target-cell selection (like Psychic Teleportation).
+    bool shadowStepTeleport(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // Cloak of Shadows (L17): a Bonus Action for Warrior of Shadow Monks. Gain Invisible condition
+    // in dim/dark light. Invisibility persists through attacks (doesn't end on action). Returns true
+    // iff activated. Expires on turn start if agent moves to bright light.
+    bool cloakOfShadows(BattleMap& bm, int idx) noexcept;
+
+    // Shadow Arts: Darkness (L3): a Warrior of Shadow Monk spends 1 Focus Point to fill a 15-ft-radius
+    // Sphere (centered on the chosen point) with magical Darkness for 1 minute. The casting Monk can
+    // see through their own Darkness (the light effect is tagged see-through for this Monk), so they
+    // are not Blinded by it; other creatures inside without Devil's Sight gain the Blinded condition.
+    // Returns the new light-effect id (>= 0) on success, or -1 on failure (wrong class/level/no focus).
+    int shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
 
     // Rend Mind (L17): after a Psychic-Blade Sneak Attack, force a WIS save (DC 8 + DEX + PB) or be
     // Stunned for 1 minute (repeat the save at end of each of its turns). Once per Long Rest, or by
@@ -1323,6 +1363,19 @@ public:
     // three riders: Knockdown (STR save or Prone), Push (forceMoveAgent), or Deny Reaction (set reaction_used).
     // Spends 1 Focus Point. Clears the flag and sets open_hand_rider_used.
     OpenHandRiderResult applyOpenHandRider(BattleMap& bm, int attacker_idx, int target_idx, int option) noexcept;
+
+    // Monk Warrior of Mercy — Hand of Healing (L3+): a Bonus Action that spends 1 Focus Point to heal a
+    // creature within reach for (Martial Arts die + WIS mod). At L6 (Physician's Touch) it also ends one
+    // of Blinded/Deafened/Paralyzed/Poisoned/Stunned on the target. Pass free=true (only honored at L11,
+    // Flurry of Healing and Harm) to fold the heal into a Flurry strike: no Focus Point and no Bonus Action.
+    HandOfHealingResult handOfHealing(BattleMap& bm, int monk_idx, int target_idx, bool free = false) noexcept;
+
+    // Monk Warrior of Mercy — Hand of Harm (L3+): once per turn, after a qualifying unarmed hit
+    // (hand_of_harm_available), spend 1 Focus Point to add (Martial Arts die + WIS mod) Necrotic damage to
+    // the AttackResult and the target's HP. At L6 (Physician's Touch) the target also becomes Poisoned. At
+    // L11 (Flurry of Healing and Harm) it costs no Focus Point and may be used any number of times per turn,
+    // but only once per target. Mirrors applyPsionicStrikeEffect (deferred on-hit rider).
+    void applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
 
     // Battle Master Maneuver (on-hit): spend 1 Superiority Die and apply one of three riders:
     // 0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft).
@@ -1565,6 +1618,15 @@ public:
     [[nodiscard]] bool canParry(const BattleMap& bm, int defender_idx) const;
     bool applyParry(BattleMap& bm, int reactor_idx, AttackResult& r);
 
+    // Monk Deflect Attacks (L3+) — OnHit defender reaction. When hit by an attack that deals
+    // Bludgeoning/Piercing/Slashing damage, spend the reaction to reduce that damage by
+    // 1d10 + DEX modifier + Monk level. At L13 (Deflect Energy) it applies to an attack of ANY
+    // damage type. canDeflectAttacks gates class/level/reaction/alive; the damage-type gate (and the
+    // L13 widening) is enforced inside applyDeflectAttacks and at the offer site. No Focus cost for the
+    // reduction; the redirect-as-a-ranged-attack clause is deferred (see known_limitations.md).
+    [[nodiscard]] bool canDeflectAttacks(const BattleMap& bm, int defender_idx) const;
+    bool applyDeflectAttacks(BattleMap& bm, int reactor_idx, AttackResult& r);
+
     // Defensive Duelist (feat) — OnHit defender reaction. When a creature HITS the target with a MELEE
     // attack and the target wields a Finesse melee weapon, it may add its Proficiency Bonus to AC against
     // that attack, possibly flipping the hit to a miss. Like Shield: offered only on a non-crit hit whose
@@ -1749,6 +1811,10 @@ public:
     // Tick the given agent's terrain at the start of their turn. Decrements durations,
     // removes expired effects, and clears concentration if a concentration terrain expired.
     [[nodiscard]] TerrainTickResult tickTerrainForTurn(BattleMap& bm, int agent_idx);
+
+    // Phase 3: Tick light effects (Darkness, fog, etc.) at turn start. Expires effects by turns_remaining,
+    // re-evaluates blinding for all agents if any expire.
+    void tickLightEffectsForTurn(BattleMap& bm, int agent_idx) noexcept;
 
     // Execute a shove attempt (bonus action, contested Athletics check).
     // Attacker vs target Athletics/Acrobatics (target chooses higher).
@@ -1953,6 +2019,11 @@ private:
     // True if `idx` can cast Counterspell at `caster_idx` now (knows it, L3+ slot, reaction free, and
     // can see the caster within 60 ft; not the caster itself).
     [[nodiscard]] bool canCastCounterspell(const BattleMap& bm, int idx, int caster_idx) const;
+    // True if `idx` (an Arcane Trickster Rogue L17+) can use Spell Thief on `caster_idx`'s spell now:
+    // reaction free, not incapacitated, sees the caster within 60 ft, not the caster / an ally. On a
+    // failed INT save (applied in applyCastReaction) the cast is countered AND the spell is added to
+    // the caster's stolen_spell_names (it can't recast it until a long rest).
+    [[nodiscard]] bool canSpellThief(const BattleMap& bm, int idx, int caster_idx) const;
     // Apply one chosen OnDeclareCast reaction (dispatches on ReactionOption.feature, e.g. "Shield").
     void applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
     // Drive the cast stack: step the top cast through its windows; on a Counterspell choice push a

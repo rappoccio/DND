@@ -42,8 +42,10 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
 
         InitiativeEntry e;
         e.agent_idx = i;
-        // Feral Instinct (Barbarian L7): roll Initiative at Advantage
-        if (s.character_class == CharacterClass::Barbarian && s.char_level >= 7) {
+        // Roll Initiative at Advantage: Feral Instinct (Barbarian L7) or Assassinate (Assassin Rogue L3+).
+        if ((s.character_class == CharacterClass::Barbarian && s.char_level >= 7) ||
+            (s.character_class == CharacterClass::Rogue &&
+             s.rogue_subclass == AssassinPath && s.char_level >= 3)) {
             e.d20 = std::max(roll(20), roll(20));
         } else {
             e.d20 = roll(20);
@@ -77,13 +79,28 @@ InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_i
     const auto agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return e;
-    const Agent::Stats& s = bm.getAgentStats(agent_idx);
-    if (s.character_class == CharacterClass::Barbarian && s.char_level >= 7)
+    Agent::Stats s = bm.getAgentStats(agent_idx);
+    if ((s.character_class == CharacterClass::Barbarian && s.char_level >= 7) ||
+        (s.character_class == CharacterClass::Rogue &&
+         s.rogue_subclass == AssassinPath && s.char_level >= 3))
         e.d20 = std::max(roll(20), roll(20));
     else
         e.d20 = roll(20);
     e.modifier = s.initiativeModifier();
     e.total    = e.d20 + e.modifier;
+
+    // ── Monk L15 Perfect Focus: regain focus on initiative if below max ────────
+    if (s.character_class == CharacterClass::Monk && s.char_level >= 15) {
+      auto fp_res = s.resources.find("Focus Points");
+      if (fp_res != s.resources.end() && fp_res->second.current < fp_res->second.max) {
+        int regain = 1;  // Regain 1 Focus Point
+        fp_res->second.current = std::min(fp_res->second.max, fp_res->second.current + regain);
+        s.resources["Focus Points"] = fp_res->second;
+        const_cast<BattleMap&>(bm).setAgentStats(agent_idx, s);
+        log_("{} regains 1 Focus Point (Perfect Focus)", agentName(bm, agent_idx));
+      }
+    }
+
     return e;
 }
 
@@ -164,6 +181,17 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     auto stats = agent.agent->getStats();
+
+    // Mark that this agent has now taken a turn in the current combat. Drives the Assassin's
+    // Assassinate Advantage (vs creatures that haven't acted yet). Per-combat marker reset at
+    // combat start (GUI _start_combat); never cleared in Agent::turn().
+    {
+        Agent::Conditions tc = bm.getAgentConditions(agent_idx);
+        if (!tc.has_taken_turn_this_combat) {
+            tc.has_taken_turn_this_combat = true;
+            bm.setAgentConditions(agent_idx, tc);
+        }
+    }
 
     // Paladin Oath of Devotion — Sacred Weapon: tick down its 1-minute (10-round) duration.
     // Persisted immediately so the rest of this turn (and the GUI) sees the updated count.
@@ -315,6 +343,45 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 		}
             }
         }
+    }
+
+    // ── Monk Phase 0: Turn-start features ───────────────────────────────────────
+    // L2 Uncanny Metabolism: restore all Focus Points + heal once per combat
+    if (stats.character_class == CharacterClass::Monk && stats.char_level >= 2 &&
+        !cond.uncanny_metabolism_used_this_combat) {
+      auto fp_res = stats.resources.find("Focus Points");
+      if (fp_res != stats.resources.end()) {
+        int max_fp = fp_res->second.max;
+        fp_res->second.current = max_fp;
+        stats.resources["Focus Points"] = fp_res->second;
+        cond.uncanny_metabolism_used_this_combat = true;
+        bm.setAgentStats(agent_idx, stats);
+        log_("{} restores all Focus Points (Uncanny Metabolism)", agent_name);
+      }
+    }
+
+    // L10 Self-Restoration: remove Charmed/Frightened/Poisoned at turn start
+    if (stats.character_class == CharacterClass::Monk && stats.char_level >= 10) {
+      bool restored = false;
+      if (cond.charmed) {
+        cond.charmed = false;
+        cond.charmed_by = -1;
+        log_("{} ends the Charmed condition (Self-Restoration)", agent_name);
+        restored = true;
+      }
+      if (cond.frightened) {
+        cond.frightened = false;
+        log_("{} ends the Frightened condition (Self-Restoration)", agent_name);
+        restored = true;
+      }
+      if (cond.poisoned) {
+        cond.poisoned = false;
+        log_("{} ends the Poisoned condition (Self-Restoration)", agent_name);
+        restored = true;
+      }
+      if (restored) {
+        bm.setAgentConditions(agent_idx, cond);
+      }
     }
 
     // Death saves: roll CON save DC 10 if unconscious at 0 HP
@@ -612,6 +679,17 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - move_penalty);
     burrowRemaining_[agent_idx] = std::max(0, stats.speed_burrow - move_penalty);
 
+    // Warrior of Shadow L17 Cloak of Shadows: Invisibility expires if agent moves to bright light
+    if (cond.cloak_of_shadows_active) {
+        VisibilityLevel light = bm.getLightLevel(agent.origin);
+        if (light == VisibilityLevel::Clear || light == VisibilityLevel::Sunlight) {
+            cond.invisible = false;
+            cond.cloak_of_shadows_active = false;
+            bm.setAgentConditions(agent_idx, cond);
+            log_("{}'s Cloak of Shadows fades (moved to bright light)", agent_name);
+        }
+    }
+
     // Reset per-turn conditions
     agent.agent->turn();
 
@@ -703,6 +781,9 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.stunning_strike_used = false;
         cond.psionic_strike_available = false;
         cond.psionic_strike_used = false;
+        cond.hand_of_harm_available = false;
+        cond.hand_of_harm_used = false;
+        cond.hand_of_harm_last_target = -1;
         cond.divine_smite_available = false;
         cond.divine_smite_used = false;
         cond.eldritch_smite_available = false;

@@ -66,18 +66,26 @@ void CombatEngine::updateDarknessBlinding(BattleMap& bm, int agent_idx) noexcept
 
     const PlacedAgent& pa = agents[static_cast<std::size_t>(agent_idx)];
     const Agent::Stats& stats = pa.agent->getStats();
-    const VisibilityLevel obscuration = bm.getObscurationAtCell(pa.origin);
+    // Single source of truth: the live light-effect layer, as perceived by THIS agent. A Shadow Arts:
+    // Darkness caster sees through their own Darkness (getLightLevelFor reports a non-dark level for
+    // them), so it never blinds them. The dead obscuration layer is no longer consulted — fog/cloud
+    // spells now write light_level into this same layer (DARKNESS_MERGE_HANDOFF.md Phase 1).
+    const VisibilityLevel light = bm.getLightLevelFor(pa.origin, agent_idx);
 
     Agent::Conditions cond = bm.getAgentConditions(agent_idx);
     bool should_be_blinded = false;
 
-    // Check if agent should be blinded based on darkness/heavy obscurement
-    if (obscuration == VisibilityLevel::Dark) {
-        // Heavily Obscured (Darkness): blinded unless have darkvision
-        should_be_blinded = (stats.darkvision_range == 0);
-    } else if (obscuration == VisibilityLevel::MagicalDark) {
+    // Magical darkness is the most restrictive, so it takes priority.
+    if (light == VisibilityLevel::MagicalDark) {
         // Magically Dark (Impenetrable): blinded unless have devil's sight
         should_be_blinded = (stats.devilssight_range == 0);
+    } else if (light == VisibilityLevel::HeavilyObscured) {
+        // Fog/smoke (non-magical heavy obscurement): blinded unless Truesight/Blindsight. Neither
+        // darkvision nor devil's sight pierces a physical cloud.
+        should_be_blinded = (stats.truesight_range == 0 && stats.blindsight_range == 0);
+    } else if (light == VisibilityLevel::Dark) {
+        // Heavily Obscured by Darkness: blinded unless have darkvision
+        should_be_blinded = (stats.darkvision_range == 0);
     }
     // BrightLight: full visibility, never blinded
     // DimLight: lightly obscured but visible, never blinded

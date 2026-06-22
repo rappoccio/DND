@@ -73,8 +73,13 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
     // This is a heuristic; D&D 5e uses specific rules per situation
     int base_perception = std::max(20, (viewer_stats.wis / 2) * 5);
 
-    // TODO: Lighting modifiers would go here (darkvision range, light effects, etc.)
-    // For now, use base perception range
+    // Viewer's senses, forwarded to BattleMap::canSee so this perception cache agrees with the
+    // geometric canSee query by construction (DARKNESS_MERGE_HANDOFF.md Phase 1). Both now read the
+    // live light-effect layer instead of the dead obscuration layer.
+    const int viewer_size = viewer.agent->getSize();
+    const int dv = viewer_stats.darkvision_range;
+    const int ts = viewer_stats.truesight_range;
+    const int ds = viewer_stats.devilssight_range;
 
     // Iterate through all other agents on the map
     for (std::size_t target_idx = 0; target_idx < agents.size(); ++target_idx) {
@@ -107,25 +112,18 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 
         // Check if target is within perception range
         if (chebyshev_distance <= (base_perception / 5)) {  // convert feet to cells (5 ft per cell)
-            // Check line of sight and obscuration
-            int viewer_size = viewer.agent->getSize();
-            int target_size = target.agent->getSize();
-            bool has_los = bm.hasLineOfSight(viewer.origin, viewer_size, target.origin, target_size);
-
-            if (has_los) {
-                // Check obscuration at target's location
-                VisibilityLevel obscuration = bm.getObscurationAtCell(target.origin);
-
-                // Check if viewer can see through magical darkness (devil's sight)
-                bool can_see_through_darkness = viewer_stats.devilssight_range > (chebyshev_distance * 5);
-
-                if (obscuration == VisibilityLevel::MagicalDark && !can_see_through_darkness) {
-                    visibility = VisibilityLevel::Blocked;
-                } else if (obscuration == VisibilityLevel::LightlyObscured) {
-                    visibility = VisibilityLevel::LightlyObscured;
-                } else {
-                    visibility = VisibilityLevel::Clear;
-                }
+            // Defer LoS + lighting to BattleMap::canSee so this cache matches the geometric query
+            // (handles darkvision vs Dark, devil's sight vs MagicalDark, truesight/blindsight, and
+            // the live light-effect layer — Darkness/Daylight/fog). perceptionDisadvantage then
+            // distinguishes a clear sighting from an obscured one (Dim/fog/darkvision-in-Dark).
+            const int target_size = target.agent->getSize();
+            if (!bm.canSee(viewer.origin, viewer_size, dv, ts, ds, target.origin, target_size)) {
+                visibility = VisibilityLevel::Blocked;
+            } else if (bm.perceptionDisadvantage(viewer.origin, viewer_size, dv, ts, ds,
+                                                 target.origin, target_size)) {
+                visibility = VisibilityLevel::LightlyObscured;
+            } else {
+                visibility = VisibilityLevel::Clear;
             }
         }
 

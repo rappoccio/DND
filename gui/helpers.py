@@ -523,40 +523,54 @@ def _spell_to_dict(s) -> dict:
 
 
 def _dict_to_spell(d: dict):
+    """Convert a spell dict (from spells.json or a save) into a C++ rpg.Spell.
+
+    SINGLE SOURCE OF TRUTH for dict -> Spell. The GUI spell-loading paths and the unit
+    tests all funnel through here, so every spells.json field is parsed in exactly one
+    place. (This logic used to be duplicated in a near-identical method inside main.py;
+    new fields were only added to that copy, which is how `school` and later
+    `light_level` silently went missing here and broke school/lighting in tests.)
+    """
     s = rpg.Spell()
     s.name         = d.get("name",         "Unnamed Spell")
     s.type         = getattr(rpg.SpellType,     d.get("type",         "Harm"),     rpg.SpellType.Harm)
     s.geometry     = getattr(rpg.SpellGeometry, d.get("geometry",     "Single"),   rpg.SpellGeometry.Single)
     s.attack_type  = getattr(rpg.SpellAttack,   d.get("attack_type",  "AttackRoll"), rpg.SpellAttack.AttackRoll)
     s.save_ability = getattr(rpg.SaveAbility,   d.get("save_ability") or "SaveDex", rpg.SaveAbility.SaveDex)
-    # spells.json stores the school lowercase ("enchantment"); the enum members are capitalized.
+    # spells.json stores the school lowercase ("enchantment"); the enum members are capitalized
+    # ("Enchantment"). Normalize so getattr resolves (and save-file round-trips of the capitalized
+    # enum name still work). Was silently NONE for every spells.json spell before this.
     s.school       = getattr(rpg.SpellSchool,   d.get("school",       "NONE").capitalize(), rpg.SpellSchool.NONE)
     s.range        = int(d.get("range")  or 30)
     s.radius       = int(d.get("radius") or 10)
     s.width        = int(d.get("width")  or  5)
     s.length       = int(d.get("length") or 30)
     s.duration     = int(d.get("duration",   1))
+    # Light-emitting spells (Darkness, Daylight, Fog Cloud, Light): the engine only
+    # places a light effect when light_level >= 0 (spell.hpp default is -1 = none).
+    s.light_level  = int(d.get("light_level", -1))
 
     # Parse magic damage types - handle both new (object) and old (string) formats
     magic_dmg_raw = d.get("magic_damage_types", [])
     magic_rolls = []
     for dmg in magic_dmg_raw:
         if isinstance(dmg, dict):
-            # New format: {"type": "Fire", "num_dice": 2, "die_size": 6}
+            # New format: {"type": "Fire", "num_dice": 2, "die_size": 6, "bonus": 1}
             dmg_type = _parse_magic_damage(dmg.get("type", "Fire"))
             roll = rpg.MagicDamageRoll()
             roll.type = dmg_type
             roll.num_dice = int(dmg.get("num_dice", 1))
             roll.die_size = int(dmg.get("die_size", 6))
+            roll.bonus = int(dmg.get("bonus", 0))
             magic_rolls.append(roll)
         else:
-            # Old format: just the string "Fire"
-            # Use spell-level num_dice/die_size
+            # Old format: just the string "Fire" — use spell-level num_dice/die_size
             dmg_type = _parse_magic_damage(dmg)
             roll = rpg.MagicDamageRoll()
             roll.type = dmg_type
             roll.num_dice = int(d.get("num_dice", 1))
             roll.die_size = int(d.get("die_size", 6))
+            roll.bonus = int(d.get("bonus", 0))
             magic_rolls.append(roll)
     s.magic_damage_rolls = magic_rolls
 
@@ -565,27 +579,60 @@ def _dict_to_spell(d: dict):
     phys_rolls = []
     for dmg in phys_dmg_raw:
         if isinstance(dmg, dict):
-            # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8}
+            # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8, "bonus": 0}
             dmg_type = _parse_physical_damage(dmg.get("type", "Bludgeoning"))
             roll = rpg.PhysicalDamageRoll()
             roll.type = dmg_type
             roll.num_dice = int(dmg.get("num_dice", 1))
             roll.die_size = int(dmg.get("die_size", 6))
+            roll.bonus = int(dmg.get("bonus", 0))
             phys_rolls.append(roll)
         else:
-            # Old format: just the string "Slashing"
-            # Use spell-level num_dice/die_size
+            # Old format: just the string "Slashing" — use spell-level num_dice/die_size
             dmg_type = _parse_physical_damage(dmg)
             roll = rpg.PhysicalDamageRoll()
             roll.type = dmg_type
             roll.num_dice = int(d.get("num_dice", 1))
             roll.die_size = int(d.get("die_size", 6))
+            roll.bonus = int(d.get("bonus", 0))
             phys_rolls.append(roll)
     s.physical_damage_rolls = phys_rolls
 
+    # Parse healing type (for Heal spells)
+    healing_raw = d.get("healing_type")
+    if healing_raw and isinstance(healing_raw, dict):
+        healing = rpg.HealingRoll()
+        healing.num_dice = int(healing_raw.get("num_dice", 1))
+        healing.die_size = int(healing_raw.get("die_size", 6))
+        healing.bonus = int(healing_raw.get("bonus", 0))
+        s.healing_type = healing
+
     s.requires_concentration = d.get("requires_concentration", False)
     s.moves_with_caster = d.get("moves_with_caster", False)
-    s.light_level = int(d.get("light_level", -1))
+    s.selective_targeting = d.get("selective_targeting", False)
+    s.resource_name = d.get("resource_name", "") or ""
+    s.resource_cost = int(d.get("resource_cost", 1))
+    s.requires_los = d.get("requires_los", False)
+    s.check_los_on_center = d.get("check_los_on_center", True)
+    s.level = int(d.get("level", 0))
+    s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
+    s.num_targets = int(d.get("num_targets", 1))
+    s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
+    s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
+    s.effects_on_end_turn = d.get("effects_on_end_turn", False)
+
+    # Parse terrain effect (Grease, Spike Growth, etc.) onto the C++ Spell.
+    # Cosmetic color/hatch stay in _spell_metadata for rendering.
+    te = d.get("terrain_effect")
+    if te:
+        if te.get("type") == "Slipping":
+            s.terrain_difficulty = rpg.TerrainDifficulty.Slipping
+            s.slip_save_dc       = int(te.get("slip_save_dc", 10))
+            s.slip_distance_feet = int(te.get("slip_distance_feet", 5))
+        else:
+            m = float(te.get("multiplier", 0.5))
+            s.terrain_difficulty = (rpg.TerrainDifficulty.Quartered if m <= 0.25
+                                    else rpg.TerrainDifficulty.Halved)
 
     # Parse spell conditions - same format as weapon conditions
     conditions = []
@@ -597,6 +644,8 @@ def _dict_to_spell(d: dict):
             c.condition_duration = int(cond_entry.get("condition_duration", 0))
             c.push_ft = int(cond_entry.get("push_ft", 0))
             c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
+            # Condition requires a save if it has a save_ability specified
+            c.requires_save = ("save_ability" in cond_entry)
             # Parse save_ability string (target's save) - defaults to spell's save_ability
             save_ability_str = cond_entry.get("save_ability")
             if save_ability_str:
@@ -612,8 +661,12 @@ def _dict_to_spell(d: dict):
                 c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
             except AttributeError:
                 c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
-            # Condition requires a save if it has a save_ability specified (and it's not just defaulting to spell's ability)
-            c.requires_save = ("save_ability" in cond_entry)
+            # on_damage: "end" ends the condition on any damage; "repeat_save" re-rolls at advantage
+            od = str(cond_entry.get("on_damage", "") or "").lower()
+            if od == "end":
+                c.on_damage = rpg.OnDamage.End
+            elif od in ("repeat_save", "repeatsave", "repeat-save"):
+                c.on_damage = rpg.OnDamage.RepeatSave
             conditions.append(c)
         else:
             # Simple string: just the condition name (legacy support)
@@ -622,9 +675,19 @@ def _dict_to_spell(d: dict):
             c.condition_duration = 0  # will use spell duration
             c.push_ft = 0
             c.save_repeat_turns = 1
+            c.requires_save = False
             c.save_ability = s.save_ability  # use spell's ability for legacy conditions
             c.save_dc_ability = rpg.SaveAbility.SaveSpellcasterMod
             conditions.append(c)
     s.conditions = conditions
+
+    # Parse teleportation spell fields
+    s.teleportation_spell = d.get("teleportation_spell", False)
+    s.max_teleport_targets = int(d.get("max_teleport_targets", 0))
+    s.teleport_range_ft = int(d.get("teleport_range_ft", 0))
+
+    # Parse casting time
+    casting_time_str = d.get("casting_time", "Action")
+    s.casting_time = getattr(rpg.CastingTime, casting_time_str, rpg.CastingTime.Action)
 
     return s

@@ -386,6 +386,144 @@ void CombatEngine::applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int
     }
 }
 
+// Monk Martial Arts die size by character level (2024 PHB): d6 (1–4), d8 (5–10), d10 (11–16), d12 (17+).
+static int martialArtsDieSize(int level) noexcept
+{
+    if (level >= 17) return 12;
+    if (level >= 11) return 10;
+    if (level >= 5)  return 8;
+    return 6;
+}
+
+void CombatEngine::applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                         AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.hand_of_harm_available) return;
+
+    Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    if (atk_stats.character_class != CharacterClass::Monk ||
+        atk_stats.monk_subclass  != WarriorOfMercyPath ||
+        atk_stats.char_level < 3) return;
+
+    const bool free = atk_stats.char_level >= 11;   // L11 Flurry of Healing and Harm: no Focus Point cost
+
+    // L11: usable any number of times per turn, but only once per target.
+    if (free && atk_cond.hand_of_harm_last_target == target_idx) return;
+
+    // Below L11: a Focus Point is required (and the once-per-turn gate is enforced at the eligibility site).
+    const Resource* fp = atk_stats.getResource("Focus Points");
+    if (!free && (!fp || fp->current <= 0)) return;
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+
+    // Necrotic damage = one Martial Arts die + WIS modifier (floored for odd negative scores).
+    int wis_mod = (atk_stats.wis - 10) / 2;
+    if (atk_stats.wis < 10 && (atk_stats.wis - 10) % 2 != 0) --wis_mod;
+    int raw = std::max(0, roll(martialArtsDieSize(atk_stats.char_level)) + wis_mod);
+
+    const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Necrotic];
+    const int hoh_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"hand of harm", hoh_damage});
+    result.total_damage += hoh_damage;
+    result.magic_damage_types.push_back(MagicDamage_t::Necrotic);
+
+    int overflow = std::max(0, hoh_damage - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - hoh_damage);
+    tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    // Spend a Focus Point unless L11 makes it free; mark Hand of Harm used / record the target.
+    if (!free) spendResource(bm, attacker_idx, "Focus Points", 1);
+    atk_cond = bm.getAgentConditions(attacker_idx);
+    atk_cond.hand_of_harm_used = true;
+    atk_cond.hand_of_harm_available = false;
+    atk_cond.hand_of_harm_last_target = target_idx;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    log_("{} adds Hand of Harm: +{} Necrotic damage{}", agentName(bm, attacker_idx), hoh_damage,
+         free ? " (free)" : "");
+
+    // L6 Physician's Touch: the target is also Poisoned (until the end of the Monk's next turn — modeled
+    // as the Poisoned condition, cleared like other conditions).
+    if (atk_stats.char_level >= 6) {
+        applyPoisoned(bm, target_idx);
+        log_("{} is Poisoned (Physician's Touch)", agentName(bm, target_idx));
+    }
+
+    if (hoh_damage > 0) {
+        checkConcentrationOnDamage(bm, target_idx, hoh_damage);
+        processDamageTaken(bm, target_idx, hoh_damage);
+    }
+}
+
+HandOfHealingResult CombatEngine::handOfHealing(BattleMap& bm, int monk_idx, int target_idx, bool free) noexcept
+{
+    HandOfHealingResult res;
+    auto agents = bm.placedAgents();
+    if (monk_idx   < 0 || monk_idx   >= static_cast<int>(agents.size())) return res;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return res;
+
+    Agent::Stats ms = bm.getAgentStats(monk_idx);
+    if (ms.character_class != CharacterClass::Monk ||
+        ms.monk_subclass  != WarriorOfMercyPath ||
+        ms.char_level < 3) return res;
+
+    // "free" (no Focus Point, no Bonus Action) is only granted at L11 (Flurry of Healing and Harm),
+    // where a Flurry strike may be replaced with a use of Hand of Healing.
+    const bool actually_free = free && ms.char_level >= 11;
+
+    if (!actually_free) {
+        if (!hasBonusAction(bm, monk_idx)) return res;
+        const Resource* fp = ms.getResource("Focus Points");
+        if (!fp || fp->current <= 0) return res;
+    }
+
+    res.valid = true;
+
+    // Heal = one Martial Arts die + WIS modifier (floored for odd negative scores; minimum 1).
+    int wis_mod = (ms.wis - 10) / 2;
+    if (ms.wis < 10 && (ms.wis - 10) % 2 != 0) --wis_mod;
+    int amount = std::max(1, roll(martialArtsDieSize(ms.char_level)) + wis_mod);
+
+    int before = bm.getAgentStats(target_idx).hp_cur;
+    healAgent(bm, target_idx, amount);
+    res.amount_healed = bm.getAgentStats(target_idx).hp_cur - before;
+
+    // L6 Physician's Touch: Hand of Healing also ends one of Blinded/Deafened/Paralyzed/Poisoned/Stunned.
+    if (ms.char_level >= 6) {
+        Agent::Conditions tc = bm.getAgentConditions(target_idx);
+        const char* cleared = nullptr;
+        if      (tc.blinded)   { tc.blinded   = false; cleared = "Blinded"; }
+        else if (tc.deafened)  { tc.deafened  = false; cleared = "Deafened"; }
+        else if (tc.paralyzed) { tc.paralyzed = false; cleared = "Paralyzed"; }
+        else if (tc.poisoned)  { tc.poisoned  = false; cleared = "Poisoned"; }
+        else if (tc.stunned)   { tc.stunned   = false; cleared = "Stunned"; }
+        if (cleared) {
+            bm.setAgentConditions(target_idx, tc);
+            res.condition_cleared = true;
+            res.cleared_condition = cleared;
+        }
+    }
+
+    // Spend the Focus Point first, then the Bonus Action (spendResource re-reads/writes stats; doing it
+    // last would clobber the spendBonusAction decrement). Skipped entirely when folded into a Flurry strike.
+    if (!actually_free) {
+        spendResource(bm, monk_idx, "Focus Points", 1);
+        spendBonusAction(bm, monk_idx);
+    }
+
+    log_("{} uses Hand of Healing: {} HP to {}{}{}", agentName(bm, monk_idx), res.amount_healed,
+         agentName(bm, target_idx), actually_free ? " (free)" : "",
+         res.condition_cleared ? std::format(" — ends {}", res.cleared_condition) : "");
+    return res;
+}
+
 GrappleResult CombatEngine::applyPunchAndGrab(BattleMap& bm, int attacker_idx, int target_idx) noexcept
 {
     GrappleResult result;
@@ -410,7 +548,8 @@ GrappleResult CombatEngine::applyPunchAndGrab(BattleMap& bm, int attacker_idx, i
 }
 
 void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                            const std::vector<int>& effects, AttackResult& result) noexcept
+                                            const std::vector<int>& effects, AttackResult& result,
+                                            int round_num) noexcept
 {
     auto agents = bm.placedAgents();
     if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
@@ -422,11 +561,15 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
     // Only valid right after a qualifying hit flagged this attack, and only once per turn.
     if (!atk_cond.cunning_strike_available || atk_cond.sneak_attack_used) return;
 
+    const bool is_assassin = (atk_stats.character_class == CharacterClass::Rogue &&
+                              atk_stats.rogue_subclass == AssassinPath);
+
     const int sneak_dice = (atk_stats.char_level + 1) / 2;  // 1d6 @ L1-2 … 10d6 @ L19-20
 
     // Validate the chosen rider set: count limit (Improved Cunning Strike), per-effect cost, min level.
     const int max_effects = (atk_stats.char_level >= 11) ? 2 : 1;
     int cost = 0;
+    bool has_poison_rider = false;
     bool effects_ok = (static_cast<int>(effects.size()) <= max_effects);
     for (int e : effects) {
         int c = cunningStrikeCost(e);
@@ -436,21 +579,39 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
         if (e == 6 && (atk_stats.rogue_subclass != ThiefPath || !atk_cond.attacked_while_invisible)) {
             effects_ok = false; break;
         }
+        if (e == 0) has_poison_rider = true;
         cost += c;
     }
+    // Envenom Weapons (Assassin L13+): the Poison option costs 0 Sneak Attack dice (refund it).
+    if (effects_ok && has_poison_rider && is_assassin && atk_stats.char_level >= 13)
+        cost -= cunningStrikeCost(0);
     if (!effects_ok || cost > sneak_dice) { effects_ok = false; cost = 0; }
 
-    // Roll the remaining Sneak Attack dice and fold them into the result + target HP.
+    // Roll the remaining Sneak Attack dice.
     const int dmg_dice = sneak_dice - cost;
     int sneak_bonus = 0;
     for (int i = 0; i < dmg_dice; ++i) sneak_bonus += roll(6);
 
     result.total_damage += sneak_bonus;
     result.damage_breakdown.push_back({"sneak attack", sneak_bonus});
+    log_("Sneak Attack: {} adds {}d6 = {} damage", agentName(bm, attacker_idx), dmg_dice, sneak_bonus);
 
+    int extra = sneak_bonus;
+
+    // Assassinate (Assassin L3+): a Sneak hit during the first round of combat (round_num == 0)
+    // also deals flat damage equal to the Rogue's level.
+    if (is_assassin && atk_stats.char_level >= 3 && round_num == 0) {
+        const int bonus = atk_stats.char_level;
+        result.total_damage += bonus;
+        result.damage_breakdown.push_back({"Assassinate", bonus});
+        log_("Assassinate: {} adds +{} damage (first round)", agentName(bm, attacker_idx), bonus);
+        extra += bonus;
+    }
+
+    // Fold the Sneak Attack (+ Assassinate) damage into the target's HP.
     Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
-    int overflow = std::max(0, sneak_bonus - tgt_stats.temp_hp);
-    tgt_stats.temp_hp  = std::max(0, tgt_stats.temp_hp - sneak_bonus);
+    int overflow = std::max(0, extra - tgt_stats.temp_hp);
+    tgt_stats.temp_hp  = std::max(0, tgt_stats.temp_hp - extra);
     tgt_stats.hp_cur   = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
     result.hp_after    = tgt_stats.hp_cur;
     result.target_down = (result.hp_after <= 0);
@@ -459,8 +620,6 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
     atk_cond.sneak_attack_used        = true;
     atk_cond.cunning_strike_available = false;
     bm.setAgentConditions(attacker_idx, atk_cond);
-
-    log_("Sneak Attack: {} adds {}d6 = {} damage", agentName(bm, attacker_idx), dmg_dice, sneak_bonus);
 
     // If the Sneak Attack dropped the target, knock it unconscious (matches the base-attack path).
     Agent::Conditions tgt_cond = bm.getAgentConditions(target_idx);
@@ -471,12 +630,43 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
 
     // Apply rider conditions LAST, after this attack's damage is fully settled — so a rider that sets
     // a condition (e.g. Knock Out → Unconscious) can never feed back into this attack's resolution.
-    if (effects_ok && cost > 0)
-        applyCunningStrikeRiders(bm, attacker_idx, target_idx, effects);
+    // (Envenom Weapons' bonus 2d6 Poison folds into result/HP inside this call.)
+    if (effects_ok && cost >= 0 && !effects.empty())
+        applyCunningStrikeRiders(bm, attacker_idx, target_idx, effects, result);
+
+    // Death Strike (Assassin L17+): a Sneak hit during the first round forces the target to make a
+    // Constitution save (DC 8 + DEX + PB). On a failure, the entire attack's damage is doubled. Run
+    // last so it doubles base + Sneak + Assassinate + Envenom damage together.
+    if (is_assassin && atk_stats.char_level >= 17 && round_num == 0 && result.total_damage > 0) {
+        const int dc = spellSaveDcFromAbility(atk_stats, SaveDex);   // 8 + PB + DEX mod
+        int total = roll(20) + saveModFor(bm, target_idx, SaveCon);
+        total = applyIndomitableMight(bm, target_idx, SaveCon, total);
+        if (total >= dc) {
+            log_("Death Strike: {} succeeds its CON save (DC {})", agentName(bm, target_idx), dc);
+        } else {
+            const int dbl = result.total_damage;   // deal the attack's damage again → doubled
+            Agent::Stats ds = bm.getAgentStats(target_idx);
+            int dov = std::max(0, dbl - ds.temp_hp);
+            ds.temp_hp = std::max(0, ds.temp_hp - dbl);
+            ds.hp_cur  = std::clamp(ds.hp_cur - dov, 0, ds.hp_max);
+            bm.setAgentStats(target_idx, ds);
+            result.total_damage += dbl;
+            result.damage_breakdown.push_back({"Death Strike (doubled)", dbl});
+            result.hp_after    = ds.hp_cur;
+            result.target_down = (result.hp_after <= 0);
+            log_("Death Strike: {} fails its CON save (DC {}) — damage doubled (+{})",
+                 agentName(bm, target_idx), dc, dbl);
+            Agent::Conditions dc2 = bm.getAgentConditions(target_idx);
+            if (result.hp_after <= 0 && !dc2.unconscious && !dc2.dead) {
+                applyUnconscious(bm, target_idx);
+                result.target_down = true;
+            }
+        }
+    }
 }
 
 void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,
-                                            const std::vector<int>& effects) noexcept
+                                            const std::vector<int>& effects, AttackResult& result) noexcept
 {
     auto agents = bm.placedAgents();
     if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return;
@@ -484,6 +674,8 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
 
     const Agent::Stats atk = bm.getAgentStats(attacker_idx);
     const int dc = spellSaveDcFromAbility(atk, SaveDex);  // 8 + prof + DEX mod
+    const bool envenom = (atk.character_class == CharacterClass::Rogue &&
+                          atk.rogue_subclass == AssassinPath && atk.char_level >= 13);
 
     for (int e : effects) {
         if (e == 2) {  // Withdraw — no save; attacker moves without provoking opportunity attacks
@@ -548,6 +740,33 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
         (void)addAgentCondition(bm, cond);
         log_("Cunning Strike: {} fails its {} save → {} (DC {})",
              agentName(bm, target_idx), name, name, dc);
+
+        // Envenom Weapons (Assassin L13+): a failed Poison save also deals 2d6 Poison damage that
+        // ignores Resistance to Poison (Immunity 0.0 and Vulnerability still apply).
+        if (e == 0 && envenom) {
+            const int raw = roll(6) + roll(6);
+            Agent::Stats es = bm.getAgentStats(target_idx);
+            float mult = es.magic_damage_multipliers[Poison];
+            if (mult > 0.0f && mult < 1.0f) mult = 1.0f;   // ignore Resistance
+            const int pd = static_cast<int>(static_cast<float>(raw) * mult);
+            if (pd > 0) {
+                int pov = std::max(0, pd - es.temp_hp);
+                es.temp_hp = std::max(0, es.temp_hp - pd);
+                es.hp_cur  = std::clamp(es.hp_cur - pov, 0, es.hp_max);
+                bm.setAgentStats(target_idx, es);
+                result.total_damage += pd;
+                result.damage_breakdown.push_back({"Envenom (Poison)", pd});
+                result.hp_after    = es.hp_cur;
+                result.target_down = (es.hp_cur <= 0);
+                Agent::Conditions ec = bm.getAgentConditions(target_idx);
+                if (es.hp_cur <= 0 && !ec.unconscious && !ec.dead) {
+                    applyUnconscious(bm, target_idx);
+                    result.target_down = true;
+                }
+            }
+            log_("Envenom Weapons: {} takes {} Poison damage (ignores Resistance)",
+                 agentName(bm, target_idx), pd);
+        }
     }
 }
 
@@ -1444,37 +1663,53 @@ int CombatEngine::applyTelekineticMovement(BattleMap& bm, int idx, int target_id
 FlurryResult CombatEngine::executeFlurryOfBlows(BattleMap& bm, int attacker_idx, int target_idx, int rider_option) noexcept
 {
     FlurryResult result;
+    const Agent::Stats& stats = bm.getAgentStats(attacker_idx);
+
+    // L10 Heightened Focus: Flurry grants 3 strikes instead of 2
+    int num_flurry_attacks = (stats.char_level >= 10 && stats.character_class == CharacterClass::Monk) ? 3 : 2;
+
+    // L11 Warrior of Mercy — Flurry of Healing and Harm: each Flurry strike that hits also delivers a free
+    // Hand of Harm (no Focus Point), capped at once per target by applyHandOfHarmEffect itself.
+    const bool mercy_flurry_harm =
+        stats.character_class == CharacterClass::Monk &&
+        stats.monk_subclass  == WarriorOfMercyPath && stats.char_level >= 11;
+
+    auto apply_riders = [&](AttackResult& atk_result, OpenHandRiderResult& rider) {
+        if (!atk_result.valid || !atk_result.hit) return;
+        if (rider_option >= 0 && rider_option <= 2) {
+            if (bm.getAgentConditions(attacker_idx).open_hand_rider_available)
+                rider = applyOpenHandRider(bm, attacker_idx, target_idx, rider_option);
+        }
+        if (mercy_flurry_harm && bm.getAgentConditions(attacker_idx).hand_of_harm_available)
+            applyHandOfHarmEffect(bm, attacker_idx, target_idx, atk_result);
+    };
 
     // Execute first attack
     Attack atk1(attacker_idx, target_idx, 0);  // weapon 0 = unarmed
     atk1.is_offhand = true;
     atk1.attack_slot = "bonus";
     result.attack1 = executeAction(bm, atk1);
-
-    // Apply Open Hand rider on first hit if applicable
-    if (result.attack1.valid && result.attack1.hit && rider_option >= 0 && rider_option <= 2) {
-        Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
-        if (ac.open_hand_rider_available) {
-            result.rider1 = applyOpenHandRider(bm, attacker_idx, target_idx, rider_option);
-        }
-    }
+    apply_riders(result.attack1, result.rider1);
 
     // Execute second attack
     Attack atk2(attacker_idx, target_idx, 0);  // weapon 0 = unarmed
     atk2.is_offhand = true;
     atk2.attack_slot = "bonus";
     result.attack2 = executeAction(bm, atk2);
+    apply_riders(result.attack2, result.rider2);
 
-    // Apply Open Hand rider on second hit if applicable
-    if (result.attack2.valid && result.attack2.hit && rider_option >= 0 && rider_option <= 2) {
-        Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
-        if (ac.open_hand_rider_available) {
-            result.rider2 = applyOpenHandRider(bm, attacker_idx, target_idx, rider_option);
-        }
+    // Execute third attack if L10+ (Heightened Focus)
+    if (num_flurry_attacks >= 3) {
+        Attack atk3(attacker_idx, target_idx, 0);  // weapon 0 = unarmed
+        atk3.is_offhand = true;
+        atk3.attack_slot = "bonus";
+        result.attack3 = executeAction(bm, atk3);
+        apply_riders(result.attack3, result.rider3);
     }
 
     Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
     ac.open_hand_rider_available = false;
+    ac.hand_of_harm_available = false;
     bm.setAgentConditions(attacker_idx, ac);
     return result;
 }

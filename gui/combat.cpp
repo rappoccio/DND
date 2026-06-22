@@ -99,6 +99,60 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         num_attacks = 2;
       }
 
+      // Phase 0: Base-class progression features
+      // L2 Uncanny Metabolism: (restored in combat_turn.cpp beginTurn + rollInitiativeFor)
+      // (no setup needed here; triggered on initiative roll)
+
+      // L6 Empowered Strikes: unarmed strikes may deal Force instead of Bludgeoning
+      if (level >= 6) {
+        monk_empowered_strikes_damage_type = 0;  // default to Bludgeoning; player toggles to 1 (Force)
+      }
+
+      // L10 Heightened Focus:
+      // - Patient Defense grants temp HP (handled in combat_attack.cpp executeAction)
+      // - Step of the Wind grants ally movement (handled in combat_attack.cpp executeAction)
+      // - Flurry grants 3 strikes (already in test_monk.py; 3-strike logic in executeAction)
+      if (level >= 10) {
+        // No setup needed; handled inline in action resolution
+      }
+
+      // L10 Self-Restoration: remove Charmed/Frightened/Poisoned at turn start
+      // (handled in combat_turn.cpp beginTurn)
+      if (level >= 10) {
+        // No setup needed; handled in turn-start logic
+      }
+
+      // L14 Disciplined Survivor: proficiency in all saves + reroll failed save for 1 Focus
+      if (level >= 14) {
+        save_prof_str = true;
+        save_prof_con = true;
+        save_prof_intel = true;
+        save_prof_cha = true;
+        // Reroll logic handled in OnSaveFail reaction (will add)
+      }
+
+      // L15 Perfect Focus: regain focus on initiative if below threshold
+      // (handled in rollInitiativeFor or combat_turn.cpp)
+
+      // L18 Superior Defense: spend 3 focus → resistance to all damage except Force
+      // (handled as a Magic action; see combat_attack.cpp + conditions flag)
+
+      // L20 Body and Mind: +4 DEX, +4 WIS (capped at 25)
+      if (level >= 20 && !monk_body_mind_applied) {
+        dex = std::min(25, dex + 4);
+        wis = std::min(25, wis + 4);
+        monk_body_mind_applied = true;
+      }
+
+      // ── Warrior of Shadow (Phase 1) ──────────────────────────────────────
+      // L6 Shadow Step: bonus-action teleport 30 ft in dim/dark + Advantage on next attack
+      // (handled in combat_attack.cpp executeAction + determineAdvantage)
+      // L11 Improved Shadow Step: teleport from any light level + +5 ft reach on next attack
+      // (handled in combat_attack.cpp executeAction + determineAdvantage)
+      // L17 Cloak of Shadows: bonus-action Invisibility in dim/dark, expires on light change/attack
+      // (handled in combat_turn.cpp beginTurn + combat_attack.cpp executeAction)
+      // L3 Shadow Arts: Darkness [OPUS] — deferred to Phase 2 (needs light-effect infra enhancement)
+
       // Unarmored Defense (L1+): AC = 10 + DEX + WIS is applied in the AC calculation
       // (see the Monk branch in computeAC ~combat.cpp:313), so nothing to grant here.
       break;
@@ -152,6 +206,19 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
           rm.long_rest_regen = 1;
           resources["Rend Mind"] = rm;
         }
+      }
+      // ── Arcane Trickster (subclass) ───────────────────────────────────
+      // Spellcasting (L3): third-caster, INT, Wizard spell list (enchantment/illusion focus).
+      // compute_class_slots(Rogue) returns zeros (can't see the subclass), so override the slot
+      // table here AFTER set_class_level + rogue_subclass are set (mirrors Eldritch Knight). The
+      // spells themselves come from the normal spell-assignment UI. Magical Ambush (L9) is a
+      // rollSpellSave clause; Versatile Trickster (L13) is a determineAdvantage clause keyed on the
+      // Mage Hand summon; Spell Thief (L17) is an OnDeclareCast reaction — none need a resource here.
+      if (rogue_subclass == ArcaneTricksterPath && level >= 3) {
+        spell_slots_max       = compute_third_caster_slots(level);
+        spell_slots_remaining = spell_slots_max;
+        spellcasting_ability  = 3;   // 3 = INT (SaveAbility_t::SaveInt), matches Wizard chassis
+        can_cast_spell        = true;
       }
       break;
     }

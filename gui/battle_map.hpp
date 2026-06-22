@@ -75,7 +75,15 @@ enum class VisibilityLevel {
     // ask "is this cell in sunlight?". Appended at the end so the restrictiveness ordering of the
     // values above is unchanged; brightness combining is handled by brighter() (Sunlight is the
     // brightest), never by raw enum comparison.
-    Sunlight
+    Sunlight,
+    // HeavilyObscured = fog / smoke / dense foliage. Like Dark it produces the effectively-Blinded
+    // state, but it is the NON-magical, light-independent kind that DARKVISION AND DEVIL'S SIGHT DO
+    // NOT pierce (only Truesight/Blindsight do) and that bright light cannot dispel. This is the key
+    // distinction from Dark (= Darkness, pierced by darkvision) and MagicalDark (= magical darkness,
+    // pierced by devil's sight). Appended last to preserve the spells.json `light_level` int contract
+    // (Darkness=4, Daylight=6); HeavilyObscured=7. It is an OVERRIDE level — see updateLighting() and
+    // canSee(); it is never combined via brighter() (which treats it as the dimmest).
+    HeavilyObscured
 };
 
 // ── Active temporary terrain effect ────────────────────────────────────────
@@ -108,16 +116,9 @@ struct ActiveLightEffect {
     VisibilityLevel  light_level;      // Clear, Dim, Dark, or MagicalDark
     int              turns_remaining;  // -1 = permanent, 0+ = expires after N turns
     int              source_agent_idx; // -1 = DM-placed or map-defined
+    int              see_through_agent_idx{-1}; // agent who sees through this MagicalDark (Shadow Arts: Darkness); -1 = nobody
 };
 
-// ── Active obscuration effect (fog clouds, magical darkness, etc.) ──────────
-struct ActiveObscurationEffect {
-    int          id;                     // unique, returned to Python on add
-    int          source_agent_idx = -1;  // caster/source of the effect
-    std::vector<Cell> cells;             // cells occupied by this obscuration
-    VisibilityLevel obscuration_level;   // LightlyObscured, Dark, or MagicalDark
-    int          turns_remaining = 0;    // -1 = permanent, 0+ = expires after N turns
-};
 
 // ── Active persistent spell effect (AoE affecting agents over time) ─────────
 struct ActiveSpellEffect {
@@ -453,7 +454,8 @@ public:
     // Dynamic light effects (analogous to terrain effects):
     [[nodiscard]] int  placeLightEffect(std::string name, std::vector<Cell> cells,
                                         VisibilityLevel level, int turns_remaining,
-                                        int source_agent_idx) noexcept;
+                                        int source_agent_idx,
+                                        int see_through_agent_idx = -1) noexcept;
     [[nodiscard]] std::vector<int> tickLightEffects(int source_agent_idx) noexcept;
     [[nodiscard]] std::vector<int> tickDmLightEffects() noexcept;
     [[nodiscard]] std::vector<int> removeLightEffectsBySource(int source_agent_idx) noexcept;
@@ -477,24 +479,15 @@ public:
     // Clear all spell effects (end of combat).
     void clearSpellEffects() noexcept;
 
-    // ── Obscuration Effects (fog clouds, magical darkness, etc.) ────────────
-    // Add a new obscuration effect to the map. Returns a unique effect_id.
-    [[nodiscard]] int addObscurationEffect(ActiveObscurationEffect effect) noexcept;
-    // Remove an obscuration effect by id.
-    void removeObscurationEffect(int effect_id) noexcept;
-    // Get all active obscuration effects (for Python to render overlay).
-    [[nodiscard]] const std::vector<ActiveObscurationEffect>& activeObscurationEffects() const noexcept;
-    // Get the obscuration level at a specific cell. Returns BrightLight if no obscuration.
-    [[nodiscard]] VisibilityLevel getObscurationAtCell(const Cell& c) const noexcept;
     // Get/set light level at a cell (for debugging or manual map configuration).
     [[nodiscard]] VisibilityLevel getLightLevel(Cell c) const noexcept;
+    // Light level at a cell as perceived BY a specific observer: a MagicalDark light effect tagged
+    // see-through for this observer (Shadow Arts: Darkness) is treated as transparent for them, so
+    // the underlying (non-magical-dark) light shows through. Identical to getLightLevel for everyone
+    // else. observer_idx < 0 behaves exactly like getLightLevel.
+    [[nodiscard]] VisibilityLevel getLightLevelFor(Cell c, int observer_idx) const noexcept;
     void setLightLevel(Cell c, VisibilityLevel lvl) noexcept;
     void resetLightLevels() noexcept;
-    // Decrement turns_remaining for all obscuration effects.
-    // Removes expired effects. Returns list of removed effect ids.
-    [[nodiscard]] std::vector<int> tickObscurationEffects() noexcept;
-    // Clear all obscuration effects (end of combat).
-    void clearObscurationEffects() noexcept;
 
     // ── NPC Spell Initialization ────────────────────────────────────────
     // Set is_npc=true and initialize uses_max/uses_remaining from spell groups.
@@ -576,9 +569,6 @@ private:
     std::vector<ActiveSpellEffect> activeSpellEffects_;
     int nextSpellEffectId_{0};  // monotonically increasing spell effect id generator
 
-    // Active obscuration effects (fog clouds, magical darkness, etc.)
-    std::vector<ActiveObscurationEffect> activeObscurationEffects_;
-    int nextObscurationEffectId_{0};  // monotonically increasing obscuration effect id generator
 
     // Map items (weapons sitting on the ground)
     std::vector<MapItem> mapItems_;

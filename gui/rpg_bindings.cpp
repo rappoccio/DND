@@ -392,6 +392,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Druid circle choice (only valid when character_class == Druid)")
         .def_readwrite("monk_subclass", &Agent::Stats::monk_subclass,
              "Monk subclass (only valid when character_class == Monk)")
+        .def_readwrite("monk_body_mind_applied", &Agent::Stats::monk_body_mind_applied,
+             "Monk L20 Body and Mind: +4 DEX/WIS (capped at 25) applied (idempotent flag)")
+        .def_readwrite("monk_empowered_strikes_damage_type", &Agent::Stats::monk_empowered_strikes_damage_type,
+             "Monk L6 Empowered Strikes: 0=Bludgeoning (default), 1=Force (L6+)")
         .def_readwrite("paladin_oath", &Agent::Stats::paladin_oath,
              "Paladin oath choice (only valid when character_class == Paladin)")
         .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
@@ -500,6 +504,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Grant a feat and apply its one-time stat effects (Tough HP, Alert initiative "
              "proficiency, Lucky points). Call after ability scores/level/prof_bonus are set. "
              "On reload, set `feats` directly instead — bonuses are already folded into hp_max/luck_points.")
+        .def_readwrite("stolen_spell_names", &Agent::Stats::stolen_spell_names,
+             "Spell names this caster currently can't cast because an Arcane Trickster stole them "
+             "(Spell Thief, L17). Cleared on a long rest. Round-trips in save/load.")
         .def_readwrite("elemental_adept_types", &Agent::Stats::elemental_adept_types,
              "MagicDamage_t indices (Acid=0,Cold=1,Fire=2,Lightning=4,Thunder=9) whose Resistance this "
              "caster's Elemental Adept ignores (and whose spell dice treat a 1 as a 2). One entry per "
@@ -541,6 +548,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "enables a bonus-action weapon attack. Reset at the start of the agent's turn.")
         .def_readwrite("hidden",        &Agent::Conditions::hidden)
         .def_readwrite("invisible",     &Agent::Conditions::invisible)
+        .def_readwrite("invisible_persists_on_action", &Agent::Conditions::invisible_persists_on_action)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
@@ -589,6 +597,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
+        .def_readwrite("has_taken_turn_this_combat", &Agent::Conditions::has_taken_turn_this_combat)
         .def_readwrite("cunning_strike_available", &Agent::Conditions::cunning_strike_available)
         .def_readwrite("attacked_while_invisible", &Agent::Conditions::attacked_while_invisible)
         .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
@@ -602,6 +611,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
         .def_readwrite("psionic_strike_available", &Agent::Conditions::psionic_strike_available)
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
+        .def_readwrite("hand_of_harm_available", &Agent::Conditions::hand_of_harm_available)
+        .def_readwrite("hand_of_harm_used", &Agent::Conditions::hand_of_harm_used)
+        .def_readwrite("hand_of_harm_last_target", &Agent::Conditions::hand_of_harm_last_target)
         .def_readwrite("grappler_punch_grab_available", &Agent::Conditions::grappler_punch_grab_available)
         .def_readwrite("grappler_punch_grab_used", &Agent::Conditions::grappler_punch_grab_used)
         .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
@@ -643,6 +655,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("crusher_marked_by", &Agent::Conditions::crusher_marked_by)
         .def_readwrite("slasher_marked", &Agent::Conditions::slasher_marked)
         .def_readwrite("slasher_marked_by", &Agent::Conditions::slasher_marked_by)
+        .def_readwrite("uncanny_metabolism_used_this_combat", &Agent::Conditions::uncanny_metabolism_used_this_combat,
+             "Monk L2 Uncanny Metabolism: Focus Points restoration used this combat (once per combat)")
+        .def_readwrite("superior_defense_active", &Agent::Conditions::superior_defense_active,
+             "Monk L18 Superior Defense: currently under Resistance to all damage except Force (expires end of turn)")
+        .def_readwrite("shadow_step_advantage", &Agent::Conditions::shadow_step_advantage,
+             "Warrior of Shadow L6 Shadow Step: next weapon attack has Advantage (consumed on attack)")
+        .def_readwrite("bonus_reach_available", &Agent::Conditions::bonus_reach_available,
+             "Warrior of Shadow L11 Improved Shadow Step: +5 ft reach on next attack (consumed on attack)")
+        .def_readwrite("cloak_of_shadows_active", &Agent::Conditions::cloak_of_shadows_active,
+             "Warrior of Shadow L17 Cloak of Shadows: currently Invisible (expires on light level change)")
         .def("__repr__", [](const Agent::Conditions& c){
             std::string s = "<Conditions";
             if (c.dashing)       s += " dashing";
@@ -1373,12 +1395,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("push_distance",           &OpenHandRiderResult::push_distance)
         .def_readonly("reaction_denied",         &OpenHandRiderResult::reaction_denied);
 
+    // ── HandOfHealingResult (Monk Warrior of Mercy) ──────────────────────────
+    py::class_<HandOfHealingResult>(m, "HandOfHealingResult")
+        .def_readonly("valid",             &HandOfHealingResult::valid)
+        .def_readonly("amount_healed",     &HandOfHealingResult::amount_healed)
+        .def_readonly("condition_cleared", &HandOfHealingResult::condition_cleared)
+        .def_readonly("cleared_condition", &HandOfHealingResult::cleared_condition);
+
     // ── FlurryResult (Monk Flurry of Blows) ──────────────────────────────────
     py::class_<FlurryResult>(m, "FlurryResult")
         .def_readonly("attack1",  &FlurryResult::attack1)
         .def_readonly("attack2",  &FlurryResult::attack2)
+        .def_readonly("attack3",  &FlurryResult::attack3)
         .def_readonly("rider1",   &FlurryResult::rider1)
-        .def_readonly("rider2",   &FlurryResult::rider2);
+        .def_readonly("rider2",   &FlurryResult::rider2)
+        .def_readonly("rider3",   &FlurryResult::rider3);
 
     // ── TerrainTickResult ────────────────────────────────────────────────────
     py::class_<TerrainTickResult>(m, "TerrainTickResult")
@@ -2181,6 +2212,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Tick the agent's terrain at start of turn; clears concentration if a concentration terrain expired.\n"
              "Returns TerrainTickResult(expired_terrain_ids, concentration).")
+        .def("tick_light_effects_for_turn",
+             &CombatEngine::tickLightEffectsForTurn,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Phase 3: Tick light effects (Darkness, fog spells) at turn start. Expires effects and re-evaluates blinding.")
         .def("clear_all_concentration",
              &CombatEngine::clearAllConcentration,
              py::arg("battle_map"),
@@ -2270,11 +2305,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Modifies the AttackResult to include brutal strike damage in damage_breakdown and updates total_damage.")
         .def("apply_cunning_strike_effect",
              &CombatEngine::applyCunningStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"),
+             py::arg("result"), py::arg("round_num") = -1,
              "Apply Rogue Sneak Attack + optional Cunning Strike riders after a qualifying hit\n"
              "(conditions.cunning_strike_available). effects: rider codes (0=Poison, 1=Trip, 2=Withdraw,\n"
              "4=KnockOut, 5=Obscure, 6=Stealth Attack [Thief]); empty = full Sneak Attack with no rider.\n"
-             "Rolls (sneak dice − cost)d6, folds it into the AttackResult and target HP, then applies riders.")
+             "Rolls (sneak dice − cost)d6, folds it into the AttackResult and target HP, then applies riders.\n"
+             "round_num (0 = first round) drives the Assassin subclass round-1 features: Assassinate\n"
+             "(+level damage), Envenom Weapons (free Poison rider + 2d6), Death Strike (CON save → double).")
         .def("apply_homing_strike",
              &CombatEngine::applyHomingStrike,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
@@ -2290,6 +2328,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::activatePsychicVeil,
              py::arg("battle_map"), py::arg("idx"),
              "Soulknife Psychic Veil (L13): Magic action → Invisible. Once/Long Rest or by 1 Psionic Energy Die.")
+        .def("shadow_step_teleport",
+             &CombatEngine::shadowStepTeleport,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             "Warrior of Shadow Shadow Step (L6+): Bonus Action teleport up to 30 ft in dim/dark (L6) or\n"
+             "any light (L11+). Sets Advantage on next attack. Returns True iff teleport succeeds.")
+        .def("cloak_of_shadows",
+             &CombatEngine::cloakOfShadows,
+             py::arg("battle_map"), py::arg("idx"),
+             "Warrior of Shadow Cloak of Shadows (L17): Bonus Action → Invisible in dim/dark. Persists\n"
+             "through attacks. Expires on turn start if in bright light. Returns True iff activated.")
+        .def("shadow_arts_darkness",
+             &CombatEngine::shadowArtsDarkness,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             "Warrior of Shadow Shadow Arts: Darkness (L3): spend 1 Focus Point to fill a 15-ft-radius\n"
+             "Sphere with magical Darkness (1 min). The caster sees through their own Darkness (not\n"
+             "Blinded); others inside without Devil's Sight are Blinded. Returns the light-effect id (>=0),\n"
+             "or -1 on failure.")
         .def("can_rend_mind",
              &CombatEngine::canRendMind,
              py::arg("battle_map"), py::arg("attacker_idx"),
@@ -2380,6 +2435,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Superior Hunter's Defense (on-hit DEFENDER reaction): halve result.total_damage (round down),\n"
              "spend the reactor's reaction, record the reduction. Re-validates can_superior_hunter_defense.\n"
              "Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
+        .def("can_deflect_attacks", &CombatEngine::canDeflectAttacks,
+             py::arg("battle_map"), py::arg("defender_idx"),
+             "True iff defender_idx (Monk L3+, reaction free, not incapacitated, alive) may use Deflect\n"
+             "Attacks. The damage-type gate (B/P/S only below L13; any type at L13 Deflect Energy) is\n"
+             "enforced in apply_deflect_attacks and at the OnHit-window offer site.")
+        .def("apply_deflect_attacks", &CombatEngine::applyDeflectAttacks,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Deflect Attacks / Deflect Energy (on-hit DEFENDER reaction): reduce result.total_damage by\n"
+             "1d10 + DEX modifier + Monk level, spend the reactor's reaction, record the reduction. Only an\n"
+             "attack dealing B/P/S below L13; any damage type at L13+. Re-validates can_deflect_attacks and\n"
+             "the type gate. Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
         .def("can_parry", &CombatEngine::canParry,
              py::arg("battle_map"), py::arg("defender_idx"),
              "True iff defender_idx (Battle Master, Superiority Die left, reaction free, not incapacitated,\n"
@@ -2531,6 +2597,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Monk Warrior of the Open Hand: after a qualifying Flurry hit (conditions.open_hand_rider_available),\n"
              "spend 1 Focus Point and apply one of three riders: 0=Knockdown (STR save or Prone),\n"
              "1=Push (5 feet), 2=Deny Reaction. Returns an OpenHandRiderResult.")
+        .def("hand_of_healing",
+             &CombatEngine::handOfHealing,
+             py::arg("battle_map"), py::arg("monk_idx"), py::arg("target_idx"), py::arg("free") = false,
+             "Monk Warrior of Mercy — Hand of Healing (L3+): a Bonus Action spending 1 Focus Point to heal a\n"
+             "creature within reach for (Martial Arts die + WIS mod). At L6 (Physician's Touch) it also ends\n"
+             "one of Blinded/Deafened/Paralyzed/Poisoned/Stunned. free=true (only at L11, Flurry of Healing\n"
+             "and Harm) folds the heal into a Flurry strike: no Focus Point, no Bonus Action. Returns a\n"
+             "HandOfHealingResult.")
+        .def("apply_hand_of_harm_effect",
+             &CombatEngine::applyHandOfHarmEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("result"),
+             "Monk Warrior of Mercy — Hand of Harm (L3+): after a qualifying unarmed hit\n"
+             "(conditions.hand_of_harm_available), spend 1 Focus Point and add (Martial Arts die + WIS mod)\n"
+             "Necrotic damage to the AttackResult and the target's HP. At L6 (Physician's Touch) the target is\n"
+             "also Poisoned. At L11 it is free and may be used once per target. Once per turn below L11.")
         .def("apply_frightened",
              &CombatEngine::applyFrightened,
              py::arg("battle_map"), py::arg("agent_idx"),
@@ -3051,6 +3132,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Sunlight",         VisibilityLevel::Sunlight,
                "Sunlight: a bright-light category that behaves like Clear for vision, tracked "
                "separately so vampire features (Sunlight Sensitivity) can detect it.")
+        .value("HeavilyObscured",  VisibilityLevel::HeavilyObscured,
+               "Fog/smoke/dense foliage: the effectively-Blinded state, but the non-magical, "
+               "light-independent kind that darkvision AND devil's sight do NOT pierce (only "
+               "Truesight/Blindsight do) and that bright light cannot dispel. Distinct from Dark "
+               "(Darkness, pierced by darkvision) and MagicalDark (pierced by devil's sight).")
         .export_values();
 
     // ── ActiveTerrainEffect struct ───────────────────────────────────────────
@@ -3074,30 +3160,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("cell_indices",      &ActiveLightEffect::cell_indices)
         .def_readonly("light_level",       &ActiveLightEffect::light_level)
         .def_readonly("turns_remaining",   &ActiveLightEffect::turns_remaining)
-        .def_readonly("source_agent_idx",  &ActiveLightEffect::source_agent_idx);
-
-    py::class_<ActiveObscurationEffect>(m, "ActiveObscurationEffect")
-        .def(py::init<>())
-        .def_readwrite("id",                   &ActiveObscurationEffect::id)
-        .def_readwrite("source_agent_idx",     &ActiveObscurationEffect::source_agent_idx)
-        .def_readwrite("cells",                &ActiveObscurationEffect::cells)
-        .def_readwrite("obscuration_level",    &ActiveObscurationEffect::obscuration_level)
-        .def_readwrite("turns_remaining",      &ActiveObscurationEffect::turns_remaining)
-        .def("__repr__", [](const ActiveObscurationEffect& e){
-            std::string level_str;
-            switch (e.obscuration_level) {
-                case VisibilityLevel::Clear:           level_str = "Clear"; break;
-                case VisibilityLevel::Dim:             level_str = "Dim"; break;
-                case VisibilityLevel::LightlyObscured: level_str = "LightlyObscured"; break;
-                case VisibilityLevel::Dark:            level_str = "Dark"; break;
-                case VisibilityLevel::MagicalDark:     level_str = "MagicalDark"; break;
-                case VisibilityLevel::Blocked:         level_str = "Blocked"; break;
-                default: level_str = "Unknown";
-            }
-            return "<ActiveObscurationEffect '" + level_str
-                 + "' source=" + std::to_string(e.source_agent_idx)
-                 + " cells=" + std::to_string(e.cells.size())
-                 + " turns=" + std::to_string(e.turns_remaining) + ">"; });
+        .def_readonly("source_agent_idx",  &ActiveLightEffect::source_agent_idx)
+        .def_readonly("see_through_agent_idx", &ActiveLightEffect::see_through_agent_idx);
 
     // ── BattleMap ───────────────────────────────────────────────────────────
     py::class_<BattleMap>(m, "BattleMap")
@@ -3300,6 +3364,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("get_light_level", &BattleMap::getLightLevel,
              py::arg("cell"),
              "Get the light level for a cell (BrightLight, DimLight, Darkness, or MagicalDarkness).")
+        .def("get_light_level_for", &BattleMap::getLightLevelFor,
+             py::arg("cell"), py::arg("observer_idx"),
+             "Light level at a cell as perceived by a specific observer: a MagicalDark light effect\n"
+             "tagged see-through for this observer (Shadow Arts: Darkness) reads as transparent for them.")
         .def("set_light_level", &BattleMap::setLightLevel,
              py::arg("cell"), py::arg("light_level"),
              "Set the light level for a cell.")
@@ -3380,7 +3448,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("place_light_effect", &BattleMap::placeLightEffect,
              py::arg("name"), py::arg("cells"), py::arg("light_level"),
              py::arg("turns_remaining"), py::arg("source_agent_idx"),
+             py::arg("see_through_agent_idx") = -1,
              "Place a dynamic light effect covering the given cells.\n"
+             "see_through_agent_idx: an agent who sees through this MagicalDark (Shadow Arts: Darkness).\n"
              "Returns unique effect id (for later removal).")
         .def("tick_light_effects", &BattleMap::tickLightEffects,
              py::arg("source_agent_idx"),
@@ -3404,25 +3474,6 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("has_active_light_effects", &BattleMap::hasActiveLightEffects,
              "Check if there are any active light effects.")
 
-        // Obscuration effects (fog clouds, magical darkness, etc.)
-        .def_property_readonly("active_obscuration_effects", &BattleMap::activeObscurationEffects,
-             "Get all active obscuration effects on the map.")
-        .def("add_obscuration_effect", &BattleMap::addObscurationEffect,
-             py::arg("effect"),
-             "Add an obscuration effect to the map. Returns effect_id.")
-        .def("remove_obscuration_effect", &BattleMap::removeObscurationEffect,
-             py::arg("effect_id"),
-             "Remove an obscuration effect by id.")
-        .def("get_obscuration_at_cell", &BattleMap::getObscurationAtCell,
-             py::arg("cell"),
-             "Get the obscuration level at a specific cell.\n"
-             "Returns the highest obscuration level (MagicalDarkness > PartiallyObscured > BrightLight).")
-        .def("tick_obscuration_effects", &BattleMap::tickObscurationEffects,
-             "Decrement turns_remaining for all obscuration effects.\n"
-             "Removes expired effects (turns_remaining <= 0).\n"
-             "Returns list of removed effect ids.")
-        .def("clear_obscuration_effects", &BattleMap::clearObscurationEffects,
-             "Clear all obscuration effects (end of combat).")
 
         // Map items (weapons on the ground)
         .def("place_item", &BattleMap::placeItem,

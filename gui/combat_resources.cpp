@@ -140,6 +140,122 @@ bool CombatEngine::activatePsychicVeil(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+// Warrior of Shadow Monk — Shadow Step (L6+): a Bonus Action teleport. Spend 0 resources.
+// Teleport up to 30 feet in dim light or darkness (L6). At L11, can teleport from any light level.
+// On successful teleport, set shadow_step_advantage flag for Advantage on next attack this turn.
+bool CombatEngine::shadowStepTeleport(BattleMap& bm, int idx, int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Monk ||
+        s.monk_subclass != WarriorOfShadowPath || s.char_level < 6) return false;
+
+    const Cell from = agents[static_cast<std::size_t>(idx)].origin;
+    const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
+    const int max_ft = 30;  // Fixed 30 ft range
+    if (dcells * 5 > max_ft) {
+        log_("{}: Shadow Step destination too far ({} ft > {} ft)",
+             agentName(bm, idx), dcells * 5, max_ft);
+        return false;
+    }
+
+    // L6 gate: must be in dim or dark light
+    if (s.char_level < 11) {
+        VisibilityLevel light = bm.getLightLevel(from);
+        if (light != VisibilityLevel::Dim && light != VisibilityLevel::Dark &&
+            light != VisibilityLevel::MagicalDark) {
+            log_("{}: Shadow Step requires dim light or darkness (currently in bright light)",
+                 agentName(bm, idx));
+            return false;
+        }
+    }
+    // L11+: no light gate — can teleport from any light level
+
+    if (!teleportAgent(bm, idx, target_col, target_row)) return false;
+
+    // Set Advantage flag for next attack this turn
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.shadow_step_advantage = true;
+    // L11 Improved Shadow Step: the Advantage attack also gains +5 ft reach.
+    if (s.char_level >= 11) c.bonus_reach_available = true;
+    bm.setAgentConditions(idx, c);
+
+    log_("{}: Shadow Step — teleports {} ft, next attack has Advantage{}",
+         agentName(bm, idx), dcells * 5,
+         s.char_level >= 11 ? " and +5 ft reach" : "");
+    return true;
+}
+
+// Warrior of Shadow Monk — Cloak of Shadows (L17): a Bonus Action. Gain Invisible in dim/dark.
+// Invisibility persists through attacks (doesn't end on action like standard Invisibility).
+// Expires on turn start if in bright light, or at end of turn naturally.
+bool CombatEngine::cloakOfShadows(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Monk ||
+        s.monk_subclass != WarriorOfShadowPath || s.char_level < 17) return false;
+
+    // Must be in dim or dark light
+    VisibilityLevel light = bm.getLightLevel(agents[static_cast<std::size_t>(idx)].origin);
+    if (light != VisibilityLevel::Dim && light != VisibilityLevel::Dark &&
+        light != VisibilityLevel::MagicalDark) {
+        log_("{}: Cloak of Shadows requires dim light or darkness",
+             agentName(bm, idx));
+        return false;
+    }
+
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.invisible = true;
+    c.invisible_persists_on_action = true;  // Shadow Step: persists through attacks (unlike standard Invisibility)
+    c.cloak_of_shadows_active = true;
+    bm.setAgentConditions(idx, c);
+    log_("{}: Cloak of Shadows — becomes Invisible", agentName(bm, idx));
+    return true;
+}
+
+// Warrior of Shadow Monk — Shadow Arts: Darkness (L3): spend 1 Focus Point to fill a 15-ft-radius
+// Sphere (centered on the chosen point) with magical Darkness for 1 minute (10 rounds). The light
+// effect is tagged see-through for the casting Monk, so getLightLevelFor() reports it as transparent
+// to them — they are NOT Blinded by their own Darkness, while other creatures inside without Devil's
+// Sight gain the Blinded condition. Returns the new light-effect id (>= 0) on success, -1 on failure.
+int CombatEngine::shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Monk ||
+        s.monk_subclass != WarriorOfShadowPath || s.char_level < 3) return -1;
+    Resource* fp = s.getResource("Focus Points");
+    if (!fp || fp->current < 1) {
+        log_("{}: Shadow Arts: Darkness requires 1 Focus Point", agentName(bm, idx));
+        return -1;
+    }
+
+    std::vector<Cell> cells = sphereCellsAround(target_col, target_row, 15);
+    int light_id = bm.placeLightEffect("Shadow Arts: Darkness", cells,
+                                       VisibilityLevel::MagicalDark, 10, idx, /*see_through=*/idx);
+    if (light_id < 0) {
+        log_("{}: Shadow Arts: Darkness — no valid cells at the target point", agentName(bm, idx));
+        return -1;
+    }
+
+    spendResource(bm, idx, "Focus Points", 1);
+    log_("{}: Shadow Arts: Darkness — a 15 ft Sphere of magical Darkness fills the area (sees through it)",
+         agentName(bm, idx));
+
+    // Re-evaluate darkness-blinding for any agent now standing inside the Sphere: those without
+    // Devil's Sight are Blinded; the caster's see-through tag keeps them sighted.
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        const Cell origin = agents[static_cast<std::size_t>(i)].origin;
+        if (std::find(cells.begin(), cells.end(), origin) != cells.end())
+            updateDarknessBlinding(bm, i);
+    }
+    return light_id;
+}
+
 // Soulknife Rogue — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
 // and teleport up to (10 × roll) feet to an unoccupied cell. Grid distance is Chebyshev × 5 ft. The
 // die is spent only on a successful (in-range, legal) teleport.
@@ -240,6 +356,26 @@ TerrainTickResult CombatEngine::tickTerrainForTurn(BattleMap& bm, int agent_idx)
     return result;
 }
 
+void CombatEngine::tickLightEffectsForTurn(BattleMap& bm, int agent_idx) noexcept
+{
+    // Tick the agent's own light effects (e.g., Darkness, Shadow Arts: Darkness)
+    auto expired = bm.tickLightEffects(agent_idx);
+
+    // Also tick DM-placed light effects (they affect everyone)
+    auto dm_expired = bm.tickDmLightEffects();
+    expired.insert(expired.end(), dm_expired.begin(), dm_expired.end());
+
+    // For each expired light effect, re-evaluate blinding for all agents who were inside.
+    // (We don't have the expired effect's cell_indices anymore, so we'll re-run updateDarknessBlinding
+    //  for all agents — a bit conservative but safe.)
+    if (!expired.empty()) {
+        const auto& agents = bm.placedAgents();
+        for (std::size_t i = 0; i < agents.size(); ++i) {
+            updateDarknessBlinding(bm, static_cast<int>(i));
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Rests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,6 +389,9 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
 
         // Restore spell slots and all resources
         stats.restore_resources_long_rest();
+
+        // Spell Thief (Arcane Trickster L17): the 8-hour lock on a stolen spell clears on a long rest.
+        stats.stolen_spell_names.clear();
 
         // Long rest restores all Hit Points and clears any max-HP reduction (vampiric drain, etc.).
         // The dead stay dead (not revived).
