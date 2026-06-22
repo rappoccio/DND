@@ -96,6 +96,11 @@ ELEMENT_CHOICE_SPELLS = {
     "Sorcerous Burst": [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Psychic", 7), ("Thunder", 9)],
 }
 
+# Monk Warrior of the Elements — the five legal elements for Elemental Attunement / Elemental Burst,
+# as (label, MagicDamage_t int). Reused via the ElementPickerDialog. (Acid=0, Cold=1, Fire=2,
+# Lightning=4, Thunder=9 — Force/Poison/etc. are not valid Elemental choices.)
+ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
+
 # Command spell word choices (label, SpellAction.command_word int), reused via the ElementPickerDialog.
 # 0=Drop, 1=Flee, 2=Grovel, 3=Halt, 4=Approach. The engine maps each to an existing mechanic on a
 # failed save (applyCommandEffect): Drop=drop weapons+Disarmed, Flee/Approach=1-turn movement
@@ -482,6 +487,7 @@ class App:
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
         self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
+        self.pending_elemental_burst   = -1    # Warrior of the Elements L6: chosen element (MagicDamage_t) awaiting an Elemental Burst center cell; -1 = inactive
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
@@ -1011,6 +1017,12 @@ class App:
         self.btn_cbt_shadow_arts_darkness = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Shadow Arts: Darkness (1 Focus)",
                                           (50, 35, 85), (80, 60, 120), self.font_md)
+        self.btn_cbt_elemental_attunement = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Elemental Attunement (1 Focus)",
+                                          (120, 70, 40), (160, 100, 60), self.font_md)
+        self.btn_cbt_elemental_burst = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Elemental Burst (2 Focus)",
+                                          (140, 60, 40), (185, 90, 60), self.font_md)
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
@@ -2055,8 +2067,11 @@ class App:
             # Clear the per-combat "has taken a turn" marker (drives Assassin's Assassinate
             # Advantage vs creatures that haven't acted yet). beginTurn re-sets it each turn.
             cond = self.combat.get_agent_conditions(self.bm, i)
-            if cond.has_taken_turn_this_combat:
+            # Also clear Warrior of the Elements' Elemental Attunement (a per-encounter marker; the
+            # unarmed damage override it sets is reset in initializeClassResources). Re-activate each combat.
+            if cond.has_taken_turn_this_combat or cond.elemental_attunement_active:
                 cond.has_taken_turn_this_combat = False
+                cond.elemental_attunement_active = False
                 self.combat.set_agent_conditions(self.bm, i, cond)
         first = self._current_agent_idx()
         self.selected_idx = first
@@ -3112,6 +3127,7 @@ class App:
         has_stunning_strike = False
         has_open_hand_rider = False
         has_hand_of_harm = False
+        has_elemental_move = False
         has_maneuver = False
         has_precision = False
         has_psionic_strike = False
@@ -3140,6 +3156,8 @@ class App:
                 has_open_hand_rider = True
             elif result.hit and atk_cond and atk_cond.hand_of_harm_available:
                 has_hand_of_harm = True
+            elif result.hit and atk_cond and atk_cond.elemental_attunement_move_available:
+                has_elemental_move = True
             elif result.hit and atk_cond and atk_cond.divine_strike_available:
                 has_divine_strike = True
             elif result.hit and atk_cond and atk_cond.psionic_strike_available:
@@ -3258,6 +3276,8 @@ class App:
             self._offer_open_hand_rider(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_hand_of_harm:
             self._offer_hand_of_harm(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_elemental_move:
+            self._offer_elemental_move(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_brutal_strike:
             self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_strike:
@@ -3706,6 +3726,30 @@ class App:
         options = [
             ("Punch-and-Grab (also attempt a Grapple)", lambda: _apply(True)),
             ("Skip Grapple", lambda: _apply(False)),
+        ]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_elemental_move(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After an unarmed hit while Elemental Attunement is active (Warrior of the Elements L3), offer
+        to push the target 10 ft away or pull it 10 ft toward the Monk (no save). Mirrors
+        _offer_punch_and_grab. The forced move runs in C++ via elemental_attunement_move."""
+        def _apply(mode):
+            self._combat_log_add(atk_msg)   # the unarmed-strike damage still landed
+            if mode is not None:
+                ft = self.combat.elemental_attunement_move(self.bm, atk_idx, target_idx, mode)
+                verb = "pulls" if mode else "pushes"
+                if ft > 0:
+                    self._combat_log_add(f"{atk_name}→{tgt_name}: Elemental Attunement {verb} {ft} ft")
+                else:
+                    self._combat_log_add(f"{atk_name}→{tgt_name}: Elemental Attunement could not move the target (blocked)")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+        options = [
+            ("Push 10 ft (away)", lambda: _apply(False)),
+            ("Pull 10 ft (toward)", lambda: _apply(True)),
+            ("Skip", lambda: _apply(None)),
         ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
@@ -5210,6 +5254,28 @@ class App:
         else:
             self._flush_combat_log()
             self._combat_log_add("Shadow Arts: Darkness: requires the Warrior of Shadow subclass (L3) and 1 Focus Point.")
+
+    def _resolve_elemental_burst(self, cell):
+        """Warrior of the Elements L6 Elemental Burst — a 20-ft Sphere of the chosen element centered on
+        the clicked cell (2 Focus, Magic action). Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_elemental_burst = -1
+            return
+        element = self.pending_elemental_burst
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_elemental_burst = -1
+            self._combat_log_add("Elemental Burst cancelled.")
+            return
+        if self.combat.elemental_burst(self.bm, idx, cell.col, cell.row, element):
+            self.pending_elemental_burst = -1
+            self._flush_combat_log()
+            self.action_used = True
+            self._update_attack_overlay()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Elemental Burst: requires the Warrior of the Elements subclass (L6) and 2 Focus Points.")
 
     def _use_action_surge(self, agent_idx: int):
         """Fighter Action Surge: spend resource, regain an Action this turn."""
@@ -10539,6 +10605,32 @@ class App:
                         self.btn_cbt_shadow_arts_darkness.draw(self.screen)
                         y += B + gap
 
+            # Warrior of the Elements Monk: Elemental Attunement (L3, Magic action, 1 Focus) and
+            # Elemental Burst (L6, Magic action, 2 Focus). Both are Magic-action features.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Monk and
+                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfFourElements):
+                    fp_e = stats.get_resource("Focus Points")
+                    fp_n = fp_e.current if fp_e else 0
+                    if stats.char_level >= 3 and not self.action_used and fp_n >= 1:
+                        att_cond = self.combat.get_agent_conditions(self.bm, cur_idx)
+                        active = att_cond.elemental_attunement_active if att_cond else False
+                        self.btn_cbt_elemental_attunement.text = (
+                            "Elemental Attunement ✓" if active else f"Elemental Attunement ({fp_n} Focus)")
+                        self.btn_cbt_elemental_attunement.rect.x = lx
+                        self.btn_cbt_elemental_attunement.rect.y = y
+                        self.btn_cbt_elemental_attunement.rect.w = W
+                        self.btn_cbt_elemental_attunement.draw(self.screen)
+                        y += B + gap
+                    if stats.char_level >= 6 and not self.action_used and fp_n >= 2:
+                        self.btn_cbt_elemental_burst.text = f"Elemental Burst ({fp_n} Focus)"
+                        self.btn_cbt_elemental_burst.rect.x = lx
+                        self.btn_cbt_elemental_burst.rect.y = y
+                        self.btn_cbt_elemental_burst.rect.w = W
+                        self.btn_cbt_elemental_burst.draw(self.screen)
+                        y += B + gap
+
             # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
             # the Land/Sea/Sky, or dismiss the active companion (label toggles).
             if 0 <= cur_idx < len(agents):
@@ -11398,6 +11490,8 @@ class App:
                             self._resolve_shadow_step(cell)
                         elif self.pending_shadow_darkness:
                             self._resolve_shadow_darkness(cell)
+                        elif self.pending_elemental_burst >= 0:
+                            self._resolve_elemental_burst(cell)
                         # Pending attack: resolve against the clicked agent.
                         elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
@@ -12209,6 +12303,39 @@ class App:
                             self.hint = "Shadow Arts: Darkness: click the center of the 15-ft Sphere"
                             self._combat_log_add(
                                 "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
+                    if self.btn_cbt_elemental_attunement.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            def _on_attune_elem(chosen, idx=idx):
+                                element = chosen[0] if chosen else -1
+                                if element < 0:
+                                    return
+                                if self.combat.activate_elemental_attunement(self.bm, idx, element):
+                                    self.action_used = True
+                                    self._flush_combat_log()
+                                    self._update_attack_overlay()
+                                else:
+                                    self._combat_log_add(
+                                        "Elemental Attunement: requires the Elements subclass (L3) and 1 Focus Point.")
+                            self._element_dialog.show(_on_attune_elem, ELEMENTAL_MONK_OPTIONS,
+                                                      current_values=None, multi=False,
+                                                      title="Elemental Attunement: element")
+                    if self.btn_cbt_elemental_burst.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            def _on_burst_elem(chosen, idx=idx):
+                                element = chosen[0] if chosen else -1
+                                if element < 0:
+                                    return
+                                self.pending_elemental_burst = element
+                                type_name = next((lbl for lbl, val in ELEMENTAL_MONK_OPTIONS
+                                                  if val == element), "?")
+                                self.hint = f"Elemental Burst ({type_name}): click the center of the 20-ft Sphere"
+                                self._combat_log_add(
+                                    f"Elemental Burst ({type_name}): click a center cell (or click yourself to cancel).")
+                            self._element_dialog.show(_on_burst_elem, ELEMENTAL_MONK_OPTIONS,
+                                                      current_values=None, multi=False,
+                                                      title="Elemental Burst: element")
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()
                     if self.btn_cbt_pass_bonus.clicked(event):

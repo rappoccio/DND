@@ -29,6 +29,27 @@
 
 namespace rpg {
 
+namespace {
+    // File-local damage-type name for log lines (combat_attack.cpp's magicDamageName is in its own
+    // anonymous namespace and not visible here). Only the elemental types are used by the Monk's
+    // Warrior of the Elements features, but cover the full enum for safety.
+    const char* elementName(MagicDamage_t t) noexcept {
+        switch (t) {
+            case Acid:      return "Acid";
+            case Cold:      return "Cold";
+            case Fire:      return "Fire";
+            case Force:     return "Force";
+            case Lightning: return "Lightning";
+            case Necrotic:  return "Necrotic";
+            case Poison:    return "Poison";
+            case Psychic:   return "Psychic";
+            case Radiant:   return "Radiant";
+            case Thunder:   return "Thunder";
+            default:        return "Magic";
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Bonus-action budget (general action economy)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -256,6 +277,154 @@ int CombatEngine::shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int
     return light_id;
 }
 
+// Monk Martial Arts die COUNT for Warrior of the Elements — Elemental Burst (2024 PHB): the number of
+// d8s the burst rolls scales with tier. Mirrors martialArtsDieSize's breakpoints: 2 (≤10), 3 (11–16),
+// 4 (17+). Elemental Burst is L6+, so only the 2/3/4 values are reachable.
+static int martialArtsDieCount(int level) noexcept
+{
+    if (level >= 17) return 4;
+    if (level >= 11) return 3;
+    return 2;
+}
+
+// Warrior of the Elements — Elemental Attunement (L3): a Magic action; spend 1 Focus Point to attune to
+// a chosen element for the rest of the encounter (the sim doesn't track the 10-min duration; cleared on a
+// short/long rest). While active: unarmed strikes reach +10 ft, deal the chosen element, and can push or
+// pull the target 10 ft on a hit. `element` is a MagicDamage_t value; only the five elemental types are
+// legal (Acid/Cold/Fire/Lightning/Thunder).
+bool CombatEngine::activateElementalAttunement(BattleMap& bm, int idx, int element) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Monk ||
+        s.monk_subclass != WarriorOfFourElementsPath || s.char_level < 3) return false;
+    if (element != Acid && element != Cold && element != Fire &&
+        element != Lightning && element != Thunder) {
+        log_("{}: Elemental Attunement requires an elemental damage type", agentName(bm, idx));
+        return false;
+    }
+    Resource* fp = s.getResource("Focus Points");
+    if (!fp || fp->current < 1) {
+        log_("{}: Elemental Attunement requires 1 Focus Point", agentName(bm, idx));
+        return false;
+    }
+
+    s.unarmed_damage_override = element;
+    bm.setAgentStats(idx, s);
+
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.elemental_attunement_active = true;
+    bm.setAgentConditions(idx, c);
+
+    spendResource(bm, idx, "Focus Points", 1);
+    log_("{}: Elemental Attunement — attunes to {} (unarmed strikes gain +10 ft reach, deal {}, and can push/pull 10 ft)",
+         agentName(bm, idx), elementName(static_cast<MagicDamage_t>(element)),
+         elementName(static_cast<MagicDamage_t>(element)));
+    return true;
+}
+
+// Elemental Attunement push/pull rider: while attunement is active, an unarmed hit can push the target
+// 10 ft away from the Monk (pull=false) or pull it 10 ft toward the Monk (pull=true). No save (2024).
+int CombatEngine::elementalAttunementMove(BattleMap& bm, int attacker_idx, int target_idx, bool pull) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return 0;
+    if (target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return 0;
+    if (attacker_idx == target_idx) return 0;
+
+    const Cell from = agents[static_cast<std::size_t>(attacker_idx)].origin;
+    int cells_moved = bm.forceMoveAgent(target_idx, from, 10, pull);
+    int ft = cells_moved * 5;
+    if (ft > 0) {
+        log_("{}: Elemental Attunement {} {} {} ft",
+             agentName(bm, attacker_idx), pull ? "pulls" : "pushes",
+             agentName(bm, target_idx), ft);
+    } else {
+        log_("{}: Elemental Attunement could not {} {} (blocked)",
+             agentName(bm, attacker_idx), pull ? "pull" : "push", agentName(bm, target_idx));
+    }
+    return ft;
+}
+
+// Warrior of the Elements — Elemental Burst (L6): a Magic action; spend 2 Focus Points to detonate a
+// 20-ft-radius Sphere of the chosen element centered on (target_col, target_row). Every creature in the
+// area (the caster's allies are spared — faction-aware) makes a DEX save vs the Monk's Ki DC; on a fail
+// it takes (Martial Arts die count) × d8 of the chosen element, half on a success.
+bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int target_row, int element) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats cs = bm.getAgentStats(idx);
+    if (cs.character_class != CharacterClass::Monk ||
+        cs.monk_subclass != WarriorOfFourElementsPath || cs.char_level < 6) return false;
+    if (element != Acid && element != Cold && element != Fire &&
+        element != Lightning && element != Thunder) {
+        log_("{}: Elemental Burst requires an elemental damage type", agentName(bm, idx));
+        return false;
+    }
+    Resource* fp = cs.getResource("Focus Points");
+    if (!fp || fp->current < 2) {
+        log_("{}: Elemental Burst requires 2 Focus Points", agentName(bm, idx));
+        return false;
+    }
+
+    const auto mt  = static_cast<MagicDamage_t>(element);
+    const int  dc  = spellSaveDcFromAbility(cs, SaveWis);   // Monk Ki DC = 8 + PB + WIS
+    const int  num = martialArtsDieCount(cs.char_level);
+
+    spendResource(bm, idx, "Focus Points", 2);
+    log_("{}: Elemental Burst — a 20 ft Sphere of {} erupts (DC {} DEX save, {}d8)",
+         agentName(bm, idx), elementName(mt), dc, num);
+
+    std::vector<Cell> cells = sphereCellsAround(target_col, target_row, 20);
+    for (int t = 0; t < static_cast<int>(agents.size()); ++t) {
+        if (t == idx) continue;                              // the caster is never in their own burst
+        if (areAllies(bm, idx, t)) continue;                 // faction-aware: spare allies
+        const Cell torigin = agents[static_cast<std::size_t>(t)].origin;
+        if (std::find(cells.begin(), cells.end(), torigin) == cells.end()) continue;
+
+        Agent::Stats ts = bm.getAgentStats(t);
+        if (ts.hp_max == 0 && ts.hp_cur == 0) continue;      // not a real combatant
+
+        int rolled = 0;
+        for (int i = 0; i < num; ++i) rolled += roll(8);
+        float multiplier = effectiveMagicDamageMult(cs, ts, mt, true);
+        int dmg = static_cast<int>(static_cast<float>(rolled) * multiplier);
+
+        int save_d20  = roll(20);
+        int save_mod  = saveModFor(bm, t, SaveDex);
+        int save_tot  = applyIndomitableMight(bm, t, SaveDex, save_d20 + save_mod);
+        bool saved    = (save_tot >= dc);
+
+        // Rogue Evasion (L7+): DEX save success = no damage, failure = half.
+        if (ts.character_class == CharacterClass::Rogue && ts.char_level >= 7) {
+            dmg = saved ? 0 : (dmg / 2);
+        } else if (saved) {
+            dmg /= 2;
+        }
+
+        log_("{} {} the Elemental Burst ({} vs DC {}) — takes {} {}",
+             agentName(bm, t), saved ? "saves vs" : "fails", save_tot, dc, dmg, elementName(mt));
+
+        if (dmg > 0) {
+            // Apply the damage: temp HP first, then real HP (mirrors applyHandOfHarmEffect).
+            int overflow = std::max(0, dmg - ts.temp_hp);
+            ts.temp_hp = std::max(0, ts.temp_hp - dmg);
+            ts.hp_cur  = std::clamp(ts.hp_cur - overflow, 0, ts.hp_max);
+            bm.setAgentStats(t, ts);
+
+            checkConcentrationOnDamage(bm, t, dmg);
+            processDamageTaken(bm, t, dmg);   // on-damage condition triggers (Sleep end, re-saves, ...)
+            if (ts.hp_cur <= 0) {
+                Agent::Conditions tc = bm.getAgentConditions(t);
+                if (!tc.unconscious && !tc.dead) applyUnconscious(bm, t);
+            }
+        }
+    }
+    return true;
+}
+
 // Soulknife Rogue — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
 // and teleport up to (10 × roll) feet to an unoccupied cell. Grid distance is Chebyshev × 5 ft. The
 // die is spent only on a successful (in-range, legal) teleport.
@@ -424,6 +593,18 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
             stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
         }
 
+        // Warrior of the Elements — Elemental Attunement ends on a long rest (clear the active flag and
+        // the unarmed damage-type override it set).
+        if (stats.character_class == CharacterClass::Monk && stats.unarmed_damage_override >= 0)
+            stats.unarmed_damage_override = -1;
+        {
+            Agent::Conditions ec = bm.getAgentConditions(agent_idx);
+            if (ec.elemental_attunement_active) {
+                ec.elemental_attunement_active = false;
+                bm.setAgentConditions(agent_idx, ec);
+            }
+        }
+
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);
 
@@ -449,6 +630,17 @@ void CombatEngine::applyShortRest(BattleMap& bm) noexcept
             int chaMod = (stats.cha - 10) / 2;
             if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
             stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+        }
+
+        // Warrior of the Elements — Elemental Attunement ends on a short rest too.
+        if (stats.character_class == CharacterClass::Monk && stats.unarmed_damage_override >= 0)
+            stats.unarmed_damage_override = -1;
+        {
+            Agent::Conditions ec = bm.getAgentConditions(agent_idx);
+            if (ec.elemental_attunement_active) {
+                ec.elemental_attunement_active = false;
+                bm.setAgentConditions(agent_idx, ec);
+            }
         }
 
         bm.setAgentStats(agent_idx, stats);

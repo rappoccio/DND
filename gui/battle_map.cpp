@@ -573,18 +573,19 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     return true;
 }
 
-int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft) noexcept
+int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return 0;
     auto& pa = placedAgents_[idx];
     int agent_size = pa.agent->getSize();
 
-    // Compute direction: away from push_from toward target
+    // Compute direction: away from push_from toward target (push), or toward push_from (pull).
     int dir_col = 0, dir_row = 0;
     if (pa.origin.col != push_from.col)
         dir_col = (pa.origin.col > push_from.col) ? 1 : -1;
     if (pa.origin.row != push_from.row)
         dir_row = (pa.origin.row > push_from.row) ? 1 : -1;
+    if (pull) { dir_col = -dir_col; dir_row = -dir_row; }
 
     // Move cell-by-cell for push_ft/5 cells
     int max_cells = push_ft / 5;

@@ -1253,6 +1253,25 @@ public:
     // Returns the new light-effect id (>= 0) on success, or -1 on failure (wrong class/level/no focus).
     int shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
 
+    // ── Warrior of the Elements (Phase 3) ───────────────────────────────────────────────────────
+    // Elemental Attunement (L3): Magic action + 1 Focus Point → for the rest of the encounter (the sim
+    // doesn't track the 10-min duration; reset on a short/long rest) the Monk's unarmed strikes reach
+    // +10 ft, deal the chosen element (Acid/Cold/Fire/Lightning/Thunder), and can push/pull the target
+    // 10 ft. `element` is a MagicDamage_t value. Returns true on success, false on wrong class/level/no
+    // focus / invalid element.
+    bool activateElementalAttunement(BattleMap& bm, int idx, int element) noexcept;
+
+    // Elemental Attunement push/pull rider: while attunement is active, an unarmed hit can push the
+    // target 10 ft away (pull=false) or pull it 10 ft toward the Monk (pull=true). No save. Returns the
+    // feet actually moved (0 if blocked/invalid).
+    int elementalAttunementMove(BattleMap& bm, int attacker_idx, int target_idx, bool pull) noexcept;
+
+    // Elemental Burst (L6): Magic action + 2 Focus Points → a 20-ft-radius sphere centered on the chosen
+    // point. Each creature there (faction-aware: allies of the caster are spared) makes a DEX save vs the
+    // Monk's Ki DC (8 + PB + WIS); on a failure it takes (Martial Arts die count) × d8 of the chosen
+    // element, half on a success. `element` is a MagicDamage_t value. Returns true on success.
+    bool elementalBurst(BattleMap& bm, int idx, int target_col, int target_row, int element) noexcept;
+
     // Rend Mind (L17): after a Psychic-Blade Sneak Attack, force a WIS save (DC 8 + DEX + PB) or be
     // Stunned for 1 minute (repeat the save at end of each of its turns). Once per Long Rest, or by
     // expending 3 Psionic Energy Dice. canRendMind gates availability; applyRendMind resolves it and

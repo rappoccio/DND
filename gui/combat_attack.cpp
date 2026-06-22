@@ -288,18 +288,21 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        // Monk L6 Empowered Strikes: unarmed strikes may deal Force instead of Bludgeoning
-        bool use_force = (w.name == "MonkUnarmed" && attacker.character_class == CharacterClass::Monk &&
-                          attacker.char_level >= 6 && attacker.monk_empowered_strikes_damage_type == 1);
+        // Unarmed damage-type override: Monk L6 Empowered Strikes (Force) or Warrior of the Elements
+        // L3 Elemental Attunement (chosen Acid/Cold/Fire/Lightning/Thunder). One Stats field holds the
+        // active override (-1 = none); the engine treats the overridden physical roll as magic damage.
+        bool use_override = (w.name == "MonkUnarmed" && attacker.character_class == CharacterClass::Monk &&
+                             attacker.unarmed_damage_override >= 0 &&
+                             attacker.unarmed_damage_override < NumMagicDamage_t);
 
-        if (use_force) {
-            // Force is a magic damage type, not physical
-            float multiplier = target.magic_damage_multipliers[Force];
+        if (use_override) {
+            auto mt = static_cast<MagicDamage_t>(attacker.unarmed_damage_override);
+            float multiplier = target.magic_damage_multipliers[mt];
             int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
             raw += modified_damage;
-            result.magic_damage_dealt[Force] += modified_damage;
-            result.magic_damage_types.push_back(Force);
-            format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice, "Force");
+            result.magic_damage_dealt[mt] += modified_damage;
+            result.magic_damage_types.push_back(mt);
+            format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice, magicDamageName(mt));
         } else {
             // Normal physical damage
             float multiplier = target.physical_damage_multipliers[dmg_roll.type];
@@ -1556,6 +1559,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         w.reach_ft += 5;
     }
 
+    // Warrior of the Elements L3 Elemental Attunement: +10 ft reach on unarmed strikes while active.
+    // Non-consuming — persists for every unarmed strike until a short/long rest ends the attunement.
+    if (w.name == "MonkUnarmed" && atk_pt.agent->getConditions().elemental_attunement_active) {
+        w.reach_ft += 10;
+    }
+
     if (!canAttack(w, bm, atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz))
         return false;
 
@@ -2135,6 +2144,16 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         atk_stats.char_level >= 3 &&
         (atk_stats.char_level >= 11 || !atk_cond.hand_of_harm_used)) {
         updated_atk_cond.hand_of_harm_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // ── Monk Warrior of the Elements — Elemental Attunement push/pull eligibility ──────────────
+    // While Elemental Attunement is active, an unarmed hit lets the Monk push or pull the target 10 ft
+    // (no save). The direction is a player choice, so the GUI offers it; we only flag availability here.
+    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+        atk_stats.monk_subclass == WarriorOfFourElementsPath &&
+        w.name == "MonkUnarmed" && atk_cond.elemental_attunement_active) {
+        updated_atk_cond.elemental_attunement_move_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 

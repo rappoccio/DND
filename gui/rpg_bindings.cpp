@@ -394,8 +394,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Monk subclass (only valid when character_class == Monk)")
         .def_readwrite("monk_body_mind_applied", &Agent::Stats::monk_body_mind_applied,
              "Monk L20 Body and Mind: +4 DEX/WIS (capped at 25) applied (idempotent flag)")
-        .def_readwrite("monk_empowered_strikes_damage_type", &Agent::Stats::monk_empowered_strikes_damage_type,
-             "Monk L6 Empowered Strikes: 0=Bludgeoning (default), 1=Force (L6+)")
+        .def_readwrite("unarmed_damage_override", &Agent::Stats::unarmed_damage_override,
+             "Unarmed-strike damage-type override: -1 = none (Bludgeoning default), else a MagicDamage_t "
+             "value. Set by Monk L6 Empowered Strikes (Force=3) and Elements L3 Elemental Attunement "
+             "(chosen Acid/Cold/Fire/Lightning/Thunder).")
         .def_readwrite("paladin_oath", &Agent::Stats::paladin_oath,
              "Paladin oath choice (only valid when character_class == Paladin)")
         .def_readwrite("wizard_subclass", &Agent::Stats::wizard_subclass,
@@ -614,6 +616,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("hand_of_harm_available", &Agent::Conditions::hand_of_harm_available)
         .def_readwrite("hand_of_harm_used", &Agent::Conditions::hand_of_harm_used)
         .def_readwrite("hand_of_harm_last_target", &Agent::Conditions::hand_of_harm_last_target)
+        .def_readwrite("elemental_attunement_active", &Agent::Conditions::elemental_attunement_active,
+             "Monk Elements L3 Elemental Attunement active (until short/long rest): +10 ft unarmed reach + push/pull rider")
+        .def_readwrite("elemental_attunement_move_available", &Agent::Conditions::elemental_attunement_move_available,
+             "Monk Elements L3: an unarmed hit this turn can push/pull the target 10 ft (per-turn eligibility)")
         .def_readwrite("grappler_punch_grab_available", &Agent::Conditions::grappler_punch_grab_available)
         .def_readwrite("grappler_punch_grab_used", &Agent::Conditions::grappler_punch_grab_used)
         .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
@@ -2345,6 +2351,26 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Sphere with magical Darkness (1 min). The caster sees through their own Darkness (not\n"
              "Blinded); others inside without Devil's Sight are Blinded. Returns the light-effect id (>=0),\n"
              "or -1 on failure.")
+        .def("activate_elemental_attunement",
+             &CombatEngine::activateElementalAttunement,
+             py::arg("battle_map"), py::arg("idx"), py::arg("element"),
+             "Warrior of the Elements Elemental Attunement (L3): Magic action + 1 Focus Point. `element` is\n"
+             "a MagicDamage_t (Acid=0/Cold=1/Fire=2/Lightning=4/Thunder=9). Until a short/long rest the Monk's\n"
+             "unarmed strikes gain +10 ft reach, deal the chosen element, and can push/pull 10 ft on a hit.\n"
+             "Returns True on success.")
+        .def("elemental_attunement_move",
+             &CombatEngine::elementalAttunementMove,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("pull"),
+             "Elemental Attunement push/pull rider: on an unarmed hit while attunement is active, push the\n"
+             "target 10 ft away (pull=False) or pull it 10 ft toward the Monk (pull=True). No save. Returns\n"
+             "the feet actually moved.")
+        .def("elemental_burst",
+             &CombatEngine::elementalBurst,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"), py::arg("element"),
+             "Warrior of the Elements Elemental Burst (L6): Magic action + 2 Focus Points → a 20-ft-radius\n"
+             "Sphere of the chosen element (a MagicDamage_t). Each non-ally creature in the area makes a DEX\n"
+             "save vs the Monk's Ki DC (8 + PB + WIS); failure = (Martial Arts die count) × d8, half on a\n"
+             "save. Returns True on success.")
         .def("can_rend_mind",
              &CombatEngine::canRendMind,
              py::arg("battle_map"), py::arg("attacker_idx"),
@@ -3222,8 +3248,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "is_running: True for running jump (up to STR), False for standing jump (up to STR/2).\n"
              "Returns False if out of range or insufficient movement budget.")
         .def("force_move_agent",   &BattleMap::forceMoveAgent,
-             py::arg("idx"), py::arg("push_from"), py::arg("push_ft"),
-             "Force move agent[idx] away from push_from by up to push_ft.\n"
+             py::arg("idx"), py::arg("push_from"), py::arg("push_ft"), py::arg("pull") = false,
+             "Force move agent[idx] relative to push_from by up to push_ft. By default pushes AWAY;\n"
+             "with pull=True, pulls TOWARD push_from instead.\n"
              "Does not consume movement budget. Stops at walls.\n"
              "Returns number of cells actually moved.")
         .def("set_agent_position", &BattleMap::setAgentPosition,

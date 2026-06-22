@@ -376,19 +376,23 @@ def test_l10_self_restoration():
 
 
 def test_l6_empowered_strikes_toggle():
-    """Monk L6 Empowered Strikes: unarmed strikes may deal Force instead of Bludgeoning."""
+    """Monk L6 Empowered Strikes: unarmed strikes may deal Force instead of Bludgeoning.
+
+    The override now lives in the unified unarmed_damage_override field (-1 = none/Bludgeoning,
+    else a MagicDamage_t value). Force = 3.
+    """
     bm, engine, atk, tgt = _setup(6, dex=16)
     s = engine.get_agent_stats(bm, atk)
 
-    # Flag should be initialized to 0 (Bludgeoning)
-    assert s.monk_empowered_strikes_damage_type == 0, "L6 Monk should start with Bludgeoning (type 0)"
+    # Override should be initialized to -1 (no override → Bludgeoning)
+    assert s.unarmed_damage_override == -1, "L6 Monk should start with no override (-1 = Bludgeoning)"
 
-    # Toggle to Force (type 1)
-    s.monk_empowered_strikes_damage_type = 1
+    # Set Force (MagicDamage_t Force == 3)
+    s.unarmed_damage_override = 3
     engine.set_agent_stats(bm, atk, s)
 
     s_after = engine.get_agent_stats(bm, atk)
-    assert s_after.monk_empowered_strikes_damage_type == 1, "Empowered Strikes should be toggled to Force (type 1)"
+    assert s_after.unarmed_damage_override == 3, "Empowered Strikes should set the override to Force (3)"
     print("✅ test_l6_empowered_strikes_toggle passed")
 
 
@@ -1022,6 +1026,248 @@ def test_hand_of_healing_free_at_l11():
     print("✅ test_hand_of_healing_free_at_l11 passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Warrior of the Elements subclass (Phase 3): Elemental Attunement (L3), Elemental Burst (L6)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# MagicDamage_t values (see damage.hpp): Acid=0, Cold=1, Fire=2, Force=3, Lightning=4, Thunder=9
+_FIRE = 2
+_LIGHTNING = 4
+
+
+def _elements_monk(engine, bm, idx, level, dex=16, wis=16):
+    """Configure agent idx as a Warrior of the Elements Monk of the given level."""
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Monk, level)
+    s.monk_subclass = rpg.MonkSubclass.WarriorOfFourElements
+    s.dex = dex
+    s.wis = wis
+    s.initialize_class_resources(rpg.CharacterClass.Monk, level)
+    engine.set_agent_stats(bm, idx, s)
+    return engine.get_agent_stats(bm, idx)
+
+
+def test_elemental_attunement_activate():
+    """L3 Elemental Attunement: spend 1 Focus, set the active flag + the chosen element override."""
+    bm, engine, mon, tgt = _setup(3)
+    _elements_monk(engine, bm, mon, 3)
+
+    fp_before = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+    ok = engine.activate_elemental_attunement(bm, mon, _FIRE)
+    assert ok, "Elemental Attunement should succeed for an Elements Monk L3 with Focus"
+
+    cond = engine.get_agent_conditions(bm, mon)
+    assert cond.elemental_attunement_active, "attunement should be flagged active"
+    s = engine.get_agent_stats(bm, mon)
+    assert s.unarmed_damage_override == _FIRE, "the chosen element should be stored as the unarmed override"
+    fp_after = s.get_resource("Focus Points").current
+    assert fp_after == fp_before - 1, f"Elemental Attunement spends 1 Focus ({fp_before}->{fp_after})"
+    print("✅ test_elemental_attunement_activate passed")
+
+
+def test_elemental_attunement_damage_type():
+    """While attuned, an unarmed strike deals the chosen element instead of Bludgeoning."""
+    bm, engine, mon, tgt = _setup(3)
+    _elements_monk(engine, bm, mon, 3)
+    engine.set_agent_weapons(bm, mon, _monk_unarmed_weapons())
+
+    assert engine.activate_elemental_attunement(bm, mon, _FIRE)
+    res = engine.execute_action(bm, rpg.Attack(mon, tgt, 0))
+    assert res.hit, "the unarmed strike should land"
+    assert rpg.MagicDamage.Fire in list(res.magic_damage_types), \
+        "an attuned (Fire) unarmed strike should deal Fire damage"
+    print("✅ test_elemental_attunement_damage_type passed")
+
+
+def test_elemental_attunement_reach():
+    """While attuned, unarmed reach is +10 ft (5 → 15), so a 10-ft-away target becomes reachable."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    mon = add_agent_to_battle(engine, bm, create_test_agent("Monk", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Dummy", 7, 5))  # 2 cells = 10 ft away
+    _elements_monk(engine, bm, mon, 3)
+    _soft_target(engine, bm, tgt)
+    engine.set_agent_weapons(bm, mon, _monk_unarmed_weapons())
+
+    # Without attunement: 5-ft reach can't hit a 10-ft-away target.
+    res_before = engine.execute_action(bm, rpg.Attack(mon, tgt, 0))
+    assert not res_before.hit, "a 5-ft-reach unarmed strike should not reach a 10-ft-away target"
+
+    # With attunement: +10 ft reach (15 ft) now reaches.
+    assert engine.activate_elemental_attunement(bm, mon, _FIRE)
+    res_after = engine.execute_action(bm, rpg.Attack(mon, tgt, 0))
+    assert res_after.hit, "Elemental Attunement's +10 ft reach should let the strike land at 10 ft"
+    print("✅ test_elemental_attunement_reach passed")
+
+
+def test_elemental_attunement_push_and_pull():
+    """The push/pull rider moves the target 10 ft away (push) or toward the Monk (pull)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    mon = add_agent_to_battle(engine, bm, create_test_agent("Monk", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Dummy", 6, 5))
+    _elements_monk(engine, bm, mon, 3)
+    _soft_target(engine, bm, tgt)
+
+    # Push 10 ft away (east): col 6 → 8.
+    ft = engine.elemental_attunement_move(bm, mon, tgt, False)
+    assert ft == 10, f"push should move the target 10 ft, got {ft}"
+    assert bm.placed_agents[tgt].origin.col == 8, "pushed target should be 2 cells farther east"
+
+    # Pull 10 ft toward the Monk (west): col 8 → 6.
+    ft2 = engine.elemental_attunement_move(bm, mon, tgt, True)
+    assert ft2 == 10, f"pull should move the target 10 ft, got {ft2}"
+    assert bm.placed_agents[tgt].origin.col == 6, "pulled target should be 2 cells closer (back to col 6)"
+    print("✅ test_elemental_attunement_push_and_pull passed")
+
+
+def test_elemental_attunement_move_eligibility_on_hit():
+    """An unarmed hit while attuned flags the per-turn push/pull eligibility."""
+    bm, engine, mon, tgt = _setup(3)
+    _elements_monk(engine, bm, mon, 3)
+    engine.set_agent_weapons(bm, mon, _monk_unarmed_weapons())
+
+    assert engine.activate_elemental_attunement(bm, mon, _FIRE)
+    res = engine.execute_action(bm, rpg.Attack(mon, tgt, 0))
+    assert res.hit, "the unarmed strike should land"
+    assert engine.get_agent_conditions(bm, mon).elemental_attunement_move_available, \
+        "an attuned unarmed hit should flag the push/pull rider as available"
+    print("✅ test_elemental_attunement_move_eligibility_on_hit passed")
+
+
+def test_elemental_attunement_gating():
+    """Elemental Attunement requires the Elements subclass, L3, Focus, and a valid element."""
+    # Plain Monk → invalid.
+    bm, engine, mon, tgt = _setup(3)
+    _monk(engine, bm, mon, 3)
+    assert not engine.activate_elemental_attunement(bm, mon, _FIRE), \
+        "a non-Elements Monk cannot use Elemental Attunement"
+
+    # Elements Monk but non-elemental type (Force=3) → invalid.
+    bm2, engine2, mon2, tgt2 = _setup(3)
+    _elements_monk(engine2, bm2, mon2, 3)
+    assert not engine2.activate_elemental_attunement(bm2, mon2, 3), \
+        "Force is not a legal Elemental Attunement element"
+
+    # No Focus → invalid.
+    bm3, engine3, mon3, tgt3 = _setup(3)
+    s = _elements_monk(engine3, bm3, mon3, 3)
+    fp = s.get_resource("Focus Points")
+    fp.current = 0
+    s.resources["Focus Points"] = fp
+    engine3.set_agent_stats(bm3, mon3, s)
+    assert not engine3.activate_elemental_attunement(bm3, mon3, _FIRE), \
+        "Elemental Attunement requires a Focus Point"
+    print("✅ test_elemental_attunement_gating passed")
+
+
+def test_elemental_attunement_cleared_on_rest():
+    """A short OR long rest ends the attunement (clears the active flag and the override)."""
+    for rest in ("short", "long"):
+        bm, engine, mon, tgt = _setup(6)
+        _elements_monk(engine, bm, mon, 6)
+        assert engine.activate_elemental_attunement(bm, mon, _FIRE)
+        assert engine.get_agent_conditions(bm, mon).elemental_attunement_active
+
+        if rest == "short":
+            engine.apply_short_rest(bm)
+        else:
+            engine.apply_long_rest(bm)
+
+        assert not engine.get_agent_conditions(bm, mon).elemental_attunement_active, \
+            f"a {rest} rest should clear the attunement flag"
+        assert engine.get_agent_stats(bm, mon).unarmed_damage_override == -1, \
+            f"a {rest} rest should clear the unarmed damage override"
+    print("✅ test_elemental_attunement_cleared_on_rest passed")
+
+
+def _burst_battle(level, wis=16):
+    """Monk + an enemy (faction 2) and an ally (faction 1) clustered for an Elemental Burst."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    mon = add_agent_to_battle(engine, bm, create_test_agent("Monk", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Enemy", 8, 5))
+    ally = add_agent_to_battle(engine, bm, create_test_agent("Ally", 8, 6))
+    _elements_monk(engine, bm, mon, level, wis=wis)
+    _soft_target(engine, bm, enemy)
+    _soft_target(engine, bm, ally)
+    bm.set_agent_faction(mon, 1)
+    bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(enemy, 2)
+    return bm, engine, mon, enemy, ally
+
+
+def test_elemental_burst_hits_enemy_spares_ally():
+    """L6 Elemental Burst: 2d8 to an enemy in the sphere; an allied creature is spared (faction-aware)."""
+    bm, engine, mon, enemy, ally = _burst_battle(6)
+    enemy_hp = engine.get_agent_stats(bm, enemy).hp_cur
+    ally_hp = engine.get_agent_stats(bm, ally).hp_cur
+    fp_before = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+
+    ok = engine.elemental_burst(bm, mon, 8, 5, _LIGHTNING)
+    assert ok, "Elemental Burst should succeed for an Elements Monk L6 with 2 Focus"
+
+    enemy_after = engine.get_agent_stats(bm, enemy).hp_cur
+    dmg = enemy_hp - enemy_after
+    # L6: 2d8 (half on a save) → 1..16.
+    assert 1 <= dmg <= 16, f"L6 Elemental Burst (2d8, half on save) should deal 1-16, got {dmg}"
+    assert engine.get_agent_stats(bm, ally).hp_cur == ally_hp, "an allied creature is spared by the burst"
+
+    fp_after = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+    assert fp_after == fp_before - 2, f"Elemental Burst spends 2 Focus ({fp_before}->{fp_after})"
+    print("✅ test_elemental_burst_hits_enemy_spares_ally passed")
+
+
+def _forced_fail_burst_damage(level):
+    """Run one Elemental Burst where the lone enemy ALWAYS fails the DEX save (min DEX vs a high DC),
+    so damage is the full (die count)×d8. The engine rolls the d8s before the save, so with the fixed
+    test seed the first two d8 are identical across levels — letting us compare die counts directly."""
+    bm, engine, mon, enemy, ally = _burst_battle(level, wis=20)   # WIS 20 → DC ≥ 16, unbeatable below
+    e = engine.get_agent_stats(bm, enemy)
+    e.dex = 1                                                     # DEX mod -5 → max save roll = 15 < DC
+    engine.set_agent_stats(bm, enemy, e)
+    hp = engine.get_agent_stats(bm, enemy).hp_cur
+    assert engine.elemental_burst(bm, mon, 8, 5, _LIGHTNING)
+    return hp - engine.get_agent_stats(bm, enemy).hp_cur
+
+
+def test_elemental_burst_scales_at_l17():
+    """Elemental Burst die count scales by tier: L6 rolls 2d8, L17 rolls 4d8.
+
+    With a forced-fail target and the fixed test seed, the engine draws the d8s first, so the first two
+    rolls match between levels; the extra two L17 dice make L17 strictly larger (and within 4d8 = 4-32).
+    """
+    dmg_l6 = _forced_fail_burst_damage(6)
+    dmg_l17 = _forced_fail_burst_damage(17)
+    assert 2 <= dmg_l6 <= 16, f"L6 Elemental Burst on a failed save is 2d8 = 2-16, got {dmg_l6}"
+    assert 4 <= dmg_l17 <= 32, f"L17 Elemental Burst on a failed save is 4d8 = 4-32, got {dmg_l17}"
+    assert dmg_l17 > dmg_l6, \
+        f"L17 (4d8={dmg_l17}) should exceed L6 (2d8={dmg_l6}) — the two extra dice scale the burst"
+    print("✅ test_elemental_burst_scales_at_l17 passed")
+
+
+def test_elemental_burst_gating():
+    """Elemental Burst requires the Elements subclass, L6, and 2 Focus Points."""
+    # Non-Elements Monk → invalid.
+    bm, engine, mon, tgt = _setup(6)
+    _monk(engine, bm, mon, 6)
+    assert not engine.elemental_burst(bm, mon, 6, 5, _LIGHTNING), \
+        "a non-Elements Monk cannot use Elemental Burst"
+
+    # Elements Monk with only 1 Focus → invalid, nothing spent.
+    bm2, engine2, mon2, enemy2, ally2 = _burst_battle(6)
+    s = engine2.get_agent_stats(bm2, mon2)
+    fp = s.get_resource("Focus Points")
+    fp.current = 1
+    s.resources["Focus Points"] = fp
+    engine2.set_agent_stats(bm2, mon2, s)
+    enemy_hp = engine2.get_agent_stats(bm2, enemy2).hp_cur
+    assert not engine2.elemental_burst(bm2, mon2, 8, 5, _LIGHTNING), \
+        "Elemental Burst requires 2 Focus Points"
+    assert engine2.get_agent_stats(bm2, enemy2).hp_cur == enemy_hp, "a failed Burst deals no damage"
+    print("✅ test_elemental_burst_gating passed")
+
+
 if __name__ == "__main__":
     test_unarmored_defense()
     test_focus_points_resource()
@@ -1070,4 +1316,15 @@ if __name__ == "__main__":
     test_hand_of_harm_l11_free_and_once_per_target()
     test_flurry_of_healing_and_harm_l11()
     test_hand_of_healing_free_at_l11()
+    # Warrior of the Elements subclass (L3 / L6)
+    test_elemental_attunement_activate()
+    test_elemental_attunement_damage_type()
+    test_elemental_attunement_reach()
+    test_elemental_attunement_push_and_pull()
+    test_elemental_attunement_move_eligibility_on_hit()
+    test_elemental_attunement_gating()
+    test_elemental_attunement_cleared_on_rest()
+    test_elemental_burst_hits_enemy_spares_ally()
+    test_elemental_burst_scales_at_l17()
+    test_elemental_burst_gating()
     print("\n✅ All Monk tests passed!")

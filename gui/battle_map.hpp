@@ -244,10 +244,10 @@ public:
     // is_running: true for running jump (full strength), false for standing jump (half strength).
     bool jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept;
 
-    // Force move an agent (push/knockback). Moves agent away from push_from origin.
-    // Does not consume movement budget. Stops at walls or map edge.
-    // Returns number of cells actually moved.
-    [[nodiscard]] int forceMoveAgent(int idx, Cell push_from, int push_ft) noexcept;
+    // Force move an agent (push/knockback). By default moves the agent AWAY from push_from; with
+    // pull=true, moves it TOWARD push_from instead. Does not consume movement budget. Stops at walls
+    // or map edge. Returns number of cells actually moved.
+    [[nodiscard]] int forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull = false) noexcept;
 
     // Directly set an agent's position (used for grapple dragging, not validated against movement).
     // Returns false if idx is invalid or destination is out of bounds.

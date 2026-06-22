@@ -288,28 +288,28 @@
       },
       "weapons": {
         "main_hand": {
-          "name": "Handaxe",
+          "name": "Greatsword",
           "type": "melee",
           "reach_ft": 5,
-          "normal_range_ft": 20,
-          "long_range_ft": 60,
+          "normal_range_ft": 0,
+          "long_range_ft": 0,
           "finesse": false,
-          "thrown": true,
+          "thrown": false,
           "proficient": true,
-          "off_hand": true,
+          "off_hand": false,
           "two_handed": false,
-          "heavy": false,
-          "light": true,
+          "heavy": true,
+          "light": false,
           "is_shield": false,
           "auto_hit_if_grappled": false,
-          "mastery": "Vex",
+          "mastery": "Graze",
           "bonus_hit": 0,
           "bonus_damage": 0,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
               "type": "Slashing",
-              "num_dice": 1,
+              "num_dice": 2,
               "die_size": 6
             }
           ],
@@ -324,7 +324,7 @@
           "long_range_ft": 320,
           "finesse": false,
           "thrown": false,
-          "proficient": false,
+          "proficient": true,
           "off_hand": false,
           "two_handed": false,
           "heavy": false,
@@ -341,7 +341,7 @@
         },
         "ranged": {
           "name": "Shortbow",
-          "type": "ranged",
+          "type": "melee",
           "reach_ft": 5,
           "normal_range_ft": 80,
           "long_range_ft": 320,
@@ -354,17 +354,11 @@
           "light": false,
           "is_shield": false,
           "auto_hit_if_grappled": false,
-          "mastery": "Vex",
+          "mastery": "None",
           "bonus_hit": 0,
           "bonus_damage": 0,
           "ac_bonus": 0,
-          "physical_damage_types": [
-            {
-              "type": "Piercing",
-              "num_dice": 1,
-              "die_size": 6
-            }
-          ],
+          "physical_damage_types": [],
           "magic_damage_types": [],
           "conditions": []
         }
@@ -861,7 +855,7 @@
       "size": 1,
       "col": 12,
       "row": 6,
-      "faction": 0,
+      "faction": 1,
       "on_deck": false,
       "stats": {
         "str": 16,
@@ -1060,7 +1054,7 @@
       "size": 1,
       "col": 11,
       "row": 11,
-      "faction": 0,
+      "faction": 1,
       "on_deck": false,
       "stats": {
         "str": 16,
@@ -1257,9 +1251,9 @@
       "name": "Berserker 3",
       "sprite_path": "B.png",
       "size": 1,
-      "col": 6,
+      "col": 5,
       "row": 6,
-      "faction": 0,
+      "faction": 1,
       "on_deck": false,
       "stats": {
         "str": 16,
@@ -1458,7 +1452,7 @@
       "size": 1,
       "col": 6,
       "row": 10,
-      "faction": 0,
+      "faction": 1,
       "on_deck": false,
       "stats": {
         "str": 16,

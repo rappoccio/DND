@@ -486,7 +486,7 @@ namespace rpg {
       bool primal_champion_applied{false};                       // Primal Champion (L20): +4 STR/CON (capped at 25) applied; idempotent flag
       // ── Monk Phase 0 Features ────────────────────────────────────────────────
       bool monk_body_mind_applied{false};                        // Body and Mind (L20): +4 DEX/WIS (capped at 25) applied; idempotent flag
-      int  monk_empowered_strikes_damage_type{0};                // L6: 0=Bludgeoning (default), 1=Force (L6+). Controls unarmed strike damage type
+      int  unarmed_damage_override{-1};                          // Unarmed-strike damage-type override: -1 = none (Bludgeoning default), else a MagicDamage_t value. Set by Monk L6 Empowered Strikes (Force) and Elements L3 Elemental Attunement (chosen element). One field, last activation wins.
       // ── Barbarian L11 Relentless Rage ───────────────────────────────────────
       int  relentless_rage_dc{10};                               // Relentless Rage save DC (10 base, +5 per use in same Rage); reset on rage end
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
@@ -703,6 +703,7 @@ namespace rpg {
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
       bool hand_of_harm_available{false};   // Warrior of Mercy L3: a qualifying unarmed hit can apply Hand of Harm this attack
+      bool elemental_attunement_move_available{false}; // Warrior of the Elements L3: an unarmed hit while Elemental Attunement is active can push/pull the target 10 ft (per-turn eligibility; the push/pull direction is a player choice)
       bool hand_of_harm_used{false};        // Warrior of Mercy L3: Hand of Harm already used this turn (once; L11 lifts the limit to once per target)
       int  hand_of_harm_last_target{-1};    // Warrior of Mercy L11: index of the last creature struck by Hand of Harm this turn (can't reuse on the same target)
       bool grappler_punch_grab_available{false}; // Grappler feat: an Unarmed-Strike hit (Attack action) can also Grapple this attack
@@ -777,6 +778,8 @@ namespace rpg {
       bool shadow_step_advantage{false};    // L6 Shadow Step: next attack this turn has Advantage (consumed on attack)
       bool bonus_reach_available{false};    // L11 Improved Shadow Step: +5 ft reach on next attack (consumed on attack)
       bool cloak_of_shadows_active{false};  // L17 Cloak of Shadows: currently Invisible (set by action, expires on light level change or turn end)
+      // ── Warrior of the Elements (Phase 3) ────────────────────────────────
+      bool elemental_attunement_active{false}; // L3 Elemental Attunement: active until a short/long rest (the sim doesn't track the 10-min duration). While set: +10 ft unarmed reach and each unarmed hit can push/pull 10 ft. The chosen element lives in Stats.unarmed_damage_override. NOT reset per turn — only at combat start and on rest.
     };
 
     // ── Construction ───────────────────────────────────────────────────────
@@ -856,6 +859,7 @@ namespace rpg {
       conditions_.hand_of_harm_available       = false;
       conditions_.hand_of_harm_used            = false;
       conditions_.hand_of_harm_last_target     = -1;
+      conditions_.elemental_attunement_move_available = false;  // per-turn on-hit eligibility (the active attunement itself persists across turns)
       conditions_.grappler_punch_grab_available = false;
       conditions_.grappler_punch_grab_used      = false;
       conditions_.divine_smite_available       = false;

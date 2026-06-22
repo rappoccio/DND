@@ -103,10 +103,9 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // L2 Uncanny Metabolism: (restored in combat_turn.cpp beginTurn + rollInitiativeFor)
       // (no setup needed here; triggered on initiative roll)
 
-      // L6 Empowered Strikes: unarmed strikes may deal Force instead of Bludgeoning
-      if (level >= 6) {
-        monk_empowered_strikes_damage_type = 0;  // default to Bludgeoning; player toggles to 1 (Force)
-      }
+      // L6 Empowered Strikes (and Elements L3 Elemental Attunement) override the unarmed strike
+      // damage type. Reset the shared override at combat start; the player re-activates each combat.
+      unarmed_damage_override = -1;  // -1 = Bludgeoning default; Empowered Strikes sets Force, Attunement sets the chosen element
 
       // L10 Heightened Focus:
       // - Patient Defense grants temp HP (handled in combat_attack.cpp executeAction)
