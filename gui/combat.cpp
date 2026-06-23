@@ -66,8 +66,9 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         primal_champion_applied = true;
       }
 
-      // Path of the Berserker (L10): Intimidating Presence — PB uses per long rest
-      if (barbarian_subclass == BerserkerPath && level >= 10) {
+      // Path of the Berserker (L14): Intimidating Presence — PB uses per long rest.
+      // (L10 for this path is Retaliation, a reaction that needs no resource — see applyRetaliation.)
+      if (barbarian_subclass == BerserkerPath && level >= 14) {
         int ip_uses = 2 + (level - 1) / 4;  // PB = 2 at L1-4, +1 at L5, +1 at L9, +1 at L13, +1 at L17
         Resource ip("Intimidating Presence", ip_uses, 0);
         ip.long_rest_regen = ip_uses;
@@ -229,10 +230,29 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
 
       // Subclass features (Phase 3, combat-core slice):
       //   Draconic L3 — Draconic Resilience: AC = 10 + DEX + CHA (applied in computeAC).
+      //   Draconic L3 — Draconic Resilience HP bonus: +3 HP at L3, +1/level beyond 3rd.
+      //   Draconic L6 — Elemental Affinity: +CHA to first matching-type spell damage roll/turn.
+      //   Draconic L14 — Dragon Wings: fly speed = walk speed (toggle, see activateDragonWings).
       //   Wild Magic L6 — Bend Luck: see sorcererBendLuck (spends Sorcery Points).
-      // Deferred (see known_limitations.md): Draconic Elemental Affinity + HP bonus,
+      //   Aberrant L6 — Psychic Defenses: Psychic resistance + Charmed/Frightened save advantage.
+      // Deferred (see known_limitations.md): Draconic Elemental Affinity SP-resistance half,
       // Wild Magic Surge table / Tides of Chaos, Clockwork (reaction interrupt), Aberrant
-      // (psionic spell list cast via SP).
+      // Psionic Sorcery (SP-cast) + L14 Revelation in Flesh.
+
+      // Draconic Resilience HP bonus (L3+): 3 + max(0, level-3) = level extra HP.
+      // Guard with draconic_hp_applied so re-invoking config doesn't stack (idempotent).
+      // The subclass must be set BEFORE set_class_level for this to trigger on first config.
+      if (sorcerer_subclass == DraconicPath && level >= 3 && !draconic_hp_applied) {
+          int hp_bonus = 3 + (level - 3);
+          hp_max += hp_bonus;
+          if (hp_cur > 0) hp_cur = std::min(hp_cur + hp_bonus, hp_max);
+          draconic_hp_applied = true;
+      }
+
+      // Aberrant Mind Psychic Defenses (L6+): Resistance to Psychic damage.
+      if (sorcerer_subclass == AberrantPath && level >= 6) {
+          magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Psychic)] = 0.5f;
+      }
 
       // Sorcery Points: equal to sorcerer level
       Resource sp("Sorcery Points", level, 0);

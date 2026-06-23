@@ -535,6 +535,7 @@ class App:
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
+        self.pending_wild_magic_teleport = False # Wild Magic Sorcerer: awaiting a teleport destination (20 ft)
         self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
         self.pending_elemental_burst   = -1    # Warrior of the Elements L6: chosen element (MagicDamage_t) awaiting an Elemental Burst center cell; -1 = inactive
         # Trickery Cleric — Invoke Duplicity (Channel Divinity illusion).
@@ -1097,6 +1098,21 @@ class App:
         self.btn_cbt_familiar = Button(pygame.Rect(px, dummy_y, W, B),
                                           "😈 Pact Familiar",
                                           (110, 80, 140), (145, 110, 175), self.font_md)
+        self.btn_cbt_dragon_wings = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Dragon Wings",
+                                          (180, 100, 60), (220, 140, 90), self.font_md)
+        self.btn_cbt_bend_luck = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Bend Luck (1 SP)",
+                                          (100, 60, 180), (130, 90, 210), self.font_md)
+        self.btn_cbt_wild_magic_extra_action = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Wild Magic: Extra Action",
+                                          (180, 80, 180), (210, 110, 210), self.font_md)
+        self.btn_cbt_wild_magic_bonus_cast = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Wild Magic: Cast as Bonus",
+                                          (160, 70, 170), (195, 105, 205), self.font_md)
+        self.btn_cbt_wild_magic_teleport = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Wild Magic: Teleport 20ft",
+                                          (140, 60, 160), (175, 95, 190), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -1721,6 +1737,11 @@ class App:
         stats.save_prof_intel = prof_flags.get("save_prof_intel", False)
         stats.save_prof_wis   = prof_flags.get("save_prof_wis",   False)
         stats.save_prof_cha   = prof_flags.get("save_prof_cha",   False)
+
+        # Set sorcerer subclass before set_class_level so initializeClassResources sees it
+        # (Draconic HP bonus and Aberrant Psychic resistance are gated on subclass in C++).
+        if class_name == "Sorcerer" and subclass_name != "NONE":
+            stats.sorcerer_subclass = getattr(rpg.SorcererSubclass, subclass_name)
 
         # Set class and level; this updates spell_slots_max and can_cast_spell automatically
         stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
@@ -2383,9 +2404,10 @@ class App:
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
-        self.arcane_charge_pending     = False
-        self.pending_psychic_teleport  = False
-        self.pending_invoke_duplicity  = False
+        self.arcane_charge_pending       = False
+        self.pending_psychic_teleport    = False
+        self.pending_wild_magic_teleport = False
+        self.pending_invoke_duplicity    = False
         self.pending_duplicity_remaining = 0
         self._duplicity_cd_pending     = False
         self.pending_move_duplicity    = False
@@ -5321,6 +5343,41 @@ class App:
             self._flush_combat_log()
             self._combat_log_add("Shadow Step: out of range, blocked, or light requirement not met — pick a closer cell.")
 
+    def _resolve_wild_magic_teleport(self, cell):
+        """Wild Magic Sorcerer: teleport up to 20 ft to the clicked cell (uses wild_magic_teleport_bonus_turns).
+        Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_wild_magic_teleport = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_wild_magic_teleport = False
+            self._combat_log_add("Wild Magic Teleport cancelled.")
+            return
+        # Validate 20-ft range (4 cells at 5-ft scale).
+        dc = abs(cell.col - origin.col)
+        dr = abs(cell.row - origin.row)
+        dist_ft = max(dc, dr) * 5  # Chebyshev grid distance
+        if dist_ft > 20:
+            self._combat_log_add("Wild Magic Teleport: destination must be within 20 ft — pick a closer cell.")
+            return
+        if self.combat.teleport_agent(self.bm, idx, cell.col, cell.row):
+            self.pending_wild_magic_teleport = False
+            stats = self.combat.get_agent_stats(self.bm, idx)
+            stats.wild_magic_teleport_bonus_turns = max(0, stats.wild_magic_teleport_bonus_turns - 1)
+            self.combat.set_agent_stats(self.bm, idx, stats)
+            self.bonus_used = True
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+            self._flush_combat_log()
+            self._combat_log_add(
+                f"{self.bm.placed_agents[idx].name}: Wild Magic Teleport — moved up to 20 ft!")
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Wild Magic Teleport: destination blocked — pick another cell.")
+
     def _resolve_shadow_darkness(self, cell):
         """Warrior of Shadow L3 Shadow Arts: Darkness — fill a 15-ft Sphere centered on the clicked
         cell with magical Darkness (1 Focus, Magic action). Click your own cell to cancel."""
@@ -5932,11 +5989,37 @@ class App:
                         continue  # not in spells.json — skip gracefully
                     cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
+
+        # Aberrant Mind Psionic Spells (always-prepared, regular spells from spells.json).
+        if class_name == "Sorcerer" and stats.sorcerer_subclass.name == "Aberrant":
+            sub_table = self._SORCERER_SUBCLASS_SPELLS.get("Aberrant", {})
+            for min_lvl, names in sub_table.items():
+                if level < min_lvl:
+                    continue
+                for name in names:
+                    if name in existing:
+                        continue
+                    idx = self.spell_name_to_idx.get(name)
+                    if idx is None:
+                        continue  # not in spells.json — skip gracefully
+                    cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
+                    existing.add(name)
         return cpp_spells
 
     # Always-prepared Bard college spells by college and Bard level (2024 PHB).
     _BARD_SUBCLASS_SPELLS = {
         "Glamour": {3: ["Charm Person", "Mirror Image"], 6: ["Command"]},
+    }
+
+    # Always-prepared Sorcerer subclass spells by subclass and Sorcerer level (2024 PHB).
+    _SORCERER_SUBCLASS_SPELLS = {
+        "Aberrant": {
+            1: ["Arms of Hadar", "Dissonant Whispers", "Mind Sliver"],
+            3: ["Hunger of Hadar", "Phantasmal Force"],
+            5: ["Clairvoyance", "Slow"],
+            7: ["Dominate Beast", "Black Tentacles"],
+            9: ["Dominate Person", "Telekinesis"],
+        },
     }
 
     # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
@@ -8094,6 +8177,10 @@ class App:
                     "feats": list(s.feats),
                     "stolen_spell_names": list(s.stolen_spell_names),
                     "elemental_adept_types": list(s.elemental_adept_types),
+                    "draconic_hp_applied": s.draconic_hp_applied,
+                    "draconic_affinity_type": s.draconic_affinity_type,
+                    "draconic_affinity_used_this_turn": s.draconic_affinity_used_this_turn,
+                    "dragon_wings_active": s.dragon_wings_active,
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
                     "primal_champion_applied": s.primal_champion_applied,
@@ -8156,6 +8243,8 @@ class App:
                 "agent_class":      s.character_class.name,
                 "agent_char_level": s.char_level,
                 "agent_barbarian_subclass": s.barbarian_subclass.name,
+                "agent_wild_heart_power": s.wild_heart_power.name,
+                "agent_rage_of_gods_used": s.rage_of_gods_used,
                 "agent_fighter_subclass": s.fighter_subclass.name,
                 "agent_druid_circle": s.druid_circle.name,
                 "agent_monk_subclass": s.monk_subclass.name,
@@ -10744,6 +10833,56 @@ class App:
                         self.btn_cbt_swap_duplicity.draw(self.screen)
                         y += B + gap
 
+            # Draconic Sorcerer L14+ Dragon Wings toggle (no action cost; shown when eligible)
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Draconic and
+                        stats.char_level >= 14):
+                    label = "Dismiss Dragon Wings" if stats.dragon_wings_active else "Dragon Wings (extend)"
+                    self.btn_cbt_dragon_wings.text = label
+                    self.btn_cbt_dragon_wings.rect.x = lx
+                    self.btn_cbt_dragon_wings.rect.y = y
+                    self.btn_cbt_dragon_wings.rect.w = W
+                    self.btn_cbt_dragon_wings.draw(self.screen)
+                    y += B + gap
+
+            # Wild Magic Sorcerer L6+ Bend Luck (bonus action / reaction, spends 1 SP)
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.WildMagic and
+                        stats.char_level >= 6):
+                    sp_res = stats.get_resource("Sorcery Points")
+                    if sp_res and sp_res.current > 0:
+                        self.btn_cbt_bend_luck.rect.x = lx
+                        self.btn_cbt_bend_luck.rect.y = y
+                        self.btn_cbt_bend_luck.rect.w = W
+                        self.btn_cbt_bend_luck.draw(self.screen)
+                        y += B + gap
+
+            # Wild Magic window-band affordances (GUI-enforced; fields set by surge application)
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.wild_magic_extra_action:
+                    self.btn_cbt_wild_magic_extra_action.rect.x = lx
+                    self.btn_cbt_wild_magic_extra_action.rect.y = y
+                    self.btn_cbt_wild_magic_extra_action.rect.w = W
+                    self.btn_cbt_wild_magic_extra_action.draw(self.screen)
+                    y += B + gap
+                if stats.wild_magic_bonus_cast_turns > 0:
+                    self.btn_cbt_wild_magic_bonus_cast.rect.x = lx
+                    self.btn_cbt_wild_magic_bonus_cast.rect.y = y
+                    self.btn_cbt_wild_magic_bonus_cast.rect.w = W
+                    self.btn_cbt_wild_magic_bonus_cast.draw(self.screen)
+                    y += B + gap
+                if stats.wild_magic_teleport_bonus_turns > 0 and not self.bonus_used:
+                    self.btn_cbt_wild_magic_teleport.rect.x = lx
+                    self.btn_cbt_wild_magic_teleport.rect.y = y
+                    self.btn_cbt_wild_magic_teleport.rect.w = W
+                    self.btn_cbt_wild_magic_teleport.draw(self.screen)
+                    y += B + gap
+
             # Steady Aim button - Rogue (L3+): advantage on next attack, but speed drops to 0
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -11976,6 +12115,8 @@ class App:
                             self._resolve_psychic_teleport(cell)
                         elif self.pending_shadow_step:
                             self._resolve_shadow_step(cell)
+                        elif self.pending_wild_magic_teleport:
+                            self._resolve_wild_magic_teleport(cell)
                         elif self.pending_shadow_darkness:
                             self._resolve_shadow_darkness(cell)
                         elif self.pending_elemental_burst >= 0:
@@ -12896,6 +13037,54 @@ class App:
                             self._element_dialog.show(_on_burst_elem, ELEMENTAL_MONK_OPTIONS,
                                                       current_values=None, multi=False,
                                                       title="Elemental Burst: element")
+                    if self.btn_cbt_dragon_wings.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.activate_dragon_wings(self.bm, idx):
+                                stats = self.combat.get_agent_stats(self.bm, idx)
+                                if stats.dragon_wings_active:
+                                    self._combat_log_add(
+                                        f"{self.bm.placed_agents[idx].name}: Dragon Wings extended (fly {stats.speed_walk} ft)")
+                                    self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
+                                else:
+                                    self._combat_log_add(
+                                        f"{self.bm.placed_agents[idx].name}: Dragon Wings retracted")
+                                    self.move_remaining_fly = 0
+                    if self.btn_cbt_bend_luck.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            def _apply_bend_luck(boost, idx=idx):
+                                v = self.combat.sorcerer_bend_luck(self.bm, idx, boost)
+                                if v > 0:
+                                    sign = "+" if boost else "-"
+                                    self._combat_log_add(
+                                        f"{self.bm.placed_agents[idx].name}: Bend Luck — {sign}{v} to next D20 roll (1 SP)")
+                                    self._flush_combat_log()
+                                else:
+                                    self._combat_log_add("Bend Luck: not eligible (wrong subclass/level/SP)")
+                            px, py = event.pos
+                            self.context_menu.show(
+                                (px, py),
+                                [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
+                                 ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
+                                self.screen.get_size())
+                    if self.btn_cbt_wild_magic_extra_action.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            stats.wild_magic_extra_action = False
+                            self.combat.set_agent_stats(self.bm, idx, stats)
+                            self.action_used = False  # grant the extra action
+                            self._combat_log_add(
+                                f"{self.bm.placed_agents[idx].name}: Wild Magic extra action granted!")
+                    if self.btn_cbt_wild_magic_bonus_cast.clicked(event):
+                        self._start_cast_spell("bonus")  # allow action-level spell as bonus
+                    if self.btn_cbt_wild_magic_teleport.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_wild_magic_teleport = True
+                            self.hint = "Wild Magic Teleport: click a destination (up to 20 ft)"
+                            self._combat_log_add("Wild Magic Teleport: click a destination cell.")
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()
                     if self.btn_cbt_familiar.clicked(event):

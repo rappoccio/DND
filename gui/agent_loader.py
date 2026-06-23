@@ -68,6 +68,11 @@ def dict_to_stats(stats_dict):
     # long rest). Persisted so an in-progress steal survives save/reload.
     stats.stolen_spell_names = list(stats_dict.get("stolen_spell_names", []))
     stats.elemental_adept_types = [int(t) for t in stats_dict.get("elemental_adept_types", [])]
+    # Sorcerer subclass feature state (round-trip so flags survive save/reload)
+    stats.draconic_hp_applied = bool(stats_dict.get("draconic_hp_applied", False))
+    stats.draconic_affinity_type = int(stats_dict.get("draconic_affinity_type", -1))
+    stats.draconic_affinity_used_this_turn = bool(stats_dict.get("draconic_affinity_used_this_turn", False))
+    stats.dragon_wings_active = bool(stats_dict.get("dragon_wings_active", False))
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage
@@ -136,10 +141,21 @@ def restore_class_resources(stats, agent_dict, rpg_module=None):
         rpg_module = rpg
     class_name = agent_dict.get("agent_class", "None")
     char_level = int(agent_dict.get("agent_char_level", 1))
+    # Set sorcerer subclass before set_class_level so initializeClassResources gates apply.
+    sorc_pre = agent_dict.get("agent_sorcerer_subclass", "NONE")
+    if class_name == "Sorcerer" and sorc_pre not in (None, "NONE"):
+        try:
+            stats.sorcerer_subclass = getattr(rpg_module.SorcererSubclass, sorc_pre)
+        except AttributeError:
+            pass
     stats.set_class_level(getattr(rpg_module.CharacterClass, class_name), char_level)
     barb = agent_dict.get("agent_barbarian_subclass", "NONE")
     if barb != "NONE":
         stats.barbarian_subclass = getattr(rpg_module.BarbianSubclass, barb)
+    whp = agent_dict.get("agent_wild_heart_power", "NONE")
+    if whp != "NONE":
+        stats.wild_heart_power = getattr(rpg_module.WildHeartPower, whp)
+    stats.rage_of_gods_used = bool(agent_dict.get("agent_rage_of_gods_used", False))
     wiz = agent_dict.get("agent_wizard_subclass", "NONE")
     if wiz != "NONE":
         stats.wizard_subclass = getattr(rpg_module.WizardSubclass, wiz)

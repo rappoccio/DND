@@ -857,6 +857,233 @@ def test_pending_advantage_one_shot_and_d20_only():
     print("✅ test_pending_advantage_one_shot_and_d20_only passed")
 
 
+# ── Task 1: Draconic L3 Resilience HP bonus ──────────────────────────────────
+
+def test_draconic_hp_bonus():
+    """Draconic L3+: hp_max += (3 + level - 3) = level extra HP. Idempotent guard prevents double-apply."""
+    base_hp = 10  # default from add_agent_to_battle
+
+    # L3: bonus = 3
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("DracSorc3", 5, 5))
+    drac3 = _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.Draconic)
+    assert drac3.hp_max == base_hp + 3, f"L3 Draconic: expected +3 HP, got {drac3.hp_max - base_hp}"
+    assert drac3.draconic_hp_applied, "draconic_hp_applied flag must be set"
+
+    # Idempotency: second initialize_class_resources must not add another +3.
+    drac3.initialize_class_resources(rpg.CharacterClass.Sorcerer, 3)
+    eng.set_agent_stats(bm, idx, drac3)
+    drac3b = eng.get_agent_stats(bm, idx)
+    assert drac3b.hp_max == base_hp + 3, "idempotency: second init must not grow hp_max"
+
+    # L7: bonus = 7
+    bm7 = setup_battle_map(); eng7 = setup_combat_engine()
+    idx7 = add_agent_to_battle(eng7, bm7, create_test_agent("DracSorc7", 5, 5))
+    drac7 = _sorcerer(eng7, bm7, idx7, 7, subclass=rpg.SorcererSubclass.Draconic)
+    assert drac7.hp_max == base_hp + 7, f"L7 Draconic: expected +7 HP, got {drac7.hp_max - base_hp}"
+
+    # L2 gate: no bonus below L3
+    bm2 = setup_battle_map(); eng2 = setup_combat_engine()
+    idx2 = add_agent_to_battle(eng2, bm2, create_test_agent("DracSorc2", 5, 5))
+    drac2 = _sorcerer(eng2, bm2, idx2, 2, subclass=rpg.SorcererSubclass.Draconic)
+    assert drac2.hp_max == base_hp, f"L2 Draconic: no HP bonus before L3, got {drac2.hp_max}"
+    assert not drac2.draconic_hp_applied, "flag must stay False at L2"
+    print("✅ test_draconic_hp_bonus passed")
+
+
+# ── Task 2: Draconic L6 Elemental Affinity ───────────────────────────────────
+
+def _make_fire_attack_spell():
+    s = rpg.Spell()
+    s.name = "Fire Bolt"
+    s.type = rpg.SpellType.Harm
+    s.geometry = rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.AttackRoll
+    s.range = 120
+    s.level = 0
+    roll = rpg.MagicDamageRoll()
+    roll.type = rpg.MagicDamage.Fire
+    roll.num_dice = 1
+    roll.die_size = 10
+    s.magic_damage_rolls = [roll]
+    return s
+
+
+def test_draconic_elemental_affinity():
+    """Draconic L6 Elemental Affinity: CHA mod added to first matching-type damage roll per turn.
+    Tests: flag set on type match, not set on type mismatch, seeded damage comparison."""
+    fire_type = int(rpg.MagicDamage.Fire)
+    cha = 16  # mod = +3
+    cha_mod = (cha - 10) // 2
+
+    def _setup_drac(affinity_type):
+        bm = setup_battle_map(); eng = setup_combat_engine()
+        sorc = add_agent_to_battle(eng, bm, create_test_agent("Sorc", 5, 5))
+        tgt = add_agent_to_battle(eng, bm, create_test_agent("Tgt", 7, 5), hp=200, ac=1)
+        _sorcerer(eng, bm, sorc, 6, cha=cha, subclass=rpg.SorcererSubclass.Draconic)
+        s = eng.get_agent_stats(bm, sorc)
+        s.draconic_affinity_type = affinity_type
+        eng.set_agent_stats(bm, sorc, s)
+        eng.set_agent_spells(bm, sorc, [_make_fire_attack_spell()])
+        return bm, eng, sorc, tgt
+
+    # ── Seeded damage comparison (ctrl vs test, same seed) ───────────────────
+    bm_c, ctrl, sorc_c, tgt_c = _setup_drac(-1)   # no affinity
+    bm_t, test, sorc_t, tgt_t = _setup_drac(fire_type)  # Fire affinity
+
+    action_c = rpg.SpellAction(); action_c.caster_idx = sorc_c; action_c.spell_idx = 0
+    action_c.target_indices = [tgt_c]
+    action_t = rpg.SpellAction(); action_t.caster_idx = sorc_t; action_t.spell_idx = 0
+    action_t.target_indices = [tgt_t]
+
+    res_c = ctrl.execute_spell(bm_c, action_c)
+    res_t = test.execute_spell(bm_t, action_t)
+    ctrl_dmg = res_c.target_results[0].total_damage
+    test_dmg = res_t.target_results[0].total_damage
+
+    # Both use the same seed; if both hit (ctrl_dmg > 0), test engine gets +cha_mod.
+    # d20=1 is a nat-1 auto-miss; with AC=1 and seed 42, if it misses we skip the damage
+    # comparison but still verify the flag state.
+    if ctrl_dmg > 0:
+        assert test_dmg == ctrl_dmg + cha_mod, \
+            f"Elemental Affinity: expected ctrl+{cha_mod}, got ctrl={ctrl_dmg} test={test_dmg}"
+    else:
+        # Both missed; confirm symmetry.
+        assert test_dmg == 0, "both engines must produce the same miss (same seed)"
+
+    # ── Flag behaviour: set on type match, cleared by beginTurn ──────────────
+    # Fresh engine: cast a fire spell and confirm the affinity flag is set on hit.
+    bm_f = setup_battle_map(); feng = setup_combat_engine()
+    sorc_f = add_agent_to_battle(feng, bm_f, create_test_agent("Sorc", 5, 5))
+    tgt_f = add_agent_to_battle(feng, bm_f, create_test_agent("Tgt", 7, 5), hp=200, ac=1)
+    _sorcerer(feng, bm_f, sorc_f, 6, cha=cha, subclass=rpg.SorcererSubclass.Draconic)
+    sf = feng.get_agent_stats(bm_f, sorc_f)
+    sf.draconic_affinity_type = fire_type
+    feng.set_agent_stats(bm_f, sorc_f, sf)
+    feng.set_agent_spells(bm_f, sorc_f, [_make_fire_attack_spell()])
+    act_f = rpg.SpellAction(); act_f.caster_idx = sorc_f; act_f.spell_idx = 0
+    act_f.target_indices = [tgt_f]
+    res_f = feng.execute_spell(bm_f, act_f)
+    sf2 = feng.get_agent_stats(bm_f, sorc_f)
+    if res_f.target_results[0].total_damage > 0:
+        assert sf2.draconic_affinity_used_this_turn, "flag must be set after affinity triggers on a hit"
+
+        # beginTurn resets the flag.
+        feng.begin_turn(bm_f, sorc_f)
+        sf3 = feng.get_agent_stats(bm_f, sorc_f)
+        assert not sf3.draconic_affinity_used_this_turn, "beginTurn must clear the affinity flag"
+
+    # ── Type mismatch: Cold spell must NOT trigger Fire affinity ─────────────
+    bm_m = setup_battle_map(); meng = setup_combat_engine()
+    sorc_m = add_agent_to_battle(meng, bm_m, create_test_agent("Sorc", 5, 5))
+    tgt_m = add_agent_to_battle(meng, bm_m, create_test_agent("Tgt", 7, 5), hp=200, ac=1)
+    _sorcerer(meng, bm_m, sorc_m, 6, cha=cha, subclass=rpg.SorcererSubclass.Draconic)
+    sm = meng.get_agent_stats(bm_m, sorc_m)
+    sm.draconic_affinity_type = fire_type
+    meng.set_agent_stats(bm_m, sorc_m, sm)
+    cold_spell = _save_spell("Ray of Frost")  # Cold damage, not Fire
+    meng.set_agent_spells(bm_m, sorc_m, [cold_spell])
+    act_m = rpg.SpellAction(); act_m.caster_idx = sorc_m; act_m.spell_idx = 0
+    act_m.target_indices = [tgt_m]
+    meng.execute_spell(bm_m, act_m)
+    sm2 = meng.get_agent_stats(bm_m, sorc_m)
+    assert not sm2.draconic_affinity_used_this_turn, "Cold spell must not trigger Fire elemental affinity"
+    print("✅ test_draconic_elemental_affinity passed")
+
+
+# ── Task 3: Draconic L14 Dragon Wings ────────────────────────────────────────
+
+def test_dragon_wings():
+    """Draconic L14 Dragon Wings: activate grants fly speed = walk speed; toggle removes it; L13 gated."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("DracSorc14", 5, 5))
+    s = _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Draconic)
+    walk = s.speed_walk
+    assert walk > 0, "walk speed must be > 0"
+
+    # Activate: fly speed should equal walk speed.
+    ok = eng.activate_dragon_wings(bm, idx)
+    assert ok, "activate_dragon_wings should return True for a valid Draconic L14 sorcerer"
+    s2 = eng.get_agent_stats(bm, idx)
+    assert s2.dragon_wings_active, "dragon_wings_active must be set after activation"
+    assert s2.speed_fly == walk, f"fly speed should equal walk speed ({walk}), got {s2.speed_fly}"
+
+    # Toggle off: fly speed removed.
+    ok2 = eng.activate_dragon_wings(bm, idx)
+    assert ok2, "toggle should return True"
+    s3 = eng.get_agent_stats(bm, idx)
+    assert not s3.dragon_wings_active, "dragon_wings_active must be cleared after toggle-off"
+    assert s3.speed_fly == 0, f"fly speed must be 0 after wings dismissed, got {s3.speed_fly}"
+
+    # Level gate: Draconic L13 must not grant Dragon Wings.
+    bm13 = setup_battle_map(); eng13 = setup_combat_engine()
+    idx13 = add_agent_to_battle(eng13, bm13, create_test_agent("DracSorc13", 5, 5))
+    _sorcerer(eng13, bm13, idx13, 13, subclass=rpg.SorcererSubclass.Draconic)
+    gated = eng13.activate_dragon_wings(bm13, idx13)
+    assert not gated, "activate_dragon_wings must return False for L13 (level gate)"
+
+    # Wrong subclass: Wild Magic L14 must not grant Dragon Wings.
+    bm_w = setup_battle_map(); eng_w = setup_combat_engine()
+    idx_w = add_agent_to_battle(eng_w, bm_w, create_test_agent("WildSorc14", 5, 5))
+    _sorcerer(eng_w, bm_w, idx_w, 14, subclass=rpg.SorcererSubclass.WildMagic)
+    gated_w = eng_w.activate_dragon_wings(bm_w, idx_w)
+    assert not gated_w, "activate_dragon_wings must return False for non-Draconic subclass"
+    print("✅ test_dragon_wings passed")
+
+
+# ── Task 4: Aberrant Mind Psionic Spells (data-only) ─────────────────────────
+
+def test_aberrant_psionic_spells_data():
+    """Aberrant Mind psionic spell table references spells that exist in spells.json."""
+    import json, pathlib
+    spells_path = pathlib.Path(__file__).parent / "spells.json"
+    with spells_path.open() as f:
+        raw = json.load(f)
+    spell_list = raw if isinstance(raw, list) else raw.get("spells", [])
+    names_in_json = {s["name"] for s in spell_list}
+
+    # The Aberrant psionic spell table (from main.py _SORCERER_SUBCLASS_SPELLS)
+    psionic_spells = [
+        "Arms of Hadar", "Dissonant Whispers", "Mind Sliver",     # L1
+        "Hunger of Hadar", "Phantasmal Force",                    # L3
+        "Clairvoyance", "Slow",                                   # L5
+        "Dominate Beast", "Black Tentacles",                      # L7
+        "Dominate Person", "Telekinesis",                         # L9
+    ]
+    missing = [n for n in psionic_spells if n not in names_in_json]
+    assert not missing, f"Aberrant psionic spells missing from spells.json: {missing}"
+    print("✅ test_aberrant_psionic_spells_data passed")
+
+
+# ── Task 5: Aberrant L6 Psychic Defenses ─────────────────────────────────────
+
+def test_aberrant_psychic_defenses():
+    """Aberrant L6: Psychic damage resistance (0.5×). Resistance must not apply before L6."""
+    psychic_idx = int(rpg.MagicDamage.Psychic)
+
+    # L6: Psychic resistance granted.
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("AberSorc6", 5, 5))
+    _sorcerer(eng, bm, idx, 6, subclass=rpg.SorcererSubclass.Aberrant)
+    s = eng.get_agent_stats(bm, idx)
+    mult = s.get_magic_damage_multiplier(psychic_idx)
+    assert abs(mult - 0.5) < 1e-6, f"L6 Aberrant: Psychic resistance (0.5) expected, got {mult}"
+
+    # L5 gate: resistance must NOT be granted below L6.
+    bm5 = setup_battle_map(); eng5 = setup_combat_engine()
+    idx5 = add_agent_to_battle(eng5, bm5, create_test_agent("AberSorc5", 5, 5))
+    _sorcerer(eng5, bm5, idx5, 5, subclass=rpg.SorcererSubclass.Aberrant)
+    s5 = eng5.get_agent_stats(bm5, idx5)
+    mult5 = s5.get_magic_damage_multiplier(psychic_idx)
+    assert abs(mult5 - 1.0) < 1e-6, f"L5 Aberrant: no Psychic resistance expected, got {mult5}"
+
+    # Sanity: non-Psychic type unaffected (Aberrant has no Fire resistance).
+    fire_idx = int(rpg.MagicDamage.Fire)
+    mult_fire = s.get_magic_damage_multiplier(fire_idx)
+    assert abs(mult_fire - 1.0) < 1e-6, "Aberrant should not grant Fire resistance"
+    print("✅ test_aberrant_psychic_defenses passed")
+
+
 if __name__ == "__main__":
     test_sorcerer_spell_slots()
     test_sorcery_points_allocation()
@@ -906,4 +1133,10 @@ if __name__ == "__main__":
     test_pending_advantage_on_d20()
     test_pending_advantage_one_shot_and_d20_only()
     test_sorcerer_subclass_save_load_roundtrip()
+    # Phase 3 subclass tasks (Tasks 1–5)
+    test_draconic_hp_bonus()
+    test_draconic_elemental_affinity()
+    test_dragon_wings()
+    test_aberrant_psionic_spells_data()
+    test_aberrant_psychic_defenses()
     print("\n✅ All Sorcerer tests passed!")

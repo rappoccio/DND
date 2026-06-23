@@ -312,24 +312,24 @@ def test_hamstrung_reset():
     print("✅ test_hamstrung_reset passed")
 
 
-def test_intimidating_presence_berserker_l10():
-    """Verify Intimidating Presence (Berserker L10) fails WIS save -> Frightened"""
+def test_intimidating_presence_berserker_l14():
+    """Verify Intimidating Presence (Berserker L14) fails WIS save -> Frightened"""
     bm = setup_battle_map()
     engine = setup_combat_engine()
 
-    config_barb = create_test_agent("Berserker10", 5, 5)
+    config_barb = create_test_agent("Berserker14", 5, 5)
     idx_barb = add_agent_to_battle(engine, bm, config_barb)
 
     config_enemy = create_test_agent("Enemy", 6, 5)
     idx_enemy = add_agent_to_battle(engine, bm, config_enemy)
 
-    # Setup Berserker
+    # Setup Berserker (Intimidating Presence is the L14 feature in the 2024 PHB)
     stats = engine.get_agent_stats(bm, idx_barb)
     stats.character_class = rpg.CharacterClass.Barbarian
-    stats.char_level = 10
+    stats.char_level = 14
     stats.barbarian_subclass = rpg.BarbianSubclass.Berserker
     stats.str = 18  # +4 STR mod
-    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 10)
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 14)
     engine.set_agent_stats(bm, idx_barb, stats)
 
     # Setup enemy with low WIS (will fail save)
@@ -344,7 +344,7 @@ def test_intimidating_presence_berserker_l10():
     # Verify enemy is Frightened
     enemy_cond = engine.get_agent_conditions(bm, idx_enemy)
     assert enemy_cond.frightened, "Enemy should be Frightened on failed save"
-    print("✅ test_intimidating_presence_berserker_l10 passed")
+    print("✅ test_intimidating_presence_berserker_l14 passed")
 
 
 def test_feral_instinct_l7():
@@ -476,19 +476,19 @@ def test_intimidating_presence_allies_spared():
     bm = setup_battle_map()
     engine = setup_combat_engine()
 
-    config_barb = create_test_agent("Berserker10", 5, 5)
+    config_barb = create_test_agent("Berserker14", 5, 5)
     idx_barb = add_agent_to_battle(engine, bm, config_barb)
 
     config_ally = create_test_agent("Ally", 6, 5)
     idx_ally = add_agent_to_battle(engine, bm, config_ally)
 
-    # Setup Berserker
+    # Setup Berserker (Intimidating Presence is the L14 feature in the 2024 PHB)
     stats = engine.get_agent_stats(bm, idx_barb)
     stats.character_class = rpg.CharacterClass.Barbarian
-    stats.char_level = 10
+    stats.char_level = 14
     stats.barbarian_subclass = rpg.BarbianSubclass.Berserker
     stats.str = 18
-    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 10)
+    stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 14)
     engine.set_agent_stats(bm, idx_barb, stats)
 
     # Set faction so they are allies
@@ -753,7 +753,7 @@ if __name__ == "__main__":
     test_brutal_strike_multi_effect_l17()
     test_brutal_strike_flag_reset()
     test_hamstrung_reset()
-    test_intimidating_presence_berserker_l10()
+    test_intimidating_presence_berserker_l14()
     test_intimidating_presence_allies_spared()
     test_zealous_presence_zealot_l10()
     test_zealous_presence_expires_at_turn_start()

@@ -74,6 +74,7 @@ test_scripts = [
     "test_barbarian_l5.py",
     "test_barbarian_l6.py",
     "test_barbarian_l9_17.py",
+    "test_barbarian_l14.py",
 
     # Wizard features
     "test_wizard_l1_3.py",

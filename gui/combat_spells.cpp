@@ -296,6 +296,17 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
             }
     }
 
+    // Aberrant Mind Psychic Defenses (L6): Advantage on saves vs spells that apply Charmed/Frightened.
+    if (!target_cond.incapacitated && tgt_stats.character_class == CharacterClass::Sorcerer &&
+        tgt_stats.sorcerer_subclass == SorcererSubclass::AberrantPath && tgt_stats.char_level >= 6) {
+        for (const auto& c : sp.conditions)
+            if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
+                target_adv = true;
+                log_("Psychic Defenses: {} has Advantage on the save vs charm/fear", agentName(bm, tgt_idx));
+                break;
+            }
+    }
+
     // Zealot Zealous Presence (L10): target with zealous_blessing gets Advantage on saving throws
     if (target_cond.zealous_blessing) {
         target_adv = true;
@@ -625,6 +636,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         for (const auto& rinfo : sp.physical_damage_rolls)
             if (rinfo.type == 8 || rinfo.type == 2) { spell_radiant_or_fire = true; break; }
 
+    // Draconic Elemental Affinity (L6): +CHA mod to first damage roll of matching type this turn.
+    // Local flag prevents double-application across multiple targets of the same AoE.
+    // The per-turn gate (draconic_affinity_used_this_turn) is read once and persisted on first apply.
+    bool draconic_affinity_available =
+        caster_stats.sorcerer_subclass == SorcererSubclass::DraconicPath &&
+        caster_stats.char_level >= 6 &&
+        caster_stats.draconic_affinity_type >= 0 &&
+        !caster_stats.draconic_affinity_used_this_turn;
+
     // Index-based: the loop may append leap targets (Chromatic Orb) to `targets`, and
     // re-reading targets.size() each iteration lets those new targets be resolved too.
     for (std::size_t ti = 0; ti < targets.size(); ++ti) {
@@ -708,6 +728,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
                         int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, n_dice,
                                                               roll_info.die_size, dice, true);
+                        // Draconic Elemental Affinity (L6): add CHA mod to first matching-type roll this turn.
+                        if (draconic_affinity_available &&
+                            static_cast<int>(roll_info.type) == caster_stats.draconic_affinity_type) {
+                            int cha_bonus = abilityMod(caster_stats.cha);
+                            type_damage += cha_bonus;
+                            draconic_affinity_available = false;
+                            Agent::Stats mc = bm.getAgentStats(action.caster_idx);
+                            mc.draconic_affinity_used_this_turn = true;
+                            bm.setAgentStats(action.caster_idx, mc);
+                            log_("Elemental Affinity: +{} {} damage (CHA mod)", cha_bonus, static_cast<int>(roll_info.type));
+                        }
                         // Resistance/vuln/immunity multiplier — Elemental Adept / Poisoner lift the
                         // caster-relevant Resistance to 1.0.
                         float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
@@ -894,6 +925,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
                                                           roll_info.die_size, dice, true);
                     type_damage += roll_info.bonus;
+                    // Draconic Elemental Affinity (L6): add CHA mod to first matching-type roll this turn.
+                    if (draconic_affinity_available &&
+                        static_cast<int>(roll_info.type) == caster_stats.draconic_affinity_type) {
+                        int cha_bonus = abilityMod(caster_stats.cha);
+                        type_damage += cha_bonus;
+                        draconic_affinity_available = false;
+                        Agent::Stats mc = bm.getAgentStats(action.caster_idx);
+                        mc.draconic_affinity_used_this_turn = true;
+                        bm.setAgentStats(action.caster_idx, mc);
+                        log_("Elemental Affinity: +{} {} damage (CHA mod)", cha_bonus, static_cast<int>(roll_info.type));
+                    }
                     // Resistance/vuln/immunity multiplier first (Elemental Adept / Poisoner lift the
                     // caster-relevant Resistance to 1.0).
                     float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
@@ -1165,7 +1207,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                             tgt_stats.char_level >= 7 &&
                             (spell_cond.condition_name == "Charmed" ||
                              spell_cond.condition_name == "Frightened");
-                        int save_d20 = fey_twist ? rollAdvantage(20) : roll(20);
+                        // Aberrant Mind Psychic Defenses (L6): same advantage vs Charmed/Frightened.
+                        const bool aberrant_defense =
+                            tgt_stats.character_class == CharacterClass::Sorcerer &&
+                            tgt_stats.sorcerer_subclass == SorcererSubclass::AberrantPath &&
+                            tgt_stats.char_level >= 6 &&
+                            (spell_cond.condition_name == "Charmed" ||
+                             spell_cond.condition_name == "Frightened");
+                        int save_d20 = (fey_twist || aberrant_defense) ? rollAdvantage(20) : roll(20);
                         int cond_save_mod = saveModFor(bm, tgt_idx, spell_cond.save_ability);
                         int cond_save_total = save_d20 + cond_save_mod;
                         cond_save_total = applyIndomitableMight(bm, tgt_idx, spell_cond.save_ability, cond_save_total);

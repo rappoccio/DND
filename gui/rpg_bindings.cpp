@@ -345,6 +345,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Wild Heart Rage of the Wilds choice (Bear/Eagle/Wolf); set before activateRage()")
         .def_readwrite("wild_heart_aspect", &Agent::Stats::wild_heart_aspect,
              "Wild Heart L6 Aspect choice (Owl/Panther/Salmon); set before combat or at long rest")
+        .def_readwrite("wild_heart_power", &Agent::Stats::wild_heart_power,
+             "Wild Heart L14 Power of the Wilds choice (Falcon/Lion/Ram); set before activateRage()")
+        .def_readwrite("rage_of_gods_used", &Agent::Stats::rage_of_gods_used,
+             "Zealot L14 Rage of the Gods: True once the divine form has been assumed this long rest")
         .def_readwrite("brutal_strike_damage_dice", &Agent::Stats::brutal_strike_damage_dice,
              "Brutal Strike damage dice count: 1 (L9-16) or 2 (L17+) for 1d10 or 2d10")
         .def_readwrite("primal_champion_applied", &Agent::Stats::primal_champion_applied,
@@ -366,6 +370,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "have Disadvantage on saves vs the caster's Fire/Radiant spells)")
         .def_readwrite("innate_sorcery_turns", &Agent::Stats::innate_sorcery_turns,
              "Sorcerer Innate Sorcery remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)")
+        .def_readwrite("draconic_hp_applied", &Agent::Stats::draconic_hp_applied,
+             "Draconic L3 Resilience HP bonus applied (idempotent flag); bonus = 3 + max(0, level-3)")
+        .def_readwrite("draconic_affinity_type", &Agent::Stats::draconic_affinity_type,
+             "Draconic L6 Elemental Affinity: chosen MagicDamage_t index (0-9), -1 = none")
+        .def_readwrite("draconic_affinity_used_this_turn", &Agent::Stats::draconic_affinity_used_this_turn,
+             "Draconic L6 Elemental Affinity: CHA mod bonus already applied this turn (reset in beginTurn)")
+        .def_readwrite("dragon_wings_active", &Agent::Stats::dragon_wings_active,
+             "Draconic L14 Dragon Wings: fly speed = walk speed is active")
         .def_readwrite("mantle_majesty_turns", &Agent::Stats::mantle_majesty_turns,
              "Bard College of Glamour (L6) Mantle of Majesty 'unearthly appearance' window in rounds "
              "(>0 = may re-cast Command as a Bonus Action with no slot; tied to concentration)")
@@ -580,6 +592,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("grapple_range_ft",  &Agent::Conditions::grapple_range_ft)
         .def_readwrite("exhaustion_level",  &Agent::Conditions::exhaustion_level)
         .def_readwrite("raging",            &Agent::Conditions::raging)
+        .def_readwrite("lion_aura_active",  &Agent::Conditions::lion_aura_active)
+        .def_readwrite("rage_of_gods_active", &Agent::Conditions::rage_of_gods_active)
+        .def_readwrite("world_tree_long_teleport_used", &Agent::Conditions::world_tree_long_teleport_used)
+        .def_readwrite("retaliation_available", &Agent::Conditions::retaliation_available)
+        .def_readwrite("retaliation_target_idx", &Agent::Conditions::retaliation_target_idx)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
         .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
         .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
@@ -969,6 +986,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Owl", OwlAspect)
         .value("Panther", PantherAspect)
         .value("Salmon", SalmonAspect)
+        .export_values();
+
+    py::enum_<WildHeartPower>(m, "WildHeartPower")
+        .value("NONE", WildHeartPowerNone)
+        .value("Falcon", FalconPower)
+        .value("Lion", LionPower)
+        .value("Ram", RamPower)
         .export_values();
 
     // ── Fighter Subclass Enum (2024 D&D) ──────────────────────────────────
@@ -1828,6 +1852,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Sorcerer Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save\n"
              "DC and advantage on spell attack rolls for 1 minute (10 rounds). Returns True if\n"
              "activated, False otherwise (not a Sorcerer, or no uses left).")
+        .def("activate_dragon_wings",
+             &CombatEngine::activateDragonWings,
+             py::arg("battle_map"), py::arg("idx"),
+             "Draconic L14 Dragon Wings: toggle fly speed = walk speed (no concentration).\n"
+             "First call extends wings (dragon_wings_active=True, speed_fly=speed_walk).\n"
+             "Second call retracts them (dragon_wings_active=False, speed_fly=0).\n"
+             "Returns True if the agent is a Draconic Sorcerer L14+, False otherwise.")
         .def("convert_slot_to_sorcery_points",
              &CombatEngine::convertSlotToSorceryPoints,
              py::arg("battle_map"), py::arg("idx"), py::arg("slot_level"),
@@ -2308,7 +2339,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("use_intimidating_presence",
              &CombatEngine::useIntimidatingPresence,
              py::arg("battle_map"), py::arg("agent_idx"),
-             "Barbarian Path of the Berserker L10 — Intimidating Presence (Bonus Action):\n"
+             "Barbarian Path of the Berserker L14 — Intimidating Presence (Bonus Action):\n"
              "Each creature of the Barbarian's choice within a 30-ft emanation makes a WIS save\n"
              "(DC 8 + STR mod + PB) or is Frightened until the end of the Barbarian's next turn.\n"
              "Usable PB times per long rest, or expend one Rage use. Spends a bonus action.")
@@ -2319,6 +2350,28 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Up to 10 creatures of the Barbarian's choice (allies) within 60 ft gain Advantage on\n"
              "attack rolls and saving throws until the start of the Barbarian's next turn.\n"
              "Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.")
+        .def("activate_rage_of_the_gods",
+             &CombatEngine::activateRageOfTheGods,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Barbarian Path of the Zealot L14 — Rage of the Gods: while raging, assume a divine-warrior\n"
+             "form (once per long rest). Grants Fly Speed = Speed (can hover) and Resistance to Necrotic/\n"
+             "Psychic/Radiant; enables the Revivification reaction. Ends when Rage ends or at 0 HP.\n"
+             "Returns False if not a raging Zealot L14+, or the form was already used this long rest.")
+        .def("travel_along_tree",
+             &CombatEngine::travelAlongTree,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("target_col"), py::arg("target_row"),
+             py::arg("long_range") = false,
+             "Barbarian Path of the World Tree L14 — Travel along the Tree (Bonus Action while raging):\n"
+             "teleport up to 60 ft (or up to 150 ft once per Rage when long_range=True) to a visible,\n"
+             "unoccupied space. Spends a bonus action. Returns False if illegal (out of range, occupied,\n"
+             "long-range already used this Rage, not a raging World Tree L14+, or no bonus action).")
+        .def("apply_retaliation",
+             &CombatEngine::applyRetaliation,
+             py::arg("battle_map"), py::arg("defender_idx"),
+             "Barbarian Path of the Berserker L10 — Retaliation: spend the reaction to make one melee\n"
+             "weapon attack back at the creature that just damaged this Barbarian from within 5 ft\n"
+             "(flagged via conditions.retaliation_available / retaliation_target_idx). Returns the\n"
+             "AttackResult (default/empty if not eligible).")
         .def("apply_brutal_strike_effect",
              &CombatEngine::applyBrutalStrikeEffect,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),

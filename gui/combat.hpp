@@ -748,6 +748,11 @@ public:
     // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
     static int metamagicSpCost(MetamagicOption opt) noexcept;
 
+    // Draconic L14 — Dragon Wings: grant fly speed = walk speed (persistent, no concentration).
+    // Toggle: activating when already active (dragon_wings_active = true) resets fly speed to 0
+    // and clears the flag. Returns true if the agent is a Draconic Sorcerer L14+.
+    bool activateDragonWings(BattleMap& bm, int idx) noexcept;
+
     // Wild Magic — Bend Luck (Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply it
     // as a bonus (boost=true) or penalty (boost=false) to the next D20 Test, via the additive
     // pending_roll_bonus_ path. Returns the 1d4 value rolled, or 0 on failure (not a L6+ Wild
@@ -1207,6 +1212,23 @@ public:
     // rolls and saving throws until the start of the Barbarian's next turn.
     // Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.
     bool useZealousPresence(BattleMap& bm, int idx) noexcept;
+
+    // Barbarian Path of the Zealot L14 — Rage of the Gods: while raging, assume a divine-warrior
+    // form (once per long rest) — Fly Speed = Speed (can hover), Resistance to Necrotic/Psychic/
+    // Radiant. The form ends when Rage ends or the Barbarian drops to 0 HP. While the form is active,
+    // the Barbarian may use the Revivification reaction (handled at the drop-to-0 site in applyDamage).
+    bool activateRageOfTheGods(BattleMap& bm, int idx) noexcept;
+
+    // Barbarian Path of the World Tree L14 — Travel along the Tree: while raging, teleport up to
+    // 60 ft (or up to 150 ft once per Rage when long_range=true) to a visible unoccupied space.
+    // Spends a bonus action. (Bringing willing allies on the 150-ft hop is deferred — see notes.)
+    bool travelAlongTree(BattleMap& bm, int idx, int target_col, int target_row,
+                         bool long_range) noexcept;
+
+    // Barbarian Path of the Berserker L10 — Retaliation: when a creature within 5 ft damages this
+    // Barbarian, they may spend their reaction to make one melee weapon attack back. The eligible
+    // attacker is recorded in retaliation_target_idx (set in applyAttackResult). Returns the attack.
+    AttackResult applyRetaliation(BattleMap& bm, int defender_idx) noexcept;
 
     // Apply Brutal Strike effects: damage + chosen effects (Forceful/Hamstring/Staggering/Sundering)
     // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)

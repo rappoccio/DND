@@ -446,6 +446,41 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
         }
     }
 
+    // Zealot L14 Rage of the Gods — Revivification: when a creature within 30 ft of a Zealot in the
+    // divine-warrior form would drop to 0 HP, that Zealot may spend their reaction + one Rage use to
+    // instead set the creature's HP to the Zealot's Barbarian level. Auto-fires (it's a life-save). The
+    // Zealot itself qualifies ("a creature within 30 feet of you" includes self). Runs after Relentless
+    // Rage so a Barbarian's own save takes priority.
+    if (s.hp_cur <= 0) {
+        const auto& agents = bm.placedAgents();
+        for (std::size_t z = 0; z < agents.size(); ++z) {
+            const PlacedAgent& zp = agents[z];
+            const Agent::Conditions& zc = zp.agent->getConditions();
+            if (!zc.rage_of_gods_active || zc.reaction_used || zc.dead) continue;
+            const Agent::Stats& zs = zp.agent->getStats();
+            auto rage_it = zs.resources.find("Rage");
+            if (rage_it == zs.resources.end() || rage_it->second.current <= 0) continue;
+            // Within 30 ft (Euclidean cell distance × 5 ft).
+            const PlacedAgent& tp = agents[static_cast<std::size_t>(idx)];
+            const float dx = static_cast<float>(zp.origin.col - tp.origin.col);
+            const float dy = static_cast<float>(zp.origin.row - tp.origin.row);
+            if (std::sqrt(dx * dx + dy * dy) * 5.0f > 30.0f) continue;
+
+            // Revive: set HP to the Zealot's Barbarian level; spend the Zealot's reaction + a Rage use.
+            s.hp_cur = std::max(1, zs.char_level);
+            bm.setAgentStats(idx, s);
+            Agent::Stats zs_mut = bm.getAgentStats(static_cast<int>(z));
+            zs_mut.resources.at("Rage").current -= 1;
+            bm.setAgentStats(static_cast<int>(z), zs_mut);
+            Agent::Conditions zc_mut = bm.getAgentConditions(static_cast<int>(z));
+            zc_mut.reaction_used = true;
+            bm.setAgentConditions(static_cast<int>(z), zc_mut);
+            log_("{} uses Revivification on {}: HP set to {} (reaction + 1 Rage)",
+                 agentName(bm, static_cast<int>(z)), agentName(bm, idx), s.hp_cur);
+            return s.hp_cur;
+        }
+    }
+
     // If agent is now dead, drop concentration
     if (s.hp_cur <= 0) {
         const auto& agents = bm.placedAgents();
@@ -1735,6 +1770,25 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Disadvantage: attacker is poisoned");
     }
 
+    // Wild Heart L14 Lion — Disadvantage aura. An enemy within 5 ft of a Lion-raging Barbarian has
+    // Disadvantage attacking anyone other than that Barbarian (or another Lion-active Barbarian). Scan
+    // for such a Lion adjacent to THIS attacker; if the current target isn't a protected Lion, impose it.
+    if (!dis) {
+        for (int i = 0; i < n; ++i) {
+            if (i == action.attacker_idx || i == action.target_idx) continue;
+            const PlacedAgent& lion = agents[static_cast<std::size_t>(i)];
+            if (!lion.agent->getConditions().lion_aura_active) continue;     // must be a Lion-active barbarian
+            if (areAllies(bm, i, action.attacker_idx)) continue;            // only the Lion's enemies are hampered
+            if (footprintDistance(lion.origin, lion.agent->getSize(),
+                                  atk_pt.origin, atk_sz) > 1) continue;      // attacker must be within 5 ft of the Lion
+            // The target is protected only if it IS this Lion or another Lion-active barbarian.
+            if (action.target_idx == i || tgt_pt.agent->getConditions().lion_aura_active) break;
+            dis = true;
+            log_("Disadvantage: Lion (within 5 ft of {}, attacking someone else)", agentName(bm, i));
+            break;
+        }
+    }
+
     // Speedy (general feat) — Opportunity Attacks made against you are made with Disadvantage.
     // The OA path flags the attack via Attack::opportunity.
     if (action.opportunity && tgt_pt.agent->getStats().hasFeat("Speedy")) {
@@ -2227,6 +2281,39 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     if (!r.hit && w.type == WeaponType::Melee && canRiposte(bm, action.target_idx, action.attacker_idx)) {
         Agent::Conditions tdef = bm.getAgentConditions(action.target_idx);
         tdef.riposte_available = true;
+        bm.setAgentConditions(action.target_idx, tdef);
+    }
+
+    // ── Wild Heart L14 Ram — Prone on melee hit ───────────────────────────────
+    // While raging with the Ram power, a melee hit knocks a Large-or-smaller creature Prone (no save).
+    // getSize() footprint: Medium/Small=1, Large=2, Huge=3, Gargantuan=4 → Large-or-smaller is <= 2.
+    if (r.hit && w.type == WeaponType::Melee && !r.target_down &&
+        atk_stats.character_class == CharacterClass::Barbarian &&
+        atk_stats.barbarian_subclass == WildHeartPath &&
+        atk_stats.char_level >= 14 && atk_stats.wild_heart_power == RamPower &&
+        atk_cond.raging && tgt_sz <= 2) {
+        Agent::Conditions tgt_prone = bm.getAgentConditions(action.target_idx);
+        if (!tgt_prone.prone) {
+            tgt_prone.prone = true;
+            bm.setAgentConditions(action.target_idx, tgt_prone);
+            log_("{} is knocked Prone (Ram)", agentName(bm, action.target_idx));
+        }
+    }
+
+    // ── Berserker L10 Retaliation eligibility (DEFENDER reaction) ─────────────
+    // When a creature within 5 ft damages the Berserker, they may spend their reaction to make one
+    // melee weapon attack back. Flagged on the TARGET (the reactor); the GUI prompts and calls
+    // apply_retaliation. Gated: r.hit (damage dealt), attacker adjacent, reaction free, melee weapon free.
+    if (r.hit && r.total_damage > 0 &&
+        tgt_stats.character_class == CharacterClass::Barbarian &&
+        tgt_stats.barbarian_subclass == BerserkerPath &&
+        tgt_stats.char_level >= 10 &&
+        !tgt_cond.reaction_used && !tgt_cond.retaliation_available &&
+        footprintDistance(atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz) <= 1 &&
+        riposteWeaponIdx(bm, action.target_idx) >= 0) {
+        Agent::Conditions tdef = bm.getAgentConditions(action.target_idx);
+        tdef.retaliation_available  = true;
+        tdef.retaliation_target_idx = action.attacker_idx;
         bm.setAgentConditions(action.target_idx, tdef);
     }
 

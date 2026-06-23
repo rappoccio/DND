@@ -199,6 +199,15 @@ enum WildHeartAspect {
     NumWildHeartAspect
 };
 
+// Wild Heart L14 Power of the Wilds — chosen each time Rage is activated
+enum WildHeartPower {
+    WildHeartPowerNone = 0,
+    FalconPower,    // Fly Speed = Speed while raging + unarmored
+    LionPower,      // Enemies within 5 ft have Disadvantage attacking anyone but you
+    RamPower,       // Melee hit knocks Large-or-smaller creatures Prone
+    NumWildHeartPower
+};
+
 // ── Wizard Subclass Enum (2024 D&D) ──────────────────────────────────
 enum WizardSubclass {
     WizardSubclassNone = 0,

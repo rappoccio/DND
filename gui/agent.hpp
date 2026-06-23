@@ -396,6 +396,8 @@ namespace rpg {
       BarbianSubclass barbarian_subclass{BarbianSubclassNone};
       WildHeartRageChoice wild_heart_rage_choice{WildHeartNone};  // Which animal form for Rage of the Wilds
       WildHeartAspect wild_heart_aspect{AspectNone};             // Aspect choice for L6 (Owl/Panther/Salmon)
+      WildHeartPower wild_heart_power{WildHeartPowerNone};        // Power of the Wilds choice (L14): Falcon/Lion/Ram, applied on Rage activation
+      bool rage_of_gods_used{false};                             // Zealot L14 Rage of the Gods: once per long rest (true once the form has been assumed this rest)
       int brutal_strike_damage_dice{1};    // Brutal Strike damage: 1d10 (L9-16), 2d10 (L17+)
       FighterSubclass fighter_subclass{FighterSubclassNone};     // Fighter subclass choice
       DruidCircle druid_circle{DruidCircleNone};                 // Druid circle choice
@@ -493,6 +495,11 @@ namespace rpg {
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
       int  corona_of_light_turns{0};                             // Cleric Light Domain (L17): Corona of Light remaining duration in rounds (>0 = enemies in 60ft have Disadvantage on saves vs the caster's Fire/Radiant spells)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
+      // ── Sorcerer Subclass Features ──────────────────────────────────────────
+      bool draconic_hp_applied{false};                          // Draconic L3 Resilience HP bonus applied (idempotent flag); bonus = char_level (3 + (lvl-3))
+      int  draconic_affinity_type{-1};                          // Draconic L6 Elemental Affinity: chosen MagicDamage_t index (0-9), -1 = none
+      bool draconic_affinity_used_this_turn{false};             // Draconic L6 Elemental Affinity: CHA mod bonus already applied this turn; reset in beginTurn
+      bool dragon_wings_active{false};                          // Draconic L14 Dragon Wings: fly speed granted (= walk speed); false until activated
       int  mantle_majesty_turns{0};                              // Bard College of Glamour (L6) — Mantle of Majesty: "unearthly appearance" window in rounds (>0 = may re-cast Command as a Bonus Action with no slot; Command auto-fails for creatures Charmed by this bard). Tied to concentration on "Mantle of Majesty".
       int  majestic_presence_turns{0};                            // Bard College of Glamour (L14) — Unbreakable Majesty: "majestic presence" window in rounds (>0 = negates incoming attacks automatically like Shield, no reaction). Tied to concentration on "Unbreakable Majesty".
       bool majesty_checked_this_turn{false};                      // Unbreakable Majesty: per-turn gate — only check/negate once per turn
@@ -667,6 +674,11 @@ namespace rpg {
       int grapple_range_ft{5};              // range at which grapple is broken if exceeded
       int exhaustion_level{0};              // exhaustion level (0-6; 6 = death)
       bool raging{false};                   // Barbarian is currently in Rage
+      bool lion_aura_active{false};         // Wild Heart L14 Lion power: while raging, enemies within 5 ft have Disadvantage attacking anyone but this barbarian (or another lion-active barbarian). Set on Rage activation, cleared on Rage end.
+      bool rage_of_gods_active{false};      // Zealot L14 Rage of the Gods: divine-warrior form active (fly+hover, resist Necrotic/Psychic/Radiant, Revivification reaction). Set by activateRageOfTheGods, cleared on Rage end / 0 HP.
+      bool world_tree_long_teleport_used{false}; // World Tree L14 Travel along the Tree: the 150-ft (vs 60-ft) teleport upgrade is once per Rage. Reset on Rage activation, cleared on Rage end.
+      bool retaliation_available{false};    // Berserker L10 Retaliation: an enemy within 5 ft damaged this barbarian; may spend a reaction to make one melee attack back (set on the DEFENDER).
+      int  retaliation_target_idx{-1};      // Berserker L10 Retaliation: index of the creature that damaged this barbarian (the legal Retaliation target).
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
       bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)

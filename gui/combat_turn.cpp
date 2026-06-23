@@ -240,6 +240,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         }
     }
 
+    // Draconic Sorcerer Elemental Affinity: reset the per-turn CHA-bonus flag.
+    if (stats.draconic_affinity_used_this_turn) {
+        stats.draconic_affinity_used_this_turn = false;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
     // Sorcerer Innate Sorcery: tick down its 1-minute (10-round) duration.
     if (stats.innate_sorcery_turns > 0) {
         --stats.innate_sorcery_turns;
@@ -296,6 +302,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Reset per-turn Barbarian flags at start of each turn
     cond.reckless_attack = false;
     cond.reckless_reroll_available = false;
+    cond.retaliation_available = false;   // Berserker L10 Retaliation: stale reaction offer (resets with the reaction)
+    cond.retaliation_target_idx = -1;
 
     if (cond.exhaustion_level >= 6 && stats.hp_cur > 0) {
         stats.hp_cur = 0;

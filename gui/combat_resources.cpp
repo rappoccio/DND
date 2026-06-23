@@ -671,6 +671,11 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
             }
         }
 
+        // Zealot L14 Rage of the Gods is usable once per long rest — restore it here.
+        if (stats.character_class == CharacterClass::Barbarian &&
+            stats.barbarian_subclass == ZealotPath)
+            stats.rage_of_gods_used = false;
+
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);
 
@@ -779,6 +784,30 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
         log_("{} Fanatical Focus: ready for use this Rage", agentName(bm, idx));
     }
 
+    // Wild Heart L14 — Power of the Wilds: the chosen option (Falcon/Lion/Ram) applies for
+    // the duration of this Rage. Ram is an on-hit melee rider (handled in applyAttackResult);
+    // Falcon grants a Fly Speed (only while unarmored); Lion sets the disadvantage-aura flag.
+    if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 14) {
+        cond.lion_aura_active = (stats.wild_heart_power == LionPower);
+        bool wearing_armor = false;
+        for (const auto& piece : agents[static_cast<std::size_t>(idx)].armor) {
+            if (!piece.name.empty()) { wearing_armor = true; break; }
+        }
+        if (stats.wild_heart_power == FalconPower && !wearing_armor) {
+            stats.speed_fly = std::max(stats.speed_fly, stats.speed_walk);
+            log_("{} Falcon: Fly Speed {} ft while raging", agentName(bm, idx), stats.speed_walk);
+        } else if (stats.wild_heart_power == LionPower) {
+            log_("{} Lion: enemies within 5 ft have Disadvantage attacking anyone but you", agentName(bm, idx));
+        } else if (stats.wild_heart_power == RamPower) {
+            log_("{} Ram: melee hits knock Large-or-smaller creatures Prone", agentName(bm, idx));
+        }
+    }
+
+    // World Tree L14 — Travel along the Tree: the 150-ft teleport upgrade is once per Rage.
+    if (stats.barbarian_subclass == WorldTreePath && stats.char_level >= 14) {
+        cond.world_tree_long_teleport_used = false;
+    }
+
     // Spend one use of Rage resource
     if (stats.resources.find("Rage") != stats.resources.end()) {
         Resource& rage = stats.resources.at("Rage");
@@ -856,6 +885,25 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
         }
     }
 
+    // Wild Heart L14 Falcon: the granted Fly Speed only lasts while raging.
+    if (stats.barbarian_subclass == WildHeartPath && stats.wild_heart_power == FalconPower) {
+        stats.speed_fly = 0;
+    }
+    cond.lion_aura_active = false;
+    cond.world_tree_long_teleport_used = false;
+
+    // Zealot L14 Rage of the Gods: the divine-warrior form ends with the Rage. Drop the granted
+    // Fly Speed and the Necrotic/Psychic/Radiant resistances (rage_of_gods_used stays set — it's
+    // once per long rest, cleared by applyLongRest).
+    if (cond.rage_of_gods_active) {
+        cond.rage_of_gods_active = false;
+        stats.speed_fly = 0;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)] = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Psychic)]  = 1.0f;
+        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Radiant)]  = 1.0f;
+        log_("{} Rage of the Gods: divine form ends", agentName(bm, idx));
+    }
+
     // Clear Rage duration
     if (stats.resources.find("Rage") != stats.resources.end()) {
         Resource& rage = stats.resources.at("Rage");
@@ -889,10 +937,10 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
     Agent::Stats stats = bm.getAgentStats(idx);
     Agent::Conditions cond = bm.getAgentConditions(idx);
 
-    // Gate on Berserker L10+
+    // Gate on Berserker L14+ (2024 PHB: Intimidating Presence is the L14 feature; L10 is Retaliation)
     if (stats.character_class != CharacterClass::Barbarian ||
         stats.barbarian_subclass != BerserkerPath ||
-        stats.char_level < 10) {
+        stats.char_level < 14) {
         return false;
     }
 
@@ -1062,6 +1110,112 @@ bool CombatEngine::useZealousPresence(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+bool CombatEngine::activateRageOfTheGods(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+
+    // Gate on Zealot L14+, currently raging, once per long rest.
+    if (stats.character_class != CharacterClass::Barbarian ||
+        stats.barbarian_subclass != ZealotPath ||
+        stats.char_level < 14 ||
+        !cond.raging ||
+        stats.rage_of_gods_used) {
+        return false;
+    }
+
+    cond.rage_of_gods_active = true;
+    stats.rage_of_gods_used  = true;
+
+    // Flight (= Speed, can hover) + Resistance to Necrotic, Psychic, Radiant.
+    stats.speed_fly = std::max(stats.speed_fly, stats.speed_walk);
+    stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)] = 0.5f;
+    stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Psychic)]  = 0.5f;
+    stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Radiant)]  = 0.5f;
+
+    bm.setAgentConditions(idx, cond);
+    bm.setAgentStats(idx, stats);
+    log_("{} assumes the form of a divine warrior (Rage of the Gods): Fly Speed {} ft + hover, "
+         "Resistance to Necrotic/Psychic/Radiant", agentName(bm, idx), stats.speed_walk);
+    return true;
+}
+
+bool CombatEngine::travelAlongTree(BattleMap& bm, int idx, int target_col, int target_row,
+                                   bool long_range) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+
+    // Gate on World Tree L14+, currently raging.
+    if (stats.character_class != CharacterClass::Barbarian ||
+        stats.barbarian_subclass != WorldTreePath ||
+        stats.char_level < 14 ||
+        !cond.raging) {
+        return false;
+    }
+
+    // The 150-ft upgrade is once per Rage; the base teleport is 60 ft.
+    if (long_range && cond.world_tree_long_teleport_used) return false;
+    const int max_ft = long_range ? 150 : 60;
+
+    if (!hasBonusAction(bm, idx)) return false;
+
+    // Range check (Euclidean cell distance × 5 ft) from current space to destination.
+    const Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+    const float dx = static_cast<float>(target_col - origin.col);
+    const float dy = static_cast<float>(target_row - origin.row);
+    const float dist_ft = std::sqrt(dx * dx + dy * dy) * 5.0f;
+    if (dist_ft > static_cast<float>(max_ft)) return false;
+
+    if (!isValidTeleportDestination(bm, target_col, target_row)) return false;
+    if (!teleportAgent(bm, idx, target_col, target_row)) return false;
+
+    if (long_range) {
+        cond.world_tree_long_teleport_used = true;
+        bm.setAgentConditions(idx, cond);
+    }
+    spendBonusAction(bm, idx);
+    log_("{} travels along the World Tree: teleports {} ft", agentName(bm, idx),
+         static_cast<int>(dist_ft));
+    return true;
+}
+
+AttackResult CombatEngine::applyRetaliation(BattleMap& bm, int defender_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (defender_idx < 0 || defender_idx >= n) return AttackResult{};
+
+    Agent::Conditions dc = bm.getAgentConditions(defender_idx);
+    if (!dc.retaliation_available) return AttackResult{};   // only when a qualifying hit offered it
+
+    const int attacker_idx = dc.retaliation_target_idx;
+    const int widx = riposteWeaponIdx(bm, defender_idx);     // a melee weapon to strike back with
+    if (attacker_idx < 0 || attacker_idx >= n || widx < 0) {
+        dc.retaliation_available = false;
+        dc.retaliation_target_idx = -1;
+        bm.setAgentConditions(defender_idx, dc);
+        return AttackResult{};
+    }
+
+    // Spend the reaction + clear the flag, then make a single melee attack back (RAW: no resource).
+    dc.retaliation_available = false;
+    dc.retaliation_target_idx = -1;
+    dc.reaction_used = true;
+    bm.setAgentConditions(defender_idx, dc);
+    log_("{} retaliates against {} (reaction — one melee attack)",
+         agentName(bm, defender_idx), agentName(bm, attacker_idx));
+
+    // Atomic melee attack back (like applyRiposte — no separate GUI reaction window).
+    return executeAction(bm, Attack{defender_idx, attacker_idx, widx});
+}
+
 bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept
 {
     auto agents = bm.placedAgents();
@@ -1150,6 +1304,34 @@ bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
 
     log_("{} activates Innate Sorcery: +1 spell save DC and advantage on spell attacks for 1 minute",
          agentName(bm, idx));
+    return true;
+}
+
+bool CombatEngine::activateDragonWings(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::DraconicPath ||
+        stats.char_level < 14) {
+        return false;
+    }
+
+    if (stats.dragon_wings_active) {
+        // Dismiss — retract wings and clear fly speed granted by this feature.
+        stats.dragon_wings_active = false;
+        stats.speed_fly = 0;
+        bm.setAgentStats(idx, stats);
+        log_("{} retracts their Dragon Wings (fly speed removed)", agentName(bm, idx));
+    } else {
+        // Extend — grant fly speed equal to walk speed.
+        stats.dragon_wings_active = true;
+        stats.speed_fly = std::max(stats.speed_fly, stats.speed_walk);
+        bm.setAgentStats(idx, stats);
+        log_("{} extends Dragon Wings: fly speed {} ft (no concentration)", agentName(bm, idx), stats.speed_walk);
+    }
     return true;
 }
 
