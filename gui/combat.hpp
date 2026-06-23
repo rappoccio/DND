@@ -219,6 +219,17 @@ struct TurnUndeadResult {
     std::vector<int> resisted;     // undead that made the save
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of Life Domain Preserve Life (Channel Divinity, L3+)
+// ─────────────────────────────────────────────────────────────────────────────
+struct PreserveLifeResult {
+    bool valid = false;            // caster was a Life Cleric L3+ with Channel Divinity available
+    int  pool  = 0;                // total HP to distribute (5 × cleric level)
+    int  spent = 0;                // HP actually restored across all targets
+    std::vector<int> healed;       // agent indices that received healing (parallel to amounts)
+    std::vector<int> amounts;      // HP restored to each healed index
+};
+
 // Result of the Topple weapon-mastery prone save.
 struct ToppleResult {
     bool valid = false;   // topple_available was set on the attacker (a qualifying hit had occurred)
@@ -1246,6 +1257,16 @@ public:
     // iff activated. Expires on turn start if agent moves to bright light.
     bool cloakOfShadows(BattleMap& bm, int idx) noexcept;
 
+    // Trickery Domain Cleric — Invoke Duplicity duplicate movement (Bonus Action, later turns): move
+    // the cleric's illusory duplicate (summon_spell == "Invoke Duplicity") up to 30 ft. Returns true
+    // iff moved. Creation lives in the GUI (shares the summon-spawn path).
+    bool moveDuplicate(BattleMap& bm, int cleric_idx, int dup_idx,
+                       int target_col, int target_row) noexcept;
+
+    // Trickster's Transposition (L6+): swap the cleric's position with their duplicate. No resource or
+    // action cost (it rides on creating/moving the duplicate). Returns true iff swapped.
+    bool swapWithDuplicate(BattleMap& bm, int cleric_idx, int dup_idx) noexcept;
+
     // Shadow Arts: Darkness (L3): a Warrior of Shadow Monk spends 1 Focus Point to fill a 15-ft-radius
     // Sphere (centered on the chosen point) with magical Darkness for 1 minute. The casting Monk can
     // see through their own Darkness (the light effect is tagged see-through for this Monk), so they
@@ -1822,6 +1843,18 @@ public:
     // Spends one Channel Divinity use.
     TurnUndeadResult useTurnUndead(BattleMap& bm, int caster_idx);
 
+    // Life Domain Preserve Life (Channel Divinity, L3+): distribute a pool of 5 × cleric level HP
+    // among the chosen creatures within 30 ft (order = distribution priority), each restored to no
+    // more than half its HP maximum. Undead cannot be healed. Spends one Channel Divinity use.
+    PreserveLifeResult usePreserveLife(BattleMap& bm, int caster_idx, const std::vector<int>& targets);
+
+    // Life Domain — Supreme Healing (L17): the cleric maximizes every healing die it rolls.
+    [[nodiscard]] bool lifeSupremeHealing(const Agent::Stats& s) const noexcept;
+
+    // Life Domain — Disciple of Life (L3): a slot-level-1+ heal restores an extra 2 + slot level HP
+    // to each creature healed. Returns 0 when it does not apply.
+    [[nodiscard]] int discipleOfLifeBonus(const Agent::Stats& s, int slot_level) const noexcept;
+
     // Spend a named class resource (e.g. "War Priest", "Superiority Dice"). Returns true if the
     // agent had >= amount and it was spent. Generic so any feature (War Priest bonus attack, Battle
     // Master maneuvers, …) can pay its cost; the actual attack goes through executeAction.
@@ -2100,7 +2133,7 @@ public:
     [[nodiscard]] bool canBendLuck    (const BattleMap& bm, int reactor, int roller) const; // L6+ WildMagic Sorc, ≥1 SP
     [[nodiscard]] bool canCuttingWords(const BattleMap& bm, int reactor, int roller) const; // L3+ Lore Bard, ≥1 Bardic use
     [[nodiscard]] bool canSilveryBarbs(const BattleMap& bm, int reactor, int roller) const; // knows Silvery Barbs + L1+ slot
-    [[nodiscard]] bool canWardingFlare(const BattleMap& bm, int reactor, int roller) const; // L3+ Light Domain Cleric, ≥1 Warding Flare use, within 30ft
+    [[nodiscard]] bool canWardingFlare(const BattleMap& bm, int reactor, int roller, int target) const; // L3+ Light Domain Cleric, ≥1 Warding Flare use, within 30ft, target on reactor's team
     // Recompute r.hit / r.critical from r.d20 + r.total_roll vs r.target_ac (nat 20 hits/crits, nat 1
     // misses, else total >= AC). Additive reactions leave r.d20 untouched (crit preserved); the
     // Silvery Barbs reroll sets r.d20 to the new die.
@@ -2144,6 +2177,9 @@ public:
     // Creature with Legendary Resistance, ≥1 use remaining, alive, and reactor == save_target.
     // No range/LoS test (it's self); does NOT require a free reaction.
     [[nodiscard]] bool canLegendaryResist(const BattleMap& bm, int reactor, int save_target) const;
+    // War Domain — War God's Blessing (L6 Channel Divinity): a War Cleric within 60 ft of the failed
+    // creature (itself or an ally) with ≥1 Channel Divinity use and a free reaction. Costs the reaction.
+    [[nodiscard]] bool canWarGodsBlessing(const BattleMap& bm, int reactor, int save_target) const;
     // Recompute ss.total / ss.saved from ss.d20 + ss.save_mod + ss.bonus vs ss.dc (pass/fail only).
     void reevaluateSave(SpellSave& ss) const noexcept;
     // Apply one reroll reaction to a pre-rolled save (spends the resource, mutates ss, reevaluates).
@@ -2154,6 +2190,8 @@ public:
     bool applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave& ss);
     bool applyIndomitableToSave (BattleMap& bm, int reactor, SpellSave& ss);
     bool applyLegendaryResistanceToSave(BattleMap& bm, int reactor, SpellSave& ss);
+    // War God's Blessing adds +10 to ss.bonus + spends 1 Channel Divinity use + the cleric's reaction.
+    bool applyWarGodsBlessingToSave(BattleMap& bm, int reactor, SpellSave& ss);
 private:
     // The creatures eligible for ANY reroll-save reaction vs one FAILED save (ss.saved==false,
     // !ss.auto_fail), in initiative order: the target itself (Indomitable) + bards within 30 ft on a

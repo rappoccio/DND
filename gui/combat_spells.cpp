@@ -603,6 +603,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     bool any_conditions_applied = false;
     bool any_kill = false;  // TASK A: Dark One's Blessing tracking
 
+    // Life Domain rider context (Disciple of Life / Blessed Healer / Supreme Healing). The effective
+    // slot level drives the bonus; a base-level cast (slot_level 0 / NPC) falls back to the spell level.
+    const int  heal_slot          = action.slot_level > 0 ? action.slot_level : sp.level;
+    const bool life_supreme_heal  = lifeSupremeHealing(caster_stats);
+    const int  life_disciple_heal = discipleOfLifeBonus(caster_stats, heal_slot);
+    bool       life_healed_other  = false;  // a creature other than the caster was healed → Blessed Healer
+
     // Chromatic Orb leap counter. When two or more of the orb's damage d8s show the same
     // number on a hit, the orb leaps to a new creature within 30 ft (a fresh attack + damage
     // roll). The leap target is appended to `targets` below, so the normal loop resolves it.
@@ -672,7 +679,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     int n_dice = sp.healing_type.num_dice;
                     int die_size = sp.healing_type.die_size;
                     for (int i = 0; i < n_dice; ++i) {
-                        int d = roll(die_size);
+                        int d = life_supreme_heal ? die_size : roll(die_size);
                         dice.push_back(d);
                         dmg += d;
                     }
@@ -687,6 +694,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
                     int ability_mod = abilityMod(ability_score);
                     dmg += ability_mod;
+                    if (life_disciple_heal > 0) {
+                        dmg += life_disciple_heal;  // Disciple of Life
+                        log_("Disciple of Life: +{} HP", life_disciple_heal);
+                    }
                     log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
                          n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
                          sp.healing_type.bonus, ability_mod, dmg);
@@ -854,7 +865,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 int n_dice = sp.healing_type.num_dice;
                 int die_size = sp.healing_type.die_size;
                 for (int i = 0; i < n_dice; ++i) {
-                    int d = roll(die_size);
+                    int d = life_supreme_heal ? die_size : roll(die_size);
                     dice.push_back(d);
                     dmg += d;
                 }
@@ -869,6 +880,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
                 int ability_mod = abilityMod(ability_score);
                 dmg += ability_mod;
+                if (life_disciple_heal > 0) {
+                    dmg += life_disciple_heal;  // Disciple of Life
+                    log_("Disciple of Life: +{} HP", life_disciple_heal);
+                }
                 log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
                      n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
                      sp.healing_type.bonus, ability_mod, dmg);
@@ -940,7 +955,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 int n_dice = sp.healing_type.num_dice;
                 int die_size = sp.healing_type.die_size;
                 for (int i = 0; i < n_dice; ++i) {
-                    int d = roll(die_size);
+                    int d = life_supreme_heal ? die_size : roll(die_size);
                     dice.push_back(d);
                     total += d;
                 }
@@ -955,6 +970,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
                 int ability_mod = abilityMod(ability_score);
                 total += ability_mod;
+                if (life_disciple_heal > 0) {
+                    total += life_disciple_heal;  // Disciple of Life
+                    log_("Disciple of Life: +{} HP", life_disciple_heal);
+                }
                 log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
                      n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
                      sp.healing_type.bonus, ability_mod, total);
@@ -1004,6 +1023,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         } // switch
+
+        // Life Domain — Blessed Healer (L6): track whether any creature other than the caster was
+        // healed this cast; if so the cleric heals itself once after the spell resolves (below).
+        if (sp.type == Spell::Heal && tr.total_healing > 0 && tgt_idx != action.caster_idx)
+            life_healed_other = true;
 
         // TASK D: Radiant Soul (Celestial L6+): once per turn, add CHA mod to one damaging
         // Radiant/Fire spell. Applies across all attack types (AttackRoll/Save/Automatic).
@@ -1228,6 +1252,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         result.target_results.push_back(tr);
+    }
+
+    // Life Domain — Blessed Healer (L6): when a slot-level-1+ heal restores HP to another creature,
+    // the cleric regains 2 + slot level HP as well.
+    if (life_healed_other && heal_slot >= 1 &&
+        caster_stats.character_class == CharacterClass::Cleric &&
+        caster_stats.cleric_subclass == LifeDomain && caster_stats.char_level >= 6) {
+        Agent::Stats cs = bm.getAgentStats(action.caster_idx);
+        if (cs.hp_cur > 0) {
+            const int self_heal = 2 + heal_slot;
+            cs.hp_cur = std::min(cs.hp_max, cs.hp_cur + self_heal);
+            bm.setAgentStats(action.caster_idx, cs);
+            log_("{}: Blessed Healer restores {} HP to the caster", agentName(bm, action.caster_idx), self_heal);
+        }
     }
 
     // TASK A: Dark One's Blessing (Fiend L3): temp HP on spell kill
@@ -2120,11 +2158,14 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     //    (removed_from_play = true), not erased from placedAgents_, so every
     //    index reference (caster_idx / agent_idx / initiative) stays valid.
     //    The GUI skips removed_from_play agents in turns and rendering.
+    //    EXCEPTION: the Trickery Cleric's Invoke Duplicity illusion is NOT a concentration effect
+    //    (Channel Divinity, 1-minute fixed duration), so losing concentration must not dismiss it.
     {
         auto summons = bm.placedAgents();
         for (int i = 0; i < static_cast<int>(summons.size()); ++i) {
-            if (summons[static_cast<std::size_t>(i)].summoner_idx == agent_idx &&
-                !summons[static_cast<std::size_t>(i)].removed_from_play) {
+            const auto& s = summons[static_cast<std::size_t>(i)];
+            if (s.summoner_idx == agent_idx && !s.removed_from_play &&
+                s.summon_spell != "Invoke Duplicity") {
                 bm.setAgentRemovedFromPlay(i, true);
                 result.dismissed_summons.push_back(i);
             }
@@ -2535,6 +2576,45 @@ bool CombatEngine::applyLegendaryResistanceToSave(BattleMap& bm, int reactor, Sp
     return true;
 }
 
+bool CombatEngine::canWarGodsBlessing(const BattleMap& bm, int reactor, int save_target) const
+{
+    // War Domain L6 Channel Divinity — grant +10 to a creature within 60 ft that just failed a save.
+    // Costs the cleric's reaction even when aiding its own save (unlike Indomitable/Legendary Resistance),
+    // so re-check reaction_used directly (saveReactorBase skips that test for reactor == save_target).
+    if (!saveReactorBase(bm, reactor, save_target, 60, /*require_reaction=*/true)) return false;
+    if (bm.getAgentConditions(reactor).reaction_used) return false;
+    if (reactor != save_target && !areAllies(bm, reactor, save_target)) return false;   // only aid yourself/allies
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Cleric ||
+        s.cleric_subclass != WarDomain || s.char_level < 6) return false;
+    const Resource* cd = s.getResource("Channel Divinity");
+    return cd && cd->current >= 1;
+}
+
+bool CombatEngine::applyWarGodsBlessingToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Cleric ||
+        s.cleric_subclass != WarDomain || s.char_level < 6) return false;
+    Resource* cd = s.getResource("Channel Divinity");
+    if (!cd || cd->current < 1) return false;
+
+    cd->current -= 1;                                            // spend one Channel Divinity use
+    cond.reaction_used = true;                                   // War God's Blessing costs the reaction
+    ss.bonus += 10;                                              // +10 to the failed save (after the roll)
+    reevaluateSave(ss);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses War God's Blessing: +10 to {}'s save → {} vs DC {} → {}",
+         agentName(bm, reactor), agentName(bm, ss.target_idx), ss.total, ss.dc,
+         ss.saved ? "SUCCEEDS" : "still fails");
+    return true;
+}
+
 // Everyone eligible for ANY reroll-save reaction vs one FAILED save, in index order: the target itself
 // (Indomitable / Legendary Resistance) + bards within 30 ft on a charm/frighten spell (Countercharm).
 std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const SpellAction& action,
@@ -2544,7 +2624,8 @@ std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const Spell
     if (ss.saved || ss.auto_fail) return out;                     // nothing to reroll
     const int n = static_cast<int>(bm.placedAgents().size());
     for (int i = 0; i < n; ++i)
-        if (canIndomitable(bm, i, ss.target_idx) || canLegendaryResist(bm, i, ss.target_idx) || canCountercharm(bm, i, ss.target_idx, action))
+        if (canIndomitable(bm, i, ss.target_idx) || canLegendaryResist(bm, i, ss.target_idx) ||
+            canCountercharm(bm, i, ss.target_idx, action) || canWarGodsBlessing(bm, i, ss.target_idx))
             out.push_back(i);
     return out;
 }
@@ -2564,6 +2645,9 @@ std::vector<ReactionOption> CombatEngine::saveFailOptions(const BattleMap& bm, i
     if (canCountercharm(bm, reactor, ss.target_idx, action))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Use Countercharm (reroll the failed save with advantage)", "Countercharm"});
+    if (canWarGodsBlessing(bm, reactor, ss.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use War God's Blessing (+10 to the failed save, 1 Channel Divinity)", "WarGodsBlessing"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -2582,6 +2666,7 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
     if      (opt.feature == "Countercharm")         applyCountercharmToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "Indomitable")          applyIndomitableToSave (bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "LegendaryResistance")  applyLegendaryResistanceToSave(bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "WarGodsBlessing")      applyWarGodsBlessingToSave(bm, ctx.reactor_idx, *ss);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -16,9 +16,20 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
+import json
+
 import rpg_battle_map as rpg
 from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
-from helpers import can_place_agent, summon_cell_placeable
+from helpers import can_place_agent, summon_cell_placeable, compute_summon_loadout
+
+# A synthetic spirit block so the scaling tests don't couple to summon_spirits.json's numbers.
+_TEST_SPIRIT = {
+    "form": "Test", "name": "Test Spirit", "size": "Medium",
+    "str": 18, "dex": 12, "con": 14, "intel": 4, "wis": 10, "cha": 6,
+    "speed_walk": 30, "ac_base": 11, "hp_base": 20, "hp_per_level": 5,
+    "multiattack_at": 4, "darkvision": 60, "dmg_per_level": 2,
+    "attack": {"name": "Slam", "num_dice": 2, "die_size": 6, "damage_type": "Bludgeoning"},
+}
 
 
 def _spawn_summon(bm, name, col, row, summoner_idx, spell="Summon Dragon"):
@@ -229,6 +240,118 @@ def test_can_place_out_of_bounds_is_invalid():
     print("✅ test_can_place_out_of_bounds_is_invalid passed")
 
 
+def test_summon_loadout_scales_with_slot():
+    """AC = ac_base + slot_level; HP = hp_base + hp_per_level x slot_level."""
+    stats_l3, _ = compute_summon_loadout(_TEST_SPIRIT, slot_level=3, pb=2, spell_ability_mod=3)
+    stats_l6, _ = compute_summon_loadout(_TEST_SPIRIT, slot_level=6, pb=4, spell_ability_mod=5)
+    assert stats_l3["base_ac"] == 11 + 3, stats_l3["base_ac"]
+    assert stats_l3["hp_max"] == 20 + 5 * 3, stats_l3["hp_max"]
+    assert stats_l6["base_ac"] == 11 + 6, stats_l6["base_ac"]
+    assert stats_l6["hp_max"] == 20 + 5 * 6, stats_l6["hp_max"]
+    assert stats_l6["hp_cur"] == stats_l6["hp_max"]
+    print("✅ test_summon_loadout_scales_with_slot passed")
+
+
+def test_summon_loadout_to_hit_and_damage_from_caster():
+    """bonus_hit cancels the spirit's own ability mod so total to-hit = pb + spell mod;
+    bonus_damage leaves only the per-level rider (dmg_per_level x slot_level)."""
+    pb, spell_mod, slot = 4, 5, 5
+    stats, weapon = compute_summon_loadout(_TEST_SPIRIT, slot, pb, spell_mod)
+    str_mod = (_TEST_SPIRIT["str"] - 10) // 2  # 18 -> +4, the attacking ability (not finesse)
+    # engine: to-hit = ability_mod + pb + bonus_hit  (proficient) == pb + spell_mod
+    assert weapon["bonus_hit"] + str_mod + pb == pb + spell_mod, weapon["bonus_hit"]
+    # engine: damage bonus = ability_mod + bonus_damage == dmg_per_level * slot
+    assert weapon["bonus_damage"] + str_mod == _TEST_SPIRIT["dmg_per_level"] * slot
+    print("✅ test_summon_loadout_to_hit_and_damage_from_caster passed")
+
+
+def test_summon_loadout_multiattack_threshold():
+    """num_attacks flips to 2 once slot_level >= multiattack_at, else 1."""
+    below, _ = compute_summon_loadout(_TEST_SPIRIT, slot_level=3, pb=2, spell_ability_mod=3)
+    at,    _ = compute_summon_loadout(_TEST_SPIRIT, slot_level=4, pb=2, spell_ability_mod=3)
+    assert below["num_attacks"] == 1, below["num_attacks"]
+    assert at["num_attacks"] == 2, at["num_attacks"]
+    print("✅ test_summon_loadout_multiattack_threshold passed")
+
+
+def test_summon_loadout_magic_damage_routing():
+    """A magical damage type routes to magic_damage_types (bypasses non-magical resistance);
+    a physical type stays in physical_damage_types."""
+    phys = dict(_TEST_SPIRIT)  # Bludgeoning (physical)
+    _, w_phys = compute_summon_loadout(phys, 3, 2, 3)
+    assert w_phys["physical_damage_types"] and not w_phys["magic_damage_types"]
+
+    magic = dict(_TEST_SPIRIT,
+                 attack={"name": "Sear", "num_dice": 2, "die_size": 6,
+                         "damage_type": "Radiant", "magic": True})
+    _, w_magic = compute_summon_loadout(magic, 3, 2, 3)
+    assert w_magic["magic_damage_types"] and not w_magic["physical_damage_types"]
+    assert w_magic["magic_damage_types"][0]["type"] == "Radiant"
+    print("✅ test_summon_loadout_magic_damage_routing passed")
+
+
+def test_summon_loadout_hp_above_base_level():
+    """HP scales only ABOVE the spell's base level: hp_base + hp_per_level x (slot - base_level)."""
+    blk = dict(_TEST_SPIRIT, base_level=5, hp_base=50, hp_per_level=10)
+    assert compute_summon_loadout(blk, 5, 4, 5)[0]["hp_max"] == 50   # at base level
+    assert compute_summon_loadout(blk, 7, 4, 5)[0]["hp_max"] == 70   # +10/level above
+    assert compute_summon_loadout(blk, 4, 2, 3)[0]["hp_max"] == 50   # below base: clamped, not negative
+    print("✅ test_summon_loadout_hp_above_base_level passed")
+
+
+def test_summon_loadout_half_level_multiattack():
+    """multiattack_half_level: num_attacks = max(1, slot // 2) (the 2024 'Rend = half level' rule)."""
+    blk = dict(_TEST_SPIRIT, multiattack_half_level=True)
+    assert compute_summon_loadout(blk, 3, 2, 3)[0]["num_attacks"] == 1
+    assert compute_summon_loadout(blk, 5, 2, 3)[0]["num_attacks"] == 2
+    assert compute_summon_loadout(blk, 9, 4, 5)[0]["num_attacks"] == 4
+    print("✅ test_summon_loadout_half_level_multiattack passed")
+
+
+def test_verified_draconic_spirit_matches_card():
+    """The real Draconic Spirit block reproduces the PHB card exactly at a L5 cast:
+    AC 19, HP 50, 2 Rend attacks, Rend = 1d6 + 4 + 5 Piercing, to-hit = caster's spell-atk mod."""
+    path = os.path.join(os.path.dirname(__file__), "summon_spirits.json")
+    drac = next(r for r in json.load(open(path)) if r.get("name") == "Draconic Spirit")
+    pb, spell_mod = 4, 5
+    stats, weapon = compute_summon_loadout(drac, slot_level=5, pb=pb, spell_ability_mod=spell_mod)
+    assert stats["base_ac"] == 19, stats["base_ac"]          # 14 + 5
+    assert stats["hp_max"] == 50, stats["hp_max"]            # 50 + 10*(5-5)
+    assert stats["num_attacks"] == 2, stats["num_attacks"]   # 5 // 2
+    assert weapon["physical_damage_types"][0] == {"type": "Piercing", "num_dice": 1, "die_size": 6}
+    assert weapon["reach_ft"] == 10
+    str_mod = (drac["str"] - 10) // 2  # 19 -> +4
+    # printed Rend damage = 1d6 + 4 + spell level: engine adds str_mod, bonus_damage supplies the rest.
+    assert weapon["bonus_damage"] + str_mod == drac["dmg_flat"] + 5   # == 9
+    assert weapon["bonus_hit"] + str_mod + pb == pb + spell_mod       # to-hit == spell attack mod
+    print("✅ test_verified_draconic_spirit_matches_card passed")
+
+
+def test_summon_spirits_data_well_formed():
+    """summon_spirits.json: every form record has the fields compute_summon_loadout reads,
+    and all ten 2024 Summon spells are represented."""
+    path = os.path.join(os.path.dirname(__file__), "summon_spirits.json")
+    with open(path) as f:
+        records = json.load(f)
+    spells = {}
+    for rec in records:
+        spell = rec.get("spell", "")
+        if not spell or spell.startswith("_"):
+            continue
+        spells.setdefault(spell, []).append(rec)
+        for key in ("form", "name", "size", "ac_base", "hp_base", "hp_per_level", "attack"):
+            assert key in rec, f"{spell}/{rec.get('form')} missing '{key}'"
+        # Scaling must produce a sane, growing creature.
+        s3, _ = compute_summon_loadout(rec, 3, 2, 3)
+        s9, _ = compute_summon_loadout(rec, 9, 4, 5)
+        assert s9["hp_max"] > s3["hp_max"] > 0
+    expected = {"Summon Beast", "Summon Fey", "Summon Undead", "Summon Aberration",
+                "Summon Construct", "Summon Elemental", "Summon Celestial",
+                "Summon Shadowspawn", "Summon Fiend", "Summon Dragon"}
+    assert expected <= set(spells), expected - set(spells)
+    print(f"✅ test_summon_spirits_data_well_formed passed ({len(spells)} spells)")
+
+
 if __name__ == "__main__":
     test_summon_bindings_present()
     test_spawn_agent_is_non_destructive()
@@ -242,4 +365,12 @@ if __name__ == "__main__":
     test_placement_on_occupied_cell_is_invalid()
     test_can_place_ignores_tombstoned_summon()
     test_can_place_out_of_bounds_is_invalid()
+    test_summon_loadout_scales_with_slot()
+    test_summon_loadout_to_hit_and_damage_from_caster()
+    test_summon_loadout_multiattack_threshold()
+    test_summon_loadout_magic_damage_routing()
+    test_summon_loadout_hp_above_base_level()
+    test_summon_loadout_half_level_multiattack()
+    test_verified_draconic_spirit_matches_card()
+    test_summon_spirits_data_well_formed()
     print("\nAll summoning tests passed!")

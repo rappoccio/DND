@@ -119,6 +119,12 @@ def _setup(engine, bm, make_reactor, *, tgt_ac=13, give_shield=False):
         engine.set_agent_spells(bm, tgt, [sp])
 
     make_reactor(engine, bm, rea)
+
+    # Teams: defender + reactor are allies (team 1), attacker is the enemy (team 2). Warding Flare is
+    # team-gated, so the reactor must share a team with the target it is shielding.
+    bm.set_agent_faction(atk, 2)
+    bm.set_agent_faction(tgt, 1)
+    bm.set_agent_faction(rea, 1)
     return atk, tgt, rea
 
 
@@ -248,19 +254,19 @@ def test_warding_flare_gate():
     _make_light_cleric(engine, bm, near)
     _make_light_cleric(engine, bm, far)
 
-    assert engine.can_warding_flare(bm, near, atk), "in-range Light cleric with a use is eligible"
-    assert not engine.can_warding_flare(bm, far, atk), "a cleric beyond 30 ft is NOT eligible"
+    assert engine.can_warding_flare(bm, near, atk, near), "in-range Light cleric with a use is eligible"
+    assert not engine.can_warding_flare(bm, far, atk, far), "a cleric beyond 30 ft is NOT eligible"
 
     # Drain the resource → not eligible.
     s = engine.get_agent_stats(bm, near); s.resources["Warding Flare"].current = 0
     engine.set_agent_stats(bm, near, s)
-    assert not engine.can_warding_flare(bm, near, atk), "no Warding Flare use → not eligible"
+    assert not engine.can_warding_flare(bm, near, atk, near), "no Warding Flare use → not eligible"
 
     # Refill but spend the reaction → not eligible.
     _make_light_cleric(engine, bm, near)
     c = engine.get_agent_conditions(bm, near); c.reaction_used = True
     engine.set_agent_conditions(bm, near, c)
-    assert not engine.can_warding_flare(bm, near, atk), "reaction already spent → not eligible"
+    assert not engine.can_warding_flare(bm, near, atk, near), "reaction already spent → not eligible"
 
     # A non-Light cleric (Life Domain) is not eligible even in range with a free reaction.
     _make_light_cleric(engine, bm, near)
@@ -268,8 +274,32 @@ def test_warding_flare_gate():
     engine.set_agent_conditions(bm, near, c)
     s = engine.get_agent_stats(bm, near); s.cleric_subclass = rpg.ClericSubclass.LifeDomain
     engine.set_agent_stats(bm, near, s)
-    assert not engine.can_warding_flare(bm, near, atk), "non-Light Domain cleric → not eligible"
+    assert not engine.can_warding_flare(bm, near, atk, near), "non-Light Domain cleric → not eligible"
     print("✅ test_warding_flare_gate passed")
+
+
+def test_warding_flare_team_gate():
+    """Warding Flare only fires to protect the cleric's own team: an in-range, otherwise-eligible
+    Light cleric may NOT shield an enemy or a neutral, only itself and its allies."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk  = add_agent_to_battle(engine, bm, create_test_agent("Atk", 1, 1))
+    cler = add_agent_to_battle(engine, bm, create_test_agent("Cler", 1, 3))   # 10 ft
+    ally = add_agent_to_battle(engine, bm, create_test_agent("Ally", 1, 5))   # 10 ft from cleric
+    foe  = add_agent_to_battle(engine, bm, create_test_agent("Foe", 2, 3))    # 5 ft from cleric
+    _make_light_cleric(engine, bm, cler)
+
+    # Teams: cleric + ally on team 1; attacker + foe on team 2.
+    bm.set_agent_faction(cler, 1); bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(atk, 2);  bm.set_agent_faction(foe, 2)
+
+    assert engine.can_warding_flare(bm, cler, atk, cler), "may protect itself"
+    assert engine.can_warding_flare(bm, cler, atk, ally), "may protect a teammate"
+    assert not engine.can_warding_flare(bm, cler, atk, foe), "must NOT shield an enemy"
+
+    # A neutral (faction 0) is nobody's ally → not protected.
+    bm.set_agent_faction(ally, 0)
+    assert not engine.can_warding_flare(bm, cler, atk, ally), "must NOT shield a neutral non-ally"
+    print("✅ test_warding_flare_team_gate passed")
 
 
 def test_lowering_to_miss_suppresses_shield():
@@ -428,6 +458,7 @@ def run_all():
     test_silvery_barbs_reroll_can_miss()
     test_warding_flare_disadvantage_can_miss()
     test_warding_flare_gate()
+    test_warding_flare_team_gate()
     test_lowering_to_miss_suppresses_shield()
     test_reaction_used_not_offered()
     test_no_resource_not_offered()

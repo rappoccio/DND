@@ -7,31 +7,15 @@ metadata:
 
 # Known Limitations
 
-## Grapple drag-movement double cost charged against the wrong budget — FIXED ✅ (2026-06-19)
+<details>
+<summary><b>Grapple drag-movement double cost charged against the wrong budget — FIXED ✅ (2026-06-19)</b></summary>
 
-**Symptom (from live play):** a grappler that Cunning-Action **Dashed** appeared to have its movement
-"turn off" mid-turn (often noticed right after an opportunity attack) while the displayed budget still
-showed feet remaining.
+**Symptom:** a Dashing grappler's movement appeared to cut out mid-turn. **Cause:** the 2×-drag surcharge was charged against the engine's separate `walkRemaining_` budget (which never receives a Dash) instead of the agent's own `speed_walk_remaining_` (the one `moveAgent` spends + the GUI shows). **Fix:** charge `actual_cost*2` against the single agent budget in `BattleMap::moveAgent`; removed the broken surcharge block from `CombatEngine::moveAgent`; GUI `_update_reach` halves previewed reach while grappling. Tests `test_grapple.py` (drag-double no-dash + scales-with-dash); suite 14/14. See [[dual_movement_budget]].
 
-**Root cause — dual movement budgets.** Movement tracks *two* parallel budgets:
-the **agent's own** `Agent::speed_walk_remaining_` (seeded by the GUI via `init_movement`, the one
-`BattleMap::moveAgent` actually spends, the one `apply_dash` adds to, and the one the GUI displays as
-`walk_remaining`) **and** the CombatEngine's separate `walkRemaining_[idx]` map (seeded by `beginTurn`,
-used only for grapple-drag surcharge, standup cost, Instinctive Pounce). The grapple drag-surcharge
-("dragging a creature doubles cost per foot") was charged against the **second** budget — which never
-receives a Dash. So while Dashing, the surcharge budget capped a grappler at base Speed even though the
-real (displayed) budget had double; once the engine budget hit 0 further drags failed while the bar
-still showed feet. It was *also* over-permissive **without** Dash (let a grappler drag a full 30 ft
-instead of 15, since the double cost was split across two full budgets instead of 2× one budget).
+</details>
 
-**Fix:** charge the 2× drag cost against the **single agent budget** inside `BattleMap::moveAgent`
-(scan `placedAgents_` for a creature `grappled && grappler_idx == idx`; `charge = actual_cost * 2`).
-Removed the broken separate-budget surcharge block from `CombatEngine::moveAgent` (grapple auto-end
-checks untouched). GUI `_update_reach` halves the previewed reach when the selected agent is grappling
-so the highlighted cells match enforcement. Now the one displayed number drains at the true 2× rate and
-honors Dash/exhaustion/all speed modifiers. Tests: `test_grapple.py::test_grapple_drag_costs_double_no_dash`
-+ `::test_grapple_drag_scales_with_dash`. Built + grapple suite green (14/14).
 
+* Weapon property Nick is consuming bonus action. 
 ---
 
 ## Architecture / Infrastructure
@@ -220,24 +204,12 @@ weapon) so the player can move and retarget between bonus strikes. See `_finish_
 `_continue_attack_sequence_after_rider` (the `pending_attack_slot == "bonus"` branches kept the old
 `_start_attack` auto-re-arm).
 
-### Weapon on-hit conditions survive save/load + on-hit grapple is logged — FIXED ✅ (2026-06-17, confirmed in live play)
-Two coupled fixes for on-hit weapon riders (surfaced by a Vampire Spawn Claw with a `Grappled`/`escape_dc:14`
-rider in `DND2024_MonsterStats.json` that "wasn't working" after an encounter reload):
-- **Root cause:** `helpers._weapon_to_dict` never serialized `Weapon.conditions`, so the encounter
-  save path (`main.py` ~7039, which round-trips every agent's weapons through `_weapon_to_dict`) silently
-  **dropped all on-hit riders** (Grappled, `reduceHPMax`, save-based conditions) on save→reload. The data
-  and the C++ routing (`combat_attack.cpp` ~2927 → `resolveGrapple` → `applyGrappled`) were always correct;
-  the bug was purely the lossy serializer. **Fix:** `_weapon_to_dict` now emits the full `conditions` list
-  (name, duration, push_ft, save_repeat_turns, contested, escape_dc, requires_save, save_ability,
-  save_dc_ability, on_damage); `_dict_to_weapon` now also parses `requires_save`/`on_damage` (previously
-  ignored) so every condition type round-trips. **Caveat:** saves written *before* the fix already lack the
-  data — re-place the creature fresh from the bestiary, then re-save.
-- **On-hit grapple now logs the contest + outcome.** The on-hit `Grappled` branch previously discarded the
-  result (`(void)resolveGrapple(...)`) so the combat log showed nothing. Now it logs at the rider call site:
-  contested → "X attempts to grapple Y (Athletics A vs D) — GRAPPLED (escape DC N)/target resists";
-  automatic (`contested=false`) → "X grapples Y on the hit (escape DC N)". Logged at the call site (not
-  inside `resolveGrapple`) so the standalone Grapple action + Punch-and-Grab paths (which log via Python)
-  don't double-log.
+<details>
+<summary><b>Weapon on-hit conditions survive save/load + on-hit grapple is logged — FIXED ✅ (2026-06-17, confirmed in live play)</b></summary>
+
+Two coupled on-hit-rider fixes (surfaced by a Vampire Spawn Claw Grappled rider lost on reload). **(1)** `helpers._weapon_to_dict` never serialized `Weapon.conditions`, so the save dropped ALL on-hit riders; now emits the full conditions list and `_dict_to_weapon` parses `requires_save`/`on_damage`. *Caveat: pre-fix saves lack the data — re-place from the bestiary.* **(2)** On-hit grapple now logs the contest/outcome at the rider call site (was `(void)resolveGrapple(...)`).
+
+</details>
 
 ### Rider-laden Attack actions skip Frenzy / unarmed-weapon restore [minor]
 The Attack-action sequence advance (disarm between attacks, `action_used`, ending the sequence) is now
@@ -253,26 +225,12 @@ move Frenzy + the unarmed restore next to the central commit (or route every rid
 
 ---
 
-### Uncanny Dodge + Guided Strike folded into the reaction framework (2026-06-08)
-**Status:** DONE — the last two ad-hoc interrupts now route through `chooseReaction`/the window helpers.
+<details>
+<summary><b>Uncanny Dodge + Guided Strike folded into the reaction framework (2026-06-08)</b></summary>
 
-- **Uncanny Dodge** (Rogue L5+) is now an **OnHit defender option** (alongside Shield) in
-  `defenderOnHitOptions`: auto/RL via `maybeDefenderOnHitInline`, GUI via the `advanceAttack` suspend
-  window (`applyAttackReaction` → `applyUncannyDodge`). The inline auto-halving block was removed from
-  `applyAttackResult`.
-- **Guided Strike** (War Cleric L3+) is now an **OnMiss option**: auto/RL via `maybeGuidedStrikeInline`
-  (runs before `maybeRiposteInline`, since a guided hit forecloses the defender's riposte). The GUI keeps
-  its existing `guided_strike_available`-flag offer (parallel to Riposte), and `applyAttackResult` sets
-  that flag via the shared `canGuidedStrike` gate. `applyGuidedStrike` is unchanged.
+The last two ad-hoc interrupts now route through the reaction framework. **Uncanny Dodge** (Rogue L5) = OnHit defender option in `defenderOnHitOptions`; **Guided Strike** (War Cleric L3) = OnMiss option (runs before Riposte). **Deliberate change:** Uncanny Dodge is now decider-gated — with no decider it is SKIPPED (used to auto-apply), so it doesn't fire on OAs/Cleave/extra swings (same as Shield/Riposte). Tests `test_rogue_l1_18.py` / `test_cleric.py`.
 
-**Deliberate behavior change (the cost of consistency):** Uncanny Dodge is now **decider-gated like
-every other reaction** — with **no decider installed it is skipped** (it used to auto-apply). Concretely:
-in the GUI it fires on the player's main attack (which goes through `begin_attack`/the OnHit window) but
-**NOT** on incidental sub-attacks that use the atomic `execute_action` path with no decider —
-**Opportunity Attacks, Cleave, and extra/multiattack swings**. This matches how Shield and Riposte
-already behave on those sub-attacks (the same "reaction-during-reaction on an atomic sub-attack" deferral
-as Cleave). Tests cover all three UD paths (decider auto, no-decider skip, GUI suspend) in
-`test_rogue_l1_18.py`; the auto Guided-Strike path is in `test_cleric.py`.
+</details>
 
 ---
 
@@ -310,58 +268,19 @@ proper post-rider chaining step, and fold Riposte into the `has_rider` gate as p
 
 ## Battle Master Fighter
 
-### Riposte (IMPLEMENTED 2026-06-04 — see RIPOSTE_PLAN.md)
-**Rule**: Reaction melee attack when a creature misses *you* with a melee attack; on a hit, add the
-Superiority Die to the damage. Modeled on Reckless Attack's post-hoc-on-miss path: `applyAttackResult`
-flags `conditions.riposte_available` on the **defender** (not the attacker — the one new direction);
-the GUI prompts (`_offer_riposte` → `apply_riposte`), and the auto/RL driver consults
-`chooseReaction` at an **OnMiss** window inline (`maybeRiposteInline`, the mirror of the OnHit Shield
-path). The riposte fires *after* the triggering attack fully resolves, so it's a fresh top-level
-`executeAction` — no decision stack.
+<details>
+<summary><b>Riposte (IMPLEMENTED 2026-06-04 — see RIPOSTE_PLAN.md)</b></summary>
 
-**v1 limitations (deferred):**
-- **Attacker-rider shadowing:** the GUI on-miss rider chain is mutually-exclusive `elif`, and Riposte
-  is offered **last**. If the *attacker* is also eligible for an on-miss rider (Precision/Guided/
-  Reckless) on the same swing, it shadows the defender's Riposte that swing. (Natural reading: the
-  attacker's miss→hit conversion resolves first; if it converts, there's no miss to riposte.) Full
-  chaining — offer Riposte *after* the attacker's on-miss rider resolves and the attack is still a
-  miss — is v2. Rare in practice (both attacker and defender with on-miss reactions on one swing).
-- **No fresh GUI Shield window for the riposte:** `applyRiposte` uses the atomic `executeAction`
-  (like `applyRecklessReroll`), so the original attacker is not offered a *suspendable* Shield window
-  against the riposte swing (auto/RL inline Shield still fires). Same deferral as Cleave.
-- **Reach weapons:** eligibility uses 1-cell (5 ft) reach for the attacker-in-range check
-  (`threateningAgents(..., 1)`); reach-weapon defenders (10 ft) are not yet handled.
-- **Damage type:** the +Superiority-Die is added directly to `total_damage` with no resistance
-  multiplier (consistent with Divine Fury / Berserker Frenzy bonus dice).
+Reaction melee attack when a creature misses you with melee; +Superiority Die on the hit. Defender-flagged (`riposte_available`) at the OnMiss window — GUI `_offer_riposte`/`apply_riposte`, auto/RL `maybeRiposteInline`; fires after the triggering attack resolves (fresh top-level `executeAction`). v1 limits: an attacker on-miss rider shadows it (mutually-exclusive `elif`); no suspendable Shield window vs the riposte; 5-ft reach only; +die added with no resistance multiplier.
 
-### Additional Maneuvers — IMPLEMENTED 2026-06-14 (test_fighter.py)
-The 2024 maneuver set is now wired across the three reuse buckets (on-hit save riders, bonus-action, reaction).
-All save riders share `applyManeuverEffect`'s dispatch and the save DC `8 + PB + max(STR,DEX) mod`.
+</details>
 
-- **On-hit save/effect riders** (`applyManeuverEffect` dispatch + `_offer_maneuver` menu):
-  - **Goading Attack** (type 3): WIS save or `goaded_by` → Disadvantage attacking anyone but you,
-    until the start of your next turn (checked in `determineAdvantage`, cleared in `beginTurn`).
-  - **Distracting Strike** (type 4): no save; `distracted_by` on the target → the next attack vs it
-    by another creature has Advantage (mirrors Vex; consumed in `applyAttackResult`).
-  - **Disarming Attack** (type 5): STR save or `disarmed` → the target's weapon attacks resolve as
-    improvised Unarmed Strikes (substituted in `determineAdvantage`) until the start of your next turn.
-    *Model note:* no ground-item system — "drops the weapon" is modeled as fighting unarmed for a round.
-  - **Sweeping Attack** (`applySweepingAttack`, dedicated fn — needs the original roll + 2nd target):
-    if the original attack roll would hit a 2nd creature within 5 ft, it takes superiority-die damage
-    of the attack's type. GUI 2nd-target picker mirrors Cleave (`pending_sweep`/`_resolve_sweep`).
-- **Bonus-action maneuvers** (one "Maneuver (Bonus Action)" GUI button → context menu):
-  - **Rally** (`applyRally`): grant a creature within 30 ft temp HP = die + CHA mod (min 1).
-  - **Feinting Attack** (`applyFeintingAttack`): `feint_target_idx` → Advantage on your next attack vs
-    it this turn + the die added to that hit's damage (both consumed in `applyAttackResult`).
-  - **Quick Toss** (`prepareQuickToss`): arms `quick_toss_die_pending`; the next thrown-weapon attack
-    this turn adds the die to damage. GUI then runs the thrown attack via `_start_extra_attack`.
-- **Reaction maneuver** (OnHit defender window, live eligibility like Uncanny Dodge — no flag):
-  - **Parry** (`canParry`/`applyParry`): on a melee hit that dealt damage, spend reaction + die to
-    reduce the damage by die + DEX mod. Offered in `defenderOnHitOptions`; handled in both
-    `maybeDefenderOnHitInline` (auto/RL) and `applyAttackReaction` (GUI resume).
+<details>
+<summary><b>Additional Maneuvers — IMPLEMENTED 2026-06-14 (test_fighter.py)</b></summary>
 
-**Save DC fixed** to `8 + PB + max(STR,DEX) mod` via the shared `dndMod` (floor) helper, which was
-promoted from a file-local static in `combat_core.cpp` to `combat_internal.hpp` for all TUs.
+2024 maneuver set wired across the 3 reuse buckets, all sharing `applyManeuverEffect` + save DC `8+PB+max(STR,DEX)`. **On-hit save riders:** Goading (WIS / disadv-vs-others), Distracting (Vex-like), Disarming (STR / fight-unarmed 1 rd), Sweeping (`applySweepingAttack`, 2nd-target picker like Cleave). **Bonus-action:** Rally (temp HP), Feinting (advantage + die), Quick Toss (thrown + die). **Reaction (OnHit defender):** Parry (`canParry`, reduce damage by die+DEX). `dndMod` promoted to `combat_internal.hpp`.
+
+</details>
 
 ### Deferred maneuvers — need new engine infra (combat-sim scope: defer-new-infra)
 - **Lunging Attack** — +5 ft melee reach for one attack; needs a pre-attack reach-extension toggle
@@ -381,13 +300,12 @@ promoted from a file-local static in `combat_core.cpp` to `combat_internal.hpp` 
 
 ## Fighter — Deferred Features
 
-### Indomitable (L9) — IMPLEMENTED 2026-06-04
-**Rule**: Reroll a failed saving throw (+ Fighter level on the new roll); uses regain on long rest
-(1 at L9, 2 at L13, 3 at L17). Implemented as a consumer of the **OnSaveFail** reaction window: when a
-directly-targeted spell save fails, a L9+ Fighter may spend 1 "Indomitable" resource use to reroll its
-**own** save. Costs the use only, **not** the reaction (RAW "no action"). Engine `canIndomitable` /
-`applyIndomitableToSave` (combat_spells.cpp). *Limited to spell saves this pass* — see the OnSaveFail
-entry under Architecture → Post-hoc reaction interrupts for the deferred save sites.
+<details>
+<summary><b>Indomitable (L9) — IMPLEMENTED 2026-06-04</b></summary>
+
+Reroll a failed save (+Fighter level); uses regain on long rest (1/2/3 at L9/13/17). Consumer of the OnSaveFail window — on a failed directly-targeted spell save, spend 1 Indomitable use to reroll your own save. Costs the use, NOT the reaction (RAW). `canIndomitable`/`applyIndomitableToSave`. Spell saves only this pass (see the OnSaveFail entry for deferred save sites).
+
+</details>
 
 ### Studied Attacks (L13) [DEFER]
 **Rule**: Advantage on next attack roll against a creature you missed with a weapon attack.
@@ -397,70 +315,28 @@ Will reuse the existing `vex_target_idx` flag — trivial but out of scope for t
 
 ## Paladin
 
-### Implemented ✅
-- **Chassis**: CHA half-caster, Extra Attack (L5), WIS save proficiency
-- **Channel Oath** resource (2/3/4 uses by level), **Lay on Hands** pool (5×level, `layOnHands`)
-- **Oath of Devotion — Sacred Weapon**: Bonus Action, spend 1 Channel Oath → +CHA mod (min +1)
-  to weapon attack rolls for 1 minute (10 rounds). Engine `activateSacredWeapon` (`combat.cpp`),
-  applied in `rollToHit`, duration decremented in `beginTurn`. GUI button + `test_paladin.py` coverage.
-- **Divine Smite** (IMPLEMENTED): Bonus-action radiant smite on a melee weapon hit — spends the hit +
-  bonus action + a spell slot, `(slot+1)d8` Radiant (+1d8 vs Undead/Fiend), once/turn, ranged excluded,
-  interlocked with the one-leveled-spell-per-turn rule. `applyDivineSmiteEffect` / `apply_divine_smite_effect`,
-  `divine_smite_used` reset in `turn()`. Tests: `test_paladin.py` (`test_divine_smite_*`).
+<details>
+<summary><b>Implemented ✅</b></summary>
 
-### Auras (Aura of Protection L6, Aura of Courage L10) — IMPLEMENTED ✅ (2026-06-14, built + 72 suites green, confirmed in live play)
-Team-scoped emanations now that factions exist. A Paladin's aura reaches **itself and same-team allies**
-(`areAllies`) within **10 ft (30 ft at L18)**; it is suppressed while the Paladin is at 0 HP /
-unconscious / incapacitated. Engine in `combat_core.cpp`:
-- **`bestPaladinAura(bm, idx, min_level)`** — strongest CHA-mod (min 1) bonus from any qualifying Paladin
-  of level ≥ min_level reaching `idx` (no stacking — take the max); `footprintDistance` × 5 ≤ radius.
-- **Aura of Protection** = `auraSaveBonus` (= `bestPaladinAura(…, 6)`), folded into the new single
-  **`saveModFor(bm, idx, ability)`** helper which **replaced the ~9 duplicated per-site save-mod lambdas**
-  (rollSpellSave, the executeSpell condition-rider + zone saves, begin-turn re-saves, weapon-condition
-  riders, Cunning Strike, Battle Master maneuvers, Branches of the Tree). So the +CHA applies to **every**
-  saving throw, and the OnSaveFail reroll (`reevaluateSave`) carries it via the stored `save_mod`.
-- **Aura of Courage** = `hasAuraOfCourage` (= `bestPaladinAura(…, 10) > 0`): immunity to **Frightened**.
-  Gated at the central `applyFrightened` chokepoint (covers spell/condition fear) **and** the inline
-  Battle Master Menacing-Attack site.
-- **No flag/init needed** — read live from `character_class==Paladin && char_level` + CHA + faction, so it
-  works automatically once a Paladin has a team set (GUI TeamPicker) and is L6+/L10+.
-- **GUI:** a translucent **gold aura ring** is drawn under each L6+ Paladin (`_draw_paladin_auras`, radius
-  10 ft / 30 ft at L18, suppressed while the Paladin is down) so the reach is visible during play.
-- **Save log now shows the aura (fixed 2026-06-14):** `SpellTargetResult.save_mod` was added + populated
-  from `ss.save_mod` (was missing), and the combat-log line (`main.py` Save branch) now prints
-  `tr.save_mod` instead of **recomputing the modifier in Python without the aura** — that GUI recompute was
-  why the first smoke test showed an un-buffed save (the engine *was* applying it; only the display lied).
-  The line now also appends **" (incl. +N Aura of Protection)"** via `aura_save_bonus(bm, tr.target_idx)`
-  so the contribution is explicit. **Note:** allies only show the bonus if on the **same team** as the
-  Paladin (TeamPicker); an un-teamed (all-neutral) party means only the Paladin's own save shows it.
-- Bindings: `aura_save_bonus`, `has_aura_of_courage`, `save_mod_for`, `SpellTargetResult.save_mod`, plus
-  `apply_frightened` (test hook).
-  Tests: `test_paladin_auras.py` (12: range/L18/enemy-excluded/self/min-1/level-gate/suppressed-when-down/
-  strongest-wins/save-mod-fold/courage-levels/courage-blocks-frightened).
+Paladin chassis: CHA half-caster, Extra Attack (L5), WIS save prof. Channel Oath (2/3/4 uses), Lay on Hands pool (5×level). Oath of Devotion **Sacred Weapon** (BA, 1 Channel Oath → +CHA to attack rolls 1 min, `activateSacredWeapon`). **Divine Smite** (BA radiant on a melee hit: `(slot+1)d8`, +1d8 vs Undead/Fiend, once/turn, ranged excluded, interlocked with one-leveled-spell/turn). Tests `test_paladin.py`.
 
-**v1 simplifications / deferred:**
-- **Other auras not modeled** — Oath-specific auras (Devotion *Aura of Devotion* charm immunity, Ancients
-  *Aura of Warding* spell resistance, Vengeance, etc.) and **Aura of Courage's "ends Frightened on those
-  already affected"** clause (it only *blocks* new Frightened; a creature frightened before entering the
-  aura keeps it until its own re-save). The radius/team machinery (`bestPaladinAura`) is reusable for them.
-- **Static/no-LoS** — the aura is pure range+team (no line-of-effect/sight check, matching the other
-  range-gated features); it updates continuously as agents move (re-evaluated at each save).
-- **Reusable for other team auras** — `bestPaladinAura` + `saveModFor` are the foundation the deferred
-  **Crusader's Mantle** (+1d4 Radiant ally aura) and **Sculpt/Evoker** ally-exclusion can build on.
+</details>
+
+<details>
+<summary><b>Auras (Aura of Protection L6, Aura of Courage L10) — IMPLEMENTED ✅ (2026-06-14, built + 72 suites green, confirmed in live play)</b></summary>
+
+Team-scoped emanations (10 ft, 30 ft at L18; suppressed while down). `bestPaladinAura` = strongest CHA-mod bonus reaching a target (no stacking). **Protection** = +CHA to every save via the new `saveModFor()` helper that replaced ~9 duplicated per-site save-mod lambdas — **all new save sites MUST use it**. **Courage** = Frightened immunity, gated at the central `applyFrightened`. Read live (no flag/init). GUI gold aura ring + save-log prints `tr.save_mod` ("incl. +N Aura"). Allies only show it on the same team. Tests `test_paladin_auras.py`. Deferred: Oath-specific auras, the "ends existing Frightened" clause.
+
+</details>
 
 ---
 
-## Eldritch Knight Fighter — IMPLEMENTED ✅ (2026-06-02, awaiting build)
-The attack↔cast interleave is done. See the Fighter section below for the full breakdown.
-Remaining simplifications:
-- **Eldritch Strike (L10)** is **one-shot** (consumed by the target's next save vs a spell the EK
-  casts), not the RAW "until the end of your next turn" window — same family of timing
-  simplifications as Cutting Words. The tag has no timed expiry; it clears on consume or at the
-  EK's next turn (`_advance_turn` reset). Acceptable for combat-sim.
-- **War Bond (L3)** — weapon-bonding / anti-disarm utility — NOT modeled (out-of-combat flavor).
-- RL/headless: War Magic substitution isn't in the action space yet (`availableAttacks`); the
-  engine gate (`war_magic_used`) is reset in `runRound` for consistency, full RL support deferred
-  with the rest of RL spellcasting.
+<details>
+<summary><b>Eldritch Knight Fighter — IMPLEMENTED ✅ (2026-06-02, awaiting build)</b></summary>
+
+Attack↔cast interleave done (full breakdown in the Fighter section below). Simplifications: Eldritch Strike (L10) is one-shot (clears on consume / next turn), not the RAW until-end-of-next-turn window; War Bond (L3) not modeled (out-of-combat flavor); RL War-Magic substitution isn't in the action space yet.
+
+</details>
 
 ---
 
@@ -477,89 +353,27 @@ layer (main.py) rather than the C++ engine. This means:
 
 ---
 
-## Barbarian Reckless Attack Mechanic — RESOLVED 2026-06-03 (built + green)
-- Now a **choice** with two entry points (RECKLESS_ATTACK_PLAN.md): (1) pre-declare before attacking
-  (existing GUI button — still gated on `raging`), and (2) **post-hoc on a miss** — the engine flags
-  `reckless_reroll_available`; the GUI prompts (`_offer_reckless_reroll`) and calls
-  `apply_reckless_reroll`, the auto/RL driver consults `CombatDecider::choose_reckless` inline. Both
-  set turn-scoped `reckless_attack` (downside: enemies have advantage vs you until your next turn,
-  cleared at turn start). Replaces the old silent auto-reroll. Tests: `test_reckless.py`.
-- **Remaining minor gaps:** (a) the inline auto/RL reroll doesn't grant Brutal Strike on the rerolled
-  hit (eligibility computed before reckless is set); the GUI apply path does. (b) post-hoc activation
-  isn't logged for replay (pre-declare logs `log_event("reckless")`). (c) the post-hoc path ignores
-  `raging` while the pre-declare GUI prompt requires it — minor inconsistency.
+<details>
+<summary><b>Barbarian Reckless Attack Mechanic — RESOLVED 2026-06-03 (built + green)</b></summary>
 
-## Barbarian subclass L10 "Presence" abilities — IMPLEMENTED ✅ (2026-06-17, built + test_barbarian_l9_17.py green)
-Both are Bonus-Action emanations modeled on the Spirit Guardians emanation + Paladin-aura faction
-logic (`areAllies`, `saveModFor`). Engine in `combat_resources.cpp`; bound in `rpg_bindings.cpp`;
-GUI Bonus-Action buttons in `main.py` (gated on subclass + L10, label shows uses, hidden once
-`bonus_used`). Distance uses the **Euclidean** emanation metric `sqrt(dx²+dy²)*5` to match Spirit
-Guardians (`resolveAoeTargets`, `Spell::Sphere`) — NOT Chebyshev/Manhattan.
-- **Intimidating Presence (Berserker L10):** `useIntimidatingPresence` — 30-ft emanation, enemies
-  only (`areAllies` spares allies), each rolls a WIS save (DC 8 + STR mod + PB); on fail →
-  Frightened until the end of the Barbarian's next turn via `addAgentCondition("Frightened",
-  turns_remaining=2)` (which routes through `applyFrightened`, so Aura of Courage immunity is
-  honored automatically — do NOT also call applyFrightened). Resource: PB uses/long rest, falls
-  back to spending one Rage use.
-- **Zealous Presence (Zealot L10):** `useZealousPresence` — 60-ft emanation, up to 10 allies
-  (incl. self), grants Advantage on attack rolls **and** saving throws. New `Conditions.zealous_blessing`
-  bool consumed in `determineAdvantage` (attacks) and `rollSpellSave` (spell saves). Resource:
-  1 use/long rest or one Rage use.
-- **Granter-relative expiry (the right pattern):** the buff lasts "until the start of the GRANTING
-  Zealot's next turn", so it is tagged with `Conditions.zealous_blessing_by = caster_idx` and cleared
-  in `CombatEngine::beginTurn` when that Zealot's turn begins (mirrors `goaded_by`/`distracted_by`).
-  It is NOT reset in the buffed creature's own `Agent::turn()`.
-- **Action-economy gotcha (fixed):** `spendBonusAction` re-reads + writes back stats, so it MUST run
-  AFTER the function's final `setAgentStats(idx, stats)` or the bonus action gets refunded. Both
-  functions persist `stats` first, then call `spendBonusAction` last.
-- **Core passives — done:** Fast Movement (L5, `speed_walk += 10`), Extra Attack (L5), Brutal Strike
-  (L9/L17 dice) are all seeded in `Stats` level-up (`combat.cpp:43-59`).
-- **Relentless Rage (L11) + Primal Champion (L20) — IMPLEMENTED ✅ (2026-06-17, built + test_barbarian_l9_17.py green):**
-  - **Primal Champion (L20):** +4 STR & +4 CON, capped at 25, applied in `Stats::initializeClassResources`
-    (`combat.cpp:61-67`). Idempotent via a bound+saved `bool primal_champion_applied` (`agent.hpp`),
-    gated `if (level >= 20 && !primal_champion_applied)`. Safe across reloads (`agent_loader.dict_to_stats`
-    sets the flag *before* it calls `initialize_class_resources`) and dialog reopens (`_on_stats_ok` sources
-    `stats` from the live agent, preserving the flag). Old saves migrate cleanly (flag absent → applied once).
-  - **Relentless Rage (L11):** while raging, damage that would drop you to 0 HP triggers a CON save
-    (`saveModFor(bm, idx, SaveCon)`, so Aura of Protection applies) vs a `relentless_rage_dc` (10, **+5 per
-    use in the same Rage**, reset to 10 in `endRage`); success → `hp_cur = 1`. Hooked in `damageAgent`
-    (`combat_attack.cpp:401-422`), **before** the concentration-drop block (early-returns so a saved
-    Barbarian keeps concentration). `relentless_rage_dc` is a bound+saved `int` on `Stats`.
-  - **⚠️ `damageAgent` is now NON-static** (`combat.hpp:673`; binding changed `def_static`→`def`,
-    `rpg_bindings.cpp:1720`) so the Relentless Rage hook can use the seeded `roll`, `log_`, `saveModFor`,
-    and `agentName` instance members. All C++ callers are non-static members and both Python callers use
-    `engine.damage_agent(...)`, so the change is transparent — but future static-context callers must note this.
-- **Core Passives: Feral Instinct (L7), Instinctive Pounce (L7), Indomitable Might (L18) — IMPLEMENTED**
-  (awaiting build/test by Opus 2026-06-17):
-  - **Feral Instinct (L7):** Initiative rolls at Advantage. `combat_turn.cpp:rollInitiative` checks
-    `char_level >= 7 && character_class == Barbarian` → `e.d20 = std::max(roll(20), roll(20))`.
-  - **Instinctive Pounce (L7):** On Rage activation, grant half-speed movement THIS turn.
-    `combat_resources.cpp:activateRage` adds `walkRemaining_[idx] += stats.speed_walk / 2` for L7+.
-    **⚠️ Latent budget bug (found 2026-06-19):** this bumps the CombatEngine's *separate*
-    `walkRemaining_` map, but real moves spend the **agent's own** budget (`Agent::speed_walk_remaining_`
-    via `BattleMap::moveAgent`) and the GUI displays/reaches off that one — so the Pounce bonus is
-    effectively **invisible** to actual movement (the deterministic test only checks `get_walk_remaining`,
-    the engine map). To make it real it must call `init_movement`/`addMovement` on the agent budget
-    (like `apply_dash` does), not `walkRemaining_[idx]`. Same dual-budget trap as the grapple fix at the
-    top of this file.
-  - **Indomitable Might (L18):** STR saving throw total can't be lower than STR score. New helper
-    `CombatEngine::applyIndomitableMight(bm, saver_idx, ab, total)` declared in `combat.hpp:1049`,
-    defined in `combat_core.cpp:265`. Wired into all STR-save sites: `combat_turn.cpp` (lines 384, 504),
-    `combat_attack.cpp` (lines 468, 2970), `combat_riders.cpp` (lines 507, 568, 645), `combat_spells.cpp`
-    (lines 322, 1128). Tests: `test_barbarian_l9_17.py` (L7 chassis, Pounce deterministic movement delta,
-    L18 chassis + STR verification; Feral Instinct is smoke-tested via initiative presence).
-- **Deferred (still missing, verified 2026-06-17):** Berserker L14 Retaliation, Zealot L10 (other clauses)
-  / L14 Rage of the Gods, and the rest of the Barbarian subclass L14 tier.
-- **Persistent Rage (L15) — INERT BY DESIGN, no code (verified against the engine 2026-06-17):** Persistent
-  Rage's only mechanical effect is to *remove* Rage's early-end triggers (Rage normally ends if you don't
-  attack a hostile creature or take damage on your turn, or after 10 minutes). In this engine Rage has **no
-  modeled early-end at all**: `Resource "Rage".duration_remaining` is set to full on `activateRage`/`extendRage`
-  and zeroed only by `endRage` (manual), and is **never decremented per-turn anywhere** (`grep duration_remaining`
-  = activate/extend/end sites only; no tick in `combat_turn.cpp`). There is no "did you attack / take damage this
-  turn" tracking. So the conditions Persistent Rage suppresses do not exist, and the feature is a guaranteed no-op
-  in the current model. Writing code for it would be dead code — **documented as inert rather than implemented**
-  (per fix-root-cause / combat-sim-scope: don't add a per-turn early-end mechanic just to then suppress it). If a
-  real Rage early-end is ever modeled, gate it on `char_level < 15 || subclass-equivalent` to honor this feature.
+Now a choice with two entry points: pre-declare (existing button, gated on raging) and post-hoc on a miss (engine flags `reckless_reroll_available`; GUI `_offer_reckless_reroll`, auto/RL `choose_reckless`). Both set turn-scoped `reckless_attack` (enemies get advantage vs you until your next turn). Replaces the old silent auto-reroll. Tests `test_reckless.py`. Minor gaps: inline reroll doesn't grant Brutal Strike; post-hoc not logged for replay; post-hoc ignores `raging`.
+
+</details>
+
+<details>
+<summary><b>Barbarian subclass L10 "Presence" abilities — IMPLEMENTED ✅ (2026-06-17, built + test_barbarian_l9_17.py green)</b></summary>
+
+A batch of Barbarian features (`combat_resources.cpp`/`combat.cpp`), modeled on the Spirit Guardians emanation + Paladin-aura faction logic (`areAllies`, `saveModFor`); **Euclidean** emanation metric.
+- **Intimidating Presence (Berserker L10):** 30-ft enemy-only emanation, WIS save or Frightened to end of Barbarian's next turn via `addAgentCondition` (routes through `applyFrightened` → honors Aura of Courage; do NOT also call `applyFrightened`). PB uses/rest, else a Rage use.
+- **Zealous Presence (Zealot L10):** 60-ft, ≤10 allies, Advantage on attacks + saves (`Conditions.zealous_blessing`). Granter-relative expiry: `zealous_blessing_by = caster_idx`, cleared in `beginTurn` (NOT the buffed creature's `turn()`).
+- **Action-economy gotcha:** `spendBonusAction` re-reads/writes stats, so it MUST run AFTER the final `setAgentStats`.
+- **Relentless Rage (L11):** drop-to-0 while raging → CON save (`saveModFor`) vs `relentless_rage_dc` (10, +5/use, reset in `endRage`) → hp=1; hooked in `damageAgent` before the concentration-drop block. **⚠️ `damageAgent` is now NON-static.**
+- **Primal Champion (L20):** +4 STR/CON (cap 25), idempotent via saved `primal_champion_applied`.
+- **Feral Instinct (L7):** initiative advantage. **Instinctive Pounce (L7):** half-speed on Rage start — **⚠️ latent bug:** bumps the engine `walkRemaining_` map, not the agent budget, so it's invisible to real movement (same dual-budget trap as the grapple fix). **Indomitable Might (L18):** STR-save total ≥ STR score (`applyIndomitableMight`, wired into all STR-save sites).
+- **Persistent Rage (L15) = inert by design:** the engine models no Rage early-end to suppress; documented, not coded.
+- Tests `test_barbarian_l9_17.py`. Deferred: Berserker L14 Retaliation, Zealot L14 Rage of the Gods, rest of the L14 tier.
+
+</details>
 
 ## Spell mechanics
 - _(resolved 2026-06-02)_ **Wall of Fire** and other Rectangle "wall" spells are now placed with a two-click flow (anchor → endpoint), any orientation, free angle, length clamped to the spell's max. Geometry computed by `BattleMap::wallCells` (single source of truth); `SpellAction.aoe_col2/aoe_row2` carry the endpoint. NPC/RL casts without an endpoint fall back to the legacy centered box.
@@ -614,31 +428,12 @@ Guardians (`resolveAoeTargets`, `Spell::Sphere`) — NOT Chebyshev/Manhattan.
 
 ---
 
-## Summoning — IMPLEMENTED ✅ (2026-06-09, built + green)
-Spells that manifest a controllable creature, dismissed when the summoner loses concentration.
-**Done:** `Summon Dragon` end-to-end — `bm.spawn_agent` (non-destructive append, rejects walls +
-live footprints); `PlacedAgent.{summoner_idx, removed_from_play, summon_spell}`; `dropConcentration`
-tombstones the caster's summons (reported in `dismissed_summons`) and `setAgentRemovedFromPlay` also
-banishes them off-map to (-1,-1) so their cell frees up (index preserved, never erased); manual
-control sharing the summoner's initiative; GUI placement preview (green/red, rule in
-`helpers.summon_cell_placeable` / `can_place_agent`); render gate skips dismissed summons;
-`_save_agents` skips summoned/tombstoned agents (transient — vanish on reload). Tests:
-`test_summoning.py`. Root-cause fix: `concentrationSave` now routes through `dropConcentration`.
+<details>
+<summary><b>Summoning — IMPLEMENTED ✅ (2026-06-09, built + green)</b></summary>
 
-**Statblock stand-in:** the RAW 2024 summon "spirit" stat blocks (Draconic/Bestial/Fey/Undead…) are
-NOT in `DND2024_MonsterStats.json`, so `Summon Dragon → Spirit Dragon Wyrmling` via
-`SUMMON_SPELL_TO_MONSTER` (wrong AC/HP/damage, doesn't scale with slot).
+Spells that manifest a controllable creature, dismissed on concentration loss. `bm.spawn_agent` (non-destructive append); `PlacedAgent.{summoner_idx, removed_from_play, summon_spell}`; `dropConcentration` tombstones the caster's summons + banishes them off-map to (-1,-1) (index preserved, never erased). Manual control on the summoner's initiative; GUI placement preview; render + save skip. Root-cause fix: `concentrationSave` routes through `dropConcentration`. Tests `test_summoning.py`. **Stand-in:** RAW summon spirit stat blocks aren't in the bestiary, so Summon Dragon → Spirit Dragon Wyrmling via `SUMMON_SPELL_TO_MONSTER` (wrong stats, no slot scaling). Deferred: RAW scaling stat blocks, rest of the Summon X line, multi-creature spawn, auto-control AI. See [[summoning_plan]].
 
-**Deferred:**
-- Author the RAW scaling spirit stat blocks (replaces the Spirit-Dragon-Wyrmling stand-in).
-- Rest of the 2024 Summon X line (only Summon Dragon is in `spells.json`) — each is just a new
-  `SUMMON_SPELL_TO_MONSTER` entry once the spell + stat block exist.
-- Conjure Animals / Woodland Beings (multi-creature from one spell — needs a multi-spawn GUI flow);
-  Animate Dead (Skeleton/Zombie are in the JSON, but it's non-concentration → permanent control);
-  Find Familiar / Find Steed (overlaps the parked Pact of the Chain item).
-- Summon auto-control AI (RAW "obey commands; else Dodge") — manual for now.
-- Not auto-tested (pygame): `_resolve_summon` placement UX, initiative insertion, the `_save_agents`
-  skip (verified by inspection).
+</details>
 
 ---
 
@@ -703,20 +498,19 @@ Requires spellbook system separate from prepared spells.
 ### L3: Arcane Ward (Abjurer) [DEFER]
 Requires parallel ward HP system separate from temp HP.
 
-### L3: Portent (Diviner) — IMPLEMENTED ✅
-- `CombatEngine::usePortentDie` (`combat_resources.cpp`): a Diviner Wizard banks a deque of d20 rolls
-  (`Stats::portent_dice`, regenerated on long rest via `regenerate_portent_dice`); spending one sets
-  `pending_portent_die` so the next `CombatEngine::roll()` returns it (the d20-roll hook this entry once
-  said was missing now exists). One use per round (`agent_portent_round_used_`). Bindings
-  `use_portent_die` / `regenerate_portent_dice` / `portent_dice` (`rpg_bindings.cpp:2604`).
+<details>
+<summary><b>L3: Portent (Diviner) — IMPLEMENTED ✅</b></summary>
 
-### L6: Sculpt Spells (Evoker) — IMPLEMENTED ✅
-- The faction system this entry waited on now exists. An Evoker's **safe targets**
-  (`CombatEngine::safeTargets_`, `caster_idx → excluded indices`; `setSafeTargets`/`getSafeTargets`,
-  bindings `set_safe_targets`) are **fully excluded** from that caster's AoE/zone effects — no save, no
-  damage, no conditions — checked at the area-resolve sites in `combat_spells.cpp` (~430, 535, 1751).
-  Allies are selected manually in the GUI for now (see `[[evoker-safe-targets]]`); the same exclusion
-  path backs Careful Spell (`careful_targets`) and faction-based auto-sparing.
+`CombatEngine::usePortentDie` — a Diviner banks a deque of d20 rolls (`Stats::portent_dice`, long-rest regen); spending one sets `pending_portent_die` so the next `roll()` returns it. One use/round (`agent_portent_round_used_`). Bindings `use_portent_die`/`regenerate_portent_dice`/`portent_dice`.
+
+</details>
+
+<details>
+<summary><b>L6: Sculpt Spells (Evoker) — IMPLEMENTED ✅</b></summary>
+
+Evoker **safe targets** (`safeTargets_`, caster→excluded indices; `set/getSafeTargets`) are fully excluded from that caster's AoE/zone effects — no save, no damage, no conditions — checked at the area-resolve sites in `combat_spells.cpp`. Allies are selected manually in the GUI for now; the same exclusion path backs Careful Spell + faction auto-sparing. See [[evoker_safe_targets]].
+
+</details>
 
 ### L6: Phantasmal Creatures (Illusionist) [DEFER]
 Requires creature summoning system.
@@ -732,62 +526,19 @@ Requires creature summoning system.
 ### Deferred — Trickery Domain
 - **Invoke Duplicity** and related features need illusory-entity concept
 
-### Turn Undead (L2) + Sear Undead (L5) — IMPLEMENTED ✅
-- **Turn Undead** is a Channel Divinity Magic action (`CombatEngine::useTurnUndead`,
-  `combat_resources.cpp`). Gated on Cleric **L2+** with a `Channel Divinity` use available; spends one
-  use. Each `is_undead` agent within **30 ft** (Euclidean cell distance, matching Sphere targeting) makes
-  a **WIS save** vs `spellSaveDcFromAbility(caster, SaveWis)`; on a fail it gains **Frightened +
-  Incapacitated** for 1 minute (`turns_remaining = 10`) with `on_damage = OnDamage_t::End` (any damage
-  ends it). `caster_idx` is stored on the `ActiveAgentCondition` as the fear source so the Frightened
-  "move as far away as possible" movement rule keys off the cleric.
-- **Sear Undead (L5+)** rolls `max(1, WIS mod)` **d8 once**, dealing that Radiant total to *each* undead
-  that fails — applied **before** the conditions so the on-damage end-rule doesn't immediately cancel the
-  Frightened/Incapacitated it's about to add (matches "this damage doesn't end the turn effect").
-- Returns `TurnUndeadResult {valid, save_dc, sear_damage, turned[], resisted[]}`. Bindings
-  `use_turn_undead` / `TurnUndeadResult` (`rpg_bindings.cpp`). GUI: `btn_cbt_turn_undead` button calls the
-  engine, logs `Turn Undead (DC X): N turned[, M Radiant each]`, and consumes the action (`main.py`).
-  Tests: `test_cleric.py` (`test_turn_undead_frightens_sears_and_filters`, `test_turn_undead_ends_on_damage`).
-- *Deferred fidelity gaps (v1 simplifications):*
-  - Targets **all** undead in range — "Each Undead **of your choice**" isn't modeled, so an allied/friendly
-    undead (e.g. a necromancer's summons) can't be spared. Would mirror Spirit Guardians' faction-aware
-    `zoneSparesTarget`, or a GUI target picker.
-  - Undead with **Frightened immunity** aren't spared (no creature condition-immunity system).
-  - "Ends early if the **caster** is Incapacitated or dies" isn't cascaded (only the takes-damage
-    end-trigger fires).
+<details>
+<summary><b>Turn Undead (L2) + Sear Undead (L5) — IMPLEMENTED ✅</b></summary>
 
-### Light Domain — Warding Flare + Corona of Light — IMPLEMENTED ✅ (2026-06-15, built + 72 suites green)
-- **Warding Flare (L3)** — a consumer of the **OnD20Seen** reaction window (`combat_attack.cpp`),
-  modeled exactly like Silvery Barbs but as Disadvantage = reroll the d20 and take the lower. When a
-  creature within **30 ft** that the Cleric can see makes an attack roll **that hits**, the Cleric may
-  spend its reaction + 1 **Warding Flare** use to impose Disadvantage (lowering-only, can flip hit→miss).
-  Gate `canWardingFlare` reuses `d20ReactorBase` (60 ft + LoS + reaction-free) then tightens to 30 ft;
-  apply `applyWardingFlareToAttack`; wired into `d20SeenReactors`/`d20SeenOptions`/`applyD20SeenReaction`/
-  `maybeD20SeenInline`. Resource = `max(1, WIS mod)` uses / **Long Rest**, seeded in `initializeClassResources`
-  (Cleric `LightDomain && level>=3`). GUI: appears automatically in the generic OnD20Seen reaction menu;
-  the log line mentions it. Bindings `can_warding_flare` / `apply_warding_flare_to_attack`. Tests:
-  `test_d20seen.py` (`test_warding_flare_disadvantage_can_miss`, `test_warding_flare_gate`).
-  - *v1 simplifications:* offered **regardless of faction** (decider/human Skips for enemies — matches the
-    other OnD20Seen reactions; no `areAllies` gate); fires **on a hit only** (the window's lowering-only
-    contract — RAW imposes Disadvantage on any attack roll, but Disadvantage only matters when it could flip
-    a hit to a miss); the 30 ft gate is exercised in `test_warding_flare_gate` (40-ft cleric not offered).
-- **Corona of Light (L17)** — a Magic action (`activateCoronaOfLight`, `combat_resources.cpp`) that sets a
-  10-round duration (`Stats::corona_of_light_turns`, ticked down in `beginTurn`, mirroring Sacred Weapon).
-  While active, **enemies within 60 ft** (`!areAllies` + `footprintDistance`≤60) have **Disadvantage on
-  saves vs the caster's Fire/Radiant spells** — applied in `rollSpellSave` (`combat_spells.cpp`) right after
-  the Heightened/Eldritch-Strike blocks (sets `target_dis`). GUI: a "Corona of Light (Action)" button gated
-  on Cleric/LightDomain/L17/action-available (`_use_corona_of_light`, `btn_cbt_corona`). Bindings
-  `activate_corona_of_light` / `Stats.corona_of_light_turns`. Tests: `test_cleric.py`
-  (`test_corona_activation_and_duration`, `test_corona_disadvantage_on_fire_radiant_saves` [statistical
-  off-vs-on save rate + Force-spell control], `test_corona_spares_allies`).
-  - *v1 simplifications:* the actual **bright-light emission** into the lighting/vision system is NOT wired
-    (only the combat-relevant save-Disadvantage); the **>60-ft range gate is untested** (the 12×12 test map
-    tops out at ~55 ft, same as the Counterspell/d20-window range gaps).
-- **Radiance of the Dawn** ally-exclusion: **DONE 2026-06-15** — spares the caster's allies (teamed caster).
-  The engine logic was already correct (`combat_spells.cpp:527`, gated on `selective_targeting` + non-neutral
-  caster); the GUI just never carried the flag. Fixed: classfeatures.json Radiance entry now has
-  `"selective_targeting": true`, and `main.py`'s `_dict_to_spell`/`_spell_to_dict` now read/write the flag
-  (loader+data only, no rebuild). Still gated on `caster_faction != 0` — an all-neutral (default) caster
-  keeps the legacy affect-everyone behavior by design.
+**Turn Undead** = Channel Divinity Magic action (`useTurnUndead`, Cleric L2+): each `is_undead` within 30 ft makes a WIS save or gains Frightened+Incapacitated 1 min (any damage ends it via `on_damage=End`); fear source = caster. **Sear Undead (L5+):** `max(1,WISmod)` d8 Radiant to each that fails, applied BEFORE the conditions so the on-damage end-rule doesn't cancel them. GUI button + log. Tests `test_cleric.py`. v1: turns ALL undead (no "of your choice" sparing), no Frightened-immunity, no caster-incapacitated cascade.
+
+</details>
+
+<details>
+<summary><b>Light Domain — Warding Flare + Corona of Light — IMPLEMENTED ✅ (2026-06-15, built + 72 suites green)</b></summary>
+
+**Warding Flare (L3):** OnD20Seen reaction (like Silvery Barbs, but Disadvantage) — when a creature ≤30 ft you can see hits you, spend reaction + 1 use to impose Disadvantage (can flip hit→miss). `canWardingFlare`/`applyWardingFlareToAttack`; `max(1,WISmod)` uses/long rest. **Corona of Light (L17):** Magic action (`activateCoronaOfLight`, 10-round window), enemies ≤60 ft have Disadvantage on saves vs the caster's Fire/Radiant spells (in `rollSpellSave`). **Radiance of the Dawn** ally-exclusion DONE (`selective_targeting` flag now carried by the GUI loader). Tests `test_cleric.py`/`test_d20seen.py`. v1: no actual bright-light emission for Corona; >60-ft range untested.
+
+</details>
 
 ### Deferred — War Domain spells
 - **Crusader's Mantle**: needs ally-buff aura for +1d4 Radiant
@@ -798,15 +549,19 @@ Requires creature summoning system.
 
 ## Warlock (Phased epic, Phase 1 foundation implemented)
 
-### Implemented (Phase 1) ✅
-- Chassis: CHA spellcasting, WIS+CHA save proficiencies
-- `WarlockSubclass` enum (Archfey/Celestial/Fiend/GreatOldOne)
-- Pact Magic slots (short-rest recharge), Magical Cunning
+<details>
+<summary><b>Implemented (Phase 1) ✅</b></summary>
 
-### Implemented (Phase 3a) ✅
-- Eldritch Blast multi-beam (scales 1/2/3/4 beams)
-- Agonizing Blast (+CHA/beam), Repelling Blast (10 ft push/beam)
-- Eldritch Mind (advantage on CON saves)
+Warlock chassis: CHA spellcasting, WIS+CHA save profs; `WarlockSubclass` enum (Archfey/Celestial/Fiend/GreatOldOne); Pact Magic slots (short-rest recharge), Magical Cunning.
+
+</details>
+
+<details>
+<summary><b>Implemented (Phase 3a) ✅</b></summary>
+
+Eldritch Blast multi-beam (1/2/3/4 beams); Agonizing Blast (+CHA/beam); Repelling Blast (10 ft push/beam); Eldritch Mind (advantage on CON saves).
+
+</details>
 
 ### Deferred (Phase 2) — Patron subclasses
 - Fiend: Dark One's Blessing, Fiendish Resilience (partially implemented)
@@ -814,12 +569,12 @@ Requires creature summoning system.
 - Great Old One: Thought Shield (partially implemented)
 - Archfey: Steps of the Fey, Misty Escape (need teleport primitive)
 
-### Phase 3b — Eldritch Invocations (mostly DONE — see the Eldritch Invocations section below)
-- Devil's Sight, Eldritch Spear range, and the **Pact of the Blade family** (Pact of the Blade /
-  Thirsting Blade / Eldritch Smite / Lifedrinker) are implemented (2026-06-08).
-- Still deferred: Devouring Blade (L12 3rd attack), Pact of the Chain (needs summons), Pact of the
-  Tome (needs char-building), Gift of the Protectors (needs Death Ward), Lessons of the First Ones
-  (needs feats). See the "Warlock Eldritch Invocations" section for details.
+<details>
+<summary><b>Phase 3b — Eldritch Invocations (mostly DONE — see the Eldritch Invocations section below)</b></summary>
+
+Devil's Sight, Eldritch Spear range, and the **Pact of the Blade family** (Pact of the Blade / Thirsting Blade / Eldritch Smite / Lifedrinker) are implemented (2026-06-08). Still deferred: Pact of the Chain (summons), Pact of the Tome (char-building), Gift of the Protectors (Death Ward), Lessons of the First Ones (feats). See the Warlock Eldritch Invocations section.
+
+</details>
 
 ### Not modeled (combat simulator only) 🚫
 - Telepathy, familiars (Pact of the Chain blocked on a summon system), utility features
@@ -828,145 +583,50 @@ Requires creature summoning system.
 
 ## Rogue (Phased epic, Phase 1 + Phase 2 implemented)
 
-### Implemented (Phase 1) ✅
-- `RogueSubclass` enum (ArcaneTrickster/Assassin/Soulknife/Thief)
-- Chassis: DEX+INT saves, Cunning Action
-- **Sneak Attack**: once/turn, gated on advantage + hit with finesse/ranged
-- Steady Aim, Uncanny Dodge, Evasion, Elusive
+<details>
+<summary><b>Implemented (Phase 1) ✅</b></summary>
 
-### Implemented (Phase 2) ✅
-- **Cunning Strike** (L5: Poison/Trip/Withdraw) with die-cost validation
-- **Improved Cunning Strike** (L11: two effects)
-- **Devious Strikes** (L14: Knock Out/Obscure)
+Rogue: `RogueSubclass` enum (ArcaneTrickster/Assassin/Soulknife/Thief); DEX+INT saves, Cunning Action; Sneak Attack (once/turn, advantage + hit with finesse/ranged); Steady Aim, Uncanny Dodge, Evasion, Elusive.
+
+</details>
+
+<details>
+<summary><b>Implemented (Phase 2) ✅</b></summary>
+
+Cunning Strike (L5: Poison/Trip/Withdraw, die-cost validation); Improved Cunning Strike (L11: two effects); Devious Strikes (L14: Knock Out/Obscure).
+
+</details>
 
 ### Deferred — Phase 2 continued
 - **Daze** (Devious Strikes L14): needs per-turn action-economy tracking
 
-### Thief subclass — IMPLEMENTED ✅ (2026-06-19, built + 75 suites green, `test_rogue_thief.py`)
-2024 Thief, combat-relevant slice. Mostly reused existing infra (no 2nd bonus action — 2024 Thief
-doesn't grant one).
-- **Second-Story Work (L3) — Climber:** `speed_climb = max(speed_climb, speed_walk)` in the
-  `case Rogue:` chassis (`combat.cpp`), gated `ThiefPath && level>=3`. Reused the climb-speed field
-  (Wild Heart Panther / Ranger Roving). *Jumper (DEX for jump distance) = not modeled — no
-  jump-by-ability system.*
-- **Supreme Sneak (L9) — Stealth Attack:** a new Cunning Strike option (**effect 6**, cost 1d6,
-  min level 9) in the `cunningStrikeCost`/`cunningStrikeMinLevel` tables. Gated **Thief-only AND
-  only when the strike came from stealth** — new per-turn flag `Conditions.attacked_while_invisible`
-  (set in `applyAttackResult` when an attack ends Invisibility, `combat_attack.cpp:3079`; reset in
-  `Agent::turn()`; bound). Validation gate in `applyCunningStrikeEffect`; the rider handler
-  (`applyCunningStrikeRiders`, attacker-side like Withdraw) **restores `invisible=true`** so the
-  Thief stays hidden after the strike. GUI: `_offer_cunning_strike` adds "Stealth Attack (1 die)"
-  when Thief L9+ and `attacked_while_invisible`. *v1: the RAW "end the turn behind Three-Quarters/
-  Total Cover" clause is NOT modeled — Stealth Attack just keeps you hidden.*
-- **Thief's Reflexes (L17):** two turns during the first round. **Pure GUI initiative**
-  (`main.py`): `_apply_thief_reflexes` (called in `_start_combat`) inserts a 2nd `InitiativeEntry`
-  at (Initiative − 10) for each Thief L17+ via the On-Deck sorted-insert pattern;
-  `_remove_thief_reflexes` (from `_advance_turn` when `round_num` hits 1) drops the bonus entries
-  and re-points `turn_idx`. **No engine call → not in checked replay, not covered by
-  run_all_tests.py (manual in-app verification).**
-- **Fast Hands (L3) — DEFERRED:** blocked on the **Doors & locking / object-interaction infra**
-  (see TODO.md). Sleight-of-Hand-to-pick-locks / Use-an-Object have no engine primitive yet.
-- **Use Magic Device (L13) — DEFERRED:** out-of-combat flavor (attunement, scroll casting, charge
-  rerolls) + needs the items/scroll system.
+<details>
+<summary><b>Thief subclass — IMPLEMENTED ✅ (2026-06-19, built + 75 suites green, `test_rogue_thief.py`)</b></summary>
 
-### Soulknife subclass — IMPLEMENTED ✅ (2026-06-19, built + 76 suites green + CONFIRMED IN LIVE PLAY, `test_rogue_soulknife.py`)
-2024 Soulknife. Reused the Psi Warrior Psionic Energy infra (`psionic_die_size` + `"Psionic Energy"`
-Resource) heavily.
+2024 Thief combat slice, mostly reused infra (no 2nd bonus action in 2024). Second-Story Work (L3: climb speed = walk); Supreme Sneak (L9: new Cunning Strike effect 6 — Thief-only AND only from stealth via `attacked_while_invisible`; the rider restores invisibility); Thief's Reflexes (L17: pure-GUI 2nd initiative entry at Init−10 round 1 — no engine call → untested). Deferred: Fast Hands (object infra), Use Magic Device (items).
 
-> **Live-play hardening (2026-06-19):** `rollDamage` reads **only** the weapon's `magic/physicalDamageRolls`
-> vectors, NEVER the `damage_dice` convenience fields — an empty default `rpg.Weapon()` therefore deals 0
-> "untyped" damage (`Damage: — -1 = 0`). The blade grant originally lived only in `_on_stats_ok`, so a
-> Soulknife whose blade was never set (configured before the `psychic_blade` binding shipped → grant threw
-> mid-build; or Weapon dialog Done-clicked → `_on_weapon_done` rebuilds slots from weapons.json with no
-> synthetic blade; or loaded from such a save) ended up unarmed. **Fix:** idempotent reusable
-> `_apply_psychic_blades(stats, weapons)→(weapons, changed)` (skips if slot 0 is already `PsychicBlade`),
-> now called from **all three** weapon-touch sites — `_on_stats_ok`, `_on_weapon_done`, `_load_agents`
-> (after the Pact-Blade re-conjure). Python-only. **General rule: every synthetic class weapon
-> (PsychicBlade / PactBlade / MonkUnarmed / Alter Self claws) must be re-granted on load AND survive the
-> Weapon dialog.** Test gap that hid it: `test_rogue_soulknife.py` builds its own local blade, never the
-> GUI `_create_psychic_blade_weapon`.
-- **Psionic Power (L3):** Psionic Energy Dice in the `case Rogue:` chassis. Soulknife counts
-  4/6/8/8/10/12 at L3/5/9/11/13/17; die size d6/d8/d8/d10/d10/d12. *v1 regen mirrors Psi Warrior
-  (1 on short rest, all on long rest) — NOT the RAW "regain all when you roll Initiative".*
-- **Psychic Blades (weapon):** GUI grants two `psychic_blade`-flagged weapons (new `Weapon::psychic_blade`
-  flag) on a Soulknife L3+: a 1d6 Psychic finesse/thrown main-hand blade (Vex mastery) + a 1d4 off-hand
-  blade (the bonus second blade, free via the existing dual-wield off-hand bonus attack). `_create_psychic_blade_weapon`.
-  *v1: the bonus blade is the off-hand weapon, so it drops the ability mod unless TWF (RAW keeps it) —
-  minor. Damage is modeled as magic Psychic; the ability mod is still added via `damageAbilityMod`.*
-- **Soul Blades — Homing Strikes (L9):** `applyHomingStrike` (combat_riders.cpp) converts a MISS with a
-  Psychic Blade to a hit by adding a Psionic Energy Die to the roll (`reevaluateAttackHit`); the die is
-  spent **only if it converts**, then fresh damage is rolled (`rollDamage` + temp-HP apply +
-  `checkConcentrationOnDamage`). GUI: an on-miss offer in `_finish_attack` (`_offer_homing_strike` /
-  `_can_homing_strike`). *v1: a Homing-converted hit does NOT re-open the Sneak Attack window.*
-- **Soul Blades — Psychic Teleportation (L9):** `psychicTeleportation` (combat_resources.cpp) — Bonus
-  Action, spend 1 die, teleport up to 10×roll ft (Chebyshev×5 grid distance) via `teleportAgent`; die
-  spent only on a successful in-range teleport. GUI: bonus-action button → cell-pick (`pending_psychic_teleport`
-  / `_resolve_psychic_teleport`, mirrors Arcane Charge).
-- **Psychic Veil (L13):** `activatePsychicVeil` — Magic action → Invisible; free use, else 1 die. GUI
-  button (`_use_psychic_veil`). *v1: "ends when you deal damage / force a save" is approximated by the
-  base Invisibility (ends on the next attack); the force-a-save end-trigger isn't tracked.*
-- **Rend Mind (L17):** `canRendMind`/`applyRendMind` — after a Psychic-Blade Sneak Attack, WIS save
-  (DC 8 + DEX + PB) or Stunned 1 min (repeat save). Cost: a "Rend Mind" use, else 3 dice. GUI: offered
-  after a psychic-blade Cunning Strike (`_offer_rend_mind`, hooked in `_offer_cunning_strike`).
+</details>
 
-### Assassin subclass — IMPLEMENTED ✅ (2026-06-19, built + 77 suites green, `test_rogue_assassin.py`)
-2024 Assassin. No new infra — reused the initiative-advantage pattern (Feral Instinct), the
-Cunning Strike / Sneak Attack out-of-band path, the Poisoner resistance-ignore idiom, and DEX-save DCs.
-New per-COMBAT marker `Conditions.has_taken_turn_this_combat` (set in `beginTurn`, NOT reset in
-`turn()`, cleared at combat start in GUI `_start_combat`).
-- **Assassinate (L3) — Initiative:** Assassin L3+ rolls Initiative at Advantage (`rollInitiative` +
-  `rollInitiativeFor`, same branch as Barbarian Feral Instinct).
-- **Assassinate (L3) — Advantage vs not-acted:** `determineAdvantage` grants Advantage when the target's
-  `has_taken_turn_this_combat == false`. (Detected in tests via `cunning_strike_available`, which only
-  flags when the hit had Advantage.)
-- **Assassinate (L3) — round-1 bonus:** a Sneak hit during the first round (`round_num == 0`, passed from
-  the GUI through `apply_cunning_strike_effect`) adds +Rogue-level flat damage (breakdown "Assassinate").
-- **Envenom Weapons (L13):** the Poison Cunning Strike option costs **0** Sneak Attack dice (die refunded
-  in `applyCunningStrikeEffect`) and, on a failed save, deals **2d6 Poison ignoring Resistance** (folded
-  into the result/HP in `applyCunningStrikeRiders`; breakdown "Envenom (Poison)"; Immunity/Vulnerability
-  still apply). The rider-call guard changed from `cost > 0` to `!effects.empty()` so a free (cost-0)
-  Poison rider still resolves.
-- **Death Strike (L17):** a first-round Sneak hit forces a CON save (DC 8 + DEX + PB); on a failure the
-  whole attack's damage is **doubled** (runs last in `applyCunningStrikeEffect`, after riders, so it
-  doubles base + Sneak + Assassinate + Envenom together; breakdown "Death Strike (doubled)").
+<details>
+<summary><b>Soulknife subclass — IMPLEMENTED ✅ (2026-06-19, built + 76 suites green + CONFIRMED IN LIVE PLAY, `test_rogue_soulknife.py`)</b></summary>
 
-> **Scope note (v1):** Assassinate bonus damage + Death Strike are folded into the **Sneak Attack path**
-> (`applyCunningStrikeEffect`), so they fire on a qualifying Sneak hit rather than on *any* attack roll in
-> round 1 (RAW Death Strike applies to any hit). In practice the Assassinate not-acted Advantage makes
-> nearly every round-1 hit Sneak-eligible. Infiltration Expertise (L9, identity/disguise) is out of
-> combat-sim scope. The Envenom GUI menu still labels Poison "(costs 1 die)" — cosmetic only; the engine
-> refunds it.
+2024 Soulknife, reusing Psi Warrior Psionic Energy infra. Psychic Blades (synthetic finesse weapons), Homing Strikes (L9: miss→hit via a die), Psychic Teleportation (L9 BA), Psychic Veil (L13 invisible), Rend Mind (L17 stun). **Live-play hardening:** every synthetic class weapon (PsychicBlade/PactBlade/MonkUnarmed/Alter-Self) must be re-granted on load AND survive the Weapon dialog — idempotent `_apply_psychic_blades` now called from `_on_stats_ok`/`_on_weapon_done`/`_load_agents` (`rollDamage` reads only the damage-rolls vectors, so an unset blade deals 0).
 
-### Arcane Trickster subclass — IMPLEMENTED ✅ (2026-06-19, built + 78 suites green, `test_rogue_arcane_trickster.py`)
-2024 Arcane Trickster — the last Rogue subclass. Mostly reused existing infra.
-- **Spellcasting (L3):** third-caster, INT, Wizard list. `initializeClassResources` `case Rogue:` now
-  overrides the slot table via `compute_third_caster_slots` + sets `spellcasting_ability = INT` +
-  `can_cast_spell` when `rogue_subclass == ArcaneTrickster && level >= 3` (mirrors Eldritch Knight; the
-  `compute_class_slots(Rogue)` table can't see the subclass). Cantrips/spells come from the normal
-  spell-assignment UI. ArcaneTrickster already in the GUI subclass dropdown; `rogue_subclass` round-trips.
-- **Mage Hand Legerdemain (L3):** the spectral hand is modeled as a **summon** (`SUMMON_SPELL_TO_MONSTER["Mage Hand"]`
-  + synthetic `MAGE_HAND_STATBLOCK`, Tiny/1 HP, deep-copied per cast) so it has a real grid position. Cast
-  it like any summon spell (click a cell within range). Not concentration → it persists until manually
-  dismissed (v1). Its only mechanical payoff is anchoring Versatile Trickster.
-- **Magical Ambush (L9):** one clause in `rollSpellSave` — if the AT caster is `hidden || invisible` when
-  casting a save spell, the target rolls the save at Disadvantage (Eldritch-Strike/Corona pattern).
-- **Versatile Trickster (L13):** `determineAdvantage` grants Advantage on attacks vs any creature within
-  5 ft (footprintDistance ≤ 1) of the AT's Mage Hand summon (scans for `summon_spell == "Mage Hand"` +
-  `summoner_idx == attacker`). That Advantage drives Sneak Attack and enables the Trip Cunning Strike.
-- **Spell Thief (L17):** an **OnDeclareCast reaction** (sibling of Counterspell). `canSpellThief` (AT L17+,
-  reaction free, sees the caster ≤ 60 ft, not the caster/an ally) enrolls the AT in `declareCastReactors`;
-  `stepTopCast` offers the "SpellThief" option. On choose (`applyCastReaction`): the caster makes an INT
-  save vs the AT's spell save DC (`spellSaveDc`); the reaction is spent regardless. On a **failure** the
-  cast is **countered** (`topCast().countered = true`, the same fizzle Counterspell uses — slot kept) AND
-  the spell name is pushed onto the caster's new `Stats.stolen_spell_names` (round-trips via
-  `feats`-style serialization; checked at the top of `executeSpell` to refuse a re-cast; cleared in
-  `applyLongRest`). The GUI surfaces the option automatically via the generic OnDeclareCast menu.
+</details>
 
-> **Scope note (v1):** Spell Thief's "the AT may now cast the stolen spell once within 8 hours" half is
-> **deferred** (flavor — needs spell-list mutation + a per-cast use counter the GUI doesn't expose); the
-> 8-hour timer is approximated by the long-rest clear. Like Counterspell, `canSpellThief` does **not**
-> require the spell to target the AT (RAW does) — a simplification. Mage Hand's utility tricks
-> (sleight-of-hand, object manipulation) and ritual casting are out of combat-sim scope.
+<details>
+<summary><b>Assassin subclass — IMPLEMENTED ✅ (2026-06-19, built + 77 suites green, `test_rogue_assassin.py`)</b></summary>
+
+2024 Assassin, no new infra. New per-combat marker `has_taken_turn_this_combat`. Assassinate (L3): initiative advantage + advantage vs not-yet-acted targets + round-1 Sneak hit adds +Rogue-level damage. Envenom Weapons (L13): the Poison Cunning Strike costs 0 dice + deals 2d6 Poison ignoring Resistance. Death Strike (L17): a first-round Sneak hit → CON save or the whole attack's damage is doubled. v1: bonus damage is folded into the Sneak Attack path (fires on a qualifying Sneak hit, not any round-1 hit).
+
+</details>
+
+<details>
+<summary><b>Arcane Trickster subclass — IMPLEMENTED ✅ (2026-06-19, built + 78 suites green, `test_rogue_arcane_trickster.py`)</b></summary>
+
+2024 AT (last Rogue subclass), reusing existing infra. Spellcasting (L3): third-caster INT/Wizard (slot override in `case Rogue:`). Mage Hand Legerdemain = a summon (`MAGE_HAND_STATBLOCK`, persists, anchors Versatile Trickster). Magical Ambush (L9): a hidden/invisible AT → target saves at Disadvantage. Versatile Trickster (L13): advantage vs creatures within 5 ft of the Mage Hand. Spell Thief (L17): OnDeclareCast reaction — INT save or the cast is countered + the name added to `stolen_spell_names` (refuses a re-cast, cleared on long rest). v1: the "AT may now cast the stolen spell" half is deferred.
+
+</details>
 
 ### Deferred — need NEW hooks
 - *Stroke of Luck* (L20): turn failed d20 into 20 → needs roll-replace hook
@@ -976,33 +636,23 @@ New per-COMBAT marker `Conditions.has_taken_turn_this_combat` (set in `beginTurn
 
 ---
 
-## Weapon Mastery (Implemented: 9 of 9 types)
+<details>
+<summary><b>Weapon Mastery (Implemented: 9 of 9 types)</b></summary>
 
-All eight 2024 weapon masteries plus Poison (custom) are implemented with **once-per-turn limits**:
-- **Sap** — disadvantage on target's next attack (once/turn)
-- **Slow** — speed -10 ft (once/turn)
-- **Vex** — attacker advantage vs target (once/turn)
-- **Push** — 10 ft push of Large-or-smaller (once/turn, GUI prompt)
-- **Poison** — target Poisoned condition (once/turn, automatic)
-- **Topple** — CON save or Prone (once/turn, GUI prompt)
-- **Cleave** — extra attack vs 2nd creature within 5 ft (once/turn, GUI prompt)
-- **Graze** — on miss, deal ability mod damage (passive, per-miss)
-- **Nick** — action-economy benefit (IMPLEMENTED 2026-06-11): the single per-turn off-hand attack
-  relocates into the Attack action (`offhand_attack_used` flag, reset in `turn()`), freeing the bonus
-  action; Dual Wielder then adds a 2nd bonus-action off-hand attack (3-attack turn). See the dual-wield
-  rework in `feat_system` memory.
+All 8 2024 masteries + Poison (custom), with once-per-turn limits: Sap, Slow, Vex, Push, Poison, Topple, Cleave, Graze (passive, per-miss), Nick (2026-06-11: the per-turn off-hand attack relocates into the Attack action, freeing the bonus action; Dual Wielder then adds a 2nd bonus-action off-hand attack → 3-attack turn). See the dual-wield rework in [[feat_system]].
+
+</details>
 
 ---
 
 ## Druid (Phase 1 implemented)
 
-### Implemented (Phase 1) ✅
-- **Chassis**: WIS full caster, INT+WIS saves
-- **Wild Shape** resource (L2+): 2/3/4 uses, short-rest regen 1, long-rest full
-- **DruidCircle** enum, GUI subclass picker, save/load
-- **Weapon Mastery** for beast form attacks (Topple on Brown Bear, Poison on Giant Spider, etc.)
-- **Beast form stat swapping**: AC/STR/DEX/CON swap on activation, restoration on deactivation
-- **Weapon restoration**: original weapons saved and restored on Wild Shape exit
+<details>
+<summary><b>Implemented (Phase 1) ✅</b></summary>
+
+Druid: WIS full caster, INT+WIS saves; Wild Shape resource (L2+, 2/3/4 uses, short-rest regen 1); `DruidCircle` enum + GUI picker; Weapon Mastery on beast-form attacks; beast-form AC/STR/DEX/CON swap + restore; original weapons saved/restored on Wild Shape exit.
+
+</details>
 
 ### Deferred — Wild Shape mechanics
 - **Circle of the Moon L2**: bonus-action shift to beast form (turn-economy)
@@ -1015,26 +665,23 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 
 ## Monk (Phase 1 implemented)
 
-### Implemented (Phase 1) ✅
-- **Chassis**: DEX+WIS saves, Ki/Focus Points resource (= level, short-rest regen)
-- **Extra Attack** at L5
-- **MonkSubclass** enum, GUI picker, save/load
-- **Way of the Open Hand**: Flurry of Blows (2 bonus unarmed strikes via `_start_extra_attack`)
-- **Unarmed Martial Arts**: strike die scales by level (configurable per subclass) with bonus-action extra attack
-- **Unarmored Defense**: AC = 10 + DEX + WIS when not armored — implemented in the AC calc (`combat.cpp:313-330`), mirrors the Barbarian formula
-- **Patient Defense** (spend 1 Focus → Dodge) and **Step of the Wind** (spend 1 Focus → Disengage+Dash) — GUI buttons + click handlers in `main.py`
-- **Stunning Strike** (spend 1 Focus on a qualifying unarmed hit → CON save or Stunned) — on-hit rider: eligibility flag set in `executeAction` (`combat.cpp:1963`), applied out-of-band via `applyStunningStrike` (`combat.cpp:4595`)
+<details>
+<summary><b>Implemented (Phase 1) ✅</b></summary>
+
+Monk: DEX+WIS saves, Ki/Focus (= level, short-rest regen); Extra Attack L5; `MonkSubclass` enum; Open Hand Flurry of Blows (2 bonus unarmed strikes); Martial Arts die scaling; Unarmored Defense (10+DEX+WIS); Patient Defense / Step of the Wind; Stunning Strike (on-hit rider, eligibility flag in `executeAction` → `applyStunningStrike` out-of-band).
+
+</details>
 
 ### Deferred — Monk features
 - **Subclass mechanics**: Four Elements (Shadow is fully implemented — see Phase 1 in MONK_IMPLEMENTATION_PLAN.md).
 - **Deflect Attacks — redirect clause** (L3): the damage-reduction half is implemented (`canDeflectAttacks`/`applyDeflectAttacks`, OnHit defender reaction reducing a hit by `1d10 + DEX + level`; B/P/S below L13, any type at L13 Deflect Energy). The RAW redirect — when the damage is reduced to 0, spend 1 Focus to make a ranged Unarmed Strike / throw the caught weapon at a creature within 5 ft — is **deferred** (no follow-up reaction-attack-from-defender plumbing). The reduction is the dominant combat effect; the redirect adds a single conditional attack.
 
-### Warrior of Mercy ✅ COMPLETE (2026-06-22)
-- **Hand of Healing** (L3): `handOfHealing` — BA + 1 Focus → heal `MA die + WIS` (`healAgent`). GUI button + `_resolve_hand_of_healing` (mirrors Lay on Hands). Tested in `test_monk.py`.
-- **Hand of Harm** (L3): `applyHandOfHarmEffect` — deferred on-hit rider (clone of `applyPsionicStrikeEffect`), `MA die + WIS` Necrotic; eligibility `hand_of_harm_available` set on an unarmed hit; GUI `_offer_hand_of_harm`. Coexists with Stunning Strike because both are deferred out-of-band effects (no inline chaining).
-- **Physician's Touch** (L6): Hand of Harm also Poisons (`applyPoisoned`); Hand of Healing also ends one of Blinded/Deafened/Paralyzed/Poisoned/Stunned.
-- **Flurry of Healing and Harm** (L11): Hand of Harm is free + once per target; `executeFlurryOfBlows` auto-folds a free Hand of Harm onto a Mercy hit. `handOfHealing(free=true)` skips Focus + Bonus Action.
-- Martial Arts die size computed in C++ (`martialArtsDieSize`: d6/d8/d10/d12 by level).
+<details>
+<summary><b>Warrior of Mercy ✅ COMPLETE (2026-06-22)</b></summary>
+
+Hand of Healing (L3: BA + 1 Focus → heal `MA die + WIS`); Hand of Harm (L3: deferred on-hit rider, `MA die + WIS` Necrotic — coexists with Stunning Strike, both out-of-band); Physician's Touch (L6: Harm also Poisons / Healing also ends one condition); Flurry of Healing and Harm (L11: free, once-per-target Hand of Harm auto-folded into `executeFlurryOfBlows`). `martialArtsDieSize` helper. Tests `test_monk.py`.
+
+</details>
 
 ### Deferred — Warrior of Mercy
 - **Hand of Ultimate Mercy** (L17): out-of-combat mass revive — flavor/out-of-scope (combat-sim only).
@@ -1044,35 +691,19 @@ All eight 2024 weapon masteries plus Poison (custom) are implemented with **once
 
 ## Fighter (Phase 1 implemented)
 
-### Implemented (Phase 1) ✅
-- **Chassis**: Extra Attack (2 at L5, 3 at L11, 4 at L20), Weapon Mastery activation
-- **Crit threshold**: `Stats.crit_threshold` (default 20), Champion lowers to 19/18
-- **Second Wind** (L1+): 1d10 + level, short/long-rest regen, bonus-action GUI button
-- **Action Surge** (L1+): reset `action_used` flag, 1 use (2 at L17), long-rest regen
-- **Champion subclass** (L3+): crit threshold reduction
-- **FighterSubclass** enum + GUI picker + save/load
-- **Battle Master**: Superiority Dice resource (`combat.cpp:6742`) + Maneuvers via `applyManeuverEffect` (`combat.cpp:5202`) — Trip→Prone, Menacing→Frightened, Pushing→forced move, Precision Attack (on-miss). Tested in `test_fighter.py`.
-- **Psi Warrior** (L3+): Psionic Energy Dice resource (= 2 × prof, die d6/d8/d10/d12 by level) + Telekinetic Movement use.
-  - **Psionic Strike** (on-hit rider): spend 1 die → Force damage (die + INT mod), once/turn. `applyPsionicStrikeEffect` + GUI rider chain (`_offer_psionic_strike`).
-  - **Protective Field** (reaction): spend 1 die → prevent (die + INT mod) damage. `applyProtectiveField` (modeled as post-hit heal-back). Engine + binding + test done.
-  - **Telekinetic Movement**: push a creature 30 ft, once/rest. `applyTelekineticMovement` + GUI button (target-click).
-  - All tested in `test_fighter.py`.
+<details>
+<summary><b>Implemented (Phase 1) ✅</b></summary>
 
-### Psi Warrior — Protective Field GUI prompt (IMPLEMENTED 2026-06-04, GUI-only, no build)
-The GUI now *offers* Protective Field to a hit Psi Warrior. `_finish_attack` gates eligibility via
-`_can_protective_field(target_idx, result)` (Fighter L3+ Psi Warrior, reaction free, not incapacitated,
-≥1 Psionic Energy die, hit dealt damage, not down — mirrors `applyProtectiveField`'s own checks) and a
-new `has_protective_field` branch routes to `_offer_protective_field(atk_idx, target_idx, …)`, which calls
-`apply_protective_field` and logs the prevention. It's a DEFENDER on-hit reaction (reactor = target),
-modeled like `_offer_riposte` but using the **correct** sequence-continuation pattern: added to the
-`has_rider` gate so only the callback's `_continue_attack_sequence_after_rider` re-prompts (no
-double-advance). v1 limits:
-- **Attacker-rider shadowing:** offered LAST in the on-hit `elif` chain, so any *attacker* on-hit rider
-  (Cunning/Brutal/Psionic Strike/Divine Smite/…) on the same swing shadows the defender's Protective
-  Field that swing (same mutually-exclusive-`elif` constraint as Riposte; full chaining is v2).
-- **Can't save from a drop:** the engine models Protective Field as a post-hit heal-back and rejects a
-  now-incapacitated defender, so the prompt is not offered when the hit drops the target to 0 (gated on
-  `not result.target_down`). True damage-prevention-before-drop would need a pre-HP-mutation window.
+Fighter: Extra Attack (2/3/4), `crit_threshold` (Champion 19/18), Second Wind (1d10+level), Action Surge, `FighterSubclass` enum. **Battle Master** (Superiority Dice + `applyManeuverEffect`: Trip/Menacing/Pushing/Precision). **Psi Warrior** (Psionic Energy dice: Psionic Strike on-hit rider, Protective Field reaction = post-hit heal-back, Telekinetic Movement push). Tests `test_fighter.py`.
+
+</details>
+
+<details>
+<summary><b>Psi Warrior — Protective Field GUI prompt (IMPLEMENTED 2026-06-04, GUI-only, no build)</b></summary>
+
+The GUI now offers Protective Field to a hit Psi Warrior (`_can_protective_field` gate + a `has_protective_field` branch → `_offer_protective_field` → `apply_protective_field`). It's a DEFENDER on-hit reaction added to the `has_rider` gate (correct callback continuation, no double-advance). v1 limits: an attacker on-hit rider shadows it (mutually-exclusive `elif`); can't rescue a target dropped to 0 (modeled as a post-hit heal-back, gated on `not target_down`).
+
+</details>
 
 ### Deferred — Battle Master (remaining)
 - **Riposte** — IMPLEMENTED 2026-06-04 (see the Riposte section above + RIPOSTE_PLAN.md); v1 limits only.
@@ -1085,28 +716,12 @@ double-advance). v1 limits:
 - **Remarkable Athlete** (bonus to non-proficient checks)
 - **Second Fighting Style** (L3)
 
-### Eldritch Knight — IMPLEMENTED ✅ (2026-06-02, awaiting build)
-- **Spellcasting chassis (L3+)**: third-caster, INT, Wizard list. `compute_third_caster_slots`
-  (`character_class.hpp`) + override in the Fighter chassis (`combat.cpp` case Fighter) since
-  `compute_class_slots(Fighter)` can't see the subclass. Sets `spell_slots_max`,
-  `spellcasting_ability=INT`, `can_cast_spell`.
-- **War Magic (L7+)** — the attack↔cast interleave. Engine owns the gate
-  (`canUseWarMagic`/`markWarMagicUsed` + `Conditions::war_magic_used`, reset in both turn paths);
-  the cast itself goes through the normal `executeSpell`. GUI: a `slot=="war_magic"` pseudo-slot
-  (mirrors `"bonus"`) — the resolve path (`_consume_cast_slot`) decrements ONE attack instead of
-  consuming the whole action, marks the gate, and re-prompts for the remaining attack(s). Gated
-  **once per Attack action** (reset when a fresh action-attack sequence seeds → Action Surge
-  permits another).
-- **Improved War Magic (L18+)**: the War Magic spell filter widens to level 1-5 action spells
-  (`_eligible_war_magic_spells` + the `_start_cast_spell` filter), respecting the
-  one-leveled-spell-per-turn rule via `available_castable_spells`.
-- **Eldritch Strike (L10)**: on-hit rider tags the target (`Conditions::eldritch_strike_by`);
-  the spell-save site applies disadvantage and consumes the tag. One-shot (see simplification note
-  in the EK Architecture section above).
-- **Arcane Charge (L15)**: optional 30-ft teleport offered after Action Surge
-  (`_resolve_arcane_charge`, reuses `teleport_agent`).
-- Tests: `test_fighter.py` (chassis L3/L7/scaling, non-EK has no slots, War Magic gate + L7
-  requirement, Eldritch Strike tagging + L10 requirement).
+<details>
+<summary><b>Eldritch Knight — IMPLEMENTED ✅ (2026-06-02, awaiting build)</b></summary>
+
+Spellcasting chassis (L3: third-caster INT/Wizard, `compute_third_caster_slots` + Fighter-chassis override). **War Magic (L7):** engine gate `canUseWarMagic`/`war_magic_used`; GUI `war_magic` pseudo-slot decrements ONE attack instead of the action, once per Attack action (Action Surge permits another). **Improved War Magic (L18):** widens to L1–5 action spells. **Eldritch Strike (L10):** on-hit tag → target's next spell-save at Disadvantage (one-shot). **Arcane Charge (L15):** optional 30-ft teleport after Action Surge. Tests `test_fighter.py`.
+
+</details>
 
 ### NOT IMPLEMENTED (Model boundary)
 - **[DEFER] Indomitable** (L9): save-reroll resource
@@ -1121,23 +736,12 @@ Points, Innate Sorcery (L1: +1 spell save DC + advantage on spell attacks, 10-ro
 2 uses), Font of Magic (slot↔SP conversion both directions), and Metamagic foundation
 (`SorcererSubclass`/`MetamagicOption` enums, `SpellAction.metamagic`, `metamagic_sp_cost`).
 
-### Metamagic — implemented options
-Each applies for one cast by temporarily mutating a copy of the spell (the agent's stored
-spell is untouched), and SP is spent only when the option is actually applicable:
-- **Heightened Spell** (2 SP): one target rolls its save with disadvantage.
-- **Seeking Spell** (1 SP): reroll a missed spell attack once.
-- **Careful Spell** (1 SP): chosen allies (`SpellAction.careful_targets`, up to CHA mod) are
-  excluded from the spell's area — reuses the Evoker safe-target exclusion. Save spells only.
-- **Distant Spell** (1 SP): doubles the spell's range (touch → 30 ft).
-- **Extended Spell** (1 SP): doubles a lasting spell's duration. (Advantage on concentration
-  saves is **not** modeled.) Inapplicable to instantaneous spells (duration < 2).
-- **Quickened Spell** (2 SP): an Action-cast spell becomes a Bonus Action; the engine reports
-  `SpellResult.cast_as_bonus_action` so the GUI/turn-economy layer can charge the bonus action.
-- **Transmuted Spell** (1 SP): retypes the spell's elemental damage to
-  `SpellAction.transmuted_damage_type`. 2024 elemental set only (Acid/Cold/Fire/Lightning/
-  Poison/Thunder); inapplicable if the spell deals none of those.
-- **Twinned Spell** (1 SP): increments `targets_per_upcast_level` by 1 for the cast (adds a
-  target on upcast Multiple-geometry spells); single-target plumbing handled GUI-side.
+<details>
+<summary><b>Metamagic — implemented options</b></summary>
+
+Each applies for one cast via a temp spell copy (stored spell untouched); SP spent only when applicable: Heightened (2 SP, one target disadv save), Seeking (1, reroll a missed spell attack), Careful (1, exclude chosen allies — reuses the safe-target exclusion; save spells only), Distant (1, 2× range), Extended (1, 2× duration; inapplicable to instantaneous), Quickened (2, action→bonus via `cast_as_bonus_action`), Transmuted (1, retype elemental damage), Twinned (1, +1 `targets_per_upcast_level`).
+
+</details>
 
 ### Metamagic — deferred / flavor
 - **[DEFER] Empowered** (1 SP): reroll up to CHA-mod damage dice — needs the per-type damage
@@ -1145,62 +749,12 @@ spell is untouched), and SP is spent only when the option is actually applicable
 - **[KNOWN LIMITATION] Subtle** (1 SP): cast without V/S components — purely out-of-combat
   flavor (no combat-sim effect); will not be implemented.
 
-### Subclasses (Phase 3 — combat-core slice implemented)
-**Implemented:**
-- **Draconic L3** — Draconic Resilience: unarmored AC = 10 + DEX + CHA, in `computeAC`
-  (`combat_core.cpp`). GUI/save-load wired (`agent_sorcerer_subclass`).
-- **Wild Magic L6** — Bend Luck: `sorcerer_bend_luck(bm, idx, boost)` spends 1 Sorcery Point to
-  roll 1d4 and add (boost=True) / subtract (boost=False) it from the next D20 Test via
-  `pending_roll_bonus_`. (Pre-roll prime — RAW is post-hoc; see Architecture → Post-hoc reaction
-  interrupts.)
+<details>
+<summary><b>Subclasses (Phase 3 — combat-core slice implemented)</b></summary>
 
-**Deferred:**
-- **Draconic**: Draconic Resilience HP bonus (+1 HP/level — needs an idempotent application so
-  re-init/load doesn't double-count); L6 Elemental Affinity (add CHA to your element's damage —
-  needs a stored element/damage-type + a damage rider); L14 Dragon Wings; L18 Dragon Companion.
-- **Wild Magic Surge** — the **roll + classification + narration foundation is IMPLEMENTED**:
-  `roll_wild_magic_surge(bm, idx)` rolls d100 on the curated 10-band table and returns
-  `WildMagicSurgeResult{d100_roll, effect (1-10), description}`; `wild_magic_surge_description(effect)`
-  exposes the table text. **Per-effect APPLICATION is the follow-up** (the engine only classifies):
-  - **Application dispatch:** `applyWildMagicSurgeEffect(bm, idx, effect)` / `apply_wild_magic_surge_effect`
-    applies the engine-handled bands and returns true; unhandled bands return false (caller applies).
-  - **APPLICATION IMPLEMENTED + tested (bands 1,2,3,7,8):**
-    - Band 1 (Plant Growth): `placeTerrainEffect` — Quartered difficult terrain sphere (10-ft, 10 rounds)
-      on the caster.
-    - Band 2 (spectral shield): +2 AC (via `ac_temporary_modifications`) + Magic Missile immunity for
-      10 rounds; ticks down in `beginTurn` (removes the +2 on expiry). MM immunity = a name-matched skip
-      at the top of the executeSpell per-target loop.
-    - Band 3 (vitality): +5 HP at the start of each of your turns for 10 rounds, healed in `beginTurn`.
-    - Band 7 (skip turn): one-shot flag → `beginTurn` reports `turn_skipped` and clears it.
-    - Band 8 (extra action): sets `wild_magic_extra_action` flag (GUI turn economy enforces the action).
-    - Bands 6 / 10 (1-min windows): `wild_magic_bonus_cast_turns` (action-cast spells as a Bonus Action)
-      and `wild_magic_teleport_bonus_turns` (teleport 20 ft as a Bonus Action) — duration ticked in
-      `beginTurn`; the GUI enforces the actual benefit (like band 8).
-    - Band 9 (drop weapons): `applyWildMagicSurgeEffect` drops all equipped weapons to the caster's cell
-      as ground items via `bm.placeItem` + `bm.setAgentWeapons` ("random square" simplified to the
-      caster's cell).
-    State on `Agent::Stats` (`wild_magic_shield_turns` / `_regen_turns` / `_skip_next_turn` /
-    `_extra_action` / `_bonus_cast_turns` / `_teleport_bonus_turns`).
-  - **Bands 4 & 5 = "the surge casts a named JSON spell"** (user 2026-06-02) — handled through the
-    normal `execute_spell` cast path with target selection, NOT special engine logic:
-    - Band 4 = **Chain Lightning** (exists in spells.json; Multiple-geometry lightning at ≤3 targets).
-    - Band 5 = **Blindness/Deafness** (exists in spells.json; Multiple, CON save, applies Blinded). The
-      custom moving "blind aura" was abandoned — it needed per-turn zone condition application, which would
-      have regressed the 4 persistent condition-spells (Black Tentacles / Fear / Hypnotic Pattern / Sleep)
-      that apply their condition once; "just cast Blindness" reuses everything and avoids that.
-    These two are wired with the surge TRIGGER (the trigger flow casts the named spell). No magic numbers
-    in C++; the engine has a JSON reader (`spellFromJson`) so the spell data stays in JSON. See [[engine-reads-json]].
-  - **No big-infra bands remain.**
-  - GUI/trigger follow-ups: the surge TRIGGER (roll after a level-1+ cast, then apply the band — including
-    casting Chain Lightning / Blindness for bands 4/5) and GUI enforcement of the flag/window bands (6, 8, 10).
-  - Trigger wiring (when to surge — after casting a level 1+ spell) is also a follow-up.
-- **Wild Magic** other: Tides of Chaos (advantage grant — needs a pending-advantage mechanism),
-  L14 Controlled Chaos, L18 Spell Bombardment.
-- **Clockwork** (entire): Restore Balance (reaction to cancel adv/disadv → post-hoc interrupt,
-  see Architecture note), Bastion of Law ward dice.
-- **Aberrant** (entire): Psionic Spells + Psionic Sorcery (cast a fixed psionic list using Sorcery
-  Points instead of slots — needs subclass spell-list infra), Telepathy/Psychic Defenses (flavor).
-- **No GUI button** yet for Bend Luck (reaction timing — shares the out-of-band reaction UI).
+**Draconic L3** Resilience: unarmored AC = 10+DEX+CHA (`computeAC`). **Wild Magic L6** Bend Luck: spend 1 SP, ±1d4 on the next d20 via `pending_roll_bonus_` (pre-roll prime — RAW is post-hoc; see the Architecture post-hoc note). **Wild Magic Surge foundation** built: `roll_wild_magic_surge` (d100, 10-band table) + `applyWildMagicSurgeEffect` dispatch; per-effect application DONE for bands 1/2/3/6/7/8/9/10 (terrain, +2 AC + Magic-Missile immunity, +5 HP/turn, bonus-cast/teleport windows, skip-turn, extra-action, drop-weapons), and bands 4/5 = cast a named JSON spell (Chain Lightning / Blindness) through the normal cast path (see [[engine_reads_json]]). **Deferred:** the surge TRIGGER (roll after a L1+ cast) + GUI enforcement of the window bands; Draconic HP/Elemental Affinity/Wings/Companion; Tides of Chaos / L14 / L18; the Clockwork & Aberrant subclasses; a Bend Luck GUI button.
+
+</details>
 
 ## Bard (Phase 1 + core Bardic Inspiration implemented)
 
@@ -1214,92 +768,19 @@ DEX+CHA save profs, "Bardic Inspiration" resource = max(1, CHA mod), die-size sc
 slot-spend). Superior Inspiration (L18: `apply_superior_inspiration`, tops to 2 at combat start).
 Tests in `gui/test_bard.py`.
 
-### Countercharm (L7) — IMPLEMENTED 2026-06-04
-Reaction to reroll (with advantage) an ally's just-failed save that would apply Charmed/Frightened.
-Implemented as a consumer of the **OnSaveFail** reaction window: when a directly-targeted charm/frighten
-spell save fails, a L7+ Bard within 30 ft + LoS (or the failed creature itself) may spend its
-**reaction** to reroll the save with advantage. Engine `canCountercharm` / `applyCountercharmToSave`
-(combat_spells.cpp). Modeled as **reaction only, no Bardic die** (the repo's prior definition). *Limited
-to spell saves this pass* — see the OnSaveFail entry under Architecture → Post-hoc reaction interrupts.
+<details>
+<summary><b>Countercharm (L7) — IMPLEMENTED 2026-06-04</b></summary>
 
-### College subclasses (Phase 3 — combat-core slice implemented)
-**Implemented:**
-- **Dance L3** — Unarmored Defense (AC = 10 + DEX + CHA, unarmored), in `computeAC` (`combat_core.cpp`).
-- **Lore L3** — Cutting Words: `bard_cutting_words` reaction expends a Bardic Inspiration use to
-  SUBTRACT the die from the next D20 Test (negative `pending_roll_bonus_`).
-- **Valor L3/L6/L14 — IMPLEMENTED 2026-06-17** (built + 73 suites green, `test_bard.py`):
-  - **L3 Combat Inspiration** — a held Bardic die can be spent two new ways. *Damage mode:*
-    `useBardicDieForDamage` rolls the die into a new additive `pending_damage_bonus_`
-    (`consumePendingDamageBonus()`, mirrors `pending_roll_bonus_`), consumed at the next weapon
-    damage roll (`resolveAttack`, shows as a `"combat inspiration"` line in `damage_breakdown`).
-    *AC mode:* an OnHit defender reaction mirroring Defensive Duelist — `canCombatInspirationAC` /
-    `applyCombatInspirationAC`, offered in `defenderOnHitOptions` + dispatched in
-    `maybeDefenderOnHitInline` (rolls the die, flips `r.hit=false` if it covers the margin; the die +
-    reaction are spent either way). **Gating is self-contained** (deliberate simplification): the
-    engine fns only require the actor to hold a Bardic die — NO cross-creature "which bard granted
-    it / is that bard Valor L3+" lookup; the GUI surfaces the buttons for Valor parties only.
-  - **L6 Extra Attack** (`num_attacks = 2`) in the `case Bard:` chassis.
-  - **L14 Battle Magic** — casting a Bard spell via the Magic action sets
-    `Conditions.battle_magic_available` (gated on `result.valid` + Valor L14+ in `executeSpell`),
-    reset in `turn()`; the GUI offers one bonus-action weapon attack via the generic
-    `_start_extra_attack` flow. **Martial Training (L3) = documented no-op** (weapon proficiency is
-    per-weapon `Weapon::proficient`, not class-gated; no armor-proficiency subsystem to hook).
-  - Bindings: `use_bardic_die_for_damage`, `can_combat_inspiration_ac`, `apply_combat_inspiration_ac`,
-    plus `Conditions.battle_magic_available`. **Also fixed two pre-existing Glamour gaps surfaced by
-    these tests:** `Stats::majestic_presence_turns` was never bound (added), and `dropConcentration`
-    cleared `mantle_majesty_turns` but NOT `majestic_presence_turns` — Unbreakable Majesty's window
-    now ends on concentration drop (step 4a', mirrors Mantle of Majesty). The prior session's
-    Unbreakable-Majesty tests had never actually run green; they do now.
-  - **TEST NOTE:** `AttackResult` is a read-only output struct — tests build real ones via
-    `execute_action` + a finder loop (see `_find_attack` in `test_bard.py`), never by construction.
-    And add ALL agents before `set_agent_spells` (`add_agent_to_battle` → `apply_agent_configs` wipes
-    the directly-set spell list — the [[agent_dual_list_gotcha]]).
-- **Glamour L3** — Mantle of Inspiration: `bard_mantle_of_inspiration(bm, bard_idx, targets)`
-  (`combat_riders.cpp`, bound as `apply_mantle_of_inspiration`). Bonus Action, expends one Bardic
-  Inspiration use, rolls the die ONCE; each chosen recipient gains temp HP = **2× the roll** via the
-  shared `grantTempHp` (max() semantics). Engine caps the target list to the bard's CHA mod (min 1)
-  and skips the bard itself (2024 "other creatures"); the GUI validates the 60 ft range per click.
-  GUI: "Mantle of Inspiration (Bonus Action)" button (Glamour L3+ with a BI use, drawn under Grant
-  Inspiration) → multi-click recipient picker (`_start_mantle`/`_mantle_add_target`/`_finalize_mantle`,
-  Enter confirms / Esc cancels, mirrors the Chromatic Orb leap-chain UX with a numbered ring overlay
-  `_draw_mantle_overlay`). Tests in `test_bard.py` (double-die temp HP, CHA-mod cap + self-skip,
-  Glamour/L3/use gating). **DEFERRED rider:** the 2024 clause letting each recipient use its Reaction
-  to move up to its Speed without provoking OAs is NOT modeled (needs a new reaction window + a free
-  no-OA move for arbitrary creatures — see Architecture / Infrastructure).
-- **Glamour L6** — Mantle of Majesty (DONE): once/long-rest resource `"Mantle of Majesty"` (seeded in
-  `case Bard:` for Glamour L6+; long-rest regen), also restorable by spending a **level 3+** slot via
-  `bard_restore_mantle_of_majesty_from_slot(bm, idx, slot_level)` (no GUI button yet — see deferred).
-  `activate_mantle_of_majesty(bm, idx)` (combat_resources.cpp) spends the use, sets a 10-round window
-  `Stats.mantle_majesty_turns` and starts **Concentration on the literal name `"Mantle of Majesty"`**
-  (replacing any prior concentration). The window ticks down in `beginTurn` (combat_turn.cpp) and is
-  cleared by `dropConcentration` (a later concentration spell / damage-broken save ends it). During the
-  window the bard re-casts **Command** as a Bonus Action with **no slot** via `SpellAction.free_cast`
-  (executeSpell skips the player slot decrement). **Command is fully modeled** (was inert): a failed WIS
-  save applies the chosen word via `applyCommandEffect` (combat_conditions.cpp), `SpellAction.command_word`
-  0=Drop/1=Flee/2=Grovel/3=Halt/4=Approach — Drop=drop-weapons+Disarmed (Disarming-Strike path),
-  Flee/Approach=1-turn movement restriction toward/away from the bard (`CommandFlee`/`CommandApproach`
-  checked in `canMove`, keyed to the bard so they expire at its next turn), Grovel=Prone, Halt=Incapacitated
-  for one turn. **Auto-fail rider DONE:** a creature Charmed by THIS bard (`Conditions.charmed_by`, now set
-  at every Charmed-application site and cleared on expiry) auto-fails its save vs the bard's Command while
-  the window is active (rollSpellSave). Command is always-prepared for Glamour L6 (`_BARD_SUBCLASS_SPELLS`).
-  GUI: "Mantle of Majesty (Bonus Action)" button (`_start_mantle_majesty`) → word picker (reuses
-  ElementPickerDialog, `COMMAND_WORD_OPTIONS`) → single-target free Command cast. Tests in `test_bard.py`
-  (seed gating, activation/window/concentration, free-cast-skips-slot, slot-restore L3+ gating, auto-fail,
-  per-word effects, drop-concentration ends window). **DEFERRED sub-clauses:** the GUI slot-restore button
-  (engine `bard_restore_mantle_of_majesty_from_slot` is done + bound + tested, just no button yet — needs a
-  slot-level picker like Font of Inspiration); `mantle_majesty_turns` is session-only (not save/load
-  persisted, mirrors `sacred_weapon_turns`).
+Reaction to reroll (with advantage) an ally's just-failed save that would apply Charmed/Frightened. OnSaveFail window consumer — a L7+ Bard within 30 ft + LoS (or the failed creature itself). `canCountercharm`/`applyCountercharmToSave`. Modeled reaction-only, no Bardic die; spell saves only this pass.
 
-**Deferred (per scope / size):**
-- **Dance**: Bardic Damage unarmed strike, Agile Strikes, L6 Inspiring Movement, L14 Leading Evasion.
-- **Glamour**: Mantle-of-Inspiration Reaction-move rider (above) only. (Mantle of Inspiration L3,
-  Beguiling Magic L3, Mantle of Majesty L6, and Unbreakable Majesty L14 are all DONE — see above.
-  Glamour is complete except the no-OA Reaction-move clause, which needs new infra.)
-- **Lore**: L14 Peerless Skill (re-add die on the bard's own fail).
-- **Valor**: fully implemented (L3 Combat Inspiration + L6 Extra Attack + L14 Battle Magic;
-  Martial Training = no-op) — see the **Implemented** list above. Nothing deferred.
-- **[KNOWN LIMITATION] Out-of-combat / flavor**: Jack of All Trades, Expertise, Magical Secrets,
-  Words of Creation — no combat-sim path; not implemented (per scope rule).
+</details>
+
+<details>
+<summary><b>College subclasses (Phase 3 — combat-core slice implemented)</b></summary>
+
+**Dance L3** Unarmored Defense (10+DEX+CHA). **Lore L3** Cutting Words (reaction, −die on next d20 via `pending_roll_bonus_`). **Valor (L3/6/14, 2026-06-17):** Combat Inspiration (a held die → damage via `pending_damage_bonus_`, OR an AC defender reaction like Defensive Duelist; gating is self-contained — engine only checks the actor holds a die, GUI surfaces it for Valor parties); L6 Extra Attack; L14 Battle Magic (`battle_magic_available` → one bonus weapon attack after a Bard-spell Magic action). **Glamour:** Mantle of Inspiration (L3, BA, 2× die temp HP via `grantTempHp`, CHA-mod targets), Mantle of Majesty (L6, free Command recasts; Command fully modeled via `applyCommandEffect` + a Charmed-by-this-bard auto-fail), Unbreakable Majesty fixed (concentration drop now ends `majestic_presence_turns`). **Test gotchas:** `AttackResult` is read-only (build via `execute_action`); add ALL agents before `set_agent_spells` ([[agent_dual_list_gotcha]]). Deferred: Mantle-of-Inspiration reaction-move; Dance damage/L6/L14; Lore L14 Peerless Skill.
+
+</details>
 
 ### GUI notes for subclasses
 - Cutting Words has **no GUI button yet** (it's a reaction during another creature's turn; the
@@ -1309,12 +790,12 @@ to spell saves this pass* — see the OnSaveFail entry under Architecture → Po
   before. This is the same missing mechanism as Counterspell/Countercharm — see
   **Architecture / Infrastructure → "Post-hoc reaction interrupts"**.
 
-### GUI notes (Phase 4 implemented)
-- College selectable in the stats dialog; `bard_subclass` saved/loaded (`agent_bard_subclass`).
-- "Grant Inspiration" bonus-action button (targets an ally) and "Use Inspiration Die" button
-  (any die-holder). **Use Inspiration Die primes the bonus BEFORE the next d20** (engine model),
-  not RAW's post-hoc "spend after seeing a failed roll" prompt. No separate resource bar; the
-  button only appears when a use/die is available (mirrors Lay on Hands).
+<details>
+<summary><b>GUI notes (Phase 4 implemented)</b></summary>
+
+College selectable in the stats dialog (`bard_subclass` saved/loaded). "Grant Inspiration" (targets an ally) + "Use Inspiration Die" (any die-holder) buttons. Use Inspiration Die primes the bonus BEFORE the next d20 (engine model), not RAW's post-hoc "spend after a failed roll". Button appears only when a use/die is available (mirrors Lay on Hands).
+
+</details>
 
 ## Warlock Eldritch Invocations (combat-sim modeling)
 
@@ -1324,35 +805,12 @@ One with Shadows, Otherworldly Leap, Gift of the Depths, Master of Myriad Forms,
 **Pact of the Blade family** (Pact of the Blade, Thirsting Blade, Eldritch Smite, Lifedrinker).
 Selected in a scrollable picker; unimplemented/level-locked/feat-deferred entries render greyed.
 
-### Pact of the Blade family (IMPLEMENTED 2026-06-08)
-- **Pact of the Blade** (inv 13): a new `Weapon::pact_weapon` flag (mirrors `finesse`). The GUI
-  conjures a fixed `"PactBlade"` (1d8 slashing, proficient, `pact_weapon=True`), appended to the
-  Warlock's weapons in `_on_stats_ok` + the load path (idempotent). `attackModifier` /
-  `damageAbilityMod` (combat_core.cpp) allow CHA for a pact weapon — modeled as
-  `max(normal STR/DEX rule, CHA mod)`, i.e. "best of, never worse". The flag also **identifies**
-  the pact weapon for the three riders below.
-  - *Simplification:* the pact weapon is a fixed 1d8 slashing blade, not "any melee weapon you
-    choose" (no weapon-build system).
-- **Thirsting Blade** (inv 14, L5+): `num_attacks = 2` in the Warlock chassis
-  (`initializeClassResources`) when `hasInvocation(14) && hasInvocation(13) && level >= 5`.
-  - *Simplification:* like every other class's Extra Attack this is **global**, not gated to
-    pact-weapon attacks only — a Thirsting-Blade Warlock gets two swings with any weapon.
-- **Eldritch Smite** (inv 15, L5+): on-hit rider modeled on Divine Smite. Eligibility flag
-  `eldritch_smite_available` set in `applyAttackResult` (pact-weapon hit, L5+, inv 13+15, free
-  bonus action, a pact slot, no leveled spell this turn); applied out of band via
-  `applyEldritchSmiteEffect` (GUI `_offer_eldritch_smite`, bound `apply_eldritch_smite_effect`):
-  expend the pact slot (level = `pact_slot_level()`) as a Bonus Action → `(slot+1)d8` Force, knock
-  a Huge-or-smaller target (`getSize() <= 3`) Prone. Once per turn (`eldritch_smite_used`).
-- **Lifedrinker** (inv 16, L9+): **automatic** (no player choice) inline in `applyAttackResult`
-  (like Zealot Divine Fury) — on a pact-weapon hit, once per turn, deal extra Necrotic =
-  `max(1, CHA mod)` and grant the Warlock that many temp HP (`grantTempHp`). Flag `lifedrinker_used`.
-  - *v1 modeling:* the temp-HP grant uses the standard `max()` semantics (doesn't stack).
-- Per-turn flags reset in `Agent::turn()` (canonical) + `runRound` (RL parity). Tests in
-  `test_warlock_phase3.py`. `apply_eldritch_smite_effect` added to `replay_record.py`'s recorded set.
+<details>
+<summary><b>Pact of the Blade family (IMPLEMENTED 2026-06-08)</b></summary>
 
-- **Devouring Blade** (inv 17, L12+, needs Thirsting Blade): IMPLEMENTED — the Thirsting Blade
-  block sets `num_attacks = 3` when `level >= 12 && hasInvocation(17)` (the extra attack becomes two
-  extra). Same global-Extra-Attack simplification as Thirsting Blade.
+**Pact of the Blade** (inv 13): `Weapon::pact_weapon` flag + a fixed 1d8 slashing PactBlade (CHA allowed = best-of vs STR/DEX); appended in `_on_stats_ok` + load (idempotent). **Thirsting Blade** (inv 14, L5): `num_attacks=2` (global, not pact-only). **Eldritch Smite** (inv 15, L5): on-hit rider like Divine Smite — expend a pact slot (BA) → `(slot+1)d8` Force + knock Huge-or-smaller Prone, once/turn. **Lifedrinker** (inv 16, L9): automatic, +`max(1,CHAmod)` Necrotic + that many temp HP. **Devouring Blade** (inv 17, L12): `num_attacks=3`. Per-turn flags reset in `turn()` + `runRound`. Tests `test_warlock_phase3.py`.
+
+</details>
 
 ### Deferred: rest of the Pact-boon family
 - **Pact of the Chain** (inv 18) + **Investment of the Chain Master** (inv 19): an attacking
@@ -1402,636 +860,117 @@ Deliberate DM-call simplifications (deferred):
   geometric `hasLineOfSight` and does NOT consult `canPerceiveTarget` — so an invisible
   creature can still be the subject of those reaction windows. Left out pending a rules call.
 
-### Invisibility / Greater Invisibility spells (data-driven)
-Both are now self/touch buffs (JSON `attack_type: Automatic`, `type: Harm` with no damage —
-there is no "Buff" SpellType, so Harm-with-no-damage is used) that apply the Invisible
-condition via `conditions:[{condition_name:"Invisible"|"GreaterInvisible"}]` (no `save_ability`
-⇒ no save). `addAgentCondition` maps those names to `conditions.invisible` (+
-`invisible_persists_on_action` for the Greater variant). Duration is modeled as 10 rounds (not
-RAW 1 hour / 1 minute) — long enough to outlast a combat. Cast targets self/ally via
-`SpellAction.target_indices`; self-targeting in the GUI depends on the click landing on the
-caster. One with Shadows reuses the same Invisible condition (non-persistent).
+<details>
+<summary><b>Invisibility / Greater Invisibility spells (data-driven)</b></summary>
 
-## Monster on-hit riders: Grappled / Prone / Poisoned (2026-06-09)
+Both are self/touch buffs (JSON `attack_type: Automatic`, `type: Harm` no-damage — no "Buff" SpellType exists; no `save_ability` ⇒ no save) applying the Invisible condition via `conditions:[{condition_name:"Invisible"|"GreaterInvisible"}]`. `addAgentCondition` maps those to `conditions.invisible` (+ `invisible_persists_on_action` for Greater). Duration modeled as 10 rounds (not RAW 1 hr / 1 min). One with Shadows reuses the same Invisible condition (non-persistent).
 
-Synthesized NPC weapons can now carry on-hit riders from `tools/monster_weapon_overrides.json`
-(passed through by `monster_parser._weapon_for_slot` into the weapon dict's `conditions` /
-`mastery`). How each is modeled:
-- **Grappled** — a `{"condition_name":"Grappled", "escape_dc":N, "contested":bool}` entry routes
-  through the shared grapple core `CombatEngine::resolveGrapple` (which `executeGrapple` and the
-  future Grappler feat also call). Default `contested:false` = automatic on hit; `escape_dc`
-  overrides the computed `10 + STR mod + prof`. NOT the generic active-condition path (that only
-  tracks duration and would leave the `grappled` flag false).
-- **Prone** — modeled as weapon **`"mastery":"Topple"`** (CON save vs `8 + prof + abilityMod` →
-  `applyProne`). `to_record` auto-sets the monster's `weapon_mastery=1` so Topple fires; without
-  the Weapon Mastery feature it would be inert.
-- **Poisoned** — `{"condition_name":"Poisoned", "condition_duration":N}` via the existing
-  `addAgentCondition` path (sets the `poisoned` flag).
+</details>
 
-Deliberate deferrals / approximations:
-- **Shambling Mound 5 ft *pull*** is NOT modeled — the engine's weapon push handler requires
-  `push_ft > 0`, so negative/pull-toward isn't supported. Deferred until a pull mechanic exists.
-- **Approximate save DCs** — Topple/Poison/grapple-escape DCs derive from the attacker's
-  ability + prof, not the fixed book numbers (no fixed-DC field without an engine change).
-- **Poisoned has no auto-expiry** — `tickAgentConditions` doesn't clear the `poisoned` flag, so a
-  "1 turn" poison rider persists (matches the existing Poison weapon-mastery behavior). A
-  duration-driven clear would need adding "Poisoned" to the tick-removal switch.
-- **`condition_rider`** (beast-form field) is still set in `main.py` but never consumed in C++ —
-  inert. Beast-form on-hit conditions would need the same routing if/when wanted.
-- Deferred riders (unchanged): Wereboar lycanthropy curse + Tusk charge-conditional extra dice,
-  Hobgoblin Warlord Javelin speed −10, Bone Devil "can't regain HP while Poisoned".
+<details>
+<summary><b>Monster on-hit riders: Grappled / Prone / Poisoned (2026-06-09)</b></summary>
 
-## NPC innate spellcasting auto-population (2026-06-09)
+Synthesized NPC weapons carry on-hit riders from `tools/monster_weapon_overrides.json` (via `monster_parser._weapon_for_slot`). **Grappled** → shared `resolveGrapple` core (`contested:false` = automatic on hit; `escape_dc` overrides the computed DC). **Prone** → weapon `mastery:Topple` (`to_record` auto-sets `weapon_mastery=1`). **Poisoned** → `addAgentCondition`. Deferrals: Shambling Mound 5-ft *pull* (no pull mechanic), approximate save DCs (attacker-derived, not book), Poisoned has no auto-expiry, the beast-form `condition_rider` field is still inert, lycanthropy/javelin-slow riders.
 
-Monster stat blocks' innate spells (CSV columns At Will / 3-Day / 2-Day / 1-Day) are auto-loaded
-onto placed/summoned NPCs. The CSV names are resolved against `spells.json` and written to each
-bestiary record as `spell_indices` + `npc_spell_groups` (`{uses/day: [names]}`) — the same shape
-the saved-agent loader already consumes. Resolution lives in `gui/read_stats_from_csv.py`
-(`attach_npc_spells`, runs during full regen) and the one-shot `tools/add_npc_spells.py`
-(augments the existing JSON in place). GUI glue: `_load_npc_spells_from_record` in `main.py`,
-called from the bestiary-placement and summon paths. 161 casters, 886 spells attached.
+</details>
 
-Deliberate approximations / deferrals:
-- **At-Will *leveled* spells use a 99/day budget** (`AT_WILL_USES`), not true unlimited. An NPC
-  leveled spell needs `uses_max > 0` to be castable (cantrips are level 0 → always castable and
-  stay ungrouped), and the only no-infra way to express "at will" is a large N. The combat panel
-  shows e.g. `Detect Magic 99/99`. A real unlimited flag would be an engine change.
-- **Fixed spell save DC / spell attack from the CSV are ignored** — the engine computes DC and
-  attack from the NPC's spellcasting ability + prof bonus (same as the manual-NPC flow). The
-  `Spell Save DC` / `Spell Attack` columns are not wired (no fixed-DC field without an engine change).
-- **Upcast level annotations are stripped** — `Melf's Acid Arrow (3rd level)` resolves to the base
-  `Acid Arrow`; the NPC casts at base level (no per-listing cast-level override).
-- **7 referenced spells are not in `spells.json`** (skipped, reported by `add_npc_spells.py`):
-  Beast Sense, Destructive Wave, Friends, Synaptic Static, Summon Fiend, Jallarzi's Storm of
-  Radiance. Add them to the catalog to pick them up automatically.
-- Source-data spelling fixes live in `_SPELL_ALIASES` (read_stats_from_csv.py); extend as new
-  typos surface (monster data is unreliable).
+<details>
+<summary><b>NPC innate spellcasting auto-population (2026-06-09)</b></summary>
 
-## Origin feats (2026-06-09)
+Monster innate spells (CSV At-Will/N-Day columns) are auto-loaded onto placed/summoned NPCs as `spell_indices` + `npc_spell_groups`; resolution in `read_stats_from_csv.attach_npc_spells` + `tools/add_npc_spells.py`; GUI glue `_load_npc_spells_from_record`. 161 casters / 886 spells. Approximations: at-will *leveled* spells use a 99/day budget; fixed save DC/attack columns ignored (engine computes); upcast annotations stripped; 7 referenced spells aren't in the catalog (skipped); typo fixes in `_SPELL_ALIASES`. See [[npc_innate_spellcasting]].
 
-The combat-relevant 2024 Origin feats are wired into the C++ engine. Feats are stored as a
-`std::vector<std::string> feats` on `Agent::Stats` with `has_feat()` (mirrors
-`eldritch_invocations`/`has_invocation`). `add_feat(name)` grants a feat AND applies its one-time
-stat effects (Tough HP, Alert initiative proficiency, Lucky points) — call it after ability
-scores/level/prof_bonus are set. On reload, set `feats` directly (the bonuses are already folded
-into the persisted `hp_max`/`luck_points`, so re-applying would double-count). Persisted via
-`feats`/`luck_points`/`luck_points_max` in the save JSON. Tests: `gui/test_feats.py`.
+</details>
 
-Implemented:
-- **Tough** — `hp_max`/`hp_cur` += 2 × character level on grant.
-- **Alert** — sets `initiative_prof` (prof bonus added to initiative); Initiative Swap via
-  `CombatEngine::swap_initiative(order, a, b)` (returns the reordered list).
-- **Savage Attacker** — once per turn, rerolls the weapon damage in `applyAttackResult` and keeps
-  the better roll (compares the "weapon" damage-breakdown entry so flat riders like Rage are fair).
-  Gated by `conditions.savage_attacker_used_this_turn`.
-- **Tavern Brawler** — Enhanced Unarmed Strike (bare "Unarmed" weapon deals 1d4 + STR Bludgeoning,
-  in `rollDamage`) + Damage Rerolls (reroll a 1 on that die) + Push (Unarmed hit shoves 5 ft, once
-  per turn, via `forceMoveAgent`). Scoped to the default "Unarmed" weapon — Monk "MonkUnarmed" is
-  left untouched.
-- **Lucky** — Luck Points = prof bonus (regained on Long Rest); `spend_luck_for_advantage(bm, idx)`
-  spends one to grant Advantage on the agent's next d20 (via the existing pending-advantage hook).
+<details>
+<summary><b>Origin feats (2026-06-09)</b></summary>
 
-Deferred / noted:
-- **Lucky — Disadvantage benefit** (impose Disadvantage on an attack roll against you): needs a
-  defender reaction window (OnD20Seen imposes a −1d4 penalty, not a reroll-to-disadvantage). Only
-  the self-Advantage benefit is wired. The single engine-wide `pending_advantage_` flag means the
-  Lucky character must spend immediately before their own roll (fine in the turn-by-turn GUI flow).
-- **Healer** — both benefits deferred. Battle Medic needs a Hit-Dice pool (no `hit_dice_*` on Stats
-  yet) and a Healer's Kit item; Healing Rerolls (reroll 1s on healing dice) would touch every
-  healing dice site (Cure Wounds, Healing Word, Lay on Hands, Healing Light, …).
-- **Magic Initiate** — a spell-grant feat; the GUI can already add the cantrips/level-1 spell to a
-  character's spell list. The free once-per-long-rest cast without a slot is not separately tracked.
-- **Crafter, Skilled, Musician** — out of combat (tool/skill proficiencies, item discount/crafting,
-  rest-time Heroic Inspiration). Noted only; not modelled. (Musician's Encouraging Song could later
-  reuse the existing Heroic Inspiration mechanic if wanted.)
-- **GUI feat picker** — DONE 2026-06-09. The StatsDialog has an "Origin Feat:" cycle picker (PCs
-  only, hidden for NPCs); `App._set_origin_feat` applies it idempotently, stripping the prior feat's
-  one-time effects (Tough HP, Alert prof, Lucky points) before applying the new one via `add_feat`.
-  Edge case: re-confirming the *same* feat is a no-op, so **changing a Tough character's level via
-  the dialog does not recompute the +2/level HP** (the HP stepper is editable, so adjust there). One
-  feat per PC by design (general/repeatable feats are a future, separate UI).
-- **Improvised weapon proficiency** (Tavern Brawler) and the once-per-turn "as part of the Attack
-  action" qualifier on Push are not enforced.
+Combat-relevant 2024 Origin feats. `std::vector<std::string> feats` + `has_feat()` on Stats; `add_feat()` grants AND applies one-time effects (Tough HP, Alert init, Lucky points) — **on reload set `feats` directly** (bonuses already folded into persisted hp_max/luck_points, so re-applying double-counts). Implemented: Tough, Alert (+`swap_initiative`), Savage Attacker (reroll-keep-better, once/turn), Tavern Brawler (Unarmed 1d4+STR + reroll-1 + 5-ft push), Lucky (spend for advantage). GUI feat picker (one feat/PC, idempotent strip-then-apply). Deferred: Lucky disadvantage benefit, Healer (needs Hit-Dice pool), Magic Initiate free cast, out-of-combat feats. Tests `test_feats.py`. See [[feat_system]].
 
-## General feats — phase G0 + G1 (2026-06-10)
+</details>
 
-Foundation + the damage-type on-hit cluster. `Weapon` gained `heavy`/`light` flags (bindings,
-`helpers._dict_to_weapon`, `weapons.json` tagged per 2024). A multi-select **FeatDialog** (43
-general feats with status tags: `combat`/`soon`/`note`) is launched from the StatsDialog "Feats:"
-button (PCs only) and commits names into `Agent.Stats.feats` via `App._set_general_feats` — disjoint
-from the single-select origin-feat picker. Tests: `gui/test_general_feats.py`.
+<details>
+<summary><b>General feats — phase G0 + G1 (2026-06-10)</b></summary>
 
-Design: **a feat's Ability Score Increase is NOT auto-applied** — set final ability scores via the
-stat steppers (decision avoids the strip-on-swap/ripple problem; "Ability Score Improvement" is a
-no-op marker). General feats currently carry no one-time stat effects, so `_set_general_feats` is a
-plain replace. **Prerequisites are not enforced** (soft, combat-sim convenience).
+Foundation + the on-hit damage-type cluster. `Weapon` gained heavy/light flags; a multi-select FeatDialog (43 feats); **ASI is NOT auto-applied** (set final scores via the stat steppers); prereqs not enforced. In `applyAttackResult`: **Crusher** (Bludgeoning push 5 ft, once/turn), **Piercer** (reroll a die + crit bonus die), **Slasher** (−10 ft, once/turn), **GWM Heavy Weapon Mastery** (+PB on a Heavy Attack-action hit). **G1b enhanced-crit marks:** Crusher crit → advantage vs the victim; Slasher crit → victim's attacks at disadvantage (checked in `determineAdvantage`, expire at the feat-user's `beginTurn`, NOT the victim's `turn()`). **G2:** Sentinel (all 3 clauses), Grappler Punch-and-Grab (`resolveGrapple` core + advantage vs the grappled). **G3:** shield-in-off-hand foundation (`Weapon.is_shield`, `isHoldingShield`, `calculateAC` scans ALL weapon slots), War Caster (advantage conc saves), Mage Slayer (conc save disadvantage on weapon damage), Defensive Duelist (OnHit +PB AC), Shield Master push (`executeShove`). Tests `test_general_feats.py`.
 
-Implemented combat mechanics (all in `applyAttackResult`, keyed on `r.physical_damage_types` /
-`r.critical` / `w.heavy`, with per-turn `Conditions` flags reset in `Agent::turn()`):
-- **Crusher** — Bludgeoning hit → push 5 ft once/turn (size-gated ≤ atk+1).
-- **Piercer** — Puncture: reroll one damage die once/turn (rerolls the lowest `dice_results` entry
-  using the weapon's Piercing die size — approximate on multi-type weapons; "must use new" applied
-  unconditionally) + Enhanced Critical: +1 Piercing die on a Piercing crit.
-- **Slasher** — Hamstring: Slashing hit → −10 ft Speed once/turn (reuses the `slowed` flag).
-- **Great Weapon Master** — Heavy Weapon Mastery: +PB damage on a Heavy melee hit that is part of
-  the Attack action (`action.attack_slot != "bonus"`); every qualifying hit, not once/turn.
+</details>
 
-**G1b — enhanced-crit advantage effects — DONE 2026-06-10.** Crusher crit → `crusher_marked`
-(+`crusher_marked_by`) on the victim: attack rolls against it have Advantage. Slasher crit →
-`slasher_marked`: the victim's own attacks have Disadvantage. Both checked in `determineAdvantage`
-(Reckless-style) and expire at the start of the *feat-user's* next turn — cleared in
-`CombatEngine::beginTurn` by scanning for marks whose `*_marked_by == agent_idx` (the GUI reaches
-beginTurn via begin_turn_flow, same path as the Shield "+5 AC until your next turn" expiry). NOT
-reset in `Agent::turn()` — that expires at the victim's turn, which is wrong (Slasher's disadvantage
-must apply *during* the victim's turn). Single source tracked (last critter wins). Tests in
-`test_general_feats.py`.
+<details>
+<summary><b>General feats — phase G4 (bonus-attack + ranged-penalty) DONE 2026-06-11</b></summary>
 
-**G2 — Grappler + Sentinel — DONE 2026-06-10.**
-- **Sentinel** — all 3 clauses complete (clause 2 Disengage-OA + clause 1 Halt + clause 3 Guardian/
-  OnAllyAttacked); see the reaction-window section above.
-- **Grappler** — **Punch-and-Grab**: an Unarmed-Strike hit as part of the Attack action
-  (`w.name == "Unarmed"|"MonkUnarmed"`, `action.attack_slot != "bonus"`) arms
-  `Conditions::grappler_punch_grab_available`; `applyPunchAndGrab` then ALSO runs a grapple through the
-  shared `resolveGrapple` core (contested check, computed escape DC — no parallel path), once per turn
-  (`grappler_punch_grab_used`). Deferred-flag + apply-effect pattern (like Divine/Psionic Strike): GUI
-  `_offer_punch_and_grab`; auto/RL leaves it to the offer (no inline, same as the other attacker on-hit
-  riders). **Advantage** on attack rolls vs a creature you've grappled is in `determineAdvantage`
-  (tgt grappled + `grappler_idx == attacker` + `hasFeat("Grappler")`). Tests in `test_general_feats.py`.
-  *Deferred:* **Fast Wrestler** (no Speed reduction dragging a grappled creature of your size or smaller)
-  is a **no-op** — but note the engine *does* now have a drag-movement system (`BattleMap::moveAgent`
-  drags the grappled creature along and charges **2× movement cost**, see the 2026-06-19 grapple-budget
-  FIXED entry at the top of this file). Fast Wrestler would remove that double cost (vs same-or-smaller
-  targets); it's simply not wired up yet. Implementable now: gate the `charge = actual_cost * 2` doubling
-  on `!hasFeat("Fast Wrestler")` (plus a size comparison against the dragged creature).
+**Ranged-penalty (pure gating):** Sharpshooter (clears long-range + within-5-ft disadvantage, any ranged), Crossbow Expert (engagement disadvantage, crossbows only), Spell Sniper (`rollSpellAttack` no-disadvantage + `effectiveSpellRange` +60 ft). **Bonus-attack:** GWM Hew (Heavy melee crit/kill → bonus attack via `_start_extra_attack`; v1 forgoes remaining Attack-action attacks), Dual Wielder (+1 AC with two melee weapons). **Polearm Master DEFERRED** — needs a synthetic butt-end weapon profile (clause 1) + a new *enter-reach* reaction window (clause 2). Tests `test_general_feats_g4.py`.
 
-**G3 — Reaction feats + shield-in-off-hand foundation — MOSTLY DONE 2026-06-10.**
-- **Shield-in-off-hand foundation.** `Weapon.is_shield` (+ existing `ac_bonus`) lets a Shield occupy a
-  weapon slot (the off-hand) instead of only the Armor slots — the user's mental model ("holding a
-  Shield" = a Shield in the off-hand). `isHoldingShield(bm, idx)` scans weapon slots (is_shield, or a
-  weapon named "Shield"); `calculateAC` now scans ALL weapon slots for the shield `ac_bonus` (was: only
-  the last slot — that was the bug that made an off-hand shield grant no AC). weapons.json has a "Shield"
-  entry (is_shield, ac_bonus 2, off_hand); `helpers._weapon_to_dict`/`_dict_to_weapon` carry is_shield +
-  ac_bonus (so equip + save/load round-trip). Shared gate for Shield Master AND the queued shield-gated
-  Fighting Styles (Interception, Protection, Unarmed Fighting). *GUI:* a Shield is selected like any
-  weapon into the off-hand slot (no is_shield/ac_bonus edit fields in WeaponDialog — it comes
-  preconfigured from weapons.json; the dialog deep-copies dicts so the keys survive editing).
-- **War Caster** — Advantage on concentration saves: `checkConcentrationOnDamage` + `concentrationSave`
-  roll with Advantage when the concentrator `hasFeat("War Caster")` (alongside Eldritch Mind). The
-  Reactive-Spell clause (cast a cantrip as an OA) and Somatic-with-full-hands are deferred (out of scope /
-  complex).
-- **Mage Slayer — Concentration Breaker** — when a Mage Slayer damages a concentrator, the conc save has
-  Disadvantage. `checkConcentrationOnDamage` gained an optional `damager_idx`; the weapon-damage site
-  passes `action.attacker_idx`. (Spell/terrain damage sites still pass -1 — Mage Slayer is a martial
-  feat, so weapon damage is the relevant trigger.) **Guarded Mind** (auto-succeed a failed save, 1/short
-  rest) DEFERRED — needs a save-success-override mechanism.
-- **Defensive Duelist** — OnHit defender reaction: a Finesse-melee wielder may add its PB to AC vs a
-  non-crit MELEE hit, flipping it to a miss (a genuine miss, same DM ruling as Shield). Folded into the
-  existing defenderOnHit window: `canDefensiveDuelist` + `applyDefensiveDuelist`, listed in
-  `defenderOnHitOptions`, handled in both `maybeDefenderOnHitInline` (auto/RL) and `applyAttackReaction`
-  (GUI suspend). Offered only when +PB would actually flip the outcome.
-- **Shield Master — Push** — `canShieldBash(bm, idx)` gate (Shield Master feat + isHoldingShield + a free
-  Bonus Action); the shove itself reuses `executeShove` (no parallel path). *Deferred:* the GUI
-  bonus-action Shield-Bash offer (the generic Shove button already does a bonus-action shove), and
-  **Interpose** (reaction when subjected to a Dex-save-for-half effect → no damage on a success) — that
-  needs a reaction window at the spell save-for-half damage site (like Rogue Evasion, but as a reaction),
-  which isn't built.
+</details>
 
-Deferred:
-- All other general feats per GENERAL_FEATS_PLAN.md phases G5–G6 + the deferred list (Mounted
-  Combatant has no mount system; rest-based temp-HP feats; Hit-Dice-pool feats stay deferred).
+<details>
+<summary><b>General feats — phase G5 (armor / saves / movement passives + Telekinetic) DONE 2026-06-11</b></summary>
 
-## General feats — phase G4 (bonus-attack + ranged-penalty) DONE 2026-06-11
+Passives that query `hasFeat` at point of use (idempotent, no stat mutation): Heavy Armor Master (−PB on B/P/S weapon hits in Heavy armor), Medium Armor Master (DEX cap 2→3), Durable (advantage death saves), Speedy (+10 ft + OAs-vs-you disadvantage via `Attack::opportunity`), Athlete (standup 5 ft), Skulker (Blindsight 10 ft, into `piercesInvisibility`), Telekinetic Shove (30-ft BA, STR save or push 5 ft via `forceMoveAgent`), Weapon Master (Nick gate accepts the feat), Resilient (marker). **Binding fix:** `Armor.dex_mod_cap` was never bound (defaulted to 30 → no DEX cap ever applied); now bound + round-tripped. Tests `test_general_feats_g5.py`.
 
-Built + green. Test: `gui/test_general_feats_g4.py` (17 cases).
+</details>
 
-**Ranged-penalty (pure gating, no GUI economy):**
-- **Sharpshooter** — in `determineAdvantage` (combat_attack.cpp): clears the long-range Disadvantage
-  (`hasDisadvantage` returns only that here, so clearing `disadv` before the engagement check is exact)
-  AND the within-5-ft "firing in melee" Disadvantage (any ranged weapon).
-- **Crossbow Expert** — same engagement-Disadvantage gate, but **Crossbows only** (`w.name` contains
-  "Crossbow"); does NOT touch long range. *Note-only:* Ignore-Loading (Loading isn't modeled — crossbows
-  already fire freely) and the off-hand crossbow ability-mod (the engine already adds the ability mod to
-  ALL off-hand damage — the 2024 TWF "no off-hand mod" rule isn't modeled, see Two-Weapon Fighting no-op).
-- **Spell Sniper** — `rollSpellAttack` (combat_spells.cpp): a nearby enemy imposes no Disadvantage on a
-  spell attack roll; **+60 ft range** for attack-roll spells (`sp.attack_type==AttackRoll && range>=10`)
-  added in `effectiveSpellRange` (alongside Eldritch Spear). *Note-only:* ignore cover (cover not modeled).
+<details>
+<summary><b>General feats — phase G5b (resistance-ignore caster feats) DONE 2026-06-11</b></summary>
 
-**Bonus-attack:**
-- **Great Weapon Master — Hew** — a melee crit OR a kill with a **Heavy** weapon as part of the Attack
-  action sets `gwm_hew_available` (Conditions flag, reset in `Agent::turn()`/beginTurn). The GUI offers it
-  (`_offer_gwm_hew`, last in the on-hit rider chain, gated on a free bonus action) and routes it through
-  the shared `_start_extra_attack` flow (per `reusable_bonus_attack`). *v1 limitation:* accepting Hew
-  forgoes any remaining Attack-action attacks (the bonus attack takes over the pending sequence); RAW lets
-  you finish your attacks first, then Hew — the mid-sequence interleave is deferred (same fragile GUI
-  multi-attack sequencing the other riders share). Headless/RL path just leaves the flag set (informational).
-- **Dual Wielder** — `+1 AC` in `calculateAC` while a real, non-Shield **melee weapon** sits in BOTH the
-  main-hand and off-hand slots. The off-hand bonus attack itself already works via the `off_hand` weapon
-  flag, so Enhanced Dual Wielding needs no new attack path. *Note-only:* Quick Draw (no draw/stow economy).
+Two shared helpers (`combat_spells.cpp`): `effectiveMagicDamageMult` lifts Resistance to 1.0 (Immunity/Vulnerability untouched), `rollSpellTypeDamage` does treat-1-as-2 — applied at all 5 spell magic-damage sites + the weapon magic-damage site. **Elemental Adept** (chosen elements in `elemental_adept_types`, spells only) + **Poisoner Potent Poison** (Poison, any source incl. weapons). Reusable `ElementPickerDialog` (also the cast-time picker for Chromatic Orb / Sorcerous Burst). Tests `test_general_feats_g5b.py`.
 
-**Still deferred in G4:** **Polearm Master** — see the dedicated entry below.
+</details>
 
-- **Polearm Master (DEFERRED).** 2024 PHB general feat (prereq STR or DEX 13). Two clauses, both blocked
-  on infra the engine doesn't have yet:
-  1. **Pole Strike** — when you take the Attack action with a Quarterstaff, Spear, Glaive, Halberd, or Pike,
-     you can make ONE bonus-action attack with the weapon's opposite end, dealing **1d4 bludgeoning**
-     (uses the same ability mod; on-hit riders/masteries apply). Needs a synthetic "butt-end" weapon
-     profile (a 1d4-bludgeoning variant of the wielded polearm) — new infra. The bonus-attack plumbing
-     itself already exists (`_start_extra_attack(slot=)`, the generic reusable-bonus-attack flow per
-     [[feedback-reusable-bonus-attack]]), so once a butt-end weapon can be synthesized this is a thin
-     bonus-action attack against that profile, gated on the wielded weapon being one of the 5 polearms.
-  2. **Reactive Strike (a.k.a. the reach-OA clause)** — while wielding one of those weapons, creatures
-     **provoke an opportunity attack from you when they ENTER your reach** (not just when they leave it).
-     Needs an *enter-reach* reaction window; the reaction framework currently only has LeftReach/OA
-     (leaving reach), not an on-enter-reach trigger ([[reaction-system-plan]] lists the 7 existing
-     windows — none fire on entering reach). This is the harder half: it's a new flow-checkpoint window,
-     parallel to LeftReach but evaluated as a creature steps INTO a threatened cell, with the usual
-     one-reaction-per-round economy. Until that window exists, the clause can't be modeled.
-  Marked "soon" in the GUI feat list. When picked up, do clause 1 first (small, reuses existing bonus-attack
-  infra) and treat clause 2 as its own reaction-window project.
+<details>
+<summary><b>Fighting Style feats (2024 PHB) — Blind Fighting DONE 2026-06-10</b></summary>
 
-## General feats — phase G5 (armor / saves / movement passives + Telekinetic) DONE 2026-06-11
+Fighting Styles modeled as feats (`hasFeat`). **Blind Fighting:** Blindsight 10 ft queried inside `piercesInvisibility` (NOT via `blindsight_range` — sense ranges aren't serialized, feats are) + a latent fix gating invisible-attacker advantage on `!canPerceiveTarget`. **Passive batch:** Archery (+2 ranged), Defense (+1 AC armored), Dueling (+2, one-handed solo weapon), Thrown Weapon Fighting (+2), Great Weapon Fighting (reroll 1/2→3), Unarmed Fighting (1d6), Two-Weapon Fighting (no-op marker). **Interception:** OnAllyAttacked bystander damage reduction (1d10+PB heal-back, like Protective Field). **Still deferred: Protection** (needs a pre-resolution impose-disadvantage window — the hardest). Tests `test_fighting_styles.py`/`test_reactions.py`.
 
-Built + green (66 suites). Test: `gui/test_general_feats_g5.py` (14 cases). All passives query `hasFeat`
-at the point of use (no stat mutation → idempotent across turns/reloads, like Blind Fighting/Speedy).
+</details>
 
-- **Heavy Armor Master** — in `applyAttackResult` (combat_attack.cpp), before the single HP application:
-  if the hit dealt any B/P/S type (`r.physical_damage_types` non-empty) and the target wears Heavy armor
-  (an equipped piece with `dex_mod_cap == 0`), `r.total_damage -= min(PB, total)`. *Approximation:* the
-  −PB comes off the whole `r.total_damage`, so a mixed physical+magical hit can trim the magical part too;
-  and it's the **weapon-attack path only** — a spell attack that deals B/P/S is not covered.
-- **Medium Armor Master** — in `calculateAC`: after the most-restrictive DEX cap is computed, `if (cap == 2
-  && hasFeat) cap = 3`. Detects Medium armor as "min equipped cap is 2"; Heavy (cap 0) is left unchanged.
-- **Durable** — Advantage on Death Saving Throws (Defy Death): both death-save sites (`beginTurn`'s
-  start-of-turn save and the on-damage `rollDeathSave`) take `max(roll(20), roll(20))` when `hasFeat`. The
-  HD-based Speedy Recovery clause stays deferred (no Hit-Dice pool).
-- **Speedy** — +10 ft walking budget in `beginTurn`'s movement seeding (`stats.speed_walk + 10 - penalty`,
-  not a stat mutation). OAs against you have Disadvantage: a new `Attack::opportunity` flag (set on the
-  single OA path in `applyReactionResponse`, bound for tests) makes `determineAdvantage` impose `dis` when
-  the target `hasFeat("Speedy")`. *Deferred:* the "Dash ignores Difficult Terrain" clause (Dash↔difficult-
-  terrain movement-cost interaction isn't wired).
-- **Athlete** — `standup` costs only 5 ft (vs half-speed) when `hasFeat`. *Note-only:* Climb Speed = Speed
-  (no per-turn climb budget in the seeding — only walk/fly/swim/burrow) and the running High/Long Jump
-  distance (no jump system).
-- **Skulker** — Blindsight 10 ft, added to `piercesInvisibility` alongside Blind Fighting (`dist_ft <= 10
-  && (hasFeat("Blind Fighting") || hasFeat("Skulker"))`). *Note-only:* Stealth/Sniper clauses (no skill rolls).
-- **Telekinetic — Telekinetic Shove** — `applyTelekineticShove(bm, caster, target)` (combat_riders.cpp,
-  bound as `apply_telekinetic_shove`): a 30-ft-range Bonus Action; STR save (DC = 8 + caster PB + best of
-  INT/WIS/CHA mod) or pushed 5 ft via `forceMoveAgent` (the same knockback Thunderwave/Shove use, per the
-  user). Returns a `ShoveResult` (attacker_roll=DC, defender_roll=save, success=landed). GUI:
-  `btn_cbt_telekinetic` ("🌀 Telekinetic Shove", gated on `hasFeat("Telekinetic")` + bonus available) →
-  `_start_telekinetic_shove` → reuses the `pending_shove_*` target-click flow, dispatched in `_resolve_shove`
-  by `shove_type == "telekinetic"`. *Note-only:* the Mage Hand grant; the DC uses the caster's strongest
-  mental mod rather than a stored per-character ability choice.
-- **Weapon Master** — GUI-only: the Nick gate `_nick_offhand_idx` now accepts `has_feat("Weapon Mastery")
-  OR has_feat("Weapon Master")`, so a non-martial with the feat can use a weapon's Mastery (Nick). C++
-  masteries already fire off `w.mastery` regardless of the feat (monsters rely on this), so no engine gate
-  changed. *Note-only:* weapon-proficiency grant (proficiency isn't enforced).
-- **Resilient** — marker only: like ASI, the chosen save proficiency is set via the StatsDialog save-prof
-  checkboxes (`save_prof_*`), so the feat carries no engine effect of its own. Tagged "note" in the GUI list.
+<details>
+<summary><b>Bug fixes 2026-06-10</b></summary>
 
-**Binding fix (foundation):** `Armor.dex_mod_cap` was never exposed in pybind, so every Python-built Armor
-kept the C++ default 30 — meaning `calculateAC` could not cap DEX for heavy/medium armor at all, and the
-armor-master feats had nothing to detect. Now bound (`rpg_bindings.cpp`) and round-tripped in
-`_dict_to_armor`/`_armor_to_dict` (helpers.py); armor.json already carried the values (Plate/Chain Mail/
-Mithral Plate = 0, Cold Iron Breastplate = 2).
+**NPC/monster weapons survive save→load:** `_save_agents` now writes the full `_weapon_to_dict` per slot (was name-only → dropped non-catalog Bite/Claw/custom attacks); `_load_agents` reconstructs from the dict (still accepts a bare name for old saves). Test `test_save_load_weapons.py`. **Self-origin spell range ring:** the cast-time range circle now uses `radius` for Cone / `length` for Line (was `sp.range`=0 → a 0-ft ring for Cone of Cold).
 
-## General feats — phase G5b (resistance-ignore caster feats) DONE 2026-06-11
+</details>
 
-Built + green (67 suites). Test: `gui/test_general_feats_g5b.py` (9 cases). Two shared engine helpers
-(combat_spells.cpp) centralize the logic so each damage site is a 2-line change:
-- `effectiveMagicDamageMult(caster, target, type, from_spell)` — returns the target's multiplier, but
-  Resistance (`0 < m < 1`) is lifted to **1.0** when the caster ignores it: **Poisoner** (type==Poison,
-  any source) or **Elemental Adept** (its chosen elements, `from_spell` only). **Immunity (0.0) and
-  Vulnerability are untouched** — the feats ignore Resistance only.
-- `rollSpellTypeDamage(caster, type, n, die, out_dice, from_spell)` — rolls the dice applying Elemental
-  Adept's **treat-a-1-as-a-2** for the caster's chosen elements (`from_spell` only).
+<details>
+<summary><b>Factions / Teams (2026-06-11)</b></summary>
 
-Applied at all **5 spell magic-damage sites** (attack-roll / save / automatic in executeSpell, the zone
-`applySpellEffect`, and `tickEffects` — the last two fetch caster stats from `effect.caster_idx` /
-`fx.caster_idx`) and the **weapon magic-damage site** in `rollDamage` (with `from_spell=false`, so
-Poisoner lifts a weapon's Poison resistance but Elemental Adept — spells-only — does not).
+N-faction team system (`PlacedAgent.faction`, int; 0 = neutral, allied with no one). `areAllies(bm,a,b)` = same non-zero faction. Five rules: (1) same-faction observers don't block/spot a hide; (2) harmful AoE friendly-fire stays ON by default, allies spared only via safe-targets/Careful/`selective_targeting`; (3) beneficial (Heal) AoE drops non-allies when caster faction ≠ 0; (4) GUI `_confirm_friendly_harm` prompt; (5) allies don't provoke OAs (`detectProvokes` skips `areAllies`). `TeamPickerDialog`; faction persists; summons inherit the summoner's. Tests `test_factions.py`. Deferred: directional neutral-claim matrix, control-mode-per-team, Careful full-exclude vs RAW half-on-success.
 
-- **Elemental Adept** — chosen elements stored as `Agent::Stats::elemental_adept_types` (`vector<int>` of
-  MagicDamage_t indices; `hasElementalAdeptType`), bound + round-tripped in the save (`elemental_adept_types`
-  in `_save_agents` / `agent_loader.dict_to_stats`). The feat may be taken per element, so it's a list.
-- **Poisoner — Potent Poison** — `caster.hasFeat("Poisoner")` + type==Poison; not spell-gated (covers a
-  weapon's Poison damage too). The Brew Poison / Apply Poison clause (CON save 2d8 + Poisoned) stays
-  deferred (needs the apply-poison-to-weapon + bonus-action infra). Poison is a MagicDamage_t here.
-
-**Reusable element picker (GUI):** `ElementPickerDialog` (dialogs.py) — a small modal multi/single-select
-damage-type chooser, parameterized by `(options, current, multi, title)`; `ELEMENTAL_ADEPT_OPTIONS` lists
-the 5 elements. Opened from `StatsDialog._on_feats_chosen` when Elemental Adept is selected (multi-select);
-the choice threads through `_confirm` → `App._on_stats_ok(elemental_adept_types=...)` → `stats.
-elemental_adept_types`. Also the **cast-time** element picker (single-select) for Chromatic Orb /
-Sorcerous Burst — wired into `App` (`_element_dialog`, opened from `_activate`, top modal). See the
-"Element-pickable spells" entry above for the `SpellAction.damage_type_override` mechanism. DONE 2026-06-11.
-
-*Deferred within G5b:* treat-1-as-2 is applied via `rollSpellTypeDamage` at the spell sites only (weapons
-never get it, per RAW). Spell-attack/automatic/save/zone/tick all covered; healing and the necrotic-rider
-site (combat_attack:2120) are intentionally untouched (not elemental spell damage).
-
-## Fighting Style feats (2024 PHB) — Blind Fighting DONE 2026-06-10
-
-Fighting Styles are modeled as feats (`hasFeat("<Name>")`), granted by the Fighting Style feature.
-
-**Blind Fighting — Blindsight 10 ft — DONE.** The engine already models blindsight as exactly one
-mechanic: `piercesInvisibility` (combat_visibility.cpp) → `canPerceiveTarget` → gates
-`availableAttacks` (an invisible creature is otherwise *unattackable*, stricter than RAW) and the RL
-observation LoS flag. Blind Fighting is queried from **`hasFeat("Blind Fighting")` inside
-`piercesInvisibility`** (within 10 ft), NOT by setting `blindsight_range=10` — because the Python
-save/load layer does NOT serialize the raw sense ranges (`blindsight_range`/`truesight_range`/etc.),
-and reload sets the feats list directly without re-running `addFeat`'s one-time effects, so a
-stat-mutation approach would silently drop on reload. Feats ARE serialized, so the hasFeat path
-round-trips. Two halves:
-- *Offense:* within 10 ft a Blind Fighter perceives/targets an invisible creature (the `piercesInvisibility` edit).
-- *Defense:* the invisible-attacker advantage in `determineAdvantage` (combat_attack.cpp ~L1221) was
-  **unconditional** — even against a Truesight defender (pre-existing gap). Now gated on
-  `!canPerceiveTarget(bm, target_idx, attacker_idx)`, so a defender that perceives the attacker
-  (Blind Fighting in 10 ft, or any Truesight/Blindsight) denies the advantage. Latent correctness
-  fix for all see-invisible defenders, not just Blind Fighting.
-- *Limitation:* blindsight's "see in **darkness**" clause has no distinct effect — `canPerceiveTarget`
-  only checks the `invisible` axis, not obscuration; darkness already does not gate attacks in this
-  engine (consistent with how existing `blindsight_range` behaves).
-
-Tests: `gui/test_fighting_styles.py` (registered in run_all_tests.py) — offense at 5/10/15/20 ft,
-available_attacks re-entry, defense (invisible attacker denied advantage vs a Blind Fighting defender;
-control keeps advantage vs a sighted one).
-
-**Passive batch — DONE 2026-06-10:**
-- **Archery** — `attackModifier` (combat_core.cpp): +2 when `w.type==Ranged && !w.thrown`. Shows in
-  `AttackResult.attack_mod`.
-- **Defense** — `calculateAC` standard branch (combat_core.cpp): +1 when `has_armor` (the unarmored
-  Barbarian/Monk branches return early, so it's armor-only by construction).
-- **Dueling** — `applyAttackResult` damage-rider block (combat_attack.cpp): +2 when melee, `!two_handed`,
-  and no OTHER *real* weapon is equipped. "Real" = a weapon slot with damage dice that isn't a Shield;
-  default/empty `Unarmed` slots (no dice) and Shields don't count. Pushes a `("Dueling",2)` breakdown
-  entry. NOTE: the dice-bearing `_mk_weapon("Filler")` padding in `test_feats._arm` would read as a
-  second real weapon — Dueling tests use `_solo_arm` (exact slots, true empties).
-- **Thrown Weapon Fighting** — same block: +2 when `r.hit && w.thrown`.
-- **Great Weapon Fighting** — `rollDamage` physical loop (combat_attack.cpp): with a two-handed melee
-  weapon, any die roll of 1 or 2 → 3 (`if (gwf && d < 3) d = 3;`). Verified deterministically via
-  `AttackResult.dice_results`.
-- **Unarmed Fighting** — `rollDamage` near the Tavern Brawler block: a bare `Unarmed` strike rolls 1d6
-  Bludgeoning. Supersedes Tavern Brawler's 1d4 (TB block now gated `&& !hasFeat("Unarmed Fighting")`,
-  so exactly one die is added with both feats).
-- **Two-Weapon Fighting** — no-op marker: the engine already adds the ability mod to off-hand damage
-  (`rollDamage` always adds `damageAbilityMod`; the off-hand penalty is unmodeled), so the style's
-  effect is already present.
-
-*Passive-batch simplifications:* Dueling and Thrown Weapon Fighting can BOTH fire on a one-handed
-thrown weapon (a creature with both styles double-dips +4) — accepted, rare; the engine can't tell a
-melee swing from a throw on a melee-type thrown weapon, so Thrown Weapon Fighting's +2 also applies
-when such a weapon is used in melee. GWF gates on `two_handed` only — a Versatile weapon wielded in two
-hands isn't distinguished (we don't track current grip). Unarmed Fighting DEFERS the d8-when-empty-handed
-upgrade (no weapon-array access in `rollDamage`) and the start-of-turn 1d4 to a creature you've Grappled.
-
-**Interception — DONE 2026-06-10.** OnAllyAttacked bystander damage-reduction reaction: when a creature
-you can see hits a target other than you within 5 ft of you, spend your reaction to reduce that target's
-damage by 1d10 + PB (must hold a Shield or a Simple/Martial weapon). `canIntercept` (combat_attack.cpp)
-gates one bystander; `applyInterception` (combat_riders.cpp) rolls 1d10+PB and **heals the target back**
-by min(reduction, damage) — modeled exactly like Psi Warrior Protective Field (post-hit heal-back).
-Auto/RL via `maybeInterceptionInline` (executeAction, after applyAttackResult, OnAllyAttacked window +
-decider); GUI scans `can_intercept` across agents → `_offer_interception` (bystander reactor, mirrors
-`_offer_protective_field`). Bindings: `can_intercept`, `apply_interception`. In the FeatDialog (status
-"in"). Tests: test_reactions.py (reduces damage, adjacency-to-target gate, feat gate, direct-apply +
-reaction spend). *v1 limitation (shared with Protective Field):* the heal-back can't rescue a target
-dropped to 0 by the hit (`canIntercept` requires the target's hp_cur > 0 post-hit). "Shield or Simple/
-Martial weapon" is approximated as "holding a Shield OR any weapon with damage dice" (the engine doesn't
-classify simple/martial). The damage reduction is a heal-back, so `AttackResult.total_damage` still
-reports the gross (unreduced) damage — tests assert on the target's HP, not total_damage.
-
-**Still TODO** — only **Protection** (Fighting Style) remains deferred: it imposes Disadvantage on an
-attack roll *before* it resolves (a pre-resolution reaction), and no such reaction window exists — the
-hardest one to build. GUI: Fighting Styles share the FeatDialog general-feat list (granted by the
-Fighting Style feature; prereqs not enforced) — engine is correct via `hasFeat`.
-
-## Bug fixes 2026-06-10
-- **NPC/monster weapons survive save→load.** The GUI saved weapons by NAME and rebuilt them via the
-  PC `weapons.json` catalog, so non-catalog weapons (Bite/Claw/custom monster attacks) and per-weapon
-  customizations were dropped. `_save_agents` now writes the full `_weapon_to_dict` per slot;
-  `_load_agents` reconstructs from the dict (still accepts a bare name string for old saves →
-  catalog lookup). `agent_loader.load_agents_from_json` already handled dict weapons. Test:
-  `test_save_load_weapons.py`. (Note: weapon `conditions`/on-hit riders are still not serialized.)
-- **Self-origin spell range ring.** The cast-time "range circle" drew `sp.range`, which is 0 for
-  Cone/Line spells (their reach is in `radius`/`length`), so Cone of Cold showed a 0-ft ring. Fixed
-  in `_draw_*` range-circle code: Cone→`radius`, Line→`length`, else→`range`. The AoE cell preview
-  (`_aoe_cells`) was already correct (used `radius`), which is why damage applied fine.
-
-## Factions / Teams (2026-06-11)
-N-faction team system (`PlacedAgent.faction`, int; 0 = neutral/unassigned). `BattleMap.get/set_agent_faction`
-+ readonly `PlacedAgent.faction` property. `CombatEngine::areAllies(bm,a,b)` = same NON-zero faction
-(neutral is its own faction, allied with no one). GUI labels in `constants.py` (`FACTION_NAMES/COLORS/CHOICES`,
-`faction_name`, `faction_color`); red=1, blue=2. Four rules:
-- **Rule 1 (hide):** `checkHide` + `checkHiddenAgentDetection` skip same-faction observers — only enemies
-  prevent/spot a hide.
-- **Rule 2 (harmful AoE):** friendly fire stays ON by default (Fireball roasts allies). Allies are spared
-  only via the existing Evoker `safeTargets_`/Careful, or a spell with the new `Spell.selective_targeting`
-  flag ("creatures of your choosing", e.g. Radiance of the Dawn → auto-spares same-faction). Gated on
-  caster faction != 0.
-- **Rule 3 (beneficial AoE):** `type==Heal`, non-Single geometry, caster faction != 0 → drops non-allies
-  (enemies never healed). Neutral caster keeps legacy "affect everyone" behavior (no regression for
-  un-teamed encounters / old saves).
-- **Rule 4 (GUI confirm):** `_confirm_friendly_harm` pops a ContextMenu before a harmful weapon attack or
-  Harm spell on a same-team target (`_pending_spell_is_harm` gates spells; heals never prompt).
-- **Rule 5 (opportunity attacks):** `detectProvokes` (combat_movement.cpp) skips `areAllies(bm, mover, r)`
-  reactors — teammates don't OA each other when an ally leaves their reach (added 2026-06-13; enemies and
-  neutrals still provoke). Regression: `test_reactions.py::test_ally_does_not_provoke_oa`.
-GUI: `_show_visible_targets_popup` annotates header + each line with team; `TeamPickerDialog` (dialogs.py,
-opened from an agent's right-click menu "Set Teams…") cycles each agent neutral→red→blue. Faction persists
-in save/load (top-level `"faction"` key; defaults 0 for old saves). Summons inherit the summoner's faction
-in `_resolve_summon`. Tests: `test_factions.py` (7 cases). Built + green 2026-06-11.
-
-**Limitations / deferred:**
-- **Claiming neutrals is non-directional** (chosen "simpler option"): the TeamPicker just reassigns a
-  neutral's faction to a real team — there is no per-faction directional relationship (faction A treats
-  neutral N as friend while faction B still treats N as enemy). A directional claim matrix is the future
-  upgrade if needed.
-- **Control-mode-per-team not built** (DM/auto/player axis). For now both teams are human-driven; the
-  faction tag is the foundation. Game-mode auto-agents must later honor the visibility rules (PCs hide
-  from NPCs and vice-versa via stealth-vs-perception contests).
-- **Careful Spell pre-existing discrepancy** (not faction-specific): the engine *fully excludes* Careful
-  targets from the AoE area, but RAW Careful only lets them auto-succeed the save (still half damage on
-  Fireball). Left as-is — out of scope for the faction work.
-- `selective_targeting` is loaded from spell JSON (`map_configs.cpp spellFromJson`) + bound; no spells in
-  the catalog set it yet (set it on Radiance-of-the-Dawn-type entries when added).
+</details>
 
 ---
 
-## Ranger — Beast Master (Primal Companion) — IMPLEMENTED ✅ (2026-06-13, built + 71 suites green)
+<details>
+<summary><b>Ranger — Beast Master (Primal Companion) — IMPLEMENTED ✅ (2026-06-13, built + 71 suites green)</b></summary>
 
-L3 spawn wiring (button/menu/summon/dismiss/save/load) + L7/L11/L15 are done. Companion math lives in
-`helpers.compute_companion_loadout`; spawn/dismiss in `main.py` (`_summon_companion`/`_dismiss_companion`/
-`_find_companion_idx`); the L11 splash rider in `combat_attack.cpp` (after the Hunter's Mark rider).
+L3 Primal Companion (Land/Sea/Sky stat blocks in `primal_companions.json`, HP/AC/to-hit/dmg scale with level; faction/summoner-linked, tombstoned on death/dismiss; `compute_companion_loadout`). L7 Exceptional Training (companion gains Cunning Action + natural weapon → Force). L11 Bestial Fury (`num_attacks=2` + once/turn the first hit on the HM target deals +Force = the mark's dice). L15 Share Spells (a Self-range buff the Ranger casts is re-applied to the companion ≤30 ft, same concentration, no extra slot). Deferred: L7 Dodge/Help, L7 Force has no opt-out, L15 GUI-only + true-Self-buffs only. See [[ranger_progress]].
 
-**Implemented:**
-- **L3 Primal Companion** — Land/Sea/Sky stat blocks (`primal_companions.json`); HP=base+per-lvl×level,
-  AC=13+PB, to-hit=Ranger spell-attack mod, dmg bonus=PB; faction/summoner-linked, tombstoned on death/
-  dismiss; chosen form round-trips (`primal_companion`).
-- **L7 Exceptional Training** — companion gains **Cunning Action** (`has_cunning_action=True` → bonus-action
-  Dash/Disengage/Hide buttons) and its natural weapon switches to **Force** (moved to `magic_damage_types`).
-- **L11 Bestial Fury** — 2 attacks (`num_attacks=2`) + once/turn the first hit on the Ranger's
-  Hunter's-Mark target deals +Force = the mark's dice (`bestial_fury_used` flag, reset in `turn()`).
-- **L15 Share Spells** — a Self-range buff (Single geometry, range 0) the Ranger casts on itself is
-  re-applied to the companion within 30 ft via `execute_spell` (no extra slot; ties to the same
-  concentration). GUI path: `_finish_cast` → `_share_spell_with_companion`.
+</details>
 
-**Deferred / simplifications:**
-- **L7 bonus-action menu** is Cunning Action's Dash/Disengage/Hide (per user call); RAW also lists
-  **Dodge/Help** — not separately modeled (no per-companion Dodge/Help affordance).
-- **L7 Force is the default at L7+ with no opt-out**: against a Force-immune/resistant foe the player
-  cannot revert to the normal physical type. Rare; revisit only if it bites.
-- **L15 share is GUI-only** (`main.py`, not in the suite) and limited to true Self buffs — self-origin
-  AoEs (Burning Hands etc., Cone/Cube geometry) are intentionally excluded; concentration self-buffs work
-  because `executeSpell` re-affirms the same caster concentration with no terrain to drop.
+<details>
+<summary><b>Ranger — Fey Wanderer — IMPLEMENTED ✅ (2026-06-13, combat-core; awaiting build)</b></summary>
 
-## Ranger — Fey Wanderer — IMPLEMENTED ✅ (2026-06-13, combat-core; awaiting build)
+L3 Dreadful Strikes (first weapon hit each turn +1d4→1d6 Psychic at L11, no resource). L7 Beguiling Twist (Advantage on saves vs Charmed/Frightened spells, gated inline at both spell-save sites). Always-prepared spells: Charm Person / Misty Step / Dimension Door / Mislead. Tests `test_ranger.py`. Deferred: L9 Summon Fey (not in spells.json), the L7 redirect Reaction, L11/L15 free-casts, out-of-combat Otherworldly Glamour.
 
-`fey_dreadful_strikes`/`fey_dreadful_strikes_die_size` (Stats) + `fey_dreadful_strikes_used` (Conditions,
-reset in `turn()`), all bound. Seeded in `combat.cpp initializeClassResources` (FeyWanderer L3+). Tests in
-`test_ranger.py` (chassis, rider once/turn + d4→d6, Beguiling Twist statistical advantage + L7 gate).
-
-**Implemented:**
-- **L3 Dreadful Strikes** (distinct from Gloom Stalker's): the first weapon hit each turn deals **+1d4
-  Psychic (→1d6 at L11)**, no resource. Rider in `combat_attack.cpp` right after the Gloom Stalker
-  Dreadful Strike block; gated on `fey_dreadful_strikes && !fey_dreadful_strikes_used`.
-- **L7 Beguiling Twist (save half)** — **Advantage on a save vs a spell that applies Charmed/Frightened**.
-  Gated inline (no field) at BOTH spell-save sites in `combat_spells.cpp`: the Save-for-half site (scans
-  `sp.conditions` for Charmed/Frightened) and the fresh per-condition save site (checks the condition name).
-- **Always-prepared spells** via `main.py _grant_class_features` + `_RANGER_SUBCLASS_SPELLS`: Charm Person
-  (L3), Misty Step (L5), Dimension Door (L13), Mislead (L17).
-
-**Deferred / simplifications:**
-- **L9 Summon Fey** is NOT granted — the spell isn't in `spells.json` (`_grant_class_features` skips missing
-  names gracefully). Add a Summon Fey entry (reusing the summon system) to enable it.
-- **L7 Beguiling Twist reaction** (when you succeed on the save, a Reaction can turn the charm/fear back on
-  another creature within 60 ft) is NOT implemented — only the defensive save-advantage half. Needs an
-  OnSaveSucceed-style window + a redirect cast; deferred.
-- **L3 Otherworldly Glamour** (+WIS to CHA checks, extra skill prof) — out-of-combat social, not modeled.
-- **L11 Fey Reinforcements** (free Summon Fey) / **L15 Misty Wanderer** (free Misty Step + co-teleport a
-  willing ally) — utility free-cast resources, deferred (gated on Summon Fey / movement-co-teleport infra).
+</details>
 
 ---
 
-## Ranger — Hunter & Gloom Stalker (Phase 3 leftovers) — IMPLEMENTED ✅ (2026-06-14, built + 71 suites green)
+<details>
+<summary><b>Ranger — Hunter & Gloom Stalker (Phase 3 leftovers) — IMPLEMENTED ✅ (2026-06-14, built + 71 suites green)</b></summary>
 
-**Implemented:**
-- **Hunter L11 Superior Hunter's Prey** — automatic engine rider extending the Hunter's Mark block in
-  `applyAttackResult` (`combat_attack.cpp`): once/turn (`superior_prey_used`), after the mark takes its HM
-  damage, splash a fresh roll of the same HM dice to the **nearest** eligible enemy within 30 ft of the
-  mark (`footprintDistance` + `areAllies`). Applied directly to the splash victim's Stats with its own
-  `processDamageTaken`/`checkConcentrationOnDamage`/`applyUnconscious`.
-- **Hunter L15 Superior Hunter's Defense** — OnHit DEFENDER reaction (`canSuperiorHunterDefense`/
-  `applySuperiorHunterDefense`), modeled like Uncanny Dodge and wired into the same `defenderOnHitOptions`/
-  `maybeDefenderOnHitInline`/`applyAttackReaction` window. GUI surfaces it free via the generic OnHit menu.
-- **Gloom Stalker L11 Sudden Strike** (one of the two Stalker's Flurry effects) — `sudden_strike_available`
-  Conditions flag set when the Dreadful Strike rider consumes at L≥11; GUI `_offer_sudden_strike` grants one
-  FREE extra attack (`_start_extra_attack(slot="action")`, no bonus cost).
-- **Hunter's Prey / Defensive Tactics in-dialog picker** — StatsDialog cycle pickers (mirror Cleric
-  blessed_strike); round-trip through `_on_stats_ok`'s new `hunter_prey_name`/`defensive_tactics_name` kwargs.
+Hunter L11 Superior Hunter's Prey (after the mark takes HM damage, splash a fresh roll of the same dice to the nearest enemy ≤30 ft of the mark, once/turn). Hunter L15 Superior Hunter's Defense (OnHit defender reaction, like Uncanny Dodge — v1 resists only the triggering hit). Gloom L11 Sudden Strike (one free extra attack). In-dialog Hunter's Prey / Defensive Tactics pickers. Deferred: Gloom L11 Mass Fear, L15 Shadowy Dodge (needs a pre-roll defender-disadvantage window + teleport), L3 Umbral Sight (lighting model), Phase-2 follow-ups (favored-enemy free-cast accounting, re-mark-on-kill, spell-attack marks, Roving armor gate). See [[ranger_progress]].
 
-**Deferred / simplifications:**
-- **Superior Hunter's Defense is v1-simplified to the triggering hit.** RAW grants Resistance to *that
-  damage type until the end of the current turn*; we resist only the one triggering instance (halve it,
-  like Uncanny Dodge). For a single-type hit this is equivalent; a later same-turn hit of the same type is
-  NOT auto-resisted. Lifting this needs a turn-scoped per-type resistance buff.
-- **Gloom Stalker L11 Mass Fear** (the OTHER Stalker's Flurry option — each creature within 10 ft of the
-  Dreadful Strike target makes a WIS save vs Frightened) is NOT implemented; only **Sudden Strike** is
-  offered. Mass Fear needs an AoE-save GUI flow keyed off the Dreadful Strike hit (reuse the AoE-save +
-  Frightened path). Sudden Strike covers the L11 extra for now.
-- **Gloom Stalker L15 Shadowy Dodge** (reaction: impose **Disadvantage** on an incoming attack roll, then
-  teleport up to 30 ft) is NOT implemented. It needs a **pre-roll, defender-side impose-Disadvantage
-  window** — a window shape the engine doesn't have (the OnD20Seen window is post-roll/lowering-only and
-  third-party; the OnHit window is post-roll). Deferred with the general "post-hoc reaction interrupts"
-  work (see the Architecture section) plus a teleport primitive.
-- **Gloom Stalker L3 Umbral Sight** (Darkvision +60; Invisible to creatures relying on Darkvision while in
-  Darkness) — needs a lighting/darkvision visibility model; deferred.
-- **Phase-2 follow-ups still open:** Favored Enemy free-cast GUI accounting (spend the resource instead of
-  a slot), re-mark-on-kill Bonus Action, spell-attack-roll marks (the HM rider is weapon-attack-only),
-  Roving's "not in Heavy armor" gate (currently unconditional).
+</details>
 
-## Vampires / monster bite drain (2026-06-16, built + 73 suites green, confirmed in live play)
+<details>
+<summary><b>Vampires / monster bite drain (2026-06-16, built + 73 suites green, confirmed in live play)</b></summary>
 
-DONE: `available_hit_points` (Stats) — a non-negative HP-maximum reduction mirroring `temp_hp`;
-`effectiveMaxHp()` = `max(0, hp_max - available_hit_points)`; healing caps to it; cleared on long
-rest; bound (`available_hit_points` + ro `effective_max_hp`); saved/loaded; GUI shows it on the HP
-bar + panel. `VisibilityLevel::Sunlight` — a bright-light category (vision == Clear) for vampire
-detection; `brighter()` combine; lighting save/load/overlay. `reduceHPMax` on-hit weapon rider —
-drains the target's HP max by the Necrotic damage dealt and heals the attacker (reads
-`AttackResult::magic_damage_dealt[Necrotic]`); Vampire Spawn bite wired in its `off_hand` slot
-(1d4+STR Piercing + 3d6 Necrotic + `reduceHPMax`). See memory `vampire-support`.
+`available_hit_points` (HP-max reduction mirroring `temp_hp`; `effectiveMaxHp()`; healing caps to it; cleared on long rest; saved + GUI bar). `VisibilityLevel::Sunlight` bright-light category. `reduceHPMax` on-hit rider (drains the Necrotic damage dealt off the target's HP max + heals the attacker); Vampire Spawn bite in its `off_hand` slot. See [[vampire_support]].
+- **Auto-hit-if-grappled (2026-06-17):** `Weapon::auto_hit_if_grappled` promotes a missed roll to a hit vs a target THIS attacker has grappled (roll still made — nat 20 still crits; fires after `resolveAttack`, before defender windows, so Shield can still negate). Set on the 5 vampire drain Bites. Not *gated* on Grappled — any target can be bitten.
+- **Sunlight Vulnerability (2026-06-18):** `is_vampire` flag on 6 true vampire types; `beginTurn` deals 20 radiant if the vampire stands in a Sunlight light effect. See [[vampire_sunlight_vulnerability]].
+- **On Deck reinforcements (2026-06-19):** `PlacedAgent.on_deck` reserves are out of initiative until the DM deploys them; they take NO reactions / legendary actions / OAs until deployed (gated in `d20ReactorBase`/`saveReactorBase` + per-predicate `can*` + `detectProvokes`). Round-trips in save/load. See [[on_deck_reinforcements]]. Limitations: reserves are still on the map (targetable before deploy); deploy is one-way during combat.
+- Tests `test_vampire.py`. Deferred: Sunlight Sensitivity reactions, no lighting-editor to paint Sunlight, bite not gated on Grappled, no per-weapon attack cap.
 
-**Vampire Bite auto-hits a Grappled target — DONE ✅ (2026-06-17)**
-New data-driven weapon flag `Weapon::auto_hit_if_grappled` (bound, serialized in `helpers._weapon_to_dict`/
-`_dict_to_weapon`): when an attack with this flag targets a creature **this attacker has Grappled**
-(`tgt_cond.grappled && grappler_idx == attacker`), a missed roll is promoted to a hit. The roll is still
-made (a nat 20 still crits; the OnD20Seen / Shield / Uncanny-Dodge defender windows still open — the auto-hit
-fires *after* `resolveAttack`, *before* those windows, so a Shield can still negate it). Implemented as
-`CombatEngine::forceAutoHit(bm, s)` called at BOTH `resolveAttack` call sites (`executeAction` auto/RL path +
-`beginAttack` GUI path); `InFlightAttack::auto_hit` carries the decision computed in `determineAdvantage`.
-The Barbarian Reckless-reroll `resolveAttack` (3rd call site) is gated on `!r.hit` + Barbarian, so a forced
-bite hit never reaches it. Set `"auto_hit_if_grappled": true` on the 5 vampire drain Bites in
-`DND2024_MonsterStats.json` (Vampire, Familiar, Spawn, Umbral Lord, Warden — the off_hand Bites with the
-`reduceHPMax` rider; Infernalist/Nightbringer have no Bite). Combo: the vampire's Claw grapples (escape DC 14)
-→ the Bite then auto-hits + drains. Tests: `test_vampire.py::test_bite_auto_hits_grappled_target` +
-`test_bite_no_auto_hit_when_grappled_by_other`. **Awaiting build.** Still NOT *gated* on Grappled (any
-target can be bitten; the auto-hit is just a bonus when the target IS grappled) — per the on-hit-rider direction.
+</details>
 
-**Deferred / simplifications:**
-- **Sunlight Sensitivity / Hypersensitivity NOT modeled** — the Sunlight *category* exists but no
-  creature reacts to it yet (no Disadvantage on attacks/ability checks in sunlight, no radiant
-  weakness / "destroyed in sunlight"). Needs an in-sunlight check at the attack-advantage and
-  per-turn-damage sites. Foundation only, per the prep decision.
-- **No lighting-editor UI to paint Sunlight** — set it via the encounter's `_lighting.json`
-  `default_light: "Sunlight"` (round-trips); the LightingEditorDialog can't pick a default category.
-- **Bite is an attack + on-hit rider, NOT a CON save**, and is **not gated** on the target being
-  Grappled/Incapacitated/Restrained (DM discretion). Per user's "on-hit rider" direction. (It does
-  now AUTO-HIT a Grappled target via `auto_hit_if_grappled` — see the DONE entry above — but is not
-  *restricted* to one.)
-- **No per-weapon attack cap** — `num_attacks` is global, so choosing the bite under the Attack
-  action offers num_attacks bites; the DM makes one. A per-weapon attack-count system would fix it.
-- **reduceHPMax keys on Necrotic only** (the vampiric case). A different drain type would need the
-  rider parameterized by damage type.
 
-**Vampire Sunlight Vulnerability — DONE ✅ (2026-06-18, all tests green)**
-Vampires take 20 radiant damage at the start of their turn if standing in a Sunlight light effect
-(VisibilityLevel::Sunlight). Implementation: Agent::Stats `bool is_vampire{false}` field; DND2024_MonsterStats.json
-adds `"is_vampire": true` to all 6 true vampire types (Vampire, Spawn, Infernalist, Nightbringer, Umbral Lord, Warden;
-NOT Vampire Familiar); agent_loader.py `dict_to_stats()` reads it; rpg_bindings.cpp binds it; combat_turn.cpp `beginTurn()`
-checks `stats.is_vampire` after exhaustion death but before turn-start effects, loops `bm.activeLightEffects()` for
-Sunlight level, checks if agent's origin cell (flat index = row * gridCols() + col) is in the effect's cell_indices, deals
-20 damage, logs & sets death conditions if HP ≤ 0. Reuses light-effect framework (Daylight spell, manual editor placement).
-Tests: `test_vampire_sunlight_damage()` (in Sunlight → 100→80 HP) + `test_vampire_outside_sunlight_no_damage()` (outside
-Sunlight → no change). See memory `vampire-sunlight-vulnerability`.
-
-**On Deck / phased-battle reinforcements — DONE ✅ (2026-06-19, built + 74 suites green, confirmed in live play)**
-Reserve combatants that the DM deploys mid-battle. C++: `PlacedAgent.on_deck` bool +
-`BattleMap::isAgentOnDeck/setAgentOnDeck` (bound `is_agent_on_deck`/`set_agent_on_deck`);
-`CombatEngine::rollInitiative` skips on-deck agents; new `rollInitiativeFor(bm, idx)`
-(bound `roll_initiative_for`) rolls ONE entry so a whole spawn shares an Initiative
-(Feral-Instinct/Diviner-aware). GUI (main.py): right-click a placed agent (pre-combat) →
-"Send to On Deck" / "Recall from On Deck"; on-deck agents render dimmed (alpha 110) with an
-"ON DECK" badge but are out of initiative; combat panel shows "🎴 On Deck — click to deploy"
-grouped by name with ×count (`_on_deck_groups`, `_draw_on_deck_section`,
-`on_deck_item_rects`); clicking deploys (`_deploy_on_deck_group`): clears the flag, rolls one
-shared Initiative, partial-sorted-inserts all members into `initiative_order` (after
-equal-or-higher entries, preserving summon-after-summoner adjacency) and re-points turn_idx at
-the same actor. `on_deck` round-trips in save/load (`_save_agents`/`_load_agents`, defaults
-False for old saves).
-**On-deck reserves take NO reactions or legendary actions until deployed** (added 2026-06-19,
-confirmed in live play): every reaction `can*` predicate early-returns false when
-`bm.isAgentOnDeck(reactor)`, consolidated through the two shared bases `d20ReactorBase` (Bend
-Luck / Cutting Words / Silvery Barbs / Warding Flare) and `saveReactorBase` (Countercharm /
-Indomitable / Legendary Resistance), plus per-predicate gates in canUncannyDodge /
-canSuperiorHunterDefense / canParry / canRiposte / canDefensiveDuelist / canCombatInspirationAC /
-canSentinelGuard / canIntercept / canGuidedStrike / canCastShield / canCastCounterspell /
-canBranchesOfTree / canVitalityOfTheTree, and `detectProvokes` (reserves make no opportunity
-attacks). The deferred-flag reactions (riposte_available / guided_strike_available /
-sentinel_guard_available) are set behind those gated can* so a reserve never receives the flag.
-Python: `_legendary_eligible` and `_can_protective_field` both reject `is_agent_on_deck`. The
-gates are purely additive early-returns — default `on_deck=false` agents are unaffected, so the
-existing suites stand unchanged.
-**Limitations:** on-deck agents are still on the map, so they CAN be
-targeted by attacks/AoEs/seen before deployment (DM stages them out of range — excluding
-reserves from all targeting would be a large multi-site change); deploy is one-way during
-combat (no recall mid-combat — recall is pre-combat only via the context menu). **GUI-only
-paths are NOT covered by run_all_tests.py — needs manual in-app verification.**

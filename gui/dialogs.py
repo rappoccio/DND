@@ -430,8 +430,8 @@ INVOCATIONS = [
     (15, "Eldritch Smite",                  5, True,  "Slot: +force/prone — needs Pact of the Blade"),
     (16, "Lifedrinker",                     9, True,  "+necrotic & temp HP — needs Pact of the Blade"),
     (17, "Devouring Blade",                12, True,  "2 extra attacks — needs Thirsting Blade"),
-    (18, "Pact of the Chain",               1, False, "Attacking familiar"),
-    (19, "Investment of the Chain Master",  5, False, "Familiar buffs — needs Pact of the Chain"),
+    (18, "Pact of the Chain",               1, True,  "Attacking familiar (6 forms)"),
+    (19, "Investment of the Chain Master",  5, True,  "Familiar buffs — needs Pact of the Chain"),
     (20, "Pact of the Tome",                1, False, "Bonus cantrips/rituals"),
     (21, "Lessons of the First Ones",       2, False, "Origin feat — needs feats system"),
 ]

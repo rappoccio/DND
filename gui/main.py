@@ -49,6 +49,7 @@ from helpers import (
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
+    compute_summon_loadout,
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
@@ -59,17 +60,46 @@ from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 
 # ── Summoning registry ─────────────────────────────────────────────────────
-# Maps a summon spell's name to the DND2024_MonsterStats.json key it conjures.
-# The RAW 2024 summon "spirit" stat blocks (Draconic/Bestial/Fey/Undead Spirit) are not in the
-# monster file, so Summon Dragon currently uses the closest existing entry as a stand-in.
-# Extend this dict as more summon spells/stat blocks are added.
+# Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
+# The 2024 "Summon X" line now uses the scaling SUMMON_SPELL_TO_SPIRIT path instead (which takes
+# precedence); this dict is for fixed-statblock summons that don't scale with the slot level.
 SUMMON_SPELL_TO_MONSTER = {
-    "Summon Dragon": "Spirit Dragon Wyrmling",
     # Arcane Trickster's Mage Hand Legerdemain is modeled as a tiny, controllable summon so it has a
     # real grid position — that anchors Versatile Trickster (L13: Advantage vs creatures next to it).
     # Not in the bestiary, so it uses the synthetic MAGE_HAND_STATBLOCK below (see _resolve_summon).
     "Mage Hand": "Mage Hand",
 }
+
+# Pact of the Chain (Warlock invocation 18) familiar forms → DND2024_MonsterStats.json keys.
+# The 2024 PHB list; all six are already in the bestiary. Unlike RAW Find Familiar, the chain
+# familiar can attack, so it spawns with its real statblock weapons (same path as _resolve_summon).
+PACT_CHAIN_FAMILIARS = ["Imp", "Pseudodragon", "Quasit", "Sprite", "Skeleton", "Venomous Snake"]
+
+
+def _load_summon_spirits():
+    """Load summon_spirits.json → {spell_name: {form_name: block}}. Each 2024 'Summon X' spell
+    maps to its forms; the chosen form's block is scaled at cast time by compute_summon_loadout.
+    README/comment records (spell starting with '_') are skipped."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "summon_spirits.json")
+    try:
+        with open(path) as f:
+            records = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    out = {}
+    for rec in records:
+        spell = rec.get("spell", "")
+        form  = rec.get("form", "")
+        if not spell or spell.startswith("_") or not form:
+            continue
+        out.setdefault(spell, {})[form] = rec
+    return out
+
+
+# 2024 "Summon X" spells whose conjured spirit scales with the slot level used. spell → {form: block}.
+# The form picker reuses the Primal-Companion context menu; the chosen block is scaled at cast time
+# (compute_summon_loadout). Takes precedence over SUMMON_SPELL_TO_MONSTER when both match.
+SUMMON_SPELL_TO_SPIRIT = _load_summon_spirits()
 
 # Synthetic stat block for the Mage Hand summon (it isn't in DND2024_MonsterStats.json). Tiny, ~1 HP,
 # no attacks; exists only to occupy a cell the player drags around. Shape matches the engine-ready
@@ -82,6 +112,24 @@ MAGE_HAND_STATBLOCK = {
         "str": 1, "dex": 10, "con": 10, "intel": 10, "wis": 10, "cha": 10,
         "prof_bonus": 2, "num_attacks": 0, "is_npc": True,
         "speed_walk": 30, "speed_fly": 30,
+    },
+    "weapons": [],
+    "meta": {},
+}
+
+# Synthetic stat block for the Trickery Cleric's Invoke Duplicity illusion. Like Mage Hand it's a
+# tiny-footprint, ~1 HP, attackless summon that exists only to hold a position the engine measures
+# the "both you AND the duplicate within 5 ft of the target → Advantage" rule from. It is NOT a
+# concentration effect (Channel Divinity, fixed 1-minute duration), so dropConcentration leaves it
+# alone. Medium size + the cleric's own sprite (set at spawn) so it reads as a copy of the caster.
+DUPLICATE_STATBLOCK = {
+    "name": "Duplicate",
+    "size": "Medium",
+    "stats": {
+        "ac": 10, "hp_cur": 1, "hp_max": 1,
+        "str": 10, "dex": 10, "con": 10, "intel": 10, "wis": 10, "cha": 10,
+        "prof_bonus": 2, "num_attacks": 0, "is_npc": True,
+        "speed_walk": 0, "speed_fly": 0,
     },
     "weapons": [],
     "meta": {},
@@ -482,12 +530,20 @@ class App:
         self.pending_summon_idx        = 0     # spell index of the summon spell being cast
         self.pending_summon_slot_level = 0     # chosen slot level
         self.pending_summon_monster    = ""    # monster-JSON key to spawn
+        self.pending_summon_spirit     = None  # scaling spirit block (summon_spirits.json) or None
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
         self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
         self.pending_elemental_burst   = -1    # Warrior of the Elements L6: chosen element (MagicDamage_t) awaiting an Elemental Burst center cell; -1 = inactive
+        # Trickery Cleric — Invoke Duplicity (Channel Divinity illusion).
+        self.pending_invoke_duplicity  = False # awaiting a cell to place an illusory duplicate
+        self.pending_duplicity_remaining = 0   # duplicates still to place this activation (L17 → up to 4)
+        self._duplicity_cd_pending     = False # spend Channel Divinity on the FIRST placement of an activation
+        self.pending_move_duplicity    = False # awaiting a destination to move a duplicate
+        self.move_duplicity_idx        = -1    # selected duplicate to move/swap (-1 = pick one first)
+        self.pending_swap_duplicity    = False # awaiting which duplicate to swap with (multi-duplicate case)
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
@@ -936,6 +992,18 @@ class App:
         self.btn_cbt_radiance = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Radiance of the Dawn",
                                           (230, 200, 90), (255, 225, 120), self.font_md)
+        self.btn_cbt_preserve_life = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Preserve Life",
+                                          (120, 200, 130), (150, 230, 160), self.font_md)
+        self.btn_cbt_invoke_duplicity = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Invoke Duplicity",
+                                          (170, 130, 200), (200, 160, 230), self.font_md)
+        self.btn_cbt_move_duplicity = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Move Duplicate",
+                                          (170, 130, 200), (200, 160, 230), self.font_md)
+        self.btn_cbt_swap_duplicity = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Swap w/ Duplicate",
+                                          (150, 110, 185), (185, 145, 215), self.font_md)
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
@@ -1026,6 +1094,9 @@ class App:
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
+        self.btn_cbt_familiar = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "😈 Pact Familiar",
+                                          (110, 80, 140), (145, 110, 175), self.font_md)
         self.btn_show_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Show Terrain",
                                           (100, 150, 150), (130, 180, 200), self.font_md)
@@ -2314,7 +2385,22 @@ class App:
         self.pending_unarmed_type      = ""
         self.arcane_charge_pending     = False
         self.pending_psychic_teleport  = False
+        self.pending_invoke_duplicity  = False
+        self.pending_duplicity_remaining = 0
+        self._duplicity_cd_pending     = False
+        self.pending_move_duplicity    = False
+        self.move_duplicity_idx        = -1
+        self.pending_swap_duplicity    = False
         self._reaction_mover_idx       = -1
+        # World Tree Vitality of the Tree: this turn-start target-pick must not leak across turns.
+        # If the player picked the option last turn but never clicked a valid target, the flag would
+        # otherwise stay armed and swallow every later agent click into _resolve_vitality_target
+        # (re-printing "Pick a living creature within 10 ft" forever). Clear it defensively here.
+        if self.pending_vitality_target or self._vitality_option_index != -1:
+            print(f"[VITALITY] turn-start clearing stale state "
+                  f"(pending={self.pending_vitality_target}, opt={self._vitality_option_index})")
+        self.pending_vitality_target   = False
+        self._vitality_option_index    = -1
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++). The turn start
         # opens the OnTurnStartNearby reaction window (Branches of the Tree) via the
@@ -3839,7 +3925,8 @@ class App:
             if self.combat.get_agent_conditions(self.bm, ci).reaction_used:
                 continue
             co = agents[ci].origin
-            if ((co.col - ao.col) ** 2 + (co.row - ao.row) ** 2) ** 0.5 * 5 <= 30:
+            reach = 60 if s.char_level >= 6 else 30  # War God's Blessing extends Guided Strike's reach at L6
+            if ((co.col - ao.col) ** 2 + (co.row - ao.row) ** 2) ** 0.5 * 5 <= reach:
                 out.append(ci)
         return out
 
@@ -5865,6 +5952,12 @@ class App:
 
     # Always-prepared Cleric domain spells by domain and Cleric level (2024 PHB).
     _DOMAIN_SPELLS = {
+        "LifeDomain": {
+            3: ["Bless", "Cure Wounds", "Aid", "Lesser Restoration"],
+            5: ["Mass Healing Word", "Revivify"],
+            7: ["Aura of Life", "Death Ward"],
+            9: ["Greater Restoration", "Mass Cure Wounds"],
+        },
         "LightDomain": {
             3: ["Burning Hands", "Faerie Fire", "Scorching Ray", "See Invisibility"],
             5: ["Daylight", "Fireball"],
@@ -5876,6 +5969,13 @@ class App:
             5: ["Crusader's Mantle", "Spirit Guardians"],
             7: ["Fire Shield", "Freedom of Movement"],
             9: ["Hold Monster", "Steel Wind Strike"],
+        },
+        "TrickeryDomain": {
+            # Pass Without Trace (L3) isn't in spells.json yet — skipped gracefully.
+            3: ["Charm Person", "Disguise Self", "Invisibility", "Pass Without Trace"],
+            5: ["Hypnotic Pattern", "Nondetection"],
+            7: ["Confusion", "Dimension Door"],
+            9: ["Dominate Person", "Modify Memory"],
         },
     }
 
@@ -5974,12 +6074,27 @@ class App:
             # Summon spells: pick an empty cell within range to manifest the creature, rather than
             # targeting a creature or placing an AoE. Routed here BEFORE the
             # geometry branches because Summon Dragon is Single geometry ("click a target").
-            monster = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
+            # Scaling spirits (summon_spirits.json) take precedence and first prompt for a FORM.
+            spirit_forms = SUMMON_SPELL_TO_SPIRIT.get(sp_.name)
+            monster      = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
+            if spirit_forms:
+                self.pending_summon_slot       = s
+                self.pending_summon_idx        = si_
+                self.pending_summon_slot_level = slot_level_
+                self.pending_summon_monster    = ""
+                self.pending_summon_spirit     = None
+                items = [(f"✨ {form}",
+                          lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
+                         for form, block in spirit_forms.items()]
+                self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+                self._combat_log_add(f"Casting {sp_.name} — choose a form.")
+                return
             if monster:
                 self.pending_summon_slot       = s
                 self.pending_summon_idx        = si_
                 self.pending_summon_slot_level = slot_level_
                 self.pending_summon_monster    = monster
+                self.pending_summon_spirit     = None
                 self._combat_log_add(
                     f"Casting {sp_.name} — click an empty cell within range to place the {monster}.")
                 return
@@ -6431,9 +6546,15 @@ class App:
             elif ctx.window == rpg.ReactionWindow.OnSaveFail:
                 who = ("their own" if ctx.reactor_idx == ctx.source_idx
                        else f"{agents[ctx.source_idx].name}'s")
+                names = {"Countercharm": "Countercharm", "Indomitable": "Indomitable",
+                         "LegendaryResistance": "Legendary Resistance",
+                         "WarGodsBlessing": "War God's Blessing"}
+                feats = [o.feature for o in ctx.options
+                         if o.kind == rpg.ReactionOptionKind.Feature]
+                choices = " / ".join(names.get(f, f) for f in feats) or "react"
                 self._combat_log_add(
-                    f"{agents[ctx.reactor_idx].name} may reroll {who} failed save "
-                    f"({ctx.d20_value}) — Countercharm / Indomitable!")
+                    f"{agents[ctx.reactor_idx].name} may aid {who} failed save "
+                    f"({ctx.d20_value}) — {choices}!")
             elif ctx.window == rpg.ReactionWindow.OnTurnStartNearby:
                 if ctx.reactor_idx == ctx.source_idx:
                     # Self-option: the World Tree Barbarian may grant temp HP at its own turn start.
@@ -6491,6 +6612,8 @@ class App:
         src = pd.ctx.source_idx if pd.active else -1
         agents = self.bm.placed_agents
         name = agents[src].name if 0 <= src < len(agents) else "?"
+        print(f"[VITALITY] armed target-pick: opt={option_index}, pd.active={pd.active}, "
+              f"src={src} ({name}), window={pd.ctx.window if pd.active else 'n/a'}")
         self._combat_log_add(f"{name}: click a creature within 10 ft to grant temporary HP (Vitality of the Tree).")
         self._flush_combat_log()
 
@@ -6511,6 +6634,17 @@ class App:
         pd = self.combat.pending_decision()
         src = pd.ctx.source_idx if pd.active else -1
         agents = self.bm.placed_agents
+        print(f"[VITALITY] resolve target={target_idx}, pd.active={pd.active}, src={src}, "
+              f"window={pd.ctx.window if pd.active else 'n/a'}, "
+              f"in_range={self._vitality_in_range(src, target_idx)}")
+        # If the parked window is gone (turn moved on / resolved elsewhere), this flag is stale —
+        # disarm instead of re-prompting forever. The turn-start reset is the primary guard; this
+        # catches a stale click mid-turn before the next turn starts.
+        if not pd.active or pd.ctx.window != rpg.ReactionWindow.OnTurnStartNearby or src < 0:
+            print("[VITALITY] no live OnTurnStartNearby window — disarming stale target-pick")
+            self.pending_vitality_target = False
+            self._vitality_option_index  = -1
+            return
         if (target_idx == src or not self._vitality_in_range(src, target_idx)
                 or not (0 <= target_idx < len(agents))
                 or self.combat.get_agent_stats(self.bm, target_idx).hp_cur <= 0):
@@ -6629,6 +6763,16 @@ class App:
         else:
             self.bonus_used = True
 
+    def _choose_summon_form(self, spell_name: str, block: dict):
+        """A scaling-summon FORM was picked from the context menu — stash the spirit `block`
+        and prompt for the placement cell. The spawn happens in _resolve_summon on click; the
+        block is scaled to the slot level there (compute_summon_loadout)."""
+        self.pending_summon_spirit  = block
+        self.pending_summon_monster = block.get("name", spell_name)
+        self._combat_log_add(
+            f"{spell_name} — click an empty cell within range to place the "
+            f"{block.get('name', 'spirit')}.")
+
     def _resolve_summon(self, cell):
         """Place a summoned creature at `cell` (Phase 3).
 
@@ -6640,22 +6784,28 @@ class App:
         caster_idx = self._current_agent_idx()
         slot       = self.pending_summon_slot
         monster    = self.pending_summon_monster
+        spirit     = self.pending_summon_spirit
         spell_idx  = self.pending_summon_idx
         slot_level = self.pending_summon_slot_level
         if caster_idx < 0 or not slot or not monster:
             return
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells[spell_idx] if 0 <= spell_idx < len(spells) else None
-        # Mage Hand isn't in the bestiary — use its synthetic block (deep-copied so dict_to_stats'
-        # in-place legendary tweak in _mob_stats_to_d_d_stats can't mutate the shared constant).
-        mob_stats = (copy.deepcopy(MAGE_HAND_STATBLOCK) if monster == "Mage Hand"
-                     else self.mob_stats_json.get(monster))
-        if sp is None or not mob_stats:
+        if spirit is not None:
+            # Scaling spirit (summon_spirits.json): no bestiary record; size comes from the block.
+            mob_stats = None
+            size = self._size_category_to_grid_size(spirit.get("size", "Medium"))
+        else:
+            # Mage Hand isn't in the bestiary — use its synthetic block (deep-copied so dict_to_stats'
+            # in-place legendary tweak in _mob_stats_to_d_d_stats can't mutate the shared constant).
+            mob_stats = (copy.deepcopy(MAGE_HAND_STATBLOCK) if monster == "Mage Hand"
+                         else self.mob_stats_json.get(monster))
+            size = self._size_category_to_grid_size(mob_stats.get("size", "Medium")) if mob_stats else 1
+        if sp is None or (spirit is None and not mob_stats):
             self._combat_log_add(f"Summon failed: missing spell or '{monster}' stat block.")
             return
 
         # Validate placement: in range, line of sight, unoccupied.
-        size   = self._size_category_to_grid_size(mob_stats.get("size", "Medium"))
         caster = self.bm.placed_agents[caster_idx]
         dist_cells = math.hypot(cell.col - caster.origin.col, cell.row - caster.origin.row)
         if dist_cells * 5.0 > sp.range + 1e-6:
@@ -6680,15 +6830,31 @@ class App:
             self._combat_log_add("Summon failed: could not place the creature.")
             return
 
-        # Stats + auto-weapons from the monster JSON (same path as bestiary placement).
-        self.combat.set_agent_stats(self.bm, new_idx, self._mob_stats_to_d_d_stats(mob_stats))
-        weapons = list(self.combat.get_agent_weapons(self.bm, new_idx))
-        if not self._has_real_weapons(weapons):
-            for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
-                weapons[i] = w
-            self.combat.set_agent_weapons(self.bm, new_idx, weapons)
-        # Innate spells from the conjured creature's stat block (no-op for non-casters).
-        self._load_npc_spells_from_record(new_idx, mob_stats)
+        if spirit is not None:
+            # Scaling spirit: stats + the single natural attack scale off the slot level and the
+            # caster's spell-attack modifier (PB + spellcasting-ability mod) — compute_summon_loadout.
+            cstats   = self.combat.get_agent_stats(self.bm, caster_idx)
+            ab_name  = _INT_TO_ABILITY.get(cstats.spellcasting_ability, "cha")
+            ab_score = getattr(cstats, ab_name, cstats.cha)
+            spell_ability_mod = (ab_score - 10) // 2
+            stats_d, weapon_d = compute_summon_loadout(
+                spirit, slot_level, cstats.prof_bonus, spell_ability_mod)
+            cs = rpg.Stats()
+            for field, val in stats_d.items():
+                setattr(cs, field, val)
+            self.combat.set_agent_stats(self.bm, new_idx, cs)
+            self.combat.set_agent_weapons(
+                self.bm, new_idx, [_dict_to_weapon(weapon_d), rpg.Weapon(), rpg.Weapon()])
+        else:
+            # Stats + auto-weapons from the monster JSON (same path as bestiary placement).
+            self.combat.set_agent_stats(self.bm, new_idx, self._mob_stats_to_d_d_stats(mob_stats))
+            weapons = list(self.combat.get_agent_weapons(self.bm, new_idx))
+            if not self._has_real_weapons(weapons):
+                for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
+                    weapons[i] = w
+                self.combat.set_agent_weapons(self.bm, new_idx, weapons)
+            # Innate spells from the conjured creature's stat block (no-op for non-casters).
+            self._load_npc_spells_from_record(new_idx, mob_stats)
 
         # Link summon → summoner + spell (drives dismiss-on-concentration-loss in C++).
         self.bm.set_agent_summoner_idx(new_idx, caster_idx)
@@ -6737,9 +6903,142 @@ class App:
         self.pending_summon_idx        = 0
         self.pending_summon_slot_level = 0
         self.pending_summon_monster    = ""
+        self.pending_summon_spirit     = None
         self.summon_hover_cell         = None
         self.sprites.clear()
         self._consume_cast_slot(slot, caster_idx)
+
+    # ── Trickery Domain: Invoke Duplicity ───────────────────────────────────
+    def _my_duplicates(self, idx: int) -> list:
+        """Indices of `idx`'s live Invoke Duplicity illusions (tombstoned ones skipped)."""
+        return [i for i, pt in enumerate(self.bm.placed_agents)
+                if (pt.summoner_idx == idx and not pt.removed_from_play
+                    and pt.summon_spell == "Invoke Duplicity")]
+
+    def _resolve_invoke_duplicity(self, cell):
+        """Place one Invoke Duplicity illusion at `cell` (Trickery Cleric, Channel Divinity).
+
+        The illusion is an intangible 1-HP summon (summon_spell == "Invoke Duplicity") used only as a
+        position for the 'both you AND the duplicate within 5 ft of a target → Advantage' rule (the C++
+        advantage hook). It is NOT a concentration effect, so dropConcentration spares it. Channel
+        Divinity + the Bonus Action are spent on the FIRST placement of an activation; at L17 (Improved
+        Duplicity) up to four duplicates are placed across successive clicks."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_invoke_duplicity:
+            return
+        cstats = self.combat.get_agent_stats(self.bm, caster_idx)
+        caster = self.bm.placed_agents[caster_idx]
+
+        # Validate placement: within 30 ft, line of sight, unoccupied (RAW range for Invoke Duplicity).
+        size = self._size_category_to_grid_size(DUPLICATE_STATBLOCK.get("size", "Medium"))
+        dist_cells = math.hypot(cell.col - caster.origin.col, cell.row - caster.origin.row)
+        if dist_cells * 5.0 > 30.0 + 1e-6:
+            self._combat_log_add("Out of range — place the duplicate within 30 ft.")
+            return
+        if not self.bm.has_line_of_sight(caster.origin, caster.size, cell, size):
+            self._combat_log_add("No line of sight to that cell.")
+            return
+        if not self._can_place(cell, size):
+            self._combat_log_add("That cell is blocked or occupied.")
+            return
+
+        # First placement of this activation: spend Channel Divinity + the Bonus Action and clear any
+        # already-active illusions (you may only have one set at a time). Doing this on the first
+        # successful placement (not on the button click) means a cancelled placement wastes nothing.
+        if self._duplicity_cd_pending:
+            cd = cstats.get_resource("Channel Divinity")
+            if not cd or cd.current <= 0:
+                self._combat_log_add("No Channel Divinity uses remaining.")
+                self.pending_invoke_duplicity = False
+                self.pending_duplicity_remaining = 0
+                return
+            for di in self._my_duplicates(caster_idx):
+                self.bm.set_agent_removed_from_play(di, True)
+            cd.spend(1)
+            cstats.resources["Channel Divinity"] = cd
+            self.combat.set_agent_stats(self.bm, caster_idx, cstats)
+            self.bonus_used = True
+            self._duplicity_cd_pending = False
+
+        # Spawn the illusion non-destructively, wearing the cleric's own sprite so it reads as a copy.
+        cfg = rpg.AgentConfig()
+        cfg.name        = f"{caster.name} (Duplicate)"
+        cfg.sprite_path = caster.sprite_path
+        cfg.size        = size
+        cfg.start_col   = cell.col
+        cfg.start_row   = cell.row
+        new_idx = self.bm.spawn_agent(cfg)
+        if new_idx < 0:
+            self._combat_log_add("Could not place the duplicate there.")
+            return
+        self.combat.set_agent_stats(
+            self.bm, new_idx, self._mob_stats_to_d_d_stats(copy.deepcopy(DUPLICATE_STATBLOCK)))
+        self.bm.set_agent_summoner_idx(new_idx, caster_idx)
+        self.bm.set_agent_summon_spell(new_idx, "Invoke Duplicity")
+        self.bm.set_agent_faction(new_idx, self.bm.get_agent_faction(caster_idx))
+        self._combat_log_add(f"{caster.name}: Invoke Duplicity — an illusory duplicate appears.")
+
+        # Improved Duplicity (L17) places up to four across successive clicks; otherwise we're done.
+        self.pending_duplicity_remaining -= 1
+        if self.pending_duplicity_remaining > 0:
+            self._combat_log_add(
+                f"Improved Duplicity — click to place {self.pending_duplicity_remaining} more duplicate(s).")
+        else:
+            self.pending_invoke_duplicity = False
+            if cstats.char_level >= 6:
+                self._combat_log_add("Trickster's Transposition available — 'Swap w/ Duplicate' to teleport.")
+
+    def _resolve_move_duplicity(self, cell):
+        """Move a duplicate up to 30 ft (Bonus Action). With multiple duplicates the first click selects
+        one; the lone-duplicate case pre-selects it so the click is its destination."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_move_duplicity:
+            return
+        dups = self._my_duplicates(caster_idx)
+        if not dups:
+            self.pending_move_duplicity = False
+            self.move_duplicity_idx = -1
+            return
+        if self.move_duplicity_idx < 0:
+            hit = self._agent_at(cell)
+            if hit in dups:
+                self.move_duplicity_idx = hit
+                self._combat_log_add("Duplicate selected — click its destination (within 30 ft).")
+            else:
+                self._combat_log_add("Click one of your duplicates first.")
+            return
+        if self.combat.move_duplicate(self.bm, caster_idx, self.move_duplicity_idx, cell.col, cell.row):
+            self.bonus_used = True
+            self._flush_combat_log()
+            cstats = self.combat.get_agent_stats(self.bm, caster_idx)
+            if cstats.char_level >= 6:
+                self._combat_log_add("Trickster's Transposition available — 'Swap w/ Duplicate' to teleport.")
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Cannot move the duplicate there (out of range or blocked).")
+        self.pending_move_duplicity = False
+        self.move_duplicity_idx = -1
+
+    def _resolve_swap_duplicity(self, cell):
+        """Multi-duplicate Trickster's Transposition: the click picks which duplicate to swap with."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_swap_duplicity:
+            return
+        hit = self._agent_at(cell)
+        if hit in self._my_duplicates(caster_idx):
+            self._do_swap_duplicity(caster_idx, hit)
+            self.pending_swap_duplicity = False
+        else:
+            self._combat_log_add("Click one of your duplicates to swap with it.")
+
+    def _do_swap_duplicity(self, caster_idx, dup_idx):
+        """Run the Trickster's Transposition swap (engine validates L6+ + ownership)."""
+        if self.combat.swap_with_duplicate(self.bm, caster_idx, dup_idx):
+            self._flush_combat_log()
+            self._combat_log_add("Trickster's Transposition — swapped places with the duplicate.")
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Cannot swap with the duplicate.")
 
     # ── Beast Master: Primal Companion (L3) ─────────────────────────────────
     def _find_companion_idx(self, ranger_idx: int) -> int:
@@ -6868,6 +7167,129 @@ class App:
             f"{ranger.name} summons a {cfg.name} (HP {stats_d['hp_max']}, "
             f"AC {stats_d['base_ac']}"
             f"{', 2 attacks' if stats_d['num_attacks'] > 1 else ''}).")
+
+    # ── Pact of the Chain (Warlock invocation 18): attacking familiar ──────────
+    def _find_familiar_idx(self, warlock_idx: int) -> int:
+        """Index of the Warlock's live Pact familiar, or -1 if none is active.
+        Tombstoned (dismissed/dead) familiars are skipped — same convention as
+        summons/companions (memory `summoning_plan`)."""
+        for i, pt in enumerate(self.bm.placed_agents):
+            if (pt.summoner_idx == warlock_idx and not pt.removed_from_play
+                    and pt.summon_spell == "Pact Familiar"):
+                return i
+        return -1
+
+    def _show_familiar_menu(self):
+        """Pact of the Chain (L1+): summon one of the six familiar forms, or dismiss the
+        active familiar (the button label toggles). Mirrors the Primal Companion / Wild
+        Shape menus (context_menu)."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        if (stats.character_class != rpg.CharacterClass.Warlock or
+                not stats.has_invocation(18)):
+            self._combat_log_add("Only a Warlock with Pact of the Chain can summon a familiar.")
+            return
+        existing = self._find_familiar_idx(idx)
+        if existing >= 0:
+            self._dismiss_familiar(idx, existing)
+            return
+        items = [(f"😈 {form}", lambda f=form: self._summon_familiar(idx, f))
+                 for form in PACT_CHAIN_FAMILIARS]
+        self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+
+    def _dismiss_familiar(self, warlock_idx: int, familiar_idx: int):
+        """Tombstone the familiar (removed_from_play) like a dismissed summon: it stays in
+        placedAgents_/initiative so indices stay valid, but is skipped in turns and rendering."""
+        name = self.bm.placed_agents[familiar_idx].name
+        self.bm.set_agent_removed_from_play(familiar_idx, True)
+        self._combat_log_add(f"{self.bm.placed_agents[warlock_idx].name} dismisses {name}.")
+        self.sprites.clear()
+
+    def _summon_familiar(self, warlock_idx: int, form: str):
+        """Conjure the Pact of the Chain familiar (`form` = a bestiary key). The familiar is
+        summon-linked (faction/summoner/summon name) so it shares the Warlock's initiative and
+        tombstones on dismissal/death — same machinery as summon spells. Investment of the Chain
+        Master (invocation 19, L5+) buffs it on summon (see below)."""
+        if not (0 <= warlock_idx < len(self.bm.placed_agents)):
+            return
+        if self._find_familiar_idx(warlock_idx) >= 0:
+            self._combat_log_add("A familiar is already active — dismiss it first.")
+            return
+        mob_stats = self.mob_stats_json.get(form)
+        if not mob_stats:
+            self._combat_log_add(f"Summon failed: missing '{form}' stat block.")
+            return
+
+        wstats  = self.combat.get_agent_stats(self.bm, warlock_idx)
+        warlock = self.bm.placed_agents[warlock_idx]
+        size = self._size_category_to_grid_size(mob_stats.get("size", "Small"))
+        cell = self._find_free_cell_near(warlock.origin.col, warlock.origin.row, size)
+        if cell is None:
+            self._combat_log_add("No free space next to the Warlock to summon the familiar.")
+            return
+
+        cfg = rpg.AgentConfig()
+        cfg.name        = form
+        cfg.sprite_path = self._get_mob_sprite_path(form)
+        cfg.size        = size
+        cfg.start_col   = cell.col
+        cfg.start_row   = cell.row
+        new_idx = self.bm.spawn_agent(cfg)
+        if new_idx < 0:
+            self._combat_log_add("Could not place the familiar.")
+            return
+
+        # Stats + auto-weapons from the bestiary (same path as _resolve_summon).
+        self.combat.set_agent_stats(self.bm, new_idx, self._mob_stats_to_d_d_stats(mob_stats))
+        weapons = list(self.combat.get_agent_weapons(self.bm, new_idx))
+        if not self._has_real_weapons(weapons):
+            for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
+                weapons[i] = w
+            self.combat.set_agent_weapons(self.bm, new_idx, weapons)
+        # Innate spells from the familiar's stat block (no-op for non-casters).
+        self._load_npc_spells_from_record(new_idx, mob_stats)
+
+        # Investment of the Chain Master (invocation 19, L5+): buff the familiar on summon —
+        # grant a 40 ft fly speed and add the Warlock's CHA modifier to its attacks (a sim
+        # simplification of RAW "+CHA to one damage roll/turn" + "its attacks count as magical").
+        invested = wstats.has_invocation(19) and wstats.char_level >= 5
+        if invested:
+            fstats = self.combat.get_agent_stats(self.bm, new_idx)
+            fstats.speed_fly = max(fstats.speed_fly, 40)
+            self.combat.set_agent_stats(self.bm, new_idx, fstats)
+            cha_mod = (wstats.cha - 10) // 2
+            if cha_mod > 0:
+                fw = list(self.combat.get_agent_weapons(self.bm, new_idx))
+                for i, w in enumerate(fw):
+                    if w.name and w.name != "Unarmed":
+                        w.bonus_damage += cha_mod
+                        fw[i] = w
+                self.combat.set_agent_weapons(self.bm, new_idx, fw)
+
+        # Link familiar → Warlock (faction/summoner/summon name) so it fights alongside the
+        # Warlock and tombstones on dismissal — same path as summon spells.
+        self.bm.set_agent_summoner_idx(new_idx, warlock_idx)
+        self.bm.set_agent_summon_spell(new_idx, "Pact Familiar")
+        self.bm.set_agent_faction(new_idx, self.bm.get_agent_faction(warlock_idx))
+
+        # Share the Warlock's initiative count (acts right after them), like a summon.
+        if self.combat_active and self.initiative_order:
+            wpos = next((p for p, e in enumerate(self.initiative_order)
+                         if e.agent_idx == warlock_idx), -1)
+            if wpos >= 0:
+                base = self.initiative_order[wpos]
+                entry = rpg.InitiativeEntry()
+                entry.agent_idx = new_idx
+                entry.d20       = base.d20
+                entry.modifier  = base.modifier
+                entry.total     = base.total
+                self.initiative_order.insert(wpos + 1, entry)
+
+        self.sprites.clear()
+        buff = " (Chain Master: +fly, +CHA atk)" if invested else ""
+        self._combat_log_add(f"{warlock.name} summons {form} as a Pact familiar{buff}.")
 
     # ── Chromatic Orb leap chain (GUI picker) ──────────────────────────────────
     def _is_chromatic_pending(self) -> bool:
@@ -9547,7 +9969,9 @@ class App:
         # ── Summon placement preview ───────────────────────────────────────
         if self.pending_summon_slot and self.summon_hover_cell is not None:
             cell = self.summon_hover_cell
-            mob  = self.mob_stats_json.get(self.pending_summon_monster, {})
+            # Scaling spirits aren't in the bestiary — take the size from the chosen spirit block.
+            mob  = (self.pending_summon_spirit if self.pending_summon_spirit is not None
+                    else self.mob_stats_json.get(self.pending_summon_monster, {}))
             ssize = self._size_category_to_grid_size(mob.get("size", "Medium"))
             valid = self._summon_cell_valid(cell, ssize)
             sx, sy = self._cell_to_screen(cell.col, cell.row)
@@ -10283,6 +10707,42 @@ class App:
                             self.btn_cbt_radiance.rect.w = W
                             self.btn_cbt_radiance.draw(self.screen)
                             y += B + gap
+                        if (stats.cleric_subclass == rpg.ClericSubclass.LifeDomain and
+                                stats.char_level >= 3):
+                            self.btn_cbt_preserve_life.rect.x = lx
+                            self.btn_cbt_preserve_life.rect.y = y
+                            self.btn_cbt_preserve_life.rect.w = W
+                            self.btn_cbt_preserve_life.draw(self.screen)
+                            y += B + gap
+
+            # Trickery Cleric — Invoke Duplicity (Channel Divinity + Bonus Action), plus the bonus-action
+            # Move Duplicate and the free Trickster's Transposition (L6+) swap.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Cleric and
+                        stats.cleric_subclass == rpg.ClericSubclass.TrickeryDomain and
+                        stats.char_level >= 3):
+                    has_dup = len(self._my_duplicates(cur_idx)) > 0
+                    if not self.bonus_used:
+                        cd = stats.get_resource("Channel Divinity")
+                        if cd and cd.current > 0:
+                            self.btn_cbt_invoke_duplicity.rect.x = lx
+                            self.btn_cbt_invoke_duplicity.rect.y = y
+                            self.btn_cbt_invoke_duplicity.rect.w = W
+                            self.btn_cbt_invoke_duplicity.draw(self.screen)
+                            y += B + gap
+                        if has_dup:
+                            self.btn_cbt_move_duplicity.rect.x = lx
+                            self.btn_cbt_move_duplicity.rect.y = y
+                            self.btn_cbt_move_duplicity.rect.w = W
+                            self.btn_cbt_move_duplicity.draw(self.screen)
+                            y += B + gap
+                    if has_dup and stats.char_level >= 6:
+                        self.btn_cbt_swap_duplicity.rect.x = lx
+                        self.btn_cbt_swap_duplicity.rect.y = y
+                        self.btn_cbt_swap_duplicity.rect.w = W
+                        self.btn_cbt_swap_duplicity.draw(self.screen)
+                        y += B + gap
 
             # Steady Aim button - Rogue (L3+): advantage on next attack, but speed drops to 0
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
@@ -10645,6 +11105,21 @@ class App:
                     self.btn_cbt_companion.rect.y = y
                     self.btn_cbt_companion.rect.w = W
                     self.btn_cbt_companion.draw(self.screen)
+                    y += B + gap
+
+            # Pact Familiar button — Warlock with Pact of the Chain (inv 18): summon one of
+            # the six familiar forms, or dismiss the active one (label toggles).
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Warlock and
+                        stats.has_invocation(18)):
+                    active = self._find_familiar_idx(cur_idx) >= 0
+                    self.btn_cbt_familiar.text = ("😈 Dismiss Familiar" if active
+                                                  else "😈 Pact Familiar")
+                    self.btn_cbt_familiar.rect.x = lx
+                    self.btn_cbt_familiar.rect.y = y
+                    self.btn_cbt_familiar.rect.w = W
+                    self.btn_cbt_familiar.draw(self.screen)
                     y += B + gap
 
 
@@ -11254,8 +11729,21 @@ class App:
                     self.pending_summon_idx        = 0
                     self.pending_summon_slot_level = 0
                     self.pending_summon_monster    = ""
+                    self.pending_summon_spirit     = None
                     self.summon_hover_cell         = None
                     self._combat_log_add("Summon cancelled.")
+                    continue
+                # Esc cancels a pending Invoke Duplicity placement / move / swap (no Channel Divinity
+                # is spent until a duplicate is actually placed, so cancelling here costs nothing).
+                if event.key == pygame.K_ESCAPE and (self.pending_invoke_duplicity or
+                        self.pending_move_duplicity or self.pending_swap_duplicity):
+                    self.pending_invoke_duplicity    = False
+                    self.pending_duplicity_remaining = 0
+                    self._duplicity_cd_pending       = False
+                    self.pending_move_duplicity      = False
+                    self.move_duplicity_idx          = -1
+                    self.pending_swap_duplicity      = False
+                    self._combat_log_add("Invoke Duplicity cancelled.")
                     continue
                 # Enter casts Chromatic Orb with the leap chain collected so far (may be empty —
                 # the orb still leaps to the nearest foe on a match). Esc cancels the whole cast.
@@ -11492,6 +11980,13 @@ class App:
                             self._resolve_shadow_darkness(cell)
                         elif self.pending_elemental_burst >= 0:
                             self._resolve_elemental_burst(cell)
+                        # Trickery Cleric — Invoke Duplicity placement / movement / multi-dup swap.
+                        elif self.pending_invoke_duplicity:
+                            self._resolve_invoke_duplicity(cell)
+                        elif self.pending_move_duplicity:
+                            self._resolve_move_duplicity(cell)
+                        elif self.pending_swap_duplicity:
+                            self._resolve_swap_duplicity(cell)
                         # Pending attack: resolve against the clicked agent.
                         elif self.pending_cleave is not None and hit >= 0:
                             self._resolve_cleave(hit)
@@ -12146,6 +12641,71 @@ class App:
                                 self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
                             else:
                                 self._combat_log_add("Radiance of the Dawn is not prepared.")
+                    if self.btn_cbt_preserve_life.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            agents = self.bm.placed_agents
+                            origin = agents[idx].origin
+                            # Auto-distribute to the most-wounded allies (and self) within 30 ft that are
+                            # below half their HP max — most wounded first (matches Preserve Life's intent).
+                            cands = []
+                            for i in range(len(agents)):
+                                if i != idx and not self._are_allies(idx, i):
+                                    continue
+                                s = self.combat.get_agent_stats(self.bm, i)
+                                if s.is_undead or s.hp_max <= 0 or s.hp_cur >= s.hp_max // 2:
+                                    continue
+                                o = agents[i].origin
+                                if ((o.col - origin.col) ** 2 + (o.row - origin.row) ** 2) ** 0.5 * 5 > 30:
+                                    continue
+                                cands.append((s.hp_cur, i))
+                            targets = [i for _, i in sorted(cands)]
+                            res = self.combat.use_preserve_life(self.bm, idx, targets)
+                            self._flush_combat_log()
+                            if res.valid:
+                                self._combat_log_add(
+                                    f"Preserve Life ({res.pool} HP pool): restored {res.spent} HP "
+                                    f"to {len(list(res.healed))} creature(s).")
+                                self.action_used = True
+                            else:
+                                self._combat_log_add("Preserve Life unavailable.")
+                    if self.btn_cbt_invoke_duplicity.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            # Improved Duplicity (L17) creates up to four illusions; otherwise just one.
+                            self.pending_invoke_duplicity   = True
+                            self.pending_duplicity_remaining = 4 if stats.char_level >= 17 else 1
+                            self._duplicity_cd_pending      = True
+                            self.move_duplicity_idx         = -1
+                            self._combat_log_add(
+                                "Invoke Duplicity — click an empty cell within 30 ft to place "
+                                + ("a duplicate." if self.pending_duplicity_remaining == 1
+                                   else f"the first of {self.pending_duplicity_remaining} duplicates."))
+                    if self.btn_cbt_move_duplicity.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            dups = self._my_duplicates(idx)
+                            if not dups:
+                                self._combat_log_add("No active duplicate to move.")
+                            else:
+                                self.pending_move_duplicity = True
+                                # Lone duplicate: pre-select it so the next click is its destination.
+                                self.move_duplicity_idx = dups[0] if len(dups) == 1 else -1
+                                self._combat_log_add(
+                                    "Move Duplicate — click a destination within 30 ft." if len(dups) == 1
+                                    else "Move Duplicate — click one of your duplicates, then its destination.")
+                    if self.btn_cbt_swap_duplicity.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            dups = self._my_duplicates(idx)
+                            if not dups:
+                                self._combat_log_add("No active duplicate to swap with.")
+                            elif len(dups) == 1:
+                                self._do_swap_duplicity(idx, dups[0])
+                            else:
+                                self.pending_swap_duplicity = True
+                                self._combat_log_add("Swap — click the duplicate to trade places with.")
                     if self.btn_cbt_steady_aim.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -12338,6 +12898,8 @@ class App:
                                                       title="Elemental Burst: element")
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()
+                    if self.btn_cbt_familiar.clicked(event):
+                        self._show_familiar_menu()
                     if self.btn_cbt_pass_bonus.clicked(event):
                         self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):

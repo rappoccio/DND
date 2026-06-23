@@ -630,6 +630,49 @@ def test_lifedrinker():
     print("✅ test_lifedrinker passed")
 
 
+def test_pact_of_chain_invocation_storage():
+    """Pact of the Chain (18) + Investment of the Chain Master (19) round-trip in storage."""
+    s = _warlock_stats(5, cha=16, invocations=[18, 19])
+    assert s.has_invocation(18), "Pact of the Chain (18) not stored"
+    assert s.has_invocation(19), "Investment of the Chain Master (19) not stored"
+    assert not s.has_invocation(20), "Pact of the Tome (20) should not be present"
+    print("✅ test_pact_of_chain_invocation_storage passed")
+
+
+def test_pact_familiar_summon_link_and_dismiss():
+    """The engine machinery the GUI _summon_familiar relies on: spawn a familiar, link it to the
+    Warlock with the 'Pact Familiar' tag, then tombstone-dismiss it (indices stay valid)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    wl = add_agent_to_battle(engine, bm, create_test_agent("Warlock", 5, 5))
+    cfg = rpg.AgentConfig()
+    cfg.name = "Imp"; cfg.start_col = 6; cfg.start_row = 6; cfg.size = 1; cfg.sprite_path = "x.png"
+    fam = bm.spawn_agent(cfg)
+    assert fam >= 0, "familiar spawn should succeed on an open cell"
+    bm.set_agent_summoner_idx(fam, wl)
+    bm.set_agent_summon_spell(fam, "Pact Familiar")
+    assert bm.placed_agents[fam].summoner_idx == wl
+    assert bm.placed_agents[fam].summon_spell == "Pact Familiar"
+    assert not bm.is_agent_removed_from_play(fam), "familiar should start live"
+    # Dismiss = tombstone (never erase, so the Warlock's index stays valid).
+    bm.set_agent_removed_from_play(fam, True)
+    assert bm.is_agent_removed_from_play(fam), "dismissed familiar should be tombstoned"
+    assert bm.placed_agents[wl].name == "Warlock", "summoner index must survive dismissal"
+    print("✅ test_pact_familiar_summon_link_and_dismiss passed")
+
+
+def test_pact_chain_familiar_forms_in_bestiary():
+    """All six 2024 Pact of the Chain familiar forms exist as engine-ready bestiary records."""
+    path = os.path.join(os.path.dirname(__file__), "DND2024_MonsterStats.json")
+    with open(path) as f:
+        bestiary = json.load(f)
+    keys = set(bestiary.keys()) if isinstance(bestiary, dict) \
+        else {r.get("name") for r in bestiary}
+    for form in ["Imp", "Pseudodragon", "Quasit", "Sprite", "Skeleton", "Venomous Snake"]:
+        assert form in keys, f"Pact familiar form '{form}' missing from the bestiary"
+    print("✅ test_pact_chain_familiar_forms_in_bestiary passed")
+
+
 if __name__ == '__main__':
     test_beam_count_scaling()
     test_invocation_storage_roundtrip()
@@ -650,4 +693,7 @@ if __name__ == '__main__':
     test_eldritch_smite()
     test_eldritch_smite_requires_pact_weapon()
     test_lifedrinker()
+    test_pact_of_chain_invocation_storage()
+    test_pact_familiar_summon_link_and_dismiss()
+    test_pact_chain_familiar_forms_in_bestiary()
     print("\n✅ All Warlock Phase 3 tests passed!")

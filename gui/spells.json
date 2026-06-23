@@ -1200,7 +1200,7 @@
   "name": "Command",
   "description": "You speak a one-word command to a creature you can see within range. The target must succeed on a Wisdom saving throw or follow the command on its next turn. Choose the command from these options:\n\n- **Drop.** The target drops whatever it is holding and then ends its turn.\n- **Flee.** The target spends its turn moving away from you by the fastest available means.\n- **Grovel.** The target has the Prone condition and then ends its turn.\n- **Halt.** On its turn, the target doesn't move and takes no action or Bonus Action.",
   "type": "Harm",
-  "geometry": "Single",
+  "geometry": "Multiple",
   "attack_type": "Save",
   "save_ability": "SaveWis",
   "range": 60,
@@ -1212,6 +1212,7 @@
   "physical_damage_types": [],
   "level": 1,
   "upcast_dice_bonus": 0,
+  "targets_per_upcast_level": 1,
   "requires_concentration": false,
   "requires_los": true,
   "check_los_on_center": true,
@@ -7244,6 +7245,87 @@
   "requires_los": true,
   "check_los_on_center": true,
   "school": "conjuration"
+ },
+ {
+  "name": "Summon Beast",
+  "description": "You call forth a Bestial spirit (Air, Land, or Water form). It manifests in an unoccupied space you can see within range, uses the Bestial Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 2, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Fey",
+  "description": "You call forth a Fey spirit (Fuming, Mirthful, or Tricksy mood). It manifests in an unoccupied space you can see within range, uses the Fey Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveWis",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 3, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Undead",
+  "description": "You call forth an Undead spirit (Ghostly, Putrid, or Skeletal form). It manifests in an unoccupied space you can see within range, uses the Undead Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 3, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "necromancy"
+ },
+ {
+  "name": "Summon Aberration",
+  "description": "You call forth an Aberrant spirit (Beholderkin, Slaad, or Star Spawn form). It manifests in an unoccupied space you can see within range, uses the Aberrant Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 4, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Construct",
+  "description": "You call forth a Construct spirit (Clay, Metal, or Stone form). It manifests in an unoccupied space you can see within range, uses the Construct Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 4, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Elemental",
+  "description": "You call forth an Elemental spirit (Air, Earth, Fire, or Water form). It manifests in an unoccupied space you can see within range, uses the Elemental Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 4, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Celestial",
+  "description": "You call forth a Celestial spirit (Avenger or Defender form). It manifests in an unoccupied space you can see within range, uses the Celestial Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 5, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Shadowspawn",
+  "description": "You call forth a Shadow spirit (Fury, Despair, or Fear form). It manifests in an unoccupied space you can see within range, uses the Shadow Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 5, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
+ },
+ {
+  "name": "Summon Fiend",
+  "description": "You call forth a Fiendish spirit (Demon, Devil, or Yugoloth form). It manifests in an unoccupied space you can see within range, uses the Fiendish Spirit stat block, shares your Initiative count, takes its turn just after yours, and obeys your commands. It disappears at 0 HP or when the spell ends.",
+  "type": "Harm", "geometry": "Single", "attack_type": "Automatic", "save_ability": "SaveDex",
+  "range": 90, "radius": 0, "width": 0, "length": 0, "duration": 1,
+  "magic_damage_types": [], "physical_damage_types": [],
+  "level": 6, "upcast_dice_bonus": 0, "requires_concentration": true,
+  "requires_los": true, "check_los_on_center": true, "school": "conjuration"
  },
  {
   "name": "Sunbeam",

@@ -11,7 +11,7 @@
 
 ## Architecture (durable direction)
 - [architecture_cpp_only.md](architecture_cpp_only.md) — all game logic in C++; Python is UI/IO only
-- [architecture_agent_as_character.md](architecture_agent_as_character.md) — toward per-class objects via virtual dispatch (incremental)
+- [architecture_agent_as_character.md](architecture_agent_as_character.md) — ABANDONED per-class C++ objects (multiclassing breaks single inheritance); new plan = character_class vector + hasClass() over ~96 sites (NOT yet implemented)
 - [architecture_decider_flow_state.md](architecture_decider_flow_state.md) — CombatDecider: GUI callback vs RL default policy
 
 ## Feedback / working style

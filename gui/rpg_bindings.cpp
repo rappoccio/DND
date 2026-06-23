@@ -1366,6 +1366,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("turned",      &TurnUndeadResult::turned)
         .def_readonly("resisted",    &TurnUndeadResult::resisted);
 
+    // ── PreserveLifeResult (Life Domain Channel Divinity) ────────────────────
+    py::class_<PreserveLifeResult>(m, "PreserveLifeResult")
+        .def_readonly("valid",   &PreserveLifeResult::valid)
+        .def_readonly("pool",    &PreserveLifeResult::pool)
+        .def_readonly("spent",   &PreserveLifeResult::spent)
+        .def_readonly("healed",  &PreserveLifeResult::healed)
+        .def_readonly("amounts", &PreserveLifeResult::amounts);
+
     // ── ToppleResult ─────────────────────────────────────────────────────────
     py::class_<ToppleResult>(m, "ToppleResult")
         .def_readonly("valid",     &ToppleResult::valid)
@@ -2251,6 +2259,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "failures are Frightened + Incapacitated for 1 minute (ends if the undead takes damage).\n"
              "Sear Undead (L5+) deals WIS-mod d8 Radiant (rolled once) to each failed undead.\n"
              "Spends one Channel Divinity use. Returns a TurnUndeadResult.")
+        .def("use_preserve_life",
+             &CombatEngine::usePreserveLife,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("targets"),
+             "Life Domain Preserve Life (Channel Divinity, L3+): distribute 5 x cleric level HP among\n"
+             "the chosen creatures within 30 ft (list order = distribution priority), each restored to\n"
+             "no more than half its HP maximum. Undead cannot be healed. Supreme Healing does not affect\n"
+             "this (no dice). Spends one Channel Divinity use. Returns a PreserveLifeResult.")
         .def("execute_shove",
              &CombatEngine::executeShove,
              py::arg("battle_map"), py::arg("action"),
@@ -2344,6 +2359,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("idx"),
              "Warrior of Shadow Cloak of Shadows (L17): Bonus Action → Invisible in dim/dark. Persists\n"
              "through attacks. Expires on turn start if in bright light. Returns True iff activated.")
+        .def("move_duplicate",
+             &CombatEngine::moveDuplicate,
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("dup_idx"),
+             py::arg("target_col"), py::arg("target_row"),
+             "Trickery Cleric Invoke Duplicity: move the illusory duplicate up to 30 ft. Returns True iff moved.")
+        .def("swap_with_duplicate",
+             &CombatEngine::swapWithDuplicate,
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("dup_idx"),
+             "Trickster's Transposition (L6+): swap the cleric's position with their duplicate. Returns True iff swapped.")
         .def("shadow_arts_darkness",
              &CombatEngine::shadowArtsDarkness,
              py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
@@ -2532,9 +2556,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
              "True iff reactor knows Silvery Barbs, has a L1+ slot, reaction free, 60ft+LoS of the roller.")
         .def("can_warding_flare", &CombatEngine::canWardingFlare,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"), py::arg("target_idx"),
              "True iff reactor (L3+ Light Domain Cleric, >=1 Warding Flare use, reaction free, within\n"
-             "30ft + LoS of the roller) may use Warding Flare on the roller's attack roll.")
+             "30ft + LoS of the roller) may use Warding Flare on the roller's attack roll. Team-gated:\n"
+             "the attack's target must be the reactor itself or one of its allies.")
         .def("apply_bend_luck_to_attack", &CombatEngine::applyBendLuckToAttack,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend 1 Sorcery Point + reaction; subtract 1d4 from the in-flight attack result and\n"

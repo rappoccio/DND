@@ -31077,9 +31077,9 @@
     "size": "Tiny",
     "stats": {
       "str": 6,
-      "dex": 16,
-      "con": 12,
-      "intel": 10,
+      "dex": 17,
+      "con": 13,
+      "intel": 11,
       "wis": 12,
       "cha": 14,
       "hp_max": 21,
@@ -31113,7 +31113,7 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Piercing)",
+        "name": "Sting",
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -31123,11 +31123,17 @@
         "physical_damage_types": [
           {
             "type": "Piercing",
-            "num_dice": 3,
+            "num_dice": 1,
             "die_size": 6
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Poison",
+            "num_dice": 2,
+            "die_size": 6
+          }
+        ],
         "conditions": [],
         "mastery": "None"
       },
@@ -31209,7 +31215,7 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Piercing)",
+        "name": "Sting",
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -31219,11 +31225,17 @@
         "physical_damage_types": [
           {
             "type": "Piercing",
-            "num_dice": 3,
+            "num_dice": 1,
             "die_size": 6
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Poison",
+            "num_dice": 2,
+            "die_size": 6
+          }
+        ],
         "conditions": [],
         "mastery": "None"
       },
@@ -44609,8 +44621,8 @@
     "size": "Tiny",
     "stats": {
       "str": 6,
-      "dex": 14,
-      "con": 12,
+      "dex": 15,
+      "con": 13,
       "intel": 10,
       "wis": 12,
       "cha": 10,

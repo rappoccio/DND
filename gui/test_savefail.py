@@ -106,6 +106,21 @@ def _make_fighter_target(engine, bm, idx, level=9, wis=10):
     engine.set_agent_stats(bm, idx, s)
 
 
+def _make_war_cleric(engine, bm, idx, level=6, wis=16):
+    """A War Domain Cleric (L6+) with Channel Divinity uses — eligible for War God's Blessing."""
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Cleric, level)
+    s.cleric_subclass = rpg.ClericSubclass.WarDomain
+    s.wis = wis; s.prof_bonus = 3
+    s.initialize_class_resources(rpg.CharacterClass.Cleric, level)
+    s.hp_max = 50; s.hp_cur = 50
+    engine.set_agent_stats(bm, idx, s)
+
+
+def _cd_uses(engine, bm, idx):
+    return engine.get_agent_stats(bm, idx).resources["Channel Divinity"].current
+
+
 def _clear_frightened(engine, bm, idx):
     c = engine.get_agent_conditions(bm, idx)
     c.frightened = False; c.charmed = False; c.reaction_used = False; c.incapacitated = False
@@ -186,6 +201,77 @@ def test_indomitable_self_reroll():
             print("✅ test_indomitable_self_reroll passed")
             return
     assert False, "did not observe both a window and a flipped-to-success save in 400 casts"
+
+
+def test_war_gods_blessing_can_save():
+    """A War Domain Cleric L6 within 60 ft is offered War God's Blessing on an ALLY's failed save; the
+    +10 can flip the save to a success and spends 1 Channel Divinity use + the cleric's reaction."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    tgt    = add_agent_to_battle(engine, bm, create_test_agent("Ally", 6, 5))
+    cler   = add_agent_to_battle(engine, bm, create_test_agent("WarCleric", 5, 7))
+    _make_caster(engine, bm, caster, _cause_fear())
+    _make_weak_target(engine, bm, tgt)
+    _make_war_cleric(engine, bm, cler)
+    bm.set_agent_faction(tgt, 1); bm.set_agent_faction(cler, 1)   # same team → cleric may aid the ally
+    bm.set_agent_faction(caster, 2)
+    dec = SaveDecider("WarGodsBlessing"); engine.set_decider(dec)
+
+    saw_window = saw_save = False
+    for _ in range(400):
+        _clear_frightened(engine, bm, tgt); _clear_frightened(engine, bm, cler)
+        _make_war_cleric(engine, bm, cler)                 # refill Channel Divinity + reaction
+        s = engine.get_agent_stats(bm, caster); s.spell_slots_remaining = [9,0,0,0,0,0,0,0,0]
+        engine.set_agent_stats(bm, caster, s)
+        cd_before = _cd_uses(engine, bm, cler)
+        before = dec.savefail_offers
+        res = engine.resolve_cast(bm, _cast(engine, bm, caster, tgt))
+        if dec.savefail_offers > before:                   # the window opened (the save failed)
+            saw_window = True
+            assert _cd_uses(engine, bm, cler) == cd_before - 1, "War God's Blessing spends one Channel Divinity"
+            assert engine.get_agent_conditions(bm, cler).reaction_used, "and the cleric's reaction"
+            if res.target_results[0].saved:
+                saw_save = True
+                assert not engine.get_agent_conditions(bm, tgt).frightened, "a flipped save applies no Frightened"
+            else:
+                assert engine.get_agent_conditions(bm, tgt).frightened, "a still-failed save applies Frightened"
+        if saw_window and saw_save:
+            print("✅ test_war_gods_blessing_can_save passed")
+            return
+    assert False, "did not observe both a window and a flipped-to-success save in 400 casts"
+
+
+def test_war_gods_blessing_level_and_faction_gate():
+    """War God's Blessing is gated: an L5 War Cleric (below L6) or a cleric who is NOT an ally of the
+    failing creature is never offered."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
+    tgt    = add_agent_to_battle(engine, bm, create_test_agent("Ally", 6, 5))
+    cler   = add_agent_to_battle(engine, bm, create_test_agent("WarCleric", 5, 7))
+    _make_caster(engine, bm, caster, _cause_fear())
+    _make_weak_target(engine, bm, tgt)
+    bm.set_agent_faction(tgt, 1); bm.set_agent_faction(caster, 2)
+
+    # (a) L5 War Cleric, allied — below the L6 threshold → never offered.
+    dec = SaveDecider("WarGodsBlessing"); engine.set_decider(dec)
+    for _ in range(60):
+        _clear_frightened(engine, bm, tgt); _clear_frightened(engine, bm, cler)
+        _make_war_cleric(engine, bm, cler, level=5); bm.set_agent_faction(cler, 1)
+        s = engine.get_agent_stats(bm, caster); s.spell_slots_remaining = [9,0,0,0,0,0,0,0,0]
+        engine.set_agent_stats(bm, caster, s)
+        engine.resolve_cast(bm, _cast(engine, bm, caster, tgt))
+    assert dec.savefail_offers == 0, "an L5 War Cleric is below the L6 War God's Blessing threshold"
+
+    # (b) L6 War Cleric but a DIFFERENT team from the failing target → never offered.
+    dec2 = SaveDecider("WarGodsBlessing"); engine.set_decider(dec2)
+    for _ in range(60):
+        _clear_frightened(engine, bm, tgt); _clear_frightened(engine, bm, cler)
+        _make_war_cleric(engine, bm, cler, level=6); bm.set_agent_faction(cler, 3)  # enemy of faction 1
+        s = engine.get_agent_stats(bm, caster); s.spell_slots_remaining = [9,0,0,0,0,0,0,0,0]
+        engine.set_agent_stats(bm, caster, s)
+        engine.resolve_cast(bm, _cast(engine, bm, caster, tgt))
+    assert dec2.savefail_offers == 0, "a non-ally War Cleric is never offered War God's Blessing"
+    print("✅ test_war_gods_blessing_level_and_faction_gate passed")
 
 
 def test_countercharm_not_offered_non_charm():
@@ -351,6 +437,8 @@ def test_gui_multi_reactor_cursor():
 def run_all():
     test_countercharm_can_save()
     test_indomitable_self_reroll()
+    test_war_gods_blessing_can_save()
+    test_war_gods_blessing_level_and_faction_gate()
     test_countercharm_not_offered_non_charm()
     test_reaction_used_not_offered()
     test_no_indomitable_use_not_offered()

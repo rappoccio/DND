@@ -199,26 +199,29 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.advantage    = advantage;
     r.disadvantage = disadvantage;
 
-    // If both advantage and disadvantage: they cancel out (roll normally)
+    // Roll the d20, capturing the adv/dis dice so they fold into the single To-hit line
+    // below (instead of a separate line) — the kept natural roll plus the dice it came from.
+    std::string d20_detail;
     if (advantage && disadvantage) {
+        // Both advantage and disadvantage: they cancel out (roll normally)
         int d1 = roll(20), d2 = roll(20);
         r.d20 = d1;
-        log_("Advantage+disadvantage cancel: rolled {} and {} → kept {}", d1, d2, r.d20);
+        d20_detail = std::format(" (adv+dis cancel: {},{})", d1, d2);
     } else if (advantage) {
         int d1 = roll(20), d2 = roll(20);
         r.d20 = std::max(d1, d2);
-        log_("Advantage: rolled {} and {} → kept {}", d1, d2, r.d20);
+        d20_detail = std::format(" (adv: {},{})", d1, d2);
     } else if (disadvantage) {
         int d1 = roll(20), d2 = roll(20);
         r.d20 = std::min(d1, d2);
-        log_("Disadvantage: rolled {} and {} → kept {}", d1, d2, r.d20);
+        d20_detail = std::format(" (dis: {},{})", d1, d2);
     } else {
         r.d20 = roll(20);
     }
 
     // Apply portent die if one was pending (after advantage/disadvantage selection)
     if (pending_portent >= 0) {
-        log_("Portent Die: replacing roll {} with {}", r.d20, pending_portent);
+        d20_detail += std::format(" (portent {}→{})", r.d20, pending_portent);
         r.d20 = pending_portent;
     }
 
@@ -227,13 +230,17 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus;
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
 
-    // Always surface the to-hit math (the adv/dis dice, if any, were logged just above). total_roll
-    // folds in the attack mod, exhaustion (−2/level) and any roll bonus, so it can differ from
-    // d20+mod; we show the natural d20, the weapon mod, and the final total compared to AC.
+    // Always surface the full to-hit math on one line: the natural d20 (with the adv/dis dice
+    // it was chosen from), the weapon's +hit modifier, plus any roll bonus / exhaustion that
+    // also fold into the total — so total_roll always reconciles with the pieces shown.
+    std::string extra;
+    if (roll_bonus)       extra += std::format(" {:+}(bonus)", roll_bonus);
+    if (exhaustion_level) extra += std::format(" {:+}(exhaustion)", -2 * exhaustion_level);
     const char* outcome = r.critical ? "CRITICAL HIT"
                         : r.fumble    ? "MISS (nat 1)"
                         : r.hit       ? "HIT" : "MISS";
-    log_("To-hit: d20 {} {:+} = {} vs AC {} → {}", r.d20, r.attack_mod, r.total_roll, target_ac, outcome);
+    log_("To-hit: d20 {}{} {:+}(hit){} = {} vs AC {} → {}",
+         r.d20, d20_detail, r.attack_mod, extra, r.total_roll, target_ac, outcome);
 
     return r;
 }
@@ -394,14 +401,15 @@ void CombatEngine::rollDamage(const Weapon& w,
     result.damage_breakdown.clear();
     result.damage_breakdown.push_back({"weapon", result.total_damage});
 
-    // Log: "Damage: 1d8 [6]=6 Slashing +4 = 10" (crit doubles the dice count shown).
+    // Log: "Damage: 1d8 [6]=6 Slashing +4(dmg) = 10" — the per-type dice (with each die shown),
+    // then the damage modifier (ability mod + weapon bonus). Crit doubles the dice count shown.
     std::string dmg_line;
     for (std::size_t i = 0; i < log_parts.size(); ++i) {
         if (i) dmg_line += " + ";
         dmg_line += log_parts[i];
     }
     if (dmg_line.empty()) dmg_line = "—";
-    log_("Damage: {} {:+} = {}{}", dmg_line, result.damage_mod, result.total_damage,
+    log_("Damage: {} {:+}(dmg) = {}{}", dmg_line, result.damage_mod, result.total_damage,
          result.critical ? " (CRIT)" : "");
 }
 
@@ -1083,7 +1091,8 @@ bool CombatEngine::canGuidedStrike(const BattleMap& bm, const Attack& action, in
     const Cell co = agents[static_cast<std::size_t>(cleric_idx)].origin;
     const Cell ao = agents[static_cast<std::size_t>(atk)].origin;
     const double dx = co.col - ao.col, dy = co.row - ao.row;
-    return std::sqrt(dx * dx + dy * dy) * 5.0 <= 30.0;
+    const double reach = (cs.char_level >= 6) ? 60.0 : 30.0;  // War God's Blessing extends Guided Strike's reach at L6
+    return std::sqrt(dx * dx + dy * dy) * 5.0 <= reach;
 }
 
 bool CombatEngine::maybeGuidedStrikeInline(BattleMap& bm, const Attack& action, AttackResult& r)
@@ -1172,9 +1181,12 @@ bool CombatEngine::canSilveryBarbs(const BattleMap& bm, int reactor, int roller)
 
 // Light Domain Cleric (L3+) Warding Flare: impose Disadvantage on an attack roll by a creature within
 // 30 ft it can see. Reuses d20ReactorBase (60 ft + LoS + reaction free + alive) then tightens to 30 ft.
-bool CombatEngine::canWardingFlare(const BattleMap& bm, int reactor, int roller) const
+// Team-gated: only fires to protect the reactor itself or one of its allies (the attack's target must
+// be on the reactor's team); it never aids an enemy of the reactor.
+bool CombatEngine::canWardingFlare(const BattleMap& bm, int reactor, int roller, int target) const
 {
     if (!d20ReactorBase(bm, reactor, roller)) return false;
+    if (target != reactor && !areAllies(bm, reactor, target)) return false;  // only shield the reactor's team
     const Agent::Stats s = bm.getAgentStats(reactor);
     if (s.character_class != CharacterClass::Cleric ||
         s.cleric_subclass != LightDomain || s.char_level < 3) return false;
@@ -1326,7 +1338,7 @@ std::vector<int> CombatEngine::d20SeenReactors(const BattleMap& bm, const Attack
     for (int i = 0; i < n; ++i) {
         if (i == roller) continue;
         const bool additive = (r.d20 != 20) && (canBendLuck(bm, i, roller) || canCuttingWords(bm, i, roller));
-        const bool reroll   = canSilveryBarbs(bm, i, roller) || canWardingFlare(bm, i, roller);
+        const bool reroll   = canSilveryBarbs(bm, i, roller) || canWardingFlare(bm, i, roller, action.target_idx);
         if (additive || reroll) out.push_back(i);
     }
     return out;
@@ -1343,7 +1355,7 @@ std::vector<ReactionOption> CombatEngine::d20SeenOptions(const BattleMap& bm, in
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Cutting Words (-1 Bardic die)", "CuttingWords"});
     if (canSilveryBarbs(bm, reactor, roller))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Silvery Barbs (force a reroll)", "SilveryBarbs"});
-    if (canWardingFlare(bm, reactor, roller))
+    if (canWardingFlare(bm, reactor, roller, action.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Warding Flare (impose Disadvantage)", "WardingFlare"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
@@ -1644,6 +1656,31 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
                                       tgt_pt.origin, tgt_pt.agent->getSize()) <= 1) {
                     adv = true;
                     log_("Versatile Trickster: Advantage — target is next to your Mage Hand");
+                    break;
+                }
+            }
+        }
+    }
+
+    // Invoke Duplicity (Trickery Cleric L3+): the illusory duplicate is so distracting that when BOTH
+    // the cleric AND one of their duplicates are within 5 ft of the target, the cleric has Advantage on
+    // attack rolls against it (RAW: requires both, not just the duplicate). The duplicate is a
+    // positioned summon (summon_spell == "Invoke Duplicity"); L17 Improved Duplicity allows up to four,
+    // any of which satisfies the rule — the loop matches the first adjacent one.
+    {
+        const Agent::Stats& as = atk_pt.agent->getStats();
+        if (as.character_class == CharacterClass::Cleric && as.cleric_subclass == TrickeryDomain &&
+            as.char_level >= 3 &&
+            footprintDistance(atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz) <= 1) {
+            for (int i = 0; i < n; ++i) {
+                const PlacedAgent& d = agents[static_cast<std::size_t>(i)];
+                if (d.removed_from_play || d.summoner_idx != action.attacker_idx ||
+                    d.summon_spell != "Invoke Duplicity")
+                    continue;
+                if (footprintDistance(d.origin, d.agent->getSize(),
+                                      tgt_pt.origin, tgt_pt.agent->getSize()) <= 1) {
+                    adv = true;
+                    log_("Invoke Duplicity: Advantage — you and your duplicate flank the target");
                     break;
                 }
             }

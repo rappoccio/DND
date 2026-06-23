@@ -119,6 +119,85 @@ def compute_companion_loadout(block: dict, pb: int, level: int, wis_mod: int):
     return stats, weapon
 
 
+def compute_summon_loadout(block: dict, slot_level: int, pb: int, spell_ability_mod: int):
+    """Build a (stats_dict, weapon_dict) for a 2024 "Summon X" spirit from its base `block`
+    (one entry of summon_spirits.json), scaled to the slot level the spell was cast with and
+    the caster's Proficiency Bonus + spellcasting-ability modifier. Pure (no pygame / no engine
+    state), so it is unit-tested directly. Mirrors compute_companion_loadout.
+
+    Scaling (2024 summon-spirit pattern, verified vs the Draconic/Bestial Spirit cards):
+      · AC  = ac_base + slot_level   (AC scales with the FULL spell level)
+      · HP  = hp_base + hp_per_level × max(0, slot_level − base_level)   (hp_base = HP AT the
+              spell's base level; the rider is "+N per spell level above base")
+      · num_attacks = max(1, slot_level // 2) if `multiattack_half_level` (the "Multiattack: a
+              number of Rend attacks equal to half the spell's level" rule); otherwise 2 once
+              slot_level ≥ `multiattack_at` (default = never), else 1.
+      · attack to-hit = the caster's spell-attack modifier (PB + spell_ability_mod); bonus_hit
+              cancels the spirit's own ability mod the engine re-adds.
+      · attack damage = num_dice d die_size + dmg_flat + (dmg_per_level × slot_level) of the
+              form's type. dmg_flat is the card's printed flat bonus (= the spirit's ability mod
+              on the verified cards); bonus_damage cancels the engine's re-added ability mod so
+              the printed "die + flat + level" total is reproduced exactly, whatever the STR/DEX.
+    """
+    str_mod = _dnd_mod(block.get("str", 12))
+    dex_mod = _dnd_mod(block.get("dex", 12))
+    finesse = bool(block.get("finesse", False))
+    ability_mod = dex_mod if finesse else str_mod
+
+    base_level = block.get("base_level", 0)
+    hp = block.get("hp_base", 5) + block.get("hp_per_level", 5) * max(0, slot_level - base_level)
+    if block.get("multiattack_half_level", False):
+        num_attacks = max(1, slot_level // 2)
+    else:
+        num_attacks = 2 if slot_level >= block.get("multiattack_at", 99) else 1
+    stats = {
+        "str":   block.get("str", 12),
+        "dex":   block.get("dex", 12),
+        "con":   block.get("con", 14),
+        "intel": block.get("intel", 4),
+        "wis":   block.get("wis", 10),
+        "cha":   block.get("cha", 6),
+        "hp_max": hp,
+        "hp_cur": hp,
+        "base_ac": block.get("ac_base", 11) + slot_level,
+        "speed_walk": block.get("speed_walk", 30),
+        "speed_swim": block.get("speed_swim", 0),
+        "speed_fly":  block.get("speed_fly", 0),
+        "prof_bonus": pb,
+        "darkvision_range": block.get("darkvision", 60),
+        "is_npc": True,
+        "num_attacks": num_attacks,
+    }
+    atk = block.get("attack", {})
+    dmg_bonus = block.get("dmg_flat", 0) + block.get("dmg_per_level", 1) * slot_level
+    roll = {
+        "type":     atk.get("damage_type", "Bludgeoning"),
+        "num_dice": atk.get("num_dice", 1),
+        "die_size": atk.get("die_size", 8),
+    }
+    weapon = {
+        "name": atk.get("name", "Spirit Strike"),
+        "type": "ranged" if atk.get("ranged", False) else "melee",
+        "reach_ft": atk.get("reach_ft", 5),
+        "proficient": True,
+        "finesse": finesse,
+        # to-hit total = ability_mod + pb + bonus_hit = pb + spell_ability_mod (= spell atk mod).
+        "bonus_hit":    spell_ability_mod - ability_mod,
+        # damage total bonus = ability_mod + bonus_damage = dmg_bonus (dmg_flat + level rider);
+        # cancelling ability_mod reproduces the card's printed "die + flat + level" exactly.
+        "bonus_damage": dmg_bonus - ability_mod,
+    }
+    # The spirit's signature damage type may be magical (Radiant/Necrotic/Force/Psychic/etc.),
+    # in which case it bypasses non-magical resistances — route it through magic_damage_types.
+    if atk.get("magic", False):
+        weapon["physical_damage_types"] = []
+        weapon["magic_damage_types"]    = [roll]
+    else:
+        weapon["physical_damage_types"] = [roll]
+        weapon["magic_damage_types"]    = []
+    return stats, weapon
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  D&D mechanics helpers
 # ─────────────────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
 from helpers import _dict_to_weapon
+from test_helpers import TEST_MAP_PATH
 
 def test_map_item_creation():
     """Test creating MapItem objects."""
@@ -31,7 +32,7 @@ def test_map_item_creation():
 
 def test_place_item():
     """Test placing items on the battle map."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     weapon = rpg.Weapon()
@@ -49,7 +50,7 @@ def test_place_item():
 
 def test_get_items_at_cell():
     """Test retrieving items from specific cells."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     # Place items at different cells
@@ -83,7 +84,7 @@ def test_get_items_at_cell():
 
 def test_remove_item():
     """Test removing items from the map."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     w = rpg.Weapon()
@@ -99,7 +100,7 @@ def test_remove_item():
 
 def test_get_all_items():
     """Test retrieving all items on the map."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     w1 = rpg.Weapon()
@@ -120,7 +121,7 @@ def test_get_all_items():
 
 def test_clear_items():
     """Test clearing all items from the map."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     w = rpg.Weapon()
@@ -135,7 +136,7 @@ def test_clear_items():
 
 def test_item_with_sprite_path():
     """Test items with custom sprite paths."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     w = rpg.Weapon()
@@ -152,7 +153,7 @@ def test_item_with_sprite_path():
 
 def test_multiple_items_same_cell():
     """Test placing multiple items on the same cell."""
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     cell = rpg.Cell(7, 7)
@@ -186,7 +187,7 @@ def test_cell_equality():
     assert cell1 == cell2
     assert cell1 != cell3
 
-    bm = rpg.BattleMap("test_map.png")
+    bm = rpg.BattleMap(TEST_MAP_PATH)
     bm.analyze_grid()
 
     w = rpg.Weapon()

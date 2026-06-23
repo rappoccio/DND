@@ -436,6 +436,32 @@ def test_guided_strike_auto_via_decider():
     raise AssertionError("never produced a guided miss in 40 attempts")
 
 
+def test_war_gods_blessing_extends_guided_reach():
+    """War God's Blessing (L6) widens an ally War Cleric's Guided Strike reach from 30 ft to 60 ft:
+    an ally cleric 40 ft from the attacker is eligible at L6 but not at L3."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    attacker = _add(engine, bm, "Fighter", 1, 1)
+    target   = _add(engine, bm, "Goblin", 2, 1, hp=200)
+    cleric   = _add(engine, bm, "WarCleric", 9, 1)              # 8 cells = 40 ft from the attacker
+
+    cs = engine.get_agent_stats(bm, cleric)
+    cs.character_class = rpg.CharacterClass.Cleric
+    cs.cleric_subclass = rpg.ClericSubclass.WarDomain
+    cs.wis = 16; cs.char_level = 6
+    cs.initialize_class_resources(rpg.CharacterClass.Cleric, 6)  # Channel Divinity uses
+    engine.set_agent_stats(bm, cleric, cs)
+
+    attack = rpg.Attack(attacker, target, 0)
+    assert engine.can_guided_strike(bm, attack, cleric), \
+        "an L6 ally War Cleric should reach 40 ft (War God's Blessing extends to 60 ft)"
+
+    cs.char_level = 3                                            # below L6 → only 30 ft reach
+    engine.set_agent_stats(bm, cleric, cs)
+    assert not engine.can_guided_strike(bm, attack, cleric), \
+        "an L3 ally War Cleric only reaches 30 ft, so 40 ft is out of range"
+    print("✅ test_war_gods_blessing_extends_guided_reach passed")
+
+
 # ── Corona of Light (Light Domain, L17) ───────────────────────────────────────
 def _light_cleric(engine, bm, idx, level=17, wis=16):
     s = engine.get_agent_stats(bm, idx)
@@ -553,6 +579,332 @@ def test_corona_spares_allies():
     print("✅ test_corona_spares_allies passed")
 
 
+# ── Life Domain ───────────────────────────────────────────────────────────────
+def _life_cleric(engine, bm, idx, level=3, wis=10):
+    s = engine.get_agent_stats(bm, idx)
+    s.character_class = rpg.CharacterClass.Cleric
+    s.cleric_subclass = rpg.ClericSubclass.LifeDomain
+    s.char_level = level
+    s.wis = wis
+    s.spellcasting_ability = 4          # WIS
+    s.can_cast_spell = True
+    s.initialize_class_resources(rpg.CharacterClass.Cleric, level)
+    engine.set_agent_stats(bm, idx, s)
+    return s
+
+
+def _heal_spell(name="Cure Wounds", num_dice=1, die_size=8, bonus=0, level=1,
+                geometry=rpg.SpellGeometry.Single):
+    sp = rpg.Spell()
+    sp.name = name
+    sp.type = rpg.SpellType.Heal
+    sp.geometry = geometry
+    sp.attack_type = rpg.SpellAttack.Automatic
+    sp.range = 30
+    sp.level = level
+    h = rpg.HealingRoll(); h.num_dice = num_dice; h.die_size = die_size; h.bonus = bonus
+    sp.healing_type = h
+    return sp
+
+
+def _cast_heal(engine, bm, caster, target, sp, slot_level=1):
+    engine.set_agent_spells(bm, caster, [sp])
+    action = rpg.SpellAction()
+    action.caster_idx = caster
+    action.spell_idx = 0
+    action.target_indices = [target]
+    action.slot_level = slot_level
+    return engine.execute_spell(bm, action)
+
+
+def _heal_amount(engine, bm, caster, target, sp, slot_level=1, wound=30):
+    """Cast a heal on a wounded target; return the HP actually restored (capped by hp_max)."""
+    t = engine.get_agent_stats(bm, target)
+    t.hp_max = 200; t.hp_cur = 200 - wound
+    engine.set_agent_stats(bm, target, t)
+    before = engine.get_agent_stats(bm, target).hp_cur
+    _cast_heal(engine, bm, caster, target, sp, slot_level)
+    return engine.get_agent_stats(bm, target).hp_cur - before
+
+
+def test_disciple_of_life_adds_to_each_heal():
+    """Disciple of Life (L3): a slot-1+ heal restores an extra 2 + slot level HP to each creature.
+    A fixed-bonus heal (0 dice) isolates the rider from die variance."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    ally   = _add(engine, bm, "Ally", 1, 2)
+    _life_cleric(engine, bm, cleric, level=3, wis=10)   # WIS mod 0
+
+    sp = _heal_spell(num_dice=0, die_size=8, bonus=5)   # deterministic 5 HP base
+    healed = _heal_amount(engine, bm, cleric, ally, sp, slot_level=1)
+    assert healed == 5 + (2 + 1), f"L1 slot: 5 base + Disciple (2+1) = 8, got {healed}"
+
+    healed3 = _heal_amount(engine, bm, cleric, ally, sp, slot_level=3)
+    assert healed3 == 5 + (2 + 3), f"L3 slot: 5 base + Disciple (2+3) = 10, got {healed3}"
+
+    # A non-Life cleric gets no Disciple bonus.
+    plain = _add(engine, bm, "Plain", 3, 1)
+    ps = engine.get_agent_stats(bm, plain)
+    ps.character_class = rpg.CharacterClass.Cleric; ps.char_level = 3
+    ps.spellcasting_ability = 4; ps.wis = 10; ps.can_cast_spell = True
+    engine.set_agent_stats(bm, plain, ps)
+    base = _heal_amount(engine, bm, plain, ally, sp, slot_level=1)
+    assert base == 5, f"non-Life cleric heals the base 5 only, got {base}"
+    print("✅ test_disciple_of_life_adds_to_each_heal passed")
+
+
+def test_blessed_healer_heals_caster():
+    """Blessed Healer (L6): healing another creature with a slot-1+ heal restores 2 + slot level HP
+    to the cleric too — but only when the target is someone else."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    ally   = _add(engine, bm, "Ally", 1, 2)
+    _life_cleric(engine, bm, cleric, level=6, wis=10)
+
+    cs = engine.get_agent_stats(bm, cleric); cs.hp_max = 100; cs.hp_cur = 50
+    engine.set_agent_stats(bm, cleric, cs)
+
+    sp = _heal_spell(num_dice=0, die_size=8, bonus=5)
+    _heal_amount(engine, bm, cleric, ally, sp, slot_level=2)
+    assert engine.get_agent_stats(bm, cleric).hp_cur == 50 + (2 + 2), \
+        "Blessed Healer restores 2+slot (4) to the caster when healing another"
+
+    # Healing only YOURSELF does not trigger Blessed Healer.
+    cs = engine.get_agent_stats(bm, cleric); cs.hp_cur = 50
+    engine.set_agent_stats(bm, cleric, cs)
+    _cast_heal(engine, bm, cleric, cleric, _heal_spell(num_dice=0, bonus=5), slot_level=2)
+    # self-heal 5 (+ Disciple 2+2 = 4) = 9, but NO extra Blessed Healer self-heal on top.
+    assert engine.get_agent_stats(bm, cleric).hp_cur == 50 + 5 + (2 + 2), \
+        "self-only heal should not add a Blessed Healer bonus"
+    print("✅ test_blessed_healer_heals_caster passed")
+
+
+def test_supreme_healing_maximizes_dice():
+    """Supreme Healing (L17): every healing die is its maximum. 4d8 → always 32 (before mods)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    ally   = _add(engine, bm, "Ally", 1, 2)
+    _life_cleric(engine, bm, cleric, level=17, wis=10)   # WIS mod 0
+
+    sp = _heal_spell(num_dice=4, die_size=8, bonus=0)
+    # Disciple (L17 includes L3) adds 2+slot; isolate dice by subtracting it.
+    for _ in range(20):
+        healed = _heal_amount(engine, bm, cleric, ally, sp, slot_level=1, wound=80)
+        assert healed == 32 + (2 + 1), f"Supreme Healing must max 4d8=32 (+Disciple 3), got {healed}"
+    print("✅ test_supreme_healing_maximizes_dice passed")
+
+
+def test_preserve_life_distributes_pool():
+    """Preserve Life (CD, L3+): 5 x level HP among chosen allies within 30 ft, each capped at half
+    HP max; undead excluded; spends a Channel Divinity use; gated to Life Domain L3+."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    a1     = _add(engine, bm, "A1", 1, 2)
+    a2     = _add(engine, bm, "A2", 1, 3)
+    undead = _add(engine, bm, "Zombie", 2, 1)
+    _life_cleric(engine, bm, cleric, level=5, wis=10)    # pool = 25
+    for i in (cleric, a1, a2, undead):
+        bm.set_agent_faction(i, 1)
+
+    for idx, hp in ((a1, 4), (a2, 4)):
+        s = engine.get_agent_stats(bm, idx); s.hp_max = 40; s.hp_cur = hp
+        engine.set_agent_stats(bm, idx, s)
+    zs = engine.get_agent_stats(bm, undead); zs.is_undead = True; zs.hp_max = 40; zs.hp_cur = 4
+    engine.set_agent_stats(bm, undead, zs)
+
+    cd_before = _cd(engine, bm, cleric)
+    res = engine.use_preserve_life(bm, cleric, [a1, a2, undead])
+    assert res.valid and res.pool == 25
+    # a1 first: 4 -> cap 20 needs 16; a2: 4 -> cap 20 needs 16 but only 9 pool left -> 13.
+    assert engine.get_agent_stats(bm, a1).hp_cur == 20, "a1 restored up to half HP max (20)"
+    assert engine.get_agent_stats(bm, a2).hp_cur == 4 + 9, "a2 gets the remaining 9 of the pool"
+    assert engine.get_agent_stats(bm, undead).hp_cur == 4, "undead cannot be healed"
+    assert res.spent == 25, f"the full 25 HP pool was spent, got {res.spent}"
+    assert _cd(engine, bm, cleric) == cd_before - 1, "one Channel Divinity use spent"
+
+    # Gating: a non-Life cleric is rejected.
+    plain = _add(engine, bm, "Plain", 5, 5)
+    ps = engine.get_agent_stats(bm, plain)
+    ps.character_class = rpg.CharacterClass.Cleric; ps.char_level = 5
+    ps.initialize_class_resources(rpg.CharacterClass.Cleric, 5)
+    engine.set_agent_stats(bm, plain, ps)
+    assert not engine.use_preserve_life(bm, plain, [a1]).valid, "non-Life cleric cannot Preserve Life"
+    print("✅ test_preserve_life_distributes_pool passed")
+
+
+def test_preserve_life_revives_downed_ally():
+    """Preserve Life can bring a downed (0 HP) ally back up and restore consciousness."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1)
+    downed = _add(engine, bm, "Downed", 1, 2)
+    _life_cleric(engine, bm, cleric, level=4, wis=10)    # pool = 20
+    bm.set_agent_faction(cleric, 1); bm.set_agent_faction(downed, 1)
+
+    s = engine.get_agent_stats(bm, downed); s.hp_max = 30; s.hp_cur = 0
+    engine.set_agent_stats(bm, downed, s)
+    c = engine.get_agent_conditions(bm, downed); c.unconscious = True
+    engine.set_agent_conditions(bm, downed, c)
+
+    res = engine.use_preserve_life(bm, cleric, [downed])
+    assert res.valid
+    assert engine.get_agent_stats(bm, downed).hp_cur == 15, "restored up to half (15) of 30 HP max"
+    assert not engine.get_agent_conditions(bm, downed).unconscious, "revived → no longer unconscious"
+    print("✅ test_preserve_life_revives_downed_ally passed")
+
+
+# ── Trickery Domain: Invoke Duplicity ────────────────────────────────────────
+def _reach_weapon(reach_ft=5):
+    w = rpg.Weapon()
+    w.name = "Mace"
+    w.attack_bonus = 30          # always hits; we only read r.advantage
+    w.reach_ft = reach_ft        # melee reach (canAttack uses this for Melee)
+    w.range_short_feet = reach_ft
+    w.range_long_feet = reach_ft
+    pr = rpg.PhysicalDamageRoll()
+    pr.type = rpg.PhysicalDamage.Bludgeoning
+    pr.num_dice = 1; pr.die_size = 4
+    w.physical_damage_types = [pr]
+    return w
+
+
+def _trickery_cleric(engine, bm, idx, level=3, wis=16):
+    s = engine.get_agent_stats(bm, idx)
+    s.character_class = rpg.CharacterClass.Cleric
+    s.cleric_subclass = rpg.ClericSubclass.TrickeryDomain
+    s.char_level = level
+    s.wis = wis
+    s.initialize_class_resources(rpg.CharacterClass.Cleric, level)
+    engine.set_agent_stats(bm, idx, s)
+
+
+def _spawn_dup(bm, col, row, cleric_idx, spell="Invoke Duplicity"):
+    cfg = rpg.AgentConfig()
+    cfg.name = "Duplicate"; cfg.size = 1; cfg.sprite_path = "dup.png"
+    cfg.start_col = col; cfg.start_row = row
+    idx = bm.spawn_agent(cfg)
+    assert idx >= 0, "duplicate spawn should succeed on an open cell"
+    bm.set_agent_summoner_idx(idx, cleric_idx)
+    bm.set_agent_summon_spell(idx, spell)
+    return idx
+
+
+def _attack_has_advantage(engine, bm, attacker, target, weapon):
+    engine.set_agent_weapons(bm, attacker, [weapon] * 3)
+    return engine.execute_action(bm, rpg.Attack(attacker, target, 0)).advantage
+
+
+def _dup_cell(bm, idx):
+    o = bm.placed_agents[idx].origin
+    return (o.col, o.row)
+
+
+def test_invoke_duplicity_grants_advantage_when_both_adjacent():
+    """Both the cleric AND a duplicate within 5 ft of the target → Advantage (strict RAW)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    target = _add(engine, bm, "Goblin", 6, 5, hp=200)
+    _trickery_cleric(engine, bm, cleric, level=3)
+    _spawn_dup(bm, 6, 6, cleric)            # adjacent to target; cleric (5,5) is also adjacent
+    assert _attack_has_advantage(engine, bm, cleric, target, _reach_weapon(5)), \
+        "cleric + duplicate both within 5 ft → Advantage"
+    print("✅ test_invoke_duplicity_grants_advantage_when_both_adjacent passed")
+
+
+def test_invoke_duplicity_no_advantage_when_duplicate_far():
+    """The duplicate must be within 5 ft of the target — far away → no Advantage."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    target = _add(engine, bm, "Goblin", 6, 5, hp=200)
+    _trickery_cleric(engine, bm, cleric, level=3)
+    _spawn_dup(bm, 12, 12, cleric)
+    assert not _attack_has_advantage(engine, bm, cleric, target, _reach_weapon(5)), \
+        "duplicate not within 5 ft of target → no Advantage"
+    print("✅ test_invoke_duplicity_no_advantage_when_duplicate_far passed")
+
+
+def test_invoke_duplicity_no_advantage_when_cleric_far():
+    """RAW requires BOTH within 5 ft: an adjacent duplicate but a distant cleric → no Advantage."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    target = _add(engine, bm, "Goblin", 8, 5, hp=200)   # 15 ft from the cleric
+    _trickery_cleric(engine, bm, cleric, level=3)
+    _spawn_dup(bm, 9, 5, cleric)                          # adjacent to the target
+    assert not _attack_has_advantage(engine, bm, cleric, target, _reach_weapon(15)), \
+        "cleric is 15 ft from the target → no Advantage even with an adjacent duplicate"
+    print("✅ test_invoke_duplicity_no_advantage_when_cleric_far passed")
+
+
+def test_invoke_duplicity_advantage_requires_trickery_domain():
+    """A non-Trickery cleric gets no Invoke Duplicity Advantage from an adjacent duplicate."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "WarCleric", 5, 5)
+    target = _add(engine, bm, "Goblin", 6, 5, hp=200)
+    s = engine.get_agent_stats(bm, cleric)
+    s.character_class = rpg.CharacterClass.Cleric
+    s.cleric_subclass = rpg.ClericSubclass.WarDomain
+    s.char_level = 3
+    engine.set_agent_stats(bm, cleric, s)
+    _spawn_dup(bm, 6, 6, cleric)
+    assert not _attack_has_advantage(engine, bm, cleric, target, _reach_weapon(5)), \
+        "Invoke Duplicity Advantage is Trickery-only"
+    print("✅ test_invoke_duplicity_advantage_requires_trickery_domain passed")
+
+
+def test_move_duplicate_respects_30ft_range():
+    """move_duplicate teleports the illusion up to 30 ft; a longer hop is rejected (illusion stays)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    _trickery_cleric(engine, bm, cleric, level=3)
+    dup = _spawn_dup(bm, 6, 5, cleric)
+    assert engine.move_duplicate(bm, cleric, dup, 8, 5), "10 ft move is within 30 ft"
+    assert _dup_cell(bm, dup) == (8, 5)
+    assert not engine.move_duplicate(bm, cleric, dup, 20, 5), "60 ft move exceeds 30 ft"
+    assert _dup_cell(bm, dup) == (8, 5), "rejected move leaves the duplicate in place"
+    print("✅ test_move_duplicate_respects_30ft_range passed")
+
+
+def test_swap_with_duplicate_trades_positions_at_l6():
+    """Trickster's Transposition (L6) swaps the cleric and duplicate cells."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    _trickery_cleric(engine, bm, cleric, level=6)
+    dup = _spawn_dup(bm, 9, 9, cleric)
+    assert engine.swap_with_duplicate(bm, cleric, dup)
+    assert _dup_cell(bm, cleric) == (9, 9), "cleric took the duplicate's spot"
+    assert _dup_cell(bm, dup) == (5, 5), "duplicate took the cleric's spot"
+    print("✅ test_swap_with_duplicate_trades_positions_at_l6 passed")
+
+
+def test_swap_with_duplicate_requires_level_6():
+    """Trickster's Transposition is gated at L6 — an L3 Trickery cleric cannot swap."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    _trickery_cleric(engine, bm, cleric, level=3)
+    dup = _spawn_dup(bm, 9, 9, cleric)
+    assert not engine.swap_with_duplicate(bm, cleric, dup)
+    assert _dup_cell(bm, cleric) == (5, 5), "no swap below L6"
+    assert _dup_cell(bm, dup) == (9, 9)
+    print("✅ test_swap_with_duplicate_requires_level_6 passed")
+
+
+def test_invoke_duplicity_survives_concentration_loss():
+    """Invoke Duplicity is Channel Divinity (not concentration), so dropping concentration spares it
+    while a true concentration summon is dismissed."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "TrickCleric", 5, 5)
+    _trickery_cleric(engine, bm, cleric, level=6)
+    summon = _spawn_dup(bm, 7, 7, cleric, spell="Summon Dragon")   # real concentration summon
+    dup    = _spawn_dup(bm, 6, 6, cleric, spell="Invoke Duplicity")
+    cond = engine.get_agent_conditions(bm, cleric)
+    cond.concentrating = True; cond.concentrating_on = "Summon Dragon"
+    engine.set_agent_conditions(bm, cleric, cond)
+
+    engine.drop_concentration(bm, cleric)
+    assert bm.is_agent_removed_from_play(summon), "the concentration summon is dismissed"
+    assert not bm.is_agent_removed_from_play(dup), "Invoke Duplicity persists through concentration loss"
+    print("✅ test_invoke_duplicity_survives_concentration_loss passed")
+
+
 if __name__ == "__main__":
     test_channel_divinity_uses_by_level()
     test_divine_strike_adds_damage_once_per_turn()
@@ -565,7 +917,21 @@ if __name__ == "__main__":
     test_avatar_of_battle_resistance()
     test_guided_strike_turns_miss_to_hit()
     test_guided_strike_auto_via_decider()
+    test_war_gods_blessing_extends_guided_reach()
     test_corona_activation_and_duration()
     test_corona_disadvantage_on_fire_radiant_saves()
     test_corona_spares_allies()
+    test_disciple_of_life_adds_to_each_heal()
+    test_blessed_healer_heals_caster()
+    test_supreme_healing_maximizes_dice()
+    test_preserve_life_distributes_pool()
+    test_preserve_life_revives_downed_ally()
+    test_invoke_duplicity_grants_advantage_when_both_adjacent()
+    test_invoke_duplicity_no_advantage_when_duplicate_far()
+    test_invoke_duplicity_no_advantage_when_cleric_far()
+    test_invoke_duplicity_advantage_requires_trickery_domain()
+    test_move_duplicate_respects_30ft_range()
+    test_swap_with_duplicate_trades_positions_at_l6()
+    test_swap_with_duplicate_requires_level_6()
+    test_invoke_duplicity_survives_concentration_loss()
     print("\n✅ All Cleric tests passed!")

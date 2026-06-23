@@ -12,9 +12,14 @@ test_scripts = [
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",
+    "test_helpers.py",
     "test_spells.py",
+    "test_chromatic_orb.py",
+    "test_items.py",
     "test_movement.py",
+    "test_teleportation.py",
     "test_visibility.py",
+    "test_light_effects.py",
     "test_heavily_obscured.py",
     "test_fog_cloud.py",
     "test_frightened.py",
@@ -45,6 +50,7 @@ test_scripts = [
     "test_terrain_concentration.py",
     "test_summoning.py",
     "test_npc_spells.py",
+    "test_origins.py",
     "test_feats.py",
     "test_general_feats.py",
     "test_general_feats_g4.py",
@@ -83,6 +89,7 @@ test_scripts = [
 
     # Rogue features
     "test_rogue_l1_18.py",
+    "test_rogue_cunning_actions.py",
     "test_rogue_phase2.py",
     "test_rogue_thief.py",
     "test_rogue_soulknife.py",

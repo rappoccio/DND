@@ -40,7 +40,9 @@
         "spellcasting_ability": "int",
         "temp_hp": 0,
         "available_hit_points": 0,
-        "feats": [],
+        "feats": [
+          "Alert"
+        ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
         "luck_points": 0,
@@ -212,10 +214,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": true,
-      "npc_spell_groups": {},
-      "npc_spell_uses_cur": {}
+      ]
     },
     {
       "name": "Seneval",
@@ -418,10 +417,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": true,
-      "npc_spell_groups": {},
-      "npc_spell_uses_cur": {}
+      ]
     },
     {
       "name": "Quoth The Raven",
@@ -463,7 +459,9 @@
         "spellcasting_ability": "cha",
         "temp_hp": 0,
         "available_hit_points": 0,
-        "feats": [],
+        "feats": [
+          "Alert"
+        ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
         "luck_points": 0,
@@ -487,21 +485,21 @@
       },
       "weapons": {
         "main_hand": {
-          "name": "Scimitar",
+          "name": "PactBlade",
           "type": "melee",
           "reach_ft": 5,
-          "normal_range_ft": 0,
-          "long_range_ft": 0,
-          "finesse": true,
+          "normal_range_ft": 80,
+          "long_range_ft": 320,
+          "finesse": false,
           "thrown": false,
           "proficient": true,
-          "off_hand": true,
+          "off_hand": false,
           "two_handed": false,
           "heavy": false,
-          "light": true,
+          "light": false,
           "is_shield": false,
           "auto_hit_if_grappled": false,
-          "mastery": "Nick",
+          "mastery": "None",
           "bonus_hit": 0,
           "bonus_damage": 0,
           "ac_bonus": 0,
@@ -509,7 +507,7 @@
             {
               "type": "Slashing",
               "num_dice": 1,
-              "die_size": 6
+              "die_size": 8
             }
           ],
           "magic_damage_types": [],
@@ -598,7 +596,11 @@
       "agent_hunter_prey": "NONE",
       "agent_defensive_tactics": "NONE",
       "agent_primal_companion": "NONE",
-      "agent_eldritch_invocations": [],
+      "agent_eldritch_invocations": [
+        4,
+        5,
+        13
+      ],
       "agent_fiendish_resilience_type": -1,
       "druid_wild_shape_active": false,
       "druid_wild_shape_form_name": "",
@@ -627,10 +629,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": true,
-      "npc_spell_groups": {},
-      "npc_spell_uses_cur": {}
+      ]
     },
     {
       "name": "Qilik (Ravenloft) ",
@@ -647,8 +646,8 @@
         "intel": 11,
         "wis": 17,
         "cha": 8,
-        "hp_max": 27,
-        "hp_cur": 27,
+        "hp_max": 33,
+        "hp_cur": 33,
         "ac": 15,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -672,7 +671,9 @@
         "spellcasting_ability": "wis",
         "temp_hp": 0,
         "available_hit_points": 0,
-        "feats": [],
+        "feats": [
+          "Tough"
+        ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
         "luck_points": 0,
@@ -844,10 +845,7 @@
         0,
         0,
         0
-      ],
-      "is_npc": true,
-      "npc_spell_groups": {},
-      "npc_spell_uses_cur": {}
+      ]
     },
     {
       "name": "Berserker",

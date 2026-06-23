@@ -455,6 +455,72 @@ bool CombatEngine::psychicTeleportation(BattleMap& bm, int idx, int target_col, 
     return true;
 }
 
+// Trickery Domain Cleric — Invoke Duplicity duplicate movement (Bonus Action on later turns):
+// move the cleric's illusory duplicate up to 30 ft to (target_col, target_row). The duplicate is an
+// intangible summon (summon_spell == "Invoke Duplicity") owned by the cleric. Creation lives in the
+// GUI (it shares the summon-spawn path); this owns the RAW 30-ft range + ownership rule. Returns
+// true iff the duplicate moved.
+bool CombatEngine::moveDuplicate(BattleMap& bm, int cleric_idx, int dup_idx,
+                                 int target_col, int target_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (cleric_idx < 0 || cleric_idx >= n || dup_idx < 0 || dup_idx >= n) return false;
+    const PlacedAgent& dup = agents[static_cast<std::size_t>(dup_idx)];
+    if (dup.removed_from_play || dup.summoner_idx != cleric_idx ||
+        dup.summon_spell != "Invoke Duplicity") return false;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.character_class != CharacterClass::Cleric ||
+        cs.cleric_subclass != TrickeryDomain || cs.char_level < 3) return false;
+
+    const Cell from = dup.origin;
+    const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
+    if (dcells * 5 > 30) {
+        log_("{}: Invoke Duplicity — destination too far ({} ft > 30 ft)",
+             agentName(bm, cleric_idx), dcells * 5);
+        return false;                                          // out of range (illusion not moved)
+    }
+    if (!teleportAgent(bm, dup_idx, target_col, target_row)) return false;
+    log_("{}: moves the illusory duplicate {} ft", agentName(bm, cleric_idx), dcells * 5);
+    return true;
+}
+
+// Trickster's Transposition (Trickery Cleric L6+): swap the cleric's position with their duplicate.
+// No resource or action cost — RAW it rides on creating or moving the duplicate. The duplicate is
+// intangible, so only the cleric re-checks destination spell effects / darkness after the swap.
+// Returns true iff the swap happened.
+bool CombatEngine::swapWithDuplicate(BattleMap& bm, int cleric_idx, int dup_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (cleric_idx < 0 || cleric_idx >= n || dup_idx < 0 || dup_idx >= n) return false;
+    const PlacedAgent& dup = agents[static_cast<std::size_t>(dup_idx)];
+    if (dup.removed_from_play || dup.summoner_idx != cleric_idx ||
+        dup.summon_spell != "Invoke Duplicity") return false;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.character_class != CharacterClass::Cleric ||
+        cs.cleric_subclass != TrickeryDomain || cs.char_level < 6) return false;
+
+    const Cell cleric_from = agents[static_cast<std::size_t>(cleric_idx)].origin;
+    const Cell dup_from    = dup.origin;
+    // Direct position swap — setAgentPosition only checks bounds, so trading two occupied cells is
+    // legal. Roll back the cleric if the second move fails (e.g. duplicate's old cell off-grid).
+    if (!bm.setAgentPosition(cleric_idx, dup_from)) return false;
+    if (!bm.setAgentPosition(dup_idx, cleric_from)) {
+        bm.setAgentPosition(cleric_idx, cleric_from);
+        return false;
+    }
+    // Re-apply any destination spell effects + darkness blinding to the cleric (mirrors teleportAgent).
+    for (const auto& effect : bm.activeSpellEffects()) {
+        if (zoneSparesTarget(bm, effect, cleric_idx)) continue;
+        if (std::find(effect.cells.begin(), effect.cells.end(), dup_from) != effect.cells.end())
+            applySpellEffect(bm, effect, cleric_idx);
+    }
+    updateDarknessBlinding(bm, cleric_idx);
+    log_("Trickster's Transposition: {} swaps places with the duplicate", agentName(bm, cleric_idx));
+    return true;
+}
+
 int CombatEngine::layOnHands(BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept
 {
     // Fetch caster's Lay on Hands pool
@@ -1243,6 +1309,79 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
         }
         result.turned.push_back(i);
         log_("Turn Undead: {} is Turned ({} vs DC {})", agentName(bm, i), save_total, result.save_dc);
+    }
+
+    return result;
+}
+
+bool CombatEngine::lifeSupremeHealing(const Agent::Stats& s) const noexcept
+{
+    return s.character_class == CharacterClass::Cleric &&
+           s.cleric_subclass == LifeDomain && s.char_level >= 17;
+}
+
+int CombatEngine::discipleOfLifeBonus(const Agent::Stats& s, int slot_level) const noexcept
+{
+    if (s.character_class == CharacterClass::Cleric &&
+        s.cleric_subclass == LifeDomain && s.char_level >= 3 && slot_level >= 1)
+        return 2 + slot_level;
+    return 0;
+}
+
+PreserveLifeResult CombatEngine::usePreserveLife(BattleMap& bm, int caster_idx,
+                                                 const std::vector<int>& targets)
+{
+    PreserveLifeResult result;
+    auto agents = bm.placedAgents();
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return result;
+
+    Agent::Stats caster = bm.getAgentStats(caster_idx);
+    if (caster.character_class != CharacterClass::Cleric ||
+        caster.cleric_subclass != LifeDomain || caster.char_level < 3) return result;
+
+    Resource* cd = caster.getResource("Channel Divinity");
+    if (!cd || cd->current <= 0) return result;
+
+    result.valid = true;
+    result.pool  = 5 * caster.char_level;
+    int pool     = result.pool;
+
+    // Expend one Channel Divinity use.
+    cd->spend(1);
+    bm.setAgentStats(caster_idx, caster);
+    log_("{} uses Preserve Life ({} HP pool)", agentName(bm, caster_idx), result.pool);
+
+    const Cell c_origin = agents[static_cast<std::size_t>(caster_idx)].origin;
+
+    // Distribute the pool in the caller's chosen order; each creature is restored to no more than
+    // half its HP maximum. Undead cannot benefit.
+    for (int t : targets) {
+        if (pool <= 0) break;
+        if (t < 0 || t >= static_cast<int>(agents.size())) continue;
+        Agent::Stats tgt = bm.getAgentStats(t);
+        if (tgt.is_undead) continue;
+        if (tgt.hp_cur <= 0 && tgt.hp_max <= 0) continue;
+
+        // Within 30 ft (Euclidean cell distance × 5 ft), matching Emanation targeting.
+        const Cell o = agents[static_cast<std::size_t>(t)].origin;
+        const double dx = o.col - c_origin.col, dy = o.row - c_origin.row;
+        if (std::sqrt(dx * dx + dy * dy) * 5.0 > 30.0) continue;
+
+        const int cap = tgt.hp_max / 2;          // can restore up to half its HP max
+        if (tgt.hp_cur >= cap) continue;          // already at/above the cap → no healing
+        const int give = std::min(pool, cap - tgt.hp_cur);
+        if (give <= 0) continue;
+
+        tgt.hp_cur += give;
+        pool       -= give;
+        bm.setAgentStats(t, tgt);
+        reviveOnHeal(bm, t);
+
+        result.healed.push_back(t);
+        result.amounts.push_back(give);
+        result.spent += give;
+        log_("Preserve Life: {} regains {} HP (to {}/{})",
+             agentName(bm, t), give, tgt.hp_cur, tgt.hp_max);
     }
 
     return result;
