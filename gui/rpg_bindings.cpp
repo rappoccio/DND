@@ -378,6 +378,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Draconic L6 Elemental Affinity: CHA mod bonus already applied this turn (reset in beginTurn)")
         .def_readwrite("dragon_wings_active", &Agent::Stats::dragon_wings_active,
              "Draconic L14 Dragon Wings: fly speed = walk speed is active")
+        .def_readwrite("trance_of_order_turns", &Agent::Stats::trance_of_order_turns,
+             "Clockwork L14 Trance of Order window in rounds (>0 = active: attacks vs you lose "
+             "Advantage + you floor your own d20s to 10; ticks in beginTurn)")
         .def_readwrite("mantle_majesty_turns", &Agent::Stats::mantle_majesty_turns,
              "Bard College of Glamour (L6) Mantle of Majesty 'unearthly appearance' window in rounds "
              "(>0 = may re-cast Command as a Bonus Action with no slot; tied to concentration)")
@@ -1673,6 +1676,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def(py::init<>())
         .def_readonly("valid",        &AttackResult::valid)
         .def_readonly("d20",          &AttackResult::d20)
+        .def_readonly("d20_primary",  &AttackResult::d20_primary)
         .def_readonly("attack_mod",   &AttackResult::attack_mod)
         .def_readonly("total_roll",   &AttackResult::total_roll)
         .def_readonly("target_ac",    &AttackResult::target_ac)
@@ -1896,6 +1900,26 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("idx"), py::arg("effect"),
              "Apply the engine-handled part of a surge band. Currently band 1 (Plant Growth —\n"
              "Quartered difficult terrain in a sphere on the caster); other bands return False.")
+        .def("activate_tides_of_chaos",
+             &CombatEngine::activateTidesOfChaos,
+             py::arg("battle_map"), py::arg("idx"),
+             "Tides of Chaos (Wild Magic Sorcerer L3+): spend the use to grant Advantage on the\n"
+             "caster's next D20 Test. Returns True if spent. Recharges on a long rest or when a\n"
+             "Wild Magic Surge fires (see maybe_wild_magic_surge).")
+        .def("activate_trance_of_order",
+             &CombatEngine::activateTranceOfOrder,
+             py::arg("battle_map"), py::arg("idx"),
+             "Trance of Order (Clockwork Sorcerer L14+, Bonus Action): for 1 minute attacks against\n"
+             "you can't benefit from Advantage and you treat your own d20 of 9-or-lower as a 10 on\n"
+             "D20 Tests. Free 1/long rest (the 'Trance of Order' Resource), else 5 Sorcery Points.\n"
+             "Sets trance_of_order_turns=10 and spends the bonus action. Returns True if used.")
+        .def("maybe_wild_magic_surge",
+             &CombatEngine::maybeWildMagicSurge,
+             py::arg("battle_map"), py::arg("idx"),
+             "Wild Magic Surge trigger: call right after a Wild Magic Sorcerer resolves a spell\n"
+             "cast with a spell slot. Rolls 1d20 — on a 20, OR automatically if Tides of Chaos is\n"
+             "expended, it rolls + applies a surge and recharges Tides of Chaos. Returns the\n"
+             "applied WildMagicSurgeResult (effect == 0 if no surge occurred).")
         .def_static("get_rage_damage_bonus",
                     &CombatEngine::getRageDamageBonus,
                     py::arg("level"),
@@ -2613,6 +2637,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "True iff reactor (L3+ Light Domain Cleric, >=1 Warding Flare use, reaction free, within\n"
              "30ft + LoS of the roller) may use Warding Flare on the roller's attack roll. Team-gated:\n"
              "the attack's target must be the reactor itself or one of its allies.")
+        .def("can_restore_balance", &CombatEngine::canRestoreBalance,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"), py::arg("result"),
+             "True iff reactor (L3+ Clockwork Soul Sorcerer, >=1 Restore Balance use, reaction free,\n"
+             "within 60ft + LoS of the roller) may cancel advantage on the roller's attack roll. Offered\n"
+             "only when the roll was made at advantage (result.advantage && not result.disadvantage).")
+        .def("apply_restore_balance_to_attack", &CombatEngine::applyRestoreBalanceToAttack,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             "Spend 1 Restore Balance use + reaction; cancel advantage by reverting result.d20 to\n"
+             "result.d20_primary and re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
         .def("apply_bend_luck_to_attack", &CombatEngine::applyBendLuckToAttack,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend 1 Sorcery Point + reaction; subtract 1d4 from the in-flight attack result and\n"

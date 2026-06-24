@@ -1,0 +1,85 @@
+{
+  "regions": [
+    {
+      "type": "Wall",
+      "x": 458,
+      "y": 288,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 458,
+      "y": 488,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 658,
+      "y": 288,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 658,
+      "y": 488,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 288,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 488,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 258,
+      "y": 288,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 258,
+      "y": 488,
+      "width": 100,
+      "height": 100,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 258,
+      "y": 138,
+      "width": 700,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 258,
+      "y": 688,
+      "width": 700,
+      "height": 50,
+      "multiplier": 0.0
+    }
+  ],
+  "walls_enabled": true
+}

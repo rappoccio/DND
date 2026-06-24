@@ -72,6 +72,9 @@ struct AttackResult {
 
     // ── Attack roll ───────────────────────────────────────────────────────
     int  d20          = 0;      // raw die (1–20); natural 20 = crit, 1 = fumble
+    int  d20_primary  = 0;      // the FIRST die rolled (== d20 when no adv/dis); the natural roll
+                                // before the advantage/disadvantage die. Clockwork Restore Balance
+                                // reverts r.d20 to this to cancel advantage/disadvantage.
     int  attack_mod   = 0;      // total modifier added to the roll
     int  total_roll   = 0;      // d20 + attack_mod
     int  target_ac    = 0;      // defender's AC we rolled against
@@ -774,6 +777,24 @@ public:
     // wired). Returns true if the engine applied the effect.
     bool applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect) noexcept;
 
+    // Tides of Chaos (Wild Magic Sorcerer L3+): spend the use to grant the caster Advantage on
+    // their next D20 Test (via grantPendingAdvantage). One use, regained on a long rest OR when a
+    // Wild Magic Surge fires (see maybeWildMagicSurge). Returns true if the use was spent.
+    bool activateTidesOfChaos(BattleMap& bm, int idx) noexcept;
+
+    // Clockwork L14 Trance of Order (Bonus Action). For 1 minute (10 rounds): attacks against this
+    // sorcerer can't benefit from Advantage, and they treat their own d20 of 9-or-lower as a 10 on
+    // D20 Tests (applyTranceFloor). Free 1/long rest via the "Trance of Order" Resource, else 5
+    // Sorcery Points. Sets trance_of_order_turns = 10 and spends the bonus action. Returns true if used.
+    bool activateTranceOfOrder(BattleMap& bm, int idx) noexcept;
+
+    // Wild Magic Surge trigger (Sorcerer L3+, Wild Magic). Call immediately after the caster
+    // resolves a Sorcerer spell cast with a spell slot (level ≥ 1). Rolls 1d20: on a natural 20
+    // — OR automatically if Tides of Chaos is currently expended — it rolls + applies a surge
+    // (rollWildMagicSurge + applyWildMagicSurgeEffect) and recharges Tides of Chaos. Returns the
+    // applied surge (effect band 1-10), or effect == 0 if no surge occurred / not eligible.
+    WildMagicSurgeResult maybeWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
     // ── Per-agent turn count ──────────────────────────────────────────────
     //
     // The common case is exactly 1 turn per round; only store overrides.
@@ -1149,8 +1170,18 @@ public:
                                                  MagicDamage_t type, bool from_spell) const noexcept;
     // rollSpellTypeDamage: roll `num_dice` d`die_size`, applying Elemental Adept's "treat a 1 as a 2"
     // for the caster's chosen elements (spells only). Appends each die to `out_dice`; returns the sum.
+    // empower_budget: when non-null and > 0, applies Empowered Spell metamagic (see rollDamageDice).
     int rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t type,
-                            int num_dice, int die_size, std::vector<int>& out_dice, bool from_spell) noexcept;
+                            int num_dice, int die_size, std::vector<int>& out_dice, bool from_spell,
+                            int* empower_budget = nullptr) noexcept;
+
+    // rollDamageDice: roll `num_dice` d`die_size`, append each die to `out_dice`, return the sum.
+    // boost1to2 treats a rolled 1 as a 2 (Elemental Adept), on both initial and rerolled dice.
+    // empower_budget: Sorcerer Empowered Spell — when non-null and > 0, reroll the lowest
+    // below-average dice (greedy-optimal for expected value), up to the remaining budget,
+    // keeping each new roll and decrementing the budget per die rerolled.
+    int rollDamageDice(int num_dice, int die_size, std::vector<int>& out_dice,
+                       bool boost1to2, int* empower_budget) noexcept;
 
     // Roll damage dice and populate the damage fields of an existing result.
     // Applies target's damage multipliers (resistance/vulnerability/immunity).
@@ -2156,6 +2187,12 @@ public:
     [[nodiscard]] bool canCuttingWords(const BattleMap& bm, int reactor, int roller) const; // L3+ Lore Bard, ≥1 Bardic use
     [[nodiscard]] bool canSilveryBarbs(const BattleMap& bm, int reactor, int roller) const; // knows Silvery Barbs + L1+ slot
     [[nodiscard]] bool canWardingFlare(const BattleMap& bm, int reactor, int roller, int target) const; // L3+ Light Domain Cleric, ≥1 Warding Flare use, within 30ft, target on reactor's team
+    // Clockwork Soul Sorcerer (L3+): cancel advantage/disadvantage on a d20 Test within 60 ft, PB uses /
+    // long rest, no Sorcery Point cost. In the attack-roll window this fires only when the roll was made
+    // at advantage (r.advantage && !r.disadvantage): reverting r.d20 to r.d20_primary is then a LOWERING
+    // (it drops max(d1,d2) to d1), which fits the lowering-only window. (The disadvantage-cancel
+    // direction would RAISE a missed roll and is deferred — see known_limitations.md.)
+    [[nodiscard]] bool canRestoreBalance(const BattleMap& bm, int reactor, int roller, const AttackResult& r) const;
     // Recompute r.hit / r.critical from r.d20 + r.total_roll vs r.target_ac (nat 20 hits/crits, nat 1
     // misses, else total >= AC). Additive reactions leave r.d20 untouched (crit preserved); the
     // Silvery Barbs reroll sets r.d20 to the new die.
@@ -2169,6 +2206,7 @@ public:
     bool applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackResult& r);
     bool applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r);
     bool applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackResult& r); // Disadvantage = reroll, take lower
+    bool applyRestoreBalanceToAttack(BattleMap& bm, int reactor, AttackResult& r); // cancel advantage: r.d20 ← r.d20_primary
 private:
     // The creatures (≠ attacker) that may lower this attack roll, in initiative order. Silvery Barbs is
     // only included on a hit (it triggers on a success). Empty when no lowering reaction could change

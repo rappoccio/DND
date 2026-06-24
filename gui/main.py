@@ -1104,6 +1104,12 @@ class App:
         self.btn_cbt_bend_luck = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Bend Luck (1 SP)",
                                           (100, 60, 180), (130, 90, 210), self.font_md)
+        self.btn_cbt_tides_of_chaos = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Tides of Chaos",
+                                          (120, 70, 200), (150, 100, 230), self.font_md)
+        self.btn_cbt_trance_of_order = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Trance of Order",
+                                          (70, 110, 180), (100, 145, 215), self.font_md)
         self.btn_cbt_wild_magic_extra_action = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Wild Magic: Extra Action",
                                           (180, 80, 180), (210, 110, 210), self.font_md)
@@ -5990,9 +5996,10 @@ class App:
                     cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
 
-        # Aberrant Mind Psionic Spells (always-prepared, regular spells from spells.json).
-        if class_name == "Sorcerer" and stats.sorcerer_subclass.name == "Aberrant":
-            sub_table = self._SORCERER_SUBCLASS_SPELLS.get("Aberrant", {})
+        # Sorcerer subclass always-prepared lists (Aberrant Mind Psionic Spells, Clockwork Soul
+        # Clockwork Spells) — regular spells from spells.json, granted by subclass + level.
+        if class_name == "Sorcerer":
+            sub_table = self._SORCERER_SUBCLASS_SPELLS.get(stats.sorcerer_subclass.name, {})
             for min_lvl, names in sub_table.items():
                 if level < min_lvl:
                     continue
@@ -6019,6 +6026,14 @@ class App:
             5: ["Clairvoyance", "Slow"],
             7: ["Dominate Beast", "Black Tentacles"],
             9: ["Dominate Person", "Telekinesis"],
+        },
+        # Clockwork Soul (2024 PHB) — Clockwork Spells, always prepared by Sorcerer level. The
+        # subclass-key uses SorcererSubclass.name ("Clockwork"). All ten exist in spells.json.
+        "Clockwork": {
+            3: ["Aid", "Alarm", "Lesser Restoration", "Protection from Evil and Good"],
+            5: ["Dispel Magic", "Protection from Energy"],
+            7: ["Freedom of Movement", "Summon Construct"],
+            9: ["Greater Restoration", "Wall of Force"],
         },
     }
 
@@ -6623,9 +6638,15 @@ class App:
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
                     f"{agents[ctx.source_idx].name}'s {kind}!")
             elif ctx.window == rpg.ReactionWindow.OnD20Seen:
+                feats = [o.feature for o in ctx.options
+                         if o.kind == rpg.ReactionOptionKind.Feature]
+                names = {"BendLuck": "Bend Luck", "CuttingWords": "Cutting Words",
+                         "SilveryBarbs": "Silvery Barbs", "WardingFlare": "Warding Flare",
+                         "RestoreBalance": "Restore Balance"}
+                choices = " / ".join(names.get(f, f) for f in feats) or "react"
                 self._combat_log_add(
-                    f"{agents[ctx.reactor_idx].name} may lower {agents[ctx.source_idx].name}'s "
-                    f"attack roll ({ctx.d20_value}) — Bend Luck / Cutting Words / Silvery Barbs / Warding Flare!")
+                    f"{agents[ctx.reactor_idx].name} may alter {agents[ctx.source_idx].name}'s "
+                    f"attack roll ({ctx.d20_value}) — {choices}!")
             elif ctx.window == rpg.ReactionWindow.OnSaveFail:
                 who = ("their own" if ctx.reactor_idx == ctx.source_idx
                        else f"{agents[ctx.source_idx].name}'s")
@@ -6990,6 +7011,9 @@ class App:
         self.summon_hover_cell         = None
         self.sprites.clear()
         self._consume_cast_slot(slot, caster_idx)
+        # Wild Magic Surge: a summon spell cast with a spell slot triggers a surge.
+        if slot_level >= 1 and not cstats.is_npc:
+            self._maybe_wild_magic_surge(caster_idx)
 
     # ── Trickery Domain: Invoke Duplicity ───────────────────────────────────
     def _my_duplicates(self, idx: int) -> list:
@@ -7560,6 +7584,25 @@ class App:
         # Enchantment/Illusion cast (a free Mantle-of-Majesty Command uses no slot, so it's excluded).
         if not ctx.get("free_cast"):
             self._maybe_offer_beguiling_magic(caster_idx, ctx["spell_idx"])
+        # Wild Magic Surge: a Wild Magic Sorcerer who just cast a spell WITH A SPELL SLOT (level ≥ 1,
+        # not a free cast) checks for a surge (natural 20, or forced if Tides of Chaos is expended).
+        if not ctx.get("free_cast") and ctx.get("slot_level", 0) >= 1:
+            self._maybe_wild_magic_surge(caster_idx)
+
+    def _maybe_wild_magic_surge(self, caster_idx: int):
+        """Run the Wild Magic Surge trigger after a slot-fueled cast. The engine gates on
+        class/subclass/level itself (no-op for non-Wild-Magic casters), rolls the d20, and applies +
+        recharges Tides of Chaos on a surge. We just relay the engine log and refresh the overlay."""
+        if not (0 <= caster_idx < len(self.bm.placed_agents)):
+            return
+        res = self.combat.maybe_wild_magic_surge(self.bm, caster_idx)
+        self._flush_combat_log()
+        if res.effect > 0:
+            name = self.bm.placed_agents[caster_idx].name
+            self._combat_log_add(f"⚡ {name} — Wild Magic Surge! {res.description}")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()       # band 1 (Plant Growth) places a terrain effect
+        self._update_attack_overlay()
 
     def _maybe_offer_beguiling_magic(self, caster_idx: int, spell_idx: int):
         """If a L3+ College of Glamour bard just cast an Enchantment or Illusion spell using a spell
@@ -7791,6 +7834,9 @@ class App:
 
         # Mark action/bonus as used
         self._consume_cast_slot(slot, caster_idx)
+        # Wild Magic Surge: a teleport spell (e.g. Misty Step) cast with a spell slot triggers a surge.
+        if self.pending_spell_slot_level >= 1:
+            self._maybe_wild_magic_surge(caster_idx)
 
     # FLAG: Move to C++
     def _aoe_cells(self, center_cell, spell) -> list:
@@ -8181,6 +8227,7 @@ class App:
                     "draconic_affinity_type": s.draconic_affinity_type,
                     "draconic_affinity_used_this_turn": s.draconic_affinity_used_this_turn,
                     "dragon_wings_active": s.dragon_wings_active,
+                    "trance_of_order_turns": s.trance_of_order_turns,
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
                     "primal_champion_applied": s.primal_champion_applied,
@@ -10861,6 +10908,42 @@ class App:
                         self.btn_cbt_bend_luck.draw(self.screen)
                         y += B + gap
 
+            # Wild Magic Sorcerer L3+ Tides of Chaos (no action cost): Advantage on the next D20
+            # Test. Shown only when the use is available (recharges on long rest / Wild Magic Surge).
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.WildMagic and
+                        stats.char_level >= 3):
+                    toc = stats.get_resource("Tides of Chaos")
+                    if toc and toc.current > 0:
+                        self.btn_cbt_tides_of_chaos.rect.x = lx
+                        self.btn_cbt_tides_of_chaos.rect.y = y
+                        self.btn_cbt_tides_of_chaos.rect.w = W
+                        self.btn_cbt_tides_of_chaos.draw(self.screen)
+                        y += B + gap
+
+            # Clockwork Sorcerer L14+ Trance of Order (Bonus Action): for 1 minute, attacks against
+            # you lose Advantage and you floor your own d20s to 10. Free 1/long rest or 5 SP. Shown
+            # while not already active and a use (free or 5 SP) is available, with a bonus action free.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Clockwork and
+                        stats.char_level >= 14 and stats.trance_of_order_turns == 0):
+                    trance = stats.get_resource("Trance of Order")
+                    sp_res = stats.get_resource("Sorcery Points")
+                    free_use = trance and trance.current > 0
+                    sp_use = sp_res and sp_res.current >= 5
+                    if free_use or sp_use:
+                        self.btn_cbt_trance_of_order.text = (
+                            "Trance of Order" if free_use else "Trance of Order (5 SP)")
+                        self.btn_cbt_trance_of_order.rect.x = lx
+                        self.btn_cbt_trance_of_order.rect.y = y
+                        self.btn_cbt_trance_of_order.rect.w = W
+                        self.btn_cbt_trance_of_order.draw(self.screen)
+                        y += B + gap
+
             # Wild Magic window-band affordances (GUI-enforced; fields set by surge application)
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -13068,6 +13151,25 @@ class App:
                                 [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
                                  ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
                                 self.screen.get_size())
+                    if self.btn_cbt_tides_of_chaos.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.activate_tides_of_chaos(self.bm, idx):
+                                self._flush_combat_log()
+                            else:
+                                self._combat_log_add("Tides of Chaos: not available (no use left / wrong subclass/level)")
+                                self._flush_combat_log()
+                            self._update_attack_overlay()
+                    if self.btn_cbt_trance_of_order.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.activate_trance_of_order(self.bm, idx):
+                                self.bonus_used = True  # Trance of Order costs a Bonus Action
+                                self._flush_combat_log()
+                            else:
+                                self._combat_log_add("Trance of Order: not available (no use/5 SP, wrong subclass/level)")
+                                self._flush_combat_log()
+                            self._update_attack_overlay()
                     if self.btn_cbt_wild_magic_extra_action.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

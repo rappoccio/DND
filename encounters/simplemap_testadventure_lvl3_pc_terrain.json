@@ -1,0 +1,45 @@
+{
+  "regions": [
+    {
+      "type": "Wall",
+      "x": 158,
+      "y": 188,
+      "width": 50,
+      "height": 600,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 158,
+      "y": 788,
+      "width": 850,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 208,
+      "y": 188,
+      "width": 800,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 588,
+      "width": 50,
+      "height": 200,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 238,
+      "width": 50,
+      "height": 250,
+      "multiplier": 0.0
+    }
+  ],
+  "walls_enabled": true
+}

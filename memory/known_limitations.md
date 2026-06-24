@@ -729,7 +729,7 @@ Spellcasting chassis (L3: third-caster INT/Wizard, `compute_third_caster_slots` 
 
 ---
 
-## Sorcerer (Phase 1 + Phase 2 + Phase-3 combat-core implemented)
+## Sorcerer (Phase 1 + 2 + 3 subclasses + 4 surge-engine implemented)
 
 **Implemented:** Chassis (CON/CHA save proficiency), full-caster table-B slots, Sorcery
 Points, Innate Sorcery (L1: +1 spell save DC + advantage on spell attacks, 10-round buff,
@@ -750,9 +750,15 @@ Each applies for one cast via a temp spell copy (stored spell untouched); SP spe
   flavor (no combat-sim effect); will not be implemented.
 
 <details>
-<summary><b>Subclasses (Phase 3 — combat-core slice implemented)</b></summary>
+<summary><b>Subclasses (Phase 3 combat-core + Phase 4 Wild Magic surge engine)</b></summary>
 
-**Draconic L3** Resilience: unarmored AC = 10+DEX+CHA (`computeAC`). **Wild Magic L6** Bend Luck: spend 1 SP, ±1d4 on the next d20 via `pending_roll_bonus_` (pre-roll prime — RAW is post-hoc; see the Architecture post-hoc note). **Wild Magic Surge foundation** built: `roll_wild_magic_surge` (d100, 10-band table) + `applyWildMagicSurgeEffect` dispatch; per-effect application DONE for bands 1/2/3/6/7/8/9/10 (terrain, +2 AC + Magic-Missile immunity, +5 HP/turn, bonus-cast/teleport windows, skip-turn, extra-action, drop-weapons), and bands 4/5 = cast a named JSON spell (Chain Lightning / Blindness) through the normal cast path (see [[engine_reads_json]]). **Deferred:** the surge TRIGGER (roll after a L1+ cast) + GUI enforcement of the window bands; Draconic HP/Elemental Affinity/Wings/Companion; Tides of Chaos / L14 / L18; the Clockwork & Aberrant subclasses; a Bend Luck GUI button.
+**Draconic:** L3 Resilience AC = 10+DEX+CHA (`computeAC`) + L3 Resilience HP bonus (`hp_max += level`, idempotent via `draconic_hp_applied`); L6 Elemental Affinity (+CHA to first matching-type spell damage roll/turn, `draconic_affinity_type`/`draconic_affinity_used_this_turn`); L14 Dragon Wings (`activateDragonWings` → fly = walk, toggle). **Aberrant Mind:** L3 Psionic Spells (data-only always-prepared list in `main.py`); L6 Psychic Defenses (Psychic 0.5× resist + Charmed/Frightened save advantage at both save sites).
+
+**Wild Magic:** L6 Bend Luck (spend 1 SP, ±1d4 on next d20 via `pending_roll_bonus_` — pre-roll prime; see Architecture post-hoc note). **Surge engine (Phase 4):** `applyWildMagicSurgeEffect` dispatch for bands 1/2/3/6/7/8/9/10 (terrain, +2 AC + Magic-Missile immunity, +5 HP/turn, bonus-cast/teleport windows, skip-turn, extra-action, drop-weapons); bands 4/5 cast a named JSON spell. The surge **TRIGGER** (`maybeWildMagicSurge`) fires after any slot cast (`_finish_cast` + teleport + summon paths): nat-20 → surge, or forced if **Tides of Chaos** (L3, `activateTidesOfChaos` + 1-use Resource) is expended, and a surge recharges Tides. GUI: Bend Luck + Tides of Chaos buttons + all window-band affordances. Tests in `test_sorcerer.py`.
+
+**Clockwork Soul (Phase 5):** L3 Clockwork Spells (data-only always-prepared list in `main.py _SORCERER_SUBCLASS_SPELLS["Clockwork"]`, all 10 in spells.json); **L3 Restore Balance** = `OnD20Seen` reaction (`canRestoreBalance` / `applyRestoreBalanceToAttack`) that cancels **advantage** on an attack roll within 60 ft by reverting `r.d20` to the new `r.d20_primary` field (the first die rolled, captured in `rollToHit`) — a lowering that can flip a hit to a miss; PB uses / long rest, no SP, no new Stats flag (a Resource). Auto-surfaces in the generic reaction menu (no new GUI button). Tests in `test_sorcerer.py`.
+
+**Deferred:** Draconic Elemental Affinity SP-resistance half + element-picker dialog; Clockwork Restore Balance **disadvantage-cancel direction** (would RAISE a missed roll → outside the lowering-only OnD20Seen window — needs a miss-side window), Clockwork L6 Bastion of Law (SP damage-ward), L14 Trance of Order (no-advantage-vs-you + 9→10 floor), L18 Clockwork Cavalcade (mass heal/repair AoE); Aberrant L14+ (Revelation in Flesh, Warping Implosion) + Psionic Sorcery (SP-cast); Empowered/Subtle Metamagic; Wild Magic Controlled Chaos (L14) / Tamed Surge (L18).
 
 </details>
 

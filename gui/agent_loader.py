@@ -73,6 +73,7 @@ def dict_to_stats(stats_dict):
     stats.draconic_affinity_type = int(stats_dict.get("draconic_affinity_type", -1))
     stats.draconic_affinity_used_this_turn = bool(stats_dict.get("draconic_affinity_used_this_turn", False))
     stats.dragon_wings_active = bool(stats_dict.get("dragon_wings_active", False))
+    stats.trance_of_order_turns = int(stats_dict.get("trance_of_order_turns", 0))
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage

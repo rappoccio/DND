@@ -500,6 +500,7 @@ namespace rpg {
       int  draconic_affinity_type{-1};                          // Draconic L6 Elemental Affinity: chosen MagicDamage_t index (0-9), -1 = none
       bool draconic_affinity_used_this_turn{false};             // Draconic L6 Elemental Affinity: CHA mod bonus already applied this turn; reset in beginTurn
       bool dragon_wings_active{false};                          // Draconic L14 Dragon Wings: fly speed granted (= walk speed); false until activated
+      int  trance_of_order_turns{0};                            // Clockwork L14 Trance of Order: rounds remaining (>0 = active: attacks vs you can't benefit from Advantage + you treat your own d20 of 9-or-lower as a 10 on D20 Tests). 1 min = 10 rounds; ticks in beginTurn.
       int  mantle_majesty_turns{0};                              // Bard College of Glamour (L6) — Mantle of Majesty: "unearthly appearance" window in rounds (>0 = may re-cast Command as a Bonus Action with no slot; Command auto-fails for creatures Charmed by this bard). Tied to concentration on "Mantle of Majesty".
       int  majestic_presence_turns{0};                            // Bard College of Glamour (L14) — Unbreakable Majesty: "majestic presence" window in rounds (>0 = negates incoming attacks automatically like Shield, no reaction). Tied to concentration on "Unbreakable Majesty".
       bool majesty_checked_this_turn{false};                      // Unbreakable Majesty: per-turn gate — only check/negate once per turn
@@ -519,6 +520,16 @@ namespace rpg {
       [[nodiscard]] bool hasInvocation(int code) const noexcept {
           return std::find(eldritch_invocations.begin(), eldritch_invocations.end(), code)
                  != eldritch_invocations.end();
+      }
+
+      // Clockwork L14 Trance of Order: while active, treat any d20 of 9 or lower as a 10 on the
+      // owner's own D20 Tests (attacks/saves). Apply to the KEPT die at each roll site, BEFORE
+      // crit/fumble evaluation and gated on !auto_fail (an automatic-fail save must not be floored).
+      // A no-op for any creature not a L14+ Clockwork Sorcerer in an active trance.
+      [[nodiscard]] int applyTranceFloor(int d20) const noexcept {
+          return (character_class == CharacterClass::Sorcerer &&
+                  sorcerer_subclass == SorcererSubclass::ClockworkPath &&
+                  char_level >= 14 && trance_of_order_turns > 0 && d20 < 10) ? 10 : d20;
       }
 
       // ── Feats ───────────────────────────────────────────────────────────

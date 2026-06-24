@@ -202,27 +202,40 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     // Roll the d20, capturing the adv/dis dice so they fold into the single To-hit line
     // below (instead of a separate line) — the kept natural roll plus the dice it came from.
     std::string d20_detail;
+    // d20_primary captures the FIRST die rolled (the "natural" d20 before the adv/dis die). It lets
+    // Clockwork Restore Balance cancel advantage/disadvantage by reverting r.d20 to this value: with
+    // advantage r.d20=max(d1,d2) so reverting to d1 lowers it (a lowering reaction); with disadvantage
+    // r.d20=min(d1,d2) so reverting to d1 raises it. With no adv/dis it equals r.d20 (a no-op revert).
     if (advantage && disadvantage) {
         // Both advantage and disadvantage: they cancel out (roll normally)
         int d1 = roll(20), d2 = roll(20);
-        r.d20 = d1;
+        r.d20 = d1; r.d20_primary = d1;
         d20_detail = std::format(" (adv+dis cancel: {},{})", d1, d2);
     } else if (advantage) {
         int d1 = roll(20), d2 = roll(20);
-        r.d20 = std::max(d1, d2);
+        r.d20 = std::max(d1, d2); r.d20_primary = d1;
         d20_detail = std::format(" (adv: {},{})", d1, d2);
     } else if (disadvantage) {
         int d1 = roll(20), d2 = roll(20);
-        r.d20 = std::min(d1, d2);
+        r.d20 = std::min(d1, d2); r.d20_primary = d1;
         d20_detail = std::format(" (dis: {},{})", d1, d2);
     } else {
-        r.d20 = roll(20);
+        r.d20 = roll(20); r.d20_primary = r.d20;
     }
 
-    // Apply portent die if one was pending (after advantage/disadvantage selection)
+    // Apply portent die if one was pending (after advantage/disadvantage selection). Portent fixes the
+    // die outright, so d20_primary follows it too (Restore Balance must not undo a Portent substitution).
     if (pending_portent >= 0) {
         d20_detail += std::format(" (portent {}→{})", r.d20, pending_portent);
-        r.d20 = pending_portent;
+        r.d20 = pending_portent; r.d20_primary = pending_portent;
+    }
+
+    // Clockwork L14 Trance of Order: while active, treat the kept d20 of 9 or lower as a 10 on the
+    // sorcerer's own attack rolls. Applied to r.d20 BEFORE crit/fumble eval so a floored nat-1 stops
+    // being a fumble (and a nat-20 is never touched — the floor is only 10).
+    if (const int floored = attacker.applyTranceFloor(r.d20); floored != r.d20) {
+        d20_detail += std::format(" (trance {}->{})", r.d20, floored);
+        r.d20 = floored;
     }
 
     r.critical   = (r.d20 >= attacker.crit_threshold);
@@ -1234,6 +1247,22 @@ bool CombatEngine::canWardingFlare(const BattleMap& bm, int reactor, int roller,
     return wf && wf->current >= 1;
 }
 
+// Clockwork Soul Sorcerer (L3+) Restore Balance: cancel advantage/disadvantage on a d20 Test by a
+// creature within 60 ft it can see. PB uses / long rest, no Sorcery Point cost. In this attack-roll
+// window it is offered only when the roll was made AT ADVANTAGE (and not also disadvantage): reverting
+// r.d20 to r.d20_primary then lowers max(d1,d2) → d1, fitting the lowering-only window (it can flip a
+// hit to a miss but never a miss to a hit). Reuses d20ReactorBase (60 ft + LoS + reaction free + alive).
+bool CombatEngine::canRestoreBalance(const BattleMap& bm, int reactor, int roller, const AttackResult& r) const
+{
+    if (!r.advantage || r.disadvantage) return false;     // only an advantaged roll is a lowering revert
+    if (!d20ReactorBase(bm, reactor, roller)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Sorcerer ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    const Resource* rb = s.getResource("Restore Balance");
+    return rb && rb->current >= 1;
+}
+
 // Force an auto-hit (e.g. a vampire's Bite vs a creature it has Grappled) after the roll: a missed
 // roll is promoted to a hit. The roll itself stands (a natural 20 still crits; a nat 1 that was
 // going to fumble is rescued), and this runs BEFORE the OnD20Seen/Shield windows so a defender can
@@ -1360,6 +1389,36 @@ bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackR
     return true;
 }
 
+// Clockwork Restore Balance: cancel the advantage on this attack roll by reverting the kept die to the
+// first (primary) die — max(d1,d2) → d1, a lowering that can flip the hit to a miss. Spends one Restore
+// Balance use + the reactor's reaction (no Sorcery Point). Mirrors the other lowering applies: rebuild
+// total_roll from d20 + attack_mod (invariant) and reevaluate. r.advantage is cleared to reflect the cancel.
+bool CombatEngine::applyRestoreBalanceToAttack(BattleMap& bm, int reactor, AttackResult& r)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Sorcerer ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    Resource* rb = s.getResource("Restore Balance");
+    if (!rb || rb->current < 1) return false;
+
+    rb->current -= 1;
+    cond.reaction_used = true;
+    const int old_d20 = r.d20;
+    r.d20         = r.d20_primary;                         // cancel advantage → keep the first die
+    r.advantage   = false;
+    r.total_roll  = r.d20 + r.attack_mod;                  // carries any earlier penalty (invariant)
+    reevaluateAttackHit(r);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses Restore Balance: cancels Advantage, d20 {}→{} (now {} vs AC {}) → {}", agentName(bm, reactor),
+         old_d20, r.d20, r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+    return true;
+}
+
 // Which creatures may lower this attack roll, in index order. Only on a hit (a miss/fumble can't be
 // lowered further). Additive reactions (Bend Luck/Cutting Words) can't change a natural 20, so they
 // only count off a nat-20; Silvery Barbs' reroll can change anything (including a crit).
@@ -1373,7 +1432,8 @@ std::vector<int> CombatEngine::d20SeenReactors(const BattleMap& bm, const Attack
     for (int i = 0; i < n; ++i) {
         if (i == roller) continue;
         const bool additive = (r.d20 != 20) && (canBendLuck(bm, i, roller) || canCuttingWords(bm, i, roller));
-        const bool reroll   = canSilveryBarbs(bm, i, roller) || canWardingFlare(bm, i, roller, action.target_idx);
+        const bool reroll   = canSilveryBarbs(bm, i, roller) || canWardingFlare(bm, i, roller, action.target_idx)
+                            || canRestoreBalance(bm, i, roller, r);   // canceling advantage can drop a nat-20
         if (additive || reroll) out.push_back(i);
     }
     return out;
@@ -1392,6 +1452,8 @@ std::vector<ReactionOption> CombatEngine::d20SeenOptions(const BattleMap& bm, in
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Silvery Barbs (force a reroll)", "SilveryBarbs"});
     if (canWardingFlare(bm, reactor, roller, action.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Warding Flare (impose Disadvantage)", "WardingFlare"});
+    if (canRestoreBalance(bm, reactor, roller, r))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Restore Balance (cancel Advantage)", "RestoreBalance"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -1407,6 +1469,7 @@ void CombatEngine::applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, c
     else if (opt.feature == "CuttingWords") applyCuttingWordsToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "SilveryBarbs") applySilveryBarbsToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "WardingFlare") applyWardingFlareToAttack(bm, ctx.reactor_idx, r);
+    else if (opt.feature == "RestoreBalance") applyRestoreBalanceToAttack(bm, ctx.reactor_idx, r);
 }
 
 bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, AttackResult& r)
@@ -1432,6 +1495,7 @@ bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, Attac
         else if (o.feature == "CuttingWords") changed |= applyCuttingWordsToAttack(bm, reactor, r);
         else if (o.feature == "SilveryBarbs") changed |= applySilveryBarbsToAttack(bm, reactor, r);
         else if (o.feature == "WardingFlare") changed |= applyWardingFlareToAttack(bm, reactor, r);
+        else if (o.feature == "RestoreBalance") changed |= applyRestoreBalanceToAttack(bm, reactor, r);
     }
     return changed;
 }
@@ -2029,6 +2093,15 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         !tgt_cond.incapacitated) {
         adv = false;
         log_("Elusive: target is a L18+ Rogue — advantage negated");
+    }
+
+    // Clockwork L14 Trance of Order: while active, attack rolls against the sorcerer can't benefit
+    // from Advantage (defender-side, mirrors Elusive). Composes harmlessly with Restore Balance.
+    if (adv && tgt_stats.character_class == CharacterClass::Sorcerer &&
+        tgt_stats.sorcerer_subclass == SorcererSubclass::ClockworkPath &&
+        tgt_stats.char_level >= 14 && tgt_stats.trance_of_order_turns > 0) {
+        adv = false;
+        log_("Trance of Order: target's perfect order negates Advantage on the attack");
     }
 
 

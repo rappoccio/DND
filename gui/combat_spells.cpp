@@ -46,19 +46,49 @@ float CombatEngine::effectiveMagicDamageMult(const Agent::Stats& caster, const A
     return m;
 }
 
-int CombatEngine::rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t type,
-                                      int num_dice, int die_size, std::vector<int>& out_dice,
-                                      bool from_spell) noexcept
+int CombatEngine::rollDamageDice(int num_dice, int die_size, std::vector<int>& out_dice,
+                                 bool boost1to2, int* empower_budget) noexcept
 {
-    const bool boost = from_spell && caster.hasElementalAdeptType(type);  // treat a 1 as a 2
-    int sum = 0;
+    if (num_dice <= 0 || die_size <= 0) return 0;
+    std::vector<int> rolled;
+    rolled.reserve(static_cast<std::size_t>(num_dice));
     for (int i = 0; i < num_dice; ++i) {
         int d = roll(die_size);
-        if (boost && d == 1) d = 2;
-        out_dice.push_back(d);
-        sum += d;
+        if (boost1to2 && d == 1) d = 2;
+        rolled.push_back(d);
     }
+
+    // Empowered Spell metamagic: reroll the lowest below-average dice, up to the remaining budget.
+    // Rerolling only dice strictly below the die's expected value ((size+1)/2), lowest-first, is the
+    // greedy-optimal use of a limited reroll budget — it never lowers expected damage. The new roll
+    // is always kept ("you must use the new rolls"), even if it lands lower than the original.
+    if (empower_budget && *empower_budget > 0 && num_dice > 0) {
+        const double avg = (die_size + 1) / 2.0;
+        std::vector<int> idx(rolled.size());
+        std::iota(idx.begin(), idx.end(), 0);
+        std::sort(idx.begin(), idx.end(),
+                  [&](int a, int b){ return rolled[static_cast<std::size_t>(a)] < rolled[static_cast<std::size_t>(b)]; });
+        for (int k = 0; k < static_cast<int>(idx.size()) && *empower_budget > 0; ++k) {
+            int i = idx[static_cast<std::size_t>(k)];
+            if (rolled[static_cast<std::size_t>(i)] >= avg) break;  // ascending order — nothing left below average
+            int nd = roll(die_size);
+            if (boost1to2 && nd == 1) nd = 2;
+            rolled[static_cast<std::size_t>(i)] = nd;
+            --*empower_budget;
+        }
+    }
+
+    int sum = 0;
+    for (int d : rolled) { out_dice.push_back(d); sum += d; }
     return sum;
+}
+
+int CombatEngine::rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t type,
+                                      int num_dice, int die_size, std::vector<int>& out_dice,
+                                      bool from_spell, int* empower_budget) noexcept
+{
+    const bool boost = from_spell && caster.hasElementalAdeptType(type);  // treat a 1 as a 2
+    return rollDamageDice(num_dice, die_size, out_dice, boost, empower_budget);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,6 +363,9 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     } else {
         save_d20 = roll(20);
     }
+    // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10). Gated on !auto_fail
+    // so a forced automatic failure (save_d20 == 1) is never floored.
+    if (!auto_fail) save_d20 = tgt_stats.applyTranceFloor(save_d20);
     ss.d20       = save_d20;
     ss.save_mod  = saveModFor(bm, tgt_idx, sp.save_ability);
     ss.bonus     = 0;
@@ -418,15 +451,18 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         return t == Acid || t == Cold || t == Fire || t == Lightning || t == Poison || t == Thunder;
     };
 
-    if (action.metamagic == MetamagicEmpowered) {
-        log_("Metamagic not applied: Empowered Spell not yet implemented in the combat engine");
-    } else if (action.metamagic == MetamagicSubtle) {
+    if (action.metamagic == MetamagicSubtle) {
         log_("Metamagic not applied: Subtle Spell has no effect in the combat engine");
     } else if (action.metamagic != MetamagicNone) {
         // Decide whether the option is applicable to THIS spell before spending SP.
         bool applicable = true;
         std::string why;
         switch (action.metamagic) {
+            case MetamagicEmpowered:
+                if (sp.magic_damage_rolls.empty() && sp.physical_damage_rolls.empty()) {
+                    applicable = false; why = "Empowered needs a spell that rolls damage dice";
+                }
+                break;
             case MetamagicTransmuted: {
                 bool valid_type = action.transmuted_damage_type >= 0 &&
                                   action.transmuted_damage_type < NumMagicDamage_t &&
@@ -472,6 +508,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 case MetamagicExtended:
                     sp.duration *= 2;
                     log_("Metamagic: Extended Spell ({} SP) — duration now {} rounds", cost, sp.duration);
+                    break;
+                case MetamagicEmpowered:
+                    log_("Metamagic: Empowered Spell ({} SP) — reroll up to {} damage die(s) this cast",
+                         cost, std::max(1, cha_mod));
                     break;
                 case MetamagicHeightened:
                     log_("Metamagic: Heightened Spell ({} SP)", cost);
@@ -693,6 +733,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (tr.hit) {
                 std::vector<int> dice;
                 int dmg = 0;
+                // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
+                int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
                 if (sp.type == Spell::Heal) {
                     // Healing spell: roll healing_type dice + add spellcasting ability modifier
@@ -727,7 +769,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
                         // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
                         int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, n_dice,
-                                                              roll_info.die_size, dice, true);
+                                                              roll_info.die_size, dice, true, &empower_budget);
                         // Draconic Elemental Affinity (L6): add CHA mod to first matching-type roll this turn.
                         if (draconic_affinity_available &&
                             static_cast<int>(roll_info.type) == caster_stats.draconic_affinity_type) {
@@ -748,12 +790,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     }
                     for (const auto& roll_info : sp.physical_damage_rolls) {
                         int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
-                        int type_damage = 0;
-                        for (int i = 0; i < n_dice; ++i) {
-                            int d = roll(roll_info.die_size);
-                            dice.push_back(d);
-                            type_damage += d;
-                        }
+                        int type_damage = rollDamageDice(n_dice, roll_info.die_size, dice, false, &empower_budget);
                         // Apply target's resistance/vulnerability/immunity multiplier
                         float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
                         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
@@ -890,6 +927,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
             std::vector<int> dice;
             int dmg = 0;
+            // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
+            int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
             if (sp.type == Spell::Heal) {
                 // Healing spell: roll healing_type dice + add spellcasting ability modifier
@@ -923,7 +962,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 for (const auto& roll_info : sp.magic_damage_rolls) {
                     // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
                     int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
-                                                          roll_info.die_size, dice, true);
+                                                          roll_info.die_size, dice, true, &empower_budget);
                     type_damage += roll_info.bonus;
                     // Draconic Elemental Affinity (L6): add CHA mod to first matching-type roll this turn.
                     if (draconic_affinity_available &&
@@ -945,12 +984,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     dmg += modified_damage;
                 }
                 for (const auto& roll_info : sp.physical_damage_rolls) {
-                    int type_damage = 0;
-                    for (int i = 0; i < roll_info.num_dice; ++i) {
-                        int d = roll(roll_info.die_size);
-                        dice.push_back(d);
-                        type_damage += d;
-                    }
+                    int type_damage = rollDamageDice(roll_info.num_dice, roll_info.die_size, dice, false, &empower_budget);
                     type_damage += roll_info.bonus;
                     // Apply target's resistance/vulnerability/immunity multiplier first
                     float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
@@ -991,6 +1025,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         default: {
             std::vector<int> dice;
             int total = 0;
+            // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
+            int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
             if (sp.type == Spell::Heal) {
                 // Healing spell: roll healing_type dice + add spellcasting ability modifier
@@ -1024,7 +1060,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 for (const auto& roll_info : sp.magic_damage_rolls) {
                     // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
                     int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
-                                                          roll_info.die_size, dice, true);
+                                                          roll_info.die_size, dice, true, &empower_budget);
                     type_damage += roll_info.bonus;
                     // Resistance/vuln/immunity multiplier (Elemental Adept / Poisoner lift the
                     // caster-relevant Resistance to 1.0).
@@ -1033,12 +1069,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     total += modified_damage;
                 }
                 for (const auto& roll_info : sp.physical_damage_rolls) {
-                    int type_damage = 0;
-                    for (int i = 0; i < roll_info.num_dice; ++i) {
-                        int d = roll(roll_info.die_size);
-                        dice.push_back(d);
-                        type_damage += d;
-                    }
+                    int type_damage = rollDamageDice(roll_info.num_dice, roll_info.die_size, dice, false, &empower_budget);
                     type_damage += roll_info.bonus;
                     // Apply target's resistance/vulnerability/immunity multiplier
                     float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
@@ -1215,6 +1246,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                             (spell_cond.condition_name == "Charmed" ||
                              spell_cond.condition_name == "Frightened");
                         int save_d20 = (fey_twist || aberrant_defense) ? rollAdvantage(20) : roll(20);
+                        // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10).
+                        save_d20 = tgt_stats.applyTranceFloor(save_d20);
                         int cond_save_mod = saveModFor(bm, tgt_idx, spell_cond.save_ability);
                         int cond_save_total = save_d20 + cond_save_mod;
                         cond_save_total = applyIndomitableMight(bm, tgt_idx, spell_cond.save_ability, cond_save_total);
@@ -1804,6 +1837,9 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         else if (adv)        save_d20 = rollAdvantage(20);
         else if (dis)        save_d20 = rollDisadvantage(20);
         else                 save_d20 = roll(20);
+        // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10), but never an
+        // automatic failure.
+        if (!auto_fail) save_d20 = target_stats.applyTranceFloor(save_d20);
 
         int dc = 0;
         if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
@@ -2042,6 +2078,9 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
     } else {
         save_d20 = roll(20);
     }
+    // Clockwork L14 Trance of Order: floor the sorcerer's own d20 (9-or-lower → 10) on this
+    // concentration save (a D20 Test). No auto-fail path here.
+    save_d20 = bm.getAgentStats(agent_idx).applyTranceFloor(save_d20);
     r.save_d20   = save_d20;
 
     Agent::Stats s = bm.getAgentStats(agent_idx);
@@ -2451,6 +2490,73 @@ bool CombatEngine::applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect)
     }
     bm.setAgentStats(idx, stats);
     return true;
+}
+
+bool CombatEngine::activateTidesOfChaos(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
+        log_("{} cannot use Tides of Chaos (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return false;
+    }
+
+    Resource* tides = stats.getResource("Tides of Chaos");
+    if (!tides || tides->current < 1) {
+        log_("{} has no Tides of Chaos use left (recharges on a long rest or a Wild Magic Surge)",
+             agentName(bm, idx));
+        return false;
+    }
+
+    tides->current -= 1;
+    grantPendingAdvantage(true);                 // Advantage on the next D20 Test
+    bm.setAgentStats(idx, stats);
+
+    log_("{} uses Tides of Chaos: Advantage on the next D20 Test", agentName(bm, idx));
+    return true;
+}
+
+WildMagicSurgeResult CombatEngine::maybeWildMagicSurge(BattleMap& bm, int idx) noexcept
+{
+    WildMagicSurgeResult res;                    // effect == 0 → no surge
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return res;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
+        return res;                              // silent: only Wild Magic Sorcerers surge
+    }
+
+    // Tides of Chaos: if it is currently expended, the next slot-spell cast forces a surge
+    // (and the surge then recharges it). Otherwise a surge needs a natural 20 on a d20.
+    Resource* tides = stats.getResource("Tides of Chaos");
+    const bool tides_expended = tides && tides->current < tides->max;
+
+    const int d20 = roll(20);
+    const bool surge = tides_expended || (d20 == 20);
+    log_("{}: Wild Magic Surge check — d20={}{}", agentName(bm, idx), d20,
+         tides_expended ? " (Tides of Chaos forces a surge)" : "");
+    if (!surge) return res;
+
+    res = rollWildMagicSurge(bm, idx);           // rolls d100, classifies band, logs
+    if (res.effect > 0) {
+        applyWildMagicSurgeEffect(bm, idx, res.effect);   // mutates + persists stats internally
+        if (tides_expended) {
+            // Re-fetch (applyWildMagicSurgeEffect may have written stats) before recharging Tides
+            // so the surge's own state changes aren't clobbered.
+            Agent::Stats fresh = bm.getAgentStats(idx);
+            if (Resource* t2 = fresh.getResource("Tides of Chaos")) {
+                t2->current = t2->max;
+                bm.setAgentStats(idx, fresh);
+                log_("{}: the surge recharges Tides of Chaos", agentName(bm, idx));
+            }
+        }
+    }
+    return res;
 }
 
 bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept

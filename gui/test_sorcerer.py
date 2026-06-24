@@ -64,6 +64,24 @@ def _attack_spell(name="Fire Bolt"):
     return s
 
 
+def _auto_spell(num_dice=4, die_size=6, name="Empower Test"):
+    """A free single-target Automatic-damage cantrip (no hit/save roll), so its
+    dice_results are exactly the damage dice — ideal for exercising the damage roll."""
+    s = rpg.Spell()
+    s.name = name
+    s.type = rpg.SpellType.Harm
+    s.geometry = rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.Automatic
+    s.range = 60
+    s.level = 0
+    roll = rpg.MagicDamageRoll()
+    roll.type = rpg.MagicDamage.Force
+    roll.num_dice = num_dice
+    roll.die_size = die_size
+    s.magic_damage_rolls = [roll]
+    return s
+
+
 def _setup(level, cha=16, prof=2):
     bm = setup_battle_map()
     engine = setup_combat_engine()
@@ -285,6 +303,7 @@ def test_metamagic_costs():
     assert rpg.CombatEngine.metamagic_sp_cost(rpg.MetamagicOption.Heightened) == 2
     assert rpg.CombatEngine.metamagic_sp_cost(rpg.MetamagicOption.Quickened) == 2
     assert rpg.CombatEngine.metamagic_sp_cost(rpg.MetamagicOption.Seeking) == 1
+    assert rpg.CombatEngine.metamagic_sp_cost(rpg.MetamagicOption.Empowered) == 1
     assert rpg.CombatEngine.metamagic_sp_cost(rpg.MetamagicOption.Twinned) == 1
     assert rpg.CombatEngine.metamagic_sp_cost(rpg.MetamagicOption.NONE) == 0
     print("✅ test_metamagic_costs passed")
@@ -336,19 +355,73 @@ def test_metamagic_insufficient_sp_not_applied():
     print("✅ test_metamagic_insufficient_sp_not_applied passed")
 
 
-def test_metamagic_empowered_deferred_no_spend():
-    """Empowered is deferred: it is logged and ignored, spending no SP."""
+def test_metamagic_empowered_spends_sp():
+    """Casting a damage spell with Empowered deducts 1 Sorcery Point."""
     bm, engine, sorc, tgt = _setup(5)  # 5 SP
     engine.set_agent_spells(bm, sorc, [_save_spell()])
     action = rpg.SpellAction()
     action.caster_idx = sorc
     action.spell_idx = 0
     action.target_indices = [tgt]
-    action.metamagic = rpg.MetamagicOption.Empowered  # deferred
+    action.metamagic = rpg.MetamagicOption.Empowered
+    engine.execute_spell(bm, action)
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Empowered should spend 1 SP (5 -> 4)"
+    print("✅ test_metamagic_empowered_spends_sp passed")
+
+
+def test_metamagic_empowered_no_damage_spell_not_applied():
+    """Empowered on a spell that rolls no damage dice is ignored and spends no SP."""
+    bm, engine, sorc, tgt = _setup(5)
+    healonly = _save_spell()
+    healonly.magic_damage_rolls = []  # no damage dice at all
+    engine.set_agent_spells(bm, sorc, [healonly])
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Empowered
     engine.execute_spell(bm, action)
     assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
-        "deferred metamagic must not spend SP"
-    print("✅ test_metamagic_empowered_deferred_no_spend passed")
+        "Empowered must not spend SP on a damageless spell"
+    print("✅ test_metamagic_empowered_no_damage_spell_not_applied passed")
+
+
+def test_metamagic_empowered_rerolls_low_dice():
+    """Empowered raises average damage by rerolling the lowest below-average dice.
+    Verified statistically on a fixed-seed engine, so the comparison is reproducible.
+    Reads dice_results directly (the raw damage dice, before resistance multipliers)."""
+    N = 300
+
+    def total_dice(metamagic):
+        bm, engine, sorc, tgt = _setup(20, cha=20)  # CHA 20 -> +5 reroll budget; plenty of SP
+        # Bottomless target so 300 casts of 4d6 never drop it out of play.
+        t = engine.get_agent_stats(bm, tgt)
+        t.hp_max = 10 ** 8
+        t.hp_cur = 10 ** 8
+        engine.set_agent_stats(bm, tgt, t)
+        engine.set_agent_spells(bm, sorc, [_auto_spell(num_dice=4, die_size=6)])
+        running = 0
+        for _ in range(N):
+            st = engine.get_agent_stats(bm, sorc)
+            sp = st.get_resource("Sorcery Points")
+            sp.current = sp.max  # top up so every Empowered cast can pay its 1 SP
+            st.resources["Sorcery Points"] = sp
+            engine.set_agent_stats(bm, sorc, st)
+            action = rpg.SpellAction()
+            action.caster_idx = sorc
+            action.spell_idx = 0
+            action.target_indices = [tgt]
+            action.metamagic = metamagic
+            res = engine.execute_spell(bm, action)
+            running += sum(res.target_results[0].dice_results)
+        return running
+
+    plain = total_dice(rpg.MetamagicOption.NONE)
+    emp = total_dice(rpg.MetamagicOption.Empowered)
+    assert emp > plain, \
+        f"Empowered should raise total damage dice over {N} casts (got {emp} vs plain {plain})"
+    print(f"✅ test_metamagic_empowered_rerolls_low_dice passed (emp {emp} > plain {plain})")
 
 
 def test_metamagic_subtle_no_spend():
@@ -1084,6 +1157,445 @@ def test_aberrant_psychic_defenses():
     print("✅ test_aberrant_psychic_defenses passed")
 
 
+# ── Phase 4: Wild Magic Surge trigger + Tides of Chaos ───────────────────────
+
+def test_tides_of_chaos_resource_granted():
+    """Tides of Chaos: a 1-use resource for L3+ Wild Magic sorcerers; absent otherwise."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("WildSorc", 5, 5))
+
+    s = _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+    assert "Tides of Chaos" in s.resources, "L3 Wild Magic should have Tides of Chaos"
+    assert s.resources["Tides of Chaos"].current == 1
+
+    # Pre-L3 Wild Magic: not yet.
+    s2 = _sorcerer(eng, bm, idx, 2, subclass=rpg.SorcererSubclass.WildMagic)
+    assert "Tides of Chaos" not in s2.resources, "pre-L3 → no Tides of Chaos"
+
+    # Wrong subclass: Draconic L3 has no Tides of Chaos.
+    s3 = _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.Draconic)
+    assert "Tides of Chaos" not in s3.resources, "Draconic → no Tides of Chaos"
+    print("✅ test_tides_of_chaos_resource_granted passed")
+
+
+def test_tides_of_chaos_grants_advantage():
+    """Activating Tides of Chaos spends the use and makes the next d20 roll with Advantage."""
+    # Twin seeded engines: activation consumes no RNG, so the d20 draws stay aligned.
+    bm_c = setup_battle_map(); ctrl = setup_combat_engine()
+    idx_c = add_agent_to_battle(ctrl, bm_c, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(ctrl, bm_c, idx_c, 3, subclass=rpg.SorcererSubclass.WildMagic)
+    a, b = ctrl.roll(20), ctrl.roll(20)
+
+    bm_t = setup_battle_map(); test = setup_combat_engine()
+    idx_t = add_agent_to_battle(test, bm_t, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(test, bm_t, idx_t, 3, subclass=rpg.SorcererSubclass.WildMagic)
+
+    assert test.activate_tides_of_chaos(bm_t, idx_t) is True, "activation should succeed"
+    assert test.get_agent_stats(bm_t, idx_t).resources["Tides of Chaos"].current == 0, \
+        "Tides of Chaos use should be spent"
+    assert test.roll(20) == max(a, b), "next d20 should be rolled with Advantage"
+
+    # Second activation fails: the use is gone (no recharge yet).
+    assert test.activate_tides_of_chaos(bm_t, idx_t) is False, "no use left → activation fails"
+    print("✅ test_tides_of_chaos_grants_advantage passed")
+
+
+def test_tides_of_chaos_gating():
+    """Tides of Chaos rejected for non-Wild-Magic and pre-L3 sorcerers."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("Sorc", 5, 5))
+
+    _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.Draconic)
+    assert eng.activate_tides_of_chaos(bm, idx) is False, "wrong subclass → no Tides of Chaos"
+
+    _sorcerer(eng, bm, idx, 2, subclass=rpg.SorcererSubclass.WildMagic)
+    assert eng.activate_tides_of_chaos(bm, idx) is False, "pre-L3 → no Tides of Chaos"
+    print("✅ test_tides_of_chaos_gating passed")
+
+
+def test_surge_forced_and_recharges_tides():
+    """While Tides of Chaos is expended, the next slot-spell cast FORCES a surge (no nat-20
+    needed), and the surge recharges Tides of Chaos."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+
+    # Expend Tides of Chaos (its advantage is consumed by a roll we don't care about here).
+    assert eng.activate_tides_of_chaos(bm, idx) is True
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 0
+
+    res = eng.maybe_wild_magic_surge(bm, idx)
+    assert 1 <= res.effect <= 10, f"expended Tides must force a surge, got effect {res.effect}"
+    assert res.description == rpg.CombatEngine.wild_magic_surge_description(res.effect)
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 1, \
+        "the forced surge should recharge Tides of Chaos"
+    print("✅ test_surge_forced_and_recharges_tides passed")
+
+
+def test_surge_unforced_tides_invariant():
+    """With Tides of Chaos full, a surge check may or may not fire (natural 20), but a surge never
+    spends Tides of Chaos, and every result is a valid band (0 = no surge, else 1-10)."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+
+    saw_no_surge = False
+    for _ in range(60):
+        res = eng.maybe_wild_magic_surge(bm, idx)
+        assert res.effect == 0 or 1 <= res.effect <= 10, f"invalid band {res.effect}"
+        if res.effect == 0:
+            saw_no_surge = True
+        # Tides stays full throughout: it was never expended, so nothing recharges/spends it.
+        assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 1
+    assert saw_no_surge, "across 60 checks at ~5% surge odds, expect at least one no-surge"
+    print("✅ test_surge_unforced_tides_invariant passed")
+
+
+def test_maybe_surge_gating():
+    """maybe_wild_magic_surge is a no-op (effect 0) for non-Wild-Magic and pre-L3 sorcerers."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("Sorc", 5, 5))
+
+    _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.Draconic)
+    assert eng.maybe_wild_magic_surge(bm, idx).effect == 0, "wrong subclass → no surge"
+
+    _sorcerer(eng, bm, idx, 2, subclass=rpg.SorcererSubclass.WildMagic)
+    assert eng.maybe_wild_magic_surge(bm, idx).effect == 0, "pre-L3 → no surge"
+    print("✅ test_maybe_surge_gating passed")
+
+
+def test_tides_of_chaos_long_rest_restore():
+    """Tides of Chaos returns to 1 use after a long rest."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+
+    assert eng.activate_tides_of_chaos(bm, idx) is True
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 0
+    eng.apply_long_rest(bm)
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 1, \
+        "a long rest should restore Tides of Chaos"
+    print("✅ test_tides_of_chaos_long_rest_restore passed")
+
+
+# ── Clockwork Soul: Clockwork Spells (data) + Restore Balance (OnD20Seen reaction) ───────────
+
+def _clock_greataxe():
+    w = rpg.Weapon(); w.name = "Greataxe"; w.type = rpg.WeaponType.Melee; w.reach_ft = 5
+    pr = rpg.PhysicalDamageRoll(); pr.type = rpg.PhysicalDamage.Slashing; pr.num_dice = 1; pr.die_size = 12
+    w.physical_damage_types = [pr]
+    return w
+
+
+def test_clockwork_spells_data():
+    """Clockwork Soul Clockwork-spell table references spells that all exist in spells.json."""
+    import json, pathlib
+    spells_path = pathlib.Path(__file__).parent / "spells.json"
+    with spells_path.open() as f:
+        raw = json.load(f)
+    spell_list = raw if isinstance(raw, list) else raw.get("spells", [])
+    names_in_json = {s["name"] for s in spell_list}
+    clockwork_spells = [
+        "Aid", "Alarm", "Lesser Restoration", "Protection from Evil and Good",  # L3
+        "Dispel Magic", "Protection from Energy",                               # L5
+        "Freedom of Movement", "Summon Construct",                             # L7
+        "Greater Restoration", "Wall of Force",                               # L9
+    ]
+    missing = [n for n in clockwork_spells if n not in names_in_json]
+    assert not missing, f"Clockwork spells missing from spells.json: {missing}"
+    print("✅ test_clockwork_spells_data passed")
+
+
+def test_restore_balance_resource_granted():
+    """Restore Balance: a PB-use resource for L3+ Clockwork sorcerers; absent otherwise."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+
+    # L3 (PB 2) → 2 uses; L5 (PB 3) → 3 uses.
+    s3 = _sorcerer(eng, bm, idx, 3, prof=2, subclass=rpg.SorcererSubclass.Clockwork)
+    assert "Restore Balance" in s3.resources, "L3 Clockwork should have Restore Balance"
+    assert s3.resources["Restore Balance"].current == 2, \
+        f"L3 (PB 2) → 2 uses, got {s3.resources['Restore Balance'].current}"
+    s5 = _sorcerer(eng, bm, idx, 5, prof=3, subclass=rpg.SorcererSubclass.Clockwork)
+    assert s5.resources["Restore Balance"].current == 3, \
+        f"L5 (PB 3) → 3 uses, got {s5.resources['Restore Balance'].current}"
+
+    # Pre-L3 Clockwork and wrong subclass: not granted.
+    s2 = _sorcerer(eng, bm, idx, 2, subclass=rpg.SorcererSubclass.Clockwork)
+    assert "Restore Balance" not in s2.resources, "pre-L3 → no Restore Balance"
+    sw = _sorcerer(eng, bm, idx, 3, subclass=rpg.SorcererSubclass.WildMagic)
+    assert "Restore Balance" not in sw.resources, "Wild Magic → no Restore Balance"
+    print("✅ test_restore_balance_resource_granted passed")
+
+
+def test_restore_balance_long_rest_restore():
+    """Spent Restore Balance uses come back on a long rest."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    s = _sorcerer(eng, bm, idx, 5, prof=3, subclass=rpg.SorcererSubclass.Clockwork)
+    s.resources["Restore Balance"].current = 0
+    eng.set_agent_stats(bm, idx, s)
+    eng.apply_long_rest(bm)
+    assert eng.get_agent_stats(bm, idx).resources["Restore Balance"].current == 3, \
+        "a long rest should restore Restore Balance to full (PB)"
+    print("✅ test_restore_balance_long_rest_restore passed")
+
+
+def _clock_rb_setup(eng, bm):
+    """Attacker (STR 18) at (5,5) with a greataxe; prone target at (6,5) → attacker has advantage;
+    Clockwork L3 sorcerer reactor at (5,7) (≈10 ft, clear LoS)."""
+    atk = add_agent_to_battle(eng, bm, create_test_agent("Atk", 5, 5))
+    tgt = add_agent_to_battle(eng, bm, create_test_agent("Def", 6, 5))
+    rea = add_agent_to_battle(eng, bm, create_test_agent("Clock", 5, 7))
+
+    a = eng.get_agent_stats(bm, atk); a.str = 18; a.prof_bonus = 3; a.hp_max = 30; a.hp_cur = 30
+    eng.set_agent_stats(bm, atk, a)
+    eng.set_agent_weapons(bm, atk, [_clock_greataxe(), rpg.Weapon(), rpg.Weapon()])
+
+    t = eng.get_agent_stats(bm, tgt); t.base_ac = 15; t.hp_max = 60; t.hp_cur = 60
+    eng.set_agent_stats(bm, tgt, t)
+
+    _sorcerer(eng, bm, rea, 3, prof=2, subclass=rpg.SorcererSubclass.Clockwork)
+    r = eng.get_agent_stats(bm, rea); r.hp_max = 30; r.hp_cur = 30
+    eng.set_agent_stats(bm, rea, r)
+    return atk, tgt, rea
+
+
+def _clock_reset(eng, bm, atk, tgt, rea):
+    """Independent attempt: refill HP, set the target Prone (advantage source), clear reactions."""
+    t = eng.get_agent_stats(bm, tgt); t.hp_cur = t.hp_max; eng.set_agent_stats(bm, tgt, t)
+    tc = eng.get_agent_conditions(bm, tgt); tc.prone = True; tc.reaction_used = False
+    eng.set_agent_conditions(bm, tgt, tc)
+    s = _sorcerer(eng, bm, rea, 3, prof=2, subclass=rpg.SorcererSubclass.Clockwork)
+    s.hp_max = 30; s.hp_cur = 30; eng.set_agent_stats(bm, rea, s)
+    rc = eng.get_agent_conditions(bm, rea); rc.reaction_used = False; rc.incapacitated = False
+    eng.set_agent_conditions(bm, rea, rc)
+
+
+def test_restore_balance_gate():
+    """can_restore_balance: eligible only for an advantaged attack roll by an in-range Clockwork L3+
+    sorcerer with a use + free reaction. A non-advantaged roll, drained resource, spent reaction, or
+    wrong subclass each disqualify it. AttackResult is engine-constructed, so an advantaged result is
+    obtained from execute_action (no decider installed → no reaction auto-fires)."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    atk, tgt, rea = _clock_rb_setup(eng, bm)
+    _clock_reset(eng, bm, atk, tgt, rea)
+
+    # Prone target → the attack roll is made at advantage. execute_action returns that result.
+    r = eng.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert r.advantage and not r.disadvantage, "prone target → the attack roll is at advantage"
+    assert eng.can_restore_balance(bm, rea, atk, r), "in-range Clockwork w/ a use is eligible"
+
+    # A non-advantaged result (target stands up) is never eligible, even for the same reactor.
+    tc = eng.get_agent_conditions(bm, tgt); tc.prone = False; eng.set_agent_conditions(bm, tgt, tc)
+    flat = eng.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert not flat.advantage, "with the target standing the roll is flat"
+    assert not eng.can_restore_balance(bm, rea, atk, flat), "no advantage → Restore Balance ineligible"
+
+    # Drain the resource → ineligible (on the advantaged result r).
+    s = eng.get_agent_stats(bm, rea); s.resources["Restore Balance"].current = 0
+    eng.set_agent_stats(bm, rea, s)
+    assert not eng.can_restore_balance(bm, rea, atk, r), "no Restore Balance use → ineligible"
+
+    # Refill but spend the reaction → ineligible.
+    _sorcerer(eng, bm, rea, 3, prof=2, subclass=rpg.SorcererSubclass.Clockwork)
+    c = eng.get_agent_conditions(bm, rea); c.reaction_used = True
+    eng.set_agent_conditions(bm, rea, c)
+    assert not eng.can_restore_balance(bm, rea, atk, r), "spent reaction → ineligible"
+
+    # Wrong subclass (Wild Magic) → ineligible even with a free reaction.
+    _sorcerer(eng, bm, rea, 6, prof=3, subclass=rpg.SorcererSubclass.WildMagic)
+    assert not eng.can_restore_balance(bm, rea, atk, r), "non-Clockwork subclass → ineligible"
+    print("✅ test_restore_balance_gate passed")
+
+
+def test_restore_balance_cancels_advantage_can_miss():
+    """Driving begin_attack with an advantaged (prone-target) hit parks the OnD20Seen window; submitting
+    Restore Balance reverts the kept die to the primary die (cancel advantage), spending one use + the
+    reaction, and can flip the hit to a miss (no damage on a flipped miss)."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    atk, tgt, rea = _clock_rb_setup(eng, bm)
+    saw_window = saw_miss = False
+    for _ in range(400):
+        _clock_reset(eng, bm, atk, tgt, rea)
+        status = eng.begin_attack(bm, rpg.Attack(atk, tgt, 0))
+        if status != rpg.FlowStatus.AwaitingDecision:
+            continue
+        ctx = eng.pending_decision().ctx
+        assert ctx.window == rpg.ReactionWindow.OnD20Seen and ctx.reactor_idx == rea
+        opt = next((i for i, o in enumerate(ctx.options)
+                    if o.kind == rpg.ReactionOptionKind.Feature and o.feature == "RestoreBalance"), None)
+        if opt is None:
+            continue
+        saw_window = True
+        resp = rpg.ReactionResponse(); resp.option = opt
+        eng.submit_decision(bm, resp)
+        assert eng.get_agent_conditions(bm, rea).reaction_used, "Restore Balance spends the reaction"
+        assert eng.get_agent_stats(bm, rea).resources["Restore Balance"].current == 1, \
+            "Restore Balance spends one use (2 → 1)"
+        r = eng.last_attack_result()
+        assert not r.advantage, "advantage flag cleared after Restore Balance"
+        assert r.d20 == r.d20_primary, "kept die reverted to the primary die"
+        if not r.hit:
+            saw_miss = True
+            assert eng.get_agent_stats(bm, tgt).hp_cur == 60, "a flipped-to-miss deals no damage"
+        if saw_window and saw_miss:
+            print("✅ test_restore_balance_cancels_advantage_can_miss passed")
+            return
+    assert False, "did not observe both a window and a flipped-to-miss in 400 advantaged attacks"
+
+
+# ── Phase 6: Clockwork Soul L14 Trance of Order ──────────────────────────────
+
+def test_trance_of_order_resource_and_gate():
+    """Trance of Order: a 1/long-rest free use for L14+ Clockwork; activation sets a 10-round window.
+    Pre-L14 and non-Clockwork are gated out (no resource, activation returns False)."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+
+    # L14 Clockwork: resource present (1 use), activation works and sets a 10-round window.
+    s14 = _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Clockwork)
+    assert "Trance of Order" in s14.resources, "L14 Clockwork should have a Trance of Order use"
+    assert s14.resources["Trance of Order"].current == 1, "Trance of Order is a single free use"
+    assert eng.activate_trance_of_order(bm, idx), "L14 Clockwork should be able to enter the trance"
+    s_active = eng.get_agent_stats(bm, idx)
+    assert s_active.trance_of_order_turns == 10, \
+        f"trance should run 10 rounds, got {s_active.trance_of_order_turns}"
+    assert s_active.resources["Trance of Order"].current == 0, "the free use should be spent"
+
+    # L13 Clockwork: no resource, activation gated.
+    bm13 = setup_battle_map(); eng13 = setup_combat_engine()
+    i13 = add_agent_to_battle(eng13, bm13, create_test_agent("Clock13", 5, 5))
+    s13 = _sorcerer(eng13, bm13, i13, 13, subclass=rpg.SorcererSubclass.Clockwork)
+    assert "Trance of Order" not in s13.resources, "pre-L14 → no Trance of Order resource"
+    assert not eng13.activate_trance_of_order(bm13, i13), "L13 must be gated out"
+
+    # Wrong subclass (Draconic L14): gated.
+    bm_d = setup_battle_map(); eng_d = setup_combat_engine()
+    i_d = add_agent_to_battle(eng_d, bm_d, create_test_agent("Drac14", 5, 5))
+    _sorcerer(eng_d, bm_d, i_d, 14, subclass=rpg.SorcererSubclass.Draconic)
+    assert not eng_d.activate_trance_of_order(bm_d, i_d), "non-Clockwork must be gated out"
+    print("✅ test_trance_of_order_resource_and_gate passed")
+
+
+def test_trance_negates_advantage_against_self():
+    """While in a trance, attacks against the sorcerer can't benefit from Advantage. A prone target is
+    the advantage lever: without the trance the roll is at advantage; with it, advantage is negated."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    atk = add_agent_to_battle(eng, bm, create_test_agent("Atk", 5, 5))
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 6, 5))
+    eng.set_agent_weapons(bm, atk, [_clock_greataxe(), rpg.Weapon(), rpg.Weapon()])
+
+    _sorcerer(eng, bm, sorc, 14, subclass=rpg.SorcererSubclass.Clockwork)
+    s = eng.get_agent_stats(bm, sorc); s.hp_max = 60; s.hp_cur = 60; eng.set_agent_stats(bm, sorc, s)
+    # Prone target → attacker rolls with advantage.
+    c = eng.get_agent_conditions(bm, sorc); c.prone = True; eng.set_agent_conditions(bm, sorc, c)
+
+    r_no = eng.execute_action(bm, rpg.Attack(atk, sorc, 0))
+    assert r_no.advantage, "a prone target without a trance is attacked at advantage"
+
+    # Enter the trance (set the window directly so this is independent of bonus-action state).
+    s2 = eng.get_agent_stats(bm, sorc); s2.trance_of_order_turns = 10; eng.set_agent_stats(bm, sorc, s2)
+    c2 = eng.get_agent_conditions(bm, sorc); c2.prone = True; eng.set_agent_conditions(bm, sorc, c2)
+    r_tr = eng.execute_action(bm, rpg.Attack(atk, sorc, 0))
+    assert not r_tr.advantage, "Trance of Order negates Advantage on attacks against the sorcerer"
+    print("✅ test_trance_negates_advantage_against_self passed")
+
+
+def test_trance_floors_own_attack_d20():
+    """While in a trance, the sorcerer treats its own d20 of 9-or-lower as a 10 on attack rolls: across
+    many attacks the kept die is never below 10 and a floored low roll is never a fumble."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    tgt = add_agent_to_battle(eng, bm, create_test_agent("Tgt", 6, 5), hp=400, ac=12)
+    eng.set_agent_weapons(bm, sorc, [_clock_greataxe(), rpg.Weapon(), rpg.Weapon()])
+    _sorcerer(eng, bm, sorc, 14, subclass=rpg.SorcererSubclass.Clockwork)
+    s = eng.get_agent_stats(bm, sorc); s.trance_of_order_turns = 10; eng.set_agent_stats(bm, sorc, s)
+
+    saw_floor = False
+    for _ in range(300):
+        r = eng.execute_action(bm, rpg.Attack(sorc, tgt, 0))
+        assert r.d20 >= 10, f"trance must floor the kept d20 to ≥10, saw {r.d20}"
+        assert not r.fumble, "a floored low roll (≥10) can never be a fumble"
+        if r.d20 == 10:
+            saw_floor = True
+    assert saw_floor, "expected at least one floored (→10) roll across 300 attacks"
+    print("✅ test_trance_floors_own_attack_d20 passed")
+
+
+def test_trance_floors_own_save():
+    """While in a trance, the sorcerer floors its own save d20 to 10 — but an automatic failure (a
+    paralyzed STR/DEX save) is NOT floored and still fails."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    caster = add_agent_to_battle(eng, bm, create_test_agent("Caster", 5, 5))
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 6, 5), hp=400)
+    _sorcerer(eng, bm, sorc, 14, subclass=rpg.SorcererSubclass.Clockwork)
+    s = eng.get_agent_stats(bm, sorc); s.trance_of_order_turns = 10; eng.set_agent_stats(bm, sorc, s)
+    eng.set_agent_spells(bm, caster, [_save_spell("Frostbite", rpg.SaveAbility.Dexterity)])
+
+    def _cast():
+        a = rpg.SpellAction(); a.caster_idx = caster; a.spell_idx = 0; a.target_indices = [sorc]
+        return eng.execute_spell(bm, a).target_results[0].save_d20
+
+    saw_floor = False
+    for _ in range(200):
+        d = _cast()
+        assert d >= 10, f"trance must floor the saver's d20 to ≥10, saw {d}"
+        if d == 10:
+            saw_floor = True
+    assert saw_floor, "expected at least one floored (→10) save across 200 casts"
+
+    # Auto-fail bypasses the floor: a paralyzed creature auto-fails DEX saves at save_d20 == 1.
+    pc = eng.get_agent_conditions(bm, sorc); pc.paralyzed = True; pc.incapacitated = True
+    eng.set_agent_conditions(bm, sorc, pc)
+    a = rpg.SpellAction(); a.caster_idx = caster; a.spell_idx = 0; a.target_indices = [sorc]
+    tr = eng.execute_spell(bm, a).target_results[0]
+    assert tr.save_d20 == 1, f"a paralyzed DEX save auto-fails at 1 (never floored), got {tr.save_d20}"
+    assert not tr.saved, "an auto-failed save must still fail under a trance"
+    print("✅ test_trance_floors_own_save passed")
+
+
+def test_trance_duration_ticks():
+    """The trance window decrements one round per beginTurn and switches off at 0."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Clockwork)
+    s = eng.get_agent_stats(bm, idx); s.trance_of_order_turns = 2; eng.set_agent_stats(bm, idx, s)
+
+    eng.begin_turn(bm, idx)
+    assert eng.get_agent_stats(bm, idx).trance_of_order_turns == 1, "first beginTurn → 1 round left"
+    eng.begin_turn(bm, idx)
+    assert eng.get_agent_stats(bm, idx).trance_of_order_turns == 0, "second beginTurn → trance ends"
+    eng.begin_turn(bm, idx)
+    assert eng.get_agent_stats(bm, idx).trance_of_order_turns == 0, "stays off (no underflow)"
+    print("✅ test_trance_duration_ticks passed")
+
+
+def test_trance_5sp_alt_cost():
+    """Once the free use is spent, the trance can be re-entered for 5 Sorcery Points; with neither a
+    free use nor 5 SP, activation fails."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    s = _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Clockwork)
+    # Free use already spent; SP available (L14 → 14 SP).
+    s.resources["Trance of Order"].current = 0
+    sp_before = s.resources["Sorcery Points"].current
+    assert sp_before >= 5, "a L14 sorcerer has at least 5 Sorcery Points"
+    eng.set_agent_stats(bm, idx, s)
+
+    assert eng.activate_trance_of_order(bm, idx), "5 SP should pay for the trance once the free use is gone"
+    s2 = eng.get_agent_stats(bm, idx)
+    assert s2.resources["Sorcery Points"].current == sp_before - 5, "the alt cost spends exactly 5 SP"
+    assert s2.trance_of_order_turns == 10, "the 5-SP trance still runs 10 rounds"
+
+    # Drain SP below 5 with no free use → activation fails.
+    s2.resources["Sorcery Points"].current = 4
+    s2.trance_of_order_turns = 0
+    eng.set_agent_stats(bm, idx, s2)
+    assert not eng.activate_trance_of_order(bm, idx), "no free use and <5 SP → cannot enter the trance"
+    print("✅ test_trance_5sp_alt_cost passed")
+
+
 if __name__ == "__main__":
     test_sorcerer_spell_slots()
     test_sorcery_points_allocation()
@@ -1105,7 +1617,9 @@ if __name__ == "__main__":
     test_metamagic_heightened_spends_sp()
     test_metamagic_seeking_spends_sp()
     test_metamagic_insufficient_sp_not_applied()
-    test_metamagic_empowered_deferred_no_spend()
+    test_metamagic_empowered_spends_sp()
+    test_metamagic_empowered_no_damage_spell_not_applied()
+    test_metamagic_empowered_rerolls_low_dice()
     test_metamagic_subtle_no_spend()
     test_metamagic_distant_spends_sp()
     test_metamagic_twinned_spends_sp()
@@ -1139,4 +1653,25 @@ if __name__ == "__main__":
     test_dragon_wings()
     test_aberrant_psionic_spells_data()
     test_aberrant_psychic_defenses()
+    # Phase 4: Wild Magic Surge trigger + Tides of Chaos
+    test_tides_of_chaos_resource_granted()
+    test_tides_of_chaos_grants_advantage()
+    test_tides_of_chaos_gating()
+    test_surge_forced_and_recharges_tides()
+    test_surge_unforced_tides_invariant()
+    test_maybe_surge_gating()
+    test_tides_of_chaos_long_rest_restore()
+    # Clockwork Soul: Clockwork Spells (data) + Restore Balance (OnD20Seen reaction)
+    test_clockwork_spells_data()
+    test_restore_balance_resource_granted()
+    test_restore_balance_long_rest_restore()
+    test_restore_balance_gate()
+    test_restore_balance_cancels_advantage_can_miss()
+    # Phase 6: Clockwork Soul L14 Trance of Order
+    test_trance_of_order_resource_and_gate()
+    test_trance_negates_advantage_against_self()
+    test_trance_floors_own_attack_d20()
+    test_trance_floors_own_save()
+    test_trance_duration_ticks()
+    test_trance_5sp_alt_cost()
     print("\n✅ All Sorcerer tests passed!")

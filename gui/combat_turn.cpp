@@ -285,6 +285,15 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Clockwork L14 Trance of Order: tick down the 1-minute (10-round) window. While >0, attacks
+    // against this sorcerer lose Advantage and the sorcerer floors its own d20s to 10 (applyTranceFloor).
+    if (stats.trance_of_order_turns > 0) {
+        --stats.trance_of_order_turns;
+        bm.setAgentStats(agent_idx, stats);
+        if (stats.trance_of_order_turns == 0)
+            log_("{}'s Trance of Order ends", agent_name);
+    }
+
     // Fiendish Vigor invocation (code 6): the Warlock keeps False Life up (free, no
     // slot) and auto-maxes the dice (2d4 + 4 = 12 temp HP). Granted once, the first
     // time this Warlock begins a turn in the combat (the pre-buff is "already up").

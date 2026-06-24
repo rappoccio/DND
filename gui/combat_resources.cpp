@@ -1335,6 +1335,41 @@ bool CombatEngine::activateDragonWings(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+bool CombatEngine::activateTranceOfOrder(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::ClockworkPath ||
+        stats.char_level < 14) {
+        log_("{} cannot enter Trance of Order (not a L14+ Clockwork Sorcerer)", agentName(bm, idx));
+        return false;
+    }
+
+    // Free 1/long rest via the "Trance of Order" Resource; otherwise 5 Sorcery Points.
+    Resource* trance = stats.getResource("Trance of Order");
+    Resource* sp     = stats.getResource("Sorcery Points");
+    if (trance && trance->current >= 1) {
+        trance->current -= 1;
+    } else if (sp && sp->current >= 5) {
+        sp->current -= 5;
+        log_("{} spends 5 Sorcery Points for Trance of Order", agentName(bm, idx));
+    } else {
+        log_("{} has no Trance of Order use left and lacks 5 Sorcery Points", agentName(bm, idx));
+        return false;
+    }
+
+    stats.trance_of_order_turns = 10;            // 1 minute = 10 rounds
+    bm.setAgentStats(idx, stats);                // persist BEFORE spending the bonus action
+    spendBonusAction(bm, idx);                   // re-reads stats internally (ordering gotcha)
+
+    log_("{} enters a Trance of Order: for 1 minute, attacks against them lose Advantage and they "
+         "treat their own d20 of 9 or lower as a 10", agentName(bm, idx));
+    return true;
+}
+
 bool CombatEngine::useMagicalCunning(BattleMap& bm, int agent_idx)
 {
     auto agents = bm.placedAgents();

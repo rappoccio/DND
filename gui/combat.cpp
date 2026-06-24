@@ -234,10 +234,14 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       //   Draconic L6 — Elemental Affinity: +CHA to first matching-type spell damage roll/turn.
       //   Draconic L14 — Dragon Wings: fly speed = walk speed (toggle, see activateDragonWings).
       //   Wild Magic L6 — Bend Luck: see sorcererBendLuck (spends Sorcery Points).
+      //   Wild Magic L3 — Wild Magic Surge trigger (maybeWildMagicSurge) + Tides of Chaos
+      //     (activateTidesOfChaos + the "Tides of Chaos" Resource granted below).
       //   Aberrant L6 — Psychic Defenses: Psychic resistance + Charmed/Frightened save advantage.
-      // Deferred (see known_limitations.md): Draconic Elemental Affinity SP-resistance half,
-      // Wild Magic Surge table / Tides of Chaos, Clockwork (reaction interrupt), Aberrant
-      // Psionic Sorcery (SP-cast) + L14 Revelation in Flesh.
+      //   Clockwork L3 — Restore Balance: OnD20Seen reaction that cancels advantage (Resource below).
+      // Deferred (see known_limitations.md): Draconic Elemental Affinity SP-resistance half, Clockwork
+      // Restore Balance disadvantage-cancel direction + L6 Bastion of Law (SP ward) / L14 Trance of
+      // Order / L18 Cavalcade, Aberrant Psionic Sorcery (SP-cast) + L14 Revelation in Flesh,
+      // Empowered/Subtle Metamagic.
 
       // Draconic Resilience HP bonus (L3+): 3 + max(0, level-3) = level extra HP.
       // Guard with draconic_hp_applied so re-invoking config doesn't stack (idempotent).
@@ -252,6 +256,37 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // Aberrant Mind Psychic Defenses (L6+): Resistance to Psychic damage.
       if (sorcerer_subclass == AberrantPath && level >= 6) {
           magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Psychic)] = 0.5f;
+      }
+
+      // Clockwork Soul — Restore Balance (L3+): a Reaction that cancels advantage/disadvantage on a
+      // d20 Test within 60 ft (no Sorcery Point). PB uses, all regained on a long rest. Consumed by the
+      // OnD20Seen reaction window (applyRestoreBalanceToAttack); no new Stats flag → no manual round-trip.
+      if (sorcerer_subclass == ClockworkPath && level >= 3) {
+          int rb_uses = 2 + (level - 1) / 4;         // proficiency bonus by level
+          Resource rb("Restore Balance", rb_uses, 0);
+          rb.short_rest_regen = 0;
+          rb.long_rest_regen  = rb_uses;
+          resources["Restore Balance"] = rb;
+      }
+
+      // Clockwork Soul — Trance of Order (L14+): the free 1/long-rest use of the Bonus-Action trance
+      // (activateTranceOfOrder spends this Resource, or 5 Sorcery Points when it is empty). No new
+      // Stats flag for the use count → Resource serialization handles the round-trip.
+      if (sorcerer_subclass == ClockworkPath && level >= 14) {
+          Resource trance("Trance of Order", 1, 0);
+          trance.short_rest_regen = 0;
+          trance.long_rest_regen  = 1;
+          resources["Trance of Order"] = trance;
+      }
+
+      // Wild Magic — Tides of Chaos (L3+): one use; regained on a long rest OR when a Wild Magic
+      // Surge fires (maybeWildMagicSurge recharges it). Activating it grants Advantage on one
+      // D20 Test; while expended, the next slot-spell cast forces a surge.
+      if (sorcerer_subclass == WildMagicPath && level >= 3) {
+          Resource tides("Tides of Chaos", 1, 0);
+          tides.short_rest_regen = 0;
+          tides.long_rest_regen  = 1;
+          resources["Tides of Chaos"] = tides;
       }
 
       // Sorcery Points: equal to sorcerer level
