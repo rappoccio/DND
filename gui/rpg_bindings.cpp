@@ -2451,6 +2451,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Each creature of the Barbarian's choice within a 30-ft emanation makes a WIS save\n"
              "(DC 8 + STR mod + PB) or is Frightened until the end of the Barbarian's next turn.\n"
              "Usable PB times per long rest, or expend one Rage use. Spends a bonus action.")
+        .def("activate_clairvoyant_combatant",
+             &CombatEngine::activateClairvoyantCombatant,
+             py::arg("battle_map"), py::arg("warlock_idx"), py::arg("target_idx"),
+             "Great Old One Warlock L6 — Clairvoyant Combatant (Bonus Action):\n"
+             "Make telepathic contact with one creature you can see within 60 ft, forcing a WIS save\n"
+             "(DC 8 + CHA mod + PB). On a failure you have Advantage on attack rolls against it and it\n"
+             "has Disadvantage on attack rolls against you, until the start of your next turn. Once per\n"
+             "short or long rest, or spend a Pact Magic slot to reuse it. Spends a bonus action.\n"
+             "Returns True if it activated.")
         .def("use_zealous_presence",
              &CombatEngine::useZealousPresence,
              py::arg("battle_map"), py::arg("agent_idx"),

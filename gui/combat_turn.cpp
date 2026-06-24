@@ -427,8 +427,19 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
       }
     }
 
+    // Searing Vengeance (Celestial Warlock L14): instead of rolling a death save at the start of its
+    // turn, the warlock may spring back to its feet in a radiant burst (once per long rest). The &&
+    // chain short-circuits for everyone else, and triggerSearingVengeance also returns false when the
+    // resource is spent — so a non-qualifying creature falls through to the normal death save below.
+    if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead &&
+        stats.character_class == CharacterClass::Warlock &&
+        stats.warlock_subclass == CelestialPath && stats.char_level >= 14 &&
+        triggerSearingVengeance(bm, agent_idx)) {
+        cond  = bm.getAgentConditions(agent_idx);   // refresh: now conscious and standing
+        stats = bm.getAgentStats(agent_idx);
+    }
     // Death saves: roll CON save DC 10 if unconscious at 0 HP
-    if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
+    else if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
         int con_mod = (stats.con - 10) / 2;
         if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
         int death_d20 = roll(20);

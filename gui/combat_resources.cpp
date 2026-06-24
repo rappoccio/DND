@@ -1037,6 +1037,156 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+bool CombatEngine::activateClairvoyantCombatant(BattleMap& bm, int warlock_idx, int target_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (warlock_idx < 0 || warlock_idx >= static_cast<int>(agents.size())) return false;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    if (target_idx == warlock_idx) return false;
+
+    Agent::Stats stats = bm.getAgentStats(warlock_idx);
+
+    // Gate on Great Old One L6+
+    if (stats.character_class != CharacterClass::Warlock ||
+        stats.warlock_subclass != GreatOldOnePath ||
+        stats.char_level < 6) {
+        return false;
+    }
+
+    if (!hasBonusAction(bm, warlock_idx)) return false;
+
+    // Cost: one "Clairvoyant Combatant" use, or — when exhausted — a Pact Magic spell slot.
+    // Pact slots all sit at the warlock's pact slot level (spell_slots_remaining is a per-level array).
+    Resource* cc = stats.getResource("Clairvoyant Combatant");
+    const bool has_use = cc && cc->current > 0;
+    const int  psl = stats.pact_slot_level();
+    const bool can_spend_slot =
+        psl >= 1 && stats.spell_slots_remaining[static_cast<std::size_t>(psl - 1)] > 0;
+    if (!has_use && !can_spend_slot) {
+        log_("{} cannot use Clairvoyant Combatant (no use or Pact slot available)",
+             agentName(bm, warlock_idx));
+        return false;
+    }
+
+    // Range: within 60 ft and in line of sight (telepathic contact requires perceiving the creature).
+    const PlacedAgent& wp = agents[static_cast<std::size_t>(warlock_idx)];
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    const int dist_ft = footprintDistance(wp.origin, wp.agent->getSize(),
+                                          tp.origin, tp.agent->getSize()) * 5;
+    if (dist_ft > 60) {
+        log_("{} is more than 60 ft away — Clairvoyant Combatant fails", agentName(bm, target_idx));
+        return false;
+    }
+    if (!bm.hasLineOfSight(wp.origin, wp.agent->getSize(), tp.origin, tp.agent->getSize())) {
+        log_("{} can't see {} — Clairvoyant Combatant fails",
+             agentName(bm, warlock_idx), agentName(bm, target_idx));
+        return false;
+    }
+
+    // Spend the cost (use first, else a Pact slot), then persist before spending the bonus action.
+    if (has_use) {
+        cc->spend(1);
+        stats.resources["Clairvoyant Combatant"] = *cc;
+    } else {
+        stats.spell_slots_remaining[static_cast<std::size_t>(psl - 1)] -= 1;
+        log_("{} spends a Pact Magic slot to reuse Clairvoyant Combatant", agentName(bm, warlock_idx));
+    }
+    bm.setAgentStats(warlock_idx, stats);
+    spendBonusAction(bm, warlock_idx);
+
+    // Force a WIS save vs the warlock's CHA spell save DC.
+    const int save_dc  = spellSaveDcFromAbility(stats, SaveCha);
+    const int save_mod = saveModFor(bm, target_idx, SaveWis);
+    const int save_d20 = roll(20);
+    const int save_total = save_d20 + save_mod;
+    const bool failed = save_total < save_dc;
+
+    log_("{} makes a WIS save vs Clairvoyant Combatant (DC {}): {} + {} = {} ({})",
+         agentName(bm, target_idx), save_dc, save_d20, save_mod, save_total,
+         failed ? "FAILED" : "PASSED");
+
+    if (failed) {
+        // Directed mark, ticked on the warlock's turns: expires at the start of the warlock's next turn.
+        ActiveAgentCondition aac{};
+        aac.agent_idx      = target_idx;
+        aac.condition_name = "ClairvoyantCombatant";
+        aac.caster_idx     = warlock_idx;
+        aac.turns_remaining = 1;  // until the start of the warlock's next turn
+        (void)addAgentCondition(bm, aac);
+        log_("Clairvoyant Combatant: {} has Advantage vs {} (who has Disadvantage back) until its next turn",
+             agentName(bm, warlock_idx), agentName(bm, target_idx));
+    }
+
+    return true;
+}
+
+bool CombatEngine::triggerSearingVengeance(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Warlock ||
+        stats.warlock_subclass != CelestialPath || stats.char_level < 14) return false;
+    Resource* sv = stats.getResource("Searing Vengeance");
+    if (!sv || sv->current <= 0) return false;
+
+    sv->spend(1);                                   // once per long rest
+    stats.hp_cur = std::max(1, stats.hp_max / 2);   // spring back with half HP maximum
+    bm.setAgentStats(idx, stats);                   // persists the resource spend (ptr into stats.resources) + HP
+
+    // Clear the dying state: conscious again, on your feet, death-save tally reset.
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.unconscious          = false;
+    cond.stabilized           = false;
+    cond.prone                = false;              // "spring back to your feet"
+    cond.death_save_successes = 0;
+    cond.death_save_failures  = 0;
+    bm.setAgentConditions(idx, cond);
+
+    int cha_mod = (stats.cha - 10) / 2;
+    if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --cha_mod;
+
+    const int origin_col = agents[static_cast<std::size_t>(idx)].origin.col;
+    const int origin_row = agents[static_cast<std::size_t>(idx)].origin.row;
+
+    log_("{}: Searing Vengeance! Springs back to {} HP in a radiant burst",
+         agentName(bm, idx), stats.hp_cur);
+
+    // 30-ft radiant emanation: each enemy takes 2d8 + CHA radiant and is Blinded until the end of
+    // the warlock's next turn.
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        const int tgt = static_cast<int>(i);
+        if (tgt == idx) continue;
+        if (areAllies(bm, idx, tgt)) continue;       // enemies of the warlock's choice (auto: all enemies)
+
+        const PlacedAgent& tp = agents[i];
+        const float dx = static_cast<float>(tp.origin.col - origin_col);
+        const float dy = static_cast<float>(tp.origin.row - origin_row);
+        if (std::sqrt(dx * dx + dy * dy) * 5.0f > 30.0f) continue;
+
+        Agent::Stats ts = bm.getAgentStats(tgt);
+        if (ts.hp_cur <= 0) continue;                // skip the already-downed
+
+        int dmg = roll(8) + roll(8) + cha_mod;
+        dmg = std::max(0, static_cast<int>(std::lround(
+                  static_cast<double>(dmg) * ts.get_magic_damage_multiplier(8 /* Radiant */))));
+        if (dmg > 0) {
+            damageAgent(bm, tgt, dmg);
+            checkConcentrationOnDamage(bm, tgt, dmg, idx);
+            log_("Searing Vengeance: {} takes {} radiant damage", agentName(bm, tgt), dmg);
+        }
+
+        ActiveAgentCondition aac{};
+        aac.agent_idx      = tgt;
+        aac.condition_name = "Blinded";
+        aac.caster_idx     = idx;
+        aac.turns_remaining = 2;                     // until end of the warlock's next turn
+        (void)addAgentCondition(bm, aac);
+    }
+    return true;
+}
+
 bool CombatEngine::useZealousPresence(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();

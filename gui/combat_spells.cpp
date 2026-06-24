@@ -652,7 +652,6 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
     bool any_conditions_applied = false;
-    bool any_kill = false;  // TASK A: Dark One's Blessing tracking
 
     // Life Domain rider context (Disciple of Life / Blessed Healer / Supreme Healing). The effective
     // slot level drives the bonus; a base-level cast (slot_level 0 / NPC) falls back to the spell level.
@@ -1158,9 +1157,6 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("Repelling Blast: {} pushed {} ft", agentName(bm, tgt_idx), moved * 5);
         }
 
-        // TASK A: Dark One's Blessing tracking
-        if (tr.target_down) any_kill = true;
-
         // Auto-trigger Unconscious if HP drops to 0 or below
         if (tgt_stats.hp_cur <= 0) {
             Agent::Conditions tgt_cond_before = bm.getAgentConditions(tgt_idx);
@@ -1169,6 +1165,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("[SPELL KNOCKDOWN] {} going unconscious from spell damage ({})", agentName(bm, tgt_idx), sp.name);
                 applyUnconscious(bm, tgt_idx);
                 // Don't roll death save yet - they'll roll on their next turn or if they take more damage
+                // Dark One's Blessing (Fiend L3): temp HP to the caster and allied Fiend warlocks
+                // within 10 ft of each enemy this spell felled.
+                grantDarkOnesBlessing(bm, tgt_idx, action.caster_idx);
             } else if (tgt_cond_before.unconscious && !tgt_cond_before.dead && tr.total_damage > 0) {
                 log_("[SPELL DEATH SAVE] {} already unconscious, rolling death save from spell damage", agentName(bm, tgt_idx));
                 // Death save on damage for agents already unconscious
@@ -1354,17 +1353,6 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             bm.setAgentStats(action.caster_idx, cs);
             log_("{}: Blessed Healer restores {} HP to the caster", agentName(bm, action.caster_idx), self_heal);
         }
-    }
-
-    // TASK A: Dark One's Blessing (Fiend L3): temp HP on spell kill
-    if (any_kill && caster_stats.character_class == CharacterClass::Warlock && caster_stats.warlock_subclass == FiendPath && caster_stats.char_level >= 3) {
-        int chaMod = (caster_stats.cha - 10) / 2;
-        if (caster_stats.cha < 10 && (caster_stats.cha - 10) % 2 != 0) --chaMod;
-        int bonus = std::max(1, chaMod + caster_stats.char_level);
-        Agent::Stats updated_stats = bm.getAgentStats(action.caster_idx);
-        updated_stats.temp_hp = std::max(updated_stats.temp_hp, bonus);
-        bm.setAgentStats(action.caster_idx, updated_stats);
-        log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, action.caster_idx), bonus);
     }
 
     // Register persistent effects (duration > 1 means per-tick damage/heal on
@@ -2716,6 +2704,17 @@ bool CombatEngine::canIndomitable(const BattleMap& bm, int reactor, int save_tar
     return ind && ind->current >= 1;
 }
 
+bool CombatEngine::canDarkOnesOwnLuck(const BattleMap& bm, int reactor, int save_target) const
+{
+    if (reactor != save_target) return false;                     // you add the die to your OWN save
+    if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/false)) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Warlock ||
+        s.warlock_subclass != FiendPath || s.char_level < 6) return false;
+    const Resource* luck = s.getResource("Dark One's Own Luck");
+    return luck && luck->current >= 1;
+}
+
 void CombatEngine::reevaluateSave(SpellSave& ss) const noexcept
 {
     ss.total = ss.d20 + ss.save_mod + ss.bonus;
@@ -2760,6 +2759,28 @@ bool CombatEngine::applyIndomitableToSave(BattleMap& bm, int reactor, SpellSave&
     bm.setAgentStats(reactor, s);
     log_("{} uses Indomitable: rerolls the save {}→{} +{} (level) = {} vs DC {} → {}",
          agentName(bm, reactor), old_d20, ss.d20, ss.bonus, ss.total, ss.dc,
+         ss.saved ? "SAVES" : "still fails");
+    return true;
+}
+
+bool CombatEngine::applyDarkOnesOwnLuckToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Warlock ||
+        s.warlock_subclass != FiendPath || s.char_level < 6) return false;
+    Resource* luck = s.getResource("Dark One's Own Luck");
+    if (!luck || luck->current < 1) return false;
+
+    luck->current -= 1;                                          // costs a use, NOT the reaction
+    const int d10 = roll(10);
+    ss.bonus += d10;                                            // add the d10 to the failed save (post-roll)
+    reevaluateSave(ss);
+    bm.setAgentStats(reactor, s);
+    log_("{} uses Dark One's Own Luck: +{} (d10) to the save → {} vs DC {} → {}",
+         agentName(bm, reactor), d10, ss.total, ss.dc,
          ss.saved ? "SAVES" : "still fails");
     return true;
 }
@@ -2839,7 +2860,8 @@ std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const Spell
     const int n = static_cast<int>(bm.placedAgents().size());
     for (int i = 0; i < n; ++i)
         if (canIndomitable(bm, i, ss.target_idx) || canLegendaryResist(bm, i, ss.target_idx) ||
-            canCountercharm(bm, i, ss.target_idx, action) || canWarGodsBlessing(bm, i, ss.target_idx))
+            canCountercharm(bm, i, ss.target_idx, action) || canWarGodsBlessing(bm, i, ss.target_idx) ||
+            canDarkOnesOwnLuck(bm, i, ss.target_idx))
             out.push_back(i);
     return out;
 }
@@ -2862,6 +2884,9 @@ std::vector<ReactionOption> CombatEngine::saveFailOptions(const BattleMap& bm, i
     if (canWarGodsBlessing(bm, reactor, ss.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Use War God's Blessing (+10 to the failed save, 1 Channel Divinity)", "WarGodsBlessing"});
+    if (canDarkOnesOwnLuck(bm, reactor, ss.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use Dark One's Own Luck (+1d10 to the failed save)", "DarkOnesOwnLuck"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -2881,6 +2906,7 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
     else if (opt.feature == "Indomitable")          applyIndomitableToSave (bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "LegendaryResistance")  applyLegendaryResistanceToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "WarGodsBlessing")      applyWarGodsBlessingToSave(bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "DarkOnesOwnLuck")       applyDarkOnesOwnLuckToSave(bm, ctx.reactor_idx, *ss);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

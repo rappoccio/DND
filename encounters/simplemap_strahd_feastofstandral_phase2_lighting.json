@@ -1,0 +1,13 @@
+{
+  "default_light": "BrightLight",
+  "light_sources": [
+    {
+      "name": "Light 1",
+      "x": 782,
+      "y": 464,
+      "light_level": "Sunlight",
+      "bright_radius": 5,
+      "dim_radius": 6
+    }
+  ]
+}

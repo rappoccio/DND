@@ -567,6 +567,7 @@ class App:
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
         self.pending_beguiling         = False # Glamour Bard Beguiling Magic: awaiting target click after cast
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
+        self.pending_clairvoyant       = False # Great Old One Warlock Clairvoyant Combatant: awaiting enemy target click
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
@@ -1075,6 +1076,9 @@ class App:
         self.btn_cbt_zealous_presence = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Zealous Presence (Bonus Action)",
                                           (140, 100, 180), (170, 130, 210), self.font_md)
+        self.btn_cbt_clairvoyant_combatant = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Clairvoyant Combatant (Bonus Action)",
+                                          (90, 70, 150), (120, 100, 190), self.font_md)
         self.btn_cbt_tireless = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Tireless (Magic Action)",
                                           (90, 150, 120), (120, 185, 155), self.font_md)
@@ -2162,6 +2166,7 @@ class App:
         self.pending_mantle_targets    = []
         self.pending_beguiling         = False
         self.pending_beguiling_bard    = -1
+        self.pending_clairvoyant       = False
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -2235,6 +2240,7 @@ class App:
         self.pending_mantle_targets    = []
         self.pending_beguiling         = False
         self.pending_beguiling_bard    = -1
+        self.pending_clairvoyant       = False
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -5676,6 +5682,24 @@ class App:
         else:
             self._combat_log_add(f"{name}: Telekinetic Movement pushes {tgt_name} {feet} ft.")
         self._flush_combat_log()
+
+    def _resolve_clairvoyant_combatant(self, target_idx: int):
+        """Great Old One Warlock Clairvoyant Combatant: the clicked enemy makes a WIS save against the
+        warlock; on a failure the warlock gains Advantage vs it and it has Disadvantage vs the warlock
+        until the warlock's next turn. Spends a use (or a Pact slot) and the bonus action on success."""
+        self.pending_clairvoyant = False
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        if target_idx == idx:
+            self._combat_log_add("Clairvoyant Combatant: pick an enemy, not yourself.")
+            return
+        if self.combat.activate_clairvoyant_combatant(self.bm, idx, target_idx):
+            self._flush_combat_log()
+            self.bonus_used = True
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Clairvoyant Combatant unavailable.")
 
     def _resolve_lay_on_hands(self, target_idx: int):
         """Paladin Lay on Hands: spend from pool, heal target."""
@@ -11129,6 +11153,26 @@ class App:
                         self.btn_cbt_zealous_presence.draw(self.screen)
                         y += B + gap
 
+            # Clairvoyant Combatant button — Great Old One Warlock (L6+): bonus-action telepathic strike.
+            # Available with a use left, or when a Pact Magic slot can be spent instead.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Warlock and
+                        stats.warlock_subclass == rpg.WarlockSubclass.GreatOldOne and
+                        stats.char_level >= 6):
+                    cc = stats.get_resource("Clairvoyant Combatant")
+                    uses = cc.current if cc else 0
+                    psl = stats.pact_slot_level()
+                    has_pact_slot = psl >= 1 and stats.spell_slots_remaining[psl - 1] > 0
+                    if uses > 0 or has_pact_slot:
+                        label = f"Clairvoyant Combatant ({uses})" if uses > 0 else "Clairvoyant Combatant (Pact slot)"
+                        self.btn_cbt_clairvoyant_combatant.text = label
+                        self.btn_cbt_clairvoyant_combatant.rect.x = lx
+                        self.btn_cbt_clairvoyant_combatant.rect.y = y
+                        self.btn_cbt_clairvoyant_combatant.rect.w = W
+                        self.btn_cbt_clairvoyant_combatant.draw(self.screen)
+                        y += B + gap
+
             # Magical Cunning button - Warlock (L2+) with the feature still available this long rest
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -12412,6 +12456,11 @@ class App:
                 if self.pending_beguiling and event.key == pygame.K_ESCAPE:
                     self._cancel_beguiling()
                     continue
+                # Esc cancels a pending Clairvoyant Combatant target pick (nothing spent until resolve).
+                if self.pending_clairvoyant and event.key == pygame.K_ESCAPE:
+                    self.pending_clairvoyant = False
+                    self._combat_log_add("Clairvoyant Combatant cancelled.")
+                    continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
@@ -12650,6 +12699,9 @@ class App:
                         elif self.pending_beguiling and hit >= 0:
                             # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
                             self._beguiling_pick_target(hit)
+                        elif self.pending_clairvoyant and hit >= 0:
+                            # Clairvoyant Combatant: the clicked enemy makes a WIS save against the GOO warlock.
+                            self._resolve_clairvoyant_combatant(hit)
                         elif self._legendary_target_pick and hit >= 0:
                             self._resolve_legendary_attack(hit)
                         elif self.pending_attack_slot and hit >= 0:
@@ -13243,6 +13295,11 @@ class App:
                                 self.bonus_used = True
                             else:
                                 self._combat_log_add("Zealous Presence unavailable.")
+                    if self.btn_cbt_clairvoyant_combatant.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_clairvoyant = True
+                            self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
                     if self.btn_cbt_reckless.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

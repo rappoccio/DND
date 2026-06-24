@@ -532,11 +532,41 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         set_magic_damage_multiplier(7 /* Psychic */, 0.5f);
       }
 
+      // Clairvoyant Combatant (Great Old One L6): once per short or long rest, a bonus-action telepathic
+      // strike that (on a failed WIS save) gives the warlock Advantage vs the target and the target
+      // Disadvantage vs the warlock until the start of the warlock's next turn. When the use is spent, a
+      // Pact Magic slot may be spent instead (handled in activateClairvoyantCombatant). Recharges on a
+      // short or long rest.
+      if (warlock_subclass == GreatOldOnePath && level >= 6) {
+        Resource cc("Clairvoyant Combatant", 1);  // current=max=1, available now
+        cc.short_rest_regen = 1;
+        cc.long_rest_regen = 1;
+        resources["Clairvoyant Combatant"] = cc;
+      }
+
       // Healing Light (Celestial L3): pool of d6 healing
       if (warlock_subclass == CelestialPath && level >= 3) {
         Resource hl("Healing Light", 1 + level, 1 + level);
         hl.long_rest_regen = 1 + level;
         resources["Healing Light"] = hl;
+      }
+
+      // Searing Vengeance (Celestial L14): once per long rest, spring back from a death save in a
+      // radiant burst. Consumed by triggerSearingVengeance at the start-of-turn death-save site.
+      if (warlock_subclass == CelestialPath && level >= 14) {
+        Resource sv("Searing Vengeance", 1);  // current=max=1, available now
+        sv.long_rest_regen = 1;
+        resources["Searing Vengeance"] = sv;
+      }
+
+      // Dark One's Own Luck (Fiend L6): add 1d10 to a failed save (or check) after seeing the roll.
+      // Uses = CHA mod (min 1), regained on a long rest. Consumed via the OnSaveFail reaction window
+      // (costs the use only, not the reaction). See canDarkOnesOwnLuck / applyDarkOnesOwnLuckToSave.
+      if (warlock_subclass == FiendPath && level >= 6) {
+        int luck_uses = std::max(1, _mod(cha));
+        Resource luck("Dark One's Own Luck", luck_uses);  // current=max=luck_uses, available now
+        luck.long_rest_regen = luck_uses;
+        resources["Dark One's Own Luck"] = luck;
       }
 
       // Thirsting Blade (invocation 14, L5+, requires Pact of the Blade): a second

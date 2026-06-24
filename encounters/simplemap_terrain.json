@@ -26,25 +26,25 @@
     },
     {
       "type": "Wall",
-      "x": 408,
-      "y": 238,
-      "width": 50,
-      "height": 500,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 458,
-      "y": 688,
+      "x": 508,
+      "y": 288,
       "width": 400,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 458,
-      "y": 238,
-      "width": 400,
+      "x": 858,
+      "y": 338,
+      "width": 50,
+      "height": 350,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 508,
+      "y": 638,
+      "width": 350,
       "height": 50,
       "multiplier": 0.0
     }

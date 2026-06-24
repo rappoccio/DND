@@ -53,6 +53,42 @@ namespace {
 }  // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Dark One's Blessing (Fiend Warlock L3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::grantDarkOnesBlessing(BattleMap& bm, int victim_idx, int killer_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (victim_idx < 0 || victim_idx >= static_cast<int>(agents.size())) return;
+
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        Agent::Stats ws = bm.getAgentStats(i);
+        if (ws.character_class != CharacterClass::Warlock) continue;
+        if (ws.warlock_subclass != FiendPath) continue;
+        if (ws.char_level < 3) continue;
+        if (ws.hp_cur <= 0) continue;                 // a downed warlock gains nothing
+        if (areAllies(bm, i, victim_idx)) continue;   // the fallen creature must be an enemy
+
+        const bool is_self = (i == killer_idx);
+        if (!is_self) {
+            // An ally must have made the kill, and the warlock must be within 10 ft of the corpse.
+            if (killer_idx < 0 || !areAllies(bm, i, killer_idx)) continue;
+            const int dist_ft = footprintDistance(agents[i].origin, agents[i].agent->getSize(),
+                                                  agents[victim_idx].origin,
+                                                  agents[victim_idx].agent->getSize()) * 5;
+            if (dist_ft > 10) continue;
+        }
+
+        int chaMod = (ws.cha - 10) / 2;
+        if (ws.cha < 10 && (ws.cha - 10) % 2 != 0) --chaMod;
+        const int bonus = std::max(1, chaMod + ws.char_level);
+        grantTempHp(ws, bonus);                       // non-rage source: max() semantics
+        bm.setAgentStats(i, ws);
+        log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, i), bonus);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Reach & threat
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1916,6 +1952,21 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // Clairvoyant Combatant (Great Old One Warlock L6): a directed mark from the warlock's bonus-action
+    // telepathic strike. While it persists (until the start of the warlock's next turn): the warlock
+    // (caster_idx) has Advantage attacking the marked creature (agent_idx); the marked creature has
+    // Disadvantage attacking the warlock.
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.condition_name != "ClairvoyantCombatant") continue;
+        if (ac.caster_idx == action.attacker_idx && ac.agent_idx == action.target_idx) {
+            adv = true;
+            log_("Clairvoyant Combatant: Advantage vs the marked creature");
+        } else if (ac.agent_idx == action.attacker_idx && ac.caster_idx == action.target_idx) {
+            dis = true;
+            log_("Clairvoyant Combatant: Disadvantage attacking the warlock");
+        }
+    }
+
     // Hunter L7 Defensive Tactics (defender = the target of this attack):
     //   Escape the Horde — Opportunity Attacks against the Hunter have Disadvantage.
     //   Multiattack Defense — a creature that already hit the Hunter this turn has Disadvantage
@@ -3389,15 +3440,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         r.target_down = true;
         // Don't roll death save yet - they'll roll on their next turn or if they take more damage
 
-        // TASK A: Dark One's Blessing (Fiend L3): temp HP on kill
-        if (atk_stats.character_class == CharacterClass::Warlock && atk_stats.warlock_subclass == FiendPath && atk_stats.char_level >= 3) {
-            int chaMod = (atk_stats.cha - 10) / 2;
-            if (atk_stats.cha < 10 && (atk_stats.cha - 10) % 2 != 0) --chaMod;
-            int bonus = std::max(1, chaMod + atk_stats.char_level);
-            grantTempHp(atk_stats, bonus);  // non-rage source: clears rage provenance if this grant wins
-            bm.setAgentStats(action.attacker_idx, atk_stats);
-            log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, action.attacker_idx), bonus);
-        }
+        // Dark One's Blessing (Fiend L3): temp HP to the warlock attacker and any allied Fiend
+        // warlock within 10 ft of the felled enemy.
+        grantDarkOnesBlessing(bm, action.target_idx, action.attacker_idx);
     }
 
     // Death save on damage for agents already unconscious (unless melee hit within 5ft, which auto-fails 2)

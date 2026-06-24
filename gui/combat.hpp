@@ -1286,6 +1286,12 @@ public:
         if (amount > s.temp_hp) { s.temp_hp = amount; s.rage_thp_source_idx = src_idx; }
     }
 
+    // Dark One's Blessing (Fiend Warlock L3): when an enemy drops to 0 HP, every conscious Fiend
+    // warlock who either personally felled it (killer_idx == warlock) or is an ally of the killer
+    // within 10 ft of the fallen enemy gains CHA-mod + Warlock-level temp HP (min 1). Call once
+    // per enemy reduced to 0 HP, from any knockdown site (weapon, spell, etc.).
+    void grantDarkOnesBlessing(BattleMap& bm, int victim_idx, int killer_idx) noexcept;
+
     // Barbarian Rage lifecycle methods
     // Activate Rage: set raging=true, apply BPS resistance (0.5x multiplier)
     void activateRage(BattleMap& bm, int idx);
@@ -1307,6 +1313,22 @@ public:
     // rolls and saving throws until the start of the Barbarian's next turn.
     // Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.
     bool useZealousPresence(BattleMap& bm, int idx) noexcept;
+
+    // Celestial Warlock L14 — Searing Vengeance: when a Celestial warlock would make a death save at
+    // the start of its turn, it may instead spring back to its feet — regaining half its HP maximum,
+    // standing up, and searing every enemy within 30 ft for 2d8 + CHA radiant + Blinded (until the end
+    // of the warlock's next turn). Once per long rest ("Searing Vengeance" resource). Auto-fires from
+    // the start-of-turn death-save site. Returns true if it triggered (skip the normal death save).
+    bool triggerSearingVengeance(BattleMap& bm, int idx) noexcept;
+
+    // Great Old One Warlock L6 — Clairvoyant Combatant: as a Bonus Action, a GOO warlock makes telepathic
+    // contact with one creature it can see within 60 ft, forcing a WIS save (vs the warlock's CHA spell
+    // save DC). On a failure the warlock has Advantage on attack rolls against that creature, and the
+    // creature has Disadvantage on attack rolls against the warlock, until the start of the warlock's next
+    // turn (a directed "ClairvoyantCombatant" ActiveAgentCondition, caster=warlock, agent=target). Once per
+    // short/long rest ("Clairvoyant Combatant" resource); when exhausted, a Pact Magic slot may be spent
+    // instead. Returns true if it activated (use surfaced via a GUI bonus-action button).
+    bool activateClairvoyantCombatant(BattleMap& bm, int warlock_idx, int target_idx) noexcept;
 
     // Barbarian Path of the Zealot L14 — Rage of the Gods: while raging, assume a divine-warrior
     // form (once per long rest) — Fly Speed = Speed (can hover), Resistance to Necrotic/Psychic/
@@ -2313,6 +2335,9 @@ public:
     // Fighter L9+, ≥1 "Indomitable" use, alive, and reactor == save_target (you reroll your OWN save).
     // No range/LoS test (it's self); does NOT require a free reaction (RAW "no action" — see §6).
     [[nodiscard]] bool canIndomitable(const BattleMap& bm, int reactor, int save_target) const;
+    // Fiend Warlock L6+, ≥1 "Dark One's Own Luck" use, alive, and reactor == save_target (you add a
+    // d10 to your OWN failed save after seeing the roll). No range/LoS, costs no reaction (RAW).
+    [[nodiscard]] bool canDarkOnesOwnLuck(const BattleMap& bm, int reactor, int save_target) const;
     // Creature with Legendary Resistance, ≥1 use remaining, alive, and reactor == save_target.
     // No range/LoS test (it's self); does NOT require a free reaction.
     [[nodiscard]] bool canLegendaryResist(const BattleMap& bm, int reactor, int save_target) const;
@@ -2328,6 +2353,8 @@ public:
     // Each rolls its d20 directly (no fresh save → no recursive OnSaveFail).
     bool applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave& ss);
     bool applyIndomitableToSave (BattleMap& bm, int reactor, SpellSave& ss);
+    // Dark One's Own Luck adds 1d10 to ss.bonus + spends 1 "Dark One's Own Luck" use (not the reaction).
+    bool applyDarkOnesOwnLuckToSave(BattleMap& bm, int reactor, SpellSave& ss);
     bool applyLegendaryResistanceToSave(BattleMap& bm, int reactor, SpellSave& ss);
     // War God's Blessing adds +10 to ss.bonus + spends 1 Channel Divinity use + the cleric's reaction.
     bool applyWarGodsBlessingToSave(BattleMap& bm, int reactor, SpellSave& ss);
