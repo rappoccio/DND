@@ -410,26 +410,59 @@ void CombatEngine::rollDamage(const Weapon& w,
     const bool offhand_no_mod = w.off_hand && !attacker.hasFeat("Two-Weapon Fighting");
     if ((suppress_positive_mod || offhand_no_mod) && ability_mod > 0) ability_mod = 0;  // Cleave / off-hand: keep only a negative mod
     result.damage_mod   = ability_mod + w.bonus_damage;
-    result.total_damage = std::max(0, raw + result.damage_mod);
+
+    // The flat damage bonus (ability modifier + weapon bonus) is the same damage type as the
+    // weapon's primary damage roll, so the target's resistance/vulnerability/immunity must scale
+    // it exactly as it scales the dice. Without this, a raging Barbarian (BPS 0.5x) would only
+    // halve the rolled dice and take the STR mod + magic-weapon bonus at full — resistance must
+    // apply to ALL damage of the type, not just the dice. The multiplier matches the type the
+    // dice used above (Monk unarmed elemental/Force override, else the primary physical roll,
+    // else a pure-magic weapon's primary magic roll).
+    float mod_mult = 1.0f;
+    {
+        const bool unarmed_override = (w.name == "MonkUnarmed" &&
+            attacker.character_class == CharacterClass::Monk &&
+            attacker.unarmed_damage_override >= 0 &&
+            attacker.unarmed_damage_override < NumMagicDamage_t);
+        if (unarmed_override) {
+            mod_mult = target.magic_damage_multipliers[
+                static_cast<std::size_t>(attacker.unarmed_damage_override)];
+        } else if (!w.physicalDamageRolls.empty()) {
+            mod_mult = target.physical_damage_multipliers[w.physicalDamageRolls.front().type];
+        } else if (!w.magicDamageRolls.empty()) {
+            mod_mult = effectiveMagicDamageMult(attacker, target,
+                                                w.magicDamageRolls.front().type, false);
+        } else {
+            // No damage dice (default Unarmed / improvised strike = STR-mod-only Bludgeoning).
+            mod_mult = target.physical_damage_multipliers[
+                static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)];
+        }
+    }
+    const int modified_mod = static_cast<int>(static_cast<float>(result.damage_mod) * mod_mult);
+    result.total_damage = std::max(0, raw + modified_mod);
     result.damage_breakdown.clear();
     result.damage_breakdown.push_back({"weapon", result.total_damage});
 
     // Log: "Damage: 1d8 [6]=6 Slashing +4(dmg) = 10" — the per-type dice (with each die shown),
-    // then the damage modifier (ability mod + weapon bonus). Crit doubles the dice count shown.
+    // then the damage modifier (ability mod + weapon bonus). When resistance/vulnerability scales
+    // the mod, show the scaled value. Crit doubles the dice count shown.
     std::string dmg_line;
     for (std::size_t i = 0; i < log_parts.size(); ++i) {
         if (i) dmg_line += " + ";
         dmg_line += log_parts[i];
     }
     if (dmg_line.empty()) dmg_line = "—";
-    log_("Damage: {} {:+}(dmg) = {}{}", dmg_line, result.damage_mod, result.total_damage,
-         result.critical ? " (CRIT)" : "");
+    log_("Damage: {} {:+}(dmg){} = {}{}", dmg_line, result.damage_mod,
+         mod_mult != 1.0f ? std::format(" x{:g}={}", mod_mult, modified_mod) : std::string{},
+         result.total_damage, result.critical ? " (CRIT)" : "");
 }
 
 int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
 {
     Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_max == 0 && s.hp_cur == 0) return 0;   // default-constructed → invalid idx
+    // Bastion of Law ward (if any) soaks damage first, then temp HP, then hp_cur.
+    amount = applyBastionWard(bm, idx, s, amount);
     // Temporary HP absorbs damage first, then overflow damages hp_cur
     int overflow = std::max(0, amount - s.temp_hp);
     s.temp_hp = std::max(0, s.temp_hp - amount);
@@ -1419,6 +1452,103 @@ bool CombatEngine::applyRestoreBalanceToAttack(BattleMap& bm, int reactor, Attac
     return true;
 }
 
+// Restore Balance — OnMiss (raising) direction. The roller attacked AT DISADVANTAGE and missed; a
+// Clockwork ally cancels the Disadvantage by reverting the kept die to the first (primary) die. Only
+// eligible when r.d20_primary > r.d20 (the first die was the higher one disadvantage threw away), so it
+// can flip a miss → hit but is never a no-op. Reuses d20ReactorBase (60 ft + LoS + reaction free) and
+// team-gates: the reactor only helps itself's allies (the roller must be an ally of the reactor).
+bool CombatEngine::canRestoreBalanceMiss(const BattleMap& bm, int reactor, int roller,
+                                         const AttackResult& r) const
+{
+    if (!r.disadvantage || r.advantage) return false;     // only a disadvantaged roll is a raising revert
+    if (r.hit) return false;                              // only a miss can be raised to a hit
+    if (r.d20_primary <= r.d20) return false;             // reverting wouldn't change anything
+    if (!d20ReactorBase(bm, reactor, roller)) return false;
+    if (!areAllies(bm, reactor, roller)) return false;    // cancel Disadvantage only to help your team
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.character_class != CharacterClass::Sorcerer ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    const Resource* rb = s.getResource("Restore Balance");
+    return rb && rb->current >= 1;
+}
+
+bool CombatEngine::applyRestoreBalanceMissToAttack(BattleMap& bm, const Attack& action, int reactor, AttackResult& r)
+{
+    auto agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (reactor < 0 || reactor >= n) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    Agent::Conditions cond = bm.getAgentConditions(reactor);
+    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Sorcerer ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    if (!r.disadvantage) return false;                    // safety: only cancels Disadvantage
+    Resource* rb = s.getResource("Restore Balance");
+    if (!rb || rb->current < 1) return false;
+
+    rb->current -= 1;
+    cond.reaction_used = true;
+    const int old_d20 = r.d20;
+    const bool was_hit = r.hit;
+    r.d20         = r.d20_primary;                        // cancel disadvantage → keep the first die (raise)
+    r.disadvantage = false;
+    r.total_roll  = r.d20 + r.attack_mod;                 // carries any earlier modifier (invariant)
+    reevaluateAttackHit(r);
+    bm.setAgentStats(reactor, s);
+    bm.setAgentConditions(reactor, cond);
+    log_("{} uses Restore Balance: cancels Disadvantage, d20 {}→{} (now {} vs AC {}) → {}", agentName(bm, reactor),
+         old_d20, r.d20, r.total_roll, r.target_ac, r.hit ? "the attack HITS" : "still misses");
+
+    // If the cancel turned the miss into a hit, roll + apply weapon damage (mirrors applyGuidedStrike).
+    const int atk = action.attacker_idx, tgt = action.target_idx;
+    if (!was_hit && r.hit && atk >= 0 && atk < n && tgt >= 0 && tgt < n) {
+        Agent::Stats atk_stats = bm.getAgentStats(atk);
+        Agent::Stats tgt_stats = bm.getAgentStats(tgt);
+        auto weapons = bm.getAgentWeapons(atk);
+        const Weapon& w = weapons[static_cast<std::size_t>(std::clamp(action.weapon_idx, 0, 2))];
+        rollDamage(w, atk_stats, tgt_stats, r);           // the miss was not a crit → normal damage
+        r.hp_before = tgt_stats.hp_cur;
+        const int dmg = r.total_damage;
+        const int overflow = std::max(0, dmg - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - dmg);
+        tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (tgt_stats.hp_cur <= 0);
+        bm.setAgentStats(tgt, tgt_stats);
+        log_("Restore Balance turns a miss into a hit: {} damage to {}", dmg, agentName(bm, tgt));
+        if (dmg > 0) {
+            checkConcentrationOnDamage(bm, tgt, dmg);
+            processDamageTaken(bm, tgt, dmg);
+        }
+    }
+    return true;
+}
+
+bool CombatEngine::maybeRestoreBalanceMissInline(BattleMap& bm, const Attack& action, AttackResult& r)
+{
+    // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via restore_balance_miss_available.
+    if (!decider_) return false;
+    if (r.hit) return false;                              // only a miss can be raised
+    const int roller = action.attacker_idx;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i) {
+        if (!canRestoreBalanceMiss(bm, i, roller, r)) continue;
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnMiss;
+        ctx.reactor_idx = i;
+        ctx.source_idx  = roller;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Restore Balance (cancel Disadvantage)", "RestoreBalanceMiss"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "RestoreBalanceMiss") continue;
+        if (applyRestoreBalanceMissToAttack(bm, action, i, r)) return true;  // one cancel per attack
+    }
+    return false;
+}
+
 // Which creatures may lower this attack roll, in index order. Only on a hit (a miss/fumble can't be
 // lowered further). Additive reactions (Bend Luck/Cutting Words) can't change a natural 20, so they
 // only count off a nat-20; Silvery Barbs' reroll can change anything (including a crit).
@@ -2147,6 +2277,9 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // Auto/RL War Domain Guided Strike (OnMiss): a War Cleric may add +10 to turn the miss into a hit.
     // Runs BEFORE Riposte so a guided hit forecloses the defender's miss-reaction.
     maybeGuidedStrikeInline(bm, action, r);
+    // Auto/RL Clockwork Restore Balance (OnMiss): a Clockwork ally may cancel Disadvantage on the
+    // roller's missed attack (raise d20 → d20_primary), possibly turning the miss into a hit.
+    maybeRestoreBalanceMissInline(bm, action, r);
     // Auto/RL Battle Master Riposte (OnMiss defender reaction). Runs AFTER the attack fully resolves,
     // so the riposte is a fresh top-level attack (no nesting). The reaction economy caps the chain:
     // a riposte-of-a-riposte is possible once each (both reactors spend their one reaction), then stops.
@@ -2490,6 +2623,21 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Clockwork Restore Balance eligibility (disadvantaged miss) ────────
+    // A miss that was rolled at Disadvantage (and where the first die was the higher one) can have its
+    // Disadvantage cancelled by a Clockwork Sorcerer ally within 60 ft, raising d20 → d20_primary.
+    // Flag it for the GUI (which offers it and calls applyRestoreBalanceMissToAttack); the auto/RL path
+    // uses the OnMiss window (maybeRestoreBalanceMissInline) with the same canRestoreBalanceMiss gate.
+    if (!r.hit) {
+        for (int c = 0; c < static_cast<int>(agents.size()); ++c) {
+            if (canRestoreBalanceMiss(bm, c, action.attacker_idx, r)) {
+                updated_atk_cond.restore_balance_miss_available = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                break;
+            }
+        }
+    }
+
     // ── Sentinel feat — Guardian eligibility (OnAllyAttacked) ─────────────
     // After ANY attack (hit or miss) against a creature other than themselves, a Sentinel adjacent to
     // the attacker may spend their reaction to make a melee attack back. Flagged on the ATTACKER for the
@@ -2653,10 +2801,13 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // computes damage but does not mutate HP, so the single source of truth is
     // applied here (and persisted once via setAgentStats below). Subsequent
     // class effects (Divine Fury) and the auto-crit path adjust tgt_stats further.
-    const int temp_hp_before = tgt_stats.temp_hp;  // for auto-crit revert
+    const int temp_hp_before = tgt_stats.temp_hp;       // for auto-crit revert
+    const int ward_before    = tgt_stats.bastion_ward;  // for auto-crit revert
     if (r.hit) {
-        int overflow = std::max(0, r.total_damage - tgt_stats.temp_hp);
-        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - r.total_damage);
+        // Bastion of Law ward (Clockwork L6) soaks damage before temp HP / hp_cur.
+        int dmg = applyBastionWard(bm, action.target_idx, tgt_stats, r.total_damage);
+        int overflow = std::max(0, dmg - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - dmg);
         tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
         r.hp_after    = tgt_stats.hp_cur;
         r.target_down = (r.hp_after <= 0);
@@ -3077,12 +3228,14 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 bm.setAgentConditions(action.target_idx, updated_cond);
             }
 
-            // Re-roll damage with crit flag set (revert HP and temp HP to pre-attack)
+            // Re-roll damage with crit flag set (revert HP, temp HP, and the Bastion ward to pre-attack)
             tgt_stats.hp_cur  = r.hp_before;
             tgt_stats.temp_hp = temp_hp_before;
+            tgt_stats.bastion_ward = ward_before;
             rollDamage(w, atk_stats, tgt_stats, r, action.no_ability_damage);
-            int overflow = std::max(0, r.total_damage - tgt_stats.temp_hp);
-            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - r.total_damage);
+            int dmg = applyBastionWard(bm, action.target_idx, tgt_stats, r.total_damage);
+            int overflow = std::max(0, dmg - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - dmg);
             tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow,
                                             0, tgt_stats.hp_max);
             r.hp_after = tgt_stats.hp_cur;

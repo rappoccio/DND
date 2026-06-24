@@ -201,6 +201,100 @@ def test_rage_activation():
     print("✅ test_rage_activation passed")
 
 
+def _attack_until_hit(engine, bm, atk, tgt, tries=40):
+    """Resolve attacks until one lands (works around the random natural-1 fumble).
+    Returns the hitting AttackResult; raises if none of `tries` attacks connect."""
+    for _ in range(tries):
+        r = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+        if r.hit:
+            return r
+    raise AssertionError(f"no hit in {tries} attacks (could not test damage)")
+
+
+def test_rage_resistance_halves_modifier():
+    """Regression: Rage's BPS resistance must halve ALL physical damage of the type — including
+    the attacker's ability modifier and weapon bonus damage — not just the rolled dice. Uses a
+    dice-less weapon so the dealt damage is the flat modifier only and thus deterministic
+    regardless of the RNG (no damage dice are rolled)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    # Attacker: STR 18 (+4 melee modifier) at (5,5).
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Attacker", 5, 5))
+    # Target: a raging Barbarian (BPS resistance 0.5x) adjacent at (6,5).
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("RageBarb", 6, 5))
+
+    s = engine.get_agent_stats(bm, atk)
+    s.str = 18  # +4 modifier
+    engine.set_agent_stats(bm, atk, s)
+
+    # Dice-less melee weapon → flat damage = STR mod (+4) + weapon bonus (+2) = 6, no dice.
+    # bonus_hit guarantees the swing lands (except a natural 1, handled by the retry loop).
+    w = rpg.Weapon()
+    w.name = "Club"
+    w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5
+    w.bonus_hit = 50
+    w.bonus_damage = 2
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+
+    # Target: low AC so it is hit, lots of HP so it survives the retry loop, raging.
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.character_class = rpg.CharacterClass.Barbarian
+    ts.char_level = 1
+    ts.base_ac = 1
+    ts.hp_max = 1000
+    ts.hp_cur = 1000
+    ts.initialize_class_resources(rpg.CharacterClass.Barbarian, 1)
+    engine.set_agent_stats(bm, tgt, ts)
+    engine.activate_rage(bm, tgt)
+
+    # Confirm rage really applied BPS resistance.
+    ts = engine.get_agent_stats(bm, tgt)
+    assert ts.physical_damage_multipliers[0] == 0.5, "precondition: target should have BPS resistance"
+
+    r = _attack_until_hit(engine, bm, atk, tgt)
+    assert r.damage_mod == 6, f"flat modifier should be +6 (STR +4, weapon +2), got {r.damage_mod}"
+    # The bug: only the (zero) dice were halved and the +6 modifier was applied at full → 6.
+    # Fixed: resistance halves the modifier too → floor(6 * 0.5) = 3.
+    assert r.total_damage == 3, (
+        f"Rage resistance must halve the +6 modifier to 3, got {r.total_damage} "
+        "(regression: flat modifier taken at full damage)")
+    print("✅ test_rage_resistance_halves_modifier passed")
+
+
+def test_no_resistance_keeps_full_modifier():
+    """Control for test_rage_resistance_halves_modifier: with no resistance the same dice-less
+    +6 attack deals the full 6, confirming the multiplier path only scales when it should."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Attacker", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Dummy", 6, 5))
+
+    s = engine.get_agent_stats(bm, atk)
+    s.str = 18  # +4 modifier
+    engine.set_agent_stats(bm, atk, s)
+
+    w = rpg.Weapon()
+    w.name = "Club"
+    w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5
+    w.bonus_hit = 50
+    w.bonus_damage = 2
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.base_ac = 1
+    ts.hp_max = 1000
+    ts.hp_cur = 1000
+    engine.set_agent_stats(bm, tgt, ts)
+
+    r = _attack_until_hit(engine, bm, atk, tgt)
+    assert r.total_damage == 6, f"no resistance should deal the full +6, got {r.total_damage}"
+    print("✅ test_no_resistance_keeps_full_modifier passed")
+
+
 def test_rage_end():
     """Test ending Rage clears resistance and flags"""
     bm = setup_battle_map()
@@ -512,6 +606,8 @@ def main():
     test_conditions_binding()
     test_barbarian_character_class()
     test_rage_activation()
+    test_rage_resistance_halves_modifier()
+    test_no_resistance_keeps_full_modifier()
     test_rage_end()
     test_rage_extend()
     test_berserker_frenzy_flag()

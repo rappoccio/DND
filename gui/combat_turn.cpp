@@ -246,6 +246,19 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Draconic Sorcerer Elemental Affinity — resistance: tick down the 1-hour (600-round) window.
+    // On expiry, restore the chosen type's multiplier to 1.0.
+    if (stats.draconic_affinity_resist_turns > 0) {
+        --stats.draconic_affinity_resist_turns;
+        if (stats.draconic_affinity_resist_turns == 0 &&
+            stats.draconic_affinity_type >= 0) {
+            auto t = static_cast<std::size_t>(stats.draconic_affinity_type);
+            stats.magic_damage_multipliers[t] = 1.0f;
+            log_("{}'s Draconic Resistance expires", agent_name);
+        }
+        bm.setAgentStats(agent_idx, stats);
+    }
+
     // Sorcerer Innate Sorcery: tick down its 1-minute (10-round) duration.
     if (stats.innate_sorcery_turns > 0) {
         --stats.innate_sorcery_turns;
@@ -292,6 +305,19 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
         if (stats.trance_of_order_turns == 0)
             log_("{}'s Trance of Order ends", agent_name);
+    }
+
+    // Aberrant L14 Revelation in Flesh: tick the 10-minute (100-round) window. On expiry, restore the
+    // fly/swim/truesight values snapshotted at activation.
+    if (stats.revelation_in_flesh_turns > 0) {
+        --stats.revelation_in_flesh_turns;
+        if (stats.revelation_in_flesh_turns == 0) {
+            stats.speed_fly       = stats.revelation_prior_fly;
+            stats.speed_swim      = stats.revelation_prior_swim;
+            stats.truesight_range = stats.revelation_prior_truesight;
+            log_("{}'s Revelation in Flesh ends", agent_name);
+        }
+        bm.setAgentStats(agent_idx, stats);
     }
 
     // Fiendish Vigor invocation (code 6): the Warlock keeps False Life up (free, no
@@ -496,6 +522,18 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (!has_living_targets) {
             for (const auto& fx : bm.activeSpellEffects())
                 if (fx.caster_idx == agent_idx) { has_living_targets = true; break; }
+        }
+        // Area-control terrain (Web, Grease, Spike Growth, Fog Cloud, etc.) is the ongoing
+        // effect itself — it has no condition-targets, so it must not be dropped for lack of them.
+        if (!has_living_targets) {
+            for (const auto& te : bm.activeTerrainEffects())
+                if (te.source_agent_idx == agent_idx) { has_living_targets = true; break; }
+        }
+        // Light/visibility effects (Darkness, Fog Cloud's heavy obscurement, etc.) likewise are
+        // the spell's effect; they affect cells, not creatures, so living-target count is irrelevant.
+        if (!has_living_targets) {
+            for (const auto& le : bm.activeLightEffects())
+                if (le.source_agent_idx == agent_idx) { has_living_targets = true; break; }
         }
         if (!has_living_targets) {
             cond.concentrating = false;

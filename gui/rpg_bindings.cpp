@@ -376,11 +376,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Draconic L6 Elemental Affinity: chosen MagicDamage_t index (0-9), -1 = none")
         .def_readwrite("draconic_affinity_used_this_turn", &Agent::Stats::draconic_affinity_used_this_turn,
              "Draconic L6 Elemental Affinity: CHA mod bonus already applied this turn (reset in beginTurn)")
+        .def_readwrite("draconic_affinity_resist_turns", &Agent::Stats::draconic_affinity_resist_turns,
+             "Draconic L6 Elemental Affinity: rounds remaining for 0.5x resistance to chosen type "
+             "(1 hour = 600 rounds; ticks in beginTurn; 0 = inactive)")
         .def_readwrite("dragon_wings_active", &Agent::Stats::dragon_wings_active,
              "Draconic L14 Dragon Wings: fly speed = walk speed is active")
         .def_readwrite("trance_of_order_turns", &Agent::Stats::trance_of_order_turns,
              "Clockwork L14 Trance of Order window in rounds (>0 = active: attacks vs you lose "
              "Advantage + you floor your own d20s to 10; ticks in beginTurn)")
+        .def_readwrite("bastion_ward", &Agent::Stats::bastion_ward,
+             "Clockwork L6 Bastion of Law: pre-rolled d8 ward pool absorbing damage before temp HP "
+             "(decremented as it soaks; cleared on a long rest)")
+        .def_readwrite("revelation_in_flesh_turns", &Agent::Stats::revelation_in_flesh_turns,
+             "Aberrant L14 Revelation in Flesh window in rounds (>0 = active: fly+hover, swim, "
+             "truesight 60 ft / see invisible; ticks in beginTurn, reverts on expiry)")
+        .def_readwrite("revelation_prior_fly", &Agent::Stats::revelation_prior_fly)
+        .def_readwrite("revelation_prior_swim", &Agent::Stats::revelation_prior_swim)
+        .def_readwrite("revelation_prior_truesight", &Agent::Stats::revelation_prior_truesight)
         .def_readwrite("mantle_majesty_turns", &Agent::Stats::mantle_majesty_turns,
              "Bard College of Glamour (L6) Mantle of Majesty 'unearthly appearance' window in rounds "
              "(>0 = may re-cast Command as a Bonus Action with no slot; tied to concentration)")
@@ -650,6 +662,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("war_magic_used", &Agent::Conditions::war_magic_used)
         .def_readwrite("eldritch_strike_by", &Agent::Conditions::eldritch_strike_by)
         .def_readwrite("guided_strike_available", &Agent::Conditions::guided_strike_available)
+        .def_readwrite("restore_balance_miss_available", &Agent::Conditions::restore_balance_miss_available)
         .def_readwrite("maneuver_available", &Agent::Conditions::maneuver_available)
         .def_readwrite("maneuver_precision_available", &Agent::Conditions::maneuver_precision_available)
         .def_readwrite("goaded_by", &Agent::Conditions::goaded_by)
@@ -1672,6 +1685,22 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + " effect=" + std::to_string(r.effect) + ">";
         });
 
+    py::class_<WildMagicSurgeOffer>(m, "WildMagicSurgeOffer")
+        .def(py::init<>())
+        .def_readonly("surged",         &WildMagicSurgeOffer::surged,
+             "Did a surge actually trigger this cast?")
+        .def_readonly("options",        &WildMagicSurgeOffer::options,
+             "Candidate surge bands 1-10 (1 normally; 2 with Controlled Chaos at L14).")
+        .def_readonly("can_choose_any", &WildMagicSurgeOffer::can_choose_any,
+             "Tamed Surge (L18): the caller may pick ANY band 1-10, not just the rolled one(s).")
+        .def_readonly("tides_expended", &WildMagicSurgeOffer::tides_expended,
+             "Pass back to resolve_wild_magic_surge so it recharges Tides of Chaos.")
+        .def("__repr__", [](const WildMagicSurgeOffer& o){
+            return "<WildMagicSurgeOffer surged=" + std::string(o.surged ? "1" : "0")
+                 + " n_options=" + std::to_string(o.options.size())
+                 + " any=" + std::string(o.can_choose_any ? "1" : "0") + ">";
+        });
+
     py::class_<AttackResult>(m, "AttackResult")
         .def(py::init<>())
         .def_readonly("valid",        &AttackResult::valid)
@@ -1863,6 +1892,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "First call extends wings (dragon_wings_active=True, speed_fly=speed_walk).\n"
              "Second call retracts them (dragon_wings_active=False, speed_fly=0).\n"
              "Returns True if the agent is a Draconic Sorcerer L14+, False otherwise.")
+        .def("activate_draconic_resistance",
+             &CombatEngine::activateDraconicResistance,
+             py::arg("battle_map"), py::arg("idx"),
+             "Draconic L6 Elemental Affinity — Resistance: spend 1 SP to gain resistance\n"
+             "(0.5x multiplier) to the chosen element for 1 hour (600 rounds).\n"
+             "Returns True if activated, False if gating fails (wrong class/subclass/level,\n"
+             "affinity_type unset, resistance already active, or insufficient SP).")
         .def("convert_slot_to_sorcery_points",
              &CombatEngine::convertSlotToSorceryPoints,
              py::arg("battle_map"), py::arg("idx"), py::arg("slot_level"),
@@ -1875,6 +1911,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Font of Magic (L2): spend Sorcery Points to create a temporary spell slot of\n"
              "level 1-5 (cost 2/3/5/6/7). The slot is cleared at the next long rest. Returns\n"
              "remaining SP, or -1 if it could not be done (not a Sorcerer, or not enough SP).")
+        .def("spend_sorcery_points_for_spell",
+             &CombatEngine::spendSorceryPointsForSpell,
+             py::arg("battle_map"), py::arg("idx"), py::arg("spell_level"),
+             "Aberrant Mind L3+ Psionic Sorcery: spend SP equal to spell_level to cast an\n"
+             "always-prepared psionic spell without expending a slot (free_cast path).\n"
+             "Returns True if SP were spent, False if gating fails (wrong class/subclass/level,\n"
+             "spell_level < 1, or insufficient SP).")
         .def_static("metamagic_sp_cost",
                     &CombatEngine::metamagicSpCost,
                     py::arg("option"),
@@ -1913,6 +1956,35 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "you can't benefit from Advantage and you treat your own d20 of 9-or-lower as a 10 on\n"
              "D20 Tests. Free 1/long rest (the 'Trance of Order' Resource), else 5 Sorcery Points.\n"
              "Sets trance_of_order_turns=10 and spends the bonus action. Returns True if used.")
+        .def("activate_bastion_of_law",
+             &CombatEngine::activateBastionOfLaw,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"), py::arg("sp"),
+             "Bastion of Law (Clockwork Sorcerer L6+, Magic Action): spend 1-5 Sorcery Points to ward\n"
+             "the caster or a creature within 30 ft with a pre-rolled (sp)d8 damage-absorption pool\n"
+             "(Stats.bastion_ward), overwriting any prior ward. Returns the ward total rolled, or -1\n"
+             "on failure (gating / range / not enough Sorcery Points).")
+        .def("clockwork_cavalcade",
+             &CombatEngine::clockworkCavalcade,
+             py::arg("battle_map"), py::arg("caster_idx"),
+             "Clockwork Cavalcade (Clockwork Sorcerer L18+, Magic Action): the caster and each ally\n"
+             "within 30 ft regain 100 HP and have their active spell conditions ended. Free 1/long\n"
+             "rest (the 'Clockwork Cavalcade' Resource), else 7 Sorcery Points. Returns the number of\n"
+             "creatures affected, or -1 on failure.")
+        .def("activate_revelation_in_flesh",
+             &CombatEngine::activateRevelationInFlesh,
+             py::arg("battle_map"), py::arg("idx"),
+             "Revelation in Flesh (Aberrant Mind Sorcerer L14+, Bonus Action): spend 1 Sorcery Point to\n"
+             "transform for 10 minutes (100 rounds) — fly+hover (speed_fly=walk), swim (speed_swim=walk),\n"
+             "and truesight 60 ft (see Invisible). Prior speeds/truesight are restored on expiry / long\n"
+             "rest. Returns True if activated (False if gated, already active, or no Sorcery Point).")
+        .def("warping_implosion",
+             &CombatEngine::warpingImplosion,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("dest_col"), py::arg("dest_row"),
+             "Warping Implosion (Aberrant Mind Sorcerer L18+): teleport the caster to (dest_col,dest_row)\n"
+             "within 120 ft, then every OTHER creature within 30 ft of the space it left makes a DEX save\n"
+             "vs the caster's spell DC, taking 3d10 Force (half on a success). Free 1/long rest (the\n"
+             "'Warping Implosion' Resource), else 5 Sorcery Points. Returns the number of creatures\n"
+             "damaged, or -1 on failure (gating / range / blocked dest / no use & < 5 SP).")
         .def("maybe_wild_magic_surge",
              &CombatEngine::maybeWildMagicSurge,
              py::arg("battle_map"), py::arg("idx"),
@@ -1920,6 +1992,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "cast with a spell slot. Rolls 1d20 — on a 20, OR automatically if Tides of Chaos is\n"
              "expended, it rolls + applies a surge and recharges Tides of Chaos. Returns the\n"
              "applied WildMagicSurgeResult (effect == 0 if no surge occurred).")
+        .def("offer_wild_magic_surge",
+             &CombatEngine::offerWildMagicSurge,
+             py::arg("battle_map"), py::arg("idx"),
+             "Wild Magic Surge OFFER: same trigger as maybe_wild_magic_surge but only rolls, it does\n"
+             "not apply. Returns a WildMagicSurgeOffer — with Controlled Chaos (L14) options holds two\n"
+             "rolled bands, and with Tamed Surge (L18) can_choose_any lets you pick any band 1-10.\n"
+             "Pair with resolve_wild_magic_surge to apply the chosen band.")
+        .def("resolve_wild_magic_surge",
+             &CombatEngine::resolveWildMagicSurge,
+             py::arg("battle_map"), py::arg("idx"), py::arg("effect"), py::arg("tides_expended"),
+             "Apply a Wild Magic Surge band (1-10) chosen from a WildMagicSurgeOffer, recharging\n"
+             "Tides of Chaos if tides_expended. Returns the applied WildMagicSurgeResult.")
         .def_static("get_rage_damage_bonus",
                     &CombatEngine::getRageDamageBonus,
                     py::arg("level"),
@@ -2646,6 +2730,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend 1 Restore Balance use + reaction; cancel advantage by reverting result.d20 to\n"
              "result.d20_primary and re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
+        .def("can_restore_balance_miss", &CombatEngine::canRestoreBalanceMiss,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"), py::arg("result"),
+             "True iff reactor (L3+ Clockwork Soul Sorcerer, >=1 Restore Balance use, reaction free,\n"
+             "within 60ft + LoS) may cancel DISADVANTAGE on an ally's MISSED attack roll. Offered only\n"
+             "when result.disadvantage, the roll missed, and result.d20_primary > result.d20 (so the\n"
+             "cancel actually raises the roll). The roller must be an ally of the reactor.")
+        .def("apply_restore_balance_miss_to_attack", &CombatEngine::applyRestoreBalanceMissToAttack,
+             py::arg("battle_map"), py::arg("action"), py::arg("reactor_idx"), py::arg("result"),
+             "Spend 1 Restore Balance use + reaction; cancel disadvantage by reverting result.d20 to\n"
+             "result.d20_primary (a RAISE) and re-evaluate hit/crit. If the raised roll meets AC the\n"
+             "miss becomes a hit and weapon damage is rolled + applied. Pass the Attack that missed and\n"
+             "its AttackResult. Mutates `result`. Returns True if applied.")
         .def("apply_bend_luck_to_attack", &CombatEngine::applyBendLuckToAttack,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
              "Spend 1 Sorcery Point + reaction; subtract 1d4 from the in-flight attack result and\n"

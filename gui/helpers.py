@@ -324,6 +324,11 @@ def _weapon_to_dict(w) -> dict:
         "long_range_ft":    w.long_range_ft,
         "finesse":          w.finesse,
         "thrown":           w.thrown,
+        # Synthetic-weapon identity flags — MUST be serialized or they vanish on save/reload:
+        # the weapon keeps its name ("PactBlade"/"PsychicBlade") so the re-conjure guard skips it,
+        # leaving pact_weapon/psychic_blade False (no CHA attack/damage, no Soulknife riders).
+        "pact_weapon":      w.pact_weapon,
+        "psychic_blade":    w.psychic_blade,
         "proficient":       w.proficient,
         "off_hand":         w.off_hand,
         "two_handed":       w.two_handed,
@@ -367,6 +372,8 @@ def _dict_to_weapon(d: dict):
     w.long_range_ft   = int(d.get("long_range_ft",   320))
     w.finesse         = bool(d.get("finesse",         False))
     w.thrown          = bool(d.get("thrown",          False))
+    w.pact_weapon     = bool(d.get("pact_weapon",     False))
+    w.psychic_blade   = bool(d.get("psychic_blade",   False))
     w.proficient      = bool(d.get("proficient",      True))
     w.off_hand        = bool(d.get("off_hand",        False))
     w.two_handed      = bool(d.get("two_handed",      False))

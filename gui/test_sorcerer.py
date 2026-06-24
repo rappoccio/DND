@@ -1278,6 +1278,104 @@ def test_tides_of_chaos_long_rest_restore():
     print("✅ test_tides_of_chaos_long_rest_restore passed")
 
 
+# ── Wild Magic: Controlled Chaos (L14) + Tamed Surge (L18) via offer/resolve ─────────────────
+
+def _wild_expended(eng, bm, level):
+    """A Wild-Magic sorcerer of `level` with Tides of Chaos expended (so offers force a surge).
+    Returns its index."""
+    idx = add_agent_to_battle(eng, bm, create_test_agent("WildSorc", 5, 5))
+    _sorcerer(eng, bm, idx, level, subclass=rpg.SorcererSubclass.WildMagic)
+    assert eng.activate_tides_of_chaos(bm, idx) is True   # expend → forces surge on every offer
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 0
+    return idx
+
+
+def test_controlled_chaos_rolls_two_bands():
+    """Controlled Chaos (L14): the surge OFFER rolls the table twice (1-2 distinct bands); a L13
+    sorcerer's offer only ever yields one band."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = _wild_expended(eng, bm, 14)
+
+    saw_two = False
+    for _ in range(40):                          # offer doesn't resolve → Tides stays expended
+        offer = eng.offer_wild_magic_surge(bm, idx)
+        assert offer.surged is True, "expended Tides must force a surge"
+        assert offer.tides_expended is True
+        assert offer.can_choose_any is False, "Controlled Chaos is L14, Tamed Surge is L18"
+        assert 1 <= len(offer.options) <= 2, f"expected 1-2 bands, got {list(offer.options)}"
+        for b in offer.options:
+            assert 1 <= b <= 10, f"band out of range: {b}"
+        if len(offer.options) == 2:
+            saw_two = True
+    assert saw_two, "L14 should roll twice — across 40 forced surges expect ≥1 pair of distinct bands"
+
+    # L13: a single band only (no Controlled Chaos).
+    idx13 = _wild_expended(eng, bm, 13)
+    for _ in range(20):
+        offer = eng.offer_wild_magic_surge(bm, idx13)
+        assert offer.surged is True
+        assert len(offer.options) == 1, f"pre-L14 should roll once, got {list(offer.options)}"
+    print("✅ test_controlled_chaos_rolls_two_bands passed")
+
+
+def test_tamed_surge_can_choose_any():
+    """Tamed Surge (L18): the offer flags can_choose_any so the caller may pick any band 1-10; a
+    L17 sorcerer's offer does not."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+
+    idx18 = _wild_expended(eng, bm, 18)
+    offer = eng.offer_wild_magic_surge(bm, idx18)
+    assert offer.surged is True
+    assert offer.can_choose_any is True, "L18 Tamed Surge → may choose any band"
+
+    idx17 = _wild_expended(eng, bm, 17)
+    offer = eng.offer_wild_magic_surge(bm, idx17)
+    assert offer.surged is True
+    assert offer.can_choose_any is False, "pre-L18 → no free choice of band"
+    print("✅ test_tamed_surge_can_choose_any passed")
+
+
+def test_resolve_wild_magic_surge_applies_chosen_band():
+    """resolve_wild_magic_surge applies the chosen band's effect, recharges Tides only when
+    tides_expended is passed True, and is a no-op for out-of-range bands."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = _wild_expended(eng, bm, 14)
+
+    # Resolve a chosen band (2 = spectral shield) WITH the expended flag → effect applied + recharge.
+    res = eng.resolve_wild_magic_surge(bm, idx, 2, True)
+    assert res.effect == 2
+    assert res.description == rpg.CombatEngine.wild_magic_surge_description(2)
+    assert eng.get_agent_stats(bm, idx).wild_magic_shield_turns == 10, "band 2 grants the shield"
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 1, \
+        "resolving with tides_expended=True recharges Tides of Chaos"
+
+    # Re-expend, then resolve with tides_expended=False → effect applied, NO recharge.
+    assert eng.activate_tides_of_chaos(bm, idx) is True
+    res = eng.resolve_wild_magic_surge(bm, idx, 3, False)
+    assert res.effect == 3
+    assert eng.get_agent_stats(bm, idx).wild_magic_regen_turns == 10, "band 3 grants regen"
+    assert eng.get_agent_stats(bm, idx).resources["Tides of Chaos"].current == 0, \
+        "tides_expended=False must NOT recharge Tides of Chaos"
+
+    # Out-of-range bands are no-ops.
+    assert eng.resolve_wild_magic_surge(bm, idx, 0, False).effect == 0
+    assert eng.resolve_wild_magic_surge(bm, idx, 11, False).effect == 0
+    print("✅ test_resolve_wild_magic_surge_applies_chosen_band passed")
+
+
+def test_offer_surge_gating():
+    """offer_wild_magic_surge is a no-op (surged False) for non-Wild-Magic and pre-L3 sorcerers."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("Sorc", 5, 5))
+
+    _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Draconic)
+    assert eng.offer_wild_magic_surge(bm, idx).surged is False, "wrong subclass → no surge"
+
+    _sorcerer(eng, bm, idx, 2, subclass=rpg.SorcererSubclass.WildMagic)
+    assert eng.offer_wild_magic_surge(bm, idx).surged is False, "pre-L3 → no surge"
+    print("✅ test_offer_surge_gating passed")
+
+
 # ── Clockwork Soul: Clockwork Spells (data) + Restore Balance (OnD20Seen reaction) ───────────
 
 def _clock_greataxe():
@@ -1445,6 +1543,112 @@ def test_restore_balance_cancels_advantage_can_miss():
     assert False, "did not observe both a window and a flipped-to-miss in 400 advantaged attacks"
 
 
+# ── Restore Balance — disadvantage-cancel (OnMiss raising) direction ──────────
+
+def _clock_rb_miss_setup(eng, bm, target_ac=12):
+    """Attacker (STR 18) at (5,5) w/ greataxe; ENEMY target at (6,5); Clockwork L3 ALLY reactor at
+    (5,7). Attacker + reactor share a faction so Restore Balance may cancel Disadvantage to aid the
+    attacker; the target is on an enemy faction. A low target AC makes a cancelled miss likely to hit."""
+    atk = add_agent_to_battle(eng, bm, create_test_agent("Atk", 5, 5))
+    tgt = add_agent_to_battle(eng, bm, create_test_agent("Def", 6, 5))
+    rea = add_agent_to_battle(eng, bm, create_test_agent("Clock", 5, 7))
+
+    a = eng.get_agent_stats(bm, atk); a.str = 18; a.prof_bonus = 3; a.hp_max = 30; a.hp_cur = 30
+    eng.set_agent_stats(bm, atk, a)
+    eng.set_agent_weapons(bm, atk, [_clock_greataxe(), rpg.Weapon(), rpg.Weapon()])
+
+    t = eng.get_agent_stats(bm, tgt); t.base_ac = target_ac; t.hp_max = 200; t.hp_cur = 200
+    eng.set_agent_stats(bm, tgt, t)
+
+    _sorcerer(eng, bm, rea, 3, prof=2, subclass=rpg.SorcererSubclass.Clockwork)
+    r = eng.get_agent_stats(bm, rea); r.hp_max = 30; r.hp_cur = 30
+    eng.set_agent_stats(bm, rea, r)
+
+    bm.set_agent_faction(atk, 1); bm.set_agent_faction(rea, 1); bm.set_agent_faction(tgt, 2)
+    return atk, tgt, rea
+
+
+def _rb_miss_reset(eng, bm, atk, tgt, rea):
+    """Independent attempt: refill target HP, refill the reactor's use + reaction, impose one-shot
+    Disadvantage on the attacker's next roll."""
+    t = eng.get_agent_stats(bm, tgt); t.hp_cur = t.hp_max; eng.set_agent_stats(bm, tgt, t)
+    s = _sorcerer(eng, bm, rea, 3, prof=2, subclass=rpg.SorcererSubclass.Clockwork)
+    s.hp_max = 30; s.hp_cur = 30; eng.set_agent_stats(bm, rea, s)
+    rc = eng.get_agent_conditions(bm, rea); rc.reaction_used = False; rc.incapacitated = False
+    eng.set_agent_conditions(bm, rea, rc)
+    eng.grant_pending_advantage(False)             # next d20 (the attack roll) is made at Disadvantage
+
+
+def test_restore_balance_miss_gate():
+    """can_restore_balance_miss is eligible exactly when the roll was at Disadvantage, MISSED, and the
+    primary (first) die was higher than the kept die (so cancelling raises). Hits, no-op cancels, and
+    advantaged rolls are all ineligible; so are a non-ally reactor, a drained use, and the wrong subclass."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    atk, tgt, rea = _clock_rb_miss_setup(eng, bm, target_ac=14)
+
+    saw_eligible = False
+    captured = None                                 # a known-eligible result, for the negative checks
+    for _ in range(600):
+        _rb_miss_reset(eng, bm, atk, tgt, rea)
+        r = eng.execute_action(bm, rpg.Attack(atk, tgt, 0))
+        if not r.disadvantage:
+            continue
+        expect = (not r.hit) and (r.d20_primary > r.d20)
+        assert eng.can_restore_balance_miss(bm, rea, atk, r) == expect, \
+            f"gate mismatch: hit={r.hit} d1={r.d20_primary} kept={r.d20}"
+        if expect:
+            saw_eligible = True
+            captured = r
+    assert saw_eligible, "expected at least one disadvantaged miss with primary > kept across 600 rolls"
+
+    # An advantaged result is never eligible for the miss (raising) direction.
+    eng.grant_pending_advantage(True)
+    adv = eng.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert not eng.can_restore_balance_miss(bm, rea, atk, adv), "advantaged roll → miss-direction ineligible"
+
+    # Negatives on the captured eligible result.
+    bm.set_agent_faction(rea, 3)                    # reactor no longer the attacker's ally
+    assert not eng.can_restore_balance_miss(bm, rea, atk, captured), "non-ally reactor → ineligible"
+    bm.set_agent_faction(rea, 1)
+    assert eng.can_restore_balance_miss(bm, rea, atk, captured), "restored as an ally → eligible again"
+
+    s = eng.get_agent_stats(bm, rea); s.resources["Restore Balance"].current = 0
+    eng.set_agent_stats(bm, rea, s)
+    assert not eng.can_restore_balance_miss(bm, rea, atk, captured), "no use → ineligible"
+
+    _sorcerer(eng, bm, rea, 6, prof=3, subclass=rpg.SorcererSubclass.WildMagic)
+    bm.set_agent_faction(rea, 1)
+    assert not eng.can_restore_balance_miss(bm, rea, atk, captured), "wrong subclass → ineligible"
+    print("✅ test_restore_balance_miss_gate passed")
+
+
+def test_restore_balance_miss_flips_to_hit():
+    """Applying the disadvantage-cancel reverts the kept die to the primary die, spends one use + the
+    reaction, and (with a low target AC) flips the miss to a hit that deals damage."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    atk, tgt, rea = _clock_rb_miss_setup(eng, bm, target_ac=12)
+
+    saw_flip = False
+    for _ in range(600):
+        _rb_miss_reset(eng, bm, atk, tgt, rea)
+        r = eng.execute_action(bm, rpg.Attack(atk, tgt, 0))
+        if not (r.disadvantage and not r.hit and r.d20_primary > r.d20):
+            continue
+        hp_before = eng.get_agent_stats(bm, tgt).hp_cur
+        ok = eng.apply_restore_balance_miss_to_attack(bm, rpg.Attack(atk, tgt, 0), rea, r)
+        assert ok, "apply should succeed on an eligible disadvantaged miss"
+        assert r.d20 == r.d20_primary and not r.disadvantage, "kept die reverted; disadvantage cleared"
+        assert eng.get_agent_conditions(bm, rea).reaction_used, "cancel spends the reaction"
+        assert eng.get_agent_stats(bm, rea).resources["Restore Balance"].current == 1, \
+            "cancel spends one use (2 → 1)"
+        if r.hit:
+            saw_flip = True
+            assert eng.get_agent_stats(bm, tgt).hp_cur < hp_before, "a flipped-to-hit deals damage"
+            break
+    assert saw_flip, "expected at least one disadvantaged miss to flip to a hit across 600 rolls"
+    print("✅ test_restore_balance_miss_flips_to_hit passed")
+
+
 # ── Phase 6: Clockwork Soul L14 Trance of Order ──────────────────────────────
 
 def test_trance_of_order_resource_and_gate():
@@ -1596,6 +1800,457 @@ def test_trance_5sp_alt_cost():
     print("✅ test_trance_5sp_alt_cost passed")
 
 
+# ── Clockwork Soul L6 Bastion of Law ──────────────────────────────────────────
+def test_bastion_of_law_spends_sp_and_gates():
+    """Bastion of Law: a L6+ Clockwork Sorcerer spends 1-5 Sorcery Points to ward a target with a
+    pre-rolled (sp)d8 pool. Pre-L6 and non-Clockwork are gated out (return -1, no SP spent)."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    s = _sorcerer(eng, bm, idx, 6, subclass=rpg.SorcererSubclass.Clockwork)
+    sp0 = s.resources["Sorcery Points"].current
+
+    ward = eng.activate_bastion_of_law(bm, idx, idx, 3)   # self-ward with 3 SP
+    assert ward > 0, "3d8 ward should be a positive total"
+    assert 3 <= ward <= 24, f"3d8 ward in [3,24], got {ward}"
+    s_after = eng.get_agent_stats(bm, idx)
+    assert s_after.bastion_ward == ward, "the rolled ward is stored on the target"
+    assert s_after.resources["Sorcery Points"].current == sp0 - 3, "exactly 3 SP spent"
+
+    # Re-warding overwrites the pool (does not stack).
+    ward2 = eng.activate_bastion_of_law(bm, idx, idx, 1)
+    assert eng.get_agent_stats(bm, idx).bastion_ward == ward2, "a new ward overwrites the old pool"
+
+    # SP clamping: 9 SP requested → clamped to 5 SP spent. Top SP back up so the
+    # 5-cap (not an insufficient-SP refusal) is what we're actually exercising.
+    s2 = eng.get_agent_stats(bm, idx); s2.resources["Sorcery Points"].current = 10
+    eng.set_agent_stats(bm, idx, s2)
+    sp_before = 10
+    eng.activate_bastion_of_law(bm, idx, idx, 9)
+    assert eng.get_agent_stats(bm, idx).resources["Sorcery Points"].current == sp_before - 5, \
+        "the request is clamped to a maximum of 5 SP"
+
+    # L5 Clockwork: gated.
+    bm5 = setup_battle_map(); eng5 = setup_combat_engine()
+    i5 = add_agent_to_battle(eng5, bm5, create_test_agent("Clock5", 5, 5))
+    _sorcerer(eng5, bm5, i5, 5, subclass=rpg.SorcererSubclass.Clockwork)
+    assert eng5.activate_bastion_of_law(bm5, i5, i5, 2) == -1, "pre-L6 must be gated out"
+
+    # Wrong subclass (Draconic L6): gated.
+    bm_d = setup_battle_map(); eng_d = setup_combat_engine()
+    i_d = add_agent_to_battle(eng_d, bm_d, create_test_agent("Drac6", 5, 5))
+    _sorcerer(eng_d, bm_d, i_d, 6, subclass=rpg.SorcererSubclass.Draconic)
+    assert eng_d.activate_bastion_of_law(bm_d, i_d, i_d, 2) == -1, "non-Clockwork must be gated out"
+    print("✅ test_bastion_of_law_spends_sp_and_gates passed")
+
+
+def test_bastion_of_law_absorbs_damage():
+    """The ward soaks damage before HP: damage_agent (and therefore every site that routes through it)
+    decrements the ward first, only the overflow reduces hp_cur, and the ward never goes negative."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("Warded", 5, 5))
+    _sorcerer(eng, bm, idx, 6, subclass=rpg.SorcererSubclass.Clockwork)
+    s = eng.get_agent_stats(bm, idx)
+    s.hp_max = 50; s.hp_cur = 50; s.bastion_ward = 10
+    eng.set_agent_stats(bm, idx, s)
+
+    # 7 damage: fully soaked by the ward (10 → 3), hp_cur unchanged.
+    hp = eng.damage_agent(bm, idx, 7)
+    assert hp == 50, f"ward should absorb all 7 damage, hp stays 50, got {hp}"
+    assert eng.get_agent_stats(bm, idx).bastion_ward == 3, "ward decremented 10 → 3"
+
+    # 8 damage: 3 soaked by the remaining ward, 5 overflow to hp_cur (50 → 45), ward → 0.
+    hp = eng.damage_agent(bm, idx, 8)
+    assert hp == 45, f"3 soaked, 5 to hp → 45, got {hp}"
+    assert eng.get_agent_stats(bm, idx).bastion_ward == 0, "ward fully spent → 0 (no underflow)"
+
+    # With no ward left, damage falls straight through.
+    hp = eng.damage_agent(bm, idx, 5)
+    assert hp == 40, f"no ward → 5 damage hits hp (45 → 40), got {hp}"
+    print("✅ test_bastion_of_law_absorbs_damage passed")
+
+
+def test_bastion_of_law_absorbs_spell_damage():
+    """The ward also soaks spell damage (the Save branch). A paralyzed (auto-fail) target takes full
+    spell damage, which a large ward fully absorbs, leaving hp_cur untouched and the ward reduced."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    caster = add_agent_to_battle(eng, bm, create_test_agent("Caster", 5, 5))
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("Warded", 6, 5))
+    _sorcerer(eng, bm, sorc, 6, subclass=rpg.SorcererSubclass.Clockwork)
+    s = eng.get_agent_stats(bm, sorc)
+    s.hp_max = 80; s.hp_cur = 80; s.bastion_ward = 200
+    eng.set_agent_stats(bm, sorc, s)
+    eng.set_agent_spells(bm, caster, [_save_spell("Frostbite", rpg.SaveAbility.Dexterity)])
+
+    # Paralyzed → auto-fails the DEX save → takes full damage, which the 200-point ward absorbs.
+    pc = eng.get_agent_conditions(bm, sorc); pc.paralyzed = True; pc.incapacitated = True
+    eng.set_agent_conditions(bm, sorc, pc)
+    a = rpg.SpellAction(); a.caster_idx = caster; a.spell_idx = 0; a.target_indices = [sorc]
+    eng.execute_spell(bm, a)
+
+    s_after = eng.get_agent_stats(bm, sorc)
+    assert s_after.hp_cur == 80, "a 200-point ward fully absorbs the cantrip; hp_cur untouched"
+    assert s_after.bastion_ward < 200, "the ward soaked the spell damage and was reduced"
+    print("✅ test_bastion_of_law_absorbs_spell_damage passed")
+
+
+def test_bastion_of_law_range_gate_and_long_rest():
+    """Warding an ally beyond 30 ft fails without spending SP; a long rest clears any standing ward."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    far  = add_agent_to_battle(eng, bm, create_test_agent("FarAlly", 20, 5))  # 15 cells = 75 ft
+    bm.set_agent_faction(sorc, 1); bm.set_agent_faction(far, 1)
+    s = _sorcerer(eng, bm, sorc, 6, subclass=rpg.SorcererSubclass.Clockwork)
+    sp0 = s.resources["Sorcery Points"].current
+
+    assert eng.activate_bastion_of_law(bm, sorc, far, 2) == -1, "target beyond 30 ft must fail"
+    assert eng.get_agent_stats(bm, sorc).resources["Sorcery Points"].current == sp0, \
+        "a range failure spends no Sorcery Points"
+
+    # Stand up a ward, then a long rest clears it.
+    eng.activate_bastion_of_law(bm, sorc, sorc, 3)
+    assert eng.get_agent_stats(bm, sorc).bastion_ward > 0, "ward is up"
+    eng.apply_long_rest(bm)
+    assert eng.get_agent_stats(bm, sorc).bastion_ward == 0, "a long rest clears the ward"
+    print("✅ test_bastion_of_law_range_gate_and_long_rest passed")
+
+
+# ── Clockwork Soul L18 Clockwork Cavalcade ────────────────────────────────────
+def test_clockwork_cavalcade_resource_and_gate():
+    """Clockwork Cavalcade: a 1/long-rest free use for L18+ Clockwork. L17 and non-Clockwork gated."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    s18 = _sorcerer(eng, bm, idx, 18, subclass=rpg.SorcererSubclass.Clockwork)
+    assert "Clockwork Cavalcade" in s18.resources, "L18 Clockwork should have a Cavalcade use"
+    assert s18.resources["Clockwork Cavalcade"].current == 1, "Cavalcade is a single free use"
+
+    # L17 Clockwork: no resource, activation gated.
+    bm17 = setup_battle_map(); eng17 = setup_combat_engine()
+    i17 = add_agent_to_battle(eng17, bm17, create_test_agent("Clock17", 5, 5))
+    s17 = _sorcerer(eng17, bm17, i17, 17, subclass=rpg.SorcererSubclass.Clockwork)
+    assert "Clockwork Cavalcade" not in s17.resources, "pre-L18 → no Cavalcade resource"
+    assert eng17.clockwork_cavalcade(bm17, i17) == -1, "L17 must be gated out"
+
+    # Wrong subclass (Wild Magic L18): gated.
+    bm_w = setup_battle_map(); eng_w = setup_combat_engine()
+    i_w = add_agent_to_battle(eng_w, bm_w, create_test_agent("Wild18", 5, 5))
+    _sorcerer(eng_w, bm_w, i_w, 18, subclass=rpg.SorcererSubclass.WildMagic)
+    assert eng_w.clockwork_cavalcade(bm_w, i_w) == -1, "non-Clockwork must be gated out"
+    print("✅ test_clockwork_cavalcade_resource_and_gate passed")
+
+
+def test_clockwork_cavalcade_heals_and_cleanses():
+    """Cavalcade heals the caster + each ally within 30 ft by 100 HP (capped at max) and ends their
+    active spell conditions; an ally beyond 30 ft is untouched. Spends the free use."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    ally = add_agent_to_battle(eng, bm, create_test_agent("Ally", 6, 5))   # 1 cell = 5 ft
+    far  = add_agent_to_battle(eng, bm, create_test_agent("FarAlly", 20, 5))  # 75 ft
+    for a in (sorc, ally, far):
+        bm.set_agent_faction(a, 1)
+    _sorcerer(eng, bm, sorc, 18, subclass=rpg.SorcererSubclass.Clockwork)
+    # Wound the caster and allies; give the ally a Paralyzed condition to be cleansed.
+    for a in (sorc, ally, far):
+        st = eng.get_agent_stats(bm, a); st.hp_max = 200; st.hp_cur = 10
+        eng.set_agent_stats(bm, a, st)
+    pc = rpg.ActiveAgentCondition()
+    pc.agent_idx = ally; pc.caster_idx = sorc; pc.condition_name = "Paralyzed"; pc.turns_remaining = 10
+    eng.add_agent_condition(bm, pc)
+    assert eng.get_agent_conditions(bm, ally).paralyzed, "precondition: ally is paralyzed"
+
+    affected = eng.clockwork_cavalcade(bm, sorc)
+    assert affected == 2, f"caster + 1 nearby ally affected (far ally excluded), got {affected}"
+    assert eng.get_agent_stats(bm, sorc).hp_cur == 110, "caster regains 100 HP (10 → 110)"
+    assert eng.get_agent_stats(bm, ally).hp_cur == 110, "nearby ally regains 100 HP"
+    assert not eng.get_agent_conditions(bm, ally).paralyzed, "Cavalcade ends the ally's Paralyzed"
+    assert eng.get_agent_stats(bm, far).hp_cur == 10, "an ally beyond 30 ft is untouched"
+    assert eng.get_agent_stats(bm, sorc).resources["Clockwork Cavalcade"].current == 0, \
+        "the free use is spent"
+    print("✅ test_clockwork_cavalcade_heals_and_cleanses passed")
+
+
+def test_clockwork_cavalcade_7sp_alt_cost():
+    """Once the free use is spent, Cavalcade can be used again for 7 Sorcery Points; with neither a
+    free use nor 7 SP, it fails."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("ClockSorc", 5, 5))
+    s = _sorcerer(eng, bm, idx, 18, subclass=rpg.SorcererSubclass.Clockwork)
+    s.resources["Clockwork Cavalcade"].current = 0   # free use spent
+    sp_before = s.resources["Sorcery Points"].current
+    assert sp_before >= 7, "a L18 sorcerer has at least 7 Sorcery Points"
+    eng.set_agent_stats(bm, idx, s)
+
+    assert eng.clockwork_cavalcade(bm, idx) >= 0, "7 SP pays for Cavalcade once the free use is gone"
+    s2 = eng.get_agent_stats(bm, idx)
+    assert s2.resources["Sorcery Points"].current == sp_before - 7, "the alt cost spends exactly 7 SP"
+
+    # Drain SP below 7 with no free use → fails.
+    s2.resources["Sorcery Points"].current = 6
+    eng.set_agent_stats(bm, idx, s2)
+    assert eng.clockwork_cavalcade(bm, idx) == -1, "no free use and <7 SP → cannot use Cavalcade"
+    print("✅ test_clockwork_cavalcade_7sp_alt_cost passed")
+
+
+# ── Aberrant Mind L14 Revelation in Flesh + L18 Warping Implosion ─────────────
+
+def test_revelation_in_flesh_activate_and_gate():
+    """Revelation in Flesh: a L14+ Aberrant spends 1 SP to gain fly (=walk) + hover, swim (=walk), and
+    truesight 60 ft for 100 rounds. Pre-L14, wrong subclass, no SP, and an already-active state all fail."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("AberSorc", 5, 5))
+    s = _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Aberrant)
+    walk = s.speed_walk
+    sp_before = s.resources["Sorcery Points"].current
+
+    assert eng.activate_revelation_in_flesh(bm, idx), "L14 Aberrant should transform"
+    a = eng.get_agent_stats(bm, idx)
+    assert a.revelation_in_flesh_turns == 100, f"10 minutes = 100 rounds, got {a.revelation_in_flesh_turns}"
+    assert a.speed_fly == walk and a.speed_swim == walk, "fly and swim equal the walking speed"
+    assert a.truesight_range >= 60, "gains truesight 60 ft (see Invisible)"
+    assert a.resources["Sorcery Points"].current == sp_before - 1, "spends exactly 1 Sorcery Point"
+
+    # Already active → second activation fails (no extra SP spent).
+    assert not eng.activate_revelation_in_flesh(bm, idx), "already active → cannot re-activate"
+    assert eng.get_agent_stats(bm, idx).resources["Sorcery Points"].current == sp_before - 1
+
+    # Pre-L14 gate.
+    bm2 = setup_battle_map(); eng2 = setup_combat_engine()
+    i2 = add_agent_to_battle(eng2, bm2, create_test_agent("AberSorc13", 5, 5))
+    _sorcerer(eng2, bm2, i2, 13, subclass=rpg.SorcererSubclass.Aberrant)
+    assert not eng2.activate_revelation_in_flesh(bm2, i2), "pre-L14 → ineligible"
+
+    # Wrong subclass gate.
+    i3 = add_agent_to_battle(eng2, bm2, create_test_agent("DracSorc14", 8, 8))
+    _sorcerer(eng2, bm2, i3, 14, subclass=rpg.SorcererSubclass.Draconic)
+    assert not eng2.activate_revelation_in_flesh(bm2, i3), "non-Aberrant → ineligible"
+
+    # No Sorcery Points gate.
+    s4 = eng.get_agent_stats(bm, idx); s4.revelation_in_flesh_turns = 0
+    s4.resources["Sorcery Points"].current = 0
+    eng.set_agent_stats(bm, idx, s4)
+    assert not eng.activate_revelation_in_flesh(bm, idx), "no Sorcery Point → ineligible"
+    print("✅ test_revelation_in_flesh_activate_and_gate passed")
+
+
+def test_revelation_in_flesh_expiry_reverts():
+    """When the window ticks to 0 in begin_turn, the granted fly/swim/truesight revert to the values
+    snapshotted at activation."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("AberSorc", 5, 5))
+    _sorcerer(eng, bm, idx, 14, subclass=rpg.SorcererSubclass.Aberrant)
+    assert eng.activate_revelation_in_flesh(bm, idx)
+
+    s = eng.get_agent_stats(bm, idx)
+    assert s.speed_fly > 0 and s.truesight_range >= 60
+    s.revelation_in_flesh_turns = 1                 # fast-forward to the last round
+    eng.set_agent_stats(bm, idx, s)
+
+    eng.begin_turn(bm, idx)
+    s2 = eng.get_agent_stats(bm, idx)
+    assert s2.revelation_in_flesh_turns == 0, "window ends"
+    assert s2.speed_fly == 0, "fly speed reverts to the prior (0)"
+    assert s2.speed_swim == 0, "swim speed reverts to the prior (0)"
+    assert s2.truesight_range == 0, "truesight reverts to the prior (0)"
+    print("✅ test_revelation_in_flesh_expiry_reverts passed")
+
+
+def test_warping_implosion_resource_and_gate():
+    """Warping Implosion: a 1/long-rest free use for L18+ Aberrant; absent for L17 / wrong subclass, and
+    the engine call is gated the same way."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    idx = add_agent_to_battle(eng, bm, create_test_agent("AberSorc", 5, 5))
+    s = _sorcerer(eng, bm, idx, 18, subclass=rpg.SorcererSubclass.Aberrant)
+    assert "Warping Implosion" in s.resources and s.resources["Warping Implosion"].current == 1
+
+    s17 = _sorcerer(eng, bm, idx, 17, subclass=rpg.SorcererSubclass.Aberrant)
+    assert "Warping Implosion" not in s17.resources, "pre-L18 → no Warping Implosion"
+    assert eng.warping_implosion(bm, idx, 6, 5) == -1, "pre-L18 → gated out"
+
+    _sorcerer(eng, bm, idx, 18, subclass=rpg.SorcererSubclass.Draconic)
+    assert eng.warping_implosion(bm, idx, 6, 5) == -1, "wrong subclass → gated out"
+    print("✅ test_warping_implosion_resource_and_gate passed")
+
+
+def test_warping_implosion_teleports_and_damages():
+    """Warping Implosion teleports the caster up to 120 ft, then every other creature within 30 ft of
+    the space it LEFT takes 3d10 Force (half on a DEX save). Creatures beyond 30 ft are untouched, and
+    the free use is spent (then 5 SP for a second use)."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("AberSorc", 5, 5))
+    near = add_agent_to_battle(eng, bm, create_test_agent("Near", 6, 5))    # 5 ft from origin
+    far  = add_agent_to_battle(eng, bm, create_test_agent("Far", 20, 5))    # 75 ft from origin
+    _sorcerer(eng, bm, sorc, 18, cha=18, prof=6, subclass=rpg.SorcererSubclass.Aberrant)
+    for a in (near, far):
+        t = eng.get_agent_stats(bm, a); t.hp_max = 200; t.hp_cur = 200; t.dex = 8
+        eng.set_agent_stats(bm, a, t)
+    bm.set_agent_faction(sorc, 1); bm.set_agent_faction(near, 2); bm.set_agent_faction(far, 2)
+
+    affected = eng.warping_implosion(bm, sorc, 10, 5)   # teleport 25 ft to (10,5)
+    assert affected == 1, f"only the creature within 30 ft of the origin is caught, got {affected}"
+    moved = bm.placed_agents[sorc].origin
+    assert (moved.col, moved.row) == (10, 5), "the caster teleported to the destination"
+    assert eng.get_agent_stats(bm, near).hp_cur < 200, "the nearby creature takes Force damage"
+    assert eng.get_agent_stats(bm, far).hp_cur == 200, "a creature beyond 30 ft is untouched"
+    assert eng.get_agent_stats(bm, sorc).resources["Warping Implosion"].current == 0, "the free use is spent"
+
+    # Second use costs 5 Sorcery Points (origin is now (10,5); use col 8 which is in bounds
+    # and unoccupied — near is at (6,5), sorc is at (10,5), so (8,5) is free).
+    s2 = eng.get_agent_stats(bm, sorc)
+    sp_before = s2.resources["Sorcery Points"].current
+    assert sp_before >= 5
+    res = eng.warping_implosion(bm, sorc, 8, 5)
+    assert res >= 0, "5 SP pays for a second Warping Implosion"
+    assert eng.get_agent_stats(bm, sorc).resources["Sorcery Points"].current == sp_before - 5, \
+        "the alt cost spends exactly 5 Sorcery Points"
+    print("✅ test_warping_implosion_teleports_and_damages passed")
+
+
+# ── Sonnet Task A: Draconic L6 Elemental Affinity — Resistance (bonus action) ──
+
+def test_draconic_resistance_spends_sp_and_gates():
+    """activate_draconic_resistance: spends 1 SP, sets 0.5× multiplier for chosen type,
+    marks 600 rounds remaining. Various eligibility gates must return False."""
+    fire_idx = int(rpg.MagicDamage.Fire)
+
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("DracSorc", 5, 5))
+    _sorcerer(eng, bm, sorc, 6, subclass=rpg.SorcererSubclass.Draconic)
+    s = eng.get_agent_stats(bm, sorc)
+    s.draconic_affinity_type = fire_idx
+    eng.set_agent_stats(bm, sorc, s)
+    sp0 = eng.get_agent_stats(bm, sorc).resources["Sorcery Points"].current
+
+    ok = eng.activate_draconic_resistance(bm, sorc)
+    assert ok, "Draconic L6 with affinity_type set and SP available must succeed"
+    s2 = eng.get_agent_stats(bm, sorc)
+    assert s2.draconic_affinity_resist_turns == 600, "600 rounds (1 hour) remaining"
+    assert s2.resources["Sorcery Points"].current == sp0 - 1, "exactly 1 SP spent"
+    assert abs(s2.get_magic_damage_multiplier(fire_idx) - 0.5) < 1e-6, "Fire resistance granted"
+
+    # Already active: no double-spend.
+    sp_mid = s2.resources["Sorcery Points"].current
+    ok2 = eng.activate_draconic_resistance(bm, sorc)
+    assert not ok2, "must not activate while resistance is already running"
+    assert eng.get_agent_stats(bm, sorc).resources["Sorcery Points"].current == sp_mid, "no SP spent"
+
+    # Level gate: L5 Draconic must fail.
+    bm5 = setup_battle_map(); eng5 = setup_combat_engine()
+    sorc5 = add_agent_to_battle(eng5, bm5, create_test_agent("Drac5", 5, 5))
+    _sorcerer(eng5, bm5, sorc5, 5, subclass=rpg.SorcererSubclass.Draconic)
+    s5 = eng5.get_agent_stats(bm5, sorc5); s5.draconic_affinity_type = fire_idx
+    eng5.set_agent_stats(bm5, sorc5, s5)
+    assert not eng5.activate_draconic_resistance(bm5, sorc5), "L5 must be gated"
+
+    # Wrong subclass (WildMagic): gated.
+    bm_w = setup_battle_map(); eng_w = setup_combat_engine()
+    sorc_w = add_agent_to_battle(eng_w, bm_w, create_test_agent("Wild6", 5, 5))
+    _sorcerer(eng_w, bm_w, sorc_w, 6, subclass=rpg.SorcererSubclass.WildMagic)
+    sw = eng_w.get_agent_stats(bm_w, sorc_w); sw.draconic_affinity_type = fire_idx
+    eng_w.set_agent_stats(bm_w, sorc_w, sw)
+    assert not eng_w.activate_draconic_resistance(bm_w, sorc_w), "wrong subclass must be gated"
+
+    # Affinity type not set (-1): gated.
+    bm_n = setup_battle_map(); eng_n = setup_combat_engine()
+    sorc_n = add_agent_to_battle(eng_n, bm_n, create_test_agent("DracNoType", 5, 5))
+    _sorcerer(eng_n, bm_n, sorc_n, 6, subclass=rpg.SorcererSubclass.Draconic)
+    assert not eng_n.activate_draconic_resistance(bm_n, sorc_n), "affinity_type=-1 must be gated"
+
+    # Insufficient SP: gated.
+    bm_sp = setup_battle_map(); eng_sp = setup_combat_engine()
+    sorc_sp = add_agent_to_battle(eng_sp, bm_sp, create_test_agent("DracNoSP", 5, 5))
+    _sorcerer(eng_sp, bm_sp, sorc_sp, 6, subclass=rpg.SorcererSubclass.Draconic)
+    ssp = eng_sp.get_agent_stats(bm_sp, sorc_sp)
+    ssp.draconic_affinity_type = fire_idx
+    ssp.resources["Sorcery Points"].current = 0
+    eng_sp.set_agent_stats(bm_sp, sorc_sp, ssp)
+    assert not eng_sp.activate_draconic_resistance(bm_sp, sorc_sp), "0 SP must be gated"
+    print("✅ test_draconic_resistance_spends_sp_and_gates passed")
+
+
+def test_draconic_resistance_duration_ticks():
+    """begin_turn decrements draconic_affinity_resist_turns; on expiry multiplier reverts to 1.0."""
+    fire_idx = int(rpg.MagicDamage.Fire)
+
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("DracSorc", 5, 5))
+    _sorcerer(eng, bm, sorc, 6, subclass=rpg.SorcererSubclass.Draconic)
+    # Manually prime the resistance state (skip activating via button so we can set a small timer).
+    s = eng.get_agent_stats(bm, sorc)
+    s.draconic_affinity_type = fire_idx
+    s.draconic_affinity_resist_turns = 2
+    t = fire_idx
+    s.set_magic_damage_multiplier(t, 0.5)
+    eng.set_agent_stats(bm, sorc, s)
+
+    # First begin_turn: turns → 1, resistance still active.
+    eng.begin_turn(bm, sorc)
+    s1 = eng.get_agent_stats(bm, sorc)
+    assert s1.draconic_affinity_resist_turns == 1, f"expected 1, got {s1.draconic_affinity_resist_turns}"
+    assert abs(s1.get_magic_damage_multiplier(fire_idx) - 0.5) < 1e-6, "resistance still active"
+
+    # Second begin_turn: turns → 0, multiplier reverts to 1.0.
+    eng.begin_turn(bm, sorc)
+    s2 = eng.get_agent_stats(bm, sorc)
+    assert s2.draconic_affinity_resist_turns == 0, "timer must reach 0"
+    assert abs(s2.get_magic_damage_multiplier(fire_idx) - 1.0) < 1e-6, "multiplier must revert to 1.0 on expiry"
+    print("✅ test_draconic_resistance_duration_ticks passed")
+
+
+# ── Sonnet Task B: Aberrant Mind L3+ Psionic Sorcery (SP → free cast) ──────────
+
+def test_psionic_sorcery_spends_sp_not_slot():
+    """spend_sorcery_points_for_spell: deducts SP equal to spell_level, leaves slots untouched."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("AberSorc", 5, 5))
+    _sorcerer(eng, bm, sorc, 5, subclass=rpg.SorcererSubclass.Aberrant)
+    s = eng.get_agent_stats(bm, sorc)
+    sp0 = s.resources["Sorcery Points"].current
+    slots_before = list(s.spell_slots_remaining)
+
+    ok = eng.spend_sorcery_points_for_spell(bm, sorc, 2)
+    assert ok, "L5 Aberrant with SP must succeed for a L2 psionic spell"
+    s2 = eng.get_agent_stats(bm, sorc)
+    assert s2.resources["Sorcery Points"].current == sp0 - 2, "exactly 2 SP spent"
+    assert list(s2.spell_slots_remaining) == slots_before, "no spell slot consumed"
+    print("✅ test_psionic_sorcery_spends_sp_not_slot passed")
+
+
+def test_psionic_sorcery_gating():
+    """spend_sorcery_points_for_spell: gated on Aberrant subclass, Sorcerer class, and L3+."""
+    # Wrong subclass (Draconic L6): gated.
+    bm_d = setup_battle_map(); eng_d = setup_combat_engine()
+    sorc_d = add_agent_to_battle(eng_d, bm_d, create_test_agent("Drac6", 5, 5))
+    _sorcerer(eng_d, bm_d, sorc_d, 6, subclass=rpg.SorcererSubclass.Draconic)
+    assert not eng_d.spend_sorcery_points_for_spell(bm_d, sorc_d, 1), "non-Aberrant gated"
+
+    # Level gate: L2 Aberrant.
+    bm2 = setup_battle_map(); eng2 = setup_combat_engine()
+    sorc2 = add_agent_to_battle(eng2, bm2, create_test_agent("Aber2", 5, 5))
+    _sorcerer(eng2, bm2, sorc2, 2, subclass=rpg.SorcererSubclass.Aberrant)
+    assert not eng2.spend_sorcery_points_for_spell(bm2, sorc2, 1), "L2 Aberrant gated"
+
+    # spell_level == 0: gated (cantrips have no slot level).
+    bm3 = setup_battle_map(); eng3 = setup_combat_engine()
+    sorc3 = add_agent_to_battle(eng3, bm3, create_test_agent("Aber5", 5, 5))
+    _sorcerer(eng3, bm3, sorc3, 5, subclass=rpg.SorcererSubclass.Aberrant)
+    assert not eng3.spend_sorcery_points_for_spell(bm3, sorc3, 0), "spell_level=0 gated"
+    print("✅ test_psionic_sorcery_gating passed")
+
+
+def test_psionic_sorcery_insufficient_sp():
+    """spend_sorcery_points_for_spell returns False when SP < spell_level; SP unchanged."""
+    bm = setup_battle_map(); eng = setup_combat_engine()
+    sorc = add_agent_to_battle(eng, bm, create_test_agent("AberSorc", 5, 5))
+    _sorcerer(eng, bm, sorc, 3, subclass=rpg.SorcererSubclass.Aberrant)
+    s = eng.get_agent_stats(bm, sorc)
+    s.resources["Sorcery Points"].current = 2
+    eng.set_agent_stats(bm, sorc, s)
+
+    ok = eng.spend_sorcery_points_for_spell(bm, sorc, 3)  # need 3 SP, have 2
+    assert not ok, "insufficient SP must return False"
+    assert eng.get_agent_stats(bm, sorc).resources["Sorcery Points"].current == 2, "SP must not change"
+    print("✅ test_psionic_sorcery_insufficient_sp passed")
+
+
 if __name__ == "__main__":
     test_sorcerer_spell_slots()
     test_sorcery_points_allocation()
@@ -1661,12 +2316,20 @@ if __name__ == "__main__":
     test_surge_unforced_tides_invariant()
     test_maybe_surge_gating()
     test_tides_of_chaos_long_rest_restore()
+    # Wild Magic: Controlled Chaos (L14) + Tamed Surge (L18)
+    test_controlled_chaos_rolls_two_bands()
+    test_tamed_surge_can_choose_any()
+    test_resolve_wild_magic_surge_applies_chosen_band()
+    test_offer_surge_gating()
     # Clockwork Soul: Clockwork Spells (data) + Restore Balance (OnD20Seen reaction)
     test_clockwork_spells_data()
     test_restore_balance_resource_granted()
     test_restore_balance_long_rest_restore()
     test_restore_balance_gate()
     test_restore_balance_cancels_advantage_can_miss()
+    # Restore Balance — disadvantage-cancel (OnMiss raising) direction
+    test_restore_balance_miss_gate()
+    test_restore_balance_miss_flips_to_hit()
     # Phase 6: Clockwork Soul L14 Trance of Order
     test_trance_of_order_resource_and_gate()
     test_trance_negates_advantage_against_self()
@@ -1674,4 +2337,24 @@ if __name__ == "__main__":
     test_trance_floors_own_save()
     test_trance_duration_ticks()
     test_trance_5sp_alt_cost()
+    # Clockwork Soul L6 Bastion of Law + L18 Clockwork Cavalcade
+    test_bastion_of_law_spends_sp_and_gates()
+    test_bastion_of_law_absorbs_damage()
+    test_bastion_of_law_absorbs_spell_damage()
+    test_bastion_of_law_range_gate_and_long_rest()
+    test_clockwork_cavalcade_resource_and_gate()
+    test_clockwork_cavalcade_heals_and_cleanses()
+    test_clockwork_cavalcade_7sp_alt_cost()
+    # Aberrant Mind L14 Revelation in Flesh + L18 Warping Implosion
+    test_revelation_in_flesh_activate_and_gate()
+    test_revelation_in_flesh_expiry_reverts()
+    test_warping_implosion_resource_and_gate()
+    test_warping_implosion_teleports_and_damages()
+    # Sonnet Task A: Draconic L6 Elemental Affinity — Resistance (bonus action, 1 SP)
+    test_draconic_resistance_spends_sp_and_gates()
+    test_draconic_resistance_duration_ticks()
+    # Sonnet Task B: Aberrant Mind L3+ Psionic Sorcery (SP → free-cast psionic spells)
+    test_psionic_sorcery_spends_sp_not_slot()
+    test_psionic_sorcery_gating()
+    test_psionic_sorcery_insufficient_sp()
     print("\n✅ All Sorcerer tests passed!")

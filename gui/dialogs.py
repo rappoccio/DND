@@ -868,6 +868,13 @@ class FeatDialog:
 # The five elements Elemental Adept may choose (label, MagicDamage_t index).
 ELEMENTAL_ADEPT_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
 
+# Dragon ancestry types for Draconic Sorcerer L6 Elemental Affinity (single-select).
+# Excludes Force, Necrotic, Radiant, Thunder — not standard dragon types.
+DRACONIC_AFFINITY_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6)]
+
+# Quick int-to-name lookup for displaying the current choice.
+_DRACONIC_AFFINITY_NAMES = {v: lbl for lbl, v in DRACONIC_AFFINITY_OPTIONS}
+
 
 class ElementPickerDialog:
     """Modal (multi- or single-select) damage-type picker. Commits chosen values on dismiss."""
@@ -1421,6 +1428,8 @@ class StatsDialog:
         self._general_feats      = set()   # selected general feat names
         self._element_dialog     = None    # Elemental Adept element picker (opened from the feat picker)
         self._elemental_adept_types = []   # MagicDamage_t indices chosen for Elemental Adept
+        self._draconic_affinity_type = -1  # Draconic L6: chosen ancestry element (-1 = not set)
+        self._draconic_affinity_btn_rect = None  # "Dragon Ancestry" button rect in draw()
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE", hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE"):
@@ -1443,6 +1452,7 @@ class StatsDialog:
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
         self._general_feats = {f for f in cur_feats if f in GENERAL_FEAT_NAMES}
         self._elemental_adept_types = list(stats.elemental_adept_types) if hasattr(stats, 'elemental_adept_types') else []
+        self._draconic_affinity_type = int(stats.draconic_affinity_type) if hasattr(stats, 'draconic_affinity_type') else -1
         self._feat_dialog = FeatDialog(self.font_sm, self.font_md)
         self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
@@ -1597,6 +1607,15 @@ class StatsDialog:
             if self._feat_btn_rect and self._feat_btn_rect.collidepoint(event.pos):
                 if self._feat_dialog:
                     self._feat_dialog.show(self._on_feats_chosen, self._general_feats)
+                return True
+
+            # Dragon Ancestry picker (Draconic Sorcerer L6+): single-select element type.
+            if self._draconic_affinity_btn_rect and self._draconic_affinity_btn_rect.collidepoint(event.pos):
+                if self._element_dialog:
+                    cur = [self._draconic_affinity_type] if self._draconic_affinity_type >= 0 else []
+                    self._element_dialog.show(self._on_draconic_elem_chosen, DRACONIC_AFFINITY_OPTIONS,
+                                              current_values=cur, multi=False,
+                                              title="Dragon Ancestry — element")
                 return True
 
             # NPC checkbox and spell group interactions
@@ -1757,6 +1776,10 @@ class StatsDialog:
         """Callback from the element picker: store the chosen MagicDamage_t indices."""
         self._elemental_adept_types = list(values)
 
+    def _on_draconic_elem_chosen(self, values):
+        """Callback from the Dragon Ancestry element picker (single-select)."""
+        self._draconic_affinity_type = values[0] if values else -1
+
     def _add_npc_spell(self, group_n, spell):
         """Add a spell to an NPC spell group."""
         spell_name = spell.get("name", "Unknown")
@@ -1768,7 +1791,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -2000,10 +2023,26 @@ class StatsDialog:
                         self._defensive_tactics_rects = {}
                         npc_checkbox_y = hp_y + 24
                     self._blessed_strike_rects = {}
+                elif self._class_name == "Sorcerer" and self._subclass_name == "Draconic" and lvl >= 6:
+                    # Dragon Ancestry picker: single-select button showing current choice (or "None").
+                    btn_y = subclass_y + 24
+                    elem_name = _DRACONIC_AFFINITY_NAMES.get(self._draconic_affinity_type, "None")
+                    btn_label = f"Dragon Ancestry: {elem_name}"
+                    btn_r = pygame.Rect(dlg.x + PAD, btn_y, dlg.w - 2 * PAD, 22)
+                    pygame.draw.rect(screen, (60, 40, 80), btn_r, border_radius=4)
+                    pygame.draw.rect(screen, (140, 100, 180), btn_r, 1, border_radius=4)
+                    _bt = self.font_sm.render(btn_label, True, (220, 210, 240))
+                    screen.blit(_bt, _bt.get_rect(center=btn_r.center))
+                    self._draconic_affinity_btn_rect = btn_r
+                    self._blessed_strike_rects = {}
+                    self._hunter_prey_rects = {}
+                    self._defensive_tactics_rects = {}
+                    npc_checkbox_y = btn_y + 28
                 else:
                     self._blessed_strike_rects = {}
                     self._hunter_prey_rects = {}
                     self._defensive_tactics_rects = {}
+                    self._draconic_affinity_btn_rect = None
                     npc_checkbox_y = subclass_y + 24
             else:
                 self._subclass_rects = {}
@@ -3182,8 +3221,10 @@ class WeaponsDialog:
         self.agent_name = agent_name
         self.callback = callback
         self.weapon_selection_dialog = weapon_selection_dialog
-        # Convert weapon objects to dicts for display
-        self.current_weapons = [{"name": w.name if w.name else "", "two_handed": w.two_handed} for w in weapon_array]
+        # Store full weapon dicts (including mastery, bonus_hit, conditions, etc.)
+        # so that weapon properties survive the dialog round-trip.
+        from helpers import _weapon_to_dict
+        self.current_weapons = [_weapon_to_dict(w) for w in weapon_array]
         sw, sh = screen.get_size()
         self.rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2, self.DLG_W, self.DLG_H)
 

@@ -155,6 +155,13 @@ ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4
 # restriction toward/away from the bard, Grovel=Prone, Halt=Incapacitated for one turn.
 COMMAND_WORD_OPTIONS = [("Drop", 0), ("Flee", 1), ("Grovel", 2), ("Halt", 3), ("Approach", 4)]
 
+# MagicDamage_t index → human-readable name (Acid=0 … Thunder=9).
+_DAMAGE_TYPE_NAMES = {0: "Acid", 1: "Cold", 2: "Fire", 3: "Force", 4: "Lightning",
+                      5: "Necrotic", 6: "Poison", 7: "Psychic", 8: "Radiant", 9: "Thunder"}
+
+# Draconic Sorcerer L6 Elemental Affinity: legal dragon ancestry types (excludes Force/Necrotic/Radiant).
+DRACONIC_AFFINITY_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6)]
+
 class App:
     # ── Bonus-action economy: a thin view over the C++ engine budget ──────────
     # `self.bonus_used` is NOT a plain flag — it reads/writes the active combatant's
@@ -536,6 +543,7 @@ class App:
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
         self.pending_wild_magic_teleport = False # Wild Magic Sorcerer: awaiting a teleport destination (20 ft)
+        self.pending_warping_implosion = False # Aberrant L18 Warping Implosion: awaiting a teleport destination (120 ft)
         self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
         self.pending_elemental_burst   = -1    # Warrior of the Elements L6: chosen element (MagicDamage_t) awaiting an Elemental Burst center cell; -1 = inactive
         # Trickery Cleric — Invoke Duplicity (Channel Divinity illusion).
@@ -551,6 +559,8 @@ class App:
         self.pending_unarmed_type      = ""    # "" | "grapple" | "push" (Damage routes via pending_attack_slot)
         self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
         self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
+        self.pending_bastion_of_law    = False # Clockwork Sorcerer Bastion of Law: awaiting ward target click
+        self.pending_bastion_sp        = 0     # SP chosen for the pending Bastion of Law ward (1-5)
         self.pending_hand_of_healing   = False # Monk Warrior of Mercy Hand of Healing: awaiting target click
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
@@ -1101,6 +1111,9 @@ class App:
         self.btn_cbt_dragon_wings = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Dragon Wings",
                                           (180, 100, 60), (220, 140, 90), self.font_md)
+        self.btn_cbt_draconic_resistance = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Draconic Resistance (1 SP)",
+                                          (60, 130, 80), (90, 160, 110), self.font_md)
         self.btn_cbt_bend_luck = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Bend Luck (1 SP)",
                                           (100, 60, 180), (130, 90, 210), self.font_md)
@@ -1110,6 +1123,18 @@ class App:
         self.btn_cbt_trance_of_order = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Trance of Order",
                                           (70, 110, 180), (100, 145, 215), self.font_md)
+        self.btn_cbt_bastion_of_law = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Bastion of Law",
+                                          (60, 120, 150), (90, 155, 185), self.font_md)
+        self.btn_cbt_clockwork_cavalcade = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Clockwork Cavalcade",
+                                          (60, 140, 130), (90, 175, 165), self.font_md)
+        self.btn_cbt_revelation_in_flesh = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Revelation in Flesh (1 SP)",
+                                          (140, 70, 150), (170, 100, 180), self.font_md)
+        self.btn_cbt_warping_implosion = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Warping Implosion",
+                                          (150, 60, 110), (185, 90, 140), self.font_md)
         self.btn_cbt_wild_magic_extra_action = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Wild Magic: Extra Action",
                                           (180, 80, 180), (210, 110, 210), self.font_md)
@@ -1717,7 +1742,7 @@ class App:
         for n in names:
             stats.add_feat(n)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE"):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -1816,6 +1841,9 @@ class App:
         # Elemental Adept's chosen element(s) (set via the element picker). Kept only while the feat
         # is selected; cleared otherwise so a deselect doesn't leave stale types.
         stats.elemental_adept_types = list(elemental_adept_types or []) if stats.has_feat("Elemental Adept") else []
+        # Draconic L6: persist the chosen ancestry element (-1 = none/not yet set).
+        if class_name == "Sorcerer" and subclass_name == "Draconic":
+            stats.draconic_affinity_type = int(draconic_affinity_type)
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
@@ -1841,7 +1869,10 @@ class App:
         # attack/damage + the pact-weapon rider gates.
         if class_name == "Warlock" and 13 in (eldritch_invocations or []):
             current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
-            if current_weapons and current_weapons[0].name != "PactBlade":
+            # Re-conjure when slot 0 isn't a proper pact blade. Guarding on the flag (not just the
+            # name) self-heals legacy saves where "PactBlade" round-tripped without pact_weapon=True.
+            if current_weapons and not (current_weapons[0].name == "PactBlade"
+                                        and current_weapons[0].pact_weapon):
                 current_weapons[0] = self._create_pact_blade_weapon()
                 self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
 
@@ -2413,6 +2444,7 @@ class App:
         self.arcane_charge_pending       = False
         self.pending_psychic_teleport    = False
         self.pending_wild_magic_teleport = False
+        self.pending_warping_implosion   = False
         self.pending_invoke_duplicity    = False
         self.pending_duplicity_remaining = 0
         self._duplicity_cd_pending     = False
@@ -3235,6 +3267,7 @@ class App:
         has_cunning_strike = False
         has_divine_strike = False
         has_guided_strike = False
+        has_restore_balance_miss = False
         has_push = False
         has_topple = False
         has_cleave = False
@@ -3286,6 +3319,8 @@ class App:
                 has_maneuver = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
                 has_guided_strike = True
+            elif (not result.hit) and atk_cond and atk_cond.restore_balance_miss_available:
+                has_restore_balance_miss = True
             elif (not result.hit) and atk_cond and atk_cond.maneuver_precision_available:
                 has_precision = True
             elif (not result.hit) and atk_cond and atk_cond.reckless_reroll_available:
@@ -3406,6 +3441,8 @@ class App:
             self._offer_eldritch_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_restore_balance_miss:
+            self._offer_restore_balance_miss(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_maneuver:
             self._offer_maneuver(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_precision:
@@ -3448,7 +3485,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew or has_sudden_strike
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew or has_sudden_strike
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -3596,24 +3633,56 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _cleave_valid_targets(self, atk: int, first: int, weapon_idx: int) -> list:
+        """Foes a Cleave second attack may legally strike: a different, living, non-ally creature
+        that is BOTH within 5 ft of the first target AND within the attacker's reach with the Cleave
+        weapon. Footprint-aware (handles large creatures). Mirrors the RAW Cleave constraints."""
+        agents = self.bm.placed_agents
+        weapons = self.combat.get_agent_weapons(self.bm, atk)
+        reach = weapons[weapon_idx].reach_ft if 0 <= weapon_idx < len(weapons) else 5
+        out = []
+        for t in range(len(agents)):
+            if t == atk or t == first:
+                continue
+            if self.combat.get_agent_stats(self.bm, t).hp_cur <= 0:
+                continue
+            if self._are_allies(atk, t):
+                continue
+            if self._footprint_dist_ft(first, t) > 5:
+                continue
+            if self._footprint_dist_ft(atk, t) > reach:
+                continue
+            out.append(t)
+        return out
+
     def _offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
         """Cleave weapon mastery: optionally make one extra attack vs a 2nd creature within 5 ft of
-        the first target, with no ability modifier on damage (once per turn). Cleave is part of the
-        Attack action, so it is resolved out-of-band (see _resolve_cleave) — it does not consume the
-        bonus action or a sequence attack."""
+        the first target AND within reach, with no ability modifier on damage (once per turn). Cleave
+        is part of the Attack action, so it is resolved out-of-band (see _resolve_cleave) — it does
+        not consume the bonus action or a sequence attack. On accept, the legal second targets are
+        highlighted on the map (green rings) and the player clicks one (Esc cancels)."""
         def _apply(do):
             self._combat_log_add(atk_msg)
             self._flush_combat_log()
             if do:
-                # Mark Cleave spent for the turn so the engine won't re-offer it (and a chained
-                # Cleave hit can't recurse). Then await the 2nd-target click.
-                c = self.combat.get_agent_conditions(self.bm, atk_idx)
-                c.cleave_used_this_turn = True
-                c.cleave_available = False
-                self.combat.set_agent_conditions(self.bm, atk_idx, c)
-                self.pending_cleave = {"attacker": atk_idx, "first": target_idx, "weapon": weapon_idx}
-                self._combat_log_add(f"Cleave — click a 2nd creature within 5 ft of {tgt_name}.")
-                self._flush_combat_log()
+                valid = self._cleave_valid_targets(atk_idx, target_idx, weapon_idx)
+                if not valid:
+                    self._combat_log_add(
+                        f"Cleave: no eligible creature within 5 ft of {tgt_name} and within reach.")
+                    self._flush_combat_log()
+                else:
+                    # Mark Cleave spent for the turn so the engine won't re-offer it (and a chained
+                    # Cleave hit can't recurse). Then await the 2nd-target click.
+                    c = self.combat.get_agent_conditions(self.bm, atk_idx)
+                    c.cleave_used_this_turn = True
+                    c.cleave_available = False
+                    self.combat.set_agent_conditions(self.bm, atk_idx, c)
+                    self.pending_cleave = {"attacker": atk_idx, "first": target_idx,
+                                           "weapon": weapon_idx, "valid": valid}
+                    self._combat_log_add(
+                        f"Cleave — click a highlighted creature within 5 ft of {tgt_name} "
+                        f"(Esc to cancel).")
+                    self._flush_combat_log()
             self._update_attack_overlay()
         options = [
             ("Cleave: extra attack (no ability mod)", lambda: _apply(True)),
@@ -3622,27 +3691,43 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _cancel_cleave(self):
+        """Esc out of a pending Cleave second-target pick. Refunds the once-per-turn use so the
+        player can still Cleave on a later attack this turn."""
+        info = self.pending_cleave
+        self.pending_cleave = None
+        if not info:
+            return
+        c = self.combat.get_agent_conditions(self.bm, info["attacker"])
+        c.cleave_used_this_turn = False
+        self.combat.set_agent_conditions(self.bm, info["attacker"], c)
+        self._combat_log_add("Cleave cancelled.")
+        self._flush_combat_log()
+        self._update_attack_overlay()
+
     def _resolve_cleave(self, second_target: int):
         """Resolve a pending Cleave attack against the clicked 2nd creature. One weapon attack with
-        no positive ability modifier on damage; validates the RAW 'within 5 ft of the first target'
-        rule (reach to the attacker is enforced by execute_action). No action/bonus is consumed."""
+        no positive ability modifier on damage. The click must be one of the highlighted legal
+        targets (within 5 ft of the first AND within reach); a stray click re-arms rather than
+        wasting the Cleave. No action/bonus is consumed."""
         info = self.pending_cleave
         self.pending_cleave = None
         if not info:
             return
         atk, first, wi = info["attacker"], info["first"], info["weapon"]
+        valid = info.get("valid")
+        if valid is None:
+            valid = self._cleave_valid_targets(atk, first, wi)
         agents = self.bm.placed_agents
         if not (0 <= second_target < len(agents)):
+            self.pending_cleave = info  # off-map click — keep waiting
             return
-        if second_target in (atk, first):
-            self._combat_log_add("Cleave: must target a different creature.")
+        if second_target not in valid:
+            self._combat_log_add(
+                "Cleave: pick a highlighted creature within 5 ft of the first target "
+                "and within your reach.")
             self._flush_combat_log()
-            return
-        # Within 5 ft of the first target (adjacent on the grid, including diagonals).
-        fo, so = agents[first].origin, agents[second_target].origin
-        if max(abs(fo.col - so.col), abs(fo.row - so.row)) > 1:
-            self._combat_log_add("Cleave: the 2nd creature must be within 5 ft of the first target.")
-            self._flush_combat_log()
+            self.pending_cleave = info  # re-arm so a misclick doesn't waste the Cleave
             return
 
         action = rpg.Attack(atk, second_target, wi)
@@ -3987,6 +4072,50 @@ class App:
             label = "Guided Strike (+10)" if ci == atk_idx else f"Guided Strike: {agents[ci].name} reacts (+10)"
             options.append((label, (lambda c=ci: _apply(c))))
         options.append(("Skip Guided Strike", lambda: _apply(None)))
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _eligible_restore_balance_clockworks(self, atk_idx, result):
+        """Clockwork Soul Sorcerers (L3+, >=1 Restore Balance use, reaction free, within 60 ft + LoS,
+        ally of the attacker) who can cancel Disadvantage on this disadvantaged miss. The C++ gate
+        can_restore_balance_miss re-validates everything (incl. result.disadvantage and the raise)."""
+        out = []
+        for ci in range(len(self.bm.placed_agents)):
+            if self.combat.can_restore_balance_miss(self.bm, ci, atk_idx, result):
+                out.append(ci)
+        return out
+
+    def _offer_restore_balance_miss(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a disadvantaged miss, offer Clockwork Restore Balance to cancel the Disadvantage (raise
+        d20 → d20_primary) via an eligible ally. apply_restore_balance_miss_to_attack re-validates in C++
+        and rolls/applies damage if the cancel turns the miss into a hit."""
+        agents = self.bm.placed_agents
+        eligible = self._eligible_restore_balance_clockworks(atk_idx, result)
+
+        def _apply(reactor_idx):
+            if reactor_idx is not None:
+                self.combat.apply_restore_balance_miss_to_attack(self.bm, action, reactor_idx, result)
+                if result.hit:
+                    dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                    dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Restore Balance cancels Disadvantage → HIT {result.total_damage}"
+                        f"{self._damage_breakdown_str(result)} {dmg_type_str}{' — DOWN' if result.target_down else ''}")
+                else:
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Restore Balance cancels Disadvantage → still misses "
+                        f"(roll {result.total_roll} vs AC {result.target_ac})")
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+
+        options = []
+        for ri in eligible:
+            options.append((f"Restore Balance: {agents[ri].name} reacts (cancel Disadvantage)",
+                            (lambda r=ri: _apply(r))))
+        options.append(("Skip Restore Balance", lambda: _apply(None)))
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -5384,6 +5513,38 @@ class App:
             self._flush_combat_log()
             self._combat_log_add("Wild Magic Teleport: destination blocked — pick another cell.")
 
+    def _resolve_warping_implosion(self, cell):
+        """Aberrant L18 Warping Implosion: teleport up to 120 ft to the clicked cell, then every other
+        creature within 30 ft of the space left makes a DEX save (3d10 Force, half on a success). The
+        engine validates range/cost. Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_warping_implosion = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_warping_implosion = False
+            self._combat_log_add("Warping Implosion cancelled.")
+            return
+        dist_ft = max(abs(cell.col - origin.col), abs(cell.row - origin.row)) * 5
+        if dist_ft > 120:
+            self._combat_log_add("Warping Implosion: destination must be within 120 ft — pick a closer cell.")
+            return
+        affected = self.combat.warping_implosion(self.bm, idx, cell.col, cell.row)
+        if affected >= 0:
+            self.pending_warping_implosion = False
+            self.action_used = True
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._combat_log_add(
+                f"{self.bm.placed_agents[idx].name}: Warping Implosion — {affected} creature(s) caught in the implosion!")
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Warping Implosion: blocked or out of range — pick another cell.")
+
     def _resolve_shadow_darkness(self, cell):
         """Warrior of Shadow L3 Shadow Arts: Darkness — fill a 15-ft Sphere centered on the clicked
         cell with magical Darkness (1 Focus, Magic action). Click your own cell to cancel."""
@@ -5558,6 +5719,25 @@ class App:
         self._combat_log_add(
             f"{healer_name}: Lay on Hands restores {actual_healed} HP to {tgt_name} ({pool_remaining} pool remaining).")
         self.action_used = True
+
+    def _resolve_bastion_of_law(self, target_idx: int):
+        """Clockwork Sorcerer L6 Bastion of Law: spend the chosen Sorcery Points (1-5) to ward the
+        clicked target (self or a creature within 30 ft) with a pre-rolled (sp)d8 absorption pool."""
+        self.pending_bastion_of_law = False
+        sp = self.pending_bastion_sp
+        self.pending_bastion_sp = 0
+        caster_idx = self._current_agent_idx()
+        if not (0 <= caster_idx < len(self.bm.placed_agents)):
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        ward = self.combat.activate_bastion_of_law(self.bm, caster_idx, target_idx, sp)
+        if ward >= 0:
+            self.action_used = True  # Bastion of Law is a Magic Action
+        else:
+            self._combat_log_add("Bastion of Law: not available (range / Sorcery Points / subclass/level)")
+        self._flush_combat_log()
+        self._update_attack_overlay()
 
     def _resolve_hand_of_healing(self, target_idx: int):
         """Monk Warrior of Mercy Hand of Healing: spend a bonus action + 1 Focus Point to heal the
@@ -6011,6 +6191,22 @@ class App:
                         continue  # not in spells.json — skip gracefully
                     cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
+
+        # Warlock patron always-prepared lists — regular spells from spells.json, granted by
+        # subclass + Warlock level (2024 PHB). Uses WarlockSubclass.name as the key.
+        if class_name == "Warlock":
+            sub_table = self._WARLOCK_SUBCLASS_SPELLS.get(stats.warlock_subclass.name, {})
+            for min_lvl, names in sub_table.items():
+                if level < min_lvl:
+                    continue
+                for name in names:
+                    if name in existing:
+                        continue
+                    idx = self.spell_name_to_idx.get(name)
+                    if idx is None:
+                        continue  # not in spells.json — skip gracefully
+                    cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
+                    existing.add(name)
         return cpp_spells
 
     # Always-prepared Bard college spells by college and Bard level (2024 PHB).
@@ -6036,6 +6232,44 @@ class App:
             9: ["Greater Restoration", "Wall of Force"],
         },
     }
+
+    # Always-prepared Warlock patron spells by subclass and Warlock level (2024 PHB). The
+    # subclass-key uses WarlockSubclass.name ("Archfey"/"Celestial"/"Fiend"/"GreatOldOne").
+    # Names not in spells.json are skipped gracefully by _grant_class_features.
+    _WARLOCK_SUBCLASS_SPELLS = {
+        "Archfey": {
+            3: ["Calm Emotions", "Faerie Fire", "Misty Step", "Phantasmal Force"],
+            5: ["Blink", "Plant Growth"],
+            7: ["Dominate Beast", "Greater Invisibility"],
+            9: ["Dominate Person", "Seeming"],
+        },
+        "Celestial": {
+            3: ["Aid", "Cure Wounds", "Guiding Bolt", "Lesser Restoration"],
+            5: ["Daylight", "Revivify"],
+            7: ["Guardian of Faith", "Wall of Fire"],
+            9: ["Greater Restoration", "Summon Celestial"],
+        },
+        "Fiend": {
+            3: ["Burning Hands", "Command", "Scorching Ray", "Suggestion"],
+            5: ["Fireball", "Stinking Cloud"],
+            7: ["Fire Shield", "Wall of Fire"],
+            9: ["Geas", "Insect Plague"],
+        },
+        "GreatOldOne": {
+            3: ["Detect Thoughts", "Dissonant Whispers", "Hideous Laughter", "Phantasmal Force"],
+            5: ["Clairvoyance", "Hunger of Hadar"],
+            7: ["Confusion", "Summon Aberration"],
+            9: ["Modify Memory", "Telekinesis"],
+        },
+    }
+
+    # Flat set of all Aberrant Mind psionic spell names (from every level bucket above).
+    # Used by _start_cast_spell to decide which slots can be replaced by SP (Psionic Sorcery L3+).
+    _PSIONIC_SPELL_NAMES = frozenset(
+        name
+        for lvl_spells in _SORCERER_SUBCLASS_SPELLS["Aberrant"].values()
+        for name in lvl_spells
+    )
 
     # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
     # (Summon Fey at L9 is intentionally omitted — not yet in spells.json; see known_limitations.)
@@ -6277,7 +6511,26 @@ class App:
                         if stats.spell_slots_remaining[lvl - 1] > 0:
                             available_levels.append((lvl, stats.spell_slots_remaining[lvl - 1]))
 
-                    if not available_levels:
+                    # Aberrant Mind L3+ Psionic Sorcery: offer SP-spend option for psionic spells
+                    # even when no regular slots are available (or in addition to slots).
+                    psionic_options = []
+                    if (sp.name in self._PSIONIC_SPELL_NAMES and
+                            stats.character_class == rpg.CharacterClass.Sorcerer and
+                            stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
+                            stats.char_level >= 3):
+                        sp_res = stats.get_resource("Sorcery Points")
+                        if sp_res:
+                            for psi_lvl in range(sp_level, 6):  # Psionic Sorcery caps at L5
+                                if sp_res.current >= psi_lvl:
+                                    def _pick_psionic(s=slot, si_=si, sl=psi_lvl):
+                                        ok = self.combat.spend_sorcery_points_for_spell(self.bm, idx, sl)
+                                        if ok:
+                                            _activate(s, si_, sl)
+                                            self.pending_spell_free_cast = True
+                                    psionic_options.append(
+                                        (f"{sp.name} @ {_ordinal(psi_lvl)} — {psi_lvl} SP (no slot)", _pick_psionic))
+
+                    if not available_levels and not psionic_options:
                         continue
 
                     # Add submenu for each available slot level
@@ -6286,6 +6539,7 @@ class App:
                         def _pick_slot(s=slot, si_=si, sl=slot_lvl):
                             _activate(s, si_, sl)
                         options.append((label, _pick_slot))
+                    options.extend(psionic_options)
                 else:
                     # NPC: just add the spell (availability already checked by available_castable_spells)
                     def _pick_npc(s=slot, si_=si):
@@ -7591,11 +7845,44 @@ class App:
 
     def _maybe_wild_magic_surge(self, caster_idx: int):
         """Run the Wild Magic Surge trigger after a slot-fueled cast. The engine gates on
-        class/subclass/level itself (no-op for non-Wild-Magic casters), rolls the d20, and applies +
-        recharges Tides of Chaos on a surge. We just relay the engine log and refresh the overlay."""
+        class/subclass/level itself (no-op for non-Wild-Magic casters) and rolls the d20 trigger.
+        For a plain L3-13 surge the single rolled band is applied immediately; with Controlled Chaos
+        (L14: two rolled bands) or Tamed Surge (L18: any band) we present a choice menu first."""
         if not (0 <= caster_idx < len(self.bm.placed_agents)):
             return
-        res = self.combat.maybe_wild_magic_surge(self.bm, caster_idx)
+        offer = self.combat.offer_wild_magic_surge(self.bm, caster_idx)
+        self._flush_combat_log()
+        if not offer.surged:
+            return
+        if offer.can_choose_any:
+            bands = list(range(1, 11))                    # Tamed Surge (L18): pick any band
+        else:
+            # 1 band normally, or 2 with Controlled Chaos (L14); dedupe identical rolls.
+            bands = list(dict.fromkeys(offer.options))
+        if not bands:
+            return
+        if len(bands) == 1:
+            self._resolve_wild_magic_surge(caster_idx, bands[0], offer.tides_expended)
+            return
+        # A choice is available — let the player pick which surge to apply.
+        name = self.bm.placed_agents[caster_idx].name
+        kind = "Tamed Surge" if offer.can_choose_any else "Controlled Chaos"
+        self._combat_log_add(f"⚡ {name}: {kind} — choose a Wild Magic Surge.")
+        self._flush_combat_log()
+        options = []
+        for b in bands:
+            desc = self.combat.wild_magic_surge_description(b)
+            options.append((f"{b}: {desc[:46]}",
+                            lambda bb=b, te=offer.tides_expended:
+                                self._resolve_wild_magic_surge(caster_idx, bb, te)))
+        px, py = self._agent_screen_pos(caster_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _resolve_wild_magic_surge(self, caster_idx: int, effect: int, tides_expended: bool):
+        """Apply a chosen Wild Magic Surge band (from offer_wild_magic_surge) and relay the log."""
+        if not (0 <= caster_idx < len(self.bm.placed_agents)):
+            return
+        res = self.combat.resolve_wild_magic_surge(self.bm, caster_idx, effect, tides_expended)
         self._flush_combat_log()
         if res.effect > 0:
             name = self.bm.placed_agents[caster_idx].name
@@ -8069,6 +8356,35 @@ class App:
                 self.screen.blit(label, (c[0] - label.get_width() // 2,
                                          c[1] - label.get_height() // 2))
 
+    def _draw_cleave_picker(self, cpx: int):
+        """While picking a Cleave second target, ring the first target (white) and every legal
+        second target (green), with a line from the attacker to each candidate."""
+        info = self.pending_cleave
+        if not info:
+            return
+        agents = self.bm.placed_agents
+
+        def _center(idx):
+            if not (0 <= idx < len(agents)):
+                return None
+            pt = agents[idx]
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            half = pt.size * cpx // 2
+            return (sx + half, sy + half)
+
+        ring = max(8, cpx // 3)
+        ac = _center(info.get("attacker", -1))
+        fc = _center(info.get("first", -1))
+        if fc is not None:
+            pygame.draw.circle(self.screen, (255, 255, 255), fc, ring, 2)
+        for t in info.get("valid", []):
+            c = _center(t)
+            if c is None:
+                continue
+            if ac is not None:
+                pygame.draw.line(self.screen, (120, 230, 120), ac, c, 2)
+            pygame.draw.circle(self.screen, (120, 230, 120), c, ring, 3)
+
     def _draw_attack_overlays(self, cpx: int):
         """Draw melee / ranged-normal / ranged-long attack-range overlays."""
         map_w, map_h = self.map_rect.width, self.map_rect.height
@@ -8207,6 +8523,10 @@ class App:
                     "save_prof_wis":   s.save_prof_wis,
                     "save_prof_cha":      s.save_prof_cha,
                     "num_attacks":        s.num_attacks,
+                    # Weapon Mastery feature count — gates ALL weapon masteries (Cleave/Topple/Sap/...);
+                    # if dropped here it reloads as 0 and every mastery silently stops working
+                    # (agent_loader.dict_to_stats reads it back).
+                    "weapon_mastery":     s.weapon_mastery,
                     # Creature-type flags — must round-trip or saved monsters silently lose them
                     # (e.g. a reloaded Vampire stops taking Sunlight radiant damage). dict_to_stats
                     # reads all three back from this stats block.
@@ -8226,8 +8546,14 @@ class App:
                     "draconic_hp_applied": s.draconic_hp_applied,
                     "draconic_affinity_type": s.draconic_affinity_type,
                     "draconic_affinity_used_this_turn": s.draconic_affinity_used_this_turn,
+                    "draconic_affinity_resist_turns": s.draconic_affinity_resist_turns,
                     "dragon_wings_active": s.dragon_wings_active,
                     "trance_of_order_turns": s.trance_of_order_turns,
+                    "bastion_ward": s.bastion_ward,
+                    "revelation_in_flesh_turns": s.revelation_in_flesh_turns,
+                    "revelation_prior_fly": s.revelation_prior_fly,
+                    "revelation_prior_swim": s.revelation_prior_swim,
+                    "revelation_prior_truesight": s.revelation_prior_truesight,
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
                     "primal_champion_applied": s.primal_champion_applied,
@@ -8656,8 +8982,11 @@ class App:
                 cpp_weapons[0] = self._create_alter_self_claws_weapon()
 
             # Pact of the Blade (invocation 13): re-conjure the pact weapon into the main-hand slot.
+            # Guard on the flag (not just the name) so legacy saves whose "PactBlade" lost
+            # pact_weapon=True on round-trip get re-conjured (CHA attack/damage restored).
             if (stats.character_class == rpg.CharacterClass.Warlock and
-                    stats.has_invocation(13) and cpp_weapons[0].name != "PactBlade"):
+                    stats.has_invocation(13)
+                    and not (cpp_weapons[0].name == "PactBlade" and cpp_weapons[0].pact_weapon)):
                 cpp_weapons[0] = self._create_pact_blade_weapon()
 
             # Soulknife (L3+): re-manifest the Psychic Blades. Saves made before the psychic_blade
@@ -10066,6 +10395,7 @@ class App:
         self._draw_spell_aoe_preview(cpx)
         self._draw_chromatic_chain(cpx)
         self._draw_mantle_overlay(cpx)
+        self._draw_cleave_picker(cpx)
 
         # ── Draw drag ghost ───────────────────────────────────────────────
         if self.drag_idx >= 0 and self.drag_cell is not None:
@@ -10894,6 +11224,23 @@ class App:
                     self.btn_cbt_dragon_wings.draw(self.screen)
                     y += B + gap
 
+            # Draconic L6 Elemental Affinity — Resistance (bonus action, 1 SP; hidden once active)
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Draconic and
+                        stats.char_level >= 6 and
+                        stats.draconic_affinity_type >= 0 and
+                        stats.draconic_affinity_resist_turns == 0 and
+                        not bonus_used):
+                    sp_res = stats.get_resource("Sorcery Points")
+                    if sp_res and sp_res.current >= 1:
+                        self.btn_cbt_draconic_resistance.rect.x = lx
+                        self.btn_cbt_draconic_resistance.rect.y = y
+                        self.btn_cbt_draconic_resistance.rect.w = W
+                        self.btn_cbt_draconic_resistance.draw(self.screen)
+                        y += B + gap
+
             # Wild Magic Sorcerer L6+ Bend Luck (bonus action / reaction, spends 1 SP)
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -10942,6 +11289,77 @@ class App:
                         self.btn_cbt_trance_of_order.rect.y = y
                         self.btn_cbt_trance_of_order.rect.w = W
                         self.btn_cbt_trance_of_order.draw(self.screen)
+                        y += B + gap
+
+            # Clockwork Sorcerer L6+ Bastion of Law (Magic Action): spend 1-5 SP to ward self/ally
+            # within 30 ft with a pre-rolled d8 absorption pool. Shown when an action is free and at
+            # least 1 Sorcery Point is available.
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Clockwork and
+                        stats.char_level >= 6):
+                    sp_res = stats.get_resource("Sorcery Points")
+                    if sp_res and sp_res.current >= 1:
+                        self.btn_cbt_bastion_of_law.rect.x = lx
+                        self.btn_cbt_bastion_of_law.rect.y = y
+                        self.btn_cbt_bastion_of_law.rect.w = W
+                        self.btn_cbt_bastion_of_law.draw(self.screen)
+                        y += B + gap
+
+            # Clockwork Sorcerer L18+ Clockwork Cavalcade (Magic Action): allies within 30 ft regain
+            # 100 HP + lose spell effects. Free 1/long rest or 7 SP.
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Clockwork and
+                        stats.char_level >= 18):
+                    cav = stats.get_resource("Clockwork Cavalcade")
+                    sp_res = stats.get_resource("Sorcery Points")
+                    free_use = cav and cav.current > 0
+                    sp_use = sp_res and sp_res.current >= 7
+                    if free_use or sp_use:
+                        self.btn_cbt_clockwork_cavalcade.text = (
+                            "Clockwork Cavalcade" if free_use else "Clockwork Cavalcade (7 SP)")
+                        self.btn_cbt_clockwork_cavalcade.rect.x = lx
+                        self.btn_cbt_clockwork_cavalcade.rect.y = y
+                        self.btn_cbt_clockwork_cavalcade.rect.w = W
+                        self.btn_cbt_clockwork_cavalcade.draw(self.screen)
+                        y += B + gap
+
+            # Aberrant Mind Sorcerer L14+ Revelation in Flesh (Bonus Action, 1 SP): fly+hover, swim,
+            # truesight 60 ft for 10 minutes. Shown while not active, a bonus action is free, and >=1 SP.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
+                        stats.char_level >= 14 and stats.revelation_in_flesh_turns == 0):
+                    sp_res = stats.get_resource("Sorcery Points")
+                    if sp_res and sp_res.current >= 1:
+                        self.btn_cbt_revelation_in_flesh.rect.x = lx
+                        self.btn_cbt_revelation_in_flesh.rect.y = y
+                        self.btn_cbt_revelation_in_flesh.rect.w = W
+                        self.btn_cbt_revelation_in_flesh.draw(self.screen)
+                        y += B + gap
+
+            # Aberrant Mind Sorcerer L18+ Warping Implosion (Magic Action): teleport 120 ft + 3d10 Force
+            # DEX-save burst on the space left. Free 1/long rest or 5 SP. Shown when an action is free.
+            if 0 <= cur_idx < len(agents) and not self.action_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
+                        stats.char_level >= 18):
+                    wi = stats.get_resource("Warping Implosion")
+                    sp_res = stats.get_resource("Sorcery Points")
+                    free_use = wi and wi.current > 0
+                    sp_use = sp_res and sp_res.current >= 5
+                    if free_use or sp_use:
+                        self.btn_cbt_warping_implosion.text = (
+                            "Warping Implosion" if free_use else "Warping Implosion (5 SP)")
+                        self.btn_cbt_warping_implosion.rect.x = lx
+                        self.btn_cbt_warping_implosion.rect.y = y
+                        self.btn_cbt_warping_implosion.rect.w = W
+                        self.btn_cbt_warping_implosion.draw(self.screen)
                         y += B + gap
 
             # Wild Magic window-band affordances (GUI-enforced; fields set by surge application)
@@ -11977,6 +12395,10 @@ class App:
                         and event.key == pygame.K_ESCAPE:
                     self._cancel_chromatic_chain()
                     continue
+                # Esc cancels a pending Cleave second-target pick (refunds the use this turn).
+                if event.key == pygame.K_ESCAPE and self.pending_cleave is not None:
+                    self._cancel_cleave()
+                    continue
                 # Mantle of Inspiration: Enter resolves on the collected recipients, Esc cancels
                 # (without spending the Bardic Inspiration use).
                 if self.pending_mantle_active \
@@ -12200,6 +12622,8 @@ class App:
                             self._resolve_shadow_step(cell)
                         elif self.pending_wild_magic_teleport:
                             self._resolve_wild_magic_teleport(cell)
+                        elif self.pending_warping_implosion:
+                            self._resolve_warping_implosion(cell)
                         elif self.pending_shadow_darkness:
                             self._resolve_shadow_darkness(cell)
                         elif self.pending_elemental_burst >= 0:
@@ -12279,6 +12703,8 @@ class App:
                             self._resolve_healing_light(hit)
                         elif self.pending_lay_on_hands and hit >= 0:
                             self._resolve_lay_on_hands(hit)
+                        elif self.pending_bastion_of_law and hit >= 0:
+                            self._resolve_bastion_of_law(hit)
                         elif self.pending_hand_of_healing and hit >= 0:
                             self._resolve_hand_of_healing(hit)
                         elif self.pending_grant_inspiration and hit >= 0:
@@ -13133,6 +13559,18 @@ class App:
                                     self._combat_log_add(
                                         f"{self.bm.placed_agents[idx].name}: Dragon Wings retracted")
                                     self.move_remaining_fly = 0
+                    if self.btn_cbt_draconic_resistance.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.activate_draconic_resistance(self.bm, idx):
+                                stats = self.combat.get_agent_stats(self.bm, idx)
+                                elem_name = _DAMAGE_TYPE_NAMES.get(stats.draconic_affinity_type, str(stats.draconic_affinity_type))
+                                self._combat_log_add(
+                                    f"{self.bm.placed_agents[idx].name}: Draconic Resistance — "
+                                    f"{elem_name} resistance for 1 hour (1 SP spent)")
+                            else:
+                                self._combat_log_add("Draconic Resistance: not eligible")
+                            bonus_used = True
                     if self.btn_cbt_bend_luck.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -13170,6 +13608,58 @@ class App:
                                 self._combat_log_add("Trance of Order: not available (no use/5 SP, wrong subclass/level)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
+                    if self.btn_cbt_bastion_of_law.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            sp_res = stats.get_resource("Sorcery Points")
+                            avail = min(5, sp_res.current if sp_res else 0)
+                            if avail >= 1:
+                                def _arm_bastion(n):
+                                    self.pending_bastion_sp = n
+                                    self.pending_bastion_of_law = True
+                                    self._combat_log_add(
+                                        f"Bastion of Law: click the creature to ward ({n} SP, {n}d8) — self or within 30 ft")
+                                    self._flush_combat_log()
+                                px, py = event.pos
+                                self.context_menu.show(
+                                    (px, py),
+                                    [(f"{n} SP ({n}d8)", (lambda n=n: _arm_bastion(n)))
+                                     for n in range(1, avail + 1)],
+                                    self.screen.get_size())
+                    if self.btn_cbt_clockwork_cavalcade.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.clockwork_cavalcade(self.bm, idx) >= 0:
+                                self.action_used = True  # Clockwork Cavalcade is a Magic Action
+                                self._flush_combat_log()
+                            else:
+                                self._combat_log_add("Clockwork Cavalcade: not available (no use/7 SP, wrong subclass/level)")
+                                self._flush_combat_log()
+                            self._update_attack_overlay()
+                    if self.btn_cbt_revelation_in_flesh.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.activate_revelation_in_flesh(self.bm, idx):
+                                self.bonus_used = True  # Revelation in Flesh is a Bonus Action
+                                stats = self.combat.get_agent_stats(self.bm, idx)
+                                self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
+                                self._combat_log_add(
+                                    f"{self.bm.placed_agents[idx].name}: Revelation in Flesh — fly {stats.speed_fly} ft, "
+                                    f"truesight 60 ft (1 SP)")
+                                self._flush_combat_log()
+                            else:
+                                self._combat_log_add("Revelation in Flesh: not available (no SP, already active, wrong subclass/level)")
+                                self._flush_combat_log()
+                            self._update_attack_overlay()
+                    if self.btn_cbt_warping_implosion.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_warping_implosion = True
+                            self._combat_log_add(
+                                "Warping Implosion: click a destination within 120 ft (each creature within "
+                                "30 ft of where you stand makes a DEX save vs 3d10 Force). Click yourself to cancel.")
+                            self._flush_combat_log()
                     if self.btn_cbt_wild_magic_extra_action.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

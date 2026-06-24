@@ -258,6 +258,16 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
           magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Psychic)] = 0.5f;
       }
 
+      // Aberrant Mind — Warping Implosion (L18+): the free 1/long-rest use of the L18 capstone
+      // teleport-implosion (warpingImplosion spends this Resource, or 5 Sorcery Points when empty).
+      // Resource serialization handles the round-trip; no new Stats flag.
+      if (sorcerer_subclass == AberrantPath && level >= 18) {
+          Resource wi("Warping Implosion", 1, 0);
+          wi.short_rest_regen = 0;
+          wi.long_rest_regen  = 1;
+          resources["Warping Implosion"] = wi;
+      }
+
       // Clockwork Soul — Restore Balance (L3+): a Reaction that cancels advantage/disadvantage on a
       // d20 Test within 60 ft (no Sorcery Point). PB uses, all regained on a long rest. Consumed by the
       // OnD20Seen reaction window (applyRestoreBalanceToAttack); no new Stats flag → no manual round-trip.
@@ -277,6 +287,16 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
           trance.short_rest_regen = 0;
           trance.long_rest_regen  = 1;
           resources["Trance of Order"] = trance;
+      }
+
+      // Clockwork Soul — Clockwork Cavalcade (L18+): the free 1/long-rest use of the L18 capstone
+      // (clockworkCavalcade spends this Resource, or 7 Sorcery Points when it is empty). Resource
+      // serialization handles the round-trip; no new Stats flag.
+      if (sorcerer_subclass == ClockworkPath && level >= 18) {
+          Resource cav("Clockwork Cavalcade", 1, 0);
+          cav.short_rest_regen = 0;
+          cav.long_rest_regen  = 1;
+          resources["Clockwork Cavalcade"] = cav;
       }
 
       // Wild Magic — Tides of Chaos (L3+): one use; regained on a long rest OR when a Wild Magic

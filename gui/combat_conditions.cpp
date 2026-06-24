@@ -94,12 +94,14 @@ void CombatEngine::updateDarknessBlinding(BattleMap& bm, int agent_idx) noexcept
     // Apply or remove blinded condition as needed
     if (should_be_blinded && !cond.blinded) {
         cond.blinded = true;
+	cond.has_disadvantage = true; 
         bm.setAgentConditions(agent_idx, cond);
         log_("{} is blinded by darkness", pa.agent->name());
     } else if (!should_be_blinded && cond.blinded) {
         // Only remove blinded if it was from darkness (not from a spell like Blindness/Deafness)
         // For now, we'll remove it - in future we could track the source
         cond.blinded = false;
+	cond.has_disadvantage = false; 
         bm.setAgentConditions(agent_idx, cond);
         log_("{} can see again", pa.agent->name());
     }

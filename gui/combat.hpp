@@ -664,6 +664,16 @@ struct WildMagicSurgeResult {
     std::string description;
 };
 
+// Result of offering a Wild Magic Surge (the trigger + roll phase, BEFORE the effect is applied).
+// Lets the GUI present a choice for Controlled Chaos (L14: two rolled bands) and Tamed Surge (L18:
+// any band). For a plain L3-13 surge `options` holds one band; resolveWildMagicSurge() then applies.
+struct WildMagicSurgeOffer {
+    bool surged          = false;  // did a surge actually trigger this cast?
+    std::vector<int> options;      // candidate bands 1-10 (1 normally; 2 with Controlled Chaos)
+    bool can_choose_any  = false;  // Tamed Surge (L18): caller may pick ANY band 1-10
+    bool tides_expended  = false;  // pass back to resolveWildMagicSurge so it recharges Tides
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -756,6 +766,11 @@ public:
     // and clears the flag. Returns true if the agent is a Draconic Sorcerer L14+.
     bool activateDragonWings(BattleMap& bm, int idx) noexcept;
 
+    // Draconic L6 Elemental Affinity — resistance half (Bonus Action, 1 SP): spend 1 Sorcery Point
+    // to gain resistance (0.5x) to the chosen draconic damage type for 1 hour (600 rounds in the sim).
+    // Gate: Draconic L6+, draconic_affinity_type >= 0, >= 1 SP, not already active. Returns true if used.
+    bool activateDraconicResistance(BattleMap& bm, int idx) noexcept;
+
     // Wild Magic — Bend Luck (Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply it
     // as a bonus (boost=true) or penalty (boost=false) to the next D20 Test, via the additive
     // pending_roll_bonus_ path. Returns the 1d4 value rolled, or 0 on failure (not a L6+ Wild
@@ -788,12 +803,61 @@ public:
     // Sorcery Points. Sets trance_of_order_turns = 10 and spends the bonus action. Returns true if used.
     bool activateTranceOfOrder(BattleMap& bm, int idx) noexcept;
 
+    // Clockwork L6 Bastion of Law (Magic Action). Spend 1-5 Sorcery Points to ward `target_idx`
+    // (self or a creature within 30 ft) with a pre-rolled (sp)d8 absorption pool stored in
+    // Stats::bastion_ward. Overwrites any existing ward on the target. Returns the ward total
+    // rolled, or -1 on failure (gating / range / not enough Sorcery Points).
+    int activateBastionOfLaw(BattleMap& bm, int caster_idx, int target_idx, int sp) noexcept;
+
+    // Bastion of Law absorption: reduce `dmg` by the remaining bastion_ward on `s`, decrementing
+    // the ward (caller persists `s`). Returns the post-ward damage. Logs when the ward soaks. Called
+    // at each damage-absorption site BEFORE temp HP. No-op when ward == 0 or dmg <= 0.
+    int applyBastionWard(BattleMap& bm, int idx, Agent::Stats& s, int dmg) noexcept;
+
+    // Clockwork L18 Clockwork Cavalcade (Magic Action). Each ally within 30 ft of the caster (and the
+    // caster) regains 100 HP and has its active spell-applied conditions ended. Free 1/long rest via
+    // the "Clockwork Cavalcade" Resource, else 7 Sorcery Points. Returns the number of creatures
+    // affected, or -1 on failure (gating / no use & < 7 Sorcery Points).
+    int clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept;
+
+    // Aberrant L14 Revelation in Flesh (Bonus Action). Spend 1 Sorcery Point to transform for 10
+    // minutes (100 rounds): gain a fly speed (= walk) with hover, a swim speed (= walk), and
+    // truesight 60 ft (see Invisible creatures). Snapshots the prior speeds/truesight and reverts them
+    // on expiry (beginTurn) / long rest. Gate Sorcerer/AberrantPath/L14+. Returns true if activated.
+    bool activateRevelationInFlesh(BattleMap& bm, int idx) noexcept;
+
+    // Aberrant L18 Warping Implosion. Teleport the caster to (dest_col,dest_row) — an unoccupied cell
+    // within 120 ft it can see — then every OTHER creature within 30 ft of the space it LEFT makes a
+    // Dexterity save vs the sorcerer's spell DC, taking 3d10 Force (half on a success). Free 1/long
+    // rest via the "Warping Implosion" Resource, else 5 Sorcery Points. Gate Aberrant L18+. Returns the
+    // number of creatures damaged, or -1 on failure (gating / range / occupied dest / no use & < 5 SP).
+    int warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, int dest_row) noexcept;
+
+    // Aberrant Mind L3+ Psionic Sorcery: spend `spell_level` Sorcery Points to cast a psionic-list
+    // spell without consuming a spell slot. Gate: AberrantPath L3+, spell_level >= 1, >= spell_level SP.
+    // Caller must pass free_cast=true on the SpellAction so C++ skips slot consumption. Returns true
+    // if the SP were spent (false on gating or insufficient SP).
+    bool spendSorceryPointsForSpell(BattleMap& bm, int idx, int spell_level) noexcept;
+
     // Wild Magic Surge trigger (Sorcerer L3+, Wild Magic). Call immediately after the caster
     // resolves a Sorcerer spell cast with a spell slot (level ≥ 1). Rolls 1d20: on a natural 20
     // — OR automatically if Tides of Chaos is currently expended — it rolls + applies a surge
     // (rollWildMagicSurge + applyWildMagicSurgeEffect) and recharges Tides of Chaos. Returns the
     // applied surge (effect band 1-10), or effect == 0 if no surge occurred / not eligible.
     WildMagicSurgeResult maybeWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
+    // Wild Magic Surge OFFER phase — same trigger logic as maybeWildMagicSurge (nat-20 or an
+    // expended Tides of Chaos forces a surge) but it only ROLLS, it does not apply. With Controlled
+    // Chaos (L14) it rolls the table twice so the caller can use either result; with Tamed Surge
+    // (L18) it sets can_choose_any so the caller may replace the roll with any band 1-10. Pair with
+    // resolveWildMagicSurge() to apply the chosen band. surged == false means no surge occurred.
+    WildMagicSurgeOffer offerWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
+    // Apply a chosen Wild Magic Surge band (1-10) selected from a WildMagicSurgeOffer:
+    // applyWildMagicSurgeEffect + (if tides_expended) recharge Tides of Chaos. Returns the applied
+    // WildMagicSurgeResult (effect == 0 if the band is out of range).
+    WildMagicSurgeResult resolveWildMagicSurge(BattleMap& bm, int idx, int effect,
+                                               bool tides_expended) noexcept;
 
     // ── Per-agent turn count ──────────────────────────────────────────────
     //
@@ -2207,6 +2271,21 @@ public:
     bool applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r);
     bool applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackResult& r); // Disadvantage = reroll, take lower
     bool applyRestoreBalanceToAttack(BattleMap& bm, int reactor, AttackResult& r); // cancel advantage: r.d20 ← r.d20_primary
+
+    // Clockwork Restore Balance — the OnMiss (raising) counterpart of the OnD20Seen advantage-cancel.
+    // When a creature (the reactor itself or an ally) attacked AT DISADVANTAGE and missed, a Clockwork
+    // Sorcerer L3+ within 60 ft may cancel the Disadvantage by reverting the kept die to the first
+    // (primary) die — min(d1,d2) → d1, a RAISING that can flip the miss to a hit. Only offered when
+    // r.d20_primary > r.d20 (else the cancel is a no-op). Spends one Restore Balance use + reaction.
+    [[nodiscard]] bool canRestoreBalanceMiss(const BattleMap& bm, int reactor, int roller,
+                                             const AttackResult& r) const;
+    // Cancel disadvantage on the missed attack `action`; if the raised roll now meets AC, the miss
+    // becomes a hit and weapon damage is rolled + applied (mirrors applyGuidedStrike). Pass the Attack
+    // that missed (for the target + weapon) and its AttackResult.
+    bool applyRestoreBalanceMissToAttack(BattleMap& bm, const Attack& action, int reactor, AttackResult& r);
+    // Auto/RL OnMiss window for the above (the GUI uses the restore_balance_miss_available flag). Loops
+    // eligible Clockwork allies, asks decider_, applies the chosen cancel. Returns true if r changed.
+    bool maybeRestoreBalanceMissInline(BattleMap& bm, const Attack& action, AttackResult& r);
 private:
     // The creatures (≠ attacker) that may lower this attack roll, in initiative order. Silvery Barbs is
     // only included on a hit (it triggers on a success). Empty when no lowering reaction could change

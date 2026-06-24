@@ -499,8 +499,14 @@ namespace rpg {
       bool draconic_hp_applied{false};                          // Draconic L3 Resilience HP bonus applied (idempotent flag); bonus = char_level (3 + (lvl-3))
       int  draconic_affinity_type{-1};                          // Draconic L6 Elemental Affinity: chosen MagicDamage_t index (0-9), -1 = none
       bool draconic_affinity_used_this_turn{false};             // Draconic L6 Elemental Affinity: CHA mod bonus already applied this turn; reset in beginTurn
+      int  draconic_affinity_resist_turns{0};                  // Draconic L6 Elemental Affinity: resistance half — rounds remaining (>0 = chosen type has 0.5× multiplier). 1 hour → 600 rounds; ticks in beginTurn; on reaching 0 multiplier restores to 1.0.
       bool dragon_wings_active{false};                          // Draconic L14 Dragon Wings: fly speed granted (= walk speed); false until activated
       int  trance_of_order_turns{0};                            // Clockwork L14 Trance of Order: rounds remaining (>0 = active: attacks vs you can't benefit from Advantage + you treat your own d20 of 9-or-lower as a 10 on D20 Tests). 1 min = 10 rounds; ticks in beginTurn.
+      int  bastion_ward{0};                                     // Clockwork L6 Bastion of Law: pre-rolled d8 ward pool (= sum of (SP spent)d8). Absorbs damage BEFORE temp_hp at each damage site; decremented as it soaks. Persists until reused (overwrites) or a long rest (cleared in applyLongRest). 0 = no ward.
+      int  revelation_in_flesh_turns{0};                        // Aberrant L14 Revelation in Flesh: rounds remaining (>0 = active: fly+hover, swim, truesight 60 ft / see invisible). 10 min = 100 rounds; ticks in beginTurn and reverts the granted speeds/truesight on expiry (and at long rest). 0 = inactive.
+      int  revelation_prior_fly{0};                             // Revelation in Flesh: speed_fly snapshot before the grant, restored on expiry
+      int  revelation_prior_swim{0};                            // Revelation in Flesh: speed_swim snapshot before the grant, restored on expiry
+      int  revelation_prior_truesight{0};                       // Revelation in Flesh: truesight_range snapshot before the grant, restored on expiry
       int  mantle_majesty_turns{0};                              // Bard College of Glamour (L6) — Mantle of Majesty: "unearthly appearance" window in rounds (>0 = may re-cast Command as a Bonus Action with no slot; Command auto-fails for creatures Charmed by this bard). Tied to concentration on "Mantle of Majesty".
       int  majestic_presence_turns{0};                            // Bard College of Glamour (L14) — Unbreakable Majesty: "majestic presence" window in rounds (>0 = negates incoming attacks automatically like Shield, no reaction). Tied to concentration on "Unbreakable Majesty".
       bool majesty_checked_this_turn{false};                      // Unbreakable Majesty: per-turn gate — only check/negate once per turn
@@ -739,6 +745,7 @@ namespace rpg {
       bool war_magic_used{false};           // Eldritch Knight: War Magic substitution already used this Attack action (once per Attack action; reset when a fresh action-attack sequence seeds — Action Surge permits another)
       int  eldritch_strike_by{-1};          // Eldritch Knight L10: this creature (the target of an EK weapon hit) has disadvantage on its next save vs a spell cast by agent index eldritch_strike_by; -1 = none. One-shot: consumed at the save site (RAW window simplified — see known_limitations)
       bool guided_strike_available{false};  // War Cleric: this missed attack can be nudged to a hit (+10)
+      bool restore_balance_miss_available{false}; // Clockwork Sorcerer ally: this disadvantaged miss can have its Disadvantage cancelled (raise d20 → d20_primary)
       bool maneuver_available{false};           // Battle Master: a qualifying hit can apply a Maneuver this attack
       bool maneuver_precision_available{false}; // Battle Master: this missed attack can apply Precision Attack
       // ── Battle Master maneuvers (2024) beyond Trip/Menacing/Pushing/Precision/Riposte ──
@@ -892,6 +899,7 @@ namespace rpg {
       conditions_.lifedrinker_used             = false;
       conditions_.war_magic_used               = false;
       conditions_.guided_strike_available      = false;
+      conditions_.restore_balance_miss_available = false;
       conditions_.maneuver_available           = false;
       conditions_.maneuver_precision_available = false;
       conditions_.riposte_available            = false;

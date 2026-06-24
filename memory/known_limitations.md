@@ -758,7 +758,12 @@ Each applies for one cast via a temp spell copy (stored spell untouched); SP spe
 
 **Clockwork Soul (Phase 5):** L3 Clockwork Spells (data-only always-prepared list in `main.py _SORCERER_SUBCLASS_SPELLS["Clockwork"]`, all 10 in spells.json); **L3 Restore Balance** = `OnD20Seen` reaction (`canRestoreBalance` / `applyRestoreBalanceToAttack`) that cancels **advantage** on an attack roll within 60 ft by reverting `r.d20` to the new `r.d20_primary` field (the first die rolled, captured in `rollToHit`) — a lowering that can flip a hit to a miss; PB uses / long rest, no SP, no new Stats flag (a Resource). Auto-surfaces in the generic reaction menu (no new GUI button). Tests in `test_sorcerer.py`.
 
-**Deferred:** Draconic Elemental Affinity SP-resistance half + element-picker dialog; Clockwork Restore Balance **disadvantage-cancel direction** (would RAISE a missed roll → outside the lowering-only OnD20Seen window — needs a miss-side window), Clockwork L6 Bastion of Law (SP damage-ward), L14 Trance of Order (no-advantage-vs-you + 9→10 floor), L18 Clockwork Cavalcade (mass heal/repair AoE); Aberrant L14+ (Revelation in Flesh, Warping Implosion) + Psionic Sorcery (SP-cast); Empowered/Subtle Metamagic; Wild Magic Controlled Chaos (L14) / Tamed Surge (L18).
+**Deferred (with planned dispositions, updated 2026-06-24):**
+- **[SONNET-ready — handoff written: `SORCERER_SP_FEATURES_SONNET_HANDOFF.md`]** Draconic L6 Elemental Affinity **SP-resistance half** (spend 1 SP → resistance to chosen type 1 hr) + the **element-picker dialog** in StatsDialog (reuse the Elemental Adept `ElementPickerDialog`; `draconic_affinity_type` round-trips but has no GUI to set it).
+- **[SONNET-ready — same handoff]** Aberrant **Psionic Sorcery** (cast the always-prepared psionic spells by spending SP instead of a slot) — reuse the existing Font-of-Magic SP↔slot converter, made automatic for that list.
+- **[WON'T DO]** Subtle Metamagic (above); Empowered Metamagic is **DONE**.
+- **DONE 2026-06-24 (built clean; user runs tests):** Wild Magic **Controlled Chaos (L14) + Tamed Surge (L18)** (surge `offerWildMagicSurge`/`resolveWildMagicSurge` split + GUI choice menu); Aberrant **L14 Revelation in Flesh + L18 Warping Implosion** (`activateRevelationInFlesh` fly/swim/truesight w/ revert + `warpingImplosion` teleport + 30-ft DEX-save 3d10 Force burst); Clockwork **Restore Balance disadvantage-cancel** (new OnMiss raising direction: `canRestoreBalanceMiss`/`applyRestoreBalanceMissToAttack` + `restore_balance_miss_available` flag + GUI offer). Warping Implosion's "pull toward the space left" rider is deferred (damage+save only).
+- **DONE earlier:** Clockwork L6 Bastion of Law, L14 Trance of Order, L18 Clockwork Cavalcade.
 
 </details>
 

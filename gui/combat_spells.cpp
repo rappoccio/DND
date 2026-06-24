@@ -817,6 +817,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                                 tgt_stats.hp_cur + tr.total_healing);
                 } else {
                     tr.total_damage  = std::max(0, dmg);
+                    // Bastion of Law ward (Clockwork L6) soaks damage before temp HP.
+                    tr.total_damage  = applyBastionWard(bm, tgt_idx, tgt_stats, tr.total_damage);
                     // Temporary HP absorbs damage first, then overflow damages hp_cur
                     int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
                     tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
@@ -1013,6 +1015,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                             tgt_stats.hp_cur + tr.total_healing);
             } else {
                 tr.total_damage  = std::max(0, dmg);
+                // Bastion of Law ward (Clockwork L6) soaks damage before temp HP.
+                tr.total_damage  = applyBastionWard(bm, tgt_idx, tgt_stats, tr.total_damage);
                 // Temporary HP absorbs damage first, then overflow damages hp_cur
                 int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
                 tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
@@ -1087,6 +1091,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                             tgt_stats.hp_cur + tr.total_healing);
             } else {
                 tr.total_damage  = std::max(0, total);
+                // Bastion of Law ward (Clockwork L6) soaks damage before temp HP.
+                tr.total_damage  = applyBastionWard(bm, tgt_idx, tgt_stats, tr.total_damage);
                 // Temporary HP absorbs damage first, then overflow damages hp_cur
                 int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
                 tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
@@ -2342,6 +2348,30 @@ int CombatEngine::convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_le
     return sp->current;
 }
 
+bool CombatEngine::spendSorceryPointsForSpell(BattleMap& bm, int idx, int spell_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (spell_level < 1) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.character_class != CharacterClass::Sorcerer ||
+        stats.sorcerer_subclass != SorcererSubclass::AberrantPath ||
+        stats.char_level < 3) {
+        return false;
+    }
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp || sp->current < spell_level) return false;
+
+    sp->spend(spell_level);
+    bm.setAgentStats(idx, stats);
+
+    log_("{} spends {} Sorcery Points to cast a level-{} psionic spell",
+         agentName(bm, idx), spell_level, spell_level);
+    return true;
+}
+
 int CombatEngine::sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept
 {
     auto agents = bm.placedAgents();
@@ -2519,44 +2549,73 @@ bool CombatEngine::activateTidesOfChaos(BattleMap& bm, int idx) noexcept
     return true;
 }
 
-WildMagicSurgeResult CombatEngine::maybeWildMagicSurge(BattleMap& bm, int idx) noexcept
+WildMagicSurgeOffer CombatEngine::offerWildMagicSurge(BattleMap& bm, int idx) noexcept
 {
-    WildMagicSurgeResult res;                    // effect == 0 → no surge
+    WildMagicSurgeOffer offer;                   // surged == false → no surge
     auto agents = bm.placedAgents();
-    if (idx < 0 || idx >= static_cast<int>(agents.size())) return res;
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return offer;
 
     Agent::Stats stats = bm.getAgentStats(idx);
     if (stats.character_class != CharacterClass::Sorcerer ||
         stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
-        return res;                              // silent: only Wild Magic Sorcerers surge
+        return offer;                            // silent: only Wild Magic Sorcerers surge
     }
 
     // Tides of Chaos: if it is currently expended, the next slot-spell cast forces a surge
     // (and the surge then recharges it). Otherwise a surge needs a natural 20 on a d20.
     Resource* tides = stats.getResource("Tides of Chaos");
-    const bool tides_expended = tides && tides->current < tides->max;
+    offer.tides_expended = tides && tides->current < tides->max;
 
     const int d20 = roll(20);
-    const bool surge = tides_expended || (d20 == 20);
+    const bool surge = offer.tides_expended || (d20 == 20);
     log_("{}: Wild Magic Surge check — d20={}{}", agentName(bm, idx), d20,
-         tides_expended ? " (Tides of Chaos forces a surge)" : "");
-    if (!surge) return res;
+         offer.tides_expended ? " (Tides of Chaos forces a surge)" : "");
+    if (!surge) return offer;
 
-    res = rollWildMagicSurge(bm, idx);           // rolls d100, classifies band, logs
-    if (res.effect > 0) {
-        applyWildMagicSurgeEffect(bm, idx, res.effect);   // mutates + persists stats internally
-        if (tides_expended) {
-            // Re-fetch (applyWildMagicSurgeEffect may have written stats) before recharging Tides
-            // so the surge's own state changes aren't clobbered.
-            Agent::Stats fresh = bm.getAgentStats(idx);
-            if (Resource* t2 = fresh.getResource("Tides of Chaos")) {
-                t2->current = t2->max;
-                bm.setAgentStats(idx, fresh);
-                log_("{}: the surge recharges Tides of Chaos", agentName(bm, idx));
-            }
+    offer.surged = true;
+    // Roll the table. Controlled Chaos (L14): roll twice and keep both bands so the caller may use
+    // either result.
+    const int rolls = (stats.char_level >= 14) ? 2 : 1;
+    for (int i = 0; i < rolls; ++i) {
+        WildMagicSurgeResult r = rollWildMagicSurge(bm, idx);   // rolls d100, classifies, logs
+        if (r.effect > 0 &&
+            std::find(offer.options.begin(), offer.options.end(), r.effect) == offer.options.end())
+            offer.options.push_back(r.effect);
+    }
+    // Tamed Surge (L18): the caller may replace the rolled result with any band 1-10.
+    offer.can_choose_any = (stats.char_level >= 18);
+    return offer;
+}
+
+WildMagicSurgeResult CombatEngine::resolveWildMagicSurge(BattleMap& bm, int idx, int effect,
+                                                         bool tides_expended) noexcept
+{
+    WildMagicSurgeResult res;                    // effect == 0 → nothing applied
+    if (effect < 1 || effect > 10) return res;
+
+    res.effect      = effect;
+    res.description = wildMagicSurgeDescription(effect);
+    applyWildMagicSurgeEffect(bm, idx, effect);  // mutates + persists stats internally
+    if (tides_expended) {
+        // Re-fetch (applyWildMagicSurgeEffect may have written stats) before recharging Tides
+        // so the surge's own state changes aren't clobbered.
+        Agent::Stats fresh = bm.getAgentStats(idx);
+        if (Resource* t2 = fresh.getResource("Tides of Chaos")) {
+            t2->current = t2->max;
+            bm.setAgentStats(idx, fresh);
+            log_("{}: the surge recharges Tides of Chaos", agentName(bm, idx));
         }
     }
     return res;
+}
+
+WildMagicSurgeResult CombatEngine::maybeWildMagicSurge(BattleMap& bm, int idx) noexcept
+{
+    // Non-interactive path: offer, then auto-apply the first rolled band (no Controlled Chaos /
+    // Tamed Surge choice — the GUI uses offerWildMagicSurge + resolveWildMagicSurge for those).
+    WildMagicSurgeOffer offer = offerWildMagicSurge(bm, idx);
+    if (!offer.surged || offer.options.empty()) return WildMagicSurgeResult{};
+    return resolveWildMagicSurge(bm, idx, offer.options.front(), offer.tides_expended);
 }
 
 bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept
