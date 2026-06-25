@@ -2795,15 +2795,16 @@ class App:
         sprite_path = wdict.get("sprite_path", "")
         # Place item at agent's current cell
         agent = self.bm.placed_agents[cur_idx]
-        import traceback
         print(f"[_drop_weapon] Dropping {weapon.name} from slot {slot_idx} for agent {agent.name} at ({agent.origin.col},{agent.origin.row})")
-        print(f"[_drop_weapon] Call stack:")
-        for line in traceback.format_stack()[:-1]:
-            print(f"  {line.strip()}")
+        print(f"[_drop_weapon DEBUG] weapon.permanently_armed = {weapon.permanently_armed}")
         item_id = self.bm.place_item(agent.origin, weapon, sprite_path)
         # Clear the weapon slot
         weapons[slot_idx] = rpg.Weapon()
+        print(f"[_drop_weapon DEBUG] Before set_agent_weapons: weapons[{slot_idx}].name = '{weapons[slot_idx].name}'")
         self.combat.set_agent_weapons(self.bm, cur_idx, weapons)
+        # Verify the slot was cleared
+        weapons_after = list(self.combat.get_agent_weapons(self.bm, cur_idx))
+        print(f"[_drop_weapon DEBUG] After set_agent_weapons: weapons_after[{slot_idx}].name = '{weapons_after[slot_idx].name}'")
         self._combat_log_add(f"{agent.name} drops {weapon.name}.")
 
     # FLAG: Move to C++
@@ -2823,7 +2824,12 @@ class App:
         weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
         agent = self.bm.placed_agents[agent_idx]
 
+        print(f"[_pickup_item DEBUG] Agent {agent.name} (idx {agent_idx}) trying to pick up '{item.weapon.name}'")
+        print(f"[_pickup_item DEBUG] Current weapons: slot0='{weapons[0].name}' (perm_armed={weapons[0].permanently_armed}), slot1='{weapons[1].name}' (perm_armed={weapons[1].permanently_armed}), slot2='{weapons[2].name}' (perm_armed={weapons[2].permanently_armed})")
+        print(f"[_pickup_item DEBUG] Item weapon: type={item.weapon.type}, name='{item.weapon.name}', permanently_armed={item.weapon.permanently_armed}")
+
         slot = self._find_pickup_slot(item.weapon, weapons)
+        print(f"[_pickup_item DEBUG] _find_pickup_slot returned: {slot}")
         if slot == -1:
             self._combat_log_add(f"{agent.name}: no free weapon slot for {item.weapon.name}.")
             return
@@ -2835,7 +2841,7 @@ class App:
 
     def _find_pickup_slot(self, weapon, weapons) -> int:
         """Auto-assign weapon to best available slot. Returns -1 if no slot free."""
-        EMPTY = lambda w: not w.name or w.name == "Unnamed"
+        EMPTY = lambda w: not w.name or "Unarmed" in w.name or w.name == "Unnamed"
         # Ranged weapon → prefer ranged slot (index 2) if empty
         if weapon.type == rpg.WeaponType.Ranged and EMPTY(weapons[2]):
             return 2

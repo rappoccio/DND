@@ -502,6 +502,9 @@ public:
     // ── Map items (weapons on the ground) ──────────────────────────────────
     [[nodiscard]] int placeItem(Cell cell, Weapon weapon, std::string sprite_path = "");
     void removeItem(int item_id) noexcept;
+    // Pick up an item and assign it to an agent's weapon slot. If slot_idx >= 0, uses that slot
+    // (replacing any weapon there). Otherwise uses the first empty slot. Returns true if successful.
+    [[nodiscard]] bool pickUpItem(int item_id, int agent_idx, int slot_idx = -1) noexcept;
     [[nodiscard]] std::vector<MapItem> getItemsAtCell(Cell cell) const noexcept;
     [[nodiscard]] std::vector<MapItem> getAllItems()             const noexcept;
     void clearItems() noexcept;

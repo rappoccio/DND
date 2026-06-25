@@ -431,6 +431,18 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Casting a spell ends the caster's own Sanctuary ward (RAW). Done before any new grant so a
+    // creature re-warding itself nets out warded.
+    {
+        Agent::Conditions cc = bm.getAgentConditions(action.caster_idx);
+        if (cc.sanctuary_active) {
+            cc.sanctuary_active = false;
+            cc.sanctuary_dc     = 0;
+            bm.setAgentConditions(action.caster_idx, cc);
+            log_("{}'s Sanctuary ends (cast a spell)", agentName(bm, action.caster_idx));
+        }
+    }
+
 
     // Eldritch Spear invocation: extend the cantrip's range before any range-dependent
     // logic (and before Distant Spell, so Distant doubles the already-extended range).
@@ -540,21 +552,22 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
-    // Upcast damage scaling: a spell cast from a slot above its base level rolls extra damage dice
+    // Upcast damage/healing scaling: a spell cast from a slot above its base level rolls extra dice
     // (upcast_dice_bonus dice per level above base). Applied here to the local `sp` copy so every
     // resolution branch — and Chromatic Orb's leap-match check — sees the larger dice pool. The
-    // extra dice are added to the spell's primary damage rolls (its magic rolls, or its physical
-    // rolls if it has no magic damage). slot_level 0 = NPC / base-level cast → never scales.
+    // extra dice are added to the spell's primary rolls: magic rolls, physical rolls, or healing
+    // rolls. slot_level 0 = NPC / base-level cast → never scales.
     if (action.slot_level > sp.level && sp.upcast_dice_bonus > 0) {
         int extra = sp.upcast_dice_bonus * (action.slot_level - sp.level);
         if (extra > 0) {
-            // Add to the spell's magic rolls, or its physical rolls if it deals no magic damage
-            // (the two roll vectors are distinct types, so handle them separately).
+            // Add to the spell's primary rolls (magic, physical, or healing)
             if (!sp.magic_damage_rolls.empty())
                 for (auto& r : sp.magic_damage_rolls) r.num_dice += extra;
-            else
+            else if (!sp.physical_damage_rolls.empty())
                 for (auto& r : sp.physical_damage_rolls) r.num_dice += extra;
-            log_("Upcast: {} cast at level {} (+{} damage dice per roll)",
+            else if (sp.type == Spell::Heal)
+                sp.healing_type.num_dice += extra;
+            log_("Upcast: {} cast at level {} (+{} dice)",
                  sp.name, action.slot_level, extra);
         }
     }
@@ -705,6 +718,38 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             continue;
         }
 
+        // Sanctuary ward: a damaging (Harm) spell aimed at a warded enemy forces the caster to
+        // make a WIS save or lose the spell against that target (RAW: areas of effect are NOT
+        // blocked — only directly-targeted Single/Multiple Harm spells gate here).
+        if (sp.type == Spell::Harm &&
+            (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple) &&
+            !areAllies(bm, action.caster_idx, tgt_idx)) {
+            Agent::Conditions wcond = bm.getAgentConditions(tgt_idx);
+            if (wcond.sanctuary_active) {
+                int d20   = roll(20);
+                int wmod  = saveModFor(bm, action.caster_idx, SaveWis);
+                int total = d20 + wmod;
+                if (total < wcond.sanctuary_dc) {
+                    tr.hp_after    = tgt_stats.hp_cur;
+                    tr.log_message = agentName(bm, action.caster_idx) + " fails the Sanctuary WIS save ("
+                                   + std::to_string(d20) + "+" + std::to_string(wmod) + "="
+                                   + std::to_string(total) + " vs DC " + std::to_string(wcond.sanctuary_dc)
+                                   + ") — the spell can't target " + agentName(bm, tgt_idx);
+                    log_("{}", tr.log_message);
+                    result.target_results.push_back(tr);
+                    continue;
+                }
+                log_("{} succeeds the Sanctuary WIS save ({}+{}={} vs DC {}) — may target {}",
+                     agentName(bm, action.caster_idx), d20, wmod, total, wcond.sanctuary_dc,
+                     agentName(bm, tgt_idx));
+            }
+        }
+
+        // Help spells (e.g. Sanctuary) neither heal nor damage — they only apply their
+        // conditions (handled after this switch). Mark a "hit" so condition application proceeds.
+        if (sp.type == Spell::Help) {
+            tr.hit = true;
+        } else
         switch (sp.attack_type) {
 
         case Spell::AttackRoll: {
@@ -762,7 +807,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
                          n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
                          sp.healing_type.bonus, ability_mod, dmg);
-                } else {
+                } else if ( sp.type == Spell::Harm ) {
                     // Damage spell: roll per-damage-type damage and apply target's multipliers
                     for (const auto& roll_info : sp.magic_damage_rolls) {
                         int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
@@ -814,7 +859,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     tr.total_healing = std::max(0, dmg);
                     tgt_stats.hp_cur = std::min(tgt_stats.hp_max,
                                                 tgt_stats.hp_cur + tr.total_healing);
-                } else {
+                } else if  (sp.type == Spell::Harm) {
                     tr.total_damage  = std::max(0, dmg);
                     // Bastion of Law ward (Clockwork L6) soaks damage before temp HP.
                     tr.total_damage  = applyBastionWard(bm, tgt_idx, tgt_stats, tr.total_damage);
@@ -1356,8 +1401,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
     // Register persistent effects (duration > 1 means per-tick damage/heal on
-    // subsequent turns; we already applied the first application above).
-    if (sp.duration > 1) {
+    // subsequent turns; we already applied the first application above). Help spells
+    // (e.g. Sanctuary) have no per-tick effect — their persistence is the applied
+    // condition, which lives on its own timer — so they never register here.
+    if (sp.duration > 1 && sp.type != Spell::Help) {
         for (int tgt_idx : targets) {
             if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) continue;
             ActiveEffect fx;
@@ -2458,8 +2505,8 @@ bool CombatEngine::applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect)
         auto weapons = bm.getAgentWeapons(idx);
         int dropped = 0;
         for (auto& w : weapons) {
-            // "Unarmed" is the default empty-slot weapon — only real weapons drop.
-            if (!w.name.empty() && w.name != "Unarmed") {
+            // Weapons without "Unarmed" in name are real weapons — only real weapons drop (not permanently armed).
+            if (!w.name.empty() && w.name.find("Unarmed") == std::string::npos && !w.permanently_armed) {
                 [[maybe_unused]] int item_id = bm.placeItem(origin, w);
                 w = Weapon{};  // clear the slot back to the default (Unarmed)
                 ++dropped;

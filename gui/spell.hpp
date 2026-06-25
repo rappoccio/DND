@@ -12,7 +12,9 @@ namespace rpg {
 
     struct Spell {
       enum Geometry_t   { Single=0, Line, Cone, Sphere, Square, Rectangle, Multiple, NumGeometry_t };
-      enum SpellType_t  { Harm=0, Heal, Transport, NumSpellType_t };
+      // Help = beneficial buff/protection spells that neither heal nor damage; they apply
+      //        conditions (e.g. Sanctuary's ward) and target allies like Heal spells do.
+      enum SpellType_t  { Harm=0, Heal, Transport, Help, NumSpellType_t };
       enum SpellAttack_t{ AttackRoll=0, Save, Automatic, NumSpellAttack_t };
       enum SpellSchool_t{ SchoolNone=0, Abjuration, Conjuration, Divination, Enchantment, Evocation, Illusion, Necromancy, Transmutation, NumSpellSchool_t };
       enum CastingTime_t{ Action=0, BonusAction, Reaction, NumCastingTime_t };

@@ -167,10 +167,10 @@ void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
-    // Get mutable reference and drop all non-empty weapons
+    // Get mutable reference and drop all non-empty weapons (except permanently armed ones)
     PlacedAgent& pa = const_cast<PlacedAgent&>(agents[idx]);
     for (auto& w : pa.weapons) {
-        if (!w.name.empty() && w.name != "Unarmed" && w.name != "MonkUnarmed") {
+        if (!w.name.empty() && w.name.find("Unarmed") == std::string::npos && !w.permanently_armed) {
 	    log_("{} dropped weapon {}", agentName(bm, idx), w.name);
             (void)bm.placeItem(pa.origin, w, "");
             w = Weapon{};
@@ -463,6 +463,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 // Greater Invisibility does not end when the creature attacks or casts.
                 ac.invisible_persists_on_action = (cond.condition_name == "GreaterInvisible");
                 bm.setAgentConditions(cond.agent_idx, ac);
+            } else if (cond.condition_name == "Sanctuary") {
+                // Sanctuary ward: store the WIS save DC attackers must beat (the caster's spell save DC).
+                auto ac = bm.getAgentConditions(cond.agent_idx);
+                ac.sanctuary_active = true;
+                ac.sanctuary_dc     = cond.save_dc;
+                bm.setAgentConditions(cond.agent_idx, ac);
             }
             log_("Applied condition '{}' to {} for {} turns",
                  cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);
@@ -523,6 +529,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     } else if (cond.condition_name == "Invisible" || cond.condition_name == "GreaterInvisible") {
                         agent_cond.invisible = false;
                         agent_cond.invisible_persists_on_action = false;
+                    } else if (cond.condition_name == "Sanctuary") {
+                        agent_cond.sanctuary_active = false;
+                        agent_cond.sanctuary_dc     = 0;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for {}",
@@ -580,6 +589,9 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
                         agent_cond.unconscious = false;
                         agent_cond.incapacitated = false;
                         // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
+                    } else if (cond.condition_name == "Sanctuary") {
+                        agent_cond.sanctuary_active = false;
+                        agent_cond.sanctuary_dc     = 0;
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for {} (spell duration ended)",

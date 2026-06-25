@@ -1808,6 +1808,24 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         return false;
     }
 
+    // Sanctuary ward: attacking a warded creature forces the attacker to make a WIS save or
+    // lose the attack (RAW). Allies are exempt so a deliberate ally-targeted attack isn't blocked.
+    {
+        Agent::Conditions tcond = tgt_pt.agent->getConditions();
+        if (tcond.sanctuary_active && !areAllies(bm, action.attacker_idx, action.target_idx)) {
+            int d20   = roll(20);
+            int wmod  = saveModFor(bm, action.attacker_idx, SaveWis);
+            int total = d20 + wmod;
+            if (total < tcond.sanctuary_dc) {
+                log_("Sanctuary: {} fails the WIS save ({}+{}={} vs DC {}) — the attack is lost",
+                     atk_pt.agent->name(), d20, wmod, total, tcond.sanctuary_dc);
+                return false;
+            }
+            log_("Sanctuary: {} succeeds the WIS save ({}+{}={} vs DC {}) — may attack the warded creature",
+                 atk_pt.agent->name(), d20, wmod, total, tcond.sanctuary_dc);
+        }
+    }
+
     if (action.weapon_idx < 0 ||
             action.weapon_idx >= static_cast<int>(atk_pt.weapons.size()))
         return false;
@@ -1819,9 +1837,10 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
     // Battle Master Disarming Attack: a disarmed creature dropped its weapon, so any real weapon
     // attack resolves as an improvised Unarmed Strike (melee, 5 ft, proficient, ability-mod only)
-    // until the disarmer's next turn. Leave genuine Unarmed/MonkUnarmed strikes untouched.
+    // until the disarmer's next turn. Leave weapons with "Unarmed" in their name untouched, and also
+    // leave permanently_armed weapons untouched (they're part of the creature's nature, not equipped).
     if (atk_pt.agent->getConditions().disarmed &&
-        w.name != "Unarmed" && w.name != "MonkUnarmed") {
+        w.name.find("Unarmed") == std::string::npos && !w.permanently_armed) {
         Weapon improvised;            // default-constructed: melee "Unarmed", no damage dice → STR-mod only
         improvised.proficient = true;
         w = improvised;
@@ -3628,6 +3647,17 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             cond.attacked_while_invisible = true;  // Thief Supreme Sneak gate (cleared at turn start)
             bm.setAgentConditions(action.attacker_idx, cond);
             log_("{}'s invisibility ends (made an attack)", agents[action.attacker_idx].agent->name());
+        }
+    }
+
+    // Sanctuary ends when the warded creature makes an attack roll / deals damage (RAW).
+    if (action.attacker_idx >= 0 && action.attacker_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions cond = bm.getAgentConditions(action.attacker_idx);
+        if (cond.sanctuary_active) {
+            cond.sanctuary_active = false;
+            cond.sanctuary_dc     = 0;
+            bm.setAgentConditions(action.attacker_idx, cond);
+            log_("{}'s Sanctuary ends (made an attack)", agents[action.attacker_idx].agent->name());
         }
     }
 

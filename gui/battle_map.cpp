@@ -1923,6 +1923,39 @@ void BattleMap::removeItem(int item_id) noexcept {
         mapItems_.end());
 }
 
+bool BattleMap::pickUpItem(int item_id, int agent_idx, int slot_idx) noexcept {
+    const auto& agents = placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    // Find the item
+    auto item_it = std::find_if(mapItems_.begin(), mapItems_.end(),
+                                [item_id](const MapItem& m){ return m.id == item_id; });
+    if (item_it == mapItems_.end()) return false;
+
+    // Get agent's current weapons
+    auto weapons = getAgentWeapons(agent_idx);
+
+    int target_slot = slot_idx;
+    // If no slot specified, find the first empty one
+    if (target_slot < 0) {
+        for (int i = 0; i < 3; ++i) {
+            if (weapons[i].name.empty()) {
+                target_slot = i;
+                break;
+            }
+        }
+    }
+    if (target_slot < 0 || target_slot >= 3) return false;  // No valid slot
+
+    // Assign the weapon to the target slot (replaces any weapon there)
+    weapons[target_slot] = item_it->weapon;
+    setAgentWeapons(agent_idx, weapons);
+
+    // Remove the item from the map
+    removeItem(item_id);
+    return true;
+}
+
 std::vector<MapItem> BattleMap::getItemsAtCell(Cell cell) const noexcept {
     std::vector<MapItem> result;
     for (const auto& m : mapItems_)

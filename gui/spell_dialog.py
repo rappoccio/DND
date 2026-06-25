@@ -175,7 +175,7 @@ class SpellDialog:
         if self._f:
             # Toggle buttons (single choice)
             for group_key, options in [
-                ("type",        ["Harm", "Heal"]),
+                ("type",        ["Harm", "Heal", "Help"]),
                 ("geometry",    ["Single", "Line", "Cone", "Sphere", "Square", "Rectangle"]),
                 ("attack_type", ["AttackRoll", "Save", "Automatic"]),
                 ("save_ability",["SaveStr","SaveDex","SaveCon","SaveInt","SaveWis","SaveCha"]),
@@ -333,7 +333,7 @@ class SpellDialog:
 
             # Type
             label("Type", lx, cy); cy += 14
-            toggle_group("type", ["Harm", "Heal"], lx, cy, btn_w=90); cy += FH + PAD
+            toggle_group("type", ["Harm", "Heal", "Help"], lx, cy, btn_w=90); cy += FH + PAD
 
             # Level and Upcast Dice Bonus (on same row)
             label("Spell Level", lx, cy)

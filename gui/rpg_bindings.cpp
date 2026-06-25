@@ -578,6 +578,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("hidden",        &Agent::Conditions::hidden)
         .def_readwrite("invisible",     &Agent::Conditions::invisible)
         .def_readwrite("invisible_persists_on_action", &Agent::Conditions::invisible_persists_on_action)
+        .def_readwrite("sanctuary_active", &Agent::Conditions::sanctuary_active)
+        .def_readwrite("sanctuary_dc",     &Agent::Conditions::sanctuary_dc)
         .def_readwrite("incapacitated", &Agent::Conditions::incapacitated)
         .def_readwrite("paralyzed",     &Agent::Conditions::paralyzed)
         .def_readwrite("blinded",       &Agent::Conditions::blinded)
@@ -808,6 +810,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("light",            &Weapon::light)
         .def_readwrite("is_shield",        &Weapon::is_shield)
         .def_readwrite("auto_hit_if_grappled", &Weapon::auto_hit_if_grappled)
+        .def_readwrite("permanently_armed", &Weapon::permanently_armed)
         .def_readwrite("mastery",          &Weapon::mastery)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)
@@ -882,6 +885,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Harm", Spell::Harm)
         .value("Heal", Spell::Heal)
         .value("Transport", Spell::Transport)
+        .value("Help", Spell::Help)
     ;
 
     py::enum_<Spell::CastingTime_t>(m, "CastingTime")
@@ -3725,6 +3729,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("remove_item", &BattleMap::removeItem,
              py::arg("item_id"),
              "Remove the item with the given id from the map.")
+        .def("pick_up_item", &BattleMap::pickUpItem,
+             py::arg("item_id"), py::arg("agent_idx"), py::arg("slot_idx") = -1,
+             "Pick up an item and assign it to an agent's weapon slot. If slot_idx < 0, uses first empty slot. Returns true if successful.")
         .def("get_items_at_cell", &BattleMap::getItemsAtCell,
              py::arg("cell"),
              "Return list of MapItem at the given cell.")

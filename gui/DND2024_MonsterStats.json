@@ -6841,32 +6841,38 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Piercing)",
+        "name": "Tormenting Bite",
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Piercing",
-            "num_dice": 8,
-            "die_size": 4
+            "num_dice": 2,
+            "die_size": 6
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+	  {
+	    "type":"Psychic",
+	    "num_dice": 2,
+	    "die_size": 12
+	  }
+	],
         "conditions": [],
         "mastery": "None"
       },
       "off_hand": {
-        "name": "Melee (Bludgeoning)",
+        "name": "Thrash",
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Bludgeoning",
@@ -6875,7 +6881,9 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+	  "Prone"
+	],
         "mastery": "None",
         "off_hand": true
       },

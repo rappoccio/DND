@@ -44,8 +44,20 @@ def add_agent_to_battle(engine, bm, config,
                        str=10, dex=10, con=10, intel=10, wis=10, cha=10,
                        hp=10, ac=10):
     """Add an agent to the battle map with stats."""
+    # apply_agent_configs is destructive — it rebuilds ALL placed agents from
+    # scratch, wiping any stats/conditions set on previously-added agents.
+    # Save them so we can restore after.
+    prior_count = len(bm.placed_agents)
+    saved_stats = [engine.get_agent_stats(bm, i) for i in range(prior_count)]
+    saved_conds = [engine.get_agent_conditions(bm, i) for i in range(prior_count)]
+
     engine.add_agent_config(bm, config)
     engine.apply_agent_configs(bm)
+
+    # Restore previously-customised stats/conditions.
+    for i in range(prior_count):
+        engine.set_agent_stats(bm, i, saved_stats[i])
+        engine.set_agent_conditions(bm, i, saved_conds[i])
 
     # Find the newly added agent index
     agents = bm.placed_agents

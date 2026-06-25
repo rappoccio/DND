@@ -64,6 +64,8 @@ struct Weapon {
     bool         auto_hit_if_grappled = false;  // the attack automatically hits a creature this attacker
                                                 // has Grappled (e.g. a vampire's Bite) — skips the roll
                                                 // (a natural 20 still crits)
+    bool         permanently_armed    = false;  // this weapon cannot be disarmed (e.g., unarmed attacks,
+                                                // which are part of a creature's natural abilities)
 
     std::vector<MagicDamageRoll>    magicDamageRolls;
     std::vector<PhysicalDamageRoll> physicalDamageRolls;

@@ -664,6 +664,8 @@ namespace rpg {
       bool invisible_persists_on_action{false}; // Greater Invisibility: does NOT end on attack/cast (else Invisibility ends after the actor attacks/deals damage/casts)
       bool attacked_while_invisible{false}; // set when an attack ends this agent's Invisibility (per-turn); gates Thief Supreme Sneak (Stealth Attack)
       bool incapacitated{false}; // cannot act, movement speed 0
+      bool sanctuary_active{false}; // warded by the Sanctuary spell: any creature targeting this one with an attack or damaging spell must make a WIS save or lose the attack/spell. Ends when the warded creature attacks, casts a spell, or deals damage.
+      int  sanctuary_dc{0};         // WIS save DC an attacker must beat to target the Sanctuary-warded creature (the caster's spell save DC)
       bool concentrating{false}; // concentrating on a spell; breaks on damage CON save failure
       std::string concentrating_on{}; // name of the spell being concentrated on
       bool has_advantage{false};   // advantage on attack rolls, ability checks, saving throws

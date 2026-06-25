@@ -694,6 +694,34 @@ def test_supreme_healing_maximizes_dice():
     print("✅ test_supreme_healing_maximizes_dice passed")
 
 
+def test_healing_word_upcast_adds_dice():
+    """Healing Word upcast: each slot level above 1st adds 1d4 healing.
+    Base (L1 slot): 1d4; L2 slot: 2d4; L3 slot: 3d4, etc."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = _add(engine, bm, "Cleric", 1, 1, wis=10)   # WIS mod 0 (isolate dice)
+    ally   = _add(engine, bm, "Ally", 1, 2)
+
+    sp = _heal_spell(name="Healing Word", num_dice=1, die_size=4, bonus=0, level=1)
+    sp.upcast_dice_bonus = 1  # +1d4 per upcast level
+
+    # Base (L1 slot): 1d4 min 1, max 4
+    for _ in range(10):
+        healed = _heal_amount(engine, bm, cleric, ally, sp, slot_level=1, wound=20)
+        assert 1 <= healed <= 4, f"L1 Healing Word: 1d4, got {healed}"
+
+    # L2 slot: 1d4 + 1d4 = 2d4, min 2, max 8
+    for _ in range(10):
+        healed = _heal_amount(engine, bm, cleric, ally, sp, slot_level=2, wound=20)
+        assert 2 <= healed <= 8, f"L2 Healing Word: 2d4, got {healed}"
+
+    # L3 slot: 1d4 + 2d4 = 3d4, min 3, max 12
+    for _ in range(10):
+        healed = _heal_amount(engine, bm, cleric, ally, sp, slot_level=3, wound=20)
+        assert 3 <= healed <= 12, f"L3 Healing Word: 3d4, got {healed}"
+
+    print("✅ test_healing_word_upcast_adds_dice passed")
+
+
 def test_preserve_life_distributes_pool():
     """Preserve Life (CD, L3+): 5 x level HP among chosen allies within 30 ft, each capped at half
     HP max; undead excluded; spends a Channel Divinity use; gated to Life Domain L3+."""
@@ -924,6 +952,7 @@ if __name__ == "__main__":
     test_disciple_of_life_adds_to_each_heal()
     test_blessed_healer_heals_caster()
     test_supreme_healing_maximizes_dice()
+    test_healing_word_upcast_adds_dice()
     test_preserve_life_distributes_pool()
     test_preserve_life_revives_downed_ally()
     test_invoke_duplicity_grants_advantage_when_both_adjacent()
