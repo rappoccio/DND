@@ -875,6 +875,7 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.war_magic_used = false;
         cond.open_hand_rider_available = false;
         cond.open_hand_rider_used = false;
+        cond.quivering_palm_available = false;
         cond.hamstrung = false;
         cond.sundering_target_idx = -1;
         cond.staggered_next_save = false;

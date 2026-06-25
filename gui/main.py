@@ -463,6 +463,12 @@ class App:
         self.drag_cell    = None       # Cell: current snapped target
         self.drag_valid   = False      # is current drag_cell a legal drop?
 
+        # ── Dropped-weapon drag state (DM relocates ground items by dragging) ─
+        self.drag_item_id     = -1     # id of the MapItem being dragged (-1 = none)
+        self.drag_item        = None   # the MapItem snapshot (weapon + sprite) being dragged
+        self.drag_item_origin = None   # Cell: where the item started (for click vs. drag detection)
+        self.drag_item_cell   = None   # Cell: current cursor cell while dragging
+
         # ── Copy/paste clipboard (pre-combat encounter building) ───────────
         self._agent_clipboard = None   # snapshot dict of a copied agent (Ctrl+C / Ctrl+V)
 
@@ -1022,6 +1028,9 @@ class App:
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
+        self.btn_cbt_gwm_hew = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Hew (Bonus Attack)",
+                                          (190, 100, 70), (225, 135, 100), self.font_md)
         self.btn_cbt_martial_arts = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Martial Arts (Bonus Attack)",
                                           (180, 110, 200), (210, 140, 230), self.font_md)
@@ -1109,6 +1118,9 @@ class App:
         self.btn_cbt_elemental_burst = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Elemental Burst (2 Focus)",
                                           (140, 60, 40), (185, 90, 60), self.font_md)
+        self.btn_cbt_quivering_palm = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "💥 Detonate Quivering Palm",
+                                          (120, 40, 40), (165, 60, 60), self.font_md)
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
@@ -2794,6 +2806,10 @@ class App:
         weapon = weapons[slot_idx]
         if not weapon.name or weapon.name == "Unnamed":
             return
+        # Permanently-armed weapons (natural attacks, conjured/innate gear) cannot be dropped.
+        if weapon.permanently_armed:
+            self._combat_log_add(f"{self.bm.placed_agents[cur_idx].name} can't drop {weapon.name}.")
+            return
         # Get sprite_path from weapons.json if available
         wdict = self.weapon_name_to_dict.get(weapon.name, {})
         sprite_path = wdict.get("sprite_path", "")
@@ -2842,6 +2858,47 @@ class App:
         self.combat.set_agent_weapons(self.bm, agent_idx, weapons)
         self.bm.remove_item(item.id)
         self._combat_log_add(f"{agent.name} picks up {item.weapon.name}.")
+
+    # FLAG: Move to C++
+    def _show_item_context_menu(self, cell, items, pos):
+        """DM right-click menu for dropped weapons on a cell: remove each item.
+        (Relocation is done by left-click dragging the item — see the drag handlers.)"""
+        menu_items = []
+        for item in items:
+            nm = item.weapon.name or "item"
+            menu_items.append((f"Delete {nm}", lambda i=item: self._delete_item(i)))
+        if menu_items:
+            self.context_menu.show(pos, menu_items, self.screen.get_size())
+
+    def _delete_item(self, item):
+        """Remove a dropped weapon from the map entirely."""
+        self.bm.remove_item(item.id)
+        self._combat_log_add(f"Removed {item.weapon.name or 'item'} from the map.")
+
+    def _begin_item_drag(self, item):
+        """Grab a dropped weapon for dragging. The release decides move vs. pickup."""
+        self.drag_item_id     = item.id
+        self.drag_item        = item
+        self.drag_item_origin = rpg.Cell(item.cell.col, item.cell.row)
+        self.drag_item_cell   = rpg.Cell(item.cell.col, item.cell.row)
+
+    def _drop_dragged_item(self, cell):
+        """Relocate the dragged weapon to `cell` (remove + re-place, keeping its sprite)."""
+        item = self.drag_item
+        if item is None or cell is None:
+            return
+        wdict = self.weapon_name_to_dict.get(item.weapon.name, {})
+        sprite_path = item.sprite_path or wdict.get("sprite_path", "")
+        self.bm.remove_item(item.id)
+        self.bm.place_item(cell, item.weapon, sprite_path)
+        self._combat_log_add(
+            f"Moved {item.weapon.name or 'item'} to ({cell.col}, {cell.row}).")
+
+    def _clear_item_drag(self):
+        self.drag_item_id     = -1
+        self.drag_item        = None
+        self.drag_item_origin = None
+        self.drag_item_cell   = None
 
     def _find_pickup_slot(self, weapon, weapons) -> int:
         """Auto-assign weapon to best available slot. Returns -1 if no slot free."""
@@ -3289,6 +3346,7 @@ class App:
         has_cleave = False
         has_stunning_strike = False
         has_open_hand_rider = False
+        has_quivering_palm = False
         has_hand_of_harm = False
         has_elemental_move = False
         has_maneuver = False
@@ -3302,7 +3360,6 @@ class App:
         has_protective_field = False
         has_interception = False
         has_sentinel_guard = False
-        has_gwm_hew = False
         has_sudden_strike = False
         has_homing_strike = False
         if result.valid:
@@ -3317,6 +3374,11 @@ class App:
                 has_stunning_strike = True
             elif result.hit and atk_cond and atk_cond.open_hand_rider_available:
                 has_open_hand_rider = True
+            # Quivering Palm (Open Hand L17): a standalone fallback offer for unarmed hits where neither
+            # Stunning Strike (action) nor the Open Hand Flurry rider (bonus) claimed the hit. When one
+            # of those DID fire, the plant option is injected into that menu instead (no shadowing).
+            elif result.hit and atk_cond and atk_cond.quivering_palm_available:
+                has_quivering_palm = True
             elif result.hit and atk_cond and atk_cond.hand_of_harm_available:
                 has_hand_of_harm = True
             elif result.hit and atk_cond and atk_cond.elemental_attunement_move_available:
@@ -3349,13 +3411,10 @@ class App:
             # shadows the defender's riposte this swing (see known_limitations.md; full chaining is v2).
             elif (not result.hit) and tgt_cond and tgt_cond.riposte_available:
                 has_riposte = True
-            # Great Weapon Master — Hew: a melee crit/kill with a Heavy weapon offers one bonus-action
-            # attack (only when the bonus action is still free). Offered early; uses the shared
-            # extra-attack flow. Distinct economy from the on-hit riders (it spends the bonus action).
-            # Checked BEFORE weapon mastery riders so Hew is offered even if the weapon has Cleave/Push/Topple.
-            elif (atk_cond and atk_cond.gwm_hew_available and not self.bonus_used
-                  and self._attack_sequence_slot != "bonus"):
-                has_gwm_hew = True
+            # Great Weapon Master — Hew is NOT offered here: a melee crit/kill with a Heavy weapon arms
+            # the gwm_hew_available flag (in C++), which surfaces as a standalone bonus-action button
+            # (see _start_gwm_hew). Keeping it out of this on-hit elif chain lets the weapon-mastery
+            # riders below (Cleave/Push/Topple) resolve on the triggering hit without being shadowed.
             elif result.hit and atk_cond and atk_cond.push_available:
                 has_push = True
             elif result.hit and atk_cond and atk_cond.topple_available:
@@ -3433,6 +3492,14 @@ class App:
                 self.pending_attack_resource = None
 
         # FLAG: Move to C++
+        # A weapon grants at most one Mastery, but it stacks with a class on-hit rider (e.g. a
+        # Barbarian's Brutal Strike + a Topple maul, or a Paladin's Divine Smite + a Cleave greataxe).
+        # The old single-rider elif chain let the class rider shadow the Mastery. Now, when a Class B
+        # "extra-damage/effect" rider fires AND a Mastery (Push/Topple/Cleave) is also pending, the
+        # damage rider is offered with on_done = the Mastery prompt, so BOTH resolve on the one hit.
+        mastery_offer = self._pending_mastery_offer(
+            atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
+
         # Defer logging until the rider effect is chosen; otherwise log immediately.
         if has_cunning_strike:
             self._offer_cunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
@@ -3440,22 +3507,24 @@ class App:
             self._offer_stunning_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_open_hand_rider:
             self._offer_open_hand_rider(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_quivering_palm:
+            self._offer_quivering_palm(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_hand_of_harm:
             self._offer_hand_of_harm(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_elemental_move:
             self._offer_elemental_move(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_brutal_strike:
-            self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            self._offer_brutal_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_divine_strike:
-            self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            self._offer_divine_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_psionic_strike:
-            self._offer_psionic_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            self._offer_psionic_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_punch_and_grab:
             self._offer_punch_and_grab(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_smite:
-            self._offer_divine_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            self._offer_divine_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_eldritch_smite:
-            self._offer_eldritch_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            self._offer_eldritch_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_restore_balance_miss:
@@ -3474,8 +3543,6 @@ class App:
             self._offer_protective_field(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_interception:
             self._offer_interception(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_gwm_hew:
-            self._offer_gwm_hew(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         elif has_sentinel_guard:
             self._offer_sentinel_guard(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
@@ -3502,7 +3569,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_gwm_hew or has_sudden_strike
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_sudden_strike
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -3559,8 +3626,28 @@ class App:
         # Refresh attack overlay (HP may have changed).
         self._update_attack_overlay()
 
-    def _offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Show Brutal Strike effect menu after a hit. Logs the attack after effect is chosen."""
+    def _pending_mastery_offer(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+        """If a weapon-Mastery on-hit rider (Push/Topple/Cleave) is still pending on this hit, return a
+        zero-arg callable that presents it as a CHAINED rider (suppressing the duplicate HIT-line log,
+        since the preceding rider already logged the final damage). A weapon grants at most one Mastery,
+        so at most one applies. Returns None when no Mastery is pending. Used by _finish_attack to let a
+        Mastery resolve after a class on-hit rider (Brutal Strike, Divine Smite, …) instead of being
+        shadowed by it."""
+        if not result.hit:
+            return None
+        c = self.combat.get_agent_conditions(self.bm, atk_idx)
+        if c.push_available:
+            return lambda: self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, chained=True)
+        if c.topple_available:
+            return lambda: self._offer_topple(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx, chained=True)
+        if c.cleave_available:
+            return lambda: self._offer_cleave(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx, chained=True)
+        return None
+
+    def _offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
+        """Show Brutal Strike effect menu after a hit. Logs the attack after effect is chosen. When
+        on_done is set (a pending weapon-Mastery rider), it is invoked instead of refreshing the
+        overlay, chaining the Mastery prompt after this one."""
         atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
         level = atk_stats.char_level
         dice_str = "2d10" if level >= 17 else "1d10"
@@ -3582,7 +3669,10 @@ class App:
                 # Skip chosen - log original attack
                 self._combat_log_add(atk_msg)
             self._flush_combat_log()
-            self._update_attack_overlay()
+            if on_done:
+                on_done()
+            else:
+                self._update_attack_overlay()
 
         options = [
             (f"Forceful Blow ({dice_str} + push 15ft)", lambda: _apply([0])),
@@ -3598,11 +3688,14 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    def _offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, chained=False):
         """Push weapon mastery: optionally shove the target 10 ft straight away (Large or smaller).
-        The shove itself is applied in C++ via apply_push, which clears the availability flag."""
+        The shove itself is applied in C++ via apply_push, which clears the availability flag. When
+        chained=True it is presented after a preceding on-hit rider that already logged the HIT line,
+        so the duplicate attack-message log is suppressed."""
         def _apply(do):
-            self._combat_log_add(atk_msg)
+            if not chained:
+                self._combat_log_add(atk_msg)
             if do:
                 feet = self.combat.apply_push(self.bm, atk_idx, target_idx)
                 if feet > 0:
@@ -3623,11 +3716,14 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+    def _offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx, chained=False):
         """Topple weapon mastery: optionally force a CON save or knock the target Prone.
-        The save + prone are resolved in C++ via apply_topple, which clears the flag."""
+        The save + prone are resolved in C++ via apply_topple, which clears the flag. When chained=True
+        it is presented after a preceding on-hit rider that already logged the HIT line, so the
+        duplicate attack-message log is suppressed."""
         def _apply(do):
-            self._combat_log_add(atk_msg)
+            if not chained:
+                self._combat_log_add(atk_msg)
             if do:
                 res = self.combat.apply_topple(self.bm, atk_idx, target_idx, weapon_idx)
                 if res.toppled:
@@ -3672,14 +3768,17 @@ class App:
             out.append(t)
         return out
 
-    def _offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
+    def _offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx, chained=False):
         """Cleave weapon mastery: optionally make one extra attack vs a 2nd creature within 5 ft of
         the first target AND within reach, with no ability modifier on damage (once per turn). Cleave
         is part of the Attack action, so it is resolved out-of-band (see _resolve_cleave) — it does
         not consume the bonus action or a sequence attack. On accept, the legal second targets are
-        highlighted on the map (green rings) and the player clicks one (Esc cancels)."""
+        highlighted on the map (green rings) and the player clicks one (Esc cancels). When chained=True
+        it is presented after a preceding on-hit rider that already logged the HIT line, so the
+        duplicate attack-message log is suppressed."""
         def _apply(do):
-            self._combat_log_add(atk_msg)
+            if not chained:
+                self._combat_log_add(atk_msg)
             self._flush_combat_log()
             if do:
                 valid = self._cleave_valid_targets(atk_idx, target_idx, weapon_idx)
@@ -3775,34 +3874,38 @@ class App:
         self._flush_combat_log()
         self._update_attack_overlay()
 
-    def _offer_gwm_hew(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
-        """Great Weapon Master — Hew: after a Critical Hit or a kill with a Heavy melee weapon,
-        optionally make one attack with that weapon as a Bonus Action. Routes through the shared
-        extra-attack flow (which spends the bonus action). Clearing gwm_hew_available stops a re-offer.
+    def _gwm_heavy_weapon_idx(self, atk_idx: int) -> int:
+        """Index of the agent's equipped Heavy melee (or thrown) weapon — the one a GWM Hew bonus
+        attack is made with. Returns the first match, or -1 if none is equipped."""
+        weapons = self.combat.get_agent_weapons(self.bm, atk_idx)
+        for i, w in enumerate(weapons):
+            if w.heavy and (w.type == rpg.WeaponType.Melee or w.thrown):
+                return i
+        return -1
 
-        v1 sequencing: accepting Hew now forgoes any remaining Attack-action attacks (the bonus attack
-        takes over the pending sequence). RAW lets you finish your attacks first, then Hew — deferred
-        (see known_limitations.md)."""
-        def _apply(do):
-            self._combat_log_add(atk_msg)
-            c = self.combat.get_agent_conditions(self.bm, atk_idx)
-            c.gwm_hew_available = False
-            self.combat.set_agent_conditions(self.bm, atk_idx, c)
+    def _start_gwm_hew(self, atk_idx: int):
+        """Great Weapon Master — Hew: after a Critical Hit or a kill with a Heavy weapon (flagged in
+        C++ as gwm_hew_available), make one attack with that weapon as a Bonus Action. Driven by the
+        standalone bonus-action button rather than an on-hit popup, so it no longer competes with the
+        weapon-mastery on-hit riders (Cleave/Topple/Push) that resolve on the triggering hit. Routes
+        through the shared extra-attack flow (which spends the bonus action) and clears the flag."""
+        c = self.combat.get_agent_conditions(self.bm, atk_idx)
+        if not c.gwm_hew_available:
+            return
+        if self.bonus_used:
+            self._combat_log_add("Hew: bonus action already used.")
             self._flush_combat_log()
-            if do:
-                # Forgo any leftover action attacks so the bonus-action Hew sets up cleanly.
-                self.attacks_remaining = 0
-                self._attack_sequence_slot = ""
-                self.pending_attack_slot = ""
-                self._start_extra_attack(weapon_idx=weapon_idx, offhand=False,
-                                         label="Great Weapon Master: Hew")
-            self._update_attack_overlay()
-        options = [
-            ("Hew: bonus-action attack", lambda: _apply(True)),
-            ("Skip Hew", lambda: _apply(False)),
-        ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+            return
+        weapon_idx = self._gwm_heavy_weapon_idx(atk_idx)
+        if weapon_idx < 0:
+            self._combat_log_add("Hew: no Heavy weapon equipped.")
+            self._flush_combat_log()
+            return
+        c.gwm_hew_available = False
+        self.combat.set_agent_conditions(self.bm, atk_idx, c)
+        self._start_extra_attack(weapon_idx=weapon_idx, offhand=False,
+                                 label="Great Weapon Master: Hew")
+        self._update_attack_overlay()
 
     def _offer_sudden_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
         """Stalker's Flurry — Sudden Strike (Gloom Stalker L11): immediately after a Dreadful Strike
@@ -3836,9 +3939,11 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    def _offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a qualifying weapon hit, offer Cleric Divine Strike (Radiant or Necrotic).
-        Mirrors _offer_brutal_strike; the extra die is applied in C++ via apply_divine_strike_effect."""
+        Mirrors _offer_brutal_strike; the extra die is applied in C++ via apply_divine_strike_effect.
+        When on_done is set (a pending weapon-Mastery rider), it is invoked instead of refreshing the
+        overlay, chaining the Mastery prompt after this one."""
         def _apply(radiant):
             if radiant is not None:
                 self.combat.apply_divine_strike_effect(self.bm, atk_idx, target_idx, radiant, result)
@@ -3850,7 +3955,10 @@ class App:
             else:
                 self._combat_log_add(atk_msg)
             self._flush_combat_log()
-            self._update_attack_overlay()
+            if on_done:
+                on_done()
+            else:
+                self._update_attack_overlay()
         options = [
             ("Divine Strike: Radiant", lambda: _apply(True)),
             ("Divine Strike: Necrotic", lambda: _apply(False)),
@@ -3859,9 +3967,11 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    def _offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a qualifying hit, offer Psi Warrior Psionic Strike (spend 1 Psionic Energy die → Force).
-        Mirrors _offer_divine_strike; the extra die is applied in C++ via apply_psionic_strike_effect."""
+        Mirrors _offer_divine_strike; the extra die is applied in C++ via apply_psionic_strike_effect.
+        When on_done is set (a pending weapon-Mastery rider), it is invoked instead of refreshing the
+        overlay, chaining the Mastery prompt after this one."""
         def _apply(use_it):
             if use_it:
                 self.combat.apply_psionic_strike_effect(self.bm, atk_idx, target_idx, result)
@@ -3873,7 +3983,10 @@ class App:
             else:
                 self._combat_log_add(atk_msg)
             self._flush_combat_log()
-            self._update_attack_overlay()
+            if on_done:
+                on_done()
+            else:
+                self._update_attack_overlay()
         options = [
             ("Psionic Strike (1 die → Force)", lambda: _apply(True)),
             ("Skip Psionic Strike", lambda: _apply(False)),
@@ -3970,11 +4083,12 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_divine_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    def _offer_divine_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a melee/unarmed hit, offer Paladin Divine Smite with one entry per available
         spell-slot level (1st→2d8 … 5th→6d8, +1d8 vs Undead/Fiend). The Radiant damage and the
         slot + bonus-action spend happen in C++ via apply_divine_smite_effect. Mirrors
-        _offer_divine_strike."""
+        _offer_divine_strike. When on_done is set (a pending weapon-Mastery rider), it is invoked
+        instead of refreshing the overlay, chaining the Mastery prompt after this one."""
         def _apply(slot_level):
             if slot_level is not None:
                 self.combat.apply_divine_smite_effect(self.bm, atk_idx, target_idx, slot_level, result)
@@ -3986,7 +4100,10 @@ class App:
             else:
                 self._combat_log_add(atk_msg)
             self._flush_combat_log()
-            self._update_attack_overlay()
+            if on_done:
+                on_done()
+            else:
+                self._update_attack_overlay()
 
         def _ordinal(n):
             return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
@@ -4004,11 +4121,13 @@ class App:
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
-    def _offer_eldritch_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    def _offer_eldritch_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a pact-weapon hit, offer Warlock Eldritch Smite. Pact Magic slots are all one level
         (pact_slot_level), so there's a single option: expend the pact slot → (lvl+1)d8 Force + knock
         Prone. The damage, slot + bonus-action spend, and Prone happen in C++ via
-        apply_eldritch_smite_effect. Mirrors _offer_divine_smite."""
+        apply_eldritch_smite_effect. Mirrors _offer_divine_smite. When on_done is set (a pending
+        weapon-Mastery rider), it is invoked instead of refreshing the overlay, chaining the Mastery
+        prompt after this one."""
         def _apply(slot_level):
             if slot_level is not None:
                 self.combat.apply_eldritch_smite_effect(self.bm, atk_idx, target_idx, slot_level, result)
@@ -4020,7 +4139,10 @@ class App:
             else:
                 self._combat_log_add(atk_msg)
             self._flush_combat_log()
-            self._update_attack_overlay()
+            if on_done:
+                on_done()
+            else:
+                self._update_attack_overlay()
 
         stats = self.combat.get_agent_stats(self.bm, atk_idx)
         psl = stats.pact_slot_level()
@@ -4275,6 +4397,53 @@ class App:
         self._flush_combat_log()
         self.bonus_used = True
 
+    def _plant_quivering_palm(self, atk_idx, target_idx, tgt_name):
+        """Plant Quivering Palm vibrations in the target (Open Hand L17, 4 Focus). Shared by the
+        standalone offer and the Stunning Strike / Open Hand rider menus. Returns True if planted."""
+        ok = self.combat.plant_quivering_palm(self.bm, atk_idx, target_idx)
+        if ok:
+            self._combat_log_add(f"  → Quivering Palm: vibrations planted in {tgt_name} (4 Focus)")
+        else:
+            self._combat_log_add("  → Quivering Palm unavailable (needs 4 Focus Points)")
+        return ok
+
+    def _quivering_palm_option(self, atk_idx, target_idx, tgt_name, continuation):
+        """Return a (label, fn) menu tuple for planting Quivering Palm, or None if not available
+        (not flagged this hit, or fewer than 4 Focus Points). `continuation` runs after planting."""
+        atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
+        if not (atk_cond and atk_cond.quivering_palm_available):
+            return None
+        atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
+        fp = atk_stats.get_resource("Focus Points")
+        if not fp or fp.current < 4:
+            return None
+        def _plant():
+            self._plant_quivering_palm(atk_idx, target_idx, tgt_name)
+            continuation()
+        return ("Quivering Palm (4 FP)", _plant)
+
+    def _offer_quivering_palm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Standalone Quivering Palm plant menu (Open Hand L17): after an unarmed hit, spend 4 Focus
+        Points to plant lethal vibrations the monk can later detonate (💥 button → 10d12 Force)."""
+        def _continue():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+        opt = self._quivering_palm_option(atk_idx, target_idx, tgt_name, _continue)
+        if opt is None:
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            return
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [opt, ("Don't use", _skip)]
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _offer_stunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Show Stunning Strike menu after a qualifying unarmed hit.
         Monk can spend 1 Focus Point to force a CON save or the target is Stunned.
@@ -4310,10 +4479,17 @@ class App:
             self._combat_log_add(atk_msg)
             self._flush_combat_log()
 
-        options = [
-            (f"Stunning Strike (1 FP)", _apply_stunning_strike),
-            ("Don't use", _skip_stunning_strike),
-        ]
+        def _qp_continue():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        options = [(f"Stunning Strike (1 FP)", _apply_stunning_strike)]
+        # Quivering Palm (L17) is an alternate use of the same unarmed hit — offer it alongside.
+        qp = self._quivering_palm_option(atk_idx, target_idx, tgt_name, _qp_continue)
+        if qp:
+            options.append(qp)
+        options.append(("Don't use", _skip_stunning_strike))
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -4368,12 +4544,21 @@ class App:
             self._flush_combat_log()
             self._continue_attack_sequence_after_rider(atk_idx)
 
+        def _qp_continue():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
         options = [
             (f"Knockdown (1 FP, STR save)", _apply_knockdown),
             (f"Push (1 FP, 5 ft)", _apply_push),
             (f"Deny Reaction (1 FP)", _apply_deny_reaction),
-            ("Don't use", _skip_open_hand),
         ]
+        # Quivering Palm (L17) is an alternate use of the same unarmed hit — offer it alongside.
+        qp = self._quivering_palm_option(atk_idx, target_idx, tgt_name, _qp_continue)
+        if qp:
+            options.append(qp)
+        options.append(("Don't use", _skip_open_hand))
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -5605,6 +5790,27 @@ class App:
             self._flush_combat_log()
             self._combat_log_add("Elemental Burst: requires the Warrior of the Elements subclass (L6) and 2 Focus Points.")
 
+    def _quivering_palm_id_for(self, idx):
+        """Return the condition_id of a Quivering Palm planted by agent `idx`, or -1 if none."""
+        for c in self.combat.active_agent_conditions:
+            if (c.delayed_trigger and c.caster_idx == idx and
+                    c.condition_name == "QuiveringPalm"):
+                return c.condition_id
+        return -1
+
+    def _detonate_quivering_palm(self, idx):
+        """Open Hand L17 — take an action to detonate planted Quivering Palm vibrations: forces the
+        target's CON save and deals 10d12 Force (half on a save). Resolved entirely in C++."""
+        cid = self._quivering_palm_id_for(idx)
+        if cid < 0:
+            return
+        dmg = self.combat.trigger_delayed_effect(self.bm, cid)
+        if dmg >= 0:
+            self._combat_log_add(f"💥 Quivering Palm detonates — {dmg} Force damage")
+        self._flush_combat_log()
+        self.action_used = True
+        self._update_attack_overlay()
+
     def _use_action_surge(self, agent_idx: int):
         """Fighter Action Surge: spend resource, regain an Action this turn."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -6808,8 +7014,10 @@ class App:
 
                     result_str = "SAVED" if tr.saved else "FAILED"
                     dmg_str = f"{tr.total_healing} heal" if tr.total_healing else f"{tr.total_damage} dmg"
+                    # The engine already halved tr.total_damage on a successful save (and applied
+                    # that halved amount to HP) — just label it, don't halve a second time.
                     if tr.saved and tr.total_damage > 0:
-                        dmg_str = f"{tr.total_damage // 2} dmg (half)"
+                        dmg_str = f"{tr.total_damage} dmg (half)"
 
                     # Check for damage modifiers (immunity > vulnerability > resistance > normal)
                     immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
@@ -10312,6 +10520,26 @@ class App:
                     self.screen.blit(lbl, (ix + (icon_px - lbl.get_width()) // 2,
                                            iy + (icon_px - lbl.get_height()) // 2))
 
+        # Ghost of a dropped weapon currently being dragged, plus a target-cell ring.
+        if self.drag_item_id >= 0 and self.drag_item is not None and self.drag_item_cell is not None:
+            sx, sy = self._cell_to_screen(self.drag_item_cell.col, self.drag_item_cell.row)
+            pygame.draw.rect(self.screen, (80, 220, 80),
+                             pygame.Rect(sx, sy, cpx, cpx), 2, border_radius=3)
+            ix, iy = sx + 2, sy + 2
+            sprite = self._get_sprite(self.drag_item.sprite_path, icon_px)
+            if sprite:
+                ghost = sprite.copy()
+                ghost.set_alpha(180)
+                self.screen.blit(ghost, (ix, iy))
+            else:
+                r = pygame.Rect(ix, iy, icon_px, icon_px)
+                pygame.draw.rect(self.screen, ITEM_COL, r, border_radius=2)
+                pygame.draw.rect(self.screen, ITEM_BORDER, r, 1, border_radius=2)
+                initial = self.drag_item.weapon.name[0].upper() if self.drag_item.weapon.name else "?"
+                lbl = self.font_sm.render(initial, True, (255, 255, 255))
+                self.screen.blit(lbl, (ix + (icon_px - lbl.get_width()) // 2,
+                                       iy + (icon_px - lbl.get_height()) // 2))
+
     def _toggle_safe_target(self, hit: int):
         """Toggle an agent in/out of the edited Evoker's safe-target set; empty/self finishes."""
         caster = self.safe_target_edit_idx
@@ -11517,6 +11745,19 @@ class App:
                         self.btn_cbt_war_priest.draw(self.screen)
                         y += B + gap
 
+            # Great Weapon Master — Hew button: a melee crit/kill with a Heavy weapon (flagged in C++
+            # as gwm_hew_available) arms one bonus-action attack with that weapon. Shown as a standalone
+            # bonus-action button (rather than an on-hit popup) so it never shadows weapon-mastery
+            # riders like Cleave/Topple, which resolve on the triggering hit. Bonus action must be free.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                conds = self.combat.get_agent_conditions(self.bm, cur_idx)
+                if conds.gwm_hew_available:
+                    self.btn_cbt_gwm_hew.rect.x = lx
+                    self.btn_cbt_gwm_hew.rect.y = y
+                    self.btn_cbt_gwm_hew.rect.w = W
+                    self.btn_cbt_gwm_hew.draw(self.screen)
+                    y += B + gap
+
             # Martial Arts button — Monk (L1+), bonus-action unarmed strike (always available)
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -11839,6 +12080,20 @@ class App:
                         self.btn_cbt_elemental_burst.draw(self.screen)
                         y += B + gap
 
+            # Quivering Palm detonate button — Warrior of the Open Hand (L17): shown only when this
+            # monk has planted vibrations and still has an action. Takes an action to trigger them.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Monk and
+                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
+                        stats.char_level >= 17 and not self.action_used and
+                        self._quivering_palm_id_for(cur_idx) >= 0):
+                    self.btn_cbt_quivering_palm.rect.x = lx
+                    self.btn_cbt_quivering_palm.rect.y = y
+                    self.btn_cbt_quivering_palm.rect.w = W
+                    self.btn_cbt_quivering_palm.draw(self.screen)
+                    y += B + gap
+
             # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
             # the Land/Sea/Sky, or dismiss the active companion (label toggles).
             if 0 <= cur_idx < len(agents):
@@ -11961,6 +12216,21 @@ class App:
         self.btn_show_visible_targets.draw(self.screen)
         y += B + gap
 
+        # Show/Hide Terrain (btn_show_terrain is shared with the config panel; reposition it
+        # here so it is never stale/invisible during combat, which would cause accidental
+        # toggles when other buttons are clicked at the same Y coordinate).
+        self.btn_show_terrain.text = "Hide Terrain" if self.show_terrain else "Show Terrain"
+        self.btn_show_terrain.rect.x = lx
+        self.btn_show_terrain.rect.y = y
+        self.btn_show_terrain.rect.w = HW
+        self.btn_show_terrain.draw(self.screen)
+
+        self.btn_cbt_place_terrain.rect.x = lx + HW + 4
+        self.btn_cbt_place_terrain.rect.y = y
+        self.btn_cbt_place_terrain.rect.w = HW
+        self.btn_cbt_place_terrain.draw(self.screen)
+        y += B + gap
+
         # Drop Concentration button (if current agent is concentrating)
         cur_idx = self._current_agent_idx()
         is_concentrating = (0 <= cur_idx < len(self.bm.placed_agents) and
@@ -11982,7 +12252,7 @@ class App:
                         self.btn_cbt_drop_weapon_off,
                         self.btn_cbt_drop_weapon_rng]
             visible_drops = [(btn, lbl, wpn) for btn, (lbl, wpn, _) in zip(drop_btns, slot_labels)
-                             if wpn.name and wpn.name != "Unnamed"]
+                             if wpn.name and wpn.name != "Unnamed" and not wpn.permanently_armed]
             if visible_drops:
                 n = len(visible_drops)
                 tw = (W - (n - 1) * gap) // n
@@ -12452,6 +12722,11 @@ class App:
                         f"{self.bm.placed_agents[self.safe_target_edit_idx].name}.")
                     self.safe_target_edit_idx = -1
                     continue
+                # Esc cancels an in-progress dropped-weapon drag (item snaps back, nothing changes).
+                if event.key == pygame.K_ESCAPE and self.drag_item_id >= 0:
+                    self._clear_item_drag()
+                    self._combat_log_add("Move item cancelled.")
+                    continue
                 # Esc cancels a pending summon placement (no slot/action spent yet).
                 if event.key == pygame.K_ESCAPE and self.pending_summon_slot:
                     self.pending_summon_slot       = ""
@@ -12698,10 +12973,32 @@ class App:
                             _menu_opts.append(("Fiendish Resilience", _choose_fiendish_resilience))
                         self.context_menu.show(event.pos, _menu_opts, self.screen.get_size())
 
+            # Right-click a dropped weapon (no agent on the cell) → DM delete menu.
+            # Works during combat too, so the DM can clean up the battlefield.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and not self.context_menu.visible:
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None and self._agent_at(cell) < 0:
+                    items_at_cell = self.bm.get_items_at_cell(cell)
+                    if items_at_cell:
+                        self._show_item_context_menu(cell, items_at_cell, event.pos)
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map:
                 cell = self._screen_to_cell(*event.pos)
                 if cell is not None:
                     hit = self._agent_at(cell)
+                    # Begin dragging a dropped weapon: only when no agent sits on the cell and
+                    # no targeting/editing flow is active. The release decides move vs. pickup.
+                    if hit < 0 and self.drag_item_id < 0 and not self.context_menu.visible \
+                            and self.safe_target_edit_idx < 0 \
+                            and not self.pending_attack_slot and not self.pending_spell_slot \
+                            and not self.pending_shove_slot and not self.pending_grapple_slot \
+                            and not self.pending_cleave and not self.pending_sweep \
+                            and not self.pending_rally and not self.pending_feint:
+                        items_here = self.bm.get_items_at_cell(cell)
+                        if items_here:
+                            self._begin_item_drag(items_here[-1])
+                            continue
                     if self.safe_target_edit_idx >= 0 and not self.combat_active:
                         # Evoker safe-target editing: clicking an ally toggles it; empty/self finishes.
                         self._toggle_safe_target(hit)
@@ -12862,6 +13159,13 @@ class App:
             if event.type == pygame.MOUSEMOTION and self.pending_summon_slot:
                 self.summon_hover_cell = self._screen_to_cell(*event.pos) if on_map else None
 
+            # Dragging a dropped weapon: track the cursor cell for the ghost icon.
+            if event.type == pygame.MOUSEMOTION and self.drag_item_id >= 0:
+                if on_map:
+                    c = self._screen_to_cell(*event.pos)
+                    if c is not None:
+                        self.drag_item_cell = c
+
             if event.type == pygame.MOUSEMOTION and self.drag_idx >= 0:
                 cell = self._screen_to_cell(*event.pos)
                 if cell is not None:
@@ -12881,6 +13185,32 @@ class App:
                             ) in self._reach_set
                         else:
                             self.drag_valid = False   # movement exhausted
+
+            # Release a dragged dropped-weapon: a real drag relocates it; an in-place
+            # release is treated as a click → offer pickup to an adjacent eligible agent.
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drag_item_id >= 0:
+                rel_cell = self._screen_to_cell(*event.pos) if on_map else None
+                item   = self.drag_item
+                origin = self.drag_item_origin
+                moved  = (rel_cell is not None and origin is not None
+                          and (rel_cell.col != origin.col or rel_cell.row != origin.row))
+                if moved:
+                    self._drop_dragged_item(rel_cell)
+                elif item is not None and origin is not None:
+                    items_at_cell = self.bm.get_items_at_cell(origin)
+                    if items_at_cell:
+                        cur_idx = self._current_agent_idx() if self.combat_active else self.selected_idx
+                        if cur_idx >= 0:
+                            agent = self.bm.placed_agents[cur_idx]
+                            if not agent.conditions.dead:
+                                dc = max(agent.origin.col - origin.col,
+                                         origin.col - (agent.origin.col + agent.size - 1), 0)
+                                dr = max(agent.origin.row - origin.row,
+                                         origin.row - (agent.origin.row + agent.size - 1), 0)
+                                if max(dc, dr) <= 1:
+                                    self._show_item_pickup_menu(origin, items_at_cell, cur_idx, event.pos)
+                self._clear_item_drag()
+                continue
 
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.drag_idx >= 0:
@@ -13480,6 +13810,10 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_extra_attack(weapon_idx=0, offhand=False,
                                                      resource="War Priest", label="War Priest")
+                    if self.btn_cbt_gwm_hew.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._start_gwm_hew(idx)
                     if self.btn_cbt_martial_arts.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -13650,6 +13984,10 @@ class App:
                             self._element_dialog.show(_on_burst_elem, ELEMENTAL_MONK_OPTIONS,
                                                       current_values=None, multi=False,
                                                       title="Elemental Burst: element")
+                    if self.btn_cbt_quivering_palm.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._detonate_quivering_palm(idx)
                     if self.btn_cbt_dragon_wings.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -13823,7 +14161,11 @@ class App:
                     self._drop_weapon(2)
                 # Item pickup: click a cell with items
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map \
-                        and not self.pending_attack_slot and not self.pending_spell_slot and not self.pending_shove_slot and not self.pending_grapple_slot:
+                        and not self.context_menu.visible \
+                        and not self.pending_attack_slot and not self.pending_spell_slot \
+                        and not self.pending_shove_slot and not self.pending_grapple_slot \
+                        and not self.pending_cleave and not self.pending_sweep \
+                        and not self.pending_rally and not self.pending_feint:
                     items_at_cell = self.bm.get_items_at_cell(cell) if cell is not None else []
                     if items_at_cell:
                         cur_idx = self._current_agent_idx() if self.combat_active else self.selected_idx

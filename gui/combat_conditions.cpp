@@ -511,11 +511,20 @@ const std::vector<ActiveAgentCondition>& CombatEngine::activeAgentConditions() c
 std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
 {
     std::vector<int> removed_ids;
+    // Delayed effects that auto-detonate on expiry (Delayed Blast Fireball) are resolved AFTER the
+    // loop: resolveDelayedEffect can drop a creature unconscious → dropConcentration, which mutates
+    // activeAgentConditions_ and would invalidate the iterators below. Copy them out and fire later.
+    std::vector<ActiveAgentCondition> auto_detonate;
 
     for (auto& cond : activeAgentConditions_) {
         --cond.turns_remaining;
         if (cond.turns_remaining <= 0) {
             removed_ids.push_back(cond.condition_id);
+
+            // Owner-triggered effects (Quivering Palm) leave delay_auto_on_expire false and simply
+            // fade harmlessly when the duration runs out.
+            if (cond.delayed_trigger && cond.delay_auto_on_expire)
+                auto_detonate.push_back(cond);
 
             // Remove the condition from the agent
             if (cond.agent_idx >= 0) {
@@ -564,6 +573,10 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
         }
     }
     activeAgentConditions_ = remaining;
+
+    // Now that the condition list is stable again, fire any auto-detonations (Delayed Blast Fireball).
+    for (const auto& cond : auto_detonate)
+        (void)resolveDelayedEffect(bm, cond);
 
     return removed_ids;
 }
@@ -626,6 +639,99 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
     activeAgentConditions_ = remaining;
 
     return removed_ids;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Delayed / stored effects (general mechanism)
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+    // File-local damage-type name for delayed-effect log lines (combat_resources.cpp's elementName
+    // lives in its own anonymous namespace and isn't visible here).
+    const char* delayDamageName(MagicDamage_t t) noexcept {
+        switch (t) {
+            case Acid: return "Acid";   case Cold: return "Cold";   case Fire: return "Fire";
+            case Force: return "Force"; case Lightning: return "Lightning"; case Necrotic: return "Necrotic";
+            case Poison: return "Poison"; case Psychic: return "Psychic"; case Radiant: return "Radiant";
+            case Thunder: return "Thunder"; default: return "damage";
+        }
+    }
+}
+
+int CombatEngine::resolveDelayedEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int t = cond.agent_idx;
+    if (t < 0 || t >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats ts = bm.getAgentStats(t);
+    if (ts.hp_max == 0 && ts.hp_cur == 0) return 0;          // not a real combatant
+
+    const std::string label = cond.delay_label.empty() ? cond.condition_name : cond.delay_label;
+
+    // Roll the stored dice + flat bonus.
+    int rolled = cond.delay_flat_bonus;
+    for (int i = 0; i < cond.delay_dice; ++i)
+        rolled += roll(cond.delay_die_size > 0 ? cond.delay_die_size : 1);
+
+    // The owner's stats drive the multiplier (target-side resistance / vulnerability honored).
+    Agent::Stats owner = (cond.caster_idx >= 0 && cond.caster_idx < static_cast<int>(agents.size()))
+                       ? bm.getAgentStats(cond.caster_idx) : Agent::Stats{};
+    float multiplier = effectiveMagicDamageMult(owner, ts, cond.delay_damage_type, true);
+    int dmg = static_cast<int>(static_cast<float>(rolled) * multiplier);
+
+    bool saved = false;
+    if (cond.delay_requires_save) {
+        int save_d20 = roll(20);
+        int save_mod = saveModFor(bm, t, cond.save_ability);
+        int save_tot = applyIndomitableMight(bm, t, cond.save_ability, save_d20 + save_mod);
+        saved = (save_tot >= cond.save_dc);
+        log_("{} {} {} ({} vs DC {})", agentName(bm, t),
+             saved ? "saves vs" : "fails the save against", label, save_tot, cond.save_dc);
+    }
+
+    // Drop-to-zero variant (2014-style Quivering Palm): a failed save reduces the target to 0 HP
+    // outright, ignoring the rolled dice. Otherwise a successful save halves (or negates) the damage.
+    if (cond.delay_drop_to_zero && !saved) {
+        dmg = ts.hp_cur + ts.temp_hp;
+    } else if (saved) {
+        dmg = cond.delay_half_on_save ? dmg / 2 : 0;
+    }
+
+    log_("{} detonates on {}: {} {} damage",
+         label, agentName(bm, t), dmg, delayDamageName(cond.delay_damage_type));
+
+    if (dmg > 0) {
+        // Apply temp HP first, then real HP (mirrors elementalBurst / applyHandOfHarmEffect).
+        int overflow = std::max(0, dmg - ts.temp_hp);
+        ts.temp_hp = std::max(0, ts.temp_hp - dmg);
+        ts.hp_cur  = std::clamp(ts.hp_cur - overflow, 0, ts.hp_max);
+        bm.setAgentStats(t, ts);
+
+        checkConcentrationOnDamage(bm, t, dmg);
+        processDamageTaken(bm, t, dmg);
+        if (ts.hp_cur <= 0) {
+            Agent::Conditions tc = bm.getAgentConditions(t);
+            if (!tc.unconscious && !tc.dead) applyUnconscious(bm, t);
+        }
+    }
+    return dmg;
+}
+
+int CombatEngine::triggerDelayedEffect(BattleMap& bm, int condition_id) noexcept
+{
+    auto it = std::find_if(activeAgentConditions_.begin(), activeAgentConditions_.end(),
+                           [condition_id](const ActiveAgentCondition& c) {
+                               return c.condition_id == condition_id && c.delayed_trigger; });
+    if (it == activeAgentConditions_.end()) {
+        log_("triggerDelayedEffect: no delayed effect with id {}", condition_id);
+        return -1;
+    }
+    // Resolve on a copy, then remove the planted condition (it is spent whether it hits or misses).
+    ActiveAgentCondition cond = *it;
+    int dmg = resolveDelayedEffect(bm, cond);
+    removeAgentCondition(condition_id);
+    return dmg;
 }
 
 } // namespace rpg

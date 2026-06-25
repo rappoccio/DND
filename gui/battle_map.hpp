@@ -144,6 +144,25 @@ struct ActiveAgentCondition {
     int              save_repeat_turns    = 1;    // repeat save check every N turns (1 = every turn)
     int              condition_id         = -1;   // unique ID for tracking/removal
     OnDamage_t       on_damage            = OnDamage_t::None;  // End / RepeatSave on taking damage
+
+    // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──────
+    // When delayed_trigger is true this condition is a *planted* effect that does
+    // nothing on its own; it resolves into a burst of damage when its owner
+    // detonates it (CombatEngine::triggerDelayedEffect) — or automatically when
+    // turns_remaining hits 0, if delay_auto_on_expire is set (Delayed Blast
+    // Fireball). The save (delay_requires_save) reuses save_ability / save_dc.
+    // This is the general mechanism the GUI surfaces as a "detonate" button; any
+    // future stored-effect ability builds one of these instead of a bespoke path.
+    bool          delayed_trigger      = false;
+    int           delay_dice           = 0;        // number of damage dice (e.g. 10)
+    int           delay_die_size       = 0;        // die size (e.g. 12 → d12)
+    int           delay_flat_bonus     = 0;        // flat damage added after the dice
+    MagicDamage_t delay_damage_type    = MagicDamage_t::Force;
+    bool          delay_requires_save  = true;     // target rolls save_ability vs save_dc
+    bool          delay_half_on_save   = true;     // half damage on a successful save
+    bool          delay_drop_to_zero   = false;    // failed save drops the target to 0 HP
+    bool          delay_auto_on_expire = false;    // detonate when duration ends (vs. owner-triggered)
+    std::string   delay_label;                     // display label, e.g. "Quivering Palm"
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────

@@ -2,39 +2,15 @@
   "regions": [
     {
       "type": "Wall",
-      "x": 407,
-      "y": 89,
-      "width": 700,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
       "x": 1057,
       "y": 139,
       "width": 50,
-      "height": 150,
+      "height": 300,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 407,
-      "y": 139,
-      "width": 50,
-      "height": 150,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 407,
-      "y": 339,
-      "width": 50,
-      "height": 100,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 307,
+      "x": 1107,
       "y": 389,
       "width": 100,
       "height": 50,
@@ -42,32 +18,40 @@
     },
     {
       "type": "Wall",
-      "x": 307,
+      "x": 1157,
+      "y": 439,
+      "width": 50,
+      "height": 150,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 1057,
       "y": 539,
-      "width": 150,
+      "width": 100,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 407,
+      "x": 1057,
       "y": 589,
       "width": 50,
-      "height": 50,
+      "height": 200,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 407,
-      "y": 689,
+      "x": 557,
+      "y": 189,
       "width": 50,
-      "height": 100,
+      "height": 250,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 457,
-      "y": 739,
+      "x": 607,
+      "y": 389,
       "width": 250,
       "height": 50,
       "multiplier": 0.0
@@ -75,74 +59,66 @@
     {
       "type": "Wall",
       "x": 857,
-      "y": 739,
-      "width": 250,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 1057,
-      "y": 689,
+      "y": 389,
       "width": 50,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 1057,
-      "y": 539,
+      "x": 557,
+      "y": 89,
       "width": 50,
       "height": 100,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 1057,
+      "x": 857,
+      "y": 89,
+      "width": 50,
+      "height": 250,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 407,
+      "y": 689,
+      "width": 50,
+      "height": 200,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 557,
+      "y": 689,
+      "width": 50,
+      "height": 200,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 57,
+      "y": 639,
+      "width": 400,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 557,
+      "y": 639,
+      "width": 500,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 57,
       "y": 389,
-      "width": 150,
+      "width": 400,
       "height": 50,
       "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 1057,
-      "y": 339,
-      "width": 50,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 1107,
-      "y": 539,
-      "width": 100,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Difficult Terrain",
-      "x": 57,
-      "y": 189,
-      "width": 350,
-      "height": 50,
-      "multiplier": 0.5
-    },
-    {
-      "type": "Difficult Terrain",
-      "x": 57,
-      "y": 239,
-      "width": 50,
-      "height": 500,
-      "multiplier": 0.5
-    },
-    {
-      "type": "Difficult Terrain",
-      "x": 57,
-      "y": 739,
-      "width": 350,
-      "height": 50,
-      "multiplier": 0.5
     }
   ],
   "walls_enabled": false,

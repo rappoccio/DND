@@ -1107,6 +1107,19 @@ public:
     // Remove a condition by id.
     void removeAgentCondition(int condition_id) noexcept;
 
+    // ── Delayed / stored effects (general mechanism) ──────────────────────
+    // Detonate a planted delayed-trigger condition by its id: rolls its damage, applies the optional
+    // save (delay_requires_save), deals the result to the affected agent, then removes the condition.
+    // Powers Quivering Palm and any future stored-effect ability (Delayed Blast Fireball, etc.).
+    // Returns the damage dealt, or -1 if the id is not a valid delayed-trigger condition.
+    int triggerDelayedEffect(BattleMap& bm, int condition_id) noexcept;
+
+    // Monk Way of the Open Hand L17 — plant Quivering Palm vibrations on target_idx after an Unarmed
+    // Strike hit, spending Focus Points. Builds a delayed-trigger condition (10d12 Force, CON save for
+    // half) that the monk later detonates via triggerDelayedEffect. Only one creature may be affected
+    // at a time, so any prior vibrations this monk planted are ended first. Returns true on success.
+    bool plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_idx) noexcept;
+
     [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
     void setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept;
 
@@ -2438,6 +2451,11 @@ private:
 
     // Check for slipping terrain (ice/grease) and trigger saves/prone as needed.
     void checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOrigin, Cell newOrigin) noexcept;
+
+    // Roll + apply a delayed-trigger condition's stored damage to its affected agent (save honored).
+    // Shared by triggerDelayedEffect (owner detonates) and tickAgentConditions (auto-on-expire).
+    // Returns the damage dealt.
+    int resolveDelayedEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
 };
 
 } // namespace rpg

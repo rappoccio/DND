@@ -697,6 +697,47 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         caster_stats.draconic_affinity_type >= 0 &&
         !caster_stats.draconic_affinity_used_this_turn;
 
+    // AoE damage spells (Fireball, etc.) make ONE damage roll for the whole area; every
+    // creature in the area takes that same rolled total — full on a failed save, half on a
+    // success. RAW the caster does NOT re-roll the damage separately for each target. Pre-roll
+    // the shared dice once here and reuse the per-type base damage for every target below; only
+    // the target's own resistance multiplier and the half-on-save reduction differ per target.
+    // Single-target and multi-beam spells (Magic Missile, Eldritch Blast, Scorching Ray) are not
+    // area spells and keep their own per-target/per-beam rolls.
+    const bool aoe_geometry = (sp.geometry != Spell::Single && sp.geometry != Spell::Multiple);
+    const bool shared_damage_roll =
+        aoe_geometry && sp.type == Spell::Harm &&
+        (sp.attack_type == Spell::Save || sp.attack_type == Spell::Automatic);
+    std::vector<int> shared_dice;        // dice faces (reused for every target's display)
+    std::vector<int> shared_magic_base;  // base damage per magic_damage_rolls entry (pre-mult/halving)
+    std::vector<int> shared_phys_base;   // base damage per physical_damage_rolls entry
+    if (shared_damage_roll) {
+        int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
+        for (const auto& roll_info : sp.magic_damage_rolls) {
+            int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
+                                                  roll_info.die_size, shared_dice, true, &empower_budget);
+            type_damage += roll_info.bonus;
+            // Draconic Elemental Affinity (L6): +CHA mod to first matching-type roll this turn.
+            if (draconic_affinity_available &&
+                static_cast<int>(roll_info.type) == caster_stats.draconic_affinity_type) {
+                int cha_bonus = abilityMod(caster_stats.cha);
+                type_damage += cha_bonus;
+                draconic_affinity_available = false;
+                Agent::Stats mc = bm.getAgentStats(action.caster_idx);
+                mc.draconic_affinity_used_this_turn = true;
+                bm.setAgentStats(action.caster_idx, mc);
+                log_("Elemental Affinity: +{} {} damage (CHA mod)", cha_bonus, static_cast<int>(roll_info.type));
+            }
+            shared_magic_base.push_back(type_damage);
+        }
+        for (const auto& roll_info : sp.physical_damage_rolls) {
+            int type_damage = rollDamageDice(roll_info.num_dice, roll_info.die_size,
+                                             shared_dice, false, &empower_budget);
+            type_damage += roll_info.bonus;
+            shared_phys_base.push_back(type_damage);
+        }
+    }
+
     // Index-based: the loop may append leap targets (Chromatic Orb) to `targets`, and
     // re-reading targets.size() each iteration lets those new targets be resolved too.
     for (std::size_t ti = 0; ti < targets.size(); ++ti) {
@@ -1003,6 +1044,33 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
                      n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
                      sp.healing_type.bonus, ability_mod, dmg);
+            } else if (shared_damage_roll) {
+                // AoE: reuse the single area-wide roll made before the loop. Only the target's
+                // own resistance multiplier and the half-on-save reduction vary per target.
+                dice = shared_dice;
+                for (std::size_t r = 0; r < sp.magic_damage_rolls.size(); ++r) {
+                    const auto& roll_info = sp.magic_damage_rolls[r];
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    int modified_damage = static_cast<int>(static_cast<float>(shared_magic_base[r]) * multiplier);
+                    if (tr.saved) modified_damage /= 2;
+                    dmg += modified_damage;
+                }
+                for (std::size_t r = 0; r < sp.physical_damage_rolls.size(); ++r) {
+                    const auto& roll_info = sp.physical_damage_rolls[r];
+                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                    int modified_damage = static_cast<int>(static_cast<float>(shared_phys_base[r]) * multiplier);
+                    if (tr.saved) modified_damage /= 2;
+                    dmg += modified_damage;
+                }
+
+                // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
+                if (sp.save_ability == SaveDex &&
+                    tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 7 &&
+                    !target_cond.incapacitated) {
+                    dmg = tr.saved ? 0 : (dmg / 2);
+                    log_("Evasion: {} {} damage on a DEX save", agentName(bm, tgt_idx),
+                         tr.saved ? "takes no" : "halves");
+                }
             } else {
                 // Damage spell: roll per-damage-type damage and apply target's multipliers
                 for (const auto& roll_info : sp.magic_damage_rolls) {
@@ -1245,6 +1313,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("[HEAL] Rolled {}d{} = {} + bonus {} + ability mod {} = total {}",
                      n_dice, die_size, std::accumulate(dice.begin(), dice.end(), 0),
                      sp.healing_type.bonus, ability_mod, total);
+            } else if (shared_damage_roll) {
+                // AoE: reuse the single area-wide roll made before the loop (no save here, so
+                // only the target's own resistance multiplier varies per target).
+                dice = shared_dice;
+                for (std::size_t r = 0; r < sp.magic_damage_rolls.size(); ++r) {
+                    const auto& roll_info = sp.magic_damage_rolls[r];
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    total += static_cast<int>(static_cast<float>(shared_magic_base[r]) * multiplier);
+                }
+                for (std::size_t r = 0; r < sp.physical_damage_rolls.size(); ++r) {
+                    const auto& roll_info = sp.physical_damage_rolls[r];
+                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                    total += static_cast<int>(static_cast<float>(shared_phys_base[r]) * multiplier);
+                }
             } else {
                 // Damage spell: roll per-damage-type damage and apply target's multipliers
                 for (const auto& roll_info : sp.magic_damage_rolls) {

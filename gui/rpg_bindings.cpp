@@ -641,6 +641,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("stunning_strike_used", &Agent::Conditions::stunning_strike_used)
         .def_readwrite("open_hand_rider_available", &Agent::Conditions::open_hand_rider_available)
         .def_readwrite("open_hand_rider_used", &Agent::Conditions::open_hand_rider_used)
+        .def_readwrite("quivering_palm_available", &Agent::Conditions::quivering_palm_available)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
         .def_readwrite("divine_strike_available", &Agent::Conditions::divine_strike_available)
@@ -1672,6 +1673,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_dc",         &ActiveAgentCondition::save_dc)
         .def_readwrite("save_repeat_turns", &ActiveAgentCondition::save_repeat_turns)
         .def_readwrite("condition_id",    &ActiveAgentCondition::condition_id)
+        // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──
+        .def_readwrite("delayed_trigger",      &ActiveAgentCondition::delayed_trigger)
+        .def_readwrite("delay_dice",           &ActiveAgentCondition::delay_dice)
+        .def_readwrite("delay_die_size",       &ActiveAgentCondition::delay_die_size)
+        .def_readwrite("delay_flat_bonus",     &ActiveAgentCondition::delay_flat_bonus)
+        .def_readwrite("delay_damage_type",    &ActiveAgentCondition::delay_damage_type)
+        .def_readwrite("delay_requires_save",  &ActiveAgentCondition::delay_requires_save)
+        .def_readwrite("delay_half_on_save",   &ActiveAgentCondition::delay_half_on_save)
+        .def_readwrite("delay_drop_to_zero",   &ActiveAgentCondition::delay_drop_to_zero)
+        .def_readwrite("delay_auto_on_expire", &ActiveAgentCondition::delay_auto_on_expire)
+        .def_readwrite("delay_label",          &ActiveAgentCondition::delay_label)
         .def("__repr__", [](const ActiveAgentCondition& c){
             return "<ActiveAgentCondition '" + c.condition_name
                  + "' on agent[" + std::to_string(c.agent_idx)
@@ -2574,6 +2586,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Sphere of the chosen element (a MagicDamage_t). Each non-ally creature in the area makes a DEX\n"
              "save vs the Monk's Ki DC (8 + PB + WIS); failure = (Martial Arts die count) × d8, half on a\n"
              "save. Returns True on success.")
+        .def("plant_quivering_palm",
+             &CombatEngine::plantQuiveringPalm,
+             py::arg("battle_map"), py::arg("monk_idx"), py::arg("target_idx"),
+             "Monk Way of the Open Hand L17 — Quivering Palm. After an Unarmed Strike hit\n"
+             "(conditions.quivering_palm_available), spend 4 Focus Points to plant a delayed-trigger\n"
+             "condition on the target (10d12 Force, CON save vs Ki DC for half). Only one creature may\n"
+             "be affected at a time. Detonate later with trigger_delayed_effect. Returns True on success.")
+        .def("trigger_delayed_effect",
+             &CombatEngine::triggerDelayedEffect,
+             py::arg("battle_map"), py::arg("condition_id"),
+             "Detonate a planted delayed-trigger condition (Quivering Palm, Delayed Blast Fireball, …) by\n"
+             "its condition_id: rolls the stored damage, applies the optional save, deals it to the\n"
+             "affected agent, and removes the condition. Returns the damage dealt, or -1 if the id is not\n"
+             "a valid delayed-trigger condition.")
         .def("can_rend_mind",
              &CombatEngine::canRendMind,
              py::arg("battle_map"), py::arg("attacker_idx"),

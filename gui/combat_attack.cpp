@@ -2500,6 +2500,20 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
+    // ── Monk Warrior of the Open Hand — Quivering Palm eligibility (L17) ──────
+    // After ANY Unarmed Strike hit (action or bonus), an Open Hand monk may spend Focus Points to
+    // plant Quivering Palm vibrations on the target as a delayed-trigger condition. The actual plant
+    // (focus spend + condition setup) is applied out of band via plantQuiveringPalm(); here we only
+    // flag availability so the GUI can offer it. Not gated once-per-turn — only one creature may be
+    // affected at a time, which plantQuiveringPalm enforces by replacing any prior vibrations.
+    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+        atk_stats.monk_subclass == WarriorOfTheOpenHandPath &&
+        (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
+        atk_stats.char_level >= 17) {
+        updated_atk_cond.quivering_palm_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     // ── Monk Warrior of Mercy — Hand of Harm eligibility ─────────────────────
     // After an unarmed hit, a Mercy Monk (L3+) may spend 1 Focus Point to add Necrotic damage. Like the
     // other on-hit riders, the dice (and the L6 Poisoned rider) are applied out of band via

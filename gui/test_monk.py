@@ -1268,6 +1268,194 @@ def test_elemental_burst_gating():
     print("✅ test_elemental_burst_gating passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Warrior of the Open Hand — Quivering Palm (L17) + general delayed-effect condition
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _open_hand_monk(engine, bm, idx, level, dex=16, wis=14, pb=6):
+    """Configure agent idx as a Warrior of the Open Hand Monk of the given level."""
+    s = engine.get_agent_stats(bm, idx)
+    s.set_class_level(rpg.CharacterClass.Monk, level)
+    s.monk_subclass = rpg.MonkSubclass.WarriorOfTheOpenHand
+    s.dex = dex
+    s.wis = wis
+    s.prof_bonus = pb            # set_class_level does not derive PB from level
+    s.initialize_class_resources(rpg.CharacterClass.Monk, level)
+    engine.set_agent_stats(bm, idx, s)
+    return engine.get_agent_stats(bm, idx)
+
+
+def _qp_condition(engine, bm, monk_idx):
+    """Return the Quivering Palm ActiveAgentCondition planted by monk_idx, or None."""
+    for c in engine.active_agent_conditions:
+        if c.delayed_trigger and c.caster_idx == monk_idx and c.condition_name == "QuiveringPalm":
+            return c
+    return None
+
+
+def test_quivering_palm_eligibility_on_unarmed_hit():
+    """An L17 Open Hand unarmed hit arms conditions.quivering_palm_available."""
+    bm, engine, mon, tgt = _setup(17)
+    _open_hand_monk(engine, bm, mon, 17)
+    engine.set_agent_weapons(bm, mon, _monk_unarmed_weapons())
+
+    res = engine.execute_action(bm, rpg.Attack(mon, tgt, 0))
+    assert res.hit, "the unarmed strike should land"
+    cond = engine.get_agent_conditions(bm, mon)
+    assert cond.quivering_palm_available, "an L17 Open Hand unarmed hit should arm Quivering Palm"
+    print("✅ test_quivering_palm_eligibility_on_unarmed_hit passed")
+
+
+def test_quivering_palm_eligibility_gated_below_l17():
+    """Below L17 the unarmed hit must NOT arm Quivering Palm."""
+    bm, engine, mon, tgt = _setup(16)
+    _open_hand_monk(engine, bm, mon, 16)
+    engine.set_agent_weapons(bm, mon, _monk_unarmed_weapons())
+
+    res = engine.execute_action(bm, rpg.Attack(mon, tgt, 0))
+    assert res.hit
+    cond = engine.get_agent_conditions(bm, mon)
+    assert not cond.quivering_palm_available, "Quivering Palm should be unavailable below L17"
+    print("✅ test_quivering_palm_eligibility_gated_below_l17 passed")
+
+
+def test_quivering_palm_plant_spends_focus_and_creates_condition():
+    """Planting spends 4 Focus and creates a delayed-trigger condition on the target (no damage yet)."""
+    bm, engine, mon, tgt = _setup(17)
+    _open_hand_monk(engine, bm, mon, 17)
+
+    fp_before = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+    hp_before = engine.get_agent_stats(bm, tgt).hp_cur
+
+    ok = engine.plant_quivering_palm(bm, mon, tgt)
+    assert ok, "plant should succeed for an L17 Open Hand monk with 4 Focus"
+
+    fp_after = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+    assert fp_after == fp_before - 4, f"Quivering Palm costs 4 Focus ({fp_before}->{fp_after})"
+    assert engine.get_agent_stats(bm, tgt).hp_cur == hp_before, "planting deals no damage on its own"
+
+    c = _qp_condition(engine, bm, mon)
+    assert c is not None, "a Quivering Palm delayed-trigger condition should exist"
+    assert c.agent_idx == tgt and c.delayed_trigger, "condition should target the struck creature"
+    assert c.delay_dice == 10 and c.delay_die_size == 12, "Quivering Palm is 10d12"
+    assert c.delay_damage_type == rpg.MagicDamage.Force, "Quivering Palm deals Force"
+    print("✅ test_quivering_palm_plant_spends_focus_and_creates_condition passed")
+
+
+def test_quivering_palm_detonate_failed_save():
+    """Detonating on a low-CON target: full 10d12 Force (10..120), condition consumed."""
+    bm, engine, mon, tgt = _setup(17, wis=14)
+    _open_hand_monk(engine, bm, mon, 17, wis=14, pb=6)   # Ki DC = 8 + 6 + 2 = 16
+
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.con = 1                 # mod -5, no save prof → max save 20-5 = 15 < 16, always fails
+    ts.save_prof_con = False
+    ts.hp_max = 500
+    ts.hp_cur = 500
+    engine.set_agent_stats(bm, tgt, ts)
+
+    assert engine.plant_quivering_palm(bm, mon, tgt)
+    cid = _qp_condition(engine, bm, mon).condition_id
+
+    dmg = engine.trigger_delayed_effect(bm, cid)
+    assert 10 <= dmg <= 120, f"failed-save Quivering Palm is 10d12 (10..120), got {dmg}"
+    hp_after = engine.get_agent_stats(bm, tgt).hp_cur
+    assert hp_after == 500 - dmg, f"target should lose the rolled damage ({hp_after})"
+    assert _qp_condition(engine, bm, mon) is None, "the condition is consumed on detonation"
+    print("✅ test_quivering_palm_detonate_failed_save passed")
+
+
+def test_quivering_palm_detonate_half_on_save():
+    """Detonating on a high-CON target: half damage (5..60) on a successful save."""
+    bm, engine, mon, tgt = _setup(17, wis=10)
+    _open_hand_monk(engine, bm, mon, 17, wis=10, pb=2)   # Ki DC = 8 + 2 + 0 = 10
+
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.con = 30                # mod +10, no prof → min save 1+10 = 11 >= 10, always saves
+    ts.save_prof_con = False
+    ts.hp_max = 500
+    ts.hp_cur = 500
+    engine.set_agent_stats(bm, tgt, ts)
+
+    assert engine.plant_quivering_palm(bm, mon, tgt)
+    cid = _qp_condition(engine, bm, mon).condition_id
+
+    dmg = engine.trigger_delayed_effect(bm, cid)
+    assert 5 <= dmg <= 60, f"saved Quivering Palm is half of 10d12 (5..60), got {dmg}"
+    assert _qp_condition(engine, bm, mon) is None, "the condition is consumed even on a save"
+    print("✅ test_quivering_palm_detonate_half_on_save passed")
+
+
+def test_quivering_palm_one_creature_at_a_time():
+    """Planting on a second creature ends the vibrations on the first (only one at a time)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    mon = add_agent_to_battle(engine, bm, create_test_agent("Monk", 5, 5))
+    t1  = add_agent_to_battle(engine, bm, create_test_agent("A", 6, 5))
+    t2  = add_agent_to_battle(engine, bm, create_test_agent("B", 7, 5))
+    _open_hand_monk(engine, bm, mon, 17)
+    _soft_target(engine, bm, t1)
+    _soft_target(engine, bm, t2)
+
+    assert engine.plant_quivering_palm(bm, mon, t1)
+    assert engine.plant_quivering_palm(bm, mon, t2)
+
+    qp = [c for c in engine.active_agent_conditions
+          if c.delayed_trigger and c.caster_idx == mon and c.condition_name == "QuiveringPalm"]
+    assert len(qp) == 1, f"only one Quivering Palm should remain, got {len(qp)}"
+    assert qp[0].agent_idx == t2, "the surviving vibrations should be on the second target"
+    print("✅ test_quivering_palm_one_creature_at_a_time passed")
+
+
+def test_quivering_palm_gated_below_l17():
+    """plant_quivering_palm returns False for a sub-L17 Open Hand monk and spends no Focus."""
+    bm, engine, mon, tgt = _setup(16)
+    _open_hand_monk(engine, bm, mon, 16)
+
+    fp_before = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+    ok = engine.plant_quivering_palm(bm, mon, tgt)
+    assert not ok, "Quivering Palm requires L17"
+    fp_after = engine.get_agent_stats(bm, mon).get_resource("Focus Points").current
+    assert fp_after == fp_before, "no Focus should be spent on a failed plant"
+    print("✅ test_quivering_palm_gated_below_l17 passed")
+
+
+def test_delayed_effect_auto_detonates_on_expire():
+    """General mechanism (Delayed Blast Fireball shape): a delayed condition with
+    delay_auto_on_expire fires its damage when its duration ticks to 0."""
+    bm, engine, mon, tgt = _setup(5)        # caster class is irrelevant for the general path
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.con = 1
+    ts.save_prof_con = False
+    ts.hp_max = 500
+    ts.hp_cur = 500
+    engine.set_agent_stats(bm, tgt, ts)
+
+    c = rpg.ActiveAgentCondition()
+    c.agent_idx = tgt
+    c.caster_idx = mon
+    c.condition_name = "DelayedBlast"
+    c.turns_remaining = 1
+    c.delayed_trigger = True
+    c.delay_auto_on_expire = True
+    c.delay_dice = 12
+    c.delay_die_size = 6
+    c.delay_damage_type = rpg.MagicDamage.Fire
+    c.delay_requires_save = True
+    c.save_ability = rpg.SaveAbility.SaveDex
+    c.save_dc = 99               # impossible save → full damage
+    c.delay_half_on_save = True
+    c.delay_label = "Delayed Blast Fireball"
+    engine.add_agent_condition(bm, c)
+
+    removed = engine.tick_agent_conditions(bm)   # decrements to 0 → auto-detonates + removes
+    hp_after = engine.get_agent_stats(bm, tgt).hp_cur
+    dealt = 500 - hp_after
+    assert 12 <= dealt <= 72, f"12d6 auto-detonation should deal 12..72, got {dealt}"
+    assert len(removed) >= 1, "the expired delayed condition should be reported removed"
+    print("✅ test_delayed_effect_auto_detonates_on_expire passed")
+
+
 if __name__ == "__main__":
     test_unarmored_defense()
     test_focus_points_resource()
@@ -1327,4 +1515,13 @@ if __name__ == "__main__":
     test_elemental_burst_hits_enemy_spares_ally()
     test_elemental_burst_scales_at_l17()
     test_elemental_burst_gating()
+    # Warrior of the Open Hand — Quivering Palm (L17) + general delayed-effect condition
+    test_quivering_palm_eligibility_on_unarmed_hit()
+    test_quivering_palm_eligibility_gated_below_l17()
+    test_quivering_palm_plant_spends_focus_and_creates_condition()
+    test_quivering_palm_detonate_failed_save()
+    test_quivering_palm_detonate_half_on_save()
+    test_quivering_palm_one_creature_at_a_time()
+    test_quivering_palm_gated_below_l17()
+    test_delayed_effect_auto_detonates_on_expire()
     print("\n✅ All Monk tests passed!")

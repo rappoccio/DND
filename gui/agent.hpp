@@ -729,6 +729,7 @@ namespace rpg {
       bool stunning_strike_used{false};     // Monk: Stunning Strike already applied this turn (once per turn)
       bool open_hand_rider_available{false}; // Monk Open Hand: a Flurry hit can apply a rider (Knockdown/Push/Deny Reaction)
       bool open_hand_rider_used{false};     // Monk Open Hand: rider already applied this turn (once per turn)
+      bool quivering_palm_available{false}; // Monk Open Hand L17: an unarmed hit can plant Quivering Palm vibrations this attack
       bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack

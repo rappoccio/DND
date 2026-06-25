@@ -425,6 +425,61 @@ bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int ta
     return true;
 }
 
+// Monk Way of the Open Hand L17 — Quivering Palm. After an Unarmed Strike hit, the monk spends 4
+// Focus Points to plant imperceptible vibrations in the target. They do nothing until detonated: the
+// monk later takes an action (triggerDelayedEffect) to force a CON save vs the Monk's Ki DC for 10d12
+// Force damage (half on a success). Only one creature can carry this monk's vibrations at a time, so
+// any prior ones are ended first. Built entirely on the general delayed-trigger condition mechanism;
+// future stored-effect abilities (e.g. Delayed Blast Fireball) construct the same condition shape.
+bool CombatEngine::plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (monk_idx < 0 || monk_idx >= n || target_idx < 0 || target_idx >= n) return false;
+
+    Agent::Stats ms = bm.getAgentStats(monk_idx);
+    if (ms.character_class != CharacterClass::Monk ||
+        ms.monk_subclass != WarriorOfTheOpenHandPath || ms.char_level < 17) {
+        log_("{}: Quivering Palm requires Warrior of the Open Hand (L17)", agentName(bm, monk_idx));
+        return false;
+    }
+    Resource* fp = ms.getResource("Focus Points");
+    if (!fp || fp->current < 4) {
+        log_("{}: Quivering Palm requires 4 Focus Points", agentName(bm, monk_idx));
+        return false;
+    }
+
+    // Only one creature may carry this monk's vibrations at a time — end any prior ones harmlessly.
+    std::vector<int> stale;
+    for (const auto& c : activeAgentConditions_)
+        if (c.delayed_trigger && c.caster_idx == monk_idx && c.condition_name == "QuiveringPalm")
+            stale.push_back(c.condition_id);
+    for (int id : stale) removeAgentCondition(id);
+
+    spendResource(bm, monk_idx, "Focus Points", 4);
+
+    ActiveAgentCondition cond;
+    cond.agent_idx           = target_idx;
+    cond.caster_idx          = monk_idx;
+    cond.condition_name      = "QuiveringPalm";
+    cond.turns_remaining     = 100000;       // "days equal to your Monk level" — effectively whole battle
+    cond.delayed_trigger     = true;
+    cond.delay_dice          = 10;
+    cond.delay_die_size      = 12;
+    cond.delay_damage_type   = MagicDamage_t::Force;
+    cond.delay_requires_save = true;
+    cond.save_ability        = SaveCon;
+    cond.save_dc             = spellSaveDcFromAbility(ms, SaveWis);  // Monk Ki DC = 8 + PB + WIS
+    cond.delay_half_on_save  = true;
+    cond.delay_auto_on_expire = false;       // monk chooses when to detonate; never auto-fires
+    cond.delay_label         = "Quivering Palm";
+
+    int id = addAgentCondition(bm, cond);
+    log_("{} plants Quivering Palm in {} (4 Focus; detonate → 10d12 Force, DC {} CON save) [id {}]",
+         agentName(bm, monk_idx), agentName(bm, target_idx), cond.save_dc, id);
+    return true;
+}
+
 // Soulknife Rogue — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
 // and teleport up to (10 × roll) feet to an unoccupied cell. Grid distance is Chebyshev × 5 ft. The
 // die is spent only on a successful (in-range, legal) teleport.
