@@ -10800,7 +10800,15 @@ class App:
         # Check if mid-sequence (attacks remaining, but action_used not yet set)
         mid_sequence_action = (self.attacks_remaining > 0 and self._attack_sequence_slot == "action")
 
-        if self.action_used and not mid_sequence_action:
+        # Check current conditions for the active combatant.
+        cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
+        _is_incapacitated = (cur_cond.incapacitated or cur_cond.unconscious) if cur_cond else False
+
+        if _is_incapacitated:
+            reason = "Unconscious" if (cur_cond and cur_cond.unconscious) else "Incapacitated"
+            txt(f"[Cannot act — {reason}]", lx, y, (120, 80, 80))
+            y += B
+        elif self.action_used and not mid_sequence_action:
             txt("[Action used]", lx, y, (100, 100, 120))
             y += B
             # Nick: after the Attack action, relocate the off-hand attack here (frees the bonus
@@ -10813,8 +10821,6 @@ class App:
                 self.btn_cbt_nick.draw(self.screen)
                 y += B + gap
         else:
-            # Check if agent is Frightened - if so, only Dash is allowed
-            cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
             is_frightened = cur_cond.frightened if cur_cond else False
 
             if is_frightened:
@@ -10975,7 +10981,9 @@ class App:
         # Check if mid-sequence for bonus action
         mid_sequence_bonus = (self.attacks_remaining > 0 and self._attack_sequence_slot == "bonus")
 
-        if self.bonus_used and not mid_sequence_bonus:
+        if _is_incapacitated:
+            pass  # already shown "[Cannot act]" in the Action section; skip bonus section entirely
+        elif self.bonus_used and not mid_sequence_bonus:
             txt("[Bonus used]", lx, y, (100, 100, 120))
             y += B
         else:
@@ -11008,7 +11016,7 @@ class App:
         # Jump + Shove row — merged below into the adjacency block
 
         # Arcane Ward charging button (Abjurer L3+ with active ward)
-        if not self.bonus_used and 0 <= cur_idx < len(agents):
+        if not _is_incapacitated and not self.bonus_used and 0 <= cur_idx < len(agents):
             cur_stats = self.bm.placed_agents[cur_idx].stats
             if (cur_stats.character_class == rpg.CharacterClass.Wizard and
                 cur_stats.wizard_subclass == rpg.WizardSubclass.Abjurer and
@@ -11020,7 +11028,7 @@ class App:
                 y += B + gap
 
         # Wild Shape button (Druid L2+)
-        if not self.bonus_used and 0 <= cur_idx < len(agents):
+        if not _is_incapacitated and not self.bonus_used and 0 <= cur_idx < len(agents):
             cur_stats = self.bm.placed_agents[cur_idx].stats
             if (cur_stats.character_class == rpg.CharacterClass.Druid and
                 cur_stats.char_level >= 2):
@@ -11037,7 +11045,7 @@ class App:
                 y += B + gap
 
         # Jump / Shove / Trip row
-        if not self.bonus_used:
+        if not _is_incapacitated and not self.bonus_used:
             _has_adjacent = False
             if 0 <= cur_idx < len(agents):
                 cur_agent = agents[cur_idx]
@@ -11126,7 +11134,7 @@ class App:
                 self.btn_cbt_grapple_drop.draw(self.screen)
                 y += B + gap
 
-        if not self.bonus_used:
+        if not _is_incapacitated and not self.bonus_used:
             # Patient Defense (Dodge) button - Monk (L1+) with Focus Points, bonus action
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)

@@ -570,8 +570,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             return result;
         }
 
-        // Check if it's time for a save
-        if (active_cond.next_save_turn > 0) continue;
+        // Check if it's time for a save; count down the repeat timer if not
+        if (active_cond.next_save_turn > 0) { --active_cond.next_save_turn; break; }
 
         // Save modifier (ability + proficiency + Aura of Protection).
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
@@ -653,16 +653,32 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                                           " — FAILED (turn skipped)";
                 log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED", ability_name(active_cond.save_ability), active_cond.condition_name, save_d20, save_mod, save_total, save_dc);
                 log_("{} cannot act, skipping turn", agent_name);
+                // Reset countdown so the next save fires after save_repeat_turns more turns.
+                // save_repeat_turns-1 because the countdown is pre-decremented in the > 0 branch.
+                active_cond.next_save_turn = std::max(0, active_cond.save_repeat_turns - 1);
                 return result;
             } else {
                 // Non-incapacitating condition failed save, reset next save time
-                active_cond.next_save_turn = active_cond.save_repeat_turns;
+                active_cond.next_save_turn = std::max(0, active_cond.save_repeat_turns - 1);
                 log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED",
                      ability_name(active_cond.save_ability), active_cond.condition_name,
                      save_d20, save_mod, save_total, save_dc);
             }
         }
         break;  // Only check one condition per turn
+    }
+
+    // Fallback: if still incapacitated after the condition loop (next_save_turn was >0 and got
+    // decremented, or incapacitated was set without an active condition), skip this turn.
+    // This ensures incapacitated agents never act even between periodic save windows.
+    {
+        cond = bm.getAgentConditions(agent_idx);
+        if (!result.turn_skipped && cond.incapacitated) {
+            result.turn_skipped = true;
+            result.skip_reason = "Incapacitated";
+            log_("{} cannot act (incapacitated), skipping turn", agent_name);
+            return result;
+        }
     }
 
     // Check for non-incapacitating conditions that allow save repeats
@@ -673,7 +689,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             active_cond.condition_name == "Stunned") continue;  // Skip incapacitating conditions
 
         if (active_cond.save_repeat_turns == -1) continue;  // Never allows saves
-        if (active_cond.next_save_turn > 0) continue;  // Not time to save yet
+        if (active_cond.next_save_turn > 0) { --active_cond.next_save_turn; continue; }  // Count down repeat timer
 
         // Frightened: save only if no LOS to fear source
         if (active_cond.condition_name == "Frightened" && active_cond.caster_idx >= 0) {
@@ -719,8 +735,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                  ability_name(active_cond.save_ability), active_cond.condition_name,
                  save_d20, save_mod, save_total, save_dc);
         } else {
-            // Save failed, reset next save time
-            active_cond.next_save_turn = active_cond.save_repeat_turns;
+            // Save failed, reset next save time (use save_repeat_turns-1 so first decrement
+            // in the > 0 branch still yields the correct inter-save interval).
+            active_cond.next_save_turn = std::max(0, active_cond.save_repeat_turns - 1);
             log_("{} save vs {} — rolled {} + {} = {} vs DC {} — FAILED",
                  ability_name(active_cond.save_ability), active_cond.condition_name,
                  save_d20, save_mod, save_total, save_dc);
