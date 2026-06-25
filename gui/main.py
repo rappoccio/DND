@@ -920,16 +920,19 @@ class App:
                                           "Pass",
                                           COL_BTN_PASS, COL_BTN_PASS_HOV, self.font_md)
         self.btn_cbt_shove_push  = Button(pygame.Rect(px,       dummy_y, HW, B),
-                                          "🔨 Shove (Push)",
+                                          "🔨 Shove",
                                           (140, 100, 150), (160, 120, 170), self.font_md)
         self.btn_cbt_shove_prone = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
-                                          "⬇ Shove (Prone)",
+                                          "⬇ Trip",
                                           (140, 100, 150), (160, 120, 170), self.font_md)
         # Grapple is no longer a bonus action — it is an Unarmed Strike option (see
         # _show_unarmed_menu) that counts against the Attack action's attack budget. Only the
         # Escape-from-grapple bonus action survives here.
         self.btn_cbt_grapple_esc = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
                                           "💨 Escape",
+                                          (150, 120, 80), (180, 150, 110), self.font_md)
+        self.btn_cbt_grapple_drop = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
+                                          "🔓 Drop",
                                           (150, 120, 80), (180, 150, 110), self.font_md)
         # Telekinetic feat — Telekinetic Shove (bonus action, 30 ft, STR save or pushed 5 ft).
         self.btn_cbt_telekinetic = Button(pygame.Rect(px,       dummy_y, W, B),
@@ -948,7 +951,7 @@ class App:
                                           "🐺 Wild",
                                           (100, 150, 100), (130, 180, 130), self.font_md)
         self.btn_cbt_long_jump   = Button(pygame.Rect(px, dummy_y, W, B),
-                                          "Long Jump",
+                                          "Jump",
                                           (100, 150, 200), (120, 170, 220), self.font_md)
         self.btn_cbt_prone       = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "Go Prone",
@@ -2005,10 +2008,10 @@ class App:
             self.move_remaining_swim   = max(0, swim - exhaustion_reduction)
             self.move_remaining_burrow = max(0, burrow - exhaustion_reduction)
             if cond.exhaustion_level > 0:
-                print(f"[_reset_movement] Agent {agent.name}: exhaustion_level={cond.exhaustion_level} (−{exhaustion_reduction}ft)")
-                print(f"  walk: {walk} → {self.move_remaining_walk}, fly: {fly} → {self.move_remaining_fly}, swim: {swim} → {self.move_remaining_swim}, burrow: {burrow} → {self.move_remaining_burrow}")
+                pass  # print(f"[_reset_movement] Agent {agent.name}: exhaustion_level={cond.exhaustion_level} (−{exhaustion_reduction}ft)")
+                # print(f"  walk: {walk} → {self.move_remaining_walk}, fly: {fly} → {self.move_remaining_fly}, swim: {swim} → {self.move_remaining_swim}, burrow: {burrow} → {self.move_remaining_burrow}")
             else:
-                print(f"[_reset_movement] Agent {agent.name}: exhaustion_level=0, walk={walk}, fly={fly}, swim={swim}, burrow={burrow}")
+                pass  # print(f"[_reset_movement] Agent {agent.name}: exhaustion_level=0, walk={walk}, fly={fly}, swim={swim}, burrow={burrow}")
         else:
             self.move_remaining_walk   = 0
             self.move_remaining_fly    = 0
@@ -2147,6 +2150,7 @@ class App:
         self.initiative_order    = order
         self.combat_active       = True
         self.combat_paused       = False
+        self.show_terrain        = True   # always show terrain during combat
         self.safe_target_edit_idx = -1  # exit any safe-target editing when combat starts
         self.turn_idx            = 0
         self.round_num           = 0
@@ -3345,6 +3349,13 @@ class App:
             # shadows the defender's riposte this swing (see known_limitations.md; full chaining is v2).
             elif (not result.hit) and tgt_cond and tgt_cond.riposte_available:
                 has_riposte = True
+            # Great Weapon Master — Hew: a melee crit/kill with a Heavy weapon offers one bonus-action
+            # attack (only when the bonus action is still free). Offered early; uses the shared
+            # extra-attack flow. Distinct economy from the on-hit riders (it spends the bonus action).
+            # Checked BEFORE weapon mastery riders so Hew is offered even if the weapon has Cleave/Push/Topple.
+            elif (atk_cond and atk_cond.gwm_hew_available and not self.bonus_used
+                  and self._attack_sequence_slot != "bonus"):
+                has_gwm_hew = True
             elif result.hit and atk_cond and atk_cond.push_available:
                 has_push = True
             elif result.hit and atk_cond and atk_cond.topple_available:
@@ -3368,12 +3379,6 @@ class App:
             # attacker's own rider shadows it this swing — see known_limitations.md).
             elif atk_cond and atk_cond.sentinel_guard_available:
                 has_sentinel_guard = True
-            # Great Weapon Master — Hew: a melee crit/kill with a Heavy weapon offers one bonus-action
-            # attack (only when the bonus action is still free). Offered last; uses the shared
-            # extra-attack flow. Distinct economy from the on-hit riders above (it spends the bonus action).
-            elif (atk_cond and atk_cond.gwm_hew_available and not self.bonus_used
-                  and self._attack_sequence_slot != "bonus"):
-                has_gwm_hew = True
             # Stalker's Flurry — Sudden Strike (Gloom Stalker L11): a Dreadful Strike hit grants one
             # FREE extra weapon attack (no action/bonus cost). Flagged on the attacker by the engine
             # when the Dreadful Strike rider fires; offered last (an attacker's own rider shadows it
@@ -3469,6 +3474,8 @@ class App:
             self._offer_protective_field(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_interception:
             self._offer_interception(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_gwm_hew:
+            self._offer_gwm_hew(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         elif has_sentinel_guard:
             self._offer_sentinel_guard(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
@@ -3477,8 +3484,6 @@ class App:
             self._offer_topple(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         elif has_cleave:
             self._offer_cleave(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
-        elif has_gwm_hew:
-            self._offer_gwm_hew(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         elif has_sudden_strike:
             self._offer_sudden_strike(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
         else:
@@ -6116,6 +6121,29 @@ class App:
 
         # Mark bonus action as used
         self.bonus_used = True
+
+    def _execute_grapple_drop(self):
+        """Voluntarily drop all grapples initiated by the current agent (free action)."""
+        agent_idx = self._current_agent_idx()
+        if agent_idx < 0:
+            return
+
+        # Check if agent is grappling anyone
+        agents = self.bm.placed_agents
+        is_grappling = any(
+            agents[i].conditions.grappler_idx == agent_idx and agents[i].conditions.grappled
+            for i in range(len(agents))
+        )
+        if not is_grappling:
+            self._combat_log_add("Not grappling anyone!")
+            return
+
+        # Drop all grapples
+        self.combat.drop_grapples_by(self.bm, agent_idx)
+        agent_name = agents[agent_idx].name if agent_idx < len(agents) else "Unknown"
+        self._combat_log_add(f"{agent_name} releases all grappled targets.")
+        self._update_reach()
+        self._update_attack_overlay()
 
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
         cpp_spells = []
@@ -10557,14 +10585,22 @@ class App:
         txt("⚔  Combat", lx, y, COL_INITIATIVE_CUR, self.font_lg)
         y += 28
 
-        # ── Pause button ───────────────────────────────────────────────────
+        # ── Pause + End Combat row ─────────────────────────────────────────
         HW = W // 2 - 2
         pause_label = "▶ Resume" if self.combat_paused else "⏸ Pause"
         self.btn_cbt_pause_resume.text = pause_label
         self.btn_cbt_pause_resume.rect.x = lx
         self.btn_cbt_pause_resume.rect.y = y
         self.btn_cbt_pause_resume.rect.w = HW
+        self.btn_cbt_pause_resume.font = self.font_sm
         self.btn_cbt_pause_resume.draw(self.screen)
+        self.btn_cbt_pause_resume.font = self.font_md
+        self.btn_cbt_end_combat.rect.x = lx + HW + 4
+        self.btn_cbt_end_combat.rect.y = y
+        self.btn_cbt_end_combat.rect.w = HW
+        self.btn_cbt_end_combat.font = self.font_sm
+        self.btn_cbt_end_combat.draw(self.screen)
+        self.btn_cbt_end_combat.font = self.font_md
         y += self._BTN_H + 8
 
         # ── Initiative list ────────────────────────────────────────────────
@@ -10738,6 +10774,13 @@ class App:
 
         y += section_gap
 
+        # ── End Turn (prominent, before action choices) ────────────────────
+        self.btn_cbt_end_turn.rect.x = lx
+        self.btn_cbt_end_turn.rect.y = y
+        self.btn_cbt_end_turn.rect.w = W
+        self.btn_cbt_end_turn.draw(self.screen)
+        y += B + section_gap
+
         # ── Action section ─────────────────────────────────────────────────
         act_lbl = "Action" + (" ✓" if self.action_used else "")
         txt(act_lbl, lx, y, COL_LABEL)
@@ -10803,45 +10846,46 @@ class App:
                 self.btn_cbt_unarmed.draw(self.screen)
                 y += B + gap
 
-                self.btn_cbt_pass_action.rect.x = lx
-                self.btn_cbt_pass_action.rect.y = y
-                self.btn_cbt_pass_action.rect.w = W
-                self.btn_cbt_pass_action.draw(self.screen)
-                y += B + gap
-
-                # Dash, Dodge, Disengage, Hide buttons
-                TW4 = (W - 12) // 4
+                # Dash, Dodge, Disengage, Hide, Prone/StandUp — one row of 5
+                TW5 = (W - 16) // 5
+                cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
+                is_prone = cond.prone if cond else False
                 self.btn_cbt_dash.rect.x       = lx
                 self.btn_cbt_dash.rect.y       = y
-                self.btn_cbt_dash.rect.w       = TW4
-                self.btn_cbt_dodge.rect.x      = lx + TW4 + gap
+                self.btn_cbt_dash.rect.w       = TW5
+                self.btn_cbt_dodge.rect.x      = lx + TW5 + gap
                 self.btn_cbt_dodge.rect.y      = y
-                self.btn_cbt_dodge.rect.w      = TW4
-                self.btn_cbt_disengage.rect.x  = lx + 2 * (TW4 + gap)
+                self.btn_cbt_dodge.rect.w      = TW5
+                self.btn_cbt_disengage.rect.x  = lx + 2 * (TW5 + gap)
                 self.btn_cbt_disengage.rect.y  = y
-                self.btn_cbt_disengage.rect.w  = TW4
-                self.btn_cbt_hide.rect.x       = lx + 3 * (TW4 + gap)
+                self.btn_cbt_disengage.rect.w  = TW5
+                self.btn_cbt_hide.rect.x       = lx + 3 * (TW5 + gap)
                 self.btn_cbt_hide.rect.y       = y
-                self.btn_cbt_hide.rect.w       = TW4
+                self.btn_cbt_hide.rect.w       = TW5
+                _row5_btns = [self.btn_cbt_dash, self.btn_cbt_dodge,
+                              self.btn_cbt_disengage, self.btn_cbt_hide]
+                for _b in _row5_btns:
+                    _b.font = self.font_sm
                 self.btn_cbt_dash.draw(self.screen)
                 self.btn_cbt_dodge.draw(self.screen)
                 self.btn_cbt_disengage.draw(self.screen)
                 self.btn_cbt_hide.draw(self.screen)
-                y += B + gap
-
-                # Prone / Stand Up buttons
-                cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
-                is_prone = cond.prone if cond else False
                 if is_prone:
-                    self.btn_cbt_standup.rect.x = lx
+                    self.btn_cbt_standup.rect.x = lx + 4 * (TW5 + gap)
                     self.btn_cbt_standup.rect.y = y
-                    self.btn_cbt_standup.rect.w = W
+                    self.btn_cbt_standup.rect.w = TW5
+                    self.btn_cbt_standup.font = self.font_sm
                     self.btn_cbt_standup.draw(self.screen)
+                    self.btn_cbt_standup.font = self.font_md
                 else:
-                    self.btn_cbt_prone.rect.x = lx
+                    self.btn_cbt_prone.rect.x = lx + 4 * (TW5 + gap)
                     self.btn_cbt_prone.rect.y = y
-                    self.btn_cbt_prone.rect.w = W
+                    self.btn_cbt_prone.rect.w = TW5
+                    self.btn_cbt_prone.font = self.font_sm
                     self.btn_cbt_prone.draw(self.screen)
+                    self.btn_cbt_prone.font = self.font_md
+                for _b in _row5_btns:
+                    _b.font = self.font_md
                 y += B + gap
 
                 # Cast Spell button (if available)
@@ -10941,45 +10985,27 @@ class App:
             else:
                 self.btn_cbt_atk_bonus.text = "⚔ Bonus Atk"
 
-            # Layout depends on whether spells are available
+            # Layout depends on whether spells are available (no Pass button)
             if _cur_can_spell and _cur_has_spells:
-                TW3_bonus = (W - 8) // 3
+                TW2_bonus = (W - gap) // 2
                 self.btn_cbt_atk_bonus.rect.x   = lx
                 self.btn_cbt_atk_bonus.rect.y   = y
-                self.btn_cbt_atk_bonus.rect.w   = TW3_bonus
-                self.btn_cbt_spell_bonus.rect.x = lx + TW3_bonus + gap
+                self.btn_cbt_atk_bonus.rect.w   = TW2_bonus
+                self.btn_cbt_spell_bonus.rect.x = lx + TW2_bonus + gap
                 self.btn_cbt_spell_bonus.rect.y = y
-                self.btn_cbt_spell_bonus.rect.w = TW3_bonus
-                self.btn_cbt_pass_bonus.rect.x  = lx + 2 * (TW3_bonus + gap)
-                self.btn_cbt_pass_bonus.rect.y  = y
-                self.btn_cbt_pass_bonus.rect.w  = TW3_bonus
+                self.btn_cbt_spell_bonus.rect.w = TW2_bonus
                 if _cur_has_offhand or mid_sequence_bonus:
                     self.btn_cbt_atk_bonus.draw(self.screen)
                 self.btn_cbt_spell_bonus.draw(self.screen)
-                self.btn_cbt_pass_bonus.draw(self.screen)
             else:
                 self.btn_cbt_atk_bonus.rect.x  = lx
                 self.btn_cbt_atk_bonus.rect.y  = y
                 self.btn_cbt_atk_bonus.rect.w  = HW
-                self.btn_cbt_pass_bonus.rect.x = lx + HW + gap
-                self.btn_cbt_pass_bonus.rect.y = y
-                self.btn_cbt_pass_bonus.rect.w = HW
                 if _cur_has_offhand or mid_sequence_bonus:
                     self.btn_cbt_atk_bonus.draw(self.screen)
-                self.btn_cbt_pass_bonus.draw(self.screen)
             y += B
 
-        # Long Jump — costs a Bonus Action (house rule) and also spends movement. Lives in the
-        # Bonus Action area and is only offered while the bonus action is available; executing a
-        # jump consumes it (see _execute_jump). The engine's jump_agent still enforces the
-        # remaining movement budget when a landing cell is clicked.
-        if not self.bonus_used:
-            y += gap
-            self.btn_cbt_long_jump.rect.x = lx
-            self.btn_cbt_long_jump.rect.y = y
-            self.btn_cbt_long_jump.rect.w = W
-            self.btn_cbt_long_jump.draw(self.screen)
-            y += B + gap
+        # Jump + Shove row — merged below into the adjacency block
 
         # Arcane Ward charging button (Abjurer L3+ with active ward)
         if not self.bonus_used and 0 <= cur_idx < len(agents):
@@ -11010,7 +11036,7 @@ class App:
                 self.btn_cbt_wild_shape.draw(self.screen)
                 y += B + gap
 
-        # Shove buttons (only if there are adjacent enemies, outside the spell layout logic)
+        # Jump / Shove / Trip row
         if not self.bonus_used:
             _has_adjacent = False
             if 0 <= cur_idx < len(agents):
@@ -11024,17 +11050,28 @@ class App:
                         _has_adjacent = True
                         break
 
+            y += gap
             if _has_adjacent:
-                TW2_shove = (W - gap) // 2
-                self.btn_cbt_shove_push.rect.x  = lx
+                TW3 = (W - 2 * gap) // 3
+                self.btn_cbt_long_jump.rect.x  = lx
+                self.btn_cbt_long_jump.rect.y  = y
+                self.btn_cbt_long_jump.rect.w  = TW3
+                self.btn_cbt_shove_push.rect.x  = lx + TW3 + gap
                 self.btn_cbt_shove_push.rect.y  = y
-                self.btn_cbt_shove_push.rect.w  = TW2_shove
-                self.btn_cbt_shove_prone.rect.x = lx + TW2_shove + gap
+                self.btn_cbt_shove_push.rect.w  = TW3
+                self.btn_cbt_shove_prone.rect.x = lx + 2 * (TW3 + gap)
                 self.btn_cbt_shove_prone.rect.y = y
-                self.btn_cbt_shove_prone.rect.w = TW2_shove
-                self.btn_cbt_shove_push.draw(self.screen)
-                self.btn_cbt_shove_prone.draw(self.screen)
-                y += B + gap
+                self.btn_cbt_shove_prone.rect.w = TW3
+                for _b in (self.btn_cbt_long_jump, self.btn_cbt_shove_push, self.btn_cbt_shove_prone):
+                    _b.font = self.font_sm
+                    _b.draw(self.screen)
+                    _b.font = self.font_md
+            else:
+                self.btn_cbt_long_jump.rect.x = lx
+                self.btn_cbt_long_jump.rect.y = y
+                self.btn_cbt_long_jump.rect.w = W
+                self.btn_cbt_long_jump.draw(self.screen)
+            y += B + gap
 
             # Escape-from-grapple bonus action (only when adjacent and currently grappled).
             # Initiating a grapple is now an Unarmed Strike option, not a bonus action.
@@ -11056,27 +11093,40 @@ class App:
                     self.btn_cbt_telekinetic.draw(self.screen)
                     y += B + gap
 
-            # Hide, Dash, Disengage (Cunning Action) buttons - only if agent has cunning action
+            # Dash, Disengage, Hide (Cunning Action) — one row, same order as action row
             if 0 <= cur_idx < len(agents):
                 agent = agents[cur_idx]
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
                 if stats.has_cunning_action:
-                    self.btn_cbt_hide_bonus.rect.x = lx
-                    self.btn_cbt_hide_bonus.rect.y = y
-                    self.btn_cbt_hide_bonus.rect.w = W
+                    TW3_ca = (W - 2 * gap) // 3
+                    self.btn_cbt_dash_bonus.rect.x      = lx
+                    self.btn_cbt_dash_bonus.rect.y      = y
+                    self.btn_cbt_dash_bonus.rect.w      = TW3_ca
+                    self.btn_cbt_disengage_bonus.rect.x = lx + TW3_ca + gap
+                    self.btn_cbt_disengage_bonus.rect.y = y
+                    self.btn_cbt_disengage_bonus.rect.w = TW3_ca
+                    self.btn_cbt_hide_bonus.rect.x      = lx + 2 * (TW3_ca + gap)
+                    self.btn_cbt_hide_bonus.rect.y      = y
+                    self.btn_cbt_hide_bonus.rect.w      = TW3_ca
+                    self.btn_cbt_dash_bonus.draw(self.screen)
+                    self.btn_cbt_disengage_bonus.draw(self.screen)
                     self.btn_cbt_hide_bonus.draw(self.screen)
                     y += B + gap
-                    self.btn_cbt_dash_bonus.rect.x = lx
-                    self.btn_cbt_dash_bonus.rect.y = y
-                    self.btn_cbt_dash_bonus.rect.w = W
-                    self.btn_cbt_dash_bonus.draw(self.screen)
-                    y += B + gap
-                    self.btn_cbt_disengage_bonus.rect.x = lx
-                    self.btn_cbt_disengage_bonus.rect.y = y
-                    self.btn_cbt_disengage_bonus.rect.w = W
-                    self.btn_cbt_disengage_bonus.draw(self.screen)
-                    y += B + gap
 
+        # Drop grapple button (free action — show regardless of bonus action status)
+        if 0 <= cur_idx < len(agents):
+            is_grappling = any(
+                agents[i].conditions.grappler_idx == cur_idx and agents[i].conditions.grappled
+                for i in range(len(agents)) if i != cur_idx
+            )
+            if is_grappling:
+                self.btn_cbt_grapple_drop.rect.x = lx
+                self.btn_cbt_grapple_drop.rect.y = y
+                self.btn_cbt_grapple_drop.rect.w = W
+                self.btn_cbt_grapple_drop.draw(self.screen)
+                y += B + gap
+
+        if not self.bonus_used:
             # Patient Defense (Dodge) button - Monk (L1+) with Focus Points, bonus action
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -11890,40 +11940,17 @@ class App:
 
         y += section_gap
 
-        # ── Place Terrain / End Turn ───────────────────────────────────────
+        # ── Visibility toggles + End Combat ───────────────────────────────
         HW = (W - 4) // 2
-        self.btn_cbt_place_terrain.rect.x = lx
-        self.btn_cbt_place_terrain.rect.y = y
-        self.btn_cbt_place_terrain.rect.w = HW
-        self.btn_cbt_place_terrain.draw(self.screen)
-
-        self.btn_cbt_end_turn.rect.x  = lx + HW + 4
-        self.btn_cbt_end_turn.rect.y  = y
-        self.btn_cbt_end_turn.rect.w  = HW
-        self.btn_cbt_end_turn.draw(self.screen)
-        y += B + gap
-
-        self.btn_show_terrain.rect.x = lx
-        self.btn_show_terrain.rect.y = y
-        self.btn_show_terrain.rect.w = HW
-        self.btn_show_terrain.draw(self.screen)
-        y += B + gap
-
         self.btn_show_spell_effects.rect.x = lx
         self.btn_show_spell_effects.rect.y = y
         self.btn_show_spell_effects.rect.w = HW
         self.btn_show_spell_effects.draw(self.screen)
-        y += B + gap
 
-        self.btn_show_visible_targets.rect.x = lx
+        self.btn_show_visible_targets.rect.x = lx + HW + 4
         self.btn_show_visible_targets.rect.y = y
         self.btn_show_visible_targets.rect.w = HW
         self.btn_show_visible_targets.draw(self.screen)
-
-        self.btn_cbt_end_combat.rect.x = lx + HW + 4
-        self.btn_cbt_end_combat.rect.y = y
-        self.btn_cbt_end_combat.rect.w = HW
-        self.btn_cbt_end_combat.draw(self.screen)
         y += B + gap
 
         # Drop Concentration button (if current agent is concentrating)
@@ -11937,7 +11964,7 @@ class App:
             self.btn_cbt_drop_concentration.draw(self.screen)
             y += B + gap
 
-        # Drop Weapon buttons (show only when slot has a real weapon)
+        # Drop Weapon buttons — all visible slots on a single row
         if 0 <= cur_idx < len(agents):
             cur_weapons = self.combat.get_agent_weapons(self.bm, cur_idx)
             slot_labels = [("Drop Main", cur_weapons[0], 0),
@@ -11946,14 +11973,18 @@ class App:
             drop_btns = [self.btn_cbt_drop_weapon_main,
                         self.btn_cbt_drop_weapon_off,
                         self.btn_cbt_drop_weapon_rng]
-            for btn, (lbl, wpn, _slot_idx) in zip(drop_btns, slot_labels):
-                if wpn.name and wpn.name != "Unnamed":
-                    btn.text = lbl + f": {wpn.name[:10]}"
-                    btn.rect.x = lx
+            visible_drops = [(btn, lbl, wpn) for btn, (lbl, wpn, _) in zip(drop_btns, slot_labels)
+                             if wpn.name and wpn.name != "Unnamed"]
+            if visible_drops:
+                n = len(visible_drops)
+                tw = (W - (n - 1) * gap) // n
+                for j, (btn, lbl, wpn) in enumerate(visible_drops):
+                    btn.text = lbl
+                    btn.rect.x = lx + j * (tw + gap)
                     btn.rect.y = y
-                    btn.rect.w = W
+                    btn.rect.w = tw
                     btn.draw(self.screen)
-                    y += B + gap
+                y += B + gap
 
         y += section_gap
 
@@ -13207,6 +13238,8 @@ class App:
                         self._update_attack_overlay()
                 if self.btn_cbt_use_portent.clicked(event):
                     self._show_portent_dice_menu()
+                if self.btn_cbt_grapple_drop.clicked(event):
+                    self._execute_grapple_drop()
                 if not self.bonus_used:
                     if _has_offhand and self.btn_cbt_atk_bonus.clicked(event):
                         self._start_attack("bonus")

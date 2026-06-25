@@ -361,6 +361,21 @@ void CombatEngine::applyGrappled(BattleMap& bm, int target_idx, int grappler_idx
     setAgentConditions(bm, target_idx, cond);
 }
 
+void CombatEngine::dropGrapplesBy(BattleMap& bm, int agent_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
+
+    for (size_t i = 0; i < agents.size(); ++i) {
+        Agent::Conditions cond = getAgentConditions(bm, static_cast<int>(i));
+        if (cond.grappler_idx == agent_idx && cond.grappled) {
+            cond.grappled = false;
+            cond.grappler_idx = -1;
+            setAgentConditions(bm, static_cast<int>(i), cond);
+        }
+    }
+}
+
 void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_idx, int word) noexcept
 {
     auto agents = bm.placedAgents();

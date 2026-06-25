@@ -129,7 +129,9 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
         return false;
     }
 
-    // Check if grapple should auto-end (grappler incapacitated or out of range)
+    // Check if grapple should auto-end (only if grappler is incapacitated).
+    // Note: distance alone does NOT break a grapple — you can drag a grappled creature
+    // as far as your movement allows (at 2x cost). Grapple ends only via explicit drop or escape.
     if (cond.grappler_idx >= 0 && cond.grappler_idx < static_cast<int>(agents.size())) {
         Agent::Conditions grappler_cond = bm.getAgentConditions(cond.grappler_idx);
         if (grappler_cond.incapacitated) {
@@ -137,20 +139,6 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
             cond.grappler_idx = -1;
             bm.setAgentConditions(idx, cond);
             log_("Grapple ended: grappler is incapacitated");
-            // Continue with movement now that grapple is broken
-        } else {
-            // Check distance
-            Cell grappler_pos = agents[cond.grappler_idx].origin;
-            Cell my_pos = agents[idx].origin;
-            int dist_cells = std::max(std::abs(my_pos.col - grappler_pos.col),
-                                     std::abs(my_pos.row - grappler_pos.row));
-            if (dist_cells * 5 > cond.grapple_range_ft) {
-                cond.grappled = false;
-                cond.grappler_idx = -1;
-                bm.setAgentConditions(idx, cond);
-                log_("Grapple ended: distance exceeds grapple range");
-                // Continue with movement now that grapple is broken
-            }
         }
     }
 

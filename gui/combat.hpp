@@ -2042,6 +2042,10 @@ public:
     [[nodiscard]] GrappleEscapeResult executeGrappleEscape(BattleMap& bm,
                                                            int agent_idx);
 
+    // Drop all grapples initiated by an agent (free action — voluntarily end grapples).
+    // Iterates through all agents and clears grappled/grappler_idx for those held by agent_idx.
+    void dropGrapplesBy(BattleMap& bm, int agent_idx) noexcept;
+
     // Decrement turns_remaining on all active effects; apply per-tick damage/heal;
     // remove effects whose turns_remaining reaches 0.
     void tickEffects(BattleMap& bm);

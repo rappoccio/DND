@@ -2434,6 +2434,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Attempt to escape an ongoing grapple (contested STR(Athletics)/DEX(Acrobatics) vs escape_dc).\n"
              "On success: grapple condition is cleared.\n"
              "Returns GrappleEscapeResult with rolls, success status, and log message.")
+        .def("drop_grapples_by",
+             &CombatEngine::dropGrapplesBy,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Voluntarily drop all grapples initiated by the agent (free action).\n"
+             "Clears grappled condition and grappler_idx for all affected targets.")
 
         // Barbarian Rage lifecycle
         .def("activate_rage",

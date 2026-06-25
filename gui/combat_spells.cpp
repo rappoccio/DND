@@ -1071,6 +1071,148 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         case Spell::Automatic:
         default: {
+            // True Strike: make a weapon attack using spellcasting ability for attack and damage.
+            if (sp.name == "True Strike") {
+                tr.hp_before = tgt_stats.hp_cur;
+
+                // Roll attack using spellcasting ability mod, not normal attack bonus
+                int d20_val = roll(20);
+                int mod = spellAttackMod(caster_stats);
+                int total_roll = d20_val + mod;
+                int target_ac = calculateAC(bm, tgt_idx);
+                bool is_critical = (d20_val >= caster_stats.crit_threshold);
+                tr.d20 = d20_val;
+                tr.attack_mod = mod;
+                tr.total_roll = total_roll;
+                tr.target_ac = target_ac;
+                tr.critical = is_critical;
+                tr.hit = is_critical || (d20_val != 1 && total_roll >= target_ac);
+
+                if (tr.hit) {
+                    // Get the caster's primary weapon for damage rolling
+                    auto caster_weapons = bm.getAgentWeapons(action.caster_idx);
+                    if (!caster_weapons.empty()) {
+                        const Weapon& weapon = caster_weapons[0];
+
+                        // Roll damage using weapon damage dice + spellcasting ability mod
+                        int damage = 0;
+
+                        // Use weapon's physical damage rolls if available, otherwise fall back to convenience fields
+                        if (!weapon.physicalDamageRolls.empty()) {
+                            const auto& dmg_roll = weapon.physicalDamageRolls[0];  // Primary damage type
+                            const int num_dice = tr.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
+                            for (int i = 0; i < num_dice; ++i) {
+                                int d = roll(dmg_roll.die_size);
+                                tr.dice_results.push_back(d);
+                                damage += d;
+                            }
+
+                            // Add spellcasting ability modifier (not weapon ability modifier)
+                            int ability_score = 10;
+                            if (caster_stats.spellcasting_ability == 0) ability_score = caster_stats.str;
+                            else if (caster_stats.spellcasting_ability == 1) ability_score = caster_stats.dex;
+                            else if (caster_stats.spellcasting_ability == 2) ability_score = caster_stats.con;
+                            else if (caster_stats.spellcasting_ability == 3) ability_score = caster_stats.intel;
+                            else if (caster_stats.spellcasting_ability == 4) ability_score = caster_stats.wis;
+                            else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
+                            int ability_mod = abilityMod(ability_score);
+                            damage += ability_mod;
+
+                            // Apply the weapon's damage type multiplier
+                            float multiplier = tgt_stats.physical_damage_multipliers[dmg_roll.type];
+                            int modified_damage = static_cast<int>(static_cast<float>(damage) * multiplier);
+
+                            tr.total_damage = std::max(0, modified_damage);
+                        } else {
+                            // Fallback: use convenience fields (damage_dice, damage_dice_count)
+                            const int num_dice = tr.critical ? weapon.damage_dice_count * 2 : weapon.damage_dice_count;
+                            for (int i = 0; i < num_dice; ++i) {
+                                int d = roll(weapon.damage_dice);
+                                tr.dice_results.push_back(d);
+                                damage += d;
+                            }
+
+                            // Add spellcasting ability modifier (not weapon ability modifier)
+                            int ability_score = 10;
+                            if (caster_stats.spellcasting_ability == 0) ability_score = caster_stats.str;
+                            else if (caster_stats.spellcasting_ability == 1) ability_score = caster_stats.dex;
+                            else if (caster_stats.spellcasting_ability == 2) ability_score = caster_stats.con;
+                            else if (caster_stats.spellcasting_ability == 3) ability_score = caster_stats.intel;
+                            else if (caster_stats.spellcasting_ability == 4) ability_score = caster_stats.wis;
+                            else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
+                            int ability_mod = abilityMod(ability_score);
+                            damage += ability_mod;
+
+                            // Default to Bludgeoning multiplier for convenience-field weapons
+                            float multiplier = tgt_stats.physical_damage_multipliers[Bludgeoning];
+                            int modified_damage = static_cast<int>(static_cast<float>(damage) * multiplier);
+
+                            tr.total_damage = std::max(0, modified_damage);
+                        }
+
+                        int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
+                        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
+                        tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
+
+                        // Check if target is down
+                        tr.target_down = (tgt_stats.hp_cur <= 0);
+
+                        // Get spellcasting ability modifier for logging
+                        int ability_score = 10;
+                        if (caster_stats.spellcasting_ability == 0) ability_score = caster_stats.str;
+                        else if (caster_stats.spellcasting_ability == 1) ability_score = caster_stats.dex;
+                        else if (caster_stats.spellcasting_ability == 2) ability_score = caster_stats.con;
+                        else if (caster_stats.spellcasting_ability == 3) ability_score = caster_stats.intel;
+                        else if (caster_stats.spellcasting_ability == 4) ability_score = caster_stats.wis;
+                        else if (caster_stats.spellcasting_ability == 5) ability_score = caster_stats.cha;
+                        int ability_mod = abilityMod(ability_score);
+
+                        // Build damage notation string (e.g., "1d8 + 3") for engine log
+                        std::string damage_notation;
+                        if (!weapon.physicalDamageRolls.empty()) {
+                            const auto& dmg_roll = weapon.physicalDamageRolls[0];
+                            damage_notation = std::to_string(tr.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice) +
+                                             "d" + std::to_string(dmg_roll.die_size);
+                        } else {
+                            damage_notation = std::to_string(tr.critical ? weapon.damage_dice_count * 2 : weapon.damage_dice_count) +
+                                             "d" + std::to_string(weapon.damage_dice);
+                        }
+
+                        if (ability_mod >= 0) {
+                            damage_notation += " + " + std::to_string(ability_mod);
+                        } else {
+                            damage_notation += " - " + std::to_string(-ability_mod);
+                        }
+
+                        // Build log message in the standard AttackRoll format (for GUI display)
+                        std::string crit_str = tr.critical ? " CRIT!" : "";
+                        std::string down_str = tr.target_down ? " — DOWN" : "";
+                        tr.log_message = "HIT (roll " + std::to_string(d20_val) + " + " + std::to_string(mod)
+                            + " = " + std::to_string(total_roll) + " vs AC " + std::to_string(target_ac) + ")"
+                            + crit_str + " " + std::to_string(tr.total_damage) + down_str;
+
+                        // Log detailed breakdown to engine log
+                        log_("True Strike: {} attack roll ({} + {}) = {} vs AC {} — HIT",
+                             agentName(bm, action.caster_idx), d20_val, mod, total_roll, target_ac);
+                        log_("Damage: {} = {} dmg", damage_notation, tr.total_damage);
+                    } else {
+                        // No weapon equipped, treat as a miss
+                        tr.hit = false;
+                        log_("True Strike: {} has no equipped weapon", agentName(bm, action.caster_idx));
+                    }
+                } else {
+                    tr.log_message = "miss (roll " + std::to_string(d20_val) + " + " +
+                        std::to_string(mod) + " = " + std::to_string(total_roll) + " vs AC " +
+                        std::to_string(target_ac) + ")";
+                    log_("True Strike: {} {}", agentName(bm, action.caster_idx), tr.log_message);
+                }
+
+                // Store result - will be processed by post-switch code
+                tr.hp_after = tgt_stats.hp_cur;
+                bm.setAgentStats(tgt_idx, tgt_stats);
+                break;  // Exit the attack-type switch, not the target loop
+            }
+
             std::vector<int> dice;
             int total = 0;
             // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
