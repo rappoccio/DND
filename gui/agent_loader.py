@@ -43,6 +43,9 @@ def dict_to_stats(stats_dict):
     stats.is_undead = bool(stats_dict.get("is_undead", False))
     stats.is_fiend = bool(stats_dict.get("is_fiend", False))
     stats.is_vampire = bool(stats_dict.get("is_vampire", False))
+    stats.regeneration_amount = int(stats_dict.get("regeneration_amount", 0))
+    # Assign a whole list (pybind returns a copy on read, so in-place append wouldn't stick).
+    stats.regen_interrupt_damage_types = [int(t) for t in stats_dict.get("regen_interrupt_damage_types", [])]
     stats.has_cunning_action = bool(stats_dict.get("has_cunning_action", False))
     stats.has_sentinel = bool(stats_dict.get("has_sentinel", False))
     stats.has_branches_of_the_tree = bool(stats_dict.get("has_branches_of_the_tree", False))

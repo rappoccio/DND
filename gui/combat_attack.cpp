@@ -591,11 +591,30 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
     return s.hp_cur;
 }
 
-void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount) noexcept
+void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount, unsigned magic_type_mask) noexcept
 {
     if (amount <= 0) return;  // taking 0 damage is not "taking damage"
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Regeneration interrupt (Troll acid/fire, Vampire radiant, …): if this creature regenerates and
+    // just took a damage type that shuts off its regeneration, flag its next regen check as suppressed.
+    if (magic_type_mask != 0u) {
+        Agent::Stats rs = bm.getAgentStats(idx);
+        if (rs.regeneration_amount > 0 && !rs.regen_suppressed &&
+            !rs.regen_interrupt_damage_types.empty()) {
+            for (int t : rs.regen_interrupt_damage_types) {
+                if (t >= 0 && (magic_type_mask & (1u << static_cast<unsigned>(t))) != 0u) {
+                    rs.regen_suppressed = true;
+                    bm.setAgentStats(idx, rs);
+                    log_("{}'s Regeneration will be suppressed next turn ({} damage taken)",
+                         agentName(bm, idx),
+                         magicDamageName(static_cast<MagicDamage_t>(t)));
+                    break;
+                }
+            }
+        }
+    }
 
     std::vector<int> to_remove;
     for (const auto& cond : activeAgentConditions_) {
@@ -1554,7 +1573,7 @@ bool CombatEngine::applyRestoreBalanceMissToAttack(BattleMap& bm, const Attack& 
         log_("Restore Balance turns a miss into a hit: {} damage to {}", dmg, agentName(bm, tgt));
         if (dmg > 0) {
             checkConcentrationOnDamage(bm, tgt, dmg);
-            processDamageTaken(bm, tgt, dmg);
+            processDamageTaken(bm, tgt, dmg, magicTypeMask(r.magic_damage_dealt));
         }
     }
     return true;
@@ -3096,7 +3115,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 vs.hp_cur  = std::clamp(vs.hp_cur - soverflow, 0, vs.hp_max);
                 bm.setAgentStats(splash_idx, vs);
                 checkConcentrationOnDamage(bm, splash_idx, sp_dmg, action.attacker_idx);
-                processDamageTaken(bm, splash_idx, sp_dmg);
+                processDamageTaken(bm, splash_idx, sp_dmg, magicTypeBit(type));
                 if (vs.hp_cur <= 0 && !vc.unconscious && !vc.dead)
                     applyUnconscious(bm, splash_idx);
                 updated_atk_cond.superior_prey_used = true;
@@ -3461,8 +3480,10 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // Taking weapon damage forces a concentration save on the target (DC = max(10, dmg/2)).
         // Pass the attacker so a Mage Slayer imposes Disadvantage (Concentration Breaker).
         checkConcentrationOnDamage(bm, action.target_idx, r.total_damage, action.attacker_idx);
-        // ...and ends/triggers on-damage conditions (Sleep, Hypnotic Pattern, Tasha's).
-        processDamageTaken(bm, action.target_idx, r.total_damage);
+        // ...and ends/triggers on-damage conditions (Sleep, Hypnotic Pattern, Tasha's) and
+        // Regeneration interrupts (the magic types actually dealt this hit).
+        processDamageTaken(bm, action.target_idx, r.total_damage,
+                           magicTypeMask(r.magic_damage_dealt));
     }
 
     // Auto-trigger Unconscious if HP drops to 0 or below
@@ -3627,19 +3648,29 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
-    // Apply weapon push on hit (push_ft > 0 and weapon is proficient)
+    // Apply weapon forced movement on hit (push_ft > 0 and weapon is proficient).
+    //   "Push" — shove the target push_ft feet AWAY from the attacker (forceMoveAgent default).
+    //   "Pull" — reel the target push_ft feet TOWARD the attacker (forceMoveAgent pull=true).
+    // "Pull" data-drives the Roper's Reel (tentacle grapples + reels a target 30 ft inward) and
+    // reuses the same forced-move core as the Monk's Elemental Attunement pull.
     if (r.hit && w.proficient) {
         for (const auto& weapon_cond : w.conditions) {
-            if (weapon_cond.condition_name == "Push" && weapon_cond.push_ft > 0) {
+            const bool is_push = (weapon_cond.condition_name == "Push");
+            const bool is_pull = (weapon_cond.condition_name == "Pull");
+            if ((is_push || is_pull) && weapon_cond.push_ft > 0) {
                 if (action.attacker_idx >= 0 && action.attacker_idx < static_cast<int>(agents.size())) {
                     const auto& attacker = agents[action.attacker_idx];
-                    int cells_moved = bm.forceMoveAgent(action.target_idx, attacker.origin, weapon_cond.push_ft);
+                    // Pass the attacker's footprint so a pull stops adjacent to a Large puller
+                    // (e.g. the Roper) rather than slipping onto/through its 2×2 body.
+                    int cells_moved = bm.forceMoveAgent(action.target_idx, attacker.origin,
+                                                        weapon_cond.push_ft, is_pull,
+                                                        attacker.agent->getSize());
                     r.push_ft_applied = cells_moved * 5;
                     if (cells_moved > 0) {
-                        log_("Target pushed {} feet", r.push_ft_applied);
+                        log_("Target {} {} feet", is_pull ? "pulled" : "pushed", r.push_ft_applied);
                     }
                 }
-                break;  // only one push condition per attack
+                break;  // only one forced-move condition per attack
             }
         }
     }

@@ -265,8 +265,11 @@ public:
 
     // Force move an agent (push/knockback). By default moves the agent AWAY from push_from; with
     // pull=true, moves it TOWARD push_from instead. Does not consume movement budget. Stops at walls
-    // or map edge. Returns number of cells actually moved.
-    [[nodiscard]] int forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull = false) noexcept;
+    // or map edge. A pull also stops once the agent is adjacent to the puller's footprint (it never
+    // moves onto or past it) — from_size is the puller's footprint side (cells); ignored for a push.
+    // Returns number of cells actually moved.
+    [[nodiscard]] int forceMoveAgent(int idx, Cell push_from, int push_ft,
+                                     bool pull = false, int from_size = 1) noexcept;
 
     // Directly set an agent's position (used for grapple dragging, not validated against movement).
     // Returns false if idx is invalid or destination is out of bounds.

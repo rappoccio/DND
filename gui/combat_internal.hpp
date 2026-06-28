@@ -22,6 +22,7 @@
 #include "spell.hpp"        // Spell geometry enums used by resolveAoeTargets
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <span>
@@ -53,6 +54,35 @@ inline constexpr int dndMod(int score) noexcept
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Damage-type mask
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Bitmask (bit t = MagicDamage_t t) of every magic type that dealt > 0 damage in this result.
+// Fed to processDamageTaken so Regeneration interrupts (Troll acid/fire, Vampire radiant) can fire.
+inline unsigned magicTypeMask(const std::array<int, NumMagicDamage_t>& dealt) noexcept
+{
+    unsigned mask = 0u;
+    for (unsigned t = 0; t < NumMagicDamage_t; ++t)
+        if (dealt[t] > 0) mask |= (1u << t);
+    return mask;
+}
+
+// Convenience: the mask for a single MagicDamage_t (or 0 if t is out of range / "none" == -1).
+inline unsigned magicTypeBit(int t) noexcept
+{
+    return (t >= 0 && t < NumMagicDamage_t) ? (1u << static_cast<unsigned>(t)) : 0u;
+}
+
+// Mask of every magic damage type a spell can deal (types already reflect any damage_type_override /
+// Transmuted Spell rewrite, which mutate sp.magic_damage_rolls in place before damage is applied).
+inline unsigned magicTypeMaskFromSpell(const Spell& sp) noexcept
+{
+    unsigned mask = 0u;
+    for (const auto& r : sp.magic_damage_rolls) mask |= magicTypeBit(static_cast<int>(r.type));
+    return mask;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Geometry
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,14 +100,9 @@ inline int chebyshevToFootprint(int tc, int tr,
     return std::max(dc, dr);
 }
 
-// Chebyshev distance between two NxN footprints (0 if adjacent/overlapping edges touch at dist 0).
-// Used by the reaction system to decide when a mover leaves a reactor's reach.
-inline int footprintDistance(Cell a, int sa, Cell b, int sb) noexcept
-{
-    int dc = std::max({a.col - (b.col + sb - 1), b.col - (a.col + sa - 1), 0});
-    int dr = std::max({a.row - (b.row + sb - 1), b.row - (a.row + sa - 1), 0});
-    return std::max(dc, dr);
-}
+// footprintDistance now lives in cell.hpp (the map/geometry layer) so BattleMap can
+// share it too; still the single source of truth. Pulled in transitively via
+// battle_map.hpp → cell.hpp above. (Intentionally not redefined here.)
 
 // Helper: get all cells along a line from start to end (Bresenham-like)
 inline std::vector<Cell> getCellsAlongPath(Cell start, Cell end) noexcept

@@ -91,17 +91,58 @@ class SpellDialog:
             self._cb(self._agent_idx, self._spells)
         self.active = False
 
+    TAB_W   = 108   # fixed width of a single spell tab
+    TAB_GAP = 4     # gap between tabs (both axes)
+    ADD_W   = 56    # width of the trailing "+ Add" cell
+
+    def _layout_tabs(self):
+        """Compute wrapping multi-row layout for the spell tabs + [+ Add].
+
+        Returns (tab_rects, add_rect, content_y) where content_y is the first
+        y below the tab block (where the editing form / divider should start).
+        The tabs flow left-to-right and wrap onto new rows so they never run
+        past the right edge of the dialog. The [+ Add] button is the cell that
+        immediately follows the last tab in this same flow.
+        """
+        r   = self._rect
+        PAD = self.PAD
+        W   = self.DLG_W
+        gap = self.TAB_GAP
+        tw  = self.TAB_W
+        start_x = r.x + PAD
+        start_y = r.y + self.HDR_H + PAD
+        avail_w = W - PAD * 2
+        cols = max(1, (avail_w + gap) // (tw + gap))
+
+        n = len(self._spells)
+        tab_rects = []
+        for i in range(n):
+            col = i % cols
+            row = i // cols
+            tab_rects.append(pygame.Rect(
+                start_x + col * (tw + gap),
+                start_y + row * (self.TAB_H + gap),
+                tw, self.TAB_H))
+
+        # [+ Add] occupies the next cell in the flow.
+        col = n % cols
+        row = n // cols
+        add_r = pygame.Rect(
+            start_x + col * (tw + gap),
+            start_y + row * (self.TAB_H + gap),
+            self.ADD_W, self.TAB_H)
+
+        rows = (n + cols) // cols  # ceil((n + 1) / cols)
+        content_y = start_y + rows * (self.TAB_H + gap)
+        return tab_rects, add_r, content_y
+
     def _update_rects(self, screen):
         """Recalculate button and field rects based on current dialog position."""
         if not self._rect:
             return
-        # Update the "add" button rect
-        r = self._rect
-        PAD = self.PAD
-        cy = r.y + self.HDR_H + PAD
-        # Button position: right side of the dialog, fully inside the border
-        # Button width is 48, positioned PAD pixels from the right edge
-        add_r = pygame.Rect(r.right - PAD - 48, cy, 48, self.TAB_H)
+        # Keep tab + add rects in sync for collision detection between draws.
+        tab_rects, add_r, _ = self._layout_tabs()
+        self._rects["tab"] = tab_rects
         self._rects["add"] = add_r
 
     def handle(self, event, screen) -> bool:
@@ -251,15 +292,11 @@ class SpellDialog:
             f"✨ SPELLS — {self._agent_name}", True, (220, 200, 255))
         screen.blit(title_s, (r.x + PAD, r.y + (self.HDR_H - title_s.get_height()) // 2))
 
-        cy = r.y + self.HDR_H + PAD
-
-        # Spell tabs + [+ Add]
-        tab_rects = []
-        tab_max_w = W - PAD * 2 - 60
-        tab_w     = min(120, max(60, tab_max_w // max(len(self._spells), 1)))
+        # Spell tabs + [+ Add] — wrapping multi-row layout so a long spell
+        # list never overflows the dialog width.
+        tab_rects, add_r, content_y = self._layout_tabs()
         for i, sp in enumerate(self._spells):
-            tr = pygame.Rect(r.x + PAD + i * (tab_w + 3), cy, tab_w, self.TAB_H)
-            tab_rects.append(tr)
+            tr = tab_rects[i]
             active = (i == self._sel)
             pygame.draw.rect(screen,
                              (90, 55, 140) if active else (55, 45, 78),
@@ -272,13 +309,12 @@ class SpellDialog:
             screen.blit(label, (tr.x + 4, tr.centery - label.get_height() // 2))
         self._rects["tab"] = tab_rects
 
-        add_r = pygame.Rect(r.right - PAD - 48, cy, 48, self.TAB_H)
         pygame.draw.rect(screen, (55, 85, 55), add_r, border_radius=4)
         pygame.draw.rect(screen, (80, 130, 80), add_r, 1, border_radius=4)
         screen.blit(self._font_md.render("+ Add", True, (180, 240, 180)),
                     (add_r.x + 6, add_r.centery - self._font_md.get_height() // 2))
         self._rects["add"] = add_r
-        cy += self.TAB_H + PAD
+        cy = content_y + PAD
 
         pygame.draw.line(screen, (90, 70, 120), (r.x + PAD, cy), (r.right - PAD, cy))
         cy += 10

@@ -6667,6 +6667,22 @@ class App:
                                           title=f"{sp_.name}: damage type")
                 return
 
+            # Cast-time word choice (Command): pick the command word via the ElementPickerDialog
+            # (same options Mantle of Majesty uses), store it as the SpellAction.command_word, then
+            # fall through to the SHARED engine-driven targeting dispatch. Command is Multiple
+            # geometry, so target count + upcast expansion are owned by the C++ engine (no
+            # Command-specific target math here).
+            if sp_.name == "Command":
+                def _on_word(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
+                    word = chosen[0] if chosen else 3   # default Halt (matches applyCommandEffect)
+                    self.pending_spell_command_word = word
+                    word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
+                    self._combat_log_add(f"Command word: {word_name}.")
+                    _dispatch_geometry(s, si_, sp_, slot_level_)
+                self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None,
+                                          multi=False, title="Command: choose a word")
+                return
+
             # Summon spells: pick an empty cell within range to manifest the creature, rather than
             # targeting a creature or placing an AoE. Routed here BEFORE the
             # geometry branches because Summon Dragon is Single geometry ("click a target").
@@ -6718,6 +6734,14 @@ class App:
                 self._combat_log_add(f"Casting {sp_.name} — {hint}.")
                 return
 
+            _dispatch_geometry(s, si_, sp_, slot_level_)
+
+        def _dispatch_geometry(s, si_, sp_, slot_level_=0):
+            # Generic, engine-driven targeting setup shared by the normal cast path and by
+            # cast-time-choice spells (e.g. Command's word pick) that need to fall through here
+            # AFTER their choice. The target count for Multiple geometry comes from the C++
+            # engine (get_num_targets_for_spell), which is also the authority that caps the list
+            # at resolution — so no spell-specific target math lives here.
             if sp_.geometry == rpg.SpellGeometry.Single:
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []
@@ -7243,13 +7267,10 @@ class App:
 
     def _vitality_in_range(self, src: int, target: int) -> bool:
         """10 ft (2-cell) footprint Chebyshev check, mirroring C++ threateningAgents(src, 2)."""
-        agents = self.bm.placed_agents
-        if not (0 <= src < len(agents) and 0 <= target < len(agents)) or src == target:
+        if not (0 <= src < len(self.bm.placed_agents)) or src == target:
             return False
-        s = agents[src]; o = agents[target]
-        dc = max(s.origin.col - o.origin.col, o.origin.col - (s.origin.col + s.size - 1), 0)
-        dr = max(s.origin.row - o.origin.row, o.origin.row - (s.origin.row + s.size - 1), 0)
-        return max(dc, dr) <= 2
+        d = self._footprint_dist_ft(src, target)
+        return 0 <= d <= 10
 
     def _resolve_vitality_target(self, target_idx: int):
         """Submit the parked Vitality of the Tree response with the clicked target, then resume the
@@ -7925,14 +7946,18 @@ class App:
         return sp is not None and sp.name == "Chromatic Orb"
 
     def _footprint_dist_ft(self, a_idx: int, b_idx: int) -> int:
-        """Chebyshev footprint distance in feet (5 ft / cell), or -1 for bad indices."""
+        """Chebyshev footprint distance in feet (5 ft / cell), or -1 for bad indices.
+
+        Delegates to the engine's rpg.footprint_distance so adjacency/reach math is
+        computed in exactly ONE place (combat_internal.hpp). It measures the gap over
+        ALL cells in both footprints, so a large creature counts as adjacent whenever
+        ANY of its occupied cells is (e.g. Cleave vs a Large+ target). Do not re-derive
+        the formula here — that parallel copy drifted from the engine and broke Cleave."""
         agents = self.bm.placed_agents
         if not (0 <= a_idx < len(agents) and 0 <= b_idx < len(agents)):
             return -1
         s = agents[a_idx]; o = agents[b_idx]
-        dc = max(s.origin.col - o.origin.col, o.origin.col - (s.origin.col + s.size - 1), 0)
-        dr = max(s.origin.row - o.origin.row, o.origin.row - (s.origin.row + s.size - 1), 0)
-        return max(dc, dr) * 5
+        return rpg.footprint_distance(s.origin, s.size, o.origin, o.size) * 5
 
     def _chromatic_last_hop(self) -> int:
         """The creature the next leap would spring from (primary, or the last chained hop)."""
@@ -8235,13 +8260,10 @@ class App:
 
     def _companion_in_range(self, ranger_idx: int, comp_idx: int, ft: int) -> bool:
         """Chebyshev footprint distance check (5 ft / cell), mirroring _vitality_in_range."""
-        agents = self.bm.placed_agents
-        if not (0 <= ranger_idx < len(agents) and 0 <= comp_idx < len(agents)) or ranger_idx == comp_idx:
+        if ranger_idx == comp_idx:
             return False
-        s = agents[ranger_idx]; o = agents[comp_idx]
-        dc = max(s.origin.col - o.origin.col, o.origin.col - (s.origin.col + s.size - 1), 0)
-        dr = max(s.origin.row - o.origin.row, o.origin.row - (s.origin.row + s.size - 1), 0)
-        return max(dc, dr) * 5 <= ft
+        d = self._footprint_dist_ft(ranger_idx, comp_idx)
+        return 0 <= d <= ft
 
     def _share_spell_with_companion(self, caster_idx: int, spell_idx: int, slot_level: int):
         """Beast Master L15 Share Spells: re-apply a Self-range buff to the Ranger's live Primal
@@ -8799,6 +8821,11 @@ class App:
                     "is_undead":  s.is_undead,
                     "is_fiend":   s.is_fiend,
                     "is_vampire": s.is_vampire,
+                    # Regeneration (Troll/Vampire/…): amount + interrupting damage types must round-trip
+                    # or a reloaded regenerator stops healing / becomes unkillable. (regen_suppressed is
+                    # transient combat state and is intentionally NOT saved.)
+                    "regeneration_amount":          s.regeneration_amount,
+                    "regen_interrupt_damage_types": list(s.regen_interrupt_damage_types),
                     "has_cunning_action": s.has_cunning_action,
                     "has_offhand_attack": s.has_offhand_attack,
                     "has_sentinel":             s.has_sentinel,

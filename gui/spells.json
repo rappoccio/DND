@@ -2460,6 +2460,39 @@
     "school": "evocation"
   },
   {
+    "name": "Eldritch Smite",
+    "description": "Once per turn when you hit a creature with your pact weapon, you can expend a Pact Magic slot to deal an extra 1d8 Force damage to the target, plus another 1d8 per level of the spell slot, and you can give the target the Prone condition if it is Huge or smaller.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "None",
+    "save_required": false,
+    "range": 0,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Force",
+        "num_dice": 1,
+        "die_size": 8
+      }
+    ],
+    "conditions": [
+      {
+        "condition_name": "Prone"
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 1,
+    "upcast_dice_bonus": 1,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "evocation"
+  },
+  {
     "name": "Elementalism",
     "description": "You exert control over the elements, creating one of the following effects within range.\n\n***Beckon Air.*** You create a breeze strong enough to ripple cloth, stir dust, rustle leaves, and close open doors and shutters, all in a 5-foot Cube. Doors and shutters being held open by someone or something aren't affected.\n\n***Beckon Earth.*** You create a thin shroud of dust or sand that covers surfaces in a 5-foot-square area, or you cause a single word to appear in your handwriting in a patch of dirt or sand.\n\n***Beckon Fire.*** You create a thin cloud of harmless embers and colored, scented smoke in a 5-foot Cube. You choose the color and scent, and the embers can light candles, torches, or lamps in that area. The smoke's scent lingers for 1 minute.\n\n***Beckon Water.*** You create a spray of cool mist that lightly dampens creatures and objects in a 5-foot Cube. Alternatively, you create 1 cup of clean water either in an open container or on a surface, and the water evaporates in 1 minute.\n\n***Sculpt Element.*** You cause dirt, sand, fire, smoke, mist, or water that can fit in a 1-foot Cube to assume a crude shape (such as that of a creature) for 1 hour.",
     "type": "Harm",
@@ -3561,7 +3594,7 @@
   {
     "name": "Greater Invisibility",
     "description": "A creature you touch has the Invisible condition until the spell ends (it does not end when the target attacks or casts).",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -4444,7 +4477,7 @@
   {
     "name": "Invisibility",
     "description": "A creature you touch has the Invisible condition until the spell ends. The spell ends early immediately after the target makes an attack roll, deals damage, or casts a spell.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -6326,6 +6359,7 @@
     "name": "Sanctuary",
     "description": "You ward a creature within range. Until the spell ends, any creature who targets the warded creature with an attack roll or a damaging spell must succeed on a Wisdom saving throw or either choose a new target or lose the attack or spell. This spell doesn't protect the warded creature from areas of effect. The spell ends if the warded creature makes an attack roll, casts a spell, or deals damage.",
     "type": "Help",
+    "casting_time": "BonusAction",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability":"SaveWis",
@@ -8473,6 +8507,41 @@
     "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true,
+    "school": "enchantment"
+  },
+  {
+    "name": "YetiChillingGaze",
+    "description": "One creature the Yeti can see within 30 feet. Failure: 2d4 Cold damage, and the target has the Paralyzed condition until the start of the yeti's next turn unless the target has immunity to Cold damage.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Save",
+    "save_ability": "SaveCon",
+    "range": 30,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+	"type": "Cold",
+	"num_dice":2,
+	"die_size":4
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 1,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": false,
+    "conditions": [
+      {
+        "condition_name": "Paralyzed",
+        "condition_duration": 0,
+        "save_repeat_turns": 1,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ],
     "school": "enchantment"
   }
 ]

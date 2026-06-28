@@ -2443,8 +2443,11 @@ private:
 
     // Post-damage hook: call after an agent takes > 0 damage from any source. Resolves
     // on-damage condition behavior — ends conditions flagged End, and re-rolls the save (at
-    // Advantage) for those flagged RepeatSave, ending them on success.
-    void processDamageTaken(BattleMap& bm, int idx, int amount) noexcept;
+    // Advantage) for those flagged RepeatSave, ending them on success. `magic_type_mask` is a
+    // bitmask over MagicDamage_t (bit t = damage of type t was actually dealt); when it intersects
+    // a regenerating creature's regen_interrupt_damage_types, it suppresses that creature's next
+    // turn of Regeneration (Troll acid/fire, Vampire radiant). 0 = no magic types / not tracked.
+    void processDamageTaken(BattleMap& bm, int idx, int amount, unsigned magic_type_mask = 0u) noexcept;
 
     // Clear the Agent::Conditions flag(s) that a spell-applied condition set (Charmed, Stunned, …).
     void clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;

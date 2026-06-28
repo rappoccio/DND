@@ -122,6 +122,12 @@ test_scripts = [
 
     # Vampire support (available_hit_points + reduceHPMax bite rider)
     "test_vampire.py",
+
+    # Monster on-hit riders (Roper Reel = data-driven "Pull" forced move)
+    "test_roper.py",
+
+    # Regeneration (turn-start HP regain + damage-type / Sunlight interrupt)
+    "test_regeneration.py",
 ]
 
 def run_tests():

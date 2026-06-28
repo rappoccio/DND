@@ -24,6 +24,7 @@
 
 #include "battle_map.hpp"
 #include "combat.hpp"
+#include "combat_internal.hpp"   // footprintDistance — shared with the combat_*.cpp TUs
 #include "map_configs.hpp"
 #include "character_class.hpp"
 #include "item.hpp"
@@ -67,6 +68,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("__repr__", [](const Cell& c){
             return "<Cell col=" + std::to_string(c.col)
                  + " row=" + std::to_string(c.row) + ">"; });
+
+    // ── Geometry helpers (single source of truth, shared with the combat engine) ──
+    // Chebyshev gap (in CELLS) between two NxN footprints — 0 if their cells are
+    // adjacent/overlapping. The same formula the engine uses for reach/adjacency, so
+    // Python callers must not re-derive it. Multiply by 5 for feet.
+    m.def("footprint_distance", &footprintDistance,
+          py::arg("a"), py::arg("size_a"), py::arg("b"), py::arg("size_b"),
+          "Chebyshev distance in cells between two square footprints (origin + size).");
 
     // ── Wall ────────────────────────────────────────────────────────────────
     py::class_<Wall>(m, "Wall")
@@ -504,6 +513,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
         .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
              "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
+        .def_readwrite("regeneration_amount", &Agent::Stats::regeneration_amount,
+             "Regeneration: HP regained at the start of each turn (0 = none). Capped at effective max HP.")
+        .def_readwrite("regen_interrupt_damage_types", &Agent::Stats::regen_interrupt_damage_types,
+             "Regeneration: MagicDamage_t indices that suppress the next regen if taken "
+             "(e.g. Troll = [Acid, Fire], Vampire = [Radiant]). Assign a whole list; do not append in place.")
+        .def_readwrite("regen_suppressed", &Agent::Stats::regen_suppressed,
+             "Regeneration: transient flag — true means the next turn's regen is skipped. Set by the "
+             "engine on interrupting damage / Sunlight; consumed at turn start. Not normally serialized.")
         .def_readwrite("legendary_resistance_max", &Agent::Stats::legendary_resistance_max,
              "Legendary Resistance uses per day (resets on a Long Rest).")
         .def_readwrite("legendary_resistance_current", &Agent::Stats::legendary_resistance_current,
@@ -3500,9 +3517,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Returns False if out of range or insufficient movement budget.")
         .def("force_move_agent",   &BattleMap::forceMoveAgent,
              py::arg("idx"), py::arg("push_from"), py::arg("push_ft"), py::arg("pull") = false,
+             py::arg("from_size") = 1,
              "Force move agent[idx] relative to push_from by up to push_ft. By default pushes AWAY;\n"
              "with pull=True, pulls TOWARD push_from instead.\n"
-             "Does not consume movement budget. Stops at walls.\n"
+             "Does not consume movement budget. Stops at walls. A pull also stops adjacent to the\n"
+             "puller's footprint (from_size = puller's size in cells) — it never moves onto or past it.\n"
              "Returns number of cells actually moved.")
         .def("set_agent_position", &BattleMap::setAgentPosition,
              py::arg("idx"), py::arg("new_origin"),

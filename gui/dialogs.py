@@ -2595,14 +2595,23 @@ class ContextMenu:
 
 
 class SpellSelectionDialog:
-    """Modal dialog for selecting a spell from spells.json."""
+    """Modal dialog for selecting a spell from spells.json.
+
+    Spells are organized into per-level tabs (All / Cantrip / 1st-9th) so the
+    full 350+ spell list never overflows the box. A search box filters across
+    *all* levels when non-empty (the active tab is ignored while searching).
+    """
     ITEM_H = 24
     PAD = 12
     SEARCH_H = 32
+    TAB_H = 26
+    # Tab definitions: (label, level-key). level None == "All".
+    TABS = [("All", None), ("C", 0), ("1", 1), ("2", 2), ("3", 3),
+            ("4", 4), ("5", 5), ("6", 6), ("7", 7), ("8", 8), ("9", 9)]
 
     def __init__(self, spells: list, font_sm=None, font_md=None):
         self.all_spells = spells  # All available spells (dicts with "name")
-        self.filtered_spells = spells  # Filtered by search
+        self.filtered_spells = spells  # Filtered by search + active tab
         self.font_sm = font_sm
         self.font_md = font_md
         self.visible = False
@@ -2611,6 +2620,8 @@ class SpellSelectionDialog:
         self._hover_idx = -1
         self.selected_callback = None
         self.search_text = ""
+        self.active_level = None  # None == "All" tab
+        self._tab_rects = []      # cached (rect, level) for hit-testing
         self._frames_since_show = 0  # Prevent immediate dismissal on show click
 
     def show(self, callback):
@@ -2619,23 +2630,46 @@ class SpellSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
+        self.active_level = None
         self._frames_since_show = 0  # Reset counter to prevent immediate dismissal
-        self.filtered_spells = self.all_spells[:]
+        self._update_filtered_spells()
         # Center dialog on screen
         screen_w, screen_h = pygame.display.get_surface().get_size()
-        dlg_w = 400
-        dlg_h = 500
+        dlg_w = 460
+        dlg_h = 520
         self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
 
     def dismiss(self):
         self.visible = False
 
     def _update_filtered_spells(self):
-        """Filter spells based on search text."""
-        search_lower = self.search_text.lower()
-        self.filtered_spells = [s for s in self.all_spells if search_lower in s.get("name", "").lower()]
+        """Filter spells based on search text and the active level tab.
+
+        When a search is active it spans every level (tab is ignored) so the
+        user can always find a spell by name. Otherwise the active tab decides.
+        """
+        search_lower = self.search_text.strip().lower()
+        if search_lower:
+            self.filtered_spells = [s for s in self.all_spells
+                                    if search_lower in s.get("name", "").lower()]
+        elif self.active_level is None:
+            self.filtered_spells = self.all_spells[:]
+        else:
+            self.filtered_spells = [s for s in self.all_spells
+                                    if s.get("level", 0) == self.active_level]
         self.scroll_y = 0
         self._hover_idx = -1
+
+    def _layout(self):
+        """Return (tabs_y, list_y, list_h) for the current rect."""
+        tabs_y = self.rect.y + 32
+        search_y = tabs_y + self.TAB_H + 4
+        list_y = search_y + self.SEARCH_H
+        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+        return tabs_y, search_y, list_y, list_h
+
+    def _max_scroll(self, list_h):
+        return max(0, len(self.filtered_spells) * self.ITEM_H - list_h)
 
     def handle(self, event) -> bool:
         if not self.visible or not self.rect:
@@ -2645,6 +2679,8 @@ class SpellSelectionDialog:
         if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
             self._frames_since_show += 1
             return True
+
+        _, search_y, list_y, list_h = self._layout()
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -2667,15 +2703,20 @@ class SpellSelectionDialog:
                 return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
-                # Check if click is in search box area
-                search_y = self.rect.y + 35
+                # Tab clicks
+                for tab_rect, level in self._tab_rects:
+                    if tab_rect.collidepoint(*event.pos):
+                        self.active_level = level
+                        self.search_text = ""  # tab switch clears search
+                        self._update_filtered_spells()
+                        return True
+
+                # Search box clicks are absorbed (typing handled via KEYDOWN)
                 search_box_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
                                              self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
                 if search_box_rect.collidepoint(*event.pos):
                     return True
 
-                list_y = search_y + self.SEARCH_H
-                list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
                 for i, spell in enumerate(self.filtered_spells):
                     item_y = list_y + i * self.ITEM_H - self.scroll_y
                     if list_y <= item_y < list_y + list_h:
@@ -2690,9 +2731,6 @@ class SpellSelectionDialog:
                 self.dismiss()
             return True
         elif event.type == pygame.MOUSEMOTION and self.visible:
-            search_y = self.rect.y + 35
-            list_y = search_y + self.SEARCH_H
-            list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
             self._hover_idx = -1
             for i, spell in enumerate(self.filtered_spells):
                 item_y = list_y + i * self.ITEM_H - self.scroll_y
@@ -2704,8 +2742,7 @@ class SpellSelectionDialog:
                         break
         elif event.type == pygame.MOUSEWHEEL and self.visible and self.rect.collidepoint(*pygame.mouse.get_pos()):
             self.scroll_y = max(0, self.scroll_y - event.y * 30)
-            max_scroll = max(0, len(self.filtered_spells) * self.ITEM_H - (self.rect.h - self.SEARCH_H - 20))
-            self.scroll_y = min(self.scroll_y, max_scroll)
+            self.scroll_y = min(self.scroll_y, self._max_scroll(list_h))
             return True
 
         return False
@@ -2731,18 +2768,40 @@ class SpellSelectionDialog:
         title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 8)
         surf.blit(title, title_rect)
 
+        tabs_y, search_y, list_y, list_h = self._layout()
+
+        # Level tabs
+        searching = bool(self.search_text.strip())
+        tab_area_w = self.rect.w - self.PAD * 2
+        tab_w = tab_area_w / len(self.TABS)
+        self._tab_rects = []
+        for idx, (label, level) in enumerate(self.TABS):
+            tx = self.rect.x + self.PAD + int(idx * tab_w)
+            tw = int((idx + 1) * tab_w) - int(idx * tab_w) - 2
+            tab_rect = pygame.Rect(tx, tabs_y, tw, self.TAB_H)
+            self._tab_rects.append((tab_rect, level))
+            active = (not searching) and (level == self.active_level)
+            bg = (90, 90, 130) if active else (40, 40, 52)
+            pygame.draw.rect(surf, bg, tab_rect, border_radius=4)
+            pygame.draw.rect(surf, (110, 110, 140), tab_rect, 1, border_radius=4)
+            col = (235, 235, 245) if active else (170, 170, 190)
+            lbl = self.font_sm.render(label, True, col)
+            surf.blit(lbl, lbl.get_rect(center=tab_rect.center))
+
         # Search box
-        search_y = self.rect.y + 35
         search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
         pygame.draw.rect(surf, (30, 30, 40), search_box)
-        pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
-        search_label = self.font_sm.render(f"Search: {self.search_text}_" if self.visible else f"Search: {self.search_text}", True, (200, 200, 200))
+        pygame.draw.rect(surf, (140, 140, 90) if searching else (100, 100, 120), search_box, 1)
+        search_label = self.font_sm.render(f"Search: {self.search_text}_", True, (200, 200, 200))
         surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
 
-        # Spell list
-        list_y = search_y + self.SEARCH_H
-        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
-        pygame.draw.rect(surf, (30, 30, 40), pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h))
+        # Spell list background
+        list_bg = pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h)
+        pygame.draw.rect(surf, (30, 30, 40), list_bg)
+
+        if not self.filtered_spells:
+            empty = self.font_sm.render("(no spells)", True, (130, 130, 145))
+            surf.blit(empty, (list_bg.x + 8, list_y + 6))
 
         for i, spell in enumerate(self.filtered_spells):
             item_y = list_y + i * self.ITEM_H - self.scroll_y
@@ -2753,6 +2812,20 @@ class SpellSelectionDialog:
                 spell_name = spell.get("name", "Unknown")
                 text = self.font_sm.render(spell_name, True, (200, 200, 220))
                 surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
+                # When searching across levels, show the spell level as a hint
+                if searching:
+                    lv = spell.get("level", 0)
+                    lv_txt = "C" if lv == 0 else str(lv)
+                    hint = self.font_sm.render(lv_txt, True, (140, 140, 170))
+                    surf.blit(hint, (item_rect.right - 18, item_rect.y + 2))
+
+        # Scrollbar (only when content overflows)
+        max_scroll = self._max_scroll(list_h)
+        if max_scroll > 0:
+            track_x = list_bg.right - 5
+            thumb_h = max(20, int(list_h * list_h / (len(self.filtered_spells) * self.ITEM_H)))
+            thumb_y = list_y + int((list_h - thumb_h) * self.scroll_y / max_scroll)
+            pygame.draw.rect(surf, (80, 80, 100), pygame.Rect(track_x, thumb_y, 4, thumb_h), border_radius=2)
 
 
 class ArmorSelectionDialog:

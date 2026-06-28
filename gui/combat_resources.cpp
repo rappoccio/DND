@@ -333,8 +333,10 @@ int CombatEngine::elementalAttunementMove(BattleMap& bm, int attacker_idx, int t
     if (target_idx   < 0 || target_idx   >= static_cast<int>(agents.size())) return 0;
     if (attacker_idx == target_idx) return 0;
 
-    const Cell from = agents[static_cast<std::size_t>(attacker_idx)].origin;
-    int cells_moved = bm.forceMoveAgent(target_idx, from, 10, pull);
+    const auto& puller = agents[static_cast<std::size_t>(attacker_idx)];
+    const Cell from = puller.origin;
+    // Pass the Monk's footprint so a pull stops adjacent to it rather than through it.
+    int cells_moved = bm.forceMoveAgent(target_idx, from, 10, pull, puller.agent->getSize());
     int ft = cells_moved * 5;
     if (ft > 0) {
         log_("{}: Elemental Attunement {} {} {} ft",

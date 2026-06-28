@@ -573,25 +573,53 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     return true;
 }
 
-int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull) noexcept
+int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull, int from_size) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return 0;
     auto& pa = placedAgents_[idx];
     int agent_size = pa.agent->getSize();
 
-    // Compute direction: away from push_from toward target (push), or toward push_from (pull).
+    // Compute direction relative to the puller's whole FOOTPRINT (cols [pc0,pc1], rows [pr0,pr1]),
+    // not just its top-left origin cell. A push moves AWAY; a pull reels TOWARD. Using the footprint
+    // span means an axis on which the victim is already ALIGNED with the puller contributes 0 — so a
+    // reel onto a Large puller pulls the victim STRAIGHT in along the aligned axis (the "pull in one
+    // line" case) instead of homing on the origin corner. For a size-1 puller this reduces exactly to
+    // the original origin-cell logic.
+    const int pc0 = push_from.col, pc1 = push_from.col + from_size - 1;
+    const int pr0 = push_from.row, pr1 = push_from.row + from_size - 1;
+    const int tc0 = pa.origin.col, tc1 = pa.origin.col + agent_size - 1;
+    const int tr0 = pa.origin.row, tr1 = pa.origin.row + agent_size - 1;
+
     int dir_col = 0, dir_row = 0;
-    if (pa.origin.col != push_from.col)
-        dir_col = (pa.origin.col > push_from.col) ? 1 : -1;
-    if (pa.origin.row != push_from.row)
-        dir_row = (pa.origin.row > push_from.row) ? 1 : -1;
+    if (tc0 > pc1)      dir_col = 1;   // victim's footprint lies entirely east of the puller
+    else if (tc1 < pc0) dir_col = -1;  // entirely west
+    if (tr0 > pr1)      dir_row = 1;   // entirely south
+    else if (tr1 < pr0) dir_row = -1;  // entirely north
+    // dir_* now points AWAY from the puller (the push direction); a pull reels the opposite way.
     if (pull) { dir_col = -dir_col; dir_row = -dir_row; }
+
+    // A pull reels the agent TOWARD push_from but must stop ONCE ADJACENT to it — never onto,
+    // past, or sliding around the puller's footprint. (Agents aren't obstacles in isBlocked, so
+    // without this a fixed-direction pull would keep going.) footprintDistance is the engine's
+    // single-source adjacency gap: 1 = adjacent, 0 = overlap.
+    //   The naive "don't step onto the body" guard (stop only at distance 0) is NOT enough for a
+    //   Large puller: a DIAGONAL reel cuts the corner of a 2×2 footprint, holding distance 1 the
+    //   whole way while crossing from one side to the other — i.e. it "flies past" the puller.
+    //   So we stop as soon as the agent is already adjacent (distance <= 1): a reel ends on contact.
+    auto adjacentToPuller = [&](Cell c) {
+        return pull && footprintDistance(c, agent_size, push_from, from_size) <= 1;
+    };
 
     // Move cell-by-cell for push_ft/5 cells
     int max_cells = push_ft / 5;
     int cells_moved = 0;
 
     for (int i = 0; i < max_cells; ++i) {
+        // A reel ends the instant the agent is adjacent to the puller — don't take another step
+        // that would overlap it or slide around its footprint.
+        if (adjacentToPuller(pa.origin))
+            break;
+
         Cell next{pa.origin.col + dir_col, pa.origin.row + dir_row};
 
         // Check bounds
@@ -612,6 +640,7 @@ int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull) n
     if (cells_moved == 0 && dir_col != 0 && dir_row != 0) {
         // Try horizontal first
         for (int i = 0; i < max_cells; ++i) {
+            if (adjacentToPuller(pa.origin)) break;   // a reel ends adjacent to the puller
             Cell next{pa.origin.col + dir_col, pa.origin.row};
             if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk))
                 break;
@@ -622,6 +651,7 @@ int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull) n
         // Then try vertical if horizontal didn't work
         if (cells_moved == 0) {
             for (int i = 0; i < max_cells; ++i) {
+                if (adjacentToPuller(pa.origin)) break;   // a reel ends adjacent to the puller
                 Cell next{pa.origin.col, pa.origin.row + dir_row};
                 if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk))
                     break;

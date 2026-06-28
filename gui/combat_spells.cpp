@@ -602,6 +602,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         : resolveAoeTargets(agents, sp, action.caster_idx, center_col, center_row,
                             action.aoe_col2, action.aoe_row2);
 
+    // Multiple-geometry spells (e.g. Command) are authoritatively capped to the engine's
+    // upcast target budget — num_targets + (slot_level - level) * targets_per_upcast_level.
+    // The GUI hands over the creatures the player clicked; the engine trims to the allowed
+    // count so the target-count rule lives in exactly one place (getNumTargetsForSpell) and
+    // the per-target effect loop below applies to each kept target identically.
+    if (sp.geometry == Spell::Multiple) {
+        int allowed = getNumTargetsForSpell(sp, action.slot_level, caster_stats.char_level);
+        if (allowed >= 0 && static_cast<int>(targets.size()) > allowed)
+            targets.resize(static_cast<std::size_t>(allowed));
+    }
+
     // Faction rule 3 — beneficial (Heal) area/multi-target spells only affect the caster's
     // allies (same faction, incl. the caster). Enemies are never healed/buffed by a
     // "creatures of your choosing" heal. Single-target heals are left alone: the caster
@@ -1470,7 +1481,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         // On-damage condition behavior (Sleep/Hypnotic Pattern end; Tasha's re-saves) for
         // any pre-existing condition on this target. Runs before this spell's own conditions
         // are applied, so a damaging spell can't instantly cancel the condition it just set.
-        processDamageTaken(bm, tgt_idx, tr.total_damage);
+        processDamageTaken(bm, tgt_idx, tr.total_damage, magicTypeMaskFromSpell(sp));
 
         // Apply spell-based conditions (e.g., Hold Person applies Paralyzed)
         if (!sp.conditions.empty()) {
@@ -2158,7 +2169,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         healAgent(bm, target_idx, total);
     } else {
         damageAgent(bm, target_idx, total);
-        processDamageTaken(bm, target_idx, total);  // zone damage ends/triggers on-damage conditions
+        processDamageTaken(bm, target_idx, total, magicTypeMaskFromSpell(sp));  // zone damage ends/triggers on-damage conditions + regen interrupts
     }
 }
 
@@ -2285,7 +2296,7 @@ void CombatEngine::tickEffects(BattleMap& bm)
 
         bm.setAgentStats(fx.target_idx, s);
         if (fx.spell.type != Spell::Heal)
-            processDamageTaken(bm, fx.target_idx, std::max(0, total));
+            processDamageTaken(bm, fx.target_idx, std::max(0, total), magicTypeMaskFromSpell(fx.spell));
         else
             reviveOnHeal(bm, fx.target_idx);   // delayed/area heal can revive a downed target
     }

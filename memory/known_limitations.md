@@ -881,7 +881,7 @@ Both are self/touch buffs (JSON `attack_type: Automatic`, `type: Harm` no-damage
 <details>
 <summary><b>Monster on-hit riders: Grappled / Prone / Poisoned (2026-06-09)</b></summary>
 
-Synthesized NPC weapons carry on-hit riders from `tools/monster_weapon_overrides.json` (via `monster_parser._weapon_for_slot`). **Grappled** → shared `resolveGrapple` core (`contested:false` = automatic on hit; `escape_dc` overrides the computed DC). **Prone** → weapon `mastery:Topple` (`to_record` auto-sets `weapon_mastery=1`). **Poisoned** → `addAgentCondition`. Deferrals: Shambling Mound 5-ft *pull* (no pull mechanic), approximate save DCs (attacker-derived, not book), Poisoned has no auto-expiry, the beast-form `condition_rider` field is still inert, lycanthropy/javelin-slow riders.
+Synthesized NPC weapons carry on-hit riders from `tools/monster_weapon_overrides.json` (via `monster_parser._weapon_for_slot`). **Grappled** → shared `resolveGrapple` core (`contested:false` = automatic on hit; `escape_dc` overrides the computed DC). **Prone** → weapon `mastery:Topple` (`to_record` auto-sets `weapon_mastery=1`). **Poisoned** → `addAgentCondition`. **Push/Pull** → on-hit forced move via `forceMoveAgent` (see the Roper Reel entry below; "Pull" data-drives a pull toward the attacker, so the Shambling Mound 5-ft pull is now expressible too). Deferrals: approximate save DCs (attacker-derived, not book), Poisoned has no auto-expiry, the beast-form `condition_rider` field is still inert, lycanthropy/javelin-slow riders.
 
 </details>
 
@@ -981,6 +981,38 @@ Hunter L11 Superior Hunter's Prey (after the mark takes HM damage, splash a fres
 - **Sunlight Vulnerability (2026-06-18):** `is_vampire` flag on 6 true vampire types; `beginTurn` deals 20 radiant if the vampire stands in a Sunlight light effect. See [[vampire_sunlight_vulnerability]].
 - **On Deck reinforcements (2026-06-19):** `PlacedAgent.on_deck` reserves are out of initiative until the DM deploys them; they take NO reactions / legendary actions / OAs until deployed (gated in `d20ReactorBase`/`saveReactorBase` + per-predicate `can*` + `detectProvokes`). Round-trips in save/load. See [[on_deck_reinforcements]]. Limitations: reserves are still on the map (targetable before deploy); deploy is one-way during combat.
 - Tests `test_vampire.py`. Deferred: Sunlight Sensitivity reactions, no lighting-editor to paint Sunlight, bite not gated on Grappled, no per-weapon attack cap.
+
+</details>
+
+<details>
+<summary><b>Regeneration — turn-start HP regain with damage-type interrupt (2026-06-28)</b></summary>
+
+Data-driven Regeneration (Troll, Slaad, …). New `Agent::Stats` fields: `regeneration_amount` (HP regained at the start of each turn, capped at `effectiveMaxHp()`, requires ≥1 HP), `regen_interrupt_damage_types` (vector of `MagicDamage_t` indices that switch regen off — Troll `[Acid, Fire]`), and the transient `regen_suppressed` flag. `beginTurn` (`combat_turn.cpp`) does the heal and consumes `regen_suppressed`.
+
+**2024 vampires do NOT passively regenerate.** Verified against the 5.5e Monster Manual stat block (2026-06-28): the 2014 "regain 20 HP/turn unless in sunlight/running water" Regeneration trait was removed in the 2024 redesign. A 2024 vampire heals only via its **Bite Life Drain** (target's HP-max drops by the necrotic dealt and the vampire heals that much) — already modelled by the `reduceHPMax` bite rider + `available_hit_points`. So this feature is **not** applied to vampires; `derive_regeneration.py` triggers only on the explicit "Regeneration" trait, not `is_vampire`.
+
+**Two interrupts, one mechanism.** (1) **Damage type:** `processDamageTaken` gained a `magic_type_mask` arg (bitmask over `MagicDamage_t`); when it intersects the target's `regen_interrupt_damage_types` it sets `regen_suppressed`, skipping the next turn's regen. All 6 `processDamageTaken` call sites (weapon + Restore-Balance + Hunter's-Mark splash in `combat_attack.cpp`; single-target + zone + ticking-fx in `combat_spells.cpp`) pass the mask via `magicTypeMask` / `magicTypeMaskFromSpell` / `magicTypeBit` helpers in `combat_internal.hpp`. (2) **Sunlight:** *not* a separate field — the existing vampire Sunlight block already deals Radiant at turn start, so it just sets `regen_suppressed` directly. This coupling is general and inert for canon vampires (their `regeneration_amount == 0`); kept so any creature that *does* regenerate is correctly suppressed by sunlight radiant.
+
+Round-trips via `agent_loader.dict_to_stats` + `main.py` save block (`regen_suppressed` is transient, intentionally not saved). Bestiary values are populated by the one-shot tool `tools/derive_regeneration.py` (curated `REGEN_TABLE` keyed by name; dry-run by default, `--write` to apply). Tests: `test_regeneration.py`.
+
+**Deferred (DM ruling): the "dies only at 0 HP" rule.** RAW a Troll/Vampire is destroyed only if it *starts its turn at 0 HP and fails to regenerate* — i.e. a regenerator dropped to 0 isn't truly dead and can revive next turn unless its specific weakness (fire on a downed troll, etc.) was applied. Not modeled: 0 HP follows the normal Unconscious/death path here, so a downed regenerator stays down. Revisit if a campaign needs trolls to claw back from 0.
+
+</details>
+
+<details>
+<summary><b>Roper Reel — data-driven on-hit "Pull" rider (2026-06-28)</b></summary>
+
+The Roper's **Reel** ("pull a Grappled target up to 30 ft toward the Roper") is modeled as a new data-driven **`"Pull"`** on-hit weapon condition, the mirror of the existing `"Push"` rider. `combat_attack.cpp` generalizes the Push handler to also accept `"Pull"`, calling the *same* `BattleMap::forceMoveAgent(target, attacker.origin, push_ft, pull=true)` core that the Monk's Elemental Attunement pull uses. `push_ft` already round-trips through both `helpers.py` serializers, so the rider is otherwise pure data: the Roper's Tentacle (`DND2024_MonsterStats.json`) gains `{"condition_name":"Pull","push_ft":30}` alongside its `Grappled`(escape DC 14) + `Poisoned`. Grappled resolves first, then the reel.
+
+A pulled target **stops adjacent to the puller and never moves onto, past, or around it**, and reels **straight in** rather than drifting to a corner. Two geometry fixes were needed for the **Large** 2×2 Roper (both verified in live play 2026-06-28):
+
+1. **Stops on contact (no fly-past / corner-cut).** `forceMoveAgent` gained a `from_size` arg (the puller's footprint side) and ends the reel the instant the victim is *already adjacent* (`footprintDistance <= 1`), checked at the top of each move loop. The earlier "don't step onto the body" guard (`== 0`) was insufficient: a **diagonal** reel cut the corner of the 2×2, holding distance 1 the whole way while crossing clear to the far side ("flying past"). `footprintDistance` moved from `combat_internal.hpp` to `cell.hpp` (the map/geometry layer) so `BattleMap` can share the single-source adjacency gap. Agents are still NOT obstacles for general movement; the clamp is scoped to the pull's own puller.
+
+2. **Reels in one line (no origin-corner drift).** Direction is computed against the puller's whole **footprint span** (`from_size`), not its top-left origin cell — so an axis the victim already shares with the footprint contributes 0 and it pulls straight in. For a size-1 puller this reduces exactly to the old origin-cell logic, so existing push callers are unchanged.
+
+The same `from_size` path also protects the Monk's Elemental Attunement pull (`combat_resources.cpp`). Note `push_ft` is data-driven (the Roper passes `weapon_cond.push_ft` = 30); the hard-coded `10` in other pull call sites belongs to those callers (Monk etc.), not the Roper.
+
+**Deliberate combat-sim simplification:** RAW, Reel is a *separate action* gated on the target already being Grappled. Here it is **folded into the Tentacle's on-hit rider** — one hit grapples, poisons, AND reels the target up to 30 ft inward, halting adjacent (in bite range, the tactical intent). It is not a standalone gated action; promoting Reel to a true separate, grapple-gated GUI action would need a new action button + engine entry point (not data-only). Tests `test_roper.py`.
 
 </details>
 

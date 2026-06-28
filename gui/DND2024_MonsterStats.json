@@ -63,15 +63,14 @@
         "long_range_ft": 60,
         "proficient": true,
         "bonus_damage": 0,
-        "physical_damage_types": [
-        ],
-        "magic_damage_types":[
-	  {
-	    "type": "Fire",
-	    "num_dice": 3,
-	    "die_size": 6
+        "physical_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Fire",
+            "num_dice": 3,
+            "die_size": 6
           }
-	],
+        ],
         "conditions": [],
         "mastery": "None"
       }
@@ -157,6 +156,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -176,6 +176,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -279,6 +280,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -381,6 +383,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -477,6 +480,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -587,6 +591,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -717,6 +722,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -828,6 +834,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -960,6 +967,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1094,6 +1102,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1206,6 +1215,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1303,6 +1313,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1434,6 +1445,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1544,6 +1556,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1670,6 +1683,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1800,6 +1814,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -1909,6 +1924,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -2108,6 +2124,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -2127,6 +2144,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -2213,6 +2231,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -2345,6 +2364,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -2456,6 +2476,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -2588,6 +2609,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -2726,6 +2748,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -2840,6 +2863,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -2937,6 +2961,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -3070,6 +3095,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -3182,6 +3208,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -3310,6 +3337,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -3448,6 +3476,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -3559,6 +3588,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -3657,6 +3687,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -3801,6 +3832,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -3897,6 +3929,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -3995,6 +4028,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4091,6 +4125,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4184,6 +4219,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4274,6 +4310,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4357,6 +4394,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4459,6 +4497,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4478,6 +4517,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4623,6 +4663,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -4910,6 +4951,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -5278,6 +5320,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -5386,6 +5429,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -5474,6 +5518,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -5557,6 +5602,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -5861,6 +5907,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -5948,6 +5995,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -6154,6 +6202,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -6256,6 +6305,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -6358,6 +6408,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -6463,6 +6514,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -6706,6 +6758,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -6725,6 +6778,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -6856,12 +6910,12 @@
           }
         ],
         "magic_damage_types": [
-	  {
-	    "type":"Psychic",
-	    "num_dice": 2,
-	    "die_size": 12
-	  }
-	],
+          {
+            "type": "Psychic",
+            "num_dice": 2,
+            "die_size": 12
+          }
+        ],
         "conditions": [],
         "mastery": "None"
       },
@@ -6882,8 +6936,8 @@
         ],
         "magic_damage_types": [],
         "conditions": [
-	  "Prone"
-	],
+          "Prone"
+        ],
         "mastery": "None",
         "off_hand": true
       },
@@ -6976,6 +7030,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7063,6 +7118,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7153,6 +7209,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7172,6 +7229,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -7255,6 +7313,10 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "regeneration_amount": 20,
+      "regen_interrupt_damage_types": [
+        8
+      ],
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [],
@@ -7265,6 +7327,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7284,6 +7347,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7379,6 +7443,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -7467,6 +7532,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7562,6 +7628,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7659,6 +7726,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7744,6 +7812,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7763,6 +7832,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -7890,6 +7960,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -8025,6 +8096,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -8112,6 +8184,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -8303,6 +8376,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -8501,6 +8575,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -8683,11 +8758,14 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -8779,6 +8857,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -8869,6 +8948,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -8993,6 +9073,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -9100,6 +9181,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9207,6 +9289,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9314,6 +9397,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9405,6 +9489,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9500,6 +9585,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9591,6 +9677,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9610,6 +9697,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9767,6 +9855,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -9786,6 +9875,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -9894,6 +9984,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -9982,6 +10073,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10069,6 +10161,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10191,6 +10284,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10281,6 +10375,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -10403,6 +10498,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10526,6 +10622,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10612,6 +10709,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10820,6 +10918,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -10907,6 +11006,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -11138,6 +11238,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -11238,6 +11339,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11333,6 +11435,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11352,6 +11455,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11439,6 +11543,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -11535,6 +11640,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11632,6 +11738,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11651,6 +11758,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -11744,6 +11852,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -11867,6 +11976,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11956,6 +12066,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -11975,6 +12086,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12073,6 +12185,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 20,
         "normal_range_ft": 80,
@@ -12192,6 +12305,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12277,6 +12391,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12366,6 +12481,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12455,6 +12571,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12553,6 +12670,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12677,6 +12795,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12859,6 +12978,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -12944,6 +13064,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13028,6 +13149,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13128,6 +13250,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13243,6 +13366,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13327,6 +13451,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13445,6 +13570,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13807,6 +13933,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -13908,6 +14035,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -13998,6 +14126,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14087,6 +14216,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14232,6 +14362,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14324,6 +14455,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14548,6 +14680,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -14660,6 +14793,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14759,6 +14893,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14874,6 +15009,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -14984,11 +15120,14 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "cha"
+      "spellcasting_ability": "cha",
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -15109,6 +15248,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15211,6 +15351,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15303,6 +15444,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15520,6 +15662,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15539,6 +15682,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15631,6 +15775,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15710,6 +15855,8 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": [],
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -15726,6 +15873,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -15783,8 +15931,8 @@
       }
     }
   },
-  "Demogotgon Spawn": {
-    "name": "Demogotgon Spawn",
+  "Demogorgon Spawn": {
+    "name": "Demogorgon Spawn",
     "size": "Medium",
     "stats": {
       "str": 16,
@@ -15810,6 +15958,8 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "regeneration_amount": 5,
+      "regen_interrupt_damage_types": [],
       "magic_resistances": [
         "Cold",
         "Lightning"
@@ -15825,6 +15975,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -15844,6 +15995,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -15940,6 +16092,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -16057,6 +16210,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -16144,6 +16298,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -16235,6 +16390,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -16254,6 +16410,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -16492,6 +16649,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -16585,6 +16743,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -16719,6 +16878,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -16823,6 +16983,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -17156,6 +17317,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -17246,6 +17408,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -17357,6 +17520,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -17607,6 +17771,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -17727,6 +17892,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -17838,6 +18004,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -17965,6 +18132,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -18093,6 +18261,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -18187,6 +18356,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -18274,6 +18444,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -18390,6 +18561,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -18877,6 +19049,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -18960,6 +19133,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19045,6 +19219,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19064,6 +19239,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19168,6 +19344,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19187,6 +19364,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19554,6 +19732,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19648,6 +19827,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19667,6 +19847,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19757,6 +19938,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19776,6 +19958,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19869,6 +20052,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -19974,6 +20158,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -20069,6 +20254,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -20174,6 +20360,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -20379,6 +20566,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -20619,6 +20807,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -20735,6 +20924,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21032,6 +21222,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21119,6 +21310,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -21207,6 +21399,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21297,6 +21490,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -21400,6 +21594,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21495,6 +21690,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21785,6 +21981,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21905,6 +22102,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -21924,6 +22122,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22022,6 +22221,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22280,6 +22480,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22299,6 +22500,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22391,6 +22593,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -22476,6 +22679,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -22495,6 +22699,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22580,6 +22785,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22665,6 +22871,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22750,6 +22957,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22835,6 +23043,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -22920,6 +23129,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -23102,6 +23312,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23189,6 +23400,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23208,6 +23420,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -23296,6 +23509,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23384,6 +23598,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -23560,6 +23775,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23645,6 +23861,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23730,6 +23947,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23815,6 +24033,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -23902,6 +24121,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -23991,6 +24211,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24094,6 +24315,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24181,6 +24403,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24200,6 +24423,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24285,6 +24509,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24368,6 +24593,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24453,6 +24679,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24543,6 +24770,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -24562,6 +24790,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -24743,6 +24972,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -24830,6 +25060,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25008,6 +25239,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25093,6 +25325,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25181,6 +25414,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25275,6 +25509,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -25400,6 +25635,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25504,6 +25740,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25602,6 +25839,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25824,6 +26062,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -25936,6 +26175,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -26050,6 +26290,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -26260,6 +26501,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -26279,6 +26521,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -26365,6 +26608,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -26468,6 +26712,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -26571,6 +26816,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -26981,6 +27227,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -27072,6 +27319,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -27169,6 +27417,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -27188,6 +27437,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -27284,6 +27534,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -27486,11 +27737,14 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "cha"
+      "spellcasting_ability": "cha",
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -27708,6 +27962,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -27815,7 +28070,9 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "cha"
+      "spellcasting_ability": "cha",
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
@@ -27946,6 +28203,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -27965,6 +28223,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -28055,6 +28314,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28074,6 +28334,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28159,6 +28420,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -28178,6 +28440,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -28263,6 +28526,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28348,6 +28612,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28433,6 +28698,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28534,6 +28800,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28553,6 +28820,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -28657,6 +28925,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -28772,6 +29041,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -28882,6 +29152,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -28973,6 +29244,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29063,6 +29335,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29260,6 +29533,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29343,6 +29617,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29435,6 +29710,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29540,6 +29816,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29634,6 +29911,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -29735,6 +30013,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29820,6 +30099,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -29905,6 +30185,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30030,6 +30311,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30136,6 +30418,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30244,6 +30527,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30413,6 +30697,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -30504,6 +30789,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -30615,6 +30901,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30702,6 +30989,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -30798,6 +31086,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30889,6 +31178,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -30908,6 +31198,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -31024,6 +31315,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -31321,6 +31613,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -31439,6 +31732,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 20,
         "normal_range_ft": 80,
@@ -31665,6 +31959,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -31989,6 +32284,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32074,6 +32370,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32093,6 +32390,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32297,6 +32595,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -32393,6 +32692,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32412,6 +32712,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32647,6 +32948,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32734,6 +33036,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32837,6 +33140,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -32946,6 +33250,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -33041,6 +33346,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 30,
         "normal_range_ft": 80,
@@ -33251,6 +33557,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -33492,6 +33799,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -33582,6 +33890,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -33720,6 +34029,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -33813,6 +34123,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -34282,6 +34593,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -34372,6 +34684,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -34460,6 +34773,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -34577,6 +34891,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -34596,6 +34911,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -34684,6 +35000,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -35169,6 +35486,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -35353,6 +35671,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -35442,6 +35761,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -35796,6 +36116,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -35904,6 +36225,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -36027,6 +36349,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36121,6 +36444,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36207,6 +36531,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36306,6 +36631,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36325,6 +36651,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36431,6 +36758,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36655,6 +36983,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36674,6 +37003,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36781,6 +37111,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -36898,6 +37229,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -37012,6 +37344,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -37031,6 +37364,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -37536,6 +37870,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -37555,6 +37890,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -37644,6 +37980,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -37663,6 +38000,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38291,6 +38629,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38384,6 +38723,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38474,20 +38814,27 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 3,
         "physical_damage_types": [
           {
             "type": "Bludgeoning",
-            "num_dice": 6,
-            "die_size": 4
+            "num_dice": 1,
+            "die_size": 10
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 3,
+            "die_size": 6
+          }
+        ],
         "conditions": [],
         "mastery": "None"
       },
@@ -38574,6 +38921,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38708,6 +39056,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38797,6 +39146,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38888,6 +39238,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -38979,6 +39330,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -39072,6 +39424,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -39166,6 +39519,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -39275,6 +39629,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -39389,6 +39744,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -39480,6 +39836,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -39577,6 +39934,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -39692,6 +40050,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -39805,6 +40164,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40016,6 +40376,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40104,6 +40465,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40210,6 +40572,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40528,6 +40891,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40616,6 +40980,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40635,6 +41000,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40729,6 +41095,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -40741,6 +41108,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40833,6 +41201,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40852,6 +41221,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -40954,11 +41324,14 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "spellcasting_ability": "cha"
+      "spellcasting_ability": "cha",
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -41080,6 +41453,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41192,6 +41566,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41211,6 +41586,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -41299,6 +41675,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41386,6 +41763,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41471,6 +41849,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41648,6 +42027,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41732,6 +42112,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41818,6 +42199,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41913,6 +42295,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -41932,6 +42315,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42019,6 +42403,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42171,6 +42556,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42311,6 +42697,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42412,6 +42799,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42537,6 +42925,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42637,6 +43026,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42768,21 +43158,34 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 1,
+        "bonus_damage": 3,
         "physical_damage_types": [
           {
             "type": "Piercing",
-            "num_dice": 4,
-            "die_size": 6
+            "num_dice": 1,
+            "die_size": 10
           }
         ],
-        "magic_damage_types": [],
-        "conditions": [],
+        "magic_damage_types": [
+          {
+            "type": "Poison",
+            "num_dice": 2,
+            "die_size": 8
+          }
+        ],
+        "conditions": [
+          {
+            "condition_name": "Poisoned",
+            "save_ability": "SaveCon",
+            "save_dc": 11
+          }
+        ],
         "mastery": "None"
       },
       "off_hand": "",
@@ -42795,7 +43198,7 @@
       "source": "2024 Monster Manual",
       "traits": [
         "Ethereal Sight",
-        "SPider Climb",
+        "Spider Climb",
         "Web Walker"
       ],
       "languages": [
@@ -42806,7 +43209,7 @@
       },
       "passive_perception": 10,
       "immunities_conditions": [],
-      "save_dc": null,
+      "save_dc": 11,
       "saving_throws": [],
       "action_notes": "Atk 1 if target reduces target to 0 the target is stable poisoned and paralyzed",
       "bonus_action": "Ethereal Jaunt teleports between material and ethereal plane",
@@ -42818,6 +43221,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Misty Step"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Misty Step"
+      ]
     }
   },
   "Piercer": {
@@ -42857,6 +43268,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -42947,6 +43359,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -43034,6 +43447,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -43137,6 +43551,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -43238,6 +43653,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -43346,6 +43762,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -43727,6 +44144,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -43851,6 +44269,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -43938,6 +44357,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44025,6 +44445,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44127,6 +44548,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44245,6 +44667,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44457,6 +44880,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44572,6 +44996,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44661,6 +45086,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44853,6 +45279,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -44938,6 +45365,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -44957,6 +45385,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -45049,6 +45478,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45139,6 +45569,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45248,6 +45679,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45342,6 +45774,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45361,6 +45794,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45599,6 +46033,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45717,6 +46152,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45802,6 +46238,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -45982,11 +46419,14 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -46078,6 +46518,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -46168,6 +46609,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -46258,7 +46700,12 @@
       ],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": [
+        2,
+        8
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -46361,6 +46808,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -46444,6 +46892,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -46527,6 +46976,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -46613,6 +47063,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -46632,6 +47083,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -46720,7 +47172,7 @@
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -46739,7 +47191,7 @@
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": -4,
+        "bonus_damage": 0,
         "physical_damage_types": [],
         "magic_damage_types": [],
         "conditions": [
@@ -46749,6 +47201,10 @@
           },
           {
             "condition_name": "Poisoned"
+          },
+          {
+            "condition_name": "Pull",
+            "push_ft": 30
           }
         ],
         "mastery": "None",
@@ -46823,6 +47279,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -46914,6 +47371,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -47026,6 +47484,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -47045,6 +47504,7 @@
       },
       "off_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -47153,6 +47613,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 20,
         "normal_range_ft": 80,
@@ -47247,6 +47708,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -47337,6 +47799,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -47575,6 +48038,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -47668,6 +48132,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -47779,6 +48244,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48299,6 +48765,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48388,6 +48855,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48481,6 +48949,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48576,6 +49045,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48661,6 +49131,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48762,6 +49233,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48863,6 +49335,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -48956,6 +49429,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -49042,6 +49516,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -49375,6 +49850,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -49468,6 +49944,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -49584,6 +50061,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -49789,11 +50267,14 @@
       ],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": []
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -49891,6 +50372,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -49983,6 +50465,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -50200,6 +50683,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -50313,6 +50797,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -50403,6 +50888,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -50501,6 +50987,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -50648,6 +51135,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -50758,6 +51246,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -50967,6 +51456,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -51093,6 +51583,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -51210,6 +51701,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -51329,6 +51821,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -51516,6 +52009,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -51627,6 +52121,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -51721,6 +52216,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -51859,6 +52355,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 20,
         "normal_range_ft": 80,
@@ -51956,6 +52453,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -52061,6 +52559,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -52268,6 +52767,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -52444,6 +52944,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -52618,6 +53119,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -52703,6 +53205,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -52811,6 +53314,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -52916,6 +53420,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -53145,6 +53650,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -53164,6 +53670,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -53289,6 +53796,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -53388,6 +53896,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -53604,6 +54113,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54015,6 +54525,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54116,6 +54627,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54216,6 +54728,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54316,6 +54829,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54416,6 +54930,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54513,6 +55028,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54611,6 +55127,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54722,6 +55239,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -54741,6 +55259,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -54841,6 +55360,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -54970,6 +55490,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55075,6 +55596,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55297,6 +55819,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55382,6 +55905,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55485,6 +56009,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55593,6 +56118,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55699,6 +56225,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -55790,6 +56317,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55873,6 +56401,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -55958,11 +56487,17 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 15,
+      "regen_interrupt_damage_types": [
+        0,
+        2
+      ]
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -56046,11 +56581,17 @@
       "magic_immunities": [],
       "physical_immunities": [],
       "magic_vulnerabilities": [],
-      "physical_vulnerabilities": []
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 15,
+      "regen_interrupt_damage_types": [
+        0,
+        2
+      ]
     },
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -56141,6 +56682,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -56230,6 +56772,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -56249,6 +56792,7 @@
       },
       "off_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 15,
         "normal_range_ft": 80,
@@ -56456,6 +57000,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -56672,6 +57217,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -56813,6 +57359,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -57123,6 +57670,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -57252,6 +57800,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -57390,6 +57939,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -57547,6 +58097,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -57802,6 +58353,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -57952,6 +58504,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -58089,6 +58642,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -58174,6 +58728,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -58263,6 +58818,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -58445,6 +59001,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -58675,6 +59232,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -58768,6 +59326,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -58876,6 +59435,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -58983,6 +59543,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59068,6 +59629,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59157,6 +59719,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59246,6 +59809,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59347,6 +59911,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59450,6 +60015,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59556,6 +60122,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59756,6 +60323,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59841,6 +60409,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59860,6 +60429,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -59965,6 +60535,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60087,6 +60658,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60106,6 +60678,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60335,6 +60908,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60354,6 +60928,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60459,6 +61034,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60478,6 +61054,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60585,6 +61162,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60604,6 +61182,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60712,6 +61291,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -60792,6 +61372,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic"
       ],
@@ -61036,6 +61617,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -61143,6 +61725,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -61231,6 +61814,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -61318,6 +61902,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -61632,6 +62217,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -61651,6 +62237,7 @@
       },
       "off_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -61745,29 +62332,36 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Slashing)",
+        "name": "Claw",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Slashing",
             "num_dice": 1,
-            "die_size": 12
+            "die_size": 6
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Cold",
+            "num_dice": 1,
+            "die_size": 6
+          }
+        ],
         "conditions": [],
         "mastery": "None"
       },
       "off_hand": "",
       "ranged": {
-        "name": "Ranged (Bludgeoning)",
+        "name": "Ice Throw",
         "type": "ranged",
-        "reach_ft": 5,
+        "reach_ft": 30,
         "normal_range_ft": 30,
         "long_range_ft": 120,
         "proficient": true,
@@ -61776,10 +62370,16 @@
           {
             "type": "Bludgeoning",
             "num_dice": 1,
-            "die_size": 8
+            "die_size": 4
           }
         ],
-        "magic_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Cold",
+            "num_dice": 1,
+            "die_size": 6
+          }
+        ],
         "conditions": [],
         "mastery": "None"
       }
@@ -61814,6 +62414,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "YetiChillingGaze"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "YetiChillingGaze"
+      ]
     }
   },
   "Yochlol": {
@@ -62089,6 +62697,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62180,6 +62789,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62272,6 +62882,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62366,6 +62977,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62459,6 +63071,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62555,6 +63168,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62649,6 +63263,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62744,6 +63359,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -62836,6 +63452,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -62926,6 +63543,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -63017,6 +63635,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -63110,6 +63729,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -63204,6 +63824,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -63313,6 +63934,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Slashing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -63437,6 +64059,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -63561,6 +64184,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
@@ -63791,6 +64415,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -63904,6 +64529,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Piercing)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -64154,6 +64780,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -64166,6 +64793,7 @@
     "weapons": {
       "main_hand": {
         "name": "Melee (Bludgeoning)",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
         "normal_range_ft": 80,
@@ -64390,15 +65018,14 @@
         "long_range_ft": 60,
         "proficient": true,
         "bonus_damage": 0,
-        "physical_damage_types": [
-        ],
+        "physical_damage_types": [],
         "magic_damage_types": [
           {
             "type": "Fire",
             "num_dice": 3,
             "die_size": 6
           }
-	],
+        ],
         "conditions": [],
         "mastery": "None"
       }
@@ -64430,5 +65057,5 @@
         "has_lair": false
       }
     }
-  }    
+  }
 }

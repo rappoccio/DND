@@ -469,6 +469,17 @@ namespace rpg {
       bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
       bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
 
+      // ── Regeneration (Troll, Vampire, Hydra, …) ──────────────────────────────
+      // The creature regains regeneration_amount HP at the start of each of its turns (capped at
+      // effectiveMaxHp()), provided it still has at least 1 HP. Regeneration is suppressed for one
+      // regen check when the creature takes a damage type in regen_interrupt_damage_types (MagicDamage_t
+      // indices, e.g. Troll = {Acid, Fire}, Vampire = {Radiant}): processDamageTaken sets the transient
+      // regen_suppressed flag, which beginTurn consumes. The Vampire "in sunlight" interrupt needs no
+      // special field — the sunlight block already deals Radiant at turn start, so it sets the same flag.
+      int  regeneration_amount{0};                               // HP regained at turn start (0 = no regeneration)
+      std::vector<int> regen_interrupt_damage_types{};           // MagicDamage_t indices that suppress the next regen if taken
+      bool regen_suppressed{false};                              // transient: set on interrupting damage, consumed at the next beginTurn regen check (NOT serialized)
+
       // ── Legendary Actions & Resistance ──────────────────────────────────
       int  legendary_resistance_max{0};                          // uses per day (resets on long rest)
       int  legendary_resistance_current{0};                      // remaining uses this day

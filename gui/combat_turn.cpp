@@ -365,6 +365,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     // Deal 20 radiant damage
                     stats.hp_cur = std::max(0, stats.hp_cur - 20);
 		    cond.has_disadvantage = true;
+                    // The Radiant exposure also shuts off Regeneration for this turn (consumed by the
+                    // regen block below). No separate "in sunlight" field needed — sunlight IS Radiant.
+                    if (stats.regeneration_amount > 0) stats.regen_suppressed = true;
                     bm.setAgentStats(agent_idx, stats);
 		    bm.setAgentConditions(agent_idx, cond);
                     log_("{} takes 20 radiant damage from Sunlight exposure → {}/{}", agent_name,
@@ -386,6 +389,25 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 		}
             }
         }
+    }
+
+    // Regeneration (Troll, Vampire, Hydra, …): regain regeneration_amount HP at the start of the
+    // turn, capped at effectiveMaxHp(), provided the creature still has ≥1 HP. Regeneration is
+    // suppressed for this one check if regen_suppressed is set — either by an interrupting damage
+    // type taken since the last turn (processDamageTaken) or, for vampires, by the Radiant damage the
+    // Sunlight block above just dealt this turn. The flag is consumed here so only the one turn is hit.
+    if (stats.regeneration_amount > 0 && stats.hp_cur > 0) {
+        if (stats.regen_suppressed) {
+            stats.regen_suppressed = false;  // consume
+            log_("{}'s Regeneration is suppressed this turn", agent_name);
+        } else {
+            int before = stats.hp_cur;
+            stats.hp_cur = std::min(stats.effectiveMaxHp(), stats.hp_cur + stats.regeneration_amount);
+            if (stats.hp_cur > before)
+                log_("{} regenerates {} HP → {}/{}", agent_name,
+                     stats.hp_cur - before, stats.hp_cur, stats.effectiveMaxHp());
+        }
+        bm.setAgentStats(agent_idx, stats);
     }
 
     // ── Monk Phase 0: Turn-start features ───────────────────────────────────────
