@@ -1802,7 +1802,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             anchor_radius = sp.radius;
         } else {
             Cell endpoint = Cell{action.aoe_col2, action.aoe_row2};  // for oriented walls
-            auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint);
+            auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint, caster_size);
             terrain_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
         }
 
@@ -1856,7 +1856,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             light_cells = sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius);
         } else {
             Cell endpoint = Cell{action.aoe_col2, action.aoe_row2};
-            auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint);
+            auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint, caster_size);
             light_cells = bm.filterSpellCells(raw_cells, caster_origin, caster_size, sp, center);
         }
 

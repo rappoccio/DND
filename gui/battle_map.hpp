@@ -389,12 +389,16 @@ public:
                                                      const Spell& spell, Cell centerCell) const;
 
     // Compute the grid cells covered by a spell's AoE geometry (1 cell = 5 ft).
-    // Cone/Line use casterOrigin as the apex/source. Single/Multiple return {}.
-    // For Rectangle (oriented wall), `endpoint` aims the wall from `center`; when
-    // it is unset ({-1,-1}) or equals `center`, a centered box is produced instead.
+    // Cone/Line emanate from the cell on the caster's casterSize×casterSize
+    // footprint nearest the aim point (so a Large+ caster fires from the facing
+    // edge, not its top-left origin) and never cover the caster's own space.
+    // Single/Multiple return {}. For Rectangle (oriented wall), `endpoint` aims
+    // the wall from `center`; when it is unset ({-1,-1}) or equals `center`, a
+    // centered box is produced instead.
     [[nodiscard]] std::vector<Cell> aoeCells(Cell center, const Spell& spell,
                                              Cell casterOrigin,
-                                             Cell endpoint = Cell{-1, -1}) const;
+                                             Cell endpoint = Cell{-1, -1},
+                                             int casterSize = 1) const;
 
     // Cells covered by an oriented "wall": the thick segment running from `anchor`
     // toward `endpoint`, clamped to maxLenFt (1 cell = 5 ft), thickness widthFt

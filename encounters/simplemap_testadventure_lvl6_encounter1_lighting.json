@@ -1,0 +1,37 @@
+{
+  "default_light": "BrightLight",
+  "light_sources": [
+    {
+      "name": "Light 1",
+      "col": 3,
+      "row": 3,
+      "light_level": "Darkness",
+      "bright_radius": 5,
+      "dim_radius": 6
+    },
+    {
+      "name": "Light 2",
+      "col": 15,
+      "row": 2,
+      "light_level": "Darkness",
+      "bright_radius": 5,
+      "dim_radius": 6
+    },
+    {
+      "name": "Light 3",
+      "col": 16,
+      "row": 8,
+      "light_level": "Darkness",
+      "bright_radius": 5,
+      "dim_radius": 6
+    },
+    {
+      "name": "Light 4",
+      "col": 15,
+      "row": 14,
+      "light_level": "Darkness",
+      "bright_radius": 5,
+      "dim_radius": 6
+    }
+  ]
+}

@@ -3702,9 +3702,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
         .def("aoe_cells", &BattleMap::aoeCells,
              py::arg("center"), py::arg("spell"), py::arg("caster_origin"),
-             py::arg("endpoint") = Cell{-1, -1},
-             "Cells covered by a spell's AoE geometry (Cone/Line use caster_origin as apex).\n"
-             "For Rectangle walls, `endpoint` aims the wall from `center`.")
+             py::arg("endpoint") = Cell{-1, -1}, py::arg("caster_size") = 1,
+             "Cells covered by a spell's AoE geometry. Cone/Line emanate from the cell on\n"
+             "the caster's caster_size×caster_size footprint nearest the aim point and skip\n"
+             "the caster's own space. For Rectangle walls, `endpoint` aims the wall from `center`.")
 
         .def("wall_cells", &BattleMap::wallCells,
              py::arg("anchor"), py::arg("endpoint"),

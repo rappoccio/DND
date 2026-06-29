@@ -202,9 +202,14 @@ inline std::vector<int> resolveAoeTargets(
     std::vector<int> targets;
     const int n = static_cast<int>(agents.size());
 
-    const Cell& cc = agents[static_cast<std::size_t>(caster_idx)].origin;
-    const float cx = static_cast<float>(cc.col);
-    const float cy = static_cast<float>(cc.row);
+    const PlacedAgent& caster_pa = agents[static_cast<std::size_t>(caster_idx)];
+    const Cell& cc = caster_pa.origin;
+    const int   cs = caster_pa.agent ? caster_pa.agent->getSize() : 1;
+    // Cone/Line apex: the cell on the caster's NxN footprint nearest the aimed
+    // point, so a Large+ creature emanates from the edge facing the target
+    // instead of always from its top-left origin cell.
+    const float cx = static_cast<float>(std::clamp(aoe_col, cc.col, cc.col + cs - 1));
+    const float cy = static_cast<float>(std::clamp(aoe_row, cc.row, cc.row + cs - 1));
     const float ax = static_cast<float>(aoe_col);
     const float ay = static_cast<float>(aoe_row);
 
@@ -224,10 +229,12 @@ inline std::vector<int> resolveAoeTargets(
         }
 
         case Spell::Cone: {
-            // Direction from caster toward the aimed point.
+            // A creature is never caught in its own cone emanation.
+            if (i == caster_idx) break;
+            // Direction from the footprint apex toward the aimed point.
             float dx = ax - cx, dy = ay - cy;
             float len = std::sqrt(dx*dx + dy*dy);
-            if (len < 0.001f) { in_area = (i == caster_idx); break; }
+            if (len < 0.001f) break;
             float ux = dx / len, uy = dy / len;
             float px = tx - cx, py = ty - cy;
             float plen = std::sqrt(px*px + py*py);
@@ -240,7 +247,9 @@ inline std::vector<int> resolveAoeTargets(
         }
 
         case Spell::Line: {
-            // Direction from caster toward the aimed endpoint.
+            // A creature is never caught in its own line emanation.
+            if (i == caster_idx) break;
+            // Direction from the footprint apex toward the aimed endpoint.
             float dx = ax - cx, dy = ay - cy;
             float len = std::sqrt(dx*dx + dy*dy);
             if (len < 0.001f) break;

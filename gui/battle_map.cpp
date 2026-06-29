@@ -1109,10 +1109,21 @@ std::vector<Cell> BattleMap::wallCells(Cell anchor, Cell endpoint,
 }
 
 std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
-                                      Cell casterOrigin, Cell endpoint) const {
+                                      Cell casterOrigin, Cell endpoint,
+                                      int casterSize) const {
     std::vector<Cell> cells;
     const double ax = static_cast<double>(center.col);
     const double ay = static_cast<double>(center.row);
+
+    // Cone/Line apex: the cell on the caster's footprint nearest the aim point,
+    // so a Large+ caster emanates from the facing edge, not its top-left origin.
+    const int cs = std::max(1, casterSize);
+    const int apexCol = std::clamp(center.col, casterOrigin.col, casterOrigin.col + cs - 1);
+    const int apexRow = std::clamp(center.row, casterOrigin.row, casterOrigin.row + cs - 1);
+    auto inCasterFootprint = [&](int c, int r) {
+        return c >= casterOrigin.col && c < casterOrigin.col + cs &&
+               r >= casterOrigin.row && r < casterOrigin.row + cs;
+    };
 
     switch (spell.geometry) {
     case Spell::Sphere: {
@@ -1125,7 +1136,7 @@ std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
         break;
     }
     case Spell::Cone: {
-        const double cx = casterOrigin.col, cy = casterOrigin.row;
+        const double cx = apexCol, cy = apexRow;
         const double dx = ax - cx, dy = ay - cy;
         const double ln = std::sqrt(dx * dx + dy * dy);
         if (ln < 0.001) break;
@@ -1133,6 +1144,7 @@ std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
         const double r = spell.radius / 5.0;
         for (int c = 0; c < cols_; ++c)
             for (int rr = 0; rr < rows_; ++rr) {
+                if (inCasterFootprint(c, rr)) continue;
                 const double px = c - cx, py = rr - cy;
                 const double plen = std::sqrt(px * px + py * py);
                 if (plen < 0.001) continue;
@@ -1143,7 +1155,7 @@ std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
         break;
     }
     case Spell::Line: {
-        const double cx = casterOrigin.col, cy = casterOrigin.row;
+        const double cx = apexCol, cy = apexRow;
         const double dx = ax - cx, dy = ay - cy;
         const double ln = std::sqrt(dx * dx + dy * dy);
         if (ln < 0.001) break;
@@ -1152,6 +1164,7 @@ std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
         const double wcells = spell.width / 5.0;
         for (int c = 0; c < cols_; ++c)
             for (int rr = 0; rr < rows_; ++rr) {
+                if (inCasterFootprint(c, rr)) continue;
                 const double px = c - cx, py = rr - cy;
                 const double along = px * ux + py * uy;
                 const double perp = std::abs(-py * ux + px * uy);

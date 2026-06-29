@@ -8651,16 +8651,25 @@ class App:
             caster_idx = self._current_agent_idx()
             if caster_idx < 0:
                 return cells
-            cp = self.bm.placed_agents[caster_idx].origin
-            cx, cy = float(cp.col), float(cp.row)
+            pa = self.bm.placed_agents[caster_idx]
+            cp = pa.origin
+            csize = pa.size
+            # Apex = cell on the caster's NxN footprint nearest the aim point, so a
+            # Large+ creature's cone emanates from the facing edge, not its top-left.
+            cx = float(min(max(center_cell.col, cp.col), cp.col + csize - 1))
+            cy = float(min(max(center_cell.row, cp.row), cp.row + csize - 1))
             dx, dy = ax - cx, ay - cy
             ln = math.sqrt(dx*dx + dy*dy)
             if ln < 0.001:
                 return cells
             ux, uy = dx/ln, dy/ln
             r_cells = spell.radius / 5.0
+            footprint = {(cp.col + i, cp.row + j)
+                         for i in range(csize) for j in range(csize)}
             for c in range(cols):
                 for r in range(rows):
+                    if (c, r) in footprint:
+                        continue  # the cone never covers the caster's own space
                     px, py = c - cx, r - cy
                     plen = math.sqrt(px*px + py*py)
                     if plen < 0.001:
@@ -8673,17 +8682,25 @@ class App:
             caster_idx = self._current_agent_idx()
             if caster_idx < 0:
                 return cells
-            cp = self.bm.placed_agents[caster_idx].origin
-            cx, cy = float(cp.col), float(cp.row)
+            pa = self.bm.placed_agents[caster_idx]
+            cp = pa.origin
+            csize = pa.size
+            # Apex = cell on the caster's footprint nearest the aim point (see Cone).
+            cx = float(min(max(center_cell.col, cp.col), cp.col + csize - 1))
+            cy = float(min(max(center_cell.row, cp.row), cp.row + csize - 1))
             dx, dy = ax - cx, ay - cy
             ln = math.sqrt(dx*dx + dy*dy)
             if ln < 0.001:
                 return cells
             ux, uy = dx/ln, dy/ln
+            footprint = {(cp.col + i, cp.row + j)
+                         for i in range(csize) for j in range(csize)}
             l_cells = spell.length / 5.0
             w_cells = spell.width  / 5.0
             for c in range(cols):
                 for r in range(rows):
+                    if (c, r) in footprint:
+                        continue  # the line never covers the caster's own space
                     px, py = c - cx, r - cy
                     along = px*ux + py*uy
                     perp  = abs(-py*ux + px*uy)
