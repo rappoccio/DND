@@ -549,6 +549,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathColdConeMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathColdConeMedium": 6
     }
   },
   "Adult Black Dragon": {
@@ -668,7 +674,8 @@
       "Fear",
       "Acid Arrow",
       "Speak with Dead",
-      "Vitriolic Sphere"
+      "Vitriolic Sphere",
+      "BreathAcidLineMedium"
     ],
     "npc_spell_groups": {
       "99": [
@@ -680,6 +687,9 @@
         "Speak with Dead",
         "Vitriolic Sphere"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathAcidLineMedium": 5
     }
   },
   "Adult Blue Dragon": {
@@ -780,7 +790,8 @@
       "Mage Hand",
       "Shatter",
       "Scrying",
-      "Sending"
+      "Sending",
+      "BreathLightningLineHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -792,6 +803,9 @@
         "Scrying",
         "Sending"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathLightningLineHigh": 5
     }
   },
   "Adult Brass Dragon": {
@@ -912,7 +926,8 @@
       "Shapechange",
       "Speak with Animals",
       "Detect Thoughts",
-      "Control Weather"
+      "Control Weather",
+      "BreathFireLineMedium"
     ],
     "npc_spell_groups": {
       "99": [
@@ -925,6 +940,9 @@
         "Detect Thoughts",
         "Control Weather"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathFireLineMedium": 5
     }
   },
   "Adult Bronze Dragon": {
@@ -1047,7 +1065,8 @@
       "Speak with Animals",
       "Thaumaturgy",
       "Detect Thoughts",
-      "Water Breathing"
+      "Water Breathing",
+      "BreathLightningLineHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -1060,6 +1079,9 @@
         "Detect Thoughts",
         "Water Breathing"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathLightningLineHigh": 5
     }
   },
   "Adult Copper Dragon": {
@@ -1161,7 +1183,8 @@
       "Minor Illusion",
       "Shapechange",
       "Greater Restoration",
-      "Major Image"
+      "Major Image",
+      "BreathAcidLineMedium"
     ],
     "npc_spell_groups": {
       "99": [
@@ -1173,6 +1196,9 @@
         "Greater Restoration",
         "Major Image"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathAcidLineMedium": 5
     }
   },
   "Adult Deep Dragon": {
@@ -1240,7 +1266,7 @@
       "type": "Dragon",
       "cr": "11",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -1391,7 +1417,8 @@
       "Guiding Bolt",
       "Shapechange",
       "Flame Strike",
-      "Zone of Truth"
+      "Zone of Truth",
+      "BreathFireConeHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -1403,6 +1430,9 @@
         "Flame Strike",
         "Zone of Truth"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathFireConeHigh": 5
     }
   },
   "Adult Green Dragon": {
@@ -1504,7 +1534,8 @@
     "spell_indices": [
       "Detect Magic",
       "Mind Spike",
-      "Geas"
+      "Geas",
+      "BreathPoisonConeHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -1514,6 +1545,9 @@
       "1": [
         "Geas"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPoisonConeHigh": 5
     }
   },
   "Adult Red Dragon": {
@@ -1630,7 +1664,8 @@
       "Command",
       "Detect Magic",
       "Scorching Ray",
-      "Fireball"
+      "Fireball",
+      "BreathFireConeHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -1641,6 +1676,9 @@
       "1": [
         "Fireball"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathFireConeHigh": 5
     }
   },
   "Adult Silver Dragon": {
@@ -1839,7 +1877,7 @@
       "type": "Dragon",
       "cr": "15",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -2309,7 +2347,8 @@
       "Acid Arrow",
       "Create Undead",
       "Speak with Dead",
-      "Vitriolic Sphere"
+      "Vitriolic Sphere",
+      "BreathAcidLineHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -2322,6 +2361,9 @@
         "Speak with Dead",
         "Vitriolic Sphere"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathAcidLineHigh": 5
     }
   },
   "Ancient Blue Dragon": {
@@ -2422,7 +2464,8 @@
       "Mage Hand",
       "Shatter",
       "Scrying",
-      "Sending"
+      "Sending",
+      "BreathLightningLineEnormous"
     ],
     "npc_spell_groups": {
       "99": [
@@ -2434,6 +2477,9 @@
         "Scrying",
         "Sending"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathLightningLineEnormous": 5
     }
   },
   "Ancient Brass Dragon": {
@@ -2554,7 +2600,8 @@
       "Shapechange",
       "Speak with Animals",
       "Detect Thoughts",
-      "Control Weather"
+      "Control Weather",
+      "BreathFireLineHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -2567,6 +2614,9 @@
         "Detect Thoughts",
         "Control Weather"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathFireLineHigh": 5
     }
   },
   "Ancient Bronze Dragon": {
@@ -2691,7 +2741,8 @@
       "Detect Thoughts",
       "Control Water",
       "Scrying",
-      "Water Breathing"
+      "Water Breathing",
+      "BreathLightningLineEnormous"
     ],
     "npc_spell_groups": {
       "99": [
@@ -2706,6 +2757,9 @@
         "Scrying",
         "Water Breathing"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathLightningLineEnormous": 5
     }
   },
   "Ancient Copper Dragon": {
@@ -2808,7 +2862,8 @@
       "Shapechange",
       "Greater Restoration",
       "Major Image",
-      "Project Image"
+      "Project Image",
+      "BreathAcidLineMedium"
     ],
     "npc_spell_groups": {
       "99": [
@@ -2821,6 +2876,9 @@
         "Major Image",
         "Project Image"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathAcidLineMedium": 5
     }
   },
   "Ancient Deep Dragon": {
@@ -2888,7 +2946,7 @@
       "type": "Dragon",
       "cr": "18",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -3040,7 +3098,8 @@
       "Shapechange",
       "Flame Strike",
       "Word of Recall",
-      "Zone of Truth"
+      "Zone of Truth",
+      "BreathFireConeEnormous"
     ],
     "npc_spell_groups": {
       "99": [
@@ -3053,6 +3112,9 @@
         "Word of Recall",
         "Zone of Truth"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathFireConeEnormous": 5
     }
   },
   "Ancient Green Dragon": {
@@ -3155,7 +3217,8 @@
       "Detect Magic",
       "Mind Spike",
       "Geas",
-      "Modify Memory"
+      "Modify Memory",
+      "BreathPoisonConeEnormous"
     ],
     "npc_spell_groups": {
       "99": [
@@ -3166,6 +3229,9 @@
         "Geas",
         "Modify Memory"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPoisonConeEnormous": 5
     }
   },
   "Ancient Red Dragon": {
@@ -3283,7 +3349,8 @@
       "Detect Magic",
       "Scorching Ray",
       "Fireball",
-      "Scrying"
+      "Scrying",
+      "BreathFireConeEnormous"
     ],
     "npc_spell_groups": {
       "99": [
@@ -3295,6 +3362,9 @@
         "Fireball",
         "Scrying"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathFireConeEnormous": 5
     }
   },
   "Ancient Silver Dragon": {
@@ -3501,7 +3571,7 @@
       "type": "Dragon",
       "cr": "22",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -4560,7 +4630,7 @@
       "type": "Monstrosity",
       "cr": "2",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Spider Climb",
         "Web Walker"
@@ -5264,7 +5334,8 @@
       "Flame Strike",
       "Greater Restoration",
       "Raise Dead",
-      "Zone of Truth"
+      "Zone of Truth",
+      "BreathRadiantEmanationMedium"
     ],
     "npc_spell_groups": {
       "3": [
@@ -5279,6 +5350,9 @@
         "Raise Dead",
         "Zone of Truth"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathRadiantEmanationMedium": 4
     }
   },
   "Assassin": {
@@ -6587,7 +6661,8 @@
       "Minor Illusion",
       "Hold Person",
       "Mage Armor",
-      "Major Image"
+      "Major Image",
+      "BreathRadiantSphereLow"
     ],
     "npc_spell_groups": {
       "99": [
@@ -6598,6 +6673,9 @@
         "Mage Armor",
         "Major Image"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathRadiantSphereLow": 4
     }
   },
   "Banshee": {
@@ -7372,7 +7450,7 @@
       "type": "Monstrosity",
       "cr": "11",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Amphibious",
         "Divine Immortality",
@@ -7493,6 +7571,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathLightningLineHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathLightningLineHigh": 5
     }
   },
   "Beholder": {
@@ -8003,7 +8087,7 @@
       "type": "Elemental (Genie)",
       "cr": "12",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Amphibious",
         "Elemental Restoration",
@@ -8234,6 +8318,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathAcidLineLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathAcidLineLow": 5
     }
   },
   "Black Pudding": {
@@ -8718,6 +8808,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathLightningLineLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathLightningLineLow": 5
     }
   },
   "Blue Slaad": {
@@ -9448,6 +9544,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireLineLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireLineLow": 5
     }
   },
   "Brazen Gorgon": {
@@ -9638,6 +9740,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathLightningLineMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathLightningLineMedium": 5
     }
   },
   "Brown Bear": {
@@ -10418,7 +10526,7 @@
       "type": "Construct",
       "cr": "4",
       "alignment": "Unaligned",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Disintegration",
         "Magic Resistance"
@@ -11504,6 +11612,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeLow": 5
     }
   },
   "Chuul": {
@@ -12266,6 +12380,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathRadiantLineColossal"
+    ],
+    "npc_spell_recharge": {
+      "BreathRadiantLineColossal": 5
     }
   },
   "Commoner": {
@@ -12532,6 +12652,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathAcidLineLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathAcidLineLow": 5
     }
   },
   "Corrupted Rat": {
@@ -13494,7 +13620,7 @@
       "type": "Humanoid",
       "cr": "9",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Determined Survivor"
       ],
@@ -13613,7 +13739,7 @@
       "type": "Humanoid",
       "cr": "7",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Blood-Soaked Resolved"
       ],
@@ -13735,7 +13861,7 @@
       "type": "Humanoid",
       "cr": "11",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Nearer to the Dead"
       ],
@@ -14586,7 +14712,7 @@
       "type": "Humanoid",
       "cr": "16",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Culling Aura",
         "Magic Resistance"
@@ -14955,7 +15081,8 @@
     "spell_indices": [
       "Command",
       "Phantom Steed",
-      "Dispel Magic"
+      "Dispel Magic",
+      "BreathFireNecroticSphereHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -14966,7 +15093,10 @@
         "Dispel Magic"
       ]
     },
-    "is_undead": true
+    "is_undead": true,
+    "npc_spell_recharge": {
+      "BreathFireNecroticSphereHigh": 5
+    }
   },
   "Death Knight Aspirant": {
     "name": "Death Knight Aspirant",
@@ -15069,7 +15199,8 @@
     },
     "spell_indices": [
       "Phantom Steed",
-      "Dispel Magic"
+      "Dispel Magic",
+      "BreathFireNecroticSphereMedium"
     ],
     "npc_spell_groups": {
       "99": [
@@ -15079,7 +15210,10 @@
         "Dispel Magic"
       ]
     },
-    "is_undead": true
+    "is_undead": true,
+    "npc_spell_recharge": {
+      "BreathFireNecroticSphereMedium": 5
+    }
   },
   "Death Slaad": {
     "name": "Death Slaad",
@@ -15376,7 +15510,7 @@
       "type": "Dragon",
       "cr": "1",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Draconic"
@@ -15618,7 +15752,13 @@
         "has_lair": true
       }
     },
-    "is_undead": true
+    "is_undead": true,
+    "spell_indices": [
+      "BreathPsychicEmanationHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathPsychicEmanationHigh": 5
+    }
   },
   "Demobat": {
     "name": "Demobat",
@@ -16351,6 +16491,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathPsychicEmanationHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathPsychicEmanationHigh": 5
     }
   },
   "Displacer Beast": {
@@ -16827,7 +16973,8 @@
       "Detect Magic",
       "Ray of Sickness",
       "Create Undead",
-      "Finger of Death"
+      "Finger of Death",
+      "BreathNecroticConeHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -16839,7 +16986,10 @@
         "Finger of Death"
       ]
     },
-    "is_undead": true
+    "is_undead": true,
+    "npc_spell_recharge": {
+      "BreathNecroticConeHigh": 5
+    }
   },
   "Draft Horse": {
     "name": "Draft Horse",
@@ -17035,6 +17185,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeHigh": 5
     }
   },
   "Dreaming Dark Infiltrator": {
@@ -17563,7 +17719,7 @@
       "type": "Humaniod (Elf)",
       "cr": "5",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -17686,7 +17842,7 @@
       "type": "Humaniod (Elf)",
       "cr": "7",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -17814,7 +17970,7 @@
       "type": "Humaniod (Elf)",
       "cr": "1/4",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -17917,7 +18073,7 @@
       "type": "Humaniod (Elf)",
       "cr": "8",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Fey Ancestry",
         "Sunlight Sensitivity"
@@ -18739,7 +18895,7 @@
       "type": "Construct",
       "cr": "6",
       "alignment": "Chaotic Neutral",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -26462,6 +26618,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathNecroticSphereHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathNecroticSphereHigh": 5
     }
   },
   "Gnoll Fang of Yeenoghu": {
@@ -27280,6 +27442,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeLow": 5
     }
   },
   "Gorgon": {
@@ -27922,6 +28090,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathPoisonConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathPoisonConeLow": 5
     }
   },
   "Green Hag": {
@@ -28076,12 +28250,13 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Force)",
+        "name": "Chaos Staff",
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
+        "bonus_hit": 1,
         "bonus_damage": 1,
         "physical_damage_types": [],
         "magic_damage_types": [
@@ -28096,12 +28271,13 @@
       },
       "off_hand": "",
       "ranged": {
-        "name": "Ranged (Force)",
+        "name": "Chaos Staff",
         "type": "ranged",
         "reach_ft": 5,
         "normal_range_ft": 60,
         "long_range_ft": 240,
         "proficient": true,
+        "bonus_hit": 2,
         "bonus_damage": 2,
         "physical_damage_types": [],
         "magic_damage_types": [
@@ -29668,6 +29844,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeLow": 5
     }
   },
   "Helmed Horror": {
@@ -31271,6 +31453,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Wall of Ice"
+    ],
+    "npc_spell_recharge": {
+      "Wall of Ice": 6
     }
   },
   "Ice Mephit": {
@@ -31370,6 +31558,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathColdConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathColdConeLow": 6
     }
   },
   "Imp": {
@@ -32245,6 +32439,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathPoisonConeHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathPoisonConeHigh": 6
     }
   },
   "Jackal": {
@@ -32649,6 +32849,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathNecroticConeMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathNecroticConeMedium": 5
     }
   },
   "Karas Chembryl": {
@@ -32755,7 +32961,7 @@
       "type": "Humanoid (Human)",
       "cr": "8",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Evasion"
       ],
@@ -34844,7 +35050,8 @@
       "Elementalism",
       "Meld into Stone",
       "Speak with Plants",
-      "Spike Growth"
+      "Spike Growth",
+      "BreathBludgeoningSphereMedium"
     ],
     "npc_spell_groups": {
       "1": [
@@ -34852,6 +35059,9 @@
         "Speak with Plants",
         "Spike Growth"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathBludgeoningSphereMedium": 5
     }
   },
   "Lizardfolk Sovereign": {
@@ -35541,6 +35751,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeLow": 6
     }
   },
   "Magmin": {
@@ -36005,7 +36221,7 @@
       "type": "Humanoid (Human, Wizard)",
       "cr": "13",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Magic Resistance"
       ],
@@ -37675,7 +37891,8 @@
     "spell_indices": [
       "Detect Thoughts",
       "Dominate Monster",
-      "Plane Shift"
+      "Plane Shift",
+      "BreathPsychicConeHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -37685,6 +37902,9 @@
         "Dominate Monster",
         "Plane Shift"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPsychicConeHigh": 5
     }
   },
   "Mind Flayer Arcanist": {
@@ -37812,7 +38032,8 @@
       "Fireball",
       "Lightning Bolt",
       "Plane Shift",
-      "Sending"
+      "Sending",
+      "BreathPsychicEmanationHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -37831,6 +38052,9 @@
         "Plane Shift",
         "Sending"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPsychicEmanationHigh": 5
     }
   },
   "Minotaur of Baphomet": {
@@ -39861,7 +40085,7 @@
       "type": "Construct",
       "cr": "2",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Evasion"
       ],
@@ -39977,7 +40201,7 @@
       "type": "Construct",
       "cr": "3",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Evasion"
       ],
@@ -40093,7 +40317,7 @@
       "type": "Construct",
       "cr": "7",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Evasion",
         "Magic Resistance"
@@ -42446,7 +42670,7 @@
       "type": "Aberration",
       "cr": "8",
       "alignment": "Neutral Evil",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42599,7 +42823,7 @@
       "type": "Aberration",
       "cr": "14",
       "alignment": "Neutral Evil",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42722,7 +42946,7 @@
       "type": "Aberration",
       "cr": "1/4",
       "alignment": "Neutral Evil",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42842,7 +43066,7 @@
       "type": "Aberration",
       "cr": "2",
       "alignment": "Neutral Evil",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Magic Resistance"
       ],
@@ -42950,7 +43174,7 @@
       "type": "Aberration",
       "cr": "1/4",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Magic Resistance"
       ],
@@ -43069,7 +43293,7 @@
       "type": "Aberration",
       "cr": "8",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Magic Resistance"
       ],
@@ -44470,7 +44694,7 @@
       "type": "Elemental",
       "cr": "3",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Misty Slithering"
       ],
@@ -45047,6 +45271,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathThunderEmanationHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathThunderEmanationHigh": 5
     }
   },
   "Pseudodragon": {
@@ -45837,7 +46067,7 @@
       "type": "Construct",
       "cr": "10",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Inspiring Presence",
         "Magic Resistance"
@@ -46099,7 +46329,8 @@
       "Fly",
       "Invisibility",
       "Major Image",
-      "Plane Shift"
+      "Plane Shift",
+      "BreathPsychicEmanationHigh"
     ],
     "npc_spell_groups": {
       "99": [
@@ -46113,6 +46344,9 @@
         "Major Image",
         "Plane Shift"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPsychicEmanationHigh": 5
     }
   },
   "Rat": {
@@ -46379,6 +46613,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeLow": 5
     }
   },
   "Red Slaad": {
@@ -47414,7 +47654,7 @@
       "type": "Construct",
       "cr": "9",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -47547,7 +47787,7 @@
       "type": "Construct",
       "cr": "4",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common"
@@ -47638,7 +47878,7 @@
       "type": "Construct",
       "cr": "14",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -48485,7 +48725,7 @@
       "type": "Undead",
       "cr": "22",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Life Suppression",
         "Magic Resistance",
@@ -48656,7 +48896,7 @@
       "type": "Undead (Wizard)",
       "cr": "22",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Life Suppression",
         "Magic Resistance",
@@ -48906,6 +49146,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathPsychicEmanationEnormous"
+    ],
+    "npc_spell_recharge": {
+      "BreathPsychicEmanationEnormous": 4
     }
   },
   "Scarecrow": {
@@ -49904,6 +50150,12 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
+    },
+    "spell_indices": [
+      "BreathNecroticConeHigh"
+    ],
+    "npc_spell_recharge": {
+      "BreathNecroticConeHigh": 5
     }
   },
   "Shadow-Marked Agent": {
@@ -51523,7 +51775,8 @@
       "Locate Object",
       "Plane Shift",
       "Remove Curse",
-      "Tongues"
+      "Tongues",
+      "BreathPsychicEmanationColossal"
     ],
     "npc_spell_groups": {
       "99": [
@@ -51538,6 +51791,9 @@
         "Remove Curse",
         "Tongues"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPsychicEmanationColossal": 5
     }
   },
   "Sphinx of Secrets": {
@@ -52146,7 +52402,7 @@
       "type": "Dragon",
       "cr": "2",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -52380,7 +52636,7 @@
       "type": "Plant",
       "cr": "12",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Explosive Core",
         "Rolling Mass"
@@ -52824,6 +53080,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeLow": 6
     }
   },
   "Steel Defender": {
@@ -53495,7 +53757,8 @@
     "spell_indices": [
       "Detect Magic",
       "Light",
-      "Control Weather"
+      "Control Weather",
+      "BreathLightningSphereLow"
     ],
     "npc_spell_groups": {
       "99": [
@@ -53504,6 +53767,9 @@
       "1": [
         "Control Weather"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathLightningSphereLow": 5
     }
   },
   "Succubus": {
@@ -53713,7 +53979,7 @@
       "type": "Fey",
       "cr": "14",
       "alignment": "Neutral Good",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Flyby"
       ],
@@ -55317,6 +55583,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathThunderConeColossal"
+    ],
+    "npc_spell_recharge": {
+      "BreathThunderConeColossal": 5
     }
   },
   "Terran Magen": {
@@ -55403,7 +55675,7 @@
       "type": "Construct",
       "cr": "8",
       "alignment": "Unaligned",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Disintegration",
         "Magic Resistance"
@@ -57552,7 +57824,7 @@
       "type": "Undead (Wizard)",
       "cr": "21",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Spirit Gem"
       ],
@@ -58460,7 +58732,13 @@
         "has_lair": true
       }
     },
-    "is_undead": true
+    "is_undead": true,
+    "spell_indices": [
+      "Hunger of Hadar"
+    ],
+    "npc_spell_recharge": {
+      "Hunger of Hadar": 5
+    }
   },
   "Vampire Warden": {
     "name": "Vampire Warden",
@@ -58779,6 +59057,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "Entangle"
+    ],
+    "npc_spell_recharge": {
+      "Entangle": 5
     }
   },
   "Vine Blight Tangler": {
@@ -59057,6 +59341,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathNecroticSphereMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathNecroticSphereMedium": 5
     }
   },
   "Vircos Magen": {
@@ -59142,7 +59432,7 @@
       "type": "Construct",
       "cr": "6",
       "alignment": "Unaligned",
-      "source": "Netheril\u2019s Fall: Tales of Terror, Treasure, and Time Travel",
+      "source": "Netheril’s Fall: Tales of Terror, Treasure, and Time Travel",
       "traits": [
         "Disintegration",
         "Magic Resistance"
@@ -59287,6 +59577,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathPoisonEmanationMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathPoisonEmanationMedium": 6
     }
   },
   "Vulkoori Stingblade": {
@@ -61225,7 +61521,7 @@
       "type": "Dragon (Lycanthrope)",
       "cr": "8",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Flyby"
       ],
@@ -61467,8 +61763,8 @@
     },
     "is_undead": true
   },
-  "Will-o\u2019-Wisp": {
-    "name": "Will-o\u2019-Wisp",
+  "Will-o’-Wisp": {
+    "name": "Will-o’-Wisp",
     "size": "Tiny",
     "stats": {
       "str": 0,
@@ -62656,6 +62952,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathAcidLineLow"
+    ],
+    "npc_spell_recharge": {
+      "BreathAcidLineLow": 5
     }
   },
   "Young Blue Dragon": {
@@ -62748,6 +63050,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathLightningLineMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathLightningLineMedium": 5
     }
   },
   "Young Brass Dragon": {
@@ -62841,6 +63149,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireLineMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireLineMedium": 5
     }
   },
   "Young Bronze Dragon": {
@@ -62936,6 +63250,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathLightningLineMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathLightningLineMedium": 5
     }
   },
   "Young Copper Dragon": {
@@ -63029,6 +63349,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathAcidLineMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathAcidLineMedium": 5
     }
   },
   "Young Deep Dragon": {
@@ -63096,7 +63422,7 @@
       "type": "Dragon",
       "cr": "5",
       "alignment": "Neutral Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -63222,6 +63548,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeMedium": 5
     }
   },
   "Young Green Dragon": {
@@ -63318,6 +63650,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathPoisonConeMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathPoisonConeMedium": 5
     }
   },
   "Young Red Dragon": {
@@ -63410,6 +63748,12 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BreathFireConeMedium"
+    ],
+    "npc_spell_recharge": {
+      "BreathFireConeMedium": 5
     }
   },
   "Young Remorhaz": {
@@ -63660,7 +64004,7 @@
       "type": "Dragon",
       "cr": "8",
       "alignment": "Neutral",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common",
@@ -63883,7 +64227,8 @@
     },
     "spell_indices": [
       "Animal Friendship",
-      "Suggestion"
+      "Suggestion",
+      "BreathPoisonConeMedium"
     ],
     "npc_spell_groups": {
       "99": [
@@ -63892,6 +64237,9 @@
       "3": [
         "Suggestion"
       ]
+    },
+    "npc_spell_recharge": {
+      "BreathPoisonConeMedium": 5
     }
   },
   "Yuan-ti Infiltrator": {
@@ -64458,7 +64806,7 @@
       "type": "Humanoid",
       "cr": "4",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Aura of Dread"
       ],
@@ -64572,7 +64920,7 @@
       "type": "Humanoid",
       "cr": "1",
       "alignment": "Lawful Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [],
       "languages": [
         "Common"
@@ -64688,7 +65036,7 @@
       "type": "Undead (Wizard)",
       "cr": "18",
       "alignment": "Chaotic Evil",
-      "source": "Forgotten Realms: Adventures in Faer\u00fbn",
+      "source": "Forgotten Realms: Adventures in Faerûn",
       "traits": [
         "Chardalyn Sense",
         "Magic Resistance",

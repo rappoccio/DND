@@ -366,6 +366,7 @@ def test_evasion_no_damage_on_save():
     spell.attack_type = rpg.SpellAttack.Save
     spell.save_ability = rpg.SaveAbility.Dexterity
     spell.geometry = rpg.SpellGeometry.Multiple
+    spell.num_targets = 2  # engine caps Multiple-geometry casts to num_targets; this hits both
     spell.range = 60
     dmg = rpg.MagicDamageRoll()
     dmg.type = rpg.MagicDamage.Force

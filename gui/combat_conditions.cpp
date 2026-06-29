@@ -546,6 +546,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.charmed_by = -1;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
+                    } else if (cond.condition_name == "Poisoned") {
+                        agent_cond.poisoned = false;
                     } else if (cond.condition_name == "Unconscious") {
                         agent_cond.unconscious = false;
                         agent_cond.incapacitated = false;
@@ -613,6 +615,8 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
                         agent_cond.charmed_by = -1;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
+                    } else if (cond.condition_name == "Poisoned") {
+                        agent_cond.poisoned = false;
                     } else if (cond.condition_name == "Unconscious") {
                         agent_cond.unconscious = false;
                         agent_cond.incapacitated = false;

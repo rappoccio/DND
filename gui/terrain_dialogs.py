@@ -9,40 +9,46 @@ from constants import *
 from widgets import Button
 
 
-def draw_door_glyph(screen, x, y, size, door, font_sm=None):
-    """Draw a door at screen rect (x, y, size, size).
+def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None):
+    """Draw a door over screen rect (x, y, w, h) — defaults to a single cell (size×size).
 
     `door` is an rpg.Door. Closed doors are a filled wooden slab; open doors are an
     ajar frame. A locked door shows a gold padlock; an Arcane Lock shows a purple one.
     Used by both the in-game render loop (main.py) and the terrain editor below so the
-    door looks identical wherever it is drawn.
+    door looks identical wherever it is drawn. A wide (multi-cell) door is drawn as one
+    elongated slab over its full bounding rect: pass w/h covering all of its cells.
     """
-    pad = max(2, size // 8)
+    if w is None:
+        w = size
+    if h is None:
+        h = size
+    short = min(w, h)
+    pad = max(2, short // 8)
     if door.open:
         # Open: faint green frame plus a thin ajar slab hinged on the left edge.
-        frame = pygame.Rect(x + pad, y + pad, size - 2 * pad, size - 2 * pad)
+        frame = pygame.Rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad)
         pygame.draw.rect(screen, (120, 200, 120), frame, 2)
-        slab = pygame.Rect(x + pad, y + pad, max(3, size // 4), size - 2 * pad)
+        slab = pygame.Rect(x + pad, y + pad, max(3, short // 4), h - 2 * pad)
         s = pygame.Surface((slab.w, slab.h), pygame.SRCALPHA)
         s.fill((139, 90, 43, 130))
         screen.blit(s, (slab.x, slab.y))
     else:
         # Closed: solid wooden slab with a centre plank line and a knob.
-        slab = pygame.Rect(x + pad, y + pad, size - 2 * pad, size - 2 * pad)
+        slab = pygame.Rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad)
         pygame.draw.rect(screen, (110, 70, 35), slab)
         pygame.draw.rect(screen, (70, 45, 20), slab, 2)
         midx = slab.x + slab.w // 2
         pygame.draw.line(screen, (70, 45, 20), (midx, slab.y), (midx, slab.y + slab.h), 1)
-        knob_r = max(2, size // 14)
+        knob_r = max(2, short // 14)
         pygame.draw.circle(screen, (210, 180, 60),
                            (slab.x + slab.w - knob_r * 3, slab.y + slab.h // 2), knob_r)
 
     if door.locked or door.arcane_lock:
         lock_col = (180, 80, 220) if door.arcane_lock else (230, 200, 60)
-        cx = x + size // 2
-        cy = y + size // 2
-        body_w = max(6, size // 4)
-        body_h = max(5, size // 5)
+        cx = x + w // 2
+        cy = y + h // 2
+        body_w = max(6, short // 4)
+        body_h = max(5, short // 5)
         body = pygame.Rect(cx - body_w // 2, cy, body_w, body_h)
         pygame.draw.rect(screen, lock_col, body)
         pygame.draw.rect(screen, (30, 30, 30), body, 1)
@@ -239,6 +245,9 @@ class TerrainEditorDialog:
         self.door_locked = False
         self.door_lock_dc = 15
         self.door_arcane = False
+        # Drag-to-span door placement: start/end cells while the mouse is held.
+        self.door_drag_start = None
+        self.door_drag_end = None
         # Mapping from terrain type names to rpg.TerrainType enum values
         self.terrain_type_map = {
             "Standard": rpg.TerrainType.Standard,
@@ -267,9 +276,10 @@ class TerrainEditorDialog:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and self.selected_type == "Door":
-                # Doors are single-cell objects: a click toggles a door on the cell
-                # (place with the current lock settings, or remove an existing one).
-                self._toggle_door_at(event.pos)
+                # A door spans 1..4 cells: press starts the span, drag sizes it, release
+                # places it. (A press-and-release on one cell is the single-cell toggle.)
+                self.door_drag_start = self._pos_to_cell(event.pos)
+                self.door_drag_end = self.door_drag_start
                 self.selection_start = None
                 self.selection_rect = None
                 return
@@ -288,7 +298,11 @@ class TerrainEditorDialog:
                 self.selected_region_idx = -1
 
         elif event.type == pygame.MOUSEMOTION:
-            if self.selection_start and self.selected_region_idx < 0:
+            if self.selected_type == "Door" and self.door_drag_start is not None:
+                end = self._pos_to_cell(event.pos)
+                if end is not None:
+                    self.door_drag_end = end
+            elif self.selection_start and self.selected_region_idx < 0:
                 x0, y0 = self.selection_start
                 x1, y1 = event.pos
                 self.selection_rect = pygame.Rect(
@@ -297,6 +311,12 @@ class TerrainEditorDialog:
                 )
 
         elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1 and self.selected_type == "Door" and self.door_drag_start is not None:
+                end = self._pos_to_cell(event.pos) or self.door_drag_end or self.door_drag_start
+                self._place_door_span(self.door_drag_start, end)
+                self.door_drag_start = None
+                self.door_drag_end = None
+                return
             if event.button == 1 and self.selection_rect and self.selection_rect.w > 0 and self.selection_rect.h > 0:
                 self._apply_terrain_to_selection()
                 self.selection_start = None
@@ -373,18 +393,45 @@ class TerrainEditorDialog:
             return rpg.Cell(col, row)
         return None
 
-    def _toggle_door_at(self, pos):
-        """Place a door (with current lock settings) on the clicked cell, or remove the
-        one already there. BattleMap.add_door/remove_door keep the cell's terrain in sync."""
-        cell = self._pos_to_cell(pos)
-        if cell is None or not self.bm:
-            return
-        di = self.bm.door_at(cell)
-        if di >= 0:
-            self.bm.remove_door(self.bm.doors[di].id)
+    MAX_DOOR_WIDTH = 4
+
+    def _door_span_cells(self, start_cell, end_cell):
+        """Cells of a door dragged from start_cell to end_cell.
+
+        The span follows the dominant axis (horizontal or vertical) and is clamped to
+        MAX_DOOR_WIDTH cells, so a door is at most 4 squares across."""
+        if start_cell is None:
+            return []
+        if end_cell is None:
+            end_cell = start_cell
+        dcol = end_cell.col - start_cell.col
+        drow = end_cell.row - start_cell.row
+        if abs(dcol) >= abs(drow):
+            step = 1 if dcol >= 0 else -1
+            cells = [rpg.Cell(c, start_cell.row)
+                     for c in range(start_cell.col, end_cell.col + step, step)]
         else:
-            self.bm.add_door(cell, False, self.door_locked,
-                             self.door_lock_dc, self.door_arcane)
+            step = 1 if drow >= 0 else -1
+            cells = [rpg.Cell(start_cell.col, r)
+                     for r in range(start_cell.row, end_cell.row + step, step)]
+        return cells[:self.MAX_DOOR_WIDTH]
+
+    def _place_door_span(self, start_cell, end_cell):
+        """Place a (possibly wide) door from the current lock settings, or remove an
+        existing single-cell door when the drag was just a click on it (toggle)."""
+        if start_cell is None or not self.bm:
+            return
+        cells = self._door_span_cells(start_cell, end_cell)
+        if not cells:
+            return
+        # A single-cell click on an existing door removes it (preserves toggle behaviour).
+        if len(cells) == 1:
+            di = self.bm.door_at(cells[0])
+            if di >= 0:
+                self.bm.remove_door(self.bm.doors[di].id)
+                return
+        self.bm.add_door(cells, False, self.door_locked,
+                         self.door_lock_dc, self.door_arcane)
 
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
@@ -516,9 +563,26 @@ class TerrainEditorDialog:
             h = self.bm.h_line_positions
             size = self.bm.cell_pixel_size
             for door in self.bm.doors:
-                c, r = door.cell.col, door.cell.row
-                if v and h and c < len(v) and r < len(h):
-                    draw_door_glyph(screen, v[c], h[r], size, door, self.font_sm)
+                cols = [c.col for c in door.cells]
+                rows = [c.row for c in door.cells]
+                if not cols or not v or not h:
+                    continue
+                min_col, max_col = min(cols), max(cols)
+                min_row, max_row = min(rows), max(rows)
+                if min_col < len(v) and min_row < len(h):
+                    draw_door_glyph(screen, v[min_col], h[min_row], size, door, self.font_sm,
+                                    w=(max_col - min_col + 1) * size,
+                                    h=(max_row - min_row + 1) * size)
+            # Preview the in-progress door span while dragging.
+            if self.door_drag_start is not None and self.door_drag_end is not None:
+                for cell in self._door_span_cells(self.door_drag_start, self.door_drag_end):
+                    c, r = cell.col, cell.row
+                    if v and h and c < len(v) and r < len(h):
+                        prev = pygame.Surface((size, size), pygame.SRCALPHA)
+                        prev.fill((210, 180, 90, 110))
+                        screen.blit(prev, (v[c], h[r]))
+                        pygame.draw.rect(screen, (210, 180, 90),
+                                         pygame.Rect(v[c], h[r], size, size), 2)
 
         # Draw current selection preview
         if self.selection_rect:
@@ -553,8 +617,9 @@ class TerrainEditorDialog:
             door_text = f"Door: [{lock_str}{arc_str}]  DC {self.door_lock_dc}"
             door_surf = self.font_sm.render(door_text, True, (220, 200, 120))
             screen.blit(door_surf, (10, y + 10))
-            keys_surf = self.font_sm.render("[L] lock  [A] arcane  [+/-] DC  (click toggles door)",
-                                            True, (170, 170, 170))
+            keys_surf = self.font_sm.render(
+                "[L] lock  [A] arcane  [+/-] DC  (click toggles; drag for a wide door, max 4)",
+                True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         else:
             # Difficulty multiplier indicator

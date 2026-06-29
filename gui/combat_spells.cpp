@@ -1915,6 +1915,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (spell_mut.uses_max > 0) {
                 spell_mut.uses_remaining = std::max(0, spell_mut.uses_remaining - 1);
             }
+            // Recharge breath weapon: once cast it's expended until a d6 ≥ recharge_min at the
+            // caster's turn start restores it (beginTurn). Independent of the N/day cap above.
+            if (spell_mut.recharge_min > 0) {
+                spell_mut.expended = true;
+            }
         } else {
             // Player: decrement spell slot (if not a cantrip). A free cast (e.g. Mantle of Majesty's
             // Command) skips the slot decrement entirely — the caller still charges the action economy.
@@ -2012,8 +2017,8 @@ std::vector<int> CombatEngine::availableCastableSpells(
         }
 
         if (stats.is_npc) {
-            // NPC: need remaining uses
-            if (spell.uses_max > 0 && spell.uses_remaining > 0) {
+            // NPC: need remaining uses and not waiting on a recharge (breath weapons).
+            if (spell.uses_max > 0 && spell.uses_remaining > 0 && !spell.expended) {
                 result.push_back(static_cast<int>(i));
             }
         } else {

@@ -142,6 +142,52 @@ def test_pick_unlocked_door_is_noop():
     print("✅ picking an unlocked door is a no-op")
 
 
+# ── Wide (multi-cell) doors ──────────────────────────────────────────────────
+
+def test_wide_door_spans_all_cells():
+    """A door spanning several cells blocks every cell when closed and clears them all
+    when opened, and door_at locates it from any of its cells."""
+    bm = setup_battle_map()
+    cells = [rpg.Cell(2, 7), rpg.Cell(3, 7), rpg.Cell(4, 7), rpg.Cell(5, 7)]
+
+    did = bm.add_door(cells, False, False, 15, False)  # closed, unlocked, 4 wide
+    for c in cells:
+        assert bm.get_terrain_type(c) == rpg.TerrainType.Wall, "every closed cell is a Wall"
+        assert bm.door_at(c) >= 0, "door_at finds the door from any of its cells"
+
+    door = bm.doors[bm.door_at(cells[0])]
+    assert len(door.cells) == 4, "door should record all 4 cells"
+    assert door.cell.col == 2 and door.cell.row == 7, "anchor is the first cell"
+
+    assert bm.open_door(did), "an unlocked wide door opens"
+    for c in cells:
+        assert bm.get_terrain_type(c) == rpg.TerrainType.Standard, "every cell clears when open"
+    print("✅ wide door spans and toggles all its cells")
+
+
+def test_wide_door_removed_clears_all_cells():
+    """Removing a wide door restores Standard terrain on every cell."""
+    bm = setup_battle_map()
+    cells = [rpg.Cell(6, 2), rpg.Cell(6, 3)]  # vertical double door
+    did = bm.add_door(cells, False, False, 15, False)
+    bm.remove_door(did)
+    for c in cells:
+        assert bm.get_terrain_type(c) == rpg.TerrainType.Standard, "removed cells become Standard"
+        assert bm.door_at(c) < 0, "no door remains at the cell"
+    print("✅ removing a wide door clears all its cells")
+
+
+def test_overlapping_door_replaces_previous():
+    """add_door replaces any door overlapping the new cells (no stacking)."""
+    bm = setup_battle_map()
+    bm.add_door([rpg.Cell(1, 1), rpg.Cell(2, 1)], False, False, 15, False)
+    bm.add_door([rpg.Cell(2, 1), rpg.Cell(3, 1)], False, False, 15, False)  # overlaps cell (2,1)
+    assert len(bm.doors) == 1, "the overlapping door replaced the first"
+    door = bm.doors[0]
+    assert {(c.col, c.row) for c in door.cells} == {(2, 1), (3, 1)}
+    print("✅ overlapping door placement replaces the previous door")
+
+
 if __name__ == "__main__":
     tests = [
         test_sleight_of_hand_bonus,
@@ -151,6 +197,9 @@ if __name__ == "__main__":
         test_pick_lock_failure,
         test_arcane_lock_cannot_be_picked,
         test_pick_unlocked_door_is_noop,
+        test_wide_door_spans_all_cells,
+        test_wide_door_removed_clears_all_cells,
+        test_overlapping_door_replaces_previous,
     ]
     failed = 0
     for t in tests:

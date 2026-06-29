@@ -1319,32 +1319,45 @@ void BattleMap::setTerrainType(Cell c, TerrainType t) noexcept {
 // ── Doors ─────────────────────────────────────────────────────────────────────
 int BattleMap::doorAt(Cell c) const noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i)
-        if (doors_[i].cell == c) return static_cast<int>(i);
+        for (const Cell& dc : doors_[i].cells)
+            if (dc == c) return static_cast<int>(i);
     return -1;
 }
 
-// Keep the doorway cell's TerrainType in agreement with the door's open state.
+// Keep every doorway cell's TerrainType in agreement with the door's open state.
 // Open  → Standard (passable + transparent), and the cell is erased from
 //         disallowed_ in case auto-detection had marked the doorway as a wall.
 // Closed→ Wall (reuses all existing movement + LOS blocking).
 void BattleMap::syncDoorTerrain(int idx) noexcept {
     if (idx < 0 || idx >= static_cast<int>(doors_.size())) return;
     const Door& d = doors_[static_cast<std::size_t>(idx)];
-    if (d.open) {
-        setTerrainType(d.cell, TerrainType::Standard);
-        disallowed_.erase(d.cell);
-    } else {
-        setTerrainType(d.cell, TerrainType::Wall);
+    for (const Cell& c : d.cells) {
+        if (d.open) {
+            setTerrainType(c, TerrainType::Standard);
+            disallowed_.erase(c);
+        } else {
+            setTerrainType(c, TerrainType::Wall);
+        }
     }
 }
 
-int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_lock) {
-    // Replace any existing door at this cell rather than stacking duplicates.
-    if (int existing = doorAt(c); existing >= 0)
-        removeDoor(doors_[static_cast<std::size_t>(existing)].id);
+int BattleMap::addDoor(const std::vector<Cell>& cells, bool open, bool locked,
+                       int lock_dc, bool arcane_lock) {
+    // Replace any existing door overlapping any of these cells rather than stacking.
+    // Collect ids first so removeDoor's vector erasure can't shift indices mid-scan.
+    std::vector<int> to_remove;
+    for (const Cell& c : cells) {
+        int existing = doorAt(c);
+        if (existing < 0) continue;
+        int rid = doors_[static_cast<std::size_t>(existing)].id;
+        if (std::find(to_remove.begin(), to_remove.end(), rid) == to_remove.end())
+            to_remove.push_back(rid);
+    }
+    for (int rid : to_remove) removeDoor(rid);
+
     Door d;
     d.id          = nextDoorId_++;
-    d.cell        = c;
+    d.cells       = cells;
     d.open        = open;
     d.locked      = locked;
     d.lock_dc     = lock_dc;
@@ -1354,12 +1367,18 @@ int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_
     return d.id;
 }
 
+int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_lock) {
+    return addDoor(std::vector<Cell>{c}, open, locked, lock_dc, arcane_lock);
+}
+
 void BattleMap::removeDoor(int id) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id == id) {
-            // Restore the doorway to passable Standard terrain before erasing.
-            setTerrainType(doors_[i].cell, TerrainType::Standard);
-            disallowed_.erase(doors_[i].cell);
+            // Restore every doorway cell to passable Standard terrain before erasing.
+            for (const Cell& c : doors_[i].cells) {
+                setTerrainType(c, TerrainType::Standard);
+                disallowed_.erase(c);
+            }
             doors_.erase(doors_.begin() + static_cast<std::ptrdiff_t>(i));
             return;
         }
@@ -1393,12 +1412,12 @@ bool BattleMap::closeDoor(int id) noexcept {
 }
 
 void BattleMap::lockDoor(int id, int dc) noexcept {
-    for (auto& d : doors_) {
-        if (d.id == id) {
-            d.locked  = true;
-            d.lock_dc = dc;
-            d.open    = false;
-            syncDoorTerrain(doorAt(d.cell));
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id == id) {
+            doors_[i].locked  = true;
+            doors_[i].lock_dc = dc;
+            doors_[i].open    = false;
+            syncDoorTerrain(static_cast<int>(i));
             return;
         }
     }

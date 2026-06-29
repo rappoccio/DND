@@ -410,6 +410,43 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // ── Recharge (Monster-Manual breath weapons / limited actions) ──────────────
+    // For each of this agent's weapons and innate spells that is currently `expended`
+    // (recharge_min > 0 and spent), roll a d6: on a roll ≥ recharge_min the action
+    // recharges — clear `expended` and refill its N/day uses. recharge_min == 0 means
+    // the action has no recharge mechanic and is skipped.
+    {
+        auto rch_weapons = bm.getAgentWeapons(agent_idx);
+        bool weapons_dirty = false;
+        for (auto& w : rch_weapons) {
+            if (w.recharge_min > 0 && w.expended) {
+                int d6 = roll(6);
+                if (d6 >= w.recharge_min) {
+                    w.expended = false;
+                    if (w.uses_max > 0) w.uses_remaining = std::max(w.uses_remaining, w.uses_max);
+                    weapons_dirty = true;
+                    log_("{} recharges {} (rolled {} ≥ {})", agent_name, w.name, d6, w.recharge_min);
+                }
+            }
+        }
+        if (weapons_dirty) bm.setAgentWeapons(agent_idx, rch_weapons);
+
+        auto rch_spells = bm.getAgentSpells(agent_idx);
+        bool spells_dirty = false;
+        for (auto& sp : rch_spells) {
+            if (sp.recharge_min > 0 && sp.expended) {
+                int d6 = roll(6);
+                if (d6 >= sp.recharge_min) {
+                    sp.expended = false;
+                    if (sp.uses_max > 0) sp.uses_remaining = std::max(sp.uses_remaining, sp.uses_max);
+                    spells_dirty = true;
+                    log_("{} recharges {} (rolled {} ≥ {})", agent_name, sp.name, d6, sp.recharge_min);
+                }
+            }
+        }
+        if (spells_dirty) bm.setAgentSpells(agent_idx, rch_spells);
+    }
+
     // ── Monk Phase 0: Turn-start features ───────────────────────────────────────
     // L2 Uncanny Metabolism: restore all Focus Points + heal once per combat
     if (stats.character_class == CharacterClass::Monk && stats.char_level >= 2 &&

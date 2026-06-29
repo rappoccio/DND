@@ -33,13 +33,15 @@ struct Wall {
     bool operator==(const Wall&) const noexcept = default;
 };
 
-// ── Door occupying a doorway cell ──────────────────────────────────────────
-// A door is a CELL, not an edge. State lives here; syncDoorTerrain() keeps the
-// cell's TerrainType in agreement (open → Standard/passable, closed → Wall), so
-// isBlocked() and hasLineOfSight() need no door-specific logic.
+// ── Door occupying one or more doorway cells ───────────────────────────────
+// A door is one or more CELLS, not an edge. A wide door (double door, portcullis,
+// gate) spans up to 4 contiguous cells that open/close/lock as a single object.
+// State lives here; syncDoorTerrain() keeps every cell's TerrainType in agreement
+// (open → Standard/passable, closed → Wall), so isBlocked() and hasLineOfSight()
+// need no door-specific logic.
 struct Door {
     int  id{-1};
-    Cell cell;
+    std::vector<Cell> cells;   // doorway cells (1..4) — source of truth for placement
     bool open{false};
     bool locked{false};
     int  lock_dc{15};
@@ -47,6 +49,11 @@ struct Door {
     // pull or a mundane pick. Knock suppresses it for arcane_suppressed_turns.
     bool arcane_lock{false};
     int  arcane_suppressed_turns{0};
+    // Anchor cell (first occupied cell): the glyph/label anchor and the value the
+    // single-cell convenience API reports. Empty door → {-1,-1}.
+    [[nodiscard]] Cell anchor() const noexcept {
+        return cells.empty() ? Cell{-1, -1} : cells.front();
+    }
 };
 
 // ── Movement types ─────────────────────────────────────────────────────────
@@ -416,12 +423,17 @@ public:
     // A door's blocking is expressed through the cell's TerrainType (Standard when
     // open, Wall when closed), so isBlocked/hasLineOfSight need no door logic.
     [[nodiscard]] const std::vector<Door>& doors() const noexcept { return doors_; }
-    // Index into doors_ for the door at a cell, or -1 if none.
+    // Index into doors_ for the door occupying a cell (any of its cells), or -1 if none.
     [[nodiscard]] int doorAt(Cell c) const noexcept;
-    // Create a door at a cell; returns its unique id. syncs the cell's terrain.
+    // Create a door spanning one or more cells; returns its unique id and syncs every
+    // cell's terrain. Any pre-existing door overlapping these cells is replaced first
+    // (no stacking). A wide door is one logical object: it opens/closes/locks as a unit.
+    int addDoor(const std::vector<Cell>& cells, bool open = false, bool locked = false,
+                int lock_dc = 15, bool arcane_lock = false);
+    // Single-cell convenience overload (delegates to the multi-cell form).
     int addDoor(Cell c, bool open = false, bool locked = false,
                 int lock_dc = 15, bool arcane_lock = false);
-    // Remove a door by id; restores the cell to Standard terrain.
+    // Remove a door by id; restores all of its cells to Standard terrain.
     void removeDoor(int id) noexcept;
     // Open/close: openDoor fails (returns false) on a locked or arcane-locked door.
     bool openDoor(int id) noexcept;

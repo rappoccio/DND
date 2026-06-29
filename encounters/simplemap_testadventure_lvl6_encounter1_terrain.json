@@ -1,0 +1,155 @@
+{
+  "regions": [
+    {
+      "type": "Wall",
+      "x": 458,
+      "y": 89,
+      "width": 50,
+      "height": 299,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 508,
+      "y": 338,
+      "width": 200,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 808,
+      "y": 338,
+      "width": 249,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 458,
+      "y": 388,
+      "width": 50,
+      "height": 150,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 58,
+      "y": 488,
+      "width": 200,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 308,
+      "y": 488,
+      "width": 150,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 458,
+      "y": 538,
+      "width": 50,
+      "height": 250,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 458,
+      "y": 838,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 508,
+      "y": 638,
+      "width": 250,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 808,
+      "y": 638,
+      "width": 249,
+      "height": 50,
+      "multiplier": 0.0
+    }
+  ],
+  "walls_enabled": true,
+  "doors": [
+    {
+      "cells": [
+        [
+          13,
+          5
+        ],
+        [
+          14,
+          5
+        ]
+      ],
+      "cell": [
+        13,
+        5
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          4,
+          8
+        ]
+      ],
+      "cell": [
+        4,
+        8
+      ],
+      "open": true,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          8,
+          14
+        ]
+      ],
+      "cell": [
+        8,
+        14
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          14,
+          11
+        ]
+      ],
+      "cell": [
+        14,
+        11
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    }
+  ]
+}

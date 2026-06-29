@@ -255,6 +255,7 @@ def _make_radiant_automatic_spell(base_damage):
     spell.level = 1
     spell.attack_type = rpg.SpellAttack.Automatic
     spell.geometry = rpg.SpellGeometry.Multiple
+    spell.num_targets = 2  # engine caps Multiple-geometry casts to num_targets; this hits both
     spell.range = 60
     dmg = rpg.MagicDamageRoll()
     dmg.type = rpg.MagicDamage.Radiant

@@ -86,6 +86,13 @@ namespace rpg {
       int uses_max{0};           // maximum uses per day (0 = use slot system)
       int uses_remaining{0};     // current remaining uses
 
+      // Recharge (Monster-Manual breath weapons): recharge_min == 0 ⇒ no recharge;
+      // recharge_min > 0 ⇒ once cast the spell is `expended` until, at the owner's turn
+      // start, a d6 ≥ recharge_min restores it. Independent of N/day uses (a pure-recharge
+      // breath weapon uses uses_max = 1 + recharge_min = 5 or 6).
+      int recharge_min{0};       // 0 = no recharge; 5 ⇒ (Recharge 5–6); 6 ⇒ (Recharge 6)
+      bool expended{false};      // spent and waiting on a recharge roll
+
       // Class-feature casting: if non-empty, casting this "spell" spends the named
       // resource (e.g. "Channel Divinity") instead of a spell slot / N/day use.
       // Used by classfeatures.json entries (Divine Spark, Radiance of the Dawn, …).

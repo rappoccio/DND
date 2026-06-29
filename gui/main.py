@@ -1367,14 +1367,31 @@ class App:
                 "terrain_color": spell_dict.get("terrain_color"),
             }
             cpp_spells.append(_dict_to_spell(spell_dict))
+
+        # Breath weapons / recharge actions: a per-monster {spell_name: recharge_min}
+        # map sets the recharge die threshold on the matching catalog Spell (the
+        # generic Breath<…> entries ship with recharge_min=0; the actual 5-6/6/4
+        # value is monster-specific). uses_max=1 so it's a single charge that the
+        # beginTurn d6 roll refills. See NPC_USES_RECHARGE_PLAN.md.
+        recharge_map = mob_record.get("npc_spell_recharge", {})
+        if recharge_map:
+            for j, sp in enumerate(cpp_spells):
+                rmin = recharge_map.get(sp.name)
+                if rmin:
+                    sp.recharge_min   = int(rmin)
+                    sp.uses_max       = max(1, sp.uses_max)
+                    sp.uses_remaining = sp.uses_max
+                    sp.expended       = False
         self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
 
         npc_spell_groups = mob_record.get("npc_spell_groups", {})
-        if npc_spell_groups:
+        if npc_spell_groups or recharge_map:
             groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
-            self.combat.init_npc_spell_groups(self.bm, agent_idx, groups_dict)
+            if groups_dict:
+                self.combat.init_npc_spell_groups(self.bm, agent_idx, groups_dict)
             self._agent_meta[agent_idx] = {
-                "is_npc": True, "npc_spell_groups": npc_spell_groups}
+                "is_npc": True, "npc_spell_groups": npc_spell_groups,
+                "npc_spell_recharge": recharge_map}
 
     # ─────────────────────────────────────────────────────────────────────
     #  Grid coordinate helpers
@@ -2639,6 +2656,13 @@ class App:
             self._flush_combat_log()
             self._offer_next_legendary()   # re-show the menu; the action isn't consumed
             return
+        if not self._weapon_usable(weapons[widx]):
+            why = "recharging" if weapons[widx].expended else "out of uses"
+            self._combat_log_add(
+                f"{self.bm.placed_agents[idx].name}: {action_name} is {why} — pick another or pass.")
+            self._flush_combat_log()
+            self._offer_next_legendary()   # re-show the menu; the action isn't consumed
+            return
         self._legendary_attack_name = action_name
         self._legendary_attack_widx = widx
         self._legendary_target_pick = True
@@ -2902,7 +2926,8 @@ class App:
             if actor < 0:
                 return
             agent = self.bm.placed_agents[actor]
-            if not self._cell_adjacent_to_agent(agent, cell):
+            # A wide door is reachable from any of its cells, not just the clicked one.
+            if not any(self._cell_adjacent_to_agent(agent, c) for c in door.cells):
                 self._combat_log_add("Move adjacent to the door to interact with it.")
                 return
 
@@ -3132,6 +3157,28 @@ class App:
 
         self._update_attack_overlay()
 
+    @staticmethod
+    def _weapon_usable(w) -> bool:
+        """A weapon with an N/day cap or a Recharge action is unusable when expended or out of uses."""
+        if getattr(w, "expended", False):
+            return False
+        if getattr(w, "uses_max", 0) > 0 and getattr(w, "uses_remaining", 0) <= 0:
+            return False
+        return True
+
+    @staticmethod
+    def _weapon_menu_label(w) -> str:
+        """Decorate a weapon's picker label with N/M usage + a ⟳ recharge marker when limited."""
+        label = w.name
+        if getattr(w, "uses_max", 0) > 0 or getattr(w, "recharge_min", 0) > 0:
+            cap = w.uses_max if w.uses_max > 0 else 1
+            label += f"  {w.uses_remaining}/{cap}"
+            if getattr(w, "expended", False):
+                label += " ⟳recharge"
+            elif getattr(w, "recharge_min", 0) > 0:
+                label += f" ⟳{w.recharge_min}+"
+        return label
+
     def _start_attack(self, slot: str):
         """Begin target-selection for an attack in the given slot."""
         idx = self._current_agent_idx()
@@ -3212,15 +3259,26 @@ class App:
 
         if len(weapons_to_use) == 1 and war_magic_option is None:
             # Auto-select if only one weapon (or one off-hand weapon for bonus)
-            wi = next((i for i, w in enumerate(weapons) if w == weapons_to_use[0]), 0)
+            only = weapons_to_use[0]
+            if not self._weapon_usable(only):
+                why = "recharging" if getattr(only, "expended", False) else "out of uses"
+                self._combat_log_add(f"{only.name} is {why} — cannot attack with it.")
+                return
+            wi = next((i for i, w in enumerate(weapons) if w == only), 0)
             _activate(slot, wi)
         else:
             options = []
             for w in weapons_to_use:
                 wi = next((i for i, weapon in enumerate(weapons) if weapon == w), 0)
+                if not self._weapon_usable(w):
+                    # Show the depleted weapon greyed-in label, but make selecting it a no-op warning.
+                    def _blocked(nm=w.name, exp=getattr(w, "expended", False)):
+                        self._combat_log_add(f"{nm} is {'recharging' if exp else 'out of uses'} — cannot attack with it.")
+                    options.append((self._weapon_menu_label(w), _blocked))
+                    continue
                 def _pick(s=slot, wi_=wi):
                     _activate(s, wi_)
-                options.append((w.name, _pick))
+                options.append((self._weapon_menu_label(w), _pick))
             if war_magic_option is not None:
                 options.append(war_magic_option)
             px_popup = self._panel_x() + self._PANEL_PAD
@@ -3372,6 +3430,32 @@ class App:
             self._show_pending_reaction_menu()   # target's Shield menu; _submit_reaction → _finish_attack
         else:
             self._finish_attack()
+
+    def _apply_chaos_staff_rider(self, atk_idx: int, target_idx: int, weapon_idx: int, tgt_name: str):
+        """Green Slaad's Chaos Staff on-hit rider. On a hit, roll 1d4: the target is Charmed (1),
+        Frightened (2), Poisoned (3), or Incapacitated (4) until the start of the Slaad's next turn.
+        The random pick lives here in Python; the condition itself is applied + ticked by the C++
+        engine (add_agent_condition fully sets the flags; tick_agent_conditions_for_caster expires
+        it when the caster's next turn begins, so turns_remaining=1)."""
+        weapons = self.combat.get_agent_weapons(self.bm, atk_idx)
+        if not (0 <= weapon_idx < len(weapons)):
+            return
+        if weapons[weapon_idx].name != "Chaos Staff":
+            return
+
+        roll = random.randint(1, 4)
+        condition = {1: "Charmed", 2: "Frightened", 3: "Poisoned", 4: "Incapacitated"}[roll]
+
+        cond = rpg.ActiveAgentCondition()
+        cond.agent_idx       = target_idx
+        cond.caster_idx      = atk_idx
+        cond.spell_idx       = -1            # weapon rider, not a spell
+        cond.condition_name  = condition
+        cond.turns_remaining = 1             # expires at the start of the Slaad's next turn
+        self.combat.add_agent_condition(self.bm, cond)
+
+        self._combat_log_add(
+            f"Chaos Staff (1d4={roll}): {tgt_name} is {condition} until the start of the Slaad's next turn.")
 
     def _finish_attack(self):
         """Post-resolution of a begin_attack flow (immediate or after the OnHit Shield window). Reads
@@ -3559,6 +3643,11 @@ class App:
             atk_msg = (f"{atk_name}→{tgt_name}: "
                        f"miss (roll {result.total_roll} vs AC {result.target_ac})"
                        f"{exh_note}")
+
+        # Green Slaad Chaos Staff: on a hit, the target gains a random condition until the
+        # start of the Slaad's next turn. The 1d4 condition pick happens here in Python.
+        if result.hit:
+            self._apply_chaos_staff_rider(atk_idx, target_idx, action.weapon_idx, tgt_name)
 
         # Decrement attack counter: action attacks use Python attacks_remaining,
         # bonus-action attacks use C++ bonus_attacks_remaining
@@ -7225,12 +7314,31 @@ class App:
             if cond.exhaustion_level > 0:
                 cond.exhaustion_level = max(0, cond.exhaustion_level - 1)
                 self.combat.set_agent_conditions(self.bm, idx, cond)
-            # Reset NPC spell uses: copy uses_max back to uses_remaining
+            # Reset NPC spell uses: copy uses_max back to uses_remaining, clear recharge.
             if idx in self._agent_meta:
                 spells = self.combat.get_agent_spells(self.bm, idx)
+                spells_changed = False
                 for spell in spells:
                     if spell.uses_max > 0:
                         spell.uses_remaining = spell.uses_max
+                        spells_changed = True
+                    if spell.expended:
+                        spell.expended = False
+                        spells_changed = True
+                if spells_changed:
+                    self.combat.set_agent_spells(self.bm, idx, spells)
+                # Reset NPC weapon uses + recharge state.
+                weapons = self.combat.get_agent_weapons(self.bm, idx)
+                weapons_changed = False
+                for w in weapons:
+                    if w.uses_max > 0 and w.uses_remaining != w.uses_max:
+                        w.uses_remaining = w.uses_max
+                        weapons_changed = True
+                    if w.expended:
+                        w.expended = False
+                        weapons_changed = True
+                if weapons_changed:
+                    self.combat.set_agent_weapons(self.bm, idx, weapons)
         if self.combat_active:
             self._combat_log_add("Long rest — spell slots, resources, and Portent Dice restored.")
         self._report_celestial_resilience()
@@ -8870,6 +8978,11 @@ class App:
             "max_teleport_targets":  s.max_teleport_targets,
             "teleport_range_ft":     s.teleport_range_ft,
             "conditions":            conditions,
+            # N/day + Recharge (breath weapons). See helpers._dict_to_spell.
+            "uses_max":              s.uses_max,
+            "uses_remaining":        s.uses_remaining,
+            "recharge_min":          s.recharge_min,
+            "expended":              s.expended,
         }
 
     # NOTE: dict -> rpg.Spell conversion lives in helpers._dict_to_spell (imported above)
@@ -9047,13 +9160,19 @@ class App:
                 meta = self._agent_meta.get(i, {})
                 data[-1]["is_npc"] = bool(s.is_npc) or bool(meta.get("is_npc", False))
                 data[-1]["npc_spell_groups"] = meta.get("npc_spell_groups", {})
-                # Save current uses_remaining from each spell
-                npc_uses = {}
+                # Breath-weapon recharge thresholds (per-monster {name: recharge_min}).
+                data[-1]["npc_spell_recharge"] = meta.get("npc_spell_recharge", {})
+                # Save current uses_remaining + expended from each spell so an
+                # in-progress N/day count or spent breath survives save→reload.
+                npc_uses, npc_expended = {}, {}
                 spells = self.combat.get_agent_spells(self.bm, i)
                 for spell in spells:
-                    if spell.uses_max > 0:  # Only save if this is an N/day spell
+                    if spell.uses_max > 0:  # Only save if this is an N/day / recharge spell
                         npc_uses[spell.name] = spell.uses_remaining
+                    if spell.expended:
+                        npc_expended[spell.name] = True
                 data[-1]["npc_spell_uses_cur"] = npc_uses
+                data[-1]["npc_spell_expended"] = npc_expended
         # Serialize map items
         items_data = []
         for item in self.bm.get_all_items():
@@ -9512,8 +9631,29 @@ class App:
                 if npc_spell_groups:
                     groups_dict = {int(k): v for k, v in npc_spell_groups.items()}
                     self.combat.init_npc_spell_groups(self.bm, i, groups_dict)
+                # Restore breath-weapon recharge state: re-apply the per-monster
+                # recharge_min and the saved uses_remaining / expended onto the
+                # rebuilt Spell objects (spell_indices reload them at recharge_min=0).
+                recharge_map = t.get("npc_spell_recharge", {})
+                uses_cur     = t.get("npc_spell_uses_cur", {})
+                expended_map = t.get("npc_spell_expended", {})
+                if recharge_map or uses_cur or expended_map:
+                    spells = list(self.combat.get_agent_spells(self.bm, i))
+                    for sp in spells:
+                        rmin = recharge_map.get(sp.name)
+                        if rmin:
+                            sp.recharge_min   = int(rmin)
+                            sp.uses_max       = max(1, sp.uses_max)
+                            sp.uses_remaining = sp.uses_max
+                        if sp.name in uses_cur:
+                            sp.uses_remaining = int(uses_cur[sp.name])
+                        if expended_map.get(sp.name):
+                            sp.expended = True
+                    self.combat.set_agent_spells(self.bm, i, spells)
                 # Keep in _agent_meta for stats dialog to access
-                self._agent_meta[i] = {"is_npc": True, "npc_spell_groups": npc_spell_groups}
+                self._agent_meta[i] = {"is_npc": True,
+                                       "npc_spell_groups": npc_spell_groups,
+                                       "npc_spell_recharge": recharge_map}
 
         # Restore map items
         self.bm.clear_items()
@@ -9585,10 +9725,17 @@ class App:
             self.bm.clear_walls()
 
         # Re-apply saved doors last so a closed door's Wall terrain survives wall detection.
+        # New saves store a "cells" list (multi-cell wide doors); fall back to the legacy
+        # single-cell "cell" field for older encounter files.
         for d in doors_data:
             try:
-                c = d["cell"]
-                self.bm.add_door(rpg.Cell(int(c[0]), int(c[1])),
+                raw = d.get("cells")
+                if raw:
+                    cells = [rpg.Cell(int(c[0]), int(c[1])) for c in raw]
+                else:
+                    c = d["cell"]
+                    cells = [rpg.Cell(int(c[0]), int(c[1]))]
+                self.bm.add_door(cells,
                                  bool(d.get("open", False)),
                                  bool(d.get("locked", False)),
                                  int(d.get("lock_dc", 15)),
@@ -9600,9 +9747,11 @@ class App:
         """Save terrain data to JSON file (defaults to the active encounter's path)."""
         path = path or self._terrain_path
         data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
-        # Doors (source of truth is BattleMap.doors).
+        # Doors (source of truth is BattleMap.doors). "cells" carries every doorway cell
+        # so wide (multi-cell) doors round-trip; "cell" is kept for backward readability.
         data["doors"] = [
-            {"cell": [d.cell.col, d.cell.row], "open": d.open,
+            {"cells": [[c.col, c.row] for c in d.cells],
+             "cell": [d.cell.col, d.cell.row], "open": d.open,
              "locked": d.locked, "lock_dc": d.lock_dc, "arcane_lock": d.arcane_lock}
             for d in self.bm.doors
         ]
@@ -10604,8 +10753,17 @@ class App:
         Doors are always drawn (independent of the terrain-visibility toggle): they are
         interactive objects, and a closed door is not part of the painted terrain regions."""
         for door in self.bm.doors:
-            sx, sy = self._cell_to_screen(door.cell.col, door.cell.row)
-            draw_door_glyph(self.screen, sx, sy, cpx, door, self.font_sm)
+            # A wide door is drawn as one elongated slab over its full bounding rect
+            # (the cells are contiguous along a single axis), not a glyph per cell.
+            cols = [c.col for c in door.cells]
+            rows = [c.row for c in door.cells]
+            if not cols:
+                continue
+            min_col, min_row = min(cols), min(rows)
+            sx, sy = self._cell_to_screen(min_col, min_row)
+            draw_door_glyph(self.screen, sx, sy, cpx, door, self.font_sm,
+                            w=(max(cols) - min_col + 1) * cpx,
+                            h=(max(rows) - min_row + 1) * cpx)
 
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""
@@ -11305,13 +11463,27 @@ class App:
             if stats.is_npc:
                 # NPC N/day spell display
                 spells = self.combat.get_agent_spells(self.bm, cur_idx)
-                npc_spells = [sp for sp in spells if sp.uses_max > 0]
+                npc_spells = [sp for sp in spells if sp.uses_max > 0 or sp.recharge_min > 0]
                 if npc_spells:
                     y += 4
                     txt("Spells (N/day):", lx, y, (160, 120, 200), self.font_sm)
                     y += 14
                     for spell in npc_spells:
-                        txt(f"{spell.name:20} {spell.uses_remaining}/{spell.uses_max}", lx, y, (200, 200, 220), self.font_sm)
+                        rc = "  ⟳recharge" if spell.expended else (f"  ⟳{spell.recharge_min}+" if spell.recharge_min > 0 else "")
+                        cap = spell.uses_max if spell.uses_max > 0 else 1
+                        txt(f"{spell.name:20} {spell.uses_remaining}/{cap}{rc}", lx, y, (200, 200, 220), self.font_sm)
+                        y += 14
+                # NPC weapon N/day + recharge display
+                npc_weapons = [w for w in self.combat.get_agent_weapons(self.bm, cur_idx)
+                               if w.name and w.name != "Unnamed" and (w.uses_max > 0 or w.recharge_min > 0)]
+                if npc_weapons:
+                    y += 4
+                    txt("Weapon uses:", lx, y, (200, 150, 120), self.font_sm)
+                    y += 14
+                    for w in npc_weapons:
+                        rc = "  ⟳recharge" if w.expended else (f"  ⟳{w.recharge_min}+" if w.recharge_min > 0 else "")
+                        cap = w.uses_max if w.uses_max > 0 else 1
+                        txt(f"{w.name:20} {w.uses_remaining}/{cap}{rc}", lx, y, (220, 200, 190), self.font_sm)
                         y += 14
             else:
                 # Player spell slot display (existing logic)

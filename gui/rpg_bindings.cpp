@@ -92,15 +92,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
     py::class_<Door>(m, "Door")
         .def(py::init<>())
         .def_readwrite("id",          &Door::id)
-        .def_readwrite("cell",        &Door::cell)
+        .def_readwrite("cells",       &Door::cells,
+             "The doorway cells this door occupies (1..4). Source of truth for placement.")
+        .def_property_readonly("cell", &Door::anchor,
+             "Anchor cell (the first occupied cell). Back-compat single-cell accessor.")
         .def_readwrite("open",        &Door::open)
         .def_readwrite("locked",      &Door::locked)
         .def_readwrite("lock_dc",     &Door::lock_dc)
         .def_readwrite("arcane_lock", &Door::arcane_lock)
         .def_readwrite("arcane_suppressed_turns", &Door::arcane_suppressed_turns)
         .def("__repr__", [](const Door& d){
+            Cell a = d.anchor();
             return "<Door #" + std::to_string(d.id) + " ("
-                 + std::to_string(d.cell.col) + "," + std::to_string(d.cell.row) + ") "
+                 + std::to_string(a.col) + "," + std::to_string(a.row) + ") x"
+                 + std::to_string(d.cells.size()) + " "
                  + (d.open ? "open" : "closed")
                  + (d.locked ? " locked" : "")
                  + (d.arcane_lock ? " arcane" : "") + ">"; });
@@ -861,6 +866,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("range_long_feet",  &Weapon::range_long_feet)
         .def_readwrite("bonus_hit",        &Weapon::bonus_hit)
         .def_readwrite("bonus_damage",     &Weapon::bonus_damage)
+        .def_readwrite("uses_max",         &Weapon::uses_max,
+            "Limited-use cap (N/day attacks). 0 = unlimited; > 0 = N uses, refilled on a long rest.")
+        .def_readwrite("uses_remaining",   &Weapon::uses_remaining,
+            "Current remaining uses for a N/day weapon.")
+        .def_readwrite("recharge_min",     &Weapon::recharge_min,
+            "Recharge threshold: 0 = no recharge; 5 ⇒ (Recharge 5–6); 6 ⇒ (Recharge 6). When spent the\n"
+            "weapon is `expended` until a d6 ≥ recharge_min at the owner's turn start restores it.")
+        .def_readwrite("expended",         &Weapon::expended,
+            "True when a recharge weapon has been spent and is waiting on its recharge roll.")
         .def_readwrite("conditions",       &Weapon::conditions)
         .def_readwrite("condition_rider",  &Weapon::condition_rider)
         .def("__repr__", [](const Weapon& w){
@@ -1322,6 +1336,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Maximum uses per day for NPCs. 0 = unlimited (use slot system); > 0 = N/day uses.")
         .def_readwrite("uses_remaining", &Spell::uses_remaining,
              "Current remaining uses for the day (for N/day spells).")
+        .def_readwrite("recharge_min", &Spell::recharge_min,
+             "Recharge threshold for breath-weapon spells: 0 = no recharge; 5 ⇒ (Recharge 5–6);\n"
+             "6 ⇒ (Recharge 6). When cast the spell is `expended` until a d6 ≥ recharge_min at the\n"
+             "caster's turn start restores it.")
+        .def_readwrite("expended", &Spell::expended,
+             "True when a recharge spell has been cast and is waiting on its recharge roll.")
         .def_readwrite("resource_name", &Spell::resource_name,
              "Class-feature casting: if non-empty, casting spends this named resource\n"
              "(e.g. 'Channel Divinity') instead of a spell slot. Used by classfeatures.json.")
@@ -3560,13 +3580,20 @@ PYBIND11_MODULE(rpg_battle_map, m)
             return std::vector<Door>(bm.doors().begin(), bm.doors().end());
         }, "List of all doors on the map.")
         .def("door_at", &BattleMap::doorAt, py::arg("cell"),
-             "Index into doors for the door at a cell, or -1 if none.")
-        .def("add_door", &BattleMap::addDoor,
+             "Index into doors for the door occupying a cell (any of its cells), or -1 if none.")
+        .def("add_door",
+             py::overload_cast<const std::vector<Cell>&, bool, bool, int, bool>(&BattleMap::addDoor),
+             py::arg("cells"), py::arg("open") = false, py::arg("locked") = false,
+             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false,
+             "Create a door spanning a list of cells (a wide door is one object); returns its\n"
+             "unique id and syncs every cell's terrain. Overlapping doors are replaced first.")
+        .def("add_door",
+             py::overload_cast<Cell, bool, bool, int, bool>(&BattleMap::addDoor),
              py::arg("cell"), py::arg("open") = false, py::arg("locked") = false,
              py::arg("lock_dc") = 15, py::arg("arcane_lock") = false,
-             "Create a door at a cell; returns its unique id and syncs the cell's terrain.")
+             "Create a single-cell door; returns its unique id and syncs the cell's terrain.")
         .def("remove_door", &BattleMap::removeDoor, py::arg("id"),
-             "Remove a door by id; restores the cell to Standard terrain.")
+             "Remove a door by id; restores all of its cells to Standard terrain.")
         .def("open_door", &BattleMap::openDoor, py::arg("id"),
              "Open a door; returns false if it is locked or arcane-locked.")
         .def("close_door", &BattleMap::closeDoor, py::arg("id"),

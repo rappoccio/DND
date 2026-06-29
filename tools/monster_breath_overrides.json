@@ -1,0 +1,101 @@
+{
+  "__doc__": "Per-monster overrides for the breath-weapon deriver (tools/derive_breath_weapons.py). Each key is a monster name from DND2024_MonsterStats.json. An entry's 'action' selects how its recharge/breath Action-Notes clause is handled: 'catalog' forces a specific generic Breath<...> spell (overriding the auto-tiered pick, e.g. to fix a mis-parsed size); 'inline' mints a dedicated catalog spell from a full spell dict (for size/damage/element outliers that don't fit the Low/Medium/High/Enormous grid); 'skip' defers the action (condition-only or mechanically-special breaths handled in a later pass). Keys starting with __ are ignored.",
+
+  "__tiers__": "Auto-tiered breaths use d6 dice (a Burning Hands reskin): Low=6d6, Medium=11d6, High=17d6, Enormous=24d6. Tier sizes — Cone: 15/30/60/90 ft; Line: 30x5 / 60x5 / 90x5 / 120x10; Sphere/Emanation/Cube: 15/20/30/60 ft radius. Save by element — Dex: fire/lightning/acid/force/radiant; Con: cold/poison/necrotic/thunder; Int: psychic.",
+
+  "Behir": {
+    "action": "catalog",
+    "spell": "BreathLightningLineHigh",
+    "comment": "Action Notes phrase 'within 90ft wide and 5ft line' parses to a swapped 90-wide/5-long line; it is really a 90ft x 5ft lightning line (~66 dmg = High)."
+  },
+
+  "Tarrasque": {
+    "action": "inline",
+    "comment": "150ft thunder cone, bigger than the Enormous (90ft) tier. Deafened+Frightened riders deferred to the condition pass.",
+    "name": "BreathThunderConeColossal",
+    "inline": {
+      "type": "Harm", "geometry": "Cone", "attack_type": "Save", "save_ability": "SaveCon",
+      "range": 0, "radius": 150, "duration": 1, "level": 0,
+      "magic_damage_types": [{"type": "Thunder", "num_dice": 22, "die_size": 6}],
+      "physical_damage_types": [], "requires_concentration": false,
+      "requires_los": false, "check_los_on_center": true, "school": "evocation",
+      "uses_max": 1, "uses_remaining": 1, "recharge_min": 0
+    }
+  },
+
+  "Colossus": {
+    "action": "inline",
+    "comment": "300ft x 10ft radiant line, far longer than the Enormous (120ft) line tier.",
+    "name": "BreathRadiantLineColossal",
+    "inline": {
+      "type": "Harm", "geometry": "Line", "attack_type": "Save", "save_ability": "SaveDex",
+      "range": 0, "width": 10, "length": 300, "duration": 1, "level": 0,
+      "magic_damage_types": [{"type": "Radiant", "num_dice": 18, "die_size": 6}],
+      "physical_damage_types": [], "requires_concentration": false,
+      "requires_los": false, "check_los_on_center": true, "school": "evocation",
+      "uses_max": 1, "uses_remaining": 1, "recharge_min": 0
+    }
+  },
+
+  "Sphinx of Lore": {
+    "action": "inline",
+    "comment": "300ft psychic emanation (each enemy within 300ft); Incapacitated rider deferred.",
+    "name": "BreathPsychicEmanationColossal",
+    "inline": {
+      "type": "Harm", "geometry": "Sphere", "attack_type": "Save", "save_ability": "SaveInt",
+      "range": 0, "radius": 300, "duration": 1, "level": 0,
+      "magic_damage_types": [{"type": "Psychic", "num_dice": 10, "die_size": 6}],
+      "physical_damage_types": [], "requires_concentration": false,
+      "requires_los": false, "check_los_on_center": true, "school": "divination",
+      "uses_max": 1, "uses_remaining": 1, "recharge_min": 0
+    }
+  },
+
+  "Death Knight": {
+    "action": "inline",
+    "comment": "Hellfire: 20ft sphere, mixed Fire+Necrotic (~70 dmg) — multi-element, not a single-type tier.",
+    "name": "BreathFireNecroticSphereHigh",
+    "inline": {
+      "type": "Harm", "geometry": "Sphere", "attack_type": "Save", "save_ability": "SaveDex",
+      "range": 0, "radius": 20, "duration": 1, "level": 0,
+      "magic_damage_types": [{"type": "Fire", "num_dice": 10, "die_size": 6},
+                              {"type": "Necrotic", "num_dice": 10, "die_size": 6}],
+      "physical_damage_types": [], "requires_concentration": false,
+      "requires_los": false, "check_los_on_center": true, "school": "evocation",
+      "uses_max": 1, "uses_remaining": 1, "recharge_min": 0
+    }
+  },
+
+  "Death Knight Aspirant": {
+    "action": "inline",
+    "comment": "Hellfire (lesser): 20ft sphere, Fire+Necrotic (~42 dmg).",
+    "name": "BreathFireNecroticSphereMedium",
+    "inline": {
+      "type": "Harm", "geometry": "Sphere", "attack_type": "Save", "save_ability": "SaveDex",
+      "range": 0, "radius": 20, "duration": 1, "level": 0,
+      "magic_damage_types": [{"type": "Fire", "num_dice": 6, "die_size": 6},
+                              {"type": "Necrotic", "num_dice": 6, "die_size": 6}],
+      "physical_damage_types": [], "requires_concentration": false,
+      "requires_los": false, "check_los_on_center": true, "school": "evocation",
+      "uses_max": 1, "uses_remaining": 1, "recharge_min": 0
+    }
+  },
+
+  "Dire Worg": {
+    "action": "catalog",
+    "spell": "BreathPsychicEmanationHigh",
+    "comment": "Dreadful Howl: '30ft on fail 36 psychic and frightened' has a bare '30ft' the auto-parser can't shape; a 30ft psychic emanation falls in the High size-tier. Frightened rider deferred to the condition pass."
+  },
+
+  "Air Elemental":      {"action": "skip", "comment": "Whirlwind: single-target push+prone, not an AoE breath."},
+  "Water Elemental":    {"action": "skip", "comment": "Whelm: enter-space grapple/restrain/suffocate + ongoing damage — mechanically special."},
+  "Brazen Gorgon":      {"action": "skip", "comment": "Smelting Charge: a movement-charge attack, not a save AoE."},
+  "Sea Hag":            {"action": "skip", "comment": "Death Glare: HP-threshold instakill + fear — special."},
+  "Ghost":              {"action": "skip", "comment": "Possession: long-duration incapacitate with bespoke end condition."},
+  "Gnoll Pack Lord":    {"action": "skip", "comment": "Incite Rampage: grants an ally a bonus-action attack — action economy, not a breath."},
+  "Elemental Cataclysm":{"action": "skip", "comment": "Cataclysmic Event: four selectable sub-effects — needs bespoke modelling."},
+  "Salamander Inferno Master": {"action": "skip", "comment": "Inferno Blast: ongoing per-turn fire + exhaustion — special."},
+  "Graveyard Revenant": {"action": "skip", "comment": "Unnamed recharge paralyze (no damage) — condition pass."},
+  "Giant Spider":       {"action": "skip", "comment": "Unnamed Web restrain (no damage) — condition pass."},
+  "Swarm of Ravens":    {"action": "skip", "comment": "Unnamed deafen rider (no damage) — condition pass."}
+}

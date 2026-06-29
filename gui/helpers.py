@@ -341,6 +341,11 @@ def _weapon_to_dict(w) -> dict:
         "bonus_hit":        w.bonus_hit,
         "bonus_damage":     w.bonus_damage,
         "ac_bonus":         w.ac_bonus,
+        # N/day attacks + Recharge — MUST round-trip or NPC usage caps reset on save/reload.
+        "uses_max":         w.uses_max,
+        "uses_remaining":   w.uses_remaining,
+        "recharge_min":     w.recharge_min,
+        "expended":         w.expended,
         "physical_damage_types": [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
                                    for r in w.physical_damage_types],
         "magic_damage_types":    [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
@@ -387,6 +392,12 @@ def _dict_to_weapon(d: dict):
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
     w.ac_bonus        = int(d.get("ac_bonus",        0))
+    # N/day attacks + Recharge.  uses_max==0 ⇒ unlimited; recharge_min==0 ⇒ no recharge.
+    w.uses_max        = int(d.get("uses_max",        0))
+    # Default remaining to the cap so a freshly-loaded weapon starts full.
+    w.uses_remaining  = int(d.get("uses_remaining",  d.get("uses_max", 0)))
+    w.recharge_min    = int(d.get("recharge_min",    0))
+    w.expended        = bool(d.get("expended",       False))
 
     # Physical damage rolls - build list then assign
     physical_rolls = []
@@ -609,6 +620,12 @@ def _spell_to_dict(s) -> dict:
         "grants_advantage_aura": s.grants_advantage_aura,
         "opens_doors":           s.opens_doors,
         "light_level":           s.light_level,
+        # N/day + Recharge (breath weapons / limited innate actions). uses_max==0
+        # ⇒ unlimited; recharge_min==0 ⇒ no recharge. Mirrors the Weapon fields.
+        "uses_max":              s.uses_max,
+        "uses_remaining":        s.uses_remaining,
+        "recharge_min":          s.recharge_min,
+        "expended":              s.expended,
     }
 
 
@@ -712,6 +729,14 @@ def _dict_to_spell(d: dict):
     s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
     s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
     s.effects_on_end_turn = d.get("effects_on_end_turn", False)
+
+    # N/day + Recharge (breath weapons / limited innate actions). uses_max==0
+    # ⇒ unlimited; recharge_min==0 ⇒ no recharge. uses_remaining defaults to
+    # uses_max so a freshly-loaded spell starts full. Mirrors _dict_to_weapon.
+    s.uses_max       = int(d.get("uses_max",       0))
+    s.uses_remaining = int(d.get("uses_remaining", d.get("uses_max", 0)))
+    s.recharge_min   = int(d.get("recharge_min",   0))
+    s.expended       = bool(d.get("expended",      False))
 
     # Parse terrain effect (Grease, Spike Growth, etc.) onto the C++ Spell.
     # Cosmetic color/hatch stay in _spell_metadata for rendering.

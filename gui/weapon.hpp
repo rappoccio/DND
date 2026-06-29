@@ -67,6 +67,16 @@ struct Weapon {
     bool         permanently_armed    = false;  // this weapon cannot be disarmed (e.g., unarmed attacks,
                                                 // which are part of a creature's natural abilities)
 
+    // ── Limited-use / Recharge (NPC monster actions) ───────────────────────────
+    // uses_max == 0  ⇒ unlimited (a normal weapon). uses_max > 0 ⇒ N/day, refilled on
+    // a long rest. recharge_min == 0 ⇒ no recharge; recharge_min > 0 ⇒ once spent the
+    // weapon is `expended` until, at the owner's turn start, a d6 ≥ recharge_min restores
+    // it. A pure-recharge breath weapon uses uses_max = 1 + recharge_min = 5 (or 6).
+    int          uses_max        = 0;   // 0 = unlimited
+    int          uses_remaining  = 0;   // current remaining uses (for N/day weapons)
+    int          recharge_min    = 0;   // 0 = no recharge; 5 ⇒ (Recharge 5–6); 6 ⇒ (Recharge 6)
+    bool         expended        = false;  // spent and waiting on a recharge roll
+
     std::vector<MagicDamageRoll>    magicDamageRolls;
     std::vector<PhysicalDamageRoll> physicalDamageRolls;
 

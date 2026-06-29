@@ -1850,6 +1850,19 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         return false;
 
     Weapon w = atk_pt.weapons[static_cast<std::size_t>(action.weapon_idx)];
+
+    // Limited-use / Recharge gate (NPC breath-weapon-as-attack, N/day attacks). uses_max == 0 ⇒
+    // unlimited. A recharge weapon that has been spent (expended) can't be used until it recharges
+    // at the owner's turn start (beginTurn). The use itself is consumed in applyAttackResult once
+    // the attack commits. Block here so no use/economy is spent on an unavailable action.
+    if (w.expended) {
+        log_("{} can't use {} — it must recharge first", agentName(bm, action.attacker_idx), w.name);
+        return false;
+    }
+    if (w.uses_max > 0 && w.uses_remaining <= 0) {
+        log_("{} has no uses of {} remaining", agentName(bm, action.attacker_idx), w.name);
+        return false;
+    }
     // Note: an off-hand (Two-Weapon Fighting) attack uses the same attack roll as any other —
     // proficiency to-hit DOES apply (RAW). The only off-hand penalty is on damage (no positive
     // ability mod unless the Two-Weapon Fighting style), handled in rollDamage via w.off_hand.
@@ -2410,6 +2423,26 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     Agent::Stats tgt_stats = bm.getAgentStats(action.target_idx);
     const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
+
+    // ── Spend a limited-use / Recharge weapon ────────────────────────────
+    // The attack has committed by the time we reach applyAttackResult (determineAdvantage already
+    // gated availability), so the use is consumed whether it hits or misses — a breath weapon is
+    // expended even if every target saves. N/day weapons decrement uses_remaining; recharge weapons
+    // are marked expended (cleared by a d6 ≥ recharge_min at the owner's turn start in beginTurn).
+    {
+        auto used_weapons = bm.getAgentWeapons(action.attacker_idx);
+        if (action.weapon_idx >= 0 &&
+            action.weapon_idx < static_cast<int>(used_weapons.size())) {
+            Weapon& uw = used_weapons[static_cast<std::size_t>(action.weapon_idx)];
+            bool changed = false;
+            if (uw.uses_max > 0) {
+                uw.uses_remaining = std::max(0, uw.uses_remaining - 1);
+                changed = true;
+            }
+            if (uw.recharge_min > 0) { uw.expended = true; changed = true; }
+            if (changed) bm.setAgentWeapons(action.attacker_idx, used_weapons);
+        }
+    }
 
     // ── Bard College of Glamour — Unbreakable Majesty (L14) ──────────────
     // When the bard has an active majestic presence (Concentration window), any melee attack
