@@ -1530,6 +1530,11 @@ class StatsDialog:
             self._prof_rects[flag_key] = pygame.Rect(cx, cb_y, CB_H, CB_H)
             self.prof_flags[flag_key]  = getattr(stats, flag_key, False)
 
+        # ── Sleight of Hand skill checkbox (picks door locks) ─────────────
+        # Sits at the right edge of the SAVE PROF. label row (first checkbox y - 16).
+        self._sleight_rect = pygame.Rect(dlg.x + W - PAD - CB_H, cb_y - 16, CB_H, CB_H)
+        self.prof_flags["sleight_of_hand_prof"] = getattr(stats, "sleight_of_hand_prof", False)
+
         # ── Combat stats (4 rows × 2 cols) ───────────────────────────────
         # Row starts below the checkbox row: cb_y + CB_H + gap + sect label + pad
         cy = cb_y + CB_H + 8 + 18 + 10
@@ -1729,6 +1734,10 @@ class StatsDialog:
                 if rect.collidepoint(event.pos):
                     self.prof_flags[flag_key] = not self.prof_flags[flag_key]
 
+            # Sleight of Hand skill checkbox
+            if getattr(self, "_sleight_rect", None) and self._sleight_rect.collidepoint(event.pos):
+                self.prof_flags["sleight_of_hand_prof"] = not self.prof_flags.get("sleight_of_hand_prof", False)
+
             # Invocation checkboxes (Warlock only)
             for invocation_code, rect in self._invocation_rects.items():
                 if rect.collidepoint(event.pos):
@@ -1860,6 +1869,24 @@ class StatsDialog:
                     (rect.x + 3,              rect.centery),
                     (rect.centerx - 1,         rect.bottom - 3),
                     (rect.right - 3,           rect.y + 3),
+                ]
+                pygame.draw.lines(screen, (110, 240, 110), False, pts, 2)
+
+        # ── Sleight of Hand skill checkbox ───────────────────────────────
+        if getattr(self, "_sleight_rect", None):
+            rect = self._sleight_rect
+            checked = self.prof_flags.get("sleight_of_hand_prof", False)
+            lbl = self.font_sm.render("Sleight of Hand", True, self.C_SECT)
+            screen.blit(lbl, (rect.x - lbl.get_width() - 6, rect.centery - lbl.get_height() // 2))
+            box_col = (45, 110, 55) if checked else self.C_HDR
+            bdr_col = (80, 200, 90) if checked else self.C_BORDER
+            pygame.draw.rect(screen, box_col, rect, border_radius=3)
+            pygame.draw.rect(screen, bdr_col,  rect, 1, border_radius=3)
+            if checked:
+                pts = [
+                    (rect.x + 3,       rect.centery),
+                    (rect.centerx - 1, rect.bottom - 3),
+                    (rect.right - 3,   rect.y + 3),
                 ]
                 pygame.draw.lines(screen, (110, 240, 110), False, pts, 2)
 

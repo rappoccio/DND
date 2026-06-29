@@ -55,7 +55,7 @@ from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, S
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
-from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
+from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 
@@ -1787,6 +1787,8 @@ class App:
         stats.save_prof_intel = prof_flags.get("save_prof_intel", False)
         stats.save_prof_wis   = prof_flags.get("save_prof_wis",   False)
         stats.save_prof_cha   = prof_flags.get("save_prof_cha",   False)
+        # Skill proficiency: Sleight of Hand (picks door locks)
+        stats.sleight_of_hand_prof = prof_flags.get("sleight_of_hand_prof", False)
 
         # Set sorcerer subclass before set_class_level so initializeClassResources sees it
         # (Draconic HP bonus and Aberrant Psychic resistance are gated on subclass in C++).
@@ -2874,6 +2876,104 @@ class App:
         """Remove a dropped weapon from the map entirely."""
         self.bm.remove_item(item.id)
         self._combat_log_add(f"Removed {item.weapon.name or 'item'} from the map.")
+
+    # ── Doors ─────────────────────────────────────────────────────────────────
+    def _cell_adjacent_to_agent(self, agent, cell) -> bool:
+        """True if `cell` is within 5 ft (Chebyshev 1) of the agent's footprint."""
+        dc = max(agent.origin.col - cell.col,
+                 cell.col - (agent.origin.col + agent.size - 1), 0)
+        dr = max(agent.origin.row - cell.row,
+                 cell.row - (agent.origin.row + agent.size - 1), 0)
+        return max(dc, dr) <= 1
+
+    def _show_door_menu(self, cell, pos):
+        """Context menu for a door cell: Open/Close (object interaction) and Pick Lock
+        (an action). Knock is cast as a normal spell at the cell, not from here.
+
+        During combat the acting creature must be adjacent; out of combat the DM acts
+        freely (pick-lock uses the currently selected agent)."""
+        di = self.bm.door_at(cell)
+        if di < 0:
+            return
+        door = self.bm.doors[di]
+        actor = self._current_agent_idx() if self.combat_active else self.selected_idx
+
+        if self.combat_active:
+            if actor < 0:
+                return
+            agent = self.bm.placed_agents[actor]
+            if not self._cell_adjacent_to_agent(agent, cell):
+                self._combat_log_add("Move adjacent to the door to interact with it.")
+                return
+
+        options = []
+        door_id = door.id
+        if door.open:
+            options.append(("Close door", lambda d=door_id: self._door_close(d)))
+        else:
+            if door.arcane_lock:
+                options.append(("Locked (Arcane Lock — needs Knock/Dispel)",
+                                lambda: self._combat_log_add(
+                                    "The door is held by an Arcane Lock; only Knock or Dispel Magic opens it.")))
+            elif door.locked:
+                options.append((f"Pick Lock (DC {door.lock_dc})",
+                                lambda a=actor, d=door_id: self._door_pick_lock(a, d)))
+            else:
+                options.append(("Open door", lambda d=door_id: self._door_open(d)))
+
+        if options:
+            self.context_menu.show(pos, options, self.screen.get_size())
+
+    def _after_door_change(self):
+        """Refresh movement/attack overlays after a door's open state (and thus LOS and
+        passability) changed."""
+        if self.selected_idx >= 0:
+            self._update_reach()
+            self._update_attack_overlay()
+
+    def _door_open(self, door_id: int):
+        if self.bm.open_door(door_id):
+            self._combat_log_add("The door opens.")
+        else:
+            self._combat_log_add("The door is locked.")
+        self._after_door_change()
+
+    def _door_close(self, door_id: int):
+        self.bm.close_door(door_id)
+        self._combat_log_add("The door closes.")
+        self._after_door_change()
+
+    def _door_pick_lock(self, actor_idx: int, door_id: int):
+        if actor_idx < 0:
+            self._combat_log_add("No creature selected to pick the lock.")
+            return
+        if self.combat_active and self.action_used:
+            self._combat_log_add("Action already used this turn — cannot pick the lock.")
+            return
+        res = self.combat.attempt_pick_lock(self.bm, actor_idx, door_id)
+        if not res.valid:
+            self._combat_log_add("Cannot pick this lock.")
+            return
+        self._combat_log_add(res.log_message)
+        if self.combat_active:
+            self.action_used = True
+        self._after_door_change()
+
+    def _pending_spell_opens_doors(self) -> bool:
+        """True if the spell currently pending a target is a door-opener (Knock).
+
+        Knock is a Single-geometry spell, but it targets a doorway CELL (no creature),
+        so the cast must route through the cell-targeting path instead of requiring a hit."""
+        if not self.pending_spell_slot:
+            return False
+        ci = self._current_agent_idx()
+        if ci < 0:
+            return False
+        try:
+            sp = self.combat.get_agent_spells(self.bm, ci)[self.pending_spell_idx]
+            return getattr(sp, "opens_doors", False)
+        except Exception:
+            return False
 
     def _begin_item_drag(self, item):
         """Grab a dropped weapon for dragging. The release decides move vs. pickup."""
@@ -8759,8 +8859,10 @@ class App:
             "requires_concentration": s.requires_concentration,
             "requires_los":          s.requires_los,
             "check_los_on_center":   s.check_los_on_center,
+            "opens_doors":           s.opens_doors,
             "requires_sight":        s.requires_sight,
             "moves_with_caster":     s.moves_with_caster,
+            "grants_advantage_aura": s.grants_advantage_aura,
             "selective_targeting":   s.selective_targeting,
             "resource_name":         s.resource_name or None,
             "resource_cost":         s.resource_cost,
@@ -8810,6 +8912,8 @@ class App:
                     "save_prof_intel": s.save_prof_intel,
                     "save_prof_wis":   s.save_prof_wis,
                     "save_prof_cha":      s.save_prof_cha,
+                    "sleight_of_hand_prof":      s.sleight_of_hand_prof,
+                    "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
                     "num_attacks":        s.num_attacks,
                     # Weapon Mastery feature count — gates ALL weapon masteries (Cleave/Topple/Sap/...);
                     # if dropped here it reloads as 0 and every mastery silently stops working
@@ -9441,6 +9545,12 @@ class App:
         self._walls_enabled = True
         self._manual_grid = None
         self.bm.reset_terrain_multipliers()
+        # Doors live in BattleMap.doors. Clear any from the previous encounter; saved
+        # doors are collected here and re-applied AFTER wall detection below (their closed
+        # state sets the cell to Wall, which the clear/detect pass would otherwise wipe).
+        for d in list(self.bm.doors):
+            self.bm.remove_door(d.id)
+        doors_data = []
 
         if os.path.exists(path):
             try:
@@ -9460,6 +9570,7 @@ class App:
                         self._manual_grid = None
                 self._terrain_regions = data.get("regions", [])
                 self._walls_enabled = bool(data.get("walls_enabled", True))
+                doors_data = data.get("doors", [])
                 self._apply_terrain_to_battle_map()
             except Exception:
                 self._terrain_regions = []
@@ -9473,10 +9584,28 @@ class App:
         else:
             self.bm.clear_walls()
 
+        # Re-apply saved doors last so a closed door's Wall terrain survives wall detection.
+        for d in doors_data:
+            try:
+                c = d["cell"]
+                self.bm.add_door(rpg.Cell(int(c[0]), int(c[1])),
+                                 bool(d.get("open", False)),
+                                 bool(d.get("locked", False)),
+                                 int(d.get("lock_dc", 15)),
+                                 bool(d.get("arcane_lock", False)))
+            except Exception:
+                continue
+
     def _save_terrain(self, path: str | None = None):
         """Save terrain data to JSON file (defaults to the active encounter's path)."""
         path = path or self._terrain_path
         data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
+        # Doors (source of truth is BattleMap.doors).
+        data["doors"] = [
+            {"cell": [d.cell.col, d.cell.row], "open": d.open,
+             "locked": d.locked, "lock_dc": d.lock_dc, "arcane_lock": d.arcane_lock}
+            for d in self.bm.doors
+        ]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
         with open(path, 'w') as f:
@@ -10469,6 +10598,15 @@ class App:
         # Concentration/spell terrain now renders via _draw_temp_terrain_overlays
         # (reads bm.active_terrain_effects); only static DM-painted terrain is drawn above.
 
+    def _draw_doors(self, cpx: int):
+        """Draw every door on the map as a slab/lock glyph (reads bm.doors each frame).
+
+        Doors are always drawn (independent of the terrain-visibility toggle): they are
+        interactive objects, and a closed door is not part of the painted terrain regions."""
+        for door in self.bm.doors:
+            sx, sy = self._cell_to_screen(door.cell.col, door.cell.row)
+            draw_door_glyph(self.screen, sx, sy, cpx, door, self.font_sm)
+
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""
         screen_x = int(x + self.map_rect.x + self.pan_x)
@@ -10668,6 +10806,9 @@ class App:
 
         # ── Concentration-based terrain overlays (beneath all agents) ──────
         self._draw_concentration_terrain(cpx)
+
+        # ── Doors (slab + lock glyphs; beneath all agents) ─────────────────
+        self._draw_doors(cpx)
 
         # ── Paladin aura rings (beneath all agents) ───────────────────────
         self._draw_paladin_auras(cpx)
@@ -13081,7 +13222,11 @@ class App:
                             # Collecting Chromatic Orb's leap chain: each click adds a hop.
                             self._chromatic_add_leap(hit)
                         elif self.pending_spell_slot:
-                            if self.pending_spell_is_aoe:
+                            if self._pending_spell_opens_doors() and self.bm.door_at(cell) >= 0:
+                                # Knock targets a doorway cell (no creature). Route through the
+                                # cell path so the engine reads aoe_col/aoe_row for the door.
+                                self._resolve_spell_cast_aoe(cell)
+                            elif self.pending_spell_is_aoe:
                                 if self._pending_spell_is_wall():
                                     if self.spell_anchor_cell is None:
                                         # First click: anchor the wall (must be in range).
@@ -13136,6 +13281,9 @@ class App:
                             self._resolve_flurry_target(hit)
                         elif self.pending_vitality_target and hit >= 0:
                             self._resolve_vitality_target(hit)
+                        elif hit < 0 and self.bm.door_at(cell) >= 0:
+                            # No pending action and an empty door cell: offer door interaction.
+                            self._show_door_menu(cell, event.pos)
                         else:
                             # When paused, allow dragging any agent; otherwise only the current
                             # combatant — or the legendary creature performing an out-of-turn Dash.
@@ -13155,9 +13303,11 @@ class App:
                                 if self.combat_paused:
                                     self.selected_idx = hit
                     else:
-                        # Normal mode: drag any agent or deselect.
+                        # Normal mode: door interaction, drag any agent, or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
-                        if hit >= 0 and not self.jump_overlay_active:
+                        if hit < 0 and self.bm.door_at(cell) >= 0:
+                            self._show_door_menu(cell, event.pos)
+                        elif hit >= 0 and not self.jump_overlay_active:
                             pt = self.bm.placed_agents[hit]
                             self.drag_idx    = hit
                             self.drag_origin = rpg.Cell(pt.origin.col, pt.origin.row)

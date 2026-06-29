@@ -2041,6 +2041,13 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: Zealous Presence");
     }
 
+    // Advantage emanation (Spell::grants_advantage_aura): a creature inside an allied advantage
+    // aura has Advantage on attack rolls. Continuous — re-checked on every attack.
+    if (hasAdvantageAura(bm, action.attacker_idx)) {
+        adv = true;
+        log_("Advantage: inside an advantage aura");
+    }
+
     // Attacker blinded: attacks have disadvantage
     if (atk_cond.blinded) {
         dis = true;

@@ -4561,6 +4561,7 @@
     "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true,
+    "opens_doors": true,
     "school": "transmutation"
   },
   {

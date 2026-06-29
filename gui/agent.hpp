@@ -106,6 +106,8 @@ namespace rpg {
       // ── Skill proficiency flags ────────────────────────────────────────
       bool stealth_prof{false};     // proficiency in Stealth (DEX-based)
       bool perception_prof{false};  // proficiency in Perception (WIS-based)
+      bool sleight_of_hand_prof{false};      // proficiency in Sleight of Hand (DEX-based; picks locks)
+      bool sleight_of_hand_expertise{false}; // expertise: prof_bonus counted twice
 
       // ── Spellcasting ──────────────────────────────────────────────────
       // 0=STR 1=DEX 2=CON 3=INT 4=WIS 5=CHA — drives spell attack rolls and
@@ -202,6 +204,11 @@ namespace rpg {
       }
       [[nodiscard]] int passivePerception() const noexcept {
         return 10 + _mod(wis) + (perception_prof ? prof_bonus : 0);
+      }
+      [[nodiscard]] int sleightOfHand() const noexcept {
+        int p = sleight_of_hand_prof ? prof_bonus : 0;
+        if (sleight_of_hand_expertise) p += prof_bonus;  // expertise doubles the bonus
+        return _mod(dex) + p;
       }
 
       // Default constructor (initializes damage multiplier arrays to 1.0)

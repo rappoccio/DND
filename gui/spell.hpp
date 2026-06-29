@@ -70,6 +70,14 @@ namespace rpg {
       // Heal spells already restrict to allies via faction, so this flag is meaningful on Harm.
       bool selective_targeting{false};
 
+      // Advantage emanation (data-driven). While this spell's persistent area is active, the
+      // caster and its same-faction allies within `radius` ft of the caster have Advantage on
+      // attack rolls and saving throws — a continuous, caster-following emanation. Evaluated at
+      // roll time (CombatEngine::hasAdvantageAura) from the anchored ActiveSpellEffect, so it
+      // follows the caster and ends automatically when that effect is removed (concentration
+      // drop / duration expiry). Put it on a Sphere + moves_with_caster + duration>1 spell.
+      bool grants_advantage_aura{false};
+
       int level{0};              // 0 = cantrip (unlimited); 1-9 = slot level required
       int upcast_dice_bonus{0};  // extra dice per slot level above spell.level
 
@@ -83,6 +91,10 @@ namespace rpg {
       // Used by classfeatures.json entries (Divine Spark, Radiance of the Dawn, …).
       std::string resource_name{};
       int resource_cost{1};
+
+      // Door interaction (Knock): opens/unlocks a door at the target cell. Detected
+      // by this flag, not by spell name. Suppresses Arcane Lock for a few turns.
+      bool opens_doors{false};
 
       // Teleportation spell (Misty Step, Dimension Door, Teleport)
       bool teleportation_spell{false};     // spell enables teleporting agents

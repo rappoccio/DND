@@ -1316,6 +1316,113 @@ void BattleMap::setTerrainType(Cell c, TerrainType t) noexcept {
     terrainType_[c.row * cols_ + c.col] = t;
 }
 
+// ── Doors ─────────────────────────────────────────────────────────────────────
+int BattleMap::doorAt(Cell c) const noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i)
+        if (doors_[i].cell == c) return static_cast<int>(i);
+    return -1;
+}
+
+// Keep the doorway cell's TerrainType in agreement with the door's open state.
+// Open  → Standard (passable + transparent), and the cell is erased from
+//         disallowed_ in case auto-detection had marked the doorway as a wall.
+// Closed→ Wall (reuses all existing movement + LOS blocking).
+void BattleMap::syncDoorTerrain(int idx) noexcept {
+    if (idx < 0 || idx >= static_cast<int>(doors_.size())) return;
+    const Door& d = doors_[static_cast<std::size_t>(idx)];
+    if (d.open) {
+        setTerrainType(d.cell, TerrainType::Standard);
+        disallowed_.erase(d.cell);
+    } else {
+        setTerrainType(d.cell, TerrainType::Wall);
+    }
+}
+
+int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_lock) {
+    // Replace any existing door at this cell rather than stacking duplicates.
+    if (int existing = doorAt(c); existing >= 0)
+        removeDoor(doors_[static_cast<std::size_t>(existing)].id);
+    Door d;
+    d.id          = nextDoorId_++;
+    d.cell        = c;
+    d.open        = open;
+    d.locked      = locked;
+    d.lock_dc     = lock_dc;
+    d.arcane_lock = arcane_lock;
+    doors_.push_back(d);
+    syncDoorTerrain(static_cast<int>(doors_.size()) - 1);
+    return d.id;
+}
+
+void BattleMap::removeDoor(int id) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id == id) {
+            // Restore the doorway to passable Standard terrain before erasing.
+            setTerrainType(doors_[i].cell, TerrainType::Standard);
+            disallowed_.erase(doors_[i].cell);
+            doors_.erase(doors_.begin() + static_cast<std::ptrdiff_t>(i));
+            return;
+        }
+    }
+}
+
+bool BattleMap::openDoor(int id) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id == id) {
+            // A locked or (un-suppressed) arcane-locked door cannot simply be opened.
+            if (doors_[i].locked) return false;
+            if (doors_[i].arcane_lock && doors_[i].arcane_suppressed_turns <= 0)
+                return false;
+            doors_[i].open = true;
+            syncDoorTerrain(static_cast<int>(i));
+            return true;
+        }
+    }
+    return false;
+}
+
+bool BattleMap::closeDoor(int id) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id == id) {
+            doors_[i].open = false;
+            syncDoorTerrain(static_cast<int>(i));
+            return true;
+        }
+    }
+    return false;
+}
+
+void BattleMap::lockDoor(int id, int dc) noexcept {
+    for (auto& d : doors_) {
+        if (d.id == id) {
+            d.locked  = true;
+            d.lock_dc = dc;
+            d.open    = false;
+            syncDoorTerrain(doorAt(d.cell));
+            return;
+        }
+    }
+}
+
+void BattleMap::unlockDoor(int id) noexcept {
+    for (auto& d : doors_) {
+        if (d.id == id) { d.locked = false; return; }
+    }
+}
+
+bool BattleMap::knockDoor(int id, int arcane_suppress_turns) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id != id) continue;
+        doors_[i].locked = false;                         // mundane lock removed
+        if (doors_[i].arcane_lock)                        // Arcane Lock suppressed, not removed
+            doors_[i].arcane_suppressed_turns = arcane_suppress_turns;
+        doors_[i].open = true;
+        syncDoorTerrain(static_cast<int>(i));
+        return true;
+    }
+    return false;
+}
+
 // ── Light levels (visibility & darkvision) ────────────────────────────────────
 // Combine two light levels, brightest wins (defined below; forward-declared for getLightLevelFor).
 static VisibilityLevel brighter(VisibilityLevel a, VisibilityLevel b) noexcept;

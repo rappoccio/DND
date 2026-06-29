@@ -343,6 +343,13 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         log_("Zealous Presence: {} has Advantage on the save", agentName(bm, tgt_idx));
     }
 
+    // Advantage emanation (Spell::grants_advantage_aura): a creature inside an allied advantage
+    // aura has Advantage on saving throws. Continuous — re-checked on every save.
+    if (hasAdvantageAura(bm, tgt_idx)) {
+        target_adv = true;
+        log_("Advantage on the save: {} is inside an advantage aura", agentName(bm, tgt_idx));
+    }
+
     int save_d20;
     if (auto_fail) {
         save_d20 = 1;  // Automatic fail
@@ -443,6 +450,30 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+
+    // Door interaction (Knock): a flagged spell opens/unlocks the door at the target cell.
+    // The door is the "target", so no agent is involved — the aim point is action.aoe_col/row
+    // (the GUI casts Knock at the door cell). A mundane lock is removed; an Arcane Lock is
+    // suppressed (not removed); then the door opens. Reported via result.log/messages.
+    if (sp.opens_doors) {
+        int didx = bm.doorAt(Cell{action.aoe_col, action.aoe_row});
+        if (didx >= 0) {
+            const Door& d = bm.doors()[static_cast<std::size_t>(didx)];
+            bool was_arcane = d.arcane_lock;
+            int door_id = d.id;
+            if (bm.knockDoor(door_id)) {
+                if (was_arcane)
+                    log_("{} casts {} — the Arcane Lock is suppressed and the door swings open",
+                         agentName(bm, action.caster_idx), sp.name);
+                else
+                    log_("{} casts {} — the lock springs and the door swings open",
+                         agentName(bm, action.caster_idx), sp.name);
+            }
+        } else {
+            log_("{} casts {} — but there is no door there",
+                 agentName(bm, action.caster_idx), sp.name);
+        }
+    }
 
     // Eldritch Spear invocation: extend the cantrip's range before any range-dependent
     // logic (and before Distant Spell, so Distant doubles the already-extended range).

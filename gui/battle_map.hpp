@@ -33,6 +33,22 @@ struct Wall {
     bool operator==(const Wall&) const noexcept = default;
 };
 
+// ── Door occupying a doorway cell ──────────────────────────────────────────
+// A door is a CELL, not an edge. State lives here; syncDoorTerrain() keeps the
+// cell's TerrainType in agreement (open → Standard/passable, closed → Wall), so
+// isBlocked() and hasLineOfSight() need no door-specific logic.
+struct Door {
+    int  id{-1};
+    Cell cell;
+    bool open{false};
+    bool locked{false};
+    int  lock_dc{15};
+    // Arcane Lock (the spell): magically held shut; cannot be opened by a normal
+    // pull or a mundane pick. Knock suppresses it for arcane_suppressed_turns.
+    bool arcane_lock{false};
+    int  arcane_suppressed_turns{0};
+};
+
 // ── Movement types ─────────────────────────────────────────────────────────
 enum class MovementType {
     Walk,    // Ground movement: BFS through passable cells, respects walls
@@ -396,6 +412,29 @@ public:
     [[nodiscard]] TerrainType getTerrainType(Cell c) const noexcept;
     void setTerrainType(Cell c, TerrainType t) noexcept;
 
+    // ── Doors (lockable doorway cells) ─────────────────────────────────────
+    // A door's blocking is expressed through the cell's TerrainType (Standard when
+    // open, Wall when closed), so isBlocked/hasLineOfSight need no door logic.
+    [[nodiscard]] const std::vector<Door>& doors() const noexcept { return doors_; }
+    // Index into doors_ for the door at a cell, or -1 if none.
+    [[nodiscard]] int doorAt(Cell c) const noexcept;
+    // Create a door at a cell; returns its unique id. syncs the cell's terrain.
+    int addDoor(Cell c, bool open = false, bool locked = false,
+                int lock_dc = 15, bool arcane_lock = false);
+    // Remove a door by id; restores the cell to Standard terrain.
+    void removeDoor(int id) noexcept;
+    // Open/close: openDoor fails (returns false) on a locked or arcane-locked door.
+    bool openDoor(int id) noexcept;
+    bool closeDoor(int id) noexcept;
+    void lockDoor(int id, int dc) noexcept;
+    void unlockDoor(int id) noexcept;
+    // Knock spell semantics: removes a mundane lock; an Arcane Lock is SUPPRESSED (not
+    // removed) for arcane_suppress_turns; then the door is opened. Returns true if a
+    // door with this id exists and is now open. (No tick decrements arcane_suppressed_turns
+    // yet — a large count keeps the lock suppressed for the rest of combat, matching RAW's
+    // 10-minute suppression.)
+    bool knockDoor(int id, int arcane_suppress_turns = 100) noexcept;
+
     // ── Temporary terrain effects ──────────────────────────────────────────
     // Place a temporary terrain effect (from spells, items, etc.).
     // Returns unique effect id. Python stores this for later removal/metadata.
@@ -561,6 +600,9 @@ private:
     // in battle_map.cpp as static free functions to keep OpenCV out of this header.
     void floodFillPassable();
 
+    // Reconcile doors_[idx]'s cell TerrainType with its open state (see .cpp).
+    void syncDoorTerrain(int idx) noexcept;
+
     // True iff an agent of `size` placed at `origin` lies entirely within the grid.
     [[nodiscard]] bool inBounds(Cell origin, int size) const noexcept;
 
@@ -576,6 +618,8 @@ private:
     CellSet            disallowed_;
     std::vector<double>     terrainMult_;     // cols × rows static movement multipliers (default 1.0)
     std::vector<TerrainType> terrainType_;    // cols × rows terrain types (default Standard)
+    std::vector<Door>        doors_;          // lockable doorway cells
+    int                      nextDoorId_{0};  // monotonically increasing door id generator
     std::vector<VisibilityLevel>  baseVisibilityLevel_; // cols × rows base light levels (from JSON; default BrightLight)
     std::vector<VisibilityLevel>  lightLevel_;     // cols × rows computed light levels (base + effects; default BrightLight)
     std::vector<AgentConfig>  agentConfigs_;

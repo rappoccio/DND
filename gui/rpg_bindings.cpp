@@ -88,6 +88,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + ")->("
                  + std::to_string(w.b.col) + "," + std::to_string(w.b.row) + ")>"; });
 
+    // ── Door ────────────────────────────────────────────────────────────────
+    py::class_<Door>(m, "Door")
+        .def(py::init<>())
+        .def_readwrite("id",          &Door::id)
+        .def_readwrite("cell",        &Door::cell)
+        .def_readwrite("open",        &Door::open)
+        .def_readwrite("locked",      &Door::locked)
+        .def_readwrite("lock_dc",     &Door::lock_dc)
+        .def_readwrite("arcane_lock", &Door::arcane_lock)
+        .def_readwrite("arcane_suppressed_turns", &Door::arcane_suppressed_turns)
+        .def("__repr__", [](const Door& d){
+            return "<Door #" + std::to_string(d.id) + " ("
+                 + std::to_string(d.cell.col) + "," + std::to_string(d.cell.row) + ") "
+                 + (d.open ? "open" : "closed")
+                 + (d.locked ? " locked" : "")
+                 + (d.arcane_lock ? " arcane" : "") + ">"; });
+
     // ── AgentConfig ─────────────────────────────────────────────────────────
     py::class_<AgentConfig>(m, "AgentConfig")
         .def(py::init<>())
@@ -246,9 +263,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Skill proficiency flags
         .def_readwrite("stealth_prof",    &Agent::Stats::stealth_prof)
         .def_readwrite("perception_prof", &Agent::Stats::perception_prof)
+        .def_readwrite("sleight_of_hand_prof",      &Agent::Stats::sleight_of_hand_prof)
+        .def_readwrite("sleight_of_hand_expertise", &Agent::Stats::sleight_of_hand_expertise)
         // Skill bonus methods
         .def("stealth_bonus",       &Agent::Stats::stealthBonus)
         .def("passive_perception",  &Agent::Stats::passivePerception)
+        .def("sleight_of_hand",     &Agent::Stats::sleightOfHand)
         // Class-feature capability flags
         .def_readwrite("num_attacks",          &Agent::Stats::num_attacks)
         .def_readwrite("bonus_attacks_remaining", &Agent::Stats::bonus_attacks_remaining)
@@ -1279,12 +1299,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Harm AoE that intrinsically affects only 'creatures of your choosing'\n"
              "(e.g. Radiance of the Dawn): the caster's allies (same faction + claimed\n"
              "neutrals) are auto-spared from the area without any Evoker/Careful feature.")
+        .def_readwrite("grants_advantage_aura", &Spell::grants_advantage_aura,
+             "Advantage emanation: while this spell's persistent area is active, the caster\n"
+             "and its same-faction allies within `radius` ft of the caster have Advantage on\n"
+             "attack rolls and saving throws. Continuous and caster-following; ends when the\n"
+             "effect is removed (concentration drop / duration expiry). Pair with geometry=\n"
+             "Sphere, moves_with_caster=True, duration>1.")
         .def_readwrite("check_los_on_center", &Spell::check_los_on_center,
              "If true, only the spell center needs line of sight (not all affected cells). User configurable.")
         .def_readwrite("requires_sight", &Spell::requires_sight,
              "If true, spell requires target(s) to be visible (not blocked by obscuration).\n"
              "Spells like Hypnotic Pattern, Command, etc. require this.\n"
              "The target is blocked if in MagicalDarkness without Devil's Sight or Heavily Obscured (unless exception applies).")
+        .def_readwrite("opens_doors", &Spell::opens_doors,
+             "If true (Knock), casting at a door cell removes a mundane lock, suppresses an\n"
+             "Arcane Lock, and opens the door. Detected by this flag, not the spell name.")
         .def_readwrite("level", &Spell::level,
              "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
         .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
@@ -1574,6 +1603,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
                                                  : std::string("failed"))
                  + " atk=" + std::to_string(r.attacker_roll)
                  + " def=" + std::to_string(r.defender_roll) + ">"; });
+
+    // ── PickLockResult (Sleight of Hand vs a door's lock DC) ───────────────────
+    py::class_<PickLockResult>(m, "PickLockResult")
+        .def_readonly("valid",       &PickLockResult::valid)
+        .def_readonly("success",     &PickLockResult::success)
+        .def_readonly("roll",        &PickLockResult::roll)
+        .def_readonly("total",       &PickLockResult::total)
+        .def_readonly("dc",          &PickLockResult::dc)
+        .def_readonly("log_message", &PickLockResult::log_message)
+        .def("__repr__", [](const PickLockResult& r){
+            if (!r.valid) return std::string("<PickLockResult invalid>");
+            return "<PickLockResult " + (r.success ? std::string("success")
+                                                   : std::string("failed"))
+                 + " total=" + std::to_string(r.total)
+                 + " dc=" + std::to_string(r.dc) + ">"; });
 
     // ── GrappleAction / GrappleResult / GrappleEscapeResult ────────────────────
     py::class_<GrappleAction>(m, "GrappleAction")
@@ -2451,6 +2495,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure it\n"
              "is pushed 5 ft away (reuses the Thunderwave knockback). Returns ShoveResult:\n"
              "attacker_roll=DC, defender_roll=save total, success=shove landed.")
+        .def("attempt_pick_lock",
+             &CombatEngine::attemptPickLock,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("door_id"),
+             "Pick a door's lock with a Sleight of Hand check: d20 + sleight_of_hand() vs the door's\n"
+             "lock_dc. On success the mundane lock is removed (door stays closed until opened). An\n"
+             "Arcane Lock cannot be picked. door_id is the Door.id. Returns a PickLockResult.")
         .def("execute_grapple",
              &CombatEngine::executeGrapple,
              py::arg("battle_map"), py::arg("action"),
@@ -2498,6 +2548,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "has Disadvantage on attack rolls against you, until the start of your next turn. Once per\n"
              "short or long rest, or spend a Pact Magic slot to reuse it. Spends a bonus action.\n"
              "Returns True if it activated.")
+        .def("has_advantage_aura",
+             &CombatEngine::hasAdvantageAura,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "True if agent_idx is inside an active advantage emanation it benefits from\n"
+             "(Spell::grants_advantage_aura): it is the caster, or a same-faction ally, within\n"
+             "the spell's radius of a conscious caster. Such a creature has Advantage on attack\n"
+             "rolls and saving throws. Continuous — follows the caster, ends with the effect.")
         .def("use_zealous_presence",
              &CombatEngine::useZealousPresence,
              py::arg("battle_map"), py::arg("agent_idx"),
@@ -3497,6 +3554,31 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("get_terrain_type", &BattleMap::getTerrainType,
              py::arg("cell"),
              "Get a cell's TerrainType.")
+
+        // ── Doors ────────────────────────────────────────────────────────────
+        .def_property_readonly("doors", [](const BattleMap& bm){
+            return std::vector<Door>(bm.doors().begin(), bm.doors().end());
+        }, "List of all doors on the map.")
+        .def("door_at", &BattleMap::doorAt, py::arg("cell"),
+             "Index into doors for the door at a cell, or -1 if none.")
+        .def("add_door", &BattleMap::addDoor,
+             py::arg("cell"), py::arg("open") = false, py::arg("locked") = false,
+             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false,
+             "Create a door at a cell; returns its unique id and syncs the cell's terrain.")
+        .def("remove_door", &BattleMap::removeDoor, py::arg("id"),
+             "Remove a door by id; restores the cell to Standard terrain.")
+        .def("open_door", &BattleMap::openDoor, py::arg("id"),
+             "Open a door; returns false if it is locked or arcane-locked.")
+        .def("close_door", &BattleMap::closeDoor, py::arg("id"),
+             "Close a door (cell becomes a Wall).")
+        .def("lock_door", &BattleMap::lockDoor, py::arg("id"), py::arg("dc"),
+             "Lock a door and set its pick DC.")
+        .def("unlock_door", &BattleMap::unlockDoor, py::arg("id"),
+             "Unlock a door (does not open it).")
+        .def("knock_door", &BattleMap::knockDoor,
+             py::arg("id"), py::arg("arcane_suppress_turns") = 100,
+             "Knock spell: removes a mundane lock, suppresses an Arcane Lock for\n"
+             "arcane_suppress_turns, then opens the door. Returns true if opened.")
 
         // Agent management (core spatial operations only; stat/equipment management moved to CombatEngine)
         .def("clear_agents",       &BattleMap::clearAgents)

@@ -2,10 +2,55 @@
 #  terrain_dialogs.py  –  Terrain editing dialogs
 # ─────────────────────────────────────────────────────────────────────────────
 
+import math
 import pygame
 import rpg_battle_map as rpg
 from constants import *
 from widgets import Button
+
+
+def draw_door_glyph(screen, x, y, size, door, font_sm=None):
+    """Draw a door at screen rect (x, y, size, size).
+
+    `door` is an rpg.Door. Closed doors are a filled wooden slab; open doors are an
+    ajar frame. A locked door shows a gold padlock; an Arcane Lock shows a purple one.
+    Used by both the in-game render loop (main.py) and the terrain editor below so the
+    door looks identical wherever it is drawn.
+    """
+    pad = max(2, size // 8)
+    if door.open:
+        # Open: faint green frame plus a thin ajar slab hinged on the left edge.
+        frame = pygame.Rect(x + pad, y + pad, size - 2 * pad, size - 2 * pad)
+        pygame.draw.rect(screen, (120, 200, 120), frame, 2)
+        slab = pygame.Rect(x + pad, y + pad, max(3, size // 4), size - 2 * pad)
+        s = pygame.Surface((slab.w, slab.h), pygame.SRCALPHA)
+        s.fill((139, 90, 43, 130))
+        screen.blit(s, (slab.x, slab.y))
+    else:
+        # Closed: solid wooden slab with a centre plank line and a knob.
+        slab = pygame.Rect(x + pad, y + pad, size - 2 * pad, size - 2 * pad)
+        pygame.draw.rect(screen, (110, 70, 35), slab)
+        pygame.draw.rect(screen, (70, 45, 20), slab, 2)
+        midx = slab.x + slab.w // 2
+        pygame.draw.line(screen, (70, 45, 20), (midx, slab.y), (midx, slab.y + slab.h), 1)
+        knob_r = max(2, size // 14)
+        pygame.draw.circle(screen, (210, 180, 60),
+                           (slab.x + slab.w - knob_r * 3, slab.y + slab.h // 2), knob_r)
+
+    if door.locked or door.arcane_lock:
+        lock_col = (180, 80, 220) if door.arcane_lock else (230, 200, 60)
+        cx = x + size // 2
+        cy = y + size // 2
+        body_w = max(6, size // 4)
+        body_h = max(5, size // 5)
+        body = pygame.Rect(cx - body_w // 2, cy, body_w, body_h)
+        pygame.draw.rect(screen, lock_col, body)
+        pygame.draw.rect(screen, (30, 30, 30), body, 1)
+        sh_r = body_w // 2
+        pygame.draw.arc(screen, lock_col,
+                        pygame.Rect(cx - sh_r, cy - sh_r, sh_r * 2, sh_r * 2),
+                        0.0, math.pi, 2)
+
 
 class TemporaryTerrainPlacementDialog:
     """Modal dialog for placing temporary terrain effects during combat."""
@@ -189,6 +234,11 @@ class TerrainEditorDialog:
         self.difficulty_mult = 0.5  # 0.5 for Halved, 0.25 for Quartered
         self.bm = None  # Reference to BattleMap for grid coordinate conversion
         self.selected_region_idx = -1  # Index of selected region for editing/deletion
+        # Door-placement settings (applied to the next door clicked while "Door" is selected).
+        # Doors live in BattleMap.doors (bm is the source of truth), not in terrain_regions.
+        self.door_locked = False
+        self.door_lock_dc = 15
+        self.door_arcane = False
         # Mapping from terrain type names to rpg.TerrainType enum values
         self.terrain_type_map = {
             "Standard": rpg.TerrainType.Standard,
@@ -216,6 +266,13 @@ class TerrainEditorDialog:
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1 and self.selected_type == "Door":
+                # Doors are single-cell objects: a click toggles a door on the cell
+                # (place with the current lock settings, or remove an existing one).
+                self._toggle_door_at(event.pos)
+                self.selection_start = None
+                self.selection_rect = None
+                return
             if event.button == 1:  # Left click
                 # Check if clicking on existing region
                 clicked_idx = self._get_region_at_pos(event.pos)
@@ -255,6 +312,16 @@ class TerrainEditorDialog:
                 self.selected_type = "Water"
             elif event.key == pygame.K_4:
                 self.selected_type = "Difficult Terrain"
+            elif event.key == pygame.K_5:
+                self.selected_type = "Door"
+            elif event.key == pygame.K_l and self.selected_type == "Door":
+                self.door_locked = not self.door_locked
+            elif event.key == pygame.K_a and self.selected_type == "Door":
+                self.door_arcane = not self.door_arcane
+            elif event.key in (pygame.K_PLUS, pygame.K_EQUALS) and self.selected_type == "Door":
+                self.door_lock_dc = min(30, self.door_lock_dc + 1)
+            elif event.key == pygame.K_MINUS and self.selected_type == "Door":
+                self.door_lock_dc = max(1, self.door_lock_dc - 1)
             elif event.key == pygame.K_h:
                 # Switch to Halved (0.5) difficulty
                 self.difficulty_mult = 0.5
@@ -287,6 +354,37 @@ class TerrainEditorDialog:
             if rect.collidepoint(x, y):
                 return i
         return -1
+
+    def _pos_to_cell(self, pos):
+        """Convert an editor screen position to a grid Cell (or None).
+
+        The editor blits the map at (0,0) with no scale, so screen px == image px and
+        the BattleMap grid-line positions map directly (same assumption the terrain
+        selection snapping makes)."""
+        import bisect
+        if not self.bm or not self.bm.v_line_positions or not self.bm.h_line_positions:
+            return None
+        x, y = pos
+        v = self.bm.v_line_positions
+        h = self.bm.h_line_positions
+        col = bisect.bisect_right(v, x) - 1
+        row = bisect.bisect_right(h, y) - 1
+        if 0 <= col < self.bm.grid_cols and 0 <= row < self.bm.grid_rows:
+            return rpg.Cell(col, row)
+        return None
+
+    def _toggle_door_at(self, pos):
+        """Place a door (with current lock settings) on the clicked cell, or remove the
+        one already there. BattleMap.add_door/remove_door keep the cell's terrain in sync."""
+        cell = self._pos_to_cell(pos)
+        if cell is None or not self.bm:
+            return
+        di = self.bm.door_at(cell)
+        if di >= 0:
+            self.bm.remove_door(self.bm.doors[di].id)
+        else:
+            self.bm.add_door(cell, False, self.door_locked,
+                             self.door_lock_dc, self.door_arcane)
 
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
@@ -412,6 +510,16 @@ class TerrainEditorDialog:
             if i == self.selected_region_idx:
                 pygame.draw.rect(screen, (255, 255, 0), rect, 3)
 
+        # Draw doors (source of truth is BattleMap.doors; editor mutates bm directly)
+        if self.bm:
+            v = self.bm.v_line_positions
+            h = self.bm.h_line_positions
+            size = self.bm.cell_pixel_size
+            for door in self.bm.doors:
+                c, r = door.cell.col, door.cell.row
+                if v and h and c < len(v) and r < len(h):
+                    draw_door_glyph(screen, v[c], h[r], size, door, self.font_sm)
+
         # Draw current selection preview
         if self.selection_rect:
             s = pygame.Surface((self.selection_rect.w, self.selection_rect.h), pygame.SRCALPHA)
@@ -424,7 +532,8 @@ class TerrainEditorDialog:
             f"[1] Wall (black)",
             f"[2] Chasm (grey)",
             f"[3] Water (blue)",
-            f"[4] Difficult Terrain (brown)"
+            f"[4] Difficult Terrain (brown)",
+            f"[5] Door (click a cell)"
         ]
         y = 10
         for text in sel_texts:
@@ -433,13 +542,25 @@ class TerrainEditorDialog:
             y += 18
 
         # Current type highlight
-        current_idx = {"Wall": 0, "Chasm": 1, "Water": 2, "Difficult Terrain": 3}.get(self.selected_type, 3)
-        pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 160, 16), 2)
+        current_idx = {"Wall": 0, "Chasm": 1, "Water": 2,
+                       "Difficult Terrain": 3, "Door": 4}.get(self.selected_type, 3)
+        pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 175, 16), 2)
 
-        # Difficulty multiplier indicator
-        diff_text = f"Difficulty: {'[H]alved (0.5)' if self.difficulty_mult == 0.5 else '[Q]uartered (0.25)'}"
-        diff_surf = self.font_sm.render(diff_text, True, (200, 200, 200))
-        screen.blit(diff_surf, (10, y + 10))
+        if self.selected_type == "Door":
+            # Door placement settings (toggled with keyboard while Door is selected).
+            lock_str = "Locked" if self.door_locked else "Unlocked"
+            arc_str = " + Arcane Lock" if self.door_arcane else ""
+            door_text = f"Door: [{lock_str}{arc_str}]  DC {self.door_lock_dc}"
+            door_surf = self.font_sm.render(door_text, True, (220, 200, 120))
+            screen.blit(door_surf, (10, y + 10))
+            keys_surf = self.font_sm.render("[L] lock  [A] arcane  [+/-] DC  (click toggles door)",
+                                            True, (170, 170, 170))
+            screen.blit(keys_surf, (10, y + 28))
+        else:
+            # Difficulty multiplier indicator
+            diff_text = f"Difficulty: {'[H]alved (0.5)' if self.difficulty_mult == 0.5 else '[Q]uartered (0.25)'}"
+            diff_surf = self.font_sm.render(diff_text, True, (200, 200, 200))
+            screen.blit(diff_surf, (10, y + 10))
 
         # Instructions
         if self.selected_region_idx >= 0:

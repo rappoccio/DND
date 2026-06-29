@@ -350,6 +350,18 @@ struct ShoveResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Pick-lock attempt — Sleight of Hand check vs a door's lock DC
+// ─────────────────────────────────────────────────────────────────────────────
+struct PickLockResult {
+    bool valid   = false;   // false if the agent/door index was invalid
+    bool success = false;   // true if the lock was opened
+    int  roll    = 0;       // the raw d20
+    int  total   = 0;       // d20 + Sleight of Hand bonus
+    int  dc      = 0;       // the door's lock_dc
+    std::string log_message;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Grapple action — initiate a grapple (contested Athletics check)
 // ─────────────────────────────────────────────────────────────────────────────
 struct GrappleAction {
@@ -1183,6 +1195,13 @@ public:
     [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
     // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
     [[nodiscard]] bool hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept;
+    // Advantage emanation (data-driven, on Spell::grants_advantage_aura): true if agent_idx is
+    // inside an active advantage-granting emanation it benefits from — i.e. it is the caster, or
+    // a same-faction ally, within the spell's radius of a conscious caster whose persistent
+    // emanation is active. Grants Advantage on attack rolls (determineAdvantage) and saving
+    // throws (rollSpellSave). Continuous: re-evaluated at each roll, so it follows the caster
+    // and ends when the effect is removed (concentration drop / expiry).
+    [[nodiscard]] bool hasAdvantageAura(const BattleMap& bm, int agent_idx) const noexcept;
     // Canonical saving-throw modifier for agent_idx vs ability `ab`: ability modifier +
     // proficiency (if proficient) + aura bonuses. Single source of truth for every save site.
     [[nodiscard]] int saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
@@ -2025,6 +2044,12 @@ public:
     // On success: either push 5ft or knock prone based on knock_prone flag.
     [[nodiscard]] ShoveResult executeShove(BattleMap& bm,
                                            const ShoveAction& action);
+
+    // Pick a door's lock with a Sleight of Hand check: roll(20) + the agent's
+    // sleightOfHand() vs the door's lock_dc. On success the mundane lock is removed
+    // via BattleMap::unlockDoor (the door stays closed until opened). An Arcane Lock
+    // cannot be picked. door_id is the Door::id (not the doors_ index).
+    [[nodiscard]] PickLockResult attemptPickLock(BattleMap& bm, int agent_idx, int door_id);
 
     // Telekinetic (general feat) — Telekinetic Shove: a Bonus Action that shoves one creature within
     // 30 ft. The target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure

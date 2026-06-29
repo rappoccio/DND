@@ -1869,6 +1869,66 @@ ShoveResult CombatEngine::applyTelekineticShove(BattleMap& bm, int caster_idx, i
     return result;
 }
 
+PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int door_id)
+{
+    PickLockResult result;
+    auto agents = bm.placedAgents();
+
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid agent index.";
+        return result;
+    }
+
+    // Locate the door by id.
+    const Door* door = nullptr;
+    for (const Door& d : bm.doors()) {
+        if (d.id == door_id) { door = &d; break; }
+    }
+    if (door == nullptr) {
+        result.log_message = "No such door.";
+        return result;
+    }
+
+    const auto& picker = agents[agent_idx];
+    const std::string name = std::string(picker.agent->name());
+
+    if (!door->locked) {
+        result.valid = true;
+        result.dc = door->lock_dc;
+        result.log_message = "\"" + name + "\" — that door isn't locked.";
+        return result;
+    }
+    if (door->arcane_lock && door->arcane_suppressed_turns <= 0) {
+        result.valid = true;
+        result.dc = door->lock_dc;
+        result.log_message = "\"" + name + "\" cannot pick an Arcane Lock.";
+        return result;
+    }
+
+    const Agent::Stats st = getAgentStats(bm, agent_idx);
+    int bonus = st.sleightOfHand();
+    int d20 = roll(20);
+
+    result.valid   = true;
+    result.roll    = d20;
+    result.total   = d20 + bonus;
+    result.dc      = door->lock_dc;
+    result.success = result.total >= result.dc;
+
+    if (result.success) {
+        bm.unlockDoor(door_id);
+        result.log_message = "\"" + name + "\" picks the lock (Sleight of Hand " +
+                             std::to_string(result.total) + " vs DC " +
+                             std::to_string(result.dc) + ").";
+    } else {
+        result.log_message = "\"" + name + "\" fails to pick the lock (Sleight of Hand " +
+                             std::to_string(result.total) + " vs DC " +
+                             std::to_string(result.dc) + ").";
+    }
+    log_("{}", result.log_message);
+    return result;
+}
+
 GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int target_idx,
                                            bool contested, int escape_dc_override) noexcept
 {

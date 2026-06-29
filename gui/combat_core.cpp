@@ -244,6 +244,38 @@ bool CombatEngine::hasAuraOfCourage(const BattleMap& bm, int agent_idx) const no
     return bestPaladinAura(bm, agent_idx, 10) > 0;   // Aura of Courage (L10+)
 }
 
+bool CombatEngine::hasAdvantageAura(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return false;
+    const PlacedAgent& self_pa = agents[static_cast<std::size_t>(agent_idx)];
+
+    for (const ActiveSpellEffect& eff : bm.activeSpellEffects()) {
+        if (!eff.spell.grants_advantage_aura) continue;
+
+        const int src = eff.caster_idx;
+        if (src < 0 || static_cast<std::size_t>(src) >= agents.size()) continue;
+
+        // The emanation radiates only from a conscious caster (mirrors the Paladin aura).
+        const PlacedAgent& src_pa = agents[static_cast<std::size_t>(src)];
+        if (src_pa.agent->getStats().hp_cur <= 0) continue;
+        const Agent::Conditions& sc = src_pa.agent->getConditions();
+        if (sc.unconscious || sc.incapacitated) continue;
+
+        // The caster always benefits from its own aura; everyone else must be a same-team ally.
+        if (agent_idx != src && !areAllies(bm, agent_idx, src)) continue;
+
+        // Euclidean emanation radius (cell distance × 5 ft), matching Spirit Guardians / Zealous
+        // Presence. Compared as integer squared feet to avoid floating point. Reads the caster's
+        // live origin, so the aura follows them with no extra bookkeeping.
+        const int dx = self_pa.origin.col - src_pa.origin.col;
+        const int dy = self_pa.origin.row - src_pa.origin.row;
+        const int dist_sq_ft = (dx * dx + dy * dy) * 25;     // (cells*5)^2 = cells^2 * 25
+        if (dist_sq_ft <= eff.spell.radius * eff.spell.radius) return true;
+    }
+    return false;
+}
+
 int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept
 {
     const auto& agents = bm.placedAgents();

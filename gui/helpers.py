@@ -606,6 +606,8 @@ def _spell_to_dict(s) -> dict:
         "terrain_color":         s.terrain_color if hasattr(s, 'terrain_color') else None,
         "requires_concentration": s.requires_concentration,
         "moves_with_caster":     s.moves_with_caster,
+        "grants_advantage_aura": s.grants_advantage_aura,
+        "opens_doors":           s.opens_doors,
         "light_level":           s.light_level,
     }
 
@@ -697,11 +699,13 @@ def _dict_to_spell(d: dict):
 
     s.requires_concentration = d.get("requires_concentration", False)
     s.moves_with_caster = d.get("moves_with_caster", False)
+    s.grants_advantage_aura = d.get("grants_advantage_aura", False)
     s.selective_targeting = d.get("selective_targeting", False)
     s.resource_name = d.get("resource_name", "") or ""
     s.resource_cost = int(d.get("resource_cost", 1))
     s.requires_los = d.get("requires_los", False)
     s.check_los_on_center = d.get("check_los_on_center", True)
+    s.opens_doors = d.get("opens_doors", False)
     s.level = int(d.get("level", 0))
     s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
     s.num_targets = int(d.get("num_targets", 1))
