@@ -9715,6 +9715,104 @@ class App:
             "Now press Generate Dungeon to populate the rooms.",
         ])
 
+    def _modal_select_items(self, title: str, items: list[str], selection: set[str] | list,
+                            multi_select: bool = True) -> None:
+        """Generic scrollable modal for selecting items (single or multi-select).
+
+        For multi_select=True, modifies selection (set) in-place.
+        For multi_select=False, modifies selection (list with single element) in-place."""
+        if not items:
+            return
+        sw, sh = self.screen.get_size()
+        W, H = min(450, sw - 80), min(600, sh - 100)
+        box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
+        lx = box.x + 20
+        item_h = 32
+        scroll_offset = [0]
+        content_height = len(items) * item_h
+        max_visible = (H - 120) // item_h
+        max_scroll = max(0, content_height - (max_visible * item_h))
+
+        btn_ok = Button(pygame.Rect(box.right - 110, box.bottom - 46, 90, 32), "OK",
+                       (60, 110, 70), (80, 140, 90), font=self.font_md)
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        content_rect = pygame.Rect(lx, box.y + 60, W - 40, H - 120)
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return
+                if event.type == pygame.MOUSEWHEEL:
+                    scroll_offset[0] -= event.y * item_h
+                    scroll_offset[0] = max(0, min(scroll_offset[0], max_scroll))
+                if btn_ok.clicked(event):
+                    return
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_y = event.pos[1] - (content_rect.y)
+                    if 0 <= mouse_y < max_visible * item_h and content_rect.collidepoint(event.pos):
+                        item_idx = (mouse_y + scroll_offset[0]) // item_h
+                        if item_idx < len(items):
+                            item = items[item_idx]
+                            if multi_select:
+                                if item in selection:
+                                    selection.discard(item)
+                                else:
+                                    selection.add(item)
+                            else:
+                                selection.clear()
+                                selection.append(item)
+
+            self.screen.blit(overlay, (0, 0))
+            pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
+            pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
+            self.screen.blit(self.font_lg.render(title, True, (235, 235, 245)),
+                             (lx, box.y + 18))
+
+            # Draw scrollable content area
+            pygame.draw.rect(self.screen, (25, 25, 40), content_rect, border_radius=4)
+            pygame.draw.rect(self.screen, (70, 70, 85), content_rect, 1, border_radius=4)
+
+            visible_start = scroll_offset[0] // item_h
+            visible_end = visible_start + max_visible + 1
+
+            for i in range(visible_start, min(visible_end, len(items))):
+                item = items[i]
+                y_pos = content_rect.y + (i - visible_start) * item_h
+                item_rect = pygame.Rect(content_rect.x, y_pos, content_rect.width, item_h)
+
+                is_selected = item in selection
+                bg_color = (60, 110, 70) if is_selected else (45, 45, 65)
+                pygame.draw.rect(self.screen, bg_color, item_rect)
+                pygame.draw.rect(self.screen, (85, 85, 105) if is_selected else (65, 65, 85),
+                                item_rect, 1)
+
+                checkbox_x = content_rect.x + 8
+                checkbox_y = y_pos + (item_h - 16) // 2
+                if multi_select:
+                    pygame.draw.rect(self.screen, (255, 255, 255) if is_selected else (150, 150, 150),
+                                    (checkbox_x, checkbox_y, 16, 16), 1 if not is_selected else 0)
+
+                text_x = checkbox_x + 25 if multi_select else content_rect.x + 8
+                self.screen.blit(self.font_sm.render(item, True, (220, 220, 220)),
+                                (text_x, y_pos + 8))
+
+            # Draw scrollbar
+            if max_scroll > 0:
+                scrollbar_x = box.right - 12
+                scrollbar_y = content_rect.y
+                scrollbar_h = content_rect.height
+                scroll_thumb_h = max(20, (scrollbar_h * scrollbar_h) // (scrollbar_h + max_scroll))
+                scroll_thumb_y = scrollbar_y + (scroll_offset[0] * (scrollbar_h - scroll_thumb_h)) // max_scroll
+                pygame.draw.rect(self.screen, (70, 70, 85), (scrollbar_x, scrollbar_y, 8, scrollbar_h))
+                pygame.draw.rect(self.screen, (120, 120, 140), (scrollbar_x, scroll_thumb_y, 8, scroll_thumb_h))
+
+            btn_ok.draw(self.screen)
+            pygame.display.flip()
+            self.clock.tick(60)
+
     def _modal_generate_dungeon(self) -> dict | None:
         """Blocking dialog for the Generate Dungeon (DM-mode) parameters.
 
@@ -9722,8 +9820,23 @@ class App:
         start/peak difficulties are the endpoints of the per-room category-weight
         ramp; boss forces a category-E encounter into the deepest room."""
         DIFFS = ["Easy", "Medium", "Hard"]
+
+        # Build type and language lists from bestiary
+        gui_dir = os.path.dirname(os.path.abspath(__file__))
+        tools_dir = os.path.join(os.path.dirname(gui_dir), "tools")
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        try:
+            import encounter_generator as eg
+            bestiary = eg.Bestiary(data_dir=gui_dir)
+            all_types = sorted(bestiary.all_types)
+            all_languages = sorted(bestiary.all_languages)
+        except Exception:
+            all_types = []
+            all_languages = []
+
         sw, sh = self.screen.get_size()
-        W, H = min(460, sw - 80), 360
+        W, H = min(500, sw - 80), min(600, sh - 80)
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         lx = box.x + 20
         fx = box.right - 150       # field column
@@ -9735,6 +9848,7 @@ class App:
         room_step = IntStepper(pygame.Rect(fx, y0 + 1 * row_h, fw, 30), 9, 1, 99, font=self.font_md)
         seed_inp  = TextInput(pygame.Rect(fx, y0 + 5 * row_h, fw, 30), placeholder="random", font=self.font_md)
         start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
+        type_selection, lang_selection = set(), set()  # multi-select for both
 
         btn_start = Button(pygame.Rect(fx, y0 + 2 * row_h, fw, 30), DIFFS[start_i[0]],
                            (70, 90, 120), (95, 115, 150), font=self.font_md)
@@ -9742,13 +9856,19 @@ class App:
                            (70, 90, 120), (95, 115, 150), font=self.font_md)
         btn_boss  = Button(pygame.Rect(fx, y0 + 4 * row_h, fw, 30), "ON",
                            (60, 110, 70), (80, 140, 90), font=self.font_md)
+        type_label = ["Any type"]
+        btn_type = Button(pygame.Rect(fx, y0 + 6 * row_h, fw, 30), type_label[0],
+                          (70, 90, 120), (95, 115, 150), font=self.font_md)
+        lang_label = ["Any language"]
+        btn_lang = Button(pygame.Rect(fx, y0 + 7 * row_h, fw, 30), lang_label[0],
+                          (70, 90, 120), (95, 115, 150), font=self.font_md)
         gen    = Button(pygame.Rect(box.right - 220, box.bottom - 46, 95, 32), "Generate",
                         (60, 110, 70), (80, 140, 90), font=self.font_md)
         cancel = Button(pygame.Rect(box.right - 115, box.bottom - 46, 95, 32), "Cancel",
                         (110, 60, 60), (150, 80, 80), font=self.font_md)
 
         labels = ["Target CR", "Min room cells", "Start difficulty",
-                  "Peak difficulty", "Boss finale", "Seed"]
+                  "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -9769,6 +9889,26 @@ class App:
                 if btn_boss.clicked(event):
                     boss_on[0] = not boss_on[0]
                     btn_boss.text = "ON" if boss_on[0] else "OFF"
+                if btn_type.clicked(event):
+                    self._modal_select_items("Select Mob Types", all_types, type_selection, multi_select=True)
+                    if type_selection:
+                        if len(type_selection) == 1:
+                            type_label[0] = list(type_selection)[0]
+                        else:
+                            type_label[0] = f"{len(type_selection)} types"
+                    else:
+                        type_label[0] = "Any type"
+                    btn_type.text = type_label[0]
+                if btn_lang.clicked(event):
+                    self._modal_select_items("Select Languages", all_languages, lang_selection, multi_select=True)
+                    if lang_selection:
+                        if len(lang_selection) == 1:
+                            lang_label[0] = list(lang_selection)[0]
+                        else:
+                            lang_label[0] = f"{len(lang_selection)} languages"
+                    else:
+                        lang_label[0] = "Any language"
+                    btn_lang.text = lang_label[0]
                 if cancel.clicked(event):
                     return None
                 if gen.clicked(event):
@@ -9781,7 +9921,9 @@ class App:
                             seed = None
                     return {"cr": cr_step.value, "min_room": room_step.value,
                             "start": DIFFS[start_i[0]], "end": DIFFS[end_i[0]],
-                            "boss": boss_on[0], "seed": seed}
+                            "boss": boss_on[0], "seed": seed,
+                            "types": list(type_selection) if type_selection else None,
+                            "languages": list(lang_selection) if lang_selection else None}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
@@ -9790,7 +9932,7 @@ class App:
             for i, lab in enumerate(labels):
                 self.screen.blit(self.font_md.render(lab, True, (185, 185, 200)),
                                  (lx, y0 + i * row_h + 6))
-            for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, gen, cancel):
+            for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type, btn_lang, gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
@@ -9830,7 +9972,8 @@ class App:
                 self.bm, rpg, terrain, bestiary, cr=params["cr"],
                 difficulty_start=params["start"], difficulty_end=params["end"],
                 min_room=params["min_room"], boss=params["boss"], entrance=None,
-                automation_level=1, rng=rng, place=True)
+                automation_level=1, rng=rng, place=True,
+                filter_types=params.get("types"), filter_languages=params.get("languages"))
         except Exception as e:
             self._modal_message(["Generate Dungeon failed", str(e)])
             return
@@ -9851,12 +9994,17 @@ class App:
         if base.endswith("_agents"):
             base = base[:-len("_agents")]
         out_path = os.path.join(self._map_dir, base + "_dungeon_agents.json")
+        meta = {"mode": "dungeon-gui", "seed": params["seed"],
+                "difficulty_start": params["start"],
+                "difficulty_end": params["end"], "boss": params["boss"],
+                "ordering": note}
+        if params.get("types"):
+            meta["filter_types"] = params["types"]
+        if params.get("languages"):
+            meta["filter_languages"] = params["languages"]
         eg.write_agents_file(
             out_path, all_agents, difficulty=params["end"], target_cr=params["cr"],
-            generator_meta={"mode": "dungeon-gui", "seed": params["seed"],
-                            "difficulty_start": params["start"],
-                            "difficulty_end": params["end"], "boss": params["boss"],
-                            "ordering": note})
+            generator_meta=meta)
         self._set_encounter_base(out_path)
         self._load_agents(out_path)
 

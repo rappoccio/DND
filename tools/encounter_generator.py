@@ -145,11 +145,23 @@ class Bestiary:
 
         # cr_float -> [name, ...]; also stash _cr on each record.
         self.by_cr: dict[float, list[str]] = defaultdict(list)
+        # Collect unique base types (without subtypes) and languages.
+        self.all_types: set[str] = set()
+        self.all_languages: set[str] = set()
         for name, rec in self.mobs.items():
             cr = cr_to_float(rec.get("meta", {}).get("cr"))
             rec["_cr"] = cr
             if cr is not None:
                 self.by_cr[cr].append(name)
+            meta = rec.get("meta", {})
+            t = meta.get("type")
+            if t:
+                # Store only the base type (before parentheses)
+                base_type = t.split("(")[0].strip()
+                self.all_types.add(base_type)
+            langs = meta.get("languages", [])
+            for lang in langs:
+                self.all_languages.add(lang)
         self._crs_sorted = sorted(self.by_cr.keys())
 
     # ── candidate predicates ────────────────────────────────────────────────
@@ -167,38 +179,91 @@ class Bestiary:
             return True
         return any(n in self.aoe_spell_names for n in rec.get("spell_indices", []))
 
-    def _pool(self, cr: float, kind: str, x_float: float) -> list[str]:
-        """Names matching `kind` at exactly challenge rating `cr` (dragon ignores cr)."""
+    @staticmethod
+    def _base_type(type_str: str) -> str:
+        """Extract the base type (before parentheses). E.g., 'Dragon (Chromatic)' -> 'Dragon'."""
+        if not type_str:
+            return ""
+        return type_str.split("(")[0].strip()
+
+    def _matches_type_filter(self, mob_type: str, filter_types: str | list[str]) -> bool:
+        """Check if mob_type matches any of the filter_types or has the same base type.
+
+        filter_types can be a single string or a list of strings.
+        """
+        if not mob_type:
+            return False
+        if isinstance(filter_types, str):
+            filter_types = [filter_types]
+        if not filter_types:
+            return False
+
+        mob_base = self._base_type(mob_type)
+        for ft in filter_types:
+            # Exact match
+            if mob_type == ft:
+                return True
+            # Base type match (e.g., "Aberration" matches "Aberration (Beholder)")
+            if mob_base == ft:
+                return True
+        return False
+
+    def _pool(self, cr: float, kind: str, x_float: float,
+              filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None) -> list[str]:
+        """Names matching `kind` at exactly challenge rating `cr` (dragon ignores cr).
+
+        If filter_types is set (string or list), only return mobs whose meta.type matches any of them.
+        If filter_languages is set, only return mobs that have at least one of those languages.
+        """
         if kind == "dragon":
-            return [n for n, r in self.mobs.items()
-                    if r.get("_cr") is not None and r["_cr"] <= x_float
-                    and self.is_dragon(r)]
+            candidates = [n for n, r in self.mobs.items()
+                         if r.get("_cr") is not None and r["_cr"] <= x_float
+                         and self.is_dragon(r)]
+        else:
+            candidates = list(self.by_cr.get(cr, []))
+
         out = []
-        for name in self.by_cr.get(cr, []):
+        for name in candidates:
             rec = self.mobs[name]
             if kind == "ranged" and not self.has_ranged(rec):
                 continue
             if kind == "aoe" and not self.has_aoe(rec):
                 continue
+            if filter_types:
+                mob_type = rec.get("meta", {}).get("type")
+                if not self._matches_type_filter(mob_type, filter_types):
+                    continue
+            if filter_languages:
+                mob_langs = rec.get("meta", {}).get("languages", [])
+                if not any(lang in mob_langs for lang in filter_languages):
+                    continue
             out.append(name)
         return out
 
     def pick(self, cr: float, kind: str, x_float: float,
-             rng: random.Random, count: int) -> list[str]:
+             rng: random.Random, count: int,
+             filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None) -> list[str]:
         """Pick `count` monster names (independent draws -> a mixed pack).
 
         Falls back to the nearest CR (or, for dragons, the lowest-CR dragon) when
         the exact CR has no monster that satisfies `kind`."""
-        pool = self._pool(cr, kind, x_float)
+        pool = self._pool(cr, kind, x_float, filter_types, filter_languages)
         if not pool:
             if kind == "dragon":
                 dragons = [(r["_cr"], n) for n, r in self.mobs.items()
                            if r.get("_cr") is not None and self.is_dragon(r)]
+                if filter_types:
+                    dragons = [(cr_val, n) for cr_val, n in dragons
+                              if self._matches_type_filter(self.mobs[n].get("meta", {}).get("type"), filter_types)]
+                if filter_languages:
+                    dragons = [(cr_val, n) for cr_val, n in dragons
+                              if any(lang in self.mobs[n].get("meta", {}).get("languages", [])
+                                    for lang in filter_languages)]
                 if dragons:
                     pool = [min(dragons)[1]]        # lowest-CR dragon overall
             else:
                 for near in sorted(self._crs_sorted, key=lambda c: (abs(c - cr), c)):
-                    pool = self._pool(near, kind, x_float)
+                    pool = self._pool(near, kind, x_float, filter_types, filter_languages)
                     if pool:
                         break
         if not pool:
@@ -249,10 +314,14 @@ def make_agent(rec: dict, strategy: int, faction: int, automation_level: int) ->
 
 def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Random,
                     faction: int = ENEMY_FACTION,
-                    automation_level: int = 1) -> tuple[list[dict], list[dict]]:
+                    automation_level: int = 1,
+                    filter_types: str | list[str] | None = None,
+                    filter_languages: list[str] | None = None) -> tuple[list[dict], list[dict]]:
     """Build the agent list for one encounter of `category` at target CR `x`.
 
-    Returns (agents, detail) where detail describes each mob group for logging."""
+    Returns (agents, detail) where detail describes each mob group for logging.
+    If filter_types is set (string or list), all mobs will be of those types.
+    If filter_languages is set, all mobs will speak at least one of those languages."""
     if category not in CATEGORY_TABLE:
         raise ValueError(f"Unknown category {category!r} (expected one of A-E)")
     x_float = float(x)
@@ -262,7 +331,8 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
         count = rng.randint(lo, hi)
         target_cr = None if kind == "dragon" else max(0.0, x_float + offset)
         names = bestiary.pick(target_cr if target_cr is not None else x_float,
-                              kind, x_float, rng, count)
+                              kind, x_float, rng, count,
+                              filter_types=filter_types, filter_languages=filter_languages)
         for nm in names:
             agents.append(make_agent(bestiary.mobs[nm], strat, faction, automation_level))
         detail.append({
@@ -550,7 +620,9 @@ def ramp_weights(start_row: dict[str, int], end_row: dict[str, int],
 def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
                   difficulty_start: str, difficulty_end: str, min_room: int,
                   boss: bool, entrance: tuple[int, int] | None,
-                  automation_level: int, rng: random.Random, place: bool
+                  automation_level: int, rng: random.Random, place: bool,
+                  filter_types: str | list[str] | None = None,
+                  filter_languages: list[str] | None = None
                   ) -> tuple[list[list[tuple[int, int]]], list[dict], str]:
     """Order the rooms, ramp the category weights start->end along the walk order,
     force a boss (category E) into the last room, and build one encounter per room.
@@ -559,7 +631,8 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
       room, is_boss, category, weights (None for the boss), floor_cells,
       agents (placed if `place` else raw), requested, placed, detail.
     With place=True the rng also drives placement; pass place=False for a preview
-    that leaves the layout untouched. Reusable directly from a GUI/DM-mode caller."""
+    that leaves the layout untouched. Reusable directly from a GUI/DM-mode caller.
+    If filter_types or filter_languages are set, all encounters will use those filters."""
     rooms, order_note = order_dungeon_rooms(bm, rpg, terrain, min_room, entrance)
     start_row = DIFFICULTY_WEIGHTS[difficulty_start]
     end_row = DIFFICULTY_WEIGHTS[difficulty_end]
@@ -576,7 +649,9 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
             cat_w = [weights[k] for k in cats]
             category = rng.choices(cats, weights=cat_w, k=1)[0]
         agents, detail = build_encounter(category, cr, bestiary, rng,
-                                         automation_level=automation_level)
+                                         automation_level=automation_level,
+                                         filter_types=filter_types,
+                                         filter_languages=filter_languages)
         placed = place_agents_in_room(agents, floor, rng) if place else agents
         results.append({
             "room": i, "is_boss": is_boss, "category": category,
@@ -637,7 +712,9 @@ def cmd_encounter(args: argparse.Namespace) -> int:
     rng = random.Random(args.seed)
     bestiary = Bestiary()
     agents, detail = build_encounter(args.category, args.cr, bestiary, rng,
-                                     automation_level=args.automation_level)
+                                     automation_level=args.automation_level,
+                                     filter_types=args.type if hasattr(args, 'type') and args.type else None,
+                                     filter_languages=args.languages if hasattr(args, 'languages') and args.languages else None)
 
     # No map: lay the mobs out in a simple block so the file is directly loadable.
     col0, row0 = 2, 2
@@ -709,7 +786,9 @@ def cmd_dungeon(args: argparse.Namespace) -> int:
         bm, rpg, terrain, bestiary, cr=args.cr,
         difficulty_start=difficulty_start, difficulty_end=args.difficulty,
         min_room=args.min_room, boss=args.boss, entrance=entrance,
-        automation_level=args.automation_level, rng=rng, place=not args.dry_run)
+        automation_level=args.automation_level, rng=rng, place=not args.dry_run,
+        filter_types=args.type if hasattr(args, 'type') and args.type else None,
+        filter_languages=args.languages if hasattr(args, 'languages') and args.languages else None)
 
     print(f"Grid {bm.grid_cols}x{bm.grid_rows}: detected {len(rooms)} room(s) "
           f"(min {args.min_room} floor cells).")
@@ -963,6 +1042,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "(default: current working directory)")
     e.add_argument("--dry-run", action="store_true",
                    help="print the rolled encounter composition and write nothing")
+    e.add_argument("--type", default=None, metavar="TYPE",
+                   help="restrict mobs to a specific type (e.g. 'Monstrosity', 'Aberration', 'Beast'); "
+                        "omit for any type")
+    e.add_argument("--languages", nargs="+", default=None, metavar="LANG",
+                   help="restrict mobs to those speaking at least one of these languages; "
+                        "omit for any languages (e.g. --languages Common Goblin)")
     e.set_defaults(func=cmd_encounter)
 
     # ── dungeon ─────────────────────────────────────────────────────────────
@@ -1021,6 +1106,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="detect rooms, print an ASCII room map + a per-room "
                         "category/mob preview, and write nothing (use to "
                         "calibrate --min-room before generating)")
+    d.add_argument("--type", default=None, metavar="TYPE",
+                   help="restrict mobs to a specific type (e.g. 'Monstrosity', 'Aberration', 'Beast'); "
+                        "omit for any type")
+    d.add_argument("--languages", nargs="+", default=None, metavar="LANG",
+                   help="restrict mobs to those speaking at least one of these languages; "
+                        "omit for any languages (e.g. --languages Common Goblin)")
     d.set_defaults(func=cmd_dungeon, boss=True)
 
     # Append the full argument listing (both sub-commands) to the top-level help.
