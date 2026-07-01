@@ -10649,11 +10649,17 @@ class App:
         ix, iy = px / s, py / s
         iw, ih = pw / s, ph / s
 
-        # Find grid cell range using binary search
+        # Find grid cell range using binary search. Start edges use bisect_right so a
+        # cell owns its top/left grid line; end edges use bisect_left so a region whose
+        # bottom/right edge falls *exactly* on a grid line does NOT pull in the next cell
+        # (which only starts at that line). Regions built from cell rects have their far
+        # edge exactly on a grid line — bisect_right there over-included one extra row/col.
         c_start = max(0, bisect.bisect_right(raw_v, ix) - 1)
         r_start = max(0, bisect.bisect_right(raw_h, iy) - 1)
-        c_end = min(self.bm.grid_cols - 1, bisect.bisect_right(raw_v, ix + iw) - 1)
-        r_end = min(self.bm.grid_rows - 1, bisect.bisect_right(raw_h, iy + ih) - 1)
+        c_end = min(self.bm.grid_cols - 1, bisect.bisect_left(raw_v, ix + iw) - 1)
+        r_end = min(self.bm.grid_rows - 1, bisect.bisect_left(raw_h, iy + ih) - 1)
+        c_end = max(c_start, c_end)
+        r_end = max(r_start, r_end)
         return c_start, r_start, c_end, r_end
 
     def _apply_pixel_terrain(self, px, py, pw, ph, mult):
@@ -10705,6 +10711,38 @@ class App:
             x1, y1 = self._grid_sample_cur
             box = pygame.Rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
             pygame.draw.rect(self.screen, (255, 220, 60), box, 2)
+
+    def _draw_hover_cursor(self):
+        """Highlight the grid cell under the mouse, in and out of combat.
+
+        This is the always-on 'map cursor': a subtle outlined square following the
+        pointer so the DM can always see which cell they're aiming at, independent of
+        the combat-only reach/attack/targeting overlays. Suppressed while a modal is
+        open or the pointer is over the config panel."""
+        if self._modal_active():
+            return
+        raw_v = self.bm.v_line_positions
+        raw_h = self.bm.h_line_positions
+        if not raw_v or not raw_h:
+            return
+        mx, my = pygame.mouse.get_pos()
+        if mx >= self._panel_x():
+            return                     # pointer is over the panel, not the map
+        cell = self._screen_to_cell(mx, my)
+        if cell is None:
+            return
+        s = self.map_scale
+        sx, sy = self._cell_to_screen(cell.col, cell.row)
+        # Per-cell width/height (grid lines aren't perfectly uniform on some maps).
+        ex = int(raw_v[cell.col + 1] * s + self.pan_x) if cell.col + 1 < len(raw_v) else sx
+        ey = int(raw_h[cell.row + 1] * s + self.pan_y) if cell.row + 1 < len(raw_h) else sy
+        w = max(1, ex - sx)
+        h = max(1, ey - sy)
+        rect = pygame.Rect(sx, sy, w, h)
+        fill = pygame.Surface((w, h), pygame.SRCALPHA)
+        fill.fill((255, 255, 255, 26))            # faint wash so the cell reads as 'hot'
+        self.screen.blit(fill, (sx, sy))
+        pygame.draw.rect(self.screen, (235, 235, 250), rect, 2)
 
     def _draw_lighting_overlay(self):
         """Draw the lighting visualization overlay on the map."""
@@ -15240,6 +15278,7 @@ class App:
             self._draw_map()
             self._draw_agents()
             self._draw_safe_target_highlights()
+            self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_panel()
             self._draw_cursor_cell_info()                   # debug: cell under cursor
             self.terrain_editor.draw(self.screen)          # modal — always on top
