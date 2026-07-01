@@ -44,6 +44,7 @@ test_scripts = [
     "test_savefail.py",
     "test_legendary.py",
     "test_turn_start.py",
+    "test_npc_automation.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",

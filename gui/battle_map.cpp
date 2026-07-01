@@ -394,8 +394,8 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
         if (remaining <= 0)
             return false;
 
-        // Use reachableCells to validate destination (respects wall terrain)
-        CellSet reachable = reachableCells(pa.origin, pa.agent->getSize(), remaining, MovementType::Fly);
+        // Use reachableCells to validate destination (respects wall terrain + other agents)
+        CellSet reachable = reachableCells(pa.origin, pa.agent->getSize(), remaining, MovementType::Fly, idx);
         std::fprintf(stderr, "[C++ FLY] Origin: (%d,%d), Dest: (%d,%d), Reachable size: %zu\n",
             pa.origin.col, pa.origin.row, newOrigin.col, newOrigin.row, reachable.size());
 
@@ -421,6 +421,13 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
         pa.origin = newOrigin;
         return true;
     }
+
+    // Never end a move sharing a square with an ENEMY (always illegal). Ally squares are not
+    // rejected here so a forced stop (e.g. a Sentinel OA halt) mid-path through an ally still
+    // commits; NPC destination selection already avoids stopping on allies via reachableCells,
+    // which excludes every occupied cell from its result set.
+    if (agentOccupancy(newOrigin, pa.agent->getSize(), idx) == 2)
+        return false;
 
     // For walk/swim/burrow, calculate actual path cost using Dijkstra
     // Find the cheapest path cost from origin to newOrigin
@@ -451,6 +458,9 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
 
                 if (!inBounds(next, pa.agent->getSize())) continue;
                 if (isBlocked(next, pa.agent->getSize(), type)) continue;
+                // Enemy footprints block the path; allies may be passed through (but not stopped on,
+                // which is enforced by the destination check below).
+                if (agentOccupancy(next, pa.agent->getSize(), idx) == 2) continue;
 
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
 
@@ -729,6 +739,33 @@ bool BattleMap::inBounds(Cell origin, int size) const noexcept
         && origin.row + size <= rows_;
 }
 
+// Faction-aware footprint occupancy test (see header). Other living, in-play agents
+// block movement; an enemy footprint is impassable, an ally footprint is pass-through
+// only. The mover's own footprint never blocks. mover_idx < 0 disables the check.
+int BattleMap::agentOccupancy(Cell origin, int size, int mover_idx) const noexcept
+{
+    if (mover_idx < 0) return 0;
+    const int mover_faction = getAgentFaction(mover_idx);
+    int worst = 0;   // 0 free, 1 ally, 2 enemy (enemy dominates)
+    for (std::size_t i = 0; i < placedAgents_.size(); ++i) {
+        if (static_cast<int>(i) == mover_idx) continue;
+        const auto& pa = placedAgents_[i];
+        if (pa.removed_from_play || pa.on_deck)   continue;   // tombstoned / reserve: not on the map
+        if (pa.agent->getStats().hp_cur <= 0)     continue;   // a downed body doesn't block movement
+        const int psize = pa.agent->getSize();
+        // Rectangle-overlap of the two footprints.
+        if (origin.col < pa.origin.col + psize && origin.col + size > pa.origin.col &&
+            origin.row < pa.origin.row + psize && origin.row + size > pa.origin.row) {
+            // Same non-zero faction == ally (mirrors CombatEngine::areAllies). Neutral
+            // (faction 0) and opposing factions are treated as enemies (impassable).
+            const bool ally = mover_faction != 0 && getAgentFaction(static_cast<int>(i)) == mover_faction;
+            worst = std::max(worst, ally ? 1 : 2);
+            if (worst == 2) return 2;   // can't get worse
+        }
+    }
+    return worst;
+}
+
 // Helper: Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump)
 CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
                                      int speedFt, MovementType type,
@@ -749,7 +786,11 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
 
         if (dist.count(cell) && dist[cell] < cost) continue;
 
-        result.insert(cell);
+        // A cell occupied by another agent is reachable to PASS THROUGH (allies only —
+        // enemy cells are never enqueued below) but is not a valid place to STOP, so it
+        // is expanded for neighbours yet kept out of the returned destination set.
+        if (agentOccupancy(cell, tokenSize, mover_idx) == 0)
+            result.insert(cell);
 
         for (int dr = -1; dr <= 1; ++dr) {
             for (int dc = -1; dc <= 1; ++dc) {
@@ -758,6 +799,8 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
 
                 if (!inBounds(next, tokenSize))  continue;
                 if (isBlocked(next, tokenSize, type))  continue;
+                // Enemy footprints block the path entirely; allies may be passed through.
+                if (agentOccupancy(next, tokenSize, mover_idx) == 2)  continue;
 
                 // Orthogonal: 5 ft; Diagonal: 10 ft
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
@@ -857,6 +900,43 @@ void BattleMap::setAgentOnDeck(int idx, bool on_deck) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].on_deck = on_deck;
+}
+
+bool BattleMap::isAgentNpcAutomated(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
+    return placedAgents_[static_cast<std::size_t>(idx)].is_npc_automated;
+}
+
+void BattleMap::setAgentNpcAutomated(int idx, bool automated) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].is_npc_automated = automated;
+}
+
+int BattleMap::getAgentNpcAutomationDifficulty(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return 0;
+    return placedAgents_[static_cast<std::size_t>(idx)].npc_automation_difficulty_level;
+}
+
+void BattleMap::setAgentNpcAutomationDifficulty(int idx, int level) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].npc_automation_difficulty_level = level;
+}
+
+NpcAutomationStrategy BattleMap::getAgentNpcAutomationStrategy(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size()))
+        return NpcAutomationStrategy::Simple;
+    return placedAgents_[static_cast<std::size_t>(idx)].npc_automation_strategy;
+}
+
+void BattleMap::setAgentNpcAutomationStrategy(int idx, NpcAutomationStrategy strategy) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].npc_automation_strategy = strategy;
 }
 
 void BattleMap::setAgentName(int idx, std::string name) noexcept
@@ -1935,7 +2015,9 @@ void BattleMap::updateLighting() noexcept {
 int BattleMap::placeLightEffect(std::string name, std::vector<Cell> cells,
                                  VisibilityLevel level, int turns_remaining,
                                  int source_agent_idx,
-                                 int see_through_agent_idx) noexcept {
+                                 int see_through_agent_idx,
+                                 int anchor_agent_idx,
+                                 int anchor_radius_ft) noexcept {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -1956,11 +2038,26 @@ int BattleMap::placeLightEffect(std::string name, std::vector<Cell> cells,
         level,
         turns_remaining,
         source_agent_idx,
-        see_through_agent_idx
+        see_through_agent_idx,
+        anchor_agent_idx,
+        anchor_radius_ft
     });
 
     updateLighting();
     return id;
+}
+
+void BattleMap::setLightEffectCells(int effect_id, std::vector<Cell> cells) noexcept {
+    auto it = std::find_if(activeLightEffects_.begin(), activeLightEffects_.end(),
+        [effect_id](const ActiveLightEffect& e) { return e.id == effect_id; });
+    if (it == activeLightEffects_.end())
+        return;
+    std::vector<int> indices;
+    for (const auto& cell : cells)
+        if (cell.col >= 0 && cell.col < cols_ && cell.row >= 0 && cell.row < rows_)
+            indices.push_back(cell.row * cols_ + cell.col);
+    it->cell_indices = std::move(indices);
+    updateLighting();
 }
 
 std::vector<int> BattleMap::tickLightEffects(int source_agent_idx) noexcept {

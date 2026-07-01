@@ -34,6 +34,7 @@
 
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <optional>
 #include <random>
 #include <string>
@@ -50,7 +51,8 @@ struct AgentConfig;
 struct ActiveSpellEffect;
 struct ActiveAgentCondition;
 enum class MovementType;
-enum class VisibilityLevel;  // defined in battle_map.hpp
+enum class VisibilityLevel;        // defined in battle_map.hpp
+enum class NpcAutomationStrategy;  // defined in battle_map.hpp (NPC automation turn driver)
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Hide result (Stealth check vs Perception)
@@ -665,6 +667,55 @@ struct InFlightTurn {
     bool             window_built{false};  // reactor list computed once
 };
 
+// Resumable state for one in-flight NPC-automation turn (NPC_AUTOMATION_PLAN.md Step 3). runNpcTurn
+// can park mid-turn whenever an action it attempts (a move that provokes an OA, an attack that opens a
+// defender/OnD20 window) suspends for a human reaction. The GUI driver resolves the window via
+// submitDecision and then re-calls run_npc_turn, which must RESUME this turn — not restart targeting.
+// This struct is the saved resume point: which target/weapon, how many attacks are left, and which
+// phase the turn is in. active+agent_idx gate a resume vs a fresh turn.
+struct NpcTurnState {
+    bool active{false};
+    int  agent_idx{-1};
+    int  target_idx{-1};
+    int  weapon_idx{0};          // slot 0..2 into the agent's weapons
+    int  attacks_remaining{0};   // swings left in the Attack action (decremented BEFORE beginAttack so a
+                                 // park-then-resume never repeats the swing that already resolved)
+    enum Phase { PickAndMove, Attacking, Done } phase{PickAndMove};
+    // PreferAOE (Step 6): set TRUE immediately before the single beginCast so a park-then-resume of the
+    // OnDeclareCast window does NOT re-cast — submitDecision resolves the parked cast, then re-calls
+    // run_npc_turn, which sees this flag and simply ends the turn (the blast already resolved).
+    bool aoe_cast_launched{false};
+    // PreferAOE approach: TRUE while an AoE caster is MOVING to bring enemies into range before casting
+    // (an out-of-range AoE spell must never fall back to melee). If that approach move parks on an OA, the
+    // resume re-enters runAoeTurn, sees this flag, and re-plans + casts from the new cell (no second move).
+    bool aoe_moving{false};
+};
+
+// How an NPC strategy ranks candidate targets (NPC_AUTOMATION_PLAN.md Steps 3-5).
+enum class NpcTargetPriority {
+    Nearest,    // closest by footprint distance, ties → lowest HP (Simple / PreferTargetCaster)
+    LowestHp,   // lowest current HP, ties → closest (PreferRange focus-fires the weakest enemy)
+};
+
+// The behavioural knobs that distinguish one NPC strategy from another, fed to the single shared
+// turn executor runWeaponTurn. Each runNpcTurn dispatch case builds one of these from a strategy enum
+// value; the executor itself is strategy-agnostic. Defaults reproduce the Simple (preferMelee) strategy.
+struct NpcStrategyPolicy {
+    bool prefer_caster      = false;   // restrict targets to enemy spellcasters when any are attackable (Step 4)
+    bool prefer_ranged      = false;   // pick the best RANGED weapon (else fall back to best melee) (Step 5)
+    bool kite               = false;   // position to MAXIMISE distance from enemies among in-range cells (Step 5)
+    NpcTargetPriority priority = NpcTargetPriority::Nearest;
+};
+
+// The chosen AoE cast for a PreferAOE turn (NPC_AUTOMATION_PLAN.md Step 6): which spell to cast and the
+// aim cell that maximizes the net enemies caught in its area. spell_idx == -1 means no AoE was worth
+// casting (no available area spell catches at least one net enemy) → the turn falls back to weapons.
+struct NpcAoePlan {
+    int  spell_idx   = -1;   // index into the caster's spells list (== SpellAction.spell_idx)
+    Cell aim{0, 0};          // aoe_col / aoe_row aim point
+    int  net_enemies = 0;    // enemies caught minus allies caught (friendly-fire aware; 0 when spell_idx<0)
+};
+
 // ── Wild Magic Surge (College of Wild Magic) ─────────────────────────────────
 // The engine ROLLS d100 on the curated surge table and classifies the effect band
 // (1-10); applying the effect is the caller's job (effects range from a simple heal
@@ -1028,6 +1079,33 @@ public:
     // lastTurnStartResult() once the flow Completes. The plain beginTurn() above stays the no-window path.
     FlowStatus beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive);
     [[nodiscard]] const TurnStartResult& lastTurnStartResult() const noexcept { return in_flight_turn_.result; }
+
+    // ── NPC automation turn driver (NPC_AUTOMATION_PLAN.md Step 2) ────────────
+    // Drive one automated NPC's turn through the engine instead of requiring manual GUI control.
+    // This is the dedicated turn-driver seam (NOT CombatDecider, which is a mid-flow oracle). It uses
+    // the C++ resolution primitives (resolveAttack / executeSpell / movement budgets), never main.py's
+    // interactive begin_attack / drag-to-move orchestration, so it is callable headless for RL rollouts.
+    //
+    // Returns FlowStatus: Completed (the NPC's turn fully resolved — the GUI then advances the turn), or
+    // AwaitingDecision (parked at a human reaction/counter window — poll pending_decision(), resume via
+    // submit_decision(), then call run_npc_turn again to continue). The driver always returns/yields and
+    // never blocks in a loop.
+    //
+    // STEP 2 STUB: this currently no-ops (logs an auto-pass via resolveStrategy and spends nothing), then
+    // Completes. Steps 3+ replace the body with per-strategy decision logic dispatched on resolveStrategy.
+    FlowStatus runNpcTurn(BattleMap& bm, int agent_idx);
+
+    // Resolve which decision algorithm an automated agent uses THIS turn. The single place the later
+    // difficulty-level → role → strategy override will live (NPC_AUTOMATION_PLAN.md "Difficulty is an
+    // OVERRIDE"). Today it returns the per-agent npc_automation_strategy field unchanged. runNpcTurn must
+    // always go through this, never read the raw field, so the executors stay decoupled from the resolver.
+    [[nodiscard]] NpcAutomationStrategy resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // Visualization seam (NPC_AUTOMATION_PLAN.md Step 2e). runNpcTurn calls renderAttack(...) when an NPC
+    // action resolves so the GUI can later animate it (highlight attacker + target, ranged arrow, AoE
+    // blink-then-resolve). SEAM ONLY — no animation now; headless leaves the hook unset (a no-op). The
+    // GUI installs a Python callable via set_render_attack_hook.
+    void setRenderAttackHook(std::function<void(int, int)> hook) noexcept { render_attack_hook_ = std::move(hook); }
 
     // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating).
     // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
@@ -2215,6 +2293,14 @@ private:
     MessageLogger* logger_{nullptr};
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
 
+    // NPC-automation visualization hook (Step 2e seam). Unset in headless mode → renderAttack is a no-op.
+    std::function<void(int, int)> render_attack_hook_;
+    // Notify the GUI (if a hook is installed) that an automated NPC's action from attacker→target
+    // resolved, so it can animate. No-op when no hook is installed (headless / tests).
+    void renderAttack(int attacker_idx, int target_idx) const {
+        if (render_attack_hook_) render_attack_hook_(attacker_idx, target_idx);
+    }
+
     // ── Reaction system internals (combat_movement.cpp) ──────────────────────
     PendingDecision pending_decision_{};   // what the engine is parked on (GUI polls it)
     InFlightMove    in_flight_move_{};      // resumable state of a provoking move
@@ -2284,6 +2370,51 @@ private:
     [[nodiscard]] int agentSpellIndex(const BattleMap& bm, int idx, const std::string& name) const;
     // True if the chosen reaction option is a Counterspell Feature (→ push a nested cast).
     [[nodiscard]] bool isCounterspellChoice(const ReactionCtx& ctx, const ReactionResponse& resp) const;
+
+    // ── NPC automation internals (combat_turn.cpp, NPC_AUTOMATION_PLAN.md Step 3) ─────────────
+    NpcTurnState npc_turn_{};   // resume point of an in-flight automated turn (parks at reaction windows)
+    // Single shared NPC turn executor (Steps 3-5). It engages an enemy and makes a full Attack action,
+    // with target selection, weapon choice, and positioning all driven by `policy` — so Simple (Step 3),
+    // PreferTargetCaster (Step 4), and PreferRange (Step 5) are the SAME code with different policies.
+    // Resumable: returns AwaitingDecision when a move/attack it attempts parks at a human reaction window;
+    // the GUI resolves it and re-calls run_npc_turn to continue (npc_turn_ holds the resume point).
+    FlowStatus runWeaponTurn(BattleMap& bm, int agent_idx, const NpcStrategyPolicy& policy);
+    // Best attackable enemy of agent_idx by the given priority (Nearest, ties→lowest HP; or LowestHp,
+    // ties→nearest), or -1 if none. "Enemy" = any non-ally (areAllies==false) alive, in play, in initiative.
+    // prefer_caster (Step 4): restrict the pool to enemy spellcasters if any are attackable, else fall back
+    // to the full enemy pool (so PreferTargetCaster degrades to its base priority when no caster is present).
+    [[nodiscard]] int  npcSelectTarget(const BattleMap& bm, int agent_idx, bool prefer_caster = false,
+                                       NpcTargetPriority priority = NpcTargetPriority::Nearest) const noexcept;
+    // True if target_idx is an enemy spellcaster (its known-spell list is non-empty). Drives Step 4 targeting.
+    [[nodiscard]] bool npcIsCaster(const BattleMap& bm, int idx) const noexcept;
+    // True if target_idx is a currently-valid attack target for agent_idx (alive, in play, in initiative,
+    // not an ally). Used to re-acquire mid-multiattack when the current target drops.
+    [[nodiscard]] bool npcAttackable(const BattleMap& bm, int agent_idx, int target_idx) const noexcept;
+    // Weapon slot (0..2) with the highest average-damage MELEE weapon, or — if the agent has no usable
+    // melee weapon — the highest average-damage weapon of any type (Simple / preferMelee).
+    [[nodiscard]] int  npcSelectWeapon(const BattleMap& bm, int agent_idx) const noexcept;
+    // Weapon slot (0..2) with the highest average-damage RANGED weapon, or — if the agent has no ranged
+    // weapon — falls back to npcSelectWeapon so a melee-only creature still acts (PreferRange, Step 5).
+    [[nodiscard]] int  npcSelectRangedWeapon(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // PreferAOE turn (Step 6). Picks the available area spell + aim cell that maximizes the net enemies
+    // caught (npcPlanAoeCast), casts it once through the parkable beginCast (so a human reaction window
+    // surfaces identically to a player cast), then ends the turn. With no worthwhile AoE it falls back to
+    // the Simple weapon turn so an AoE caster with nothing to blast still acts. Resumable via npc_turn_.
+    FlowStatus runAoeTurn(BattleMap& bm, int agent_idx);
+    // Among the caster's currently-castable AoE blast spells (Sphere/Cone/Line/Square, Harm type), and over
+    // candidate aim points (each attackable enemy's cell), choose the spell+aim with the most net enemies
+    // (enemies caught minus friendly-fire allies caught, unless the spell spares allies). Catchment is
+    // counted with resolveAoeTargets — the SAME resolver executeSpell uses — so geometry is single-sourced.
+    // Placed areas (Sphere/Square) are range+LoS gated to the aim; self-origin Cone/Line need only LoS.
+    [[nodiscard]] NpcAoePlan npcPlanAoeCast(const BattleMap& bm, int agent_idx) const noexcept;
+    // True if the agent has ANY currently-castable AoE blast spell (Sphere/Cone/Line/Square, Harm type),
+    // regardless of whether an enemy is in range right now. Distinguishes "no AoE to cast → melee" from
+    // "has an AoE but must first move into range" so PreferAOE never falls back to melee while it holds one.
+    [[nodiscard]] bool npcHasCastableAoeSpell(const BattleMap& bm, int agent_idx) const noexcept;
+    // The reachable cell that most reduces footprint distance to the nearest attackable enemy — an AoE
+    // caster's "close the gap so the blast can reach" move. Mirrors runWeaponTurn's approach finder.
+    [[nodiscard]] bool npcFindAoeApproachCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept;
 
     // ── Attack interrupt internals (combat_attack.cpp) ───────────────────────
     InFlightAttack in_flight_attack_{};      // resumable state of a begin_attack flow

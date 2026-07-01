@@ -141,11 +141,12 @@ def test_extra_attack_l5():
 
 
 def test_roving_speed_l6():
-    s5 = rpg.Stats(); s5.initialize_class_resources(rpg.CharacterClass.Ranger, 5)
-    assert s5.speed_walk == 30, f"no Roving before L6, got {s5.speed_walk}"
+    # Roving's +10 ft (and climb/swim = Speed) is expected to be baked into the imported
+    # stats; initialize_class_resources must NOT mutate speed_walk (doing so accumulated
+    # +10 on every save/load roundtrip).
+    base = rpg.Stats().speed_walk
     s6 = rpg.Stats(); s6.initialize_class_resources(rpg.CharacterClass.Ranger, 6)
-    assert s6.speed_walk == 40, f"Roving +10 ft at L6, got {s6.speed_walk}"
-    assert s6.speed_climb == 40 and s6.speed_swim == 40, "Roving grants climb/swim = Speed"
+    assert s6.speed_walk == base, f"initialize must not change speed_walk (was {base}, got {s6.speed_walk})"
     print("✅ test_roving_speed_l6")
 
 

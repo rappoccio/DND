@@ -103,7 +103,8 @@ bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     // Check for any condition that reduces speed to 0
-    if (cond.incapacitated || cond.unconscious || cond.grappled || cond.paralyzed) {
+    if (cond.incapacitated || cond.unconscious || cond.grappled || cond.paralyzed
+            || cond.branches_speed_zeroed) {   // World Tree Branches of the Tree: Speed 0 this turn
         return false;
     }
     return true;
@@ -123,23 +124,14 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
         return false;
     }
 
-    // Check if agent is grappled - cannot move (Speed = 0)
+    // Check if agent is grappled - cannot move (Speed = 0).
+    // A grapple is released the instant the grappler becomes Incapacitated/Unconscious/dies
+    // (see dropGrapplesBy in applyIncapacitated/applyUnconscious), so reaching here while
+    // grappled means the grappler is still active. Distance alone does NOT break a grapple —
+    // the grappler can drag this creature along (at 2x cost); it ends only via drop or escape.
     if (cond.grappled) {
         log_("Movement blocked: grappled creature cannot move (Speed = 0)");
         return false;
-    }
-
-    // Check if grapple should auto-end (only if grappler is incapacitated).
-    // Note: distance alone does NOT break a grapple — you can drag a grappled creature
-    // as far as your movement allows (at 2x cost). Grapple ends only via explicit drop or escape.
-    if (cond.grappler_idx >= 0 && cond.grappler_idx < static_cast<int>(agents.size())) {
-        Agent::Conditions grappler_cond = bm.getAgentConditions(cond.grappler_idx);
-        if (grappler_cond.incapacitated) {
-            cond.grappled = false;
-            cond.grappler_idx = -1;
-            bm.setAgentConditions(idx, cond);
-            log_("Grapple ended: grappler is incapacitated");
-        }
     }
 
     Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;

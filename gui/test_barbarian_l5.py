@@ -52,7 +52,10 @@ def test_extra_attack_not_at_l4():
 
 
 def test_fast_movement_initialization():
-    """Verify Fast Movement (+10 speed_walk) is set at L5"""
+    """Verify initialize_class_resources does NOT mutate speed_walk at L5.
+
+    Fast Movement's +10 ft is expected to already be baked into the imported/configured
+    speed_walk; the engine must not add it (doing so accumulated +10 every save/load)."""
     bm = setup_battle_map()
     engine = setup_combat_engine()
 
@@ -61,13 +64,15 @@ def test_fast_movement_initialization():
     config.stats.char_level = 5
     idx = add_agent_to_battle(engine, bm, config)
 
-    # Initialize resources after adding to battle
+    # Speed is whatever the imported stats provide; record it, then ensure initialize leaves it alone.
+    base = engine.get_agent_stats(bm, idx).speed_walk
+
     stats = engine.get_agent_stats(bm, idx)
     stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 5)
     engine.set_agent_stats(bm, idx, stats)
 
     stats = engine.get_agent_stats(bm, idx)
-    assert stats.speed_walk == 40, f"Barbarian L5 should have speed_walk = 40 (30 + 10), got {stats.speed_walk}"
+    assert stats.speed_walk == base, f"initialize must not change speed_walk (was {base}, got {stats.speed_walk})"
     print("✅ test_fast_movement_initialization passed")
 
 
@@ -113,7 +118,7 @@ def test_extra_attack_higher_levels():
 
 
 def test_fast_movement_higher_levels():
-    """Verify Fast Movement persists at higher levels"""
+    """Verify initialize_class_resources never mutates speed_walk at higher levels."""
     bm = setup_battle_map()
     engine = setup_combat_engine()
 
@@ -123,12 +128,14 @@ def test_fast_movement_higher_levels():
         config.stats.char_level = level
         idx = add_agent_to_battle(engine, bm, config)
 
+        base = engine.get_agent_stats(bm, idx).speed_walk
+
         stats = engine.get_agent_stats(bm, idx)
         stats.initialize_class_resources(rpg.CharacterClass.Barbarian, level)
         engine.set_agent_stats(bm, idx, stats)
 
         stats = engine.get_agent_stats(bm, idx)
-        assert stats.speed_walk == 40, f"Barbarian L{level} should have speed_walk = 40, got {stats.speed_walk}"
+        assert stats.speed_walk == base, f"Barbarian L{level}: initialize must not change speed_walk (was {base}, got {stats.speed_walk})"
 
     print("✅ test_fast_movement_higher_levels passed")
 

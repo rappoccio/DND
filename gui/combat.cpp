@@ -45,10 +45,9 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         num_attacks = 2;
       }
 
-      // Fast Movement (L5+): +10 feet speed (not in heavy armor, but we can't check that here)
-      if (level >= 5) {
-        speed_walk += 10;
-      }
+      // Fast Movement (L5+): +10 feet speed. NOT applied here — speed_walk is taken
+      // directly from the imported/configured stats, which already reflect it. Mutating
+      // it here accumulated +10 on every save/load (initializeClassResources re-runs).
 
       // Brutal Strike (L9+): 1d10 damage; L17+: 2d10 damage
       if (level >= 9) {
@@ -678,12 +677,9 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // Extra Attack (L5+): 2 attacks per action.
       if (level >= 5) num_attacks = 2;
 
-      // Roving (L6+): +10 ft Speed; also gain Climb and Swim speeds equal to your Speed.
-      if (level >= 6) {
-        speed_walk += 10;
-        speed_climb = speed_walk;
-        speed_swim  = speed_walk;
-      }
+      // Roving (L6+): +10 ft Speed and Climb/Swim = Speed. NOT applied here — speed_walk
+      // (and any climb/swim) come directly from the imported/configured stats. Mutating
+      // speed_walk here accumulated +10 on every save/load (initializeClassResources re-runs).
 
       // Favored Enemy (L1): Hunter's Mark is always prepared and can be cast without a
       // spell slot a number of times equal to your Proficiency Bonus per Long Rest

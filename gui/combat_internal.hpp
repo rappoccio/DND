@@ -213,54 +213,45 @@ inline std::vector<int> resolveAoeTargets(
     const float ax = static_cast<float>(aoe_col);
     const float ay = static_cast<float>(aoe_row);
 
-    for (int i = 0; i < n; ++i) {
-        const Cell& tc = agents[static_cast<std::size_t>(i)].origin;
-        const float tx = static_cast<float>(tc.col);
-        const float ty = static_cast<float>(tc.row);
-        bool in_area = false;
-
+    // Does a single grid cell (tx,ty) fall inside this spell's area? Evaluated
+    // per target cell so that a Large+ target is hit if ANY cell of its
+    // footprint overlaps the area, not just its top-left origin cell.
+    auto cellInArea = [&](float tx, float ty) -> bool {
         switch (sp.geometry) {
 
         case Spell::Sphere: {
             float dx = tx - ax, dy = ty - ay;
             float dist_ft = std::sqrt(dx*dx + dy*dy) * 5.0f;
-            in_area = dist_ft <= static_cast<float>(sp.radius);
-            break;
+            return dist_ft <= static_cast<float>(sp.radius);
         }
 
         case Spell::Cone: {
-            // A creature is never caught in its own cone emanation.
-            if (i == caster_idx) break;
             // Direction from the footprint apex toward the aimed point.
             float dx = ax - cx, dy = ay - cy;
             float len = std::sqrt(dx*dx + dy*dy);
-            if (len < 0.001f) break;
+            if (len < 0.001f) return false;
             float ux = dx / len, uy = dy / len;
             float px = tx - cx, py = ty - cy;
             float plen = std::sqrt(px*px + py*py);
             float dist_ft = plen * 5.0f;
             // 60° cone half-angle: cos(30°) ≈ 0.866
-            in_area = (plen >= 0.001f)
-                   && dist_ft <= static_cast<float>(sp.radius)
-                   && (px*ux + py*uy) / plen >= 0.866f;
-            break;
+            return (plen >= 0.001f)
+                && dist_ft <= static_cast<float>(sp.radius)
+                && (px*ux + py*uy) / plen >= 0.866f;
         }
 
         case Spell::Line: {
-            // A creature is never caught in its own line emanation.
-            if (i == caster_idx) break;
             // Direction from the footprint apex toward the aimed endpoint.
             float dx = ax - cx, dy = ay - cy;
             float len = std::sqrt(dx*dx + dy*dy);
-            if (len < 0.001f) break;
+            if (len < 0.001f) return false;
             float ux = dx / len, uy = dy / len;
             float px = tx - cx, py = ty - cy;
             float along_ft = (px*ux + py*uy) * 5.0f;
             float perp_ft  = std::abs(-py*ux + px*uy) * 5.0f;
-            in_area = along_ft >= 0.0f
-                   && along_ft <= static_cast<float>(sp.length)
-                   && perp_ft  <= static_cast<float>(sp.width) / 2.0f;
-            break;
+            return along_ft >= 0.0f
+                && along_ft <= static_cast<float>(sp.length)
+                && perp_ft  <= static_cast<float>(sp.width) / 2.0f;
         }
 
         case Spell::Rectangle: {
@@ -273,32 +264,50 @@ inline std::vector<int> resolveAoeTargets(
                 // Degenerate fallback: centered box (legacy behavior).
                 float dx_ft = std::abs(tx - ax) * 5.0f;
                 float dy_ft = std::abs(ty - ay) * 5.0f;
-                in_area = dx_ft <= static_cast<float>(sp.width) / 2.0f
-                       && dy_ft <= static_cast<float>(sp.length) / 2.0f;
-                break;
+                return dx_ft <= static_cast<float>(sp.width) / 2.0f
+                    && dy_ft <= static_cast<float>(sp.length) / 2.0f;
             }
             const float ux = dx / len, uy = dy / len;
             const float px = tx - ax, py = ty - ay;
             const float along_ft = (px*ux + py*uy) * 5.0f;
             const float perp_ft  = std::abs(-py*ux + px*uy) * 5.0f;
             const float max_along_ft = std::min(len * 5.0f, static_cast<float>(sp.length));
-            in_area = along_ft >= 0.0f
-                   && along_ft <= max_along_ft
-                   && perp_ft  <= static_cast<float>(sp.width) / 2.0f;
-            break;
+            return along_ft >= 0.0f
+                && along_ft <= max_along_ft
+                && perp_ft  <= static_cast<float>(sp.width) / 2.0f;
         }
 
         case Spell::Square: {
             // Square centered on aimed point, using width and length
             float dx_ft = std::abs(tx - ax) * 5.0f;
             float dy_ft = std::abs(ty - ay) * 5.0f;
-            in_area = dx_ft <= static_cast<float>(sp.width) / 2.0f
-                   && dy_ft <= static_cast<float>(sp.length) / 2.0f;
-            break;
+            return dx_ft <= static_cast<float>(sp.width) / 2.0f
+                && dy_ft <= static_cast<float>(sp.length) / 2.0f;
         }
 
         default:
-            break;
+            return false;
+        }
+    };
+
+    for (int i = 0; i < n; ++i) {
+        // A creature is never caught in its own cone/line emanation.
+        if ((sp.geometry == Spell::Cone || sp.geometry == Spell::Line)
+            && i == caster_idx) {
+            continue;
+        }
+
+        const PlacedAgent& tpa = agents[static_cast<std::size_t>(i)];
+        const Cell& tc = tpa.origin;
+        const int   ts = tpa.agent ? tpa.agent->getSize() : 1;
+
+        // A target is in the area if ANY cell of its footprint overlaps it.
+        bool in_area = false;
+        for (int dc = 0; dc < ts && !in_area; ++dc) {
+            for (int dr = 0; dr < ts && !in_area; ++dr) {
+                in_area = cellInArea(static_cast<float>(tc.col + dc),
+                                     static_cast<float>(tc.row + dr));
+            }
         }
 
         if (in_area) targets.push_back(i);

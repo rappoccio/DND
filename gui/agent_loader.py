@@ -164,6 +164,12 @@ def restore_class_resources(stats, agent_dict, rpg_module=None):
     barb = agent_dict.get("agent_barbarian_subclass", "NONE")
     if barb != "NONE":
         stats.barbarian_subclass = getattr(rpg_module.BarbianSubclass, barb)
+    # Path of the World Tree L6 — Branches of the Tree. The C++ reaction is gated on this flag;
+    # derive it here (mirroring the GUI editor) so a saved/loaded World Tree barbarian keeps the
+    # feature even if the persisted stats predate the flag (it would otherwise load as False).
+    # OR with the loaded value so an explicitly-saved True is never clobbered.
+    stats.has_branches_of_the_tree = (
+        stats.has_branches_of_the_tree or (barb == "WorldTree" and char_level >= 6))
     whp = agent_dict.get("agent_wild_heart_power", "NONE")
     if whp != "NONE":
         stats.wild_heart_power = getattr(rpg_module.WildHeartPower, whp)

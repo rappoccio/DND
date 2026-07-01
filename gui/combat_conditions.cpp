@@ -117,6 +117,10 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     cond.incapacitated = true;
     bm.setAgentConditions(idx, cond);
 
+    // A grapple ends the moment the grappler is Incapacitated (RAW). Release every
+    // creature this agent was holding so they regain their Speed immediately.
+    dropGrapplesBy(bm, idx);
+
     // Break concentration if the agent is concentrating.
     // dropConcentration cascades removal of terrain + spell-effects + conditions.
     if (cond.concentrating) {
@@ -243,6 +247,11 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
     dropAgentWeapons(bm, idx);
+
+    // Dropping to 0 HP makes the agent Incapacitated, which ends any grapple it was
+    // maintaining — free its victims so they aren't stuck at Speed 0 by a dead grappler.
+    dropGrapplesBy(bm, idx);
+
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.unconscious = true;
     cond.incapacitated = true;

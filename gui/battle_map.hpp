@@ -140,6 +140,8 @@ struct ActiveLightEffect {
     int              turns_remaining;  // -1 = permanent, 0+ = expires after N turns
     int              source_agent_idx; // -1 = DM-placed or map-defined
     int              see_through_agent_idx{-1}; // agent who sees through this MagicalDark (Shadow Arts: Darkness); -1 = nobody
+    int              anchor_agent_idx{-1};       // if >=0, cells re-center on this agent (moving Sphere / Emanation)
+    int              anchor_radius_ft{0};        // Sphere radius used to re-center an anchored light effect
 };
 
 
@@ -189,6 +191,18 @@ struct ActiveAgentCondition {
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────
+// ── NPC automation strategy ─────────────────────────────────────────────────
+// Selects which decision algorithm an automated NPC uses on its turn. Only takes
+// effect when PlacedAgent::is_npc_automated is true (and gated by the difficulty
+// level). Simple = baseline "attack the nearest/weakest enemy" behaviour.
+enum class NpcAutomationStrategy {
+    Simple = 0,             // Baseline: engage the nearest reachable enemy with a basic attack
+    PreferTargetCaster = 1, // Prioritise enemy spellcasters as targets
+    PreferAOE = 2,          // Prefer area-of-effect options that catch multiple enemies
+    PreferRange = 3,        // Keep distance and favour ranged attacks
+    PreferHide = 4,         // Favour stealth/hiding and ambush positioning
+};
+
 struct PlacedAgent {
     std::shared_ptr<Agent> agent;
     Cell                   origin;        // top-left cell of the NxN footprint
@@ -209,6 +223,14 @@ struct PlacedAgent {
     // EXCLUDED from initiative (rollInitiative skips it) until the DM deploys
     // it. Deploying clears this flag and inserts the agent into the live order.
     bool        on_deck           = false;
+    // ── NPC automation ─────────────────────────────────────────────────────
+    // When is_npc_automated is true, the GUI may drive this agent's turn with an
+    // automated decision algorithm instead of requiring manual control. The
+    // difficulty level (0+) lets the DM scale how aggressively the algorithm plays;
+    // strategy picks which decision algorithm runs.
+    bool                  is_npc_automated              = false;
+    int                   npc_automation_difficulty_level = 0;
+    NpcAutomationStrategy npc_automation_strategy       = NpcAutomationStrategy::Simple;
 };
 
 // ── Agent configuration (supplied from Python GUI) ─────────────────────────
@@ -346,6 +368,15 @@ public:
     // skipped by rollInitiative until the DM deploys it (clears the flag).
     [[nodiscard]] bool isAgentOnDeck(int idx) const noexcept;
     void setAgentOnDeck(int idx, bool on_deck) noexcept;
+
+    // NPC automation accessors. See PlacedAgent's is_npc_automated /
+    // npc_automation_difficulty_level / npc_automation_strategy.
+    [[nodiscard]] bool isAgentNpcAutomated(int idx) const noexcept;
+    void setAgentNpcAutomated(int idx, bool automated) noexcept;
+    [[nodiscard]] int  getAgentNpcAutomationDifficulty(int idx) const noexcept;
+    void setAgentNpcAutomationDifficulty(int idx, int level) noexcept;
+    [[nodiscard]] NpcAutomationStrategy getAgentNpcAutomationStrategy(int idx) const noexcept;
+    void setAgentNpcAutomationStrategy(int idx, NpcAutomationStrategy strategy) noexcept;
 
     // Spell accessors (by index into placedAgents()).
     [[nodiscard]] std::vector<Spell> getAgentSpells(int idx) const noexcept;
@@ -532,7 +563,11 @@ public:
     [[nodiscard]] int  placeLightEffect(std::string name, std::vector<Cell> cells,
                                         VisibilityLevel level, int turns_remaining,
                                         int source_agent_idx,
-                                        int see_through_agent_idx = -1) noexcept;
+                                        int see_through_agent_idx = -1,
+                                        int anchor_agent_idx = -1,
+                                        int anchor_radius_ft = 0) noexcept;
+    // Re-point an anchored light effect's footprint (moving emanation follows the caster).
+    void setLightEffectCells(int effect_id, std::vector<Cell> cells) noexcept;
     [[nodiscard]] std::vector<int> tickLightEffects(int source_agent_idx) noexcept;
     [[nodiscard]] std::vector<int> tickDmLightEffects() noexcept;
     [[nodiscard]] std::vector<int> removeLightEffectsBySource(int source_agent_idx) noexcept;
@@ -626,6 +661,15 @@ private:
     [[nodiscard]] CellSet pathfindMovement(Cell origin, int tokenSize,
                                            int speedFt, MovementType type,
                                            int mover_idx = -1) const;
+
+    // Occupancy of the footprint a `size`-token would cover with top-left `origin`,
+    // for a mover identified by `mover_idx` (its own footprint never counts). Other
+    // living, in-play (not removed/on-deck) agents block movement: an enemy footprint
+    // is impassable (can't pass through or stop), an ally footprint is passable but
+    // can't be stopped on (D&D 5e moving-through-allies rule). Returns:
+    //   0 = free, 1 = ally-occupied (pass-through only), 2 = enemy-occupied (impassable).
+    // mover_idx < 0 (no actor) means agents are ignored entirely (returns 0).
+    [[nodiscard]] int agentOccupancy(Cell origin, int size, int mover_idx) const noexcept;
 
     std::filesystem::path mapImagePath_;
     int cols_{0}, rows_{0}, cellPx_{0};

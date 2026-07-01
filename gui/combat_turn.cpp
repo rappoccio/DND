@@ -17,7 +17,10 @@
 #include "combat_internal.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <format>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -1079,6 +1082,595 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
         }
         bm.setAgentConditions(idx, cond);
     }
+}
+
+// ── NPC automation turn driver (NPC_AUTOMATION_PLAN.md Step 2) ────────────────
+NpcAutomationStrategy CombatEngine::resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // SINGLE place the later difficulty-level → role → strategy override will live. Today it returns the
+    // per-agent strategy unchanged; when difficulty levels arrive, this resolves a strategy from the
+    // agent's role + the team difficulty level instead, leaving runNpcTurn and the executors untouched.
+    return bm.getAgentNpcAutomationStrategy(agent_idx);
+}
+
+FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
+
+    // Dispatch on the resolved strategy (NEVER the raw field — resolveStrategy is the single seam where a
+    // later difficulty-level override will swap the algorithm). Strategies are added per step; until a
+    // strategy has an executor it falls through to Simple (the always-defined baseline).
+    const NpcAutomationStrategy strategy = resolveStrategy(bm, agent_idx);
+    // [DEBUG PreferRange] resolved strategy + raw stored field for this agent.
+    log_("[DEBUG] NPC {} runNpcTurn: resolved strategy={} (raw stored={})",
+         agentName(bm, agent_idx),
+         static_cast<int>(strategy),
+         static_cast<int>(bm.getAgentNpcAutomationStrategy(agent_idx)));
+    {
+        // [DEBUG PreferRange] dump the agent's three weapon slots so we can see whether a Ranged-typed
+        // weapon is actually present at turn time (0=Melee, 1=Ranged).
+        const std::array<Weapon, 3> dbgW = bm.getAgentWeapons(agent_idx);
+        for (int di = 0; di < 3; ++di) {
+            const Weapon& w = dbgW[static_cast<std::size_t>(di)];
+            log_("[DEBUG]   weapon slot {}: name='{}' type={} ({}) is_shield={}",
+                 di, w.name, static_cast<int>(w.type),
+                 w.type == WeaponType::Melee ? "Melee" : "Ranged", w.is_shield);
+        }
+    }
+    // Each strategy is just a policy fed to the one shared executor (runWeaponTurn). New strategies add a
+    // case + a policy, not a new turn driver. Until a strategy has a policy it falls through to Simple.
+    NpcStrategyPolicy policy;   // defaults == Simple (preferMelee): Nearest target, best melee weapon, no kite
+    switch (strategy) {
+        case NpcAutomationStrategy::PreferTargetCaster:
+            // Step 4: same executor, but target selection prioritises enemy spellcasters.
+            policy.prefer_caster = true;
+            break;
+        case NpcAutomationStrategy::PreferRange:
+            // Step 5: best ranged weapon, focus-fire the lowest-HP enemy, and kite to keep distance.
+            policy.prefer_ranged = true;
+            policy.kite          = true;
+            policy.priority      = NpcTargetPriority::LowestHp;
+            break;
+        case NpcAutomationStrategy::PreferAOE:
+            // Step 6: cast the available area spell that catches the most enemies; this is NOT a weapon
+            // turn — it has its own executor (and falls back to a Simple weapon turn when nothing is worth
+            // blasting). Dispatch straight to it and skip the shared runWeaponTurn below.
+            return runAoeTurn(bm, agent_idx);
+        case NpcAutomationStrategy::Simple:
+        default:
+            break;   // Simple == "preferMelee" (NPC_AUTOMATION_PLAN.md Step 3)
+    }
+    return runWeaponTurn(bm, agent_idx, policy);
+}
+
+// ── Simple strategy (= "preferMelee") ────────────────────────────────────────
+// Average damage of a weapon's roll set (dice expectation + flat bonuses), used only to RANK weapons.
+// Falls back to the convenience damage_dice fields when the roll vectors are empty (test/simple weapons).
+// Shields return -1 (they make no attack) so they never win the ranking.
+static double npcWeaponAvgDamage(const Weapon& w) noexcept
+{
+    if (w.is_shield) return -1.0;
+    double avg = 0.0;
+    bool   hasRolls = false;
+    for (const auto& pr : w.physicalDamageRolls) {
+        avg += pr.num_dice * (pr.die_size + 1) / 2.0 + pr.bonus;
+        hasRolls = true;
+    }
+    for (const auto& mr : w.magicDamageRolls) {
+        avg += mr.num_dice * (mr.die_size + 1) / 2.0 + mr.bonus;
+        hasRolls = true;
+    }
+    if (!hasRolls)
+        avg = w.damage_dice_count * (w.damage_dice + 1) / 2.0 + w.damage_modifier;
+    return avg + w.bonus_damage;
+}
+
+int CombatEngine::npcSelectWeapon(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const std::array<Weapon, 3> weapons = bm.getAgentWeapons(agent_idx);
+    int bestMelee = -1; double bestMeleeDmg = -1.0;
+    int bestAny   = -1; double bestAnyDmg   = -1.0;
+    for (int i = 0; i < 3; ++i) {
+        const Weapon& w = weapons[static_cast<std::size_t>(i)];
+        if (w.is_shield) continue;
+        const double dmg = npcWeaponAvgDamage(w);
+        if (dmg > bestAnyDmg) { bestAnyDmg = dmg; bestAny = i; }
+        if (w.type == WeaponType::Melee && dmg > bestMeleeDmg) { bestMeleeDmg = dmg; bestMelee = i; }
+    }
+    if (bestMelee >= 0) return bestMelee;       // prefer melee (Simple == preferMelee)
+    return bestAny >= 0 ? bestAny : 0;          // ranged-only creature still acts; default to slot 0
+}
+
+int CombatEngine::npcSelectRangedWeapon(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const std::array<Weapon, 3> weapons = bm.getAgentWeapons(agent_idx);
+    int bestRanged = -1; double bestRangedDmg = -1.0;
+    for (int i = 0; i < 3; ++i) {
+        const Weapon& w = weapons[static_cast<std::size_t>(i)];
+        if (w.is_shield || w.type != WeaponType::Ranged) continue;
+        const double dmg = npcWeaponAvgDamage(w);
+        if (dmg > bestRangedDmg) { bestRangedDmg = dmg; bestRanged = i; }
+    }
+    if (bestRanged >= 0) return bestRanged;     // prefer ranged (PreferRange == kite at distance)
+    return npcSelectWeapon(bm, agent_idx);      // no ranged weapon: a melee-only creature still acts
+}
+
+bool CombatEngine::npcAttackable(const BattleMap& bm, int agent_idx, int target_idx) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (target_idx < 0 || target_idx >= n || target_idx == agent_idx) return false;
+    const PlacedAgent& t = agents[static_cast<std::size_t>(target_idx)];
+    if (t.removed_from_play || t.on_deck)          return false;   // tombstoned / reserve: not in play
+    if (areAllies(bm, agent_idx, target_idx))      return false;   // enemy == any non-ally
+    if (bm.getAgentStats(target_idx).hp_cur <= 0)  return false;
+    const auto cond = bm.getAgentConditions(target_idx);
+    if (cond.dead || cond.unconscious)             return false;
+    return true;
+}
+
+bool CombatEngine::npcIsCaster(const BattleMap& bm, int idx) const noexcept
+{
+    return !bm.getAgentSpells(idx).empty();   // a spellcaster is any agent with a known spell
+}
+
+int CombatEngine::npcSelectTarget(const BattleMap& bm, int agent_idx, bool prefer_caster,
+                                  NpcTargetPriority priority) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return -1;
+    const Cell myOrigin = agents[static_cast<std::size_t>(agent_idx)].origin;
+    const int  mySize   = agents[static_cast<std::size_t>(agent_idx)].agent->getSize();
+
+    // Step 4: only restrict to spellcasters when at least one enemy caster is attackable; otherwise the
+    // pool is the full enemy set and selection degrades to the base priority ("fall back when no caster").
+    bool casterPool = false;
+    if (prefer_caster) {
+        for (int j = 0; j < n; ++j)
+            if (npcAttackable(bm, agent_idx, j) && npcIsCaster(bm, j)) { casterPool = true; break; }
+    }
+
+    int best = -1;
+    int bestDist = std::numeric_limits<int>::max();
+    int bestHp   = std::numeric_limits<int>::max();
+    for (int j = 0; j < n; ++j) {
+        if (!npcAttackable(bm, agent_idx, j)) continue;
+        if (casterPool && !npcIsCaster(bm, j)) continue;   // caster pool active: skip non-casters
+        const Cell tOrigin = agents[static_cast<std::size_t>(j)].origin;
+        const int  tSize   = agents[static_cast<std::size_t>(j)].agent->getSize();
+        const int  d  = footprintDistance(myOrigin, mySize, tOrigin, tSize);
+        const int  hp = bm.getAgentStats(j).hp_cur;
+        const bool better = (priority == NpcTargetPriority::LowestHp)
+            ? (hp < bestHp || (hp == bestHp && d < bestDist))   // weakest first, ties → nearest
+            : (d  < bestDist || (d == bestDist && hp < bestHp)); // nearest first, ties → weakest
+        if (better) { best = j; bestDist = d; bestHp = hp; }
+    }
+    return best;
+}
+
+FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcStrategyPolicy& policy)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
+
+    NpcTurnState& st = npc_turn_;
+    if (!(st.active && st.agent_idx == agent_idx)) {   // fresh turn (else: resuming after a parked window)
+        st           = NpcTurnState{};
+        st.active    = true;
+        st.agent_idx = agent_idx;
+        st.phase     = NpcTurnState::PickAndMove;
+        // Seed the agent's OWN movement budget for this turn — the budget moveAgent/reachableCells read,
+        // which starts at 0 on a fresh Agent. beginTurn only seeds the PARALLEL engine budget; in the GUI
+        // _reset_movement seeds this one via init_movement, but headless RL has no GUI, so run_npc_turn must
+        // seed it itself to be self-contained. Mirror _reset_movement: pass base speeds (getWalkRemaining
+        // then applies the exhaustion penalty). Skip on a resume — we are mid-turn and must not refill.
+        const Agent::Stats s = bm.getAgentStats(agent_idx);
+        bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
+            s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+    }
+
+    // Reach of weapon slot `w`, in CELLS (footprintDistance units): melee uses reach_ft, ranged uses
+    // normal_range_ft. reachableCells/footprintDistance are the single geometry source — never re-derived.
+    auto reachCellsFor = [&](int w) -> int {
+        const Weapon wp = bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(std::clamp(w, 0, 2))];
+        const int rangeFt = (wp.type == WeaponType::Melee) ? wp.reach_ft : wp.normal_range_ft;
+        return std::max(1, rangeFt / 5);
+    };
+    auto isRanged = [&](int w) -> bool {
+        return bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(std::clamp(w, 0, 2))].type
+               != WeaponType::Melee;
+    };
+    // Can the agent, standing at cell `from`, attack `t` with weapon slot `w` (in reach + LoS if ranged)?
+    auto canAttackFrom = [&](Cell from, int t, int w) -> bool {
+        const auto& pa = bm.placedAgents();
+        const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+        const Cell tg = pa[static_cast<std::size_t>(t)].origin;
+        const int  ts = pa[static_cast<std::size_t>(t)].agent->getSize();
+        const int  d  = footprintDistance(from, ms, tg, ts);
+        if (d < 1 || d > reachCellsFor(w)) return false;
+        if (isRanged(w) && !bm.hasLineOfSight(from, ms, tg, ts)) return false;
+        return true;
+    };
+    auto inReachOf = [&](int t, int w) -> bool {
+        return canAttackFrom(bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin, t, w);
+    };
+    // Min footprint distance from `c` to ANY attackable enemy — the "safety" a kiter maximises (back away
+    // from the nearest threat while staying in weapon range). Larger = safer.
+    auto enemyMinDist = [&](Cell c) -> int {
+        const auto& pa = bm.placedAgents();
+        const int  ms  = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+        int mn = std::numeric_limits<int>::max();
+        for (int j = 0; j < n; ++j) {
+            if (!npcAttackable(bm, agent_idx, j)) continue;
+            const Cell eo = pa[static_cast<std::size_t>(j)].origin;
+            const int  es = pa[static_cast<std::size_t>(j)].agent->getSize();
+            mn = std::min(mn, footprintDistance(c, ms, eo, es));
+        }
+        return mn;
+    };
+    // Reachable cell from which `t` can be attacked with weapon `w`. With kite=false: fewest steps moved
+    // (close in, least OA exposure). With kite=true: MAXIMISE distance from the nearest enemy among in-range
+    // cells (ties → fewest steps), so a ranged attacker establishes AND maintains range from one finder.
+    // reachableCells includes the current origin, so when already in range this can legitimately "stay put".
+    auto findPositionCell = [&](int t, int w, Cell& out) -> bool {
+        const auto& pa = bm.placedAgents();
+        const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
+        const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+        const int  budget = pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+        bool found = false; int bestSteps = std::numeric_limits<int>::max();
+        int  bestSafety = std::numeric_limits<int>::min();
+        for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
+            if (!canAttackFrom(c, t, w)) continue;
+            const int steps = std::max(std::abs(c.col - me.col), std::abs(c.row - me.row));
+            if (policy.kite) {
+                const int safety = enemyMinDist(c);
+                if (safety > bestSafety || (safety == bestSafety && steps < bestSteps)) {
+                    bestSafety = safety; bestSteps = steps; out = c; found = true;
+                }
+            } else if (steps < bestSteps) {
+                bestSteps = steps; out = c; found = true;
+            }
+        }
+        return found;
+    };
+    // Closest reachable approach toward `t` (minimise footprint distance) when no attack cell is reachable.
+    auto findApproachCell = [&](int t, Cell& out) -> bool {
+        const auto& pa = bm.placedAgents();
+        const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
+        const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+        const Cell tg = pa[static_cast<std::size_t>(t)].origin;
+        const int  ts = pa[static_cast<std::size_t>(t)].agent->getSize();
+        const int  budget = pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+        bool found = false; int bestDist = footprintDistance(me, ms, tg, ts);
+        for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
+            if (c == me) continue;
+            const int d = footprintDistance(c, ms, tg, ts);
+            if (d >= 1 && d < bestDist) { bestDist = d; out = c; found = true; }
+        }
+        return found;
+    };
+    auto curOrigin = [&]() -> Cell {
+        return bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin;
+    };
+    const auto selectTarget = [&]() {
+        return npcSelectTarget(bm, agent_idx, policy.prefer_caster, policy.priority);
+    };
+
+    if (st.phase == NpcTurnState::PickAndMove) {
+        st.target_idx = selectTarget();
+        if (st.target_idx < 0) {                       // no enemies on the field
+            log_("NPC {} has no target — passing", agentName(bm, agent_idx));
+            st.active = false;
+            return FlowStatus::Completed;
+        }
+        st.weapon_idx = policy.prefer_ranged ? npcSelectRangedWeapon(bm, agent_idx)
+                                             : npcSelectWeapon(bm, agent_idx);
+
+        // [DEBUG PreferRange] report which weapon the policy actually selected.
+        {
+            const Weapon sel = bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(
+                std::clamp(st.weapon_idx, 0, 2))];
+            log_("[DEBUG] NPC {} runWeaponTurn: prefer_ranged={} kite={} -> selected weapon slot {} "
+                 "name='{}' type={} ({})",
+                 agentName(bm, agent_idx), policy.prefer_ranged, policy.kite, st.weapon_idx,
+                 sel.name, static_cast<int>(sel.type),
+                 sel.type == WeaponType::Melee ? "Melee" : "Ranged");
+        }
+
+        const bool reachNow = inReachOf(st.target_idx, st.weapon_idx);
+        // Non-kiters already in reach swing where they stand. Kiters always look for a better-spaced cell
+        // first (findPositionCell includes the current cell, so "stay put" remains an option).
+        if (reachNow && !policy.kite) {
+            st.phase = NpcTurnState::Attacking;
+            st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+        } else {
+            Cell dest{};
+            if (findPositionCell(st.target_idx, st.weapon_idx, dest)) {
+                // Commit the phase BEFORE beginMove so that if the move provokes an OA and parks, the resume
+                // re-enters in Attacking (the move is already in flight, not restarted).
+                st.phase = NpcTurnState::Attacking;
+                st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+                if (dest != curOrigin()) {             // a kiter may already be on the best cell → no move
+                    if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+                // move resolved inline → fall through to the attack loop
+            } else if (reachNow) {
+                // Kiter with no reachable cell at all (e.g. 0 movement budget) but already in range: swing.
+                st.phase = NpcTurnState::Attacking;
+                st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+            } else {
+                // No reachable cell can strike: Dash (action) and advance toward the target. No attack.
+                bm.applyDash(agent_idx);
+                st.phase = NpcTurnState::Done;
+                Cell adv{};
+                if (findApproachCell(st.target_idx, adv)) {
+                    log_("NPC {} dashes toward {}", agentName(bm, agent_idx), agentName(bm, st.target_idx));
+                    if (beginMove(bm, agent_idx, adv, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+                st.active = false;
+                return FlowStatus::Completed;
+            }
+        }
+    }
+
+    if (st.phase == NpcTurnState::Attacking) {
+        while (st.attacks_remaining > 0) {
+            // Re-acquire if the current target dropped (or became invalid) mid-multiattack — move to next.
+            if (!npcAttackable(bm, agent_idx, st.target_idx)) {
+                const int nt = selectTarget();
+                if (nt < 0) break;                     // nobody left to hit
+                st.target_idx = nt;
+            }
+            // A re-acquired target may be out of reach; step in with leftover movement if we can.
+            if (!inReachOf(st.target_idx, st.weapon_idx)) {
+                Cell dest{};
+                if (!findPositionCell(st.target_idx, st.weapon_idx, dest)) break;  // unreachable → end turn
+                if (dest != curOrigin()) {
+                    if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+                if (!inReachOf(st.target_idx, st.weapon_idx)) break;   // move couldn't close → bail (no loop)
+            }
+            Attack a;
+            a.attacker_idx = agent_idx;
+            a.target_idx   = st.target_idx;
+            a.weapon_idx   = st.weapon_idx;
+            a.attack_slot  = "action";
+            --st.attacks_remaining;     // BEFORE beginAttack: a park→resume must not repeat this swing
+            renderAttack(agent_idx, st.target_idx);
+            if (beginAttack(bm, a) == FlowStatus::AwaitingDecision)
+                return FlowStatus::AwaitingDecision;
+            // attack resolved inline → next swing
+        }
+    }
+
+    st.phase  = NpcTurnState::Done;
+    st.active = false;
+    return FlowStatus::Completed;
+}
+
+// ── PreferAOE strategy (NPC_AUTOMATION_PLAN.md Step 6) ────────────────────────
+// Average damage of a spell's roll set (dice expectation + flat bonuses), used only to RANK candidate
+// AoE spells when two of them catch the same number of enemies (mirror of npcWeaponAvgDamage).
+static double npcSpellAvgDamage(const Spell& sp) noexcept
+{
+    double avg = 0.0;
+    for (const auto& r : sp.magic_damage_rolls)
+        avg += r.num_dice * (r.die_size + 1) / 2.0 + r.bonus;
+    for (const auto& r : sp.physical_damage_rolls)
+        avg += r.num_dice * (r.die_size + 1) / 2.0 + r.bonus;
+    return avg;
+}
+
+// An AoE blast spell for PreferAOE purposes: a damaging (Harm) area geometry. Single/Multiple are directly
+// targeted; Rectangle walls are control — neither is catchment-maximized here. Single-sourced so the plan
+// finder (npcPlanAoeCast) and the "does the agent even have an AoE?" gate (npcHasCastableAoeSpell) agree.
+static bool isAoeBlastSpell(const Spell& sp) noexcept
+{
+    const bool isArea = sp.geometry == Spell::Sphere || sp.geometry == Spell::Cone
+                      || sp.geometry == Spell::Line   || sp.geometry == Spell::Square;
+    return isArea && sp.type == Spell::Harm;
+}
+
+NpcAoePlan CombatEngine::npcPlanAoeCast(const BattleMap& bm, int agent_idx) const noexcept
+{
+    NpcAoePlan plan;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return plan;
+
+    const PlacedAgent& caster = agents[static_cast<std::size_t>(agent_idx)];
+    const Cell casterOrigin = caster.origin;
+    const int  casterSize   = caster.agent ? caster.agent->getSize() : 1;
+
+    // Candidate aim points = each attackable enemy's cell (aim at / through a cluster). Cheap (few enemies)
+    // and effectively maximizing for blast shapes, whose best catchment center sits on or beside an enemy.
+    std::vector<int> enemies;
+    for (int j = 0; j < n; ++j)
+        if (npcAttackable(bm, agent_idx, j)) enemies.push_back(j);
+    if (enemies.empty()) return plan;          // no enemies → no AoE
+
+    double bestPower = -1.0;   // tie-break: among equal net-enemy counts, prefer the higher-damage spell
+    for (int si : availableCastableSpells(bm, agent_idx)) {
+        const Spell& sp = caster.spells[static_cast<std::size_t>(si)];
+        // Only AoE BLAST geometries (Single/Multiple are directly targeted; Rectangle walls are control,
+        // handled by other strategies). Catchment maximization is meaningful only for damaging Harm areas.
+        if (!isAoeBlastSpell(sp)) continue;
+
+        // Sphere/Square are PLACED at an aim point (range + LoS gated). Cone/Line emanate from the caster,
+        // so the aim cell only sets direction — the geometry's own length bounds reach (LoS still required).
+        const bool   placedArea   = (sp.geometry == Spell::Sphere || sp.geometry == Spell::Square);
+        const int    rangeFt      = effectiveSpellRange(bm, agent_idx, sp);
+        const double power        = npcSpellAvgDamage(sp);
+        const bool   sparesAllies = sp.selective_targeting;   // RAW "creatures of your choosing" → no FF
+
+        for (int ai : enemies) {
+            const Cell aim = agents[static_cast<std::size_t>(ai)].origin;
+            if (placedArea) {
+                const double dCells = std::hypot(static_cast<double>(aim.col - casterOrigin.col),
+                                                 static_cast<double>(aim.row - casterOrigin.row));
+                if (dCells * 5.0 > rangeFt + 1e-6) continue;          // aim beyond casting range
+            }
+            if (!bm.hasLineOfSight(casterOrigin, casterSize, aim, 1)) continue;
+
+            // Count the catchment with the SAME resolver executeSpell uses — geometry is single-sourced.
+            const std::vector<int> hit = resolveAoeTargets(agents, sp, agent_idx, aim.col, aim.row);
+            int enemiesHit = 0, alliesHit = 0;
+            for (int t : hit) {
+                if (npcAttackable(bm, agent_idx, t)) { ++enemiesHit; continue; }   // living enemy in play
+                if (t == agent_idx || areAllies(bm, agent_idx, t)) {              // friendly-fire candidate
+                    const PlacedAgent& tp = agents[static_cast<std::size_t>(t)];
+                    if (!tp.removed_from_play && !tp.on_deck && bm.getAgentStats(t).hp_cur > 0)
+                        ++alliesHit;
+                }
+            }
+            const int net = enemiesHit - (sparesAllies ? 0 : alliesHit);
+            if (net > plan.net_enemies || (net == plan.net_enemies && net > 0 && power > bestPower)) {
+                plan.spell_idx   = si;
+                plan.aim         = aim;
+                plan.net_enemies = net;
+                bestPower        = power;
+            }
+        }
+    }
+    return plan;
+}
+
+bool CombatEngine::npcHasCastableAoeSpell(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+    const auto& spells = agents[static_cast<std::size_t>(agent_idx)].spells;
+    for (int si : availableCastableSpells(bm, agent_idx))
+        if (isAoeBlastSpell(spells[static_cast<std::size_t>(si)])) return true;
+    return false;
+}
+
+bool CombatEngine::npcFindAoeApproachCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(agent_idx)];
+    const Cell myOrigin = me.origin;
+    const int  mySize   = me.agent ? me.agent->getSize() : 1;
+
+    const int tgt = npcSelectTarget(bm, agent_idx);   // nearest attackable enemy (default priority)
+    if (tgt < 0) return false;
+    const Cell tOrigin = agents[static_cast<std::size_t>(tgt)].origin;
+    const int  tSize   = agents[static_cast<std::size_t>(tgt)].agent
+                       ? agents[static_cast<std::size_t>(tgt)].agent->getSize() : 1;
+    const int  budget  = me.agent ? me.agent->getWalkRemaining() : 0;
+
+    bool found = false;
+    int  bestDist = footprintDistance(myOrigin, mySize, tOrigin, tSize);
+    for (const Cell& c : bm.reachableCells(myOrigin, mySize, budget, MovementType::Walk, agent_idx)) {
+        if (c == myOrigin) continue;
+        const int d = footprintDistance(c, mySize, tOrigin, tSize);
+        if (d >= 1 && d < bestDist) { bestDist = d; out = c; found = true; }
+    }
+    return found;
+}
+
+FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
+
+    auto curOrigin = [&]() -> Cell {
+        return bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin;
+    };
+
+    NpcTurnState& st = npc_turn_;
+    bool resuming_after_move = false;
+    if (st.active && st.agent_idx == agent_idx) {        // resuming after a parked window
+        if (st.aoe_cast_launched) {                      // the single AoE cast already resolved → turn over
+            st = NpcTurnState{};
+            return FlowStatus::Completed;
+        }
+        if (st.aoe_moving) {
+            // The approach move (bringing enemies into AoE range) resolved after parking on an OA. Re-plan
+            // and cast from the new cell — do NOT re-seed movement or approach a second time.
+            st.aoe_moving = false;
+            resuming_after_move = true;
+        } else {
+            // No AoE launched and not approaching → this turn fell back to a weapon turn. Resume it:
+            // runWeaponTurn owns npc_turn_ and detects the resume via (active && agent_idx match).
+            return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});
+        }
+    }
+
+    // Plan from the CURRENT position (fresh turn, or the cell we ended the approach move on).
+    NpcAoePlan plan = npcPlanAoeCast(bm, agent_idx);
+
+    if (!resuming_after_move && plan.spell_idx < 0) {
+        // Nothing catchable from here. Two very different situations:
+        //   · The agent has NO castable AoE blast at all → it can never blast; act like a Simple melee
+        //     attacker so an AoE-less "caster" is not idle (runWeaponTurn seeds npc_turn_ from scratch).
+        //   · The agent HAS an AoE spell but no enemy is in range/LoS right now → PreferAOE must ALWAYS
+        //     prioritise the AoE (never melee while holding one): move toward the enemies to bring them
+        //     into range, then cast this turn if the approach closed enough distance.
+        if (!npcHasCastableAoeSpell(bm, agent_idx))
+            return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});   // st still inactive → fresh weapon turn
+
+        // Seed the agent's OWN movement budget (mirrors runWeaponTurn) so the approach can spend it.
+        st           = NpcTurnState{};
+        st.active    = true;
+        st.agent_idx = agent_idx;
+        st.phase     = NpcTurnState::Done;
+        st.aoe_moving = true;                            // resume-marker: re-plan + cast if the move parks
+        const Agent::Stats s = bm.getAgentStats(agent_idx);
+        bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
+            s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+
+        Cell dest{};
+        if (npcFindAoeApproachCell(bm, agent_idx, dest) && dest != curOrigin()) {
+            log_("NPC {} moves to bring enemies into AoE range", agentName(bm, agent_idx));
+            if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
+        }
+        st.aoe_moving = false;
+        plan = npcPlanAoeCast(bm, agent_idx);            // re-plan from the new position
+    }
+
+    if (plan.spell_idx < 0) {
+        // Still nothing to blast even after approaching (short-range emanation we could not reach this turn).
+        // PreferAOE never melees while it holds an AoE — end the turn having closed distance for next round.
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+
+    // Commit the AoE turn state BEFORE beginCast so a parked OnDeclareCast window resumes without re-casting.
+    st           = NpcTurnState{};
+    st.active    = true;
+    st.agent_idx = agent_idx;
+    st.phase     = NpcTurnState::Done;       // an AoE turn is one action — no movement/attack phases
+    st.aoe_cast_launched = true;             // resume-guard: never re-cast (set BEFORE beginCast)
+
+    SpellAction action;
+    action.caster_idx     = agent_idx;
+    action.spell_idx      = plan.spell_idx;
+    action.slot_level     = 0;               // NPC mode: spends an N/day use or a cantrip, not a player slot
+    action.aoe_col        = plan.aim.col;
+    action.aoe_row        = plan.aim.row;
+    action.target_indices = {};              // engine computes the area's targets (resolveAoeTargets)
+
+    log_("NPC {} casts {} (AoE) catching {} enemies", agentName(bm, agent_idx),
+         bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)].name, plan.net_enemies);
+    const int rt = npcSelectTarget(bm, agent_idx);           // visualize from the caster toward a hit enemy
+    if (rt >= 0) renderAttack(agent_idx, rt);
+
+    if (beginCast(bm, action) == FlowStatus::AwaitingDecision)
+        return FlowStatus::AwaitingDecision;  // parked for a human reaction; resume re-enters runAoeTurn
+
+    // Cast resolved inline (no reaction) → the turn is complete.
+    st = NpcTurnState{};
+    return FlowStatus::Completed;
 }
 
 } // namespace rpg

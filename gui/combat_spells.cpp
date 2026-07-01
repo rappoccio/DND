@@ -1871,10 +1871,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             // a value > 1 is treated as an explicit rounds-based lifetime, otherwise the
             // effect is permanent-for-encounter rather than expiring after one round.
             int light_turns = (sp.duration > 1) ? sp.duration : -1;
+            // A moving Sphere (Emanation) anchors its light to the caster so it follows them
+            // (recomputeAnchoredEffects re-centers it on every move / turn start).
+            int light_anchor_idx    = moving_sphere ? action.caster_idx : -1;
+            int light_anchor_radius = moving_sphere ? sp.radius : 0;
             int light_id = bm.placeLightEffect(
                 sp.name, light_cells,
                 static_cast<VisibilityLevel>(sp.light_level),
-                light_turns, action.caster_idx);
+                light_turns, action.caster_idx,
+                /*see_through_agent_idx=*/-1,
+                light_anchor_idx, light_anchor_radius);
 
             if (light_id >= 0) {
                 result.light_effect_ids.push_back(light_id);
@@ -2279,6 +2285,16 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
 
     for (const auto& [id, radius] : terrain_to_update)
         bm.setTerrainEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
+
+    // A light-emitting Emanation (e.g. DaylightEmanation's Sunlight) anchored to this agent
+    // follows them the same way — re-center its footprint on the caster.
+    std::vector<std::pair<int, int>> light_to_update;  // (light_effect_id, radius_ft)
+    for (const auto& le : bm.activeLightEffects())
+        if (le.anchor_agent_idx == agent_idx)
+            light_to_update.emplace_back(le.id, le.anchor_radius_ft);
+
+    for (const auto& [id, radius] : light_to_update)
+        bm.setLightEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
 }
 
 void CombatEngine::tickEffects(BattleMap& bm)

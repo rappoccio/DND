@@ -154,5 +154,26 @@
     }
   ],
   "walls_enabled": true,
-  "doors": []
+  "doors": [
+    {
+      "cells": [
+        [
+          13,
+          5
+        ],
+        [
+          14,
+          5
+        ]
+      ],
+      "cell": [
+        13,
+        5
+      ],
+      "open": true,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    }
+  ]
 }

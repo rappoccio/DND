@@ -732,6 +732,7 @@ namespace rpg {
       bool sudden_strike_available{false};  // Gloom Stalker L11 Stalker's Flurry: a Dreadful Strike hit grants one free extra attack (GUI prompt)
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool vitality_used_this_turn{false};  // World Tree Vitality of the Tree turn-start grant used this turn
+      bool branches_speed_zeroed{false};    // World Tree Branches of the Tree: target's Speed is 0 until the end of THIS turn (set on a failed save, cleared in turn())
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
       bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
@@ -897,6 +898,7 @@ namespace rpg {
       conditions_.dread_ambusher_used          = false;
       conditions_.sudden_strike_available      = false;
       conditions_.vitality_used_this_turn      = false;
+      conditions_.branches_speed_zeroed        = false;
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;
       conditions_.sneak_attack_used            = false;

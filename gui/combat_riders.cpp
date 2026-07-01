@@ -2088,10 +2088,11 @@ bool CombatEngine::canBranchesOfTree(const BattleMap& bm, int reactor, int sourc
     if (s.hp_cur <= 0) return false;
     const Agent::Conditions c = bm.getAgentConditions(reactor);
     if (c.reaction_used || c.incapacitated) return false;
-    const Agent::Conditions sc = bm.getAgentConditions(source);
-    if (sc.grappled && sc.grappler_idx == reactor) return false;     // already pinned by these branches
-    const auto threats = threateningAgents(bm, source, 1);
-    return std::find(threats.begin(), threats.end(), reactor) != threats.end();
+    if (!c.raging) return false;                                 // "While your Rage is active"
+    if (!canPerceiveTarget(bm, reactor, source)) return false;   // "a creature you can see"
+    // "starts its turn within 30 feet of you" — 30 ft = 6 cells (Chebyshev footprint distance).
+    const auto in_range = threateningAgents(bm, source, 6);
+    return std::find(in_range.begin(), in_range.end(), reactor) != in_range.end();
 }
 
 std::vector<int> CombatEngine::turnStartReactors(const BattleMap& bm, int source) const
@@ -2118,7 +2119,7 @@ std::vector<ReactionOption> CombatEngine::turnStartOptions(const BattleMap& bm, 
                                           "VitalityOfTheTree"});
     } else if (canBranchesOfTree(bm, reactor, source)) {
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                      "Branches of the Tree — STR save or Grappled (reaction)",
+                                      "Branches of the Tree — STR save or teleported + Speed 0 (reaction)",
                                       "BranchesOfTheTree"});
     }
     opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
@@ -2132,20 +2133,93 @@ bool CombatEngine::applyBranchesOfTree(BattleMap& bm, int reactor, int source)
     rc.reaction_used = true;                                          // spend the reaction
     bm.setAgentConditions(reactor, rc);
 
-    const Agent::Stats rs = bm.getAgentStats(reactor);
-    const int dc       = spellSaveDc(rs);
-    const int save_mod = saveModFor(bm, source, SaveStr);   // incl. Aura of Protection
-    const int d20      = roll(20);
-    const int total    = d20 + save_mod;
-    log_("{} uses Branches of the Tree on {} (reaction): STR save {} {:+} = {} vs DC {}",
-         agentName(bm, reactor), agentName(bm, source), d20, save_mod, total, dc);
-    if (total < dc) {
-        applyGrappled(bm, source, reactor, dc);                      // escape DC = the same DC
-        log_("{} is Grappled by the branches (speed 0)", agentName(bm, source));
-        return true;
+    // An ally is a willing target: no STR save, and no Speed-0 penalty — Branches is used purely to
+    // reposition them. Only an enemy must save, and only an enemy suffers Speed 0 on a failed save.
+    const bool ally = areAllies(bm, reactor, source);
+    if (!ally) {
+        const Agent::Stats rs = bm.getAgentStats(reactor);
+        const int dc       = spellSaveDcFromAbility(rs, SaveStr);   // 8 + PB + STR mod (2024 PHB)
+        const int save_mod = saveModFor(bm, source, SaveStr);      // incl. Aura of Protection
+        const int d20      = roll(20);
+        const int total    = d20 + save_mod;
+        log_("{} uses Branches of the Tree on {} (reaction): STR save {} {:+} = {} vs DC {}",
+             agentName(bm, reactor), agentName(bm, source), d20, save_mod, total, dc);
+        if (total >= dc) {
+            log_("{} resists the branches", agentName(bm, source));
+            return false;
+        }
+    } else {
+        log_("{} uses Branches of the Tree to reposition ally {} (willing — no save)",
+             agentName(bm, reactor), agentName(bm, source));
     }
-    log_("{} resists the branches", agentName(bm, source));
-    return false;
+
+    // Teleport the source to an unoccupied space within 5 ft of the reactor (or, failing that, the
+    // nearest unoccupied space). An enemy that failed its save also has its Speed set to 0 until the
+    // end of the current turn (an ally keeps its movement).
+    const auto& agents = bm.placedAgents();
+    const Cell rorigin = agents[static_cast<std::size_t>(reactor)].origin;
+    const int  rsize   = agents[static_cast<std::size_t>(reactor)].agent->getSize();
+    const int  ssize   = agents[static_cast<std::size_t>(source)].agent->getSize();
+
+    // Does an origin fit the source's whole footprint on passable, unoccupied terrain?
+    auto fitsFree = [&](Cell o) -> bool {
+        for (int dc2 = 0; dc2 < ssize; ++dc2)
+            for (int dr2 = 0; dr2 < ssize; ++dr2)
+                if (!isValidTeleportDestination(bm, o.col + dc2, o.row + dr2))
+                    return false;
+        for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+            if (i == source) continue;
+            if (agents[static_cast<std::size_t>(i)].agent->getStats().hp_cur <= 0) continue;
+            const Cell oo = agents[static_cast<std::size_t>(i)].origin;
+            const int  os = agents[static_cast<std::size_t>(i)].agent->getSize();
+            const bool overlap = !(o.col + ssize - 1 < oo.col || oo.col + os - 1 < o.col ||
+                                   o.row + ssize - 1 < oo.row || oo.row + os - 1 < o.row);
+            if (overlap) return false;
+        }
+        return true;
+    };
+    // Chebyshev gap (in cells) between the source footprint placed at `o` and the reactor footprint.
+    auto chebFoot = [&](Cell o) -> int {
+        const int dx = std::max({rorigin.col - (o.col + ssize - 1), o.col - (rorigin.col + rsize - 1), 0});
+        const int dy = std::max({rorigin.row - (o.row + ssize - 1), o.row - (rorigin.row + rsize - 1), 0});
+        return std::max(dx, dy);
+    };
+
+    // Scan a bounded box around the reactor; pick the nearest fitting free origin (prefers ≤5 ft).
+    constexpr int kReach = 8;
+    Cell dest{-1, -1};
+    int best_d = 1 << 30;
+    for (int c = rorigin.col - rsize - kReach; c <= rorigin.col + rsize + kReach; ++c) {
+        for (int r = rorigin.row - rsize - kReach; r <= rorigin.row + rsize + kReach; ++r) {
+            const Cell cand{c, r};
+            if (!fitsFree(cand)) continue;
+            const int d = chebFoot(cand);
+            if (d < best_d) { best_d = d; dest = cand; }
+        }
+    }
+
+    if (dest.col >= 0) {
+        (void)teleportAgent(bm, source, dest.col, dest.row);
+        log_("{} is yanked by the branches to ({}, {})", agentName(bm, source), dest.col, dest.row);
+    } else {
+        log_("{} has no space to be teleported by the branches", agentName(bm, source));
+    }
+
+    // Speed 0 until the end of the current turn (enemies only — an ally keeps moving). The GUI gate is
+    // canAgentMove(branches_speed_zeroed); also zero the engine + agent budgets so the auto/RL path
+    // (no per-turn re-seed) honors it now.
+    if (!ally) {
+        Agent::Conditions sc = bm.getAgentConditions(source);
+        sc.branches_speed_zeroed = true;
+        bm.setAgentConditions(source, sc);
+        walkRemaining_[source]   = 0;
+        flyRemaining_[source]    = 0;
+        swimRemaining_[source]   = 0;
+        burrowRemaining_[source] = 0;
+        agents[static_cast<std::size_t>(source)].agent->initMovement(0, 0, 0, 0);
+        log_("{}'s Speed is reduced to 0 until the end of its turn", agentName(bm, source));
+    }
+    return true;
 }
 
 // ── World Tree: Vitality of the Tree (self-option on the Barbarian's own turn start) ──────────────

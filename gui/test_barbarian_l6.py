@@ -134,7 +134,7 @@ def test_wild_heart_salmon_aspect():
     stats.barbarian_subclass = rpg.BarbianSubclass.WildHeart
     stats.wild_heart_aspect = rpg.WildHeartAspect.Salmon
     stats.initialize_class_resources(rpg.CharacterClass.Barbarian, 6)
-    walk_speed = stats.speed_walk  # Should be 40 at L6 with Fast Movement
+    walk_speed = stats.speed_walk  # imported speed (Fast Movement already baked in, not added by engine)
     engine.set_agent_stats(bm, idx, stats)
 
     # Activate Rage

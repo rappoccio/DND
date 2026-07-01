@@ -20,6 +20,7 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>        // std::vector, std::unordered_set → Python list/set
+#include <pybind11/functional.h> // std::function ↔ Python callable (NPC render-attack hook)
 #include <pybind11/operators.h>
 
 #include "battle_map.hpp"
@@ -672,6 +673,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("dread_ambusher_used", &Agent::Conditions::dread_ambusher_used)
         .def_readwrite("sudden_strike_available", &Agent::Conditions::sudden_strike_available)
         .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
+        .def_readwrite("branches_speed_zeroed", &Agent::Conditions::branches_speed_zeroed)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
@@ -931,6 +933,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Square",    Spell::Square)
         .value("Rectangle", Spell::Rectangle)
         .value("Multiple",  Spell::Multiple)
+        .export_values();
+
+    py::enum_<NpcAutomationStrategy>(m, "NpcAutomationStrategy")
+        .value("Simple",             NpcAutomationStrategy::Simple)
+        .value("PreferTargetCaster", NpcAutomationStrategy::PreferTargetCaster)
+        .value("PreferAOE",          NpcAutomationStrategy::PreferAOE)
+        .value("PreferRange",        NpcAutomationStrategy::PreferRange)
+        .value("PreferHide",         NpcAutomationStrategy::PreferHide)
         .export_values();
 
     py::enum_<Spell::SpellType_t>(m, "SpellType")
@@ -2222,6 +2232,29 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::lastTurnStartResult,
              py::return_value_policy::reference_internal,
              "The TurnStartResult of the most recent begin_turn_flow (valid once Completed).")
+        .def("run_npc_turn",
+             &CombatEngine::runNpcTurn,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Drive one automated NPC's turn through the engine (NPC automation Steps 2-3). Uses the C++\n"
+             "resolution primitives (no pygame), so it is callable headless from pytest and RL rollouts.\n"
+             "Returns FlowStatus: Completed (turn resolved — caller advances the turn) or AwaitingDecision\n"
+             "(parked at a human reaction window — poll pending_decision(), resume via submit_decision(),\n"
+             "then call run_npc_turn again to continue; the turn's resume point is held in the engine).\n"
+             "Step 3 implements the Simple (preferMelee) strategy: engage the nearest enemy, move into melee\n"
+             "reach, make a full Attack action; if none is reachable, Dash and advance toward the nearest.\n"
+             "Steps 4-5 add PreferTargetCaster (target enemy casters) and PreferRange (best bow, kite, focus\n"
+             "fire the weakest). Step 6 adds PreferAOE: cast the available area spell + aim that catches the\n"
+             "most net enemies (friendly-fire aware), falling back to a Simple weapon turn with no good blast.")
+        .def("resolve_strategy",
+             &CombatEngine::resolveStrategy,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Resolve which NpcAutomationStrategy an automated agent uses this turn. The single seam where\n"
+             "the later difficulty-level override will live; today returns the per-agent strategy field.")
+        .def("set_render_attack_hook",
+             &CombatEngine::setRenderAttackHook,
+             py::arg("hook"),
+             "Install a Python callable hook(attacker_idx, target_idx) the NPC driver calls when an\n"
+             "automated action resolves, for GUI visualization (Step 2e seam). Headless leaves it unset.")
         .def("can_branches_of_tree",
              &CombatEngine::canBranchesOfTree,
              py::arg("battle_map"), py::arg("reactor"), py::arg("source"),
@@ -3532,7 +3565,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("light_level",       &ActiveLightEffect::light_level)
         .def_readonly("turns_remaining",   &ActiveLightEffect::turns_remaining)
         .def_readonly("source_agent_idx",  &ActiveLightEffect::source_agent_idx)
-        .def_readonly("see_through_agent_idx", &ActiveLightEffect::see_through_agent_idx);
+        .def_readonly("see_through_agent_idx", &ActiveLightEffect::see_through_agent_idx)
+        .def_readonly("anchor_agent_idx",  &ActiveLightEffect::anchor_agent_idx)
+        .def_readonly("anchor_radius_ft",  &ActiveLightEffect::anchor_radius_ft);
 
     // ── BattleMap ───────────────────────────────────────────────────────────
     py::class_<BattleMap>(m, "BattleMap")
@@ -3680,6 +3715,24 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("set_agent_on_deck", &BattleMap::setAgentOnDeck,
              py::arg("idx"), py::arg("on_deck"),
              "Flag/unflag agent[idx] as an on-deck reserve (phased-battle reinforcement).")
+        .def("is_agent_npc_automated", &BattleMap::isAgentNpcAutomated,
+             py::arg("idx"),
+             "True if agent[idx] is driven by an automated NPC decision algorithm.")
+        .def("set_agent_npc_automated", &BattleMap::setAgentNpcAutomated,
+             py::arg("idx"), py::arg("automated"),
+             "Enable/disable automated decision-making for agent[idx].")
+        .def("get_agent_npc_automation_difficulty", &BattleMap::getAgentNpcAutomationDifficulty,
+             py::arg("idx"),
+             "Difficulty level (0+) tuning how aggressively agent[idx]'s automation plays.")
+        .def("set_agent_npc_automation_difficulty", &BattleMap::setAgentNpcAutomationDifficulty,
+             py::arg("idx"), py::arg("level"),
+             "Set the automation difficulty level for agent[idx].")
+        .def("get_agent_npc_automation_strategy", &BattleMap::getAgentNpcAutomationStrategy,
+             py::arg("idx"),
+             "Which NpcAutomationStrategy agent[idx] uses when automated.")
+        .def("set_agent_npc_automation_strategy", &BattleMap::setAgentNpcAutomationStrategy,
+             py::arg("idx"), py::arg("strategy"),
+             "Set the NpcAutomationStrategy for agent[idx].")
         .def("apply_dash",         &BattleMap::applyDash,
              py::arg("idx"),
              "Set dashing condition and add base speeds to remaining movement for agent[idx].")
@@ -3856,9 +3909,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("name"), py::arg("cells"), py::arg("light_level"),
              py::arg("turns_remaining"), py::arg("source_agent_idx"),
              py::arg("see_through_agent_idx") = -1,
+             py::arg("anchor_agent_idx") = -1,
+             py::arg("anchor_radius_ft") = 0,
              "Place a dynamic light effect covering the given cells.\n"
              "see_through_agent_idx: an agent who sees through this MagicalDark (Shadow Arts: Darkness).\n"
+             "anchor_agent_idx>=0 makes the light follow that agent (moving Sphere / Emanation),\n"
+             "re-centered by anchor_radius_ft on every move / turn start.\n"
              "Returns unique effect id (for later removal).")
+        .def("set_light_effect_cells", &BattleMap::setLightEffectCells,
+             py::arg("effect_id"), py::arg("cells"),
+             "Re-point an anchored light effect's footprint (moving emanation follows the caster).")
         .def("tick_light_effects", &BattleMap::tickLightEffects,
              py::arg("source_agent_idx"),
              "Decrement turns_remaining for light effects from this source.\n"

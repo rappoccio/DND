@@ -34,22 +34,6 @@
     },
     {
       "type": "Wall",
-      "x": 58,
-      "y": 488,
-      "width": 200,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 308,
-      "y": 488,
-      "width": 150,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
       "x": 458,
       "y": 538,
       "width": 50,
@@ -106,22 +90,6 @@
     {
       "cells": [
         [
-          4,
-          8
-        ]
-      ],
-      "cell": [
-        4,
-        8
-      ],
-      "open": true,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
           8,
           14
         ]
@@ -130,7 +98,7 @@
         8,
         14
       ],
-      "open": true,
+      "open": false,
       "locked": false,
       "lock_dc": 15,
       "arcane_lock": false
