@@ -146,6 +146,7 @@
     }
   ],
   "walls_enabled": false,
+  "doors": [],
   "manual_grid": {
     "cell_px": 50,
     "anchor": [

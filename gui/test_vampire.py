@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import rpg_battle_map as rpg
 from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
+# Reuse the NPC segmented-multiattack driver utilities (automate a turn + a per-swing render hook)
+# so the vampire recipe is exercised through the exact same auto-turn path a placed Vampire uses.
+from test_npc_multiattack import _automate, _driver, _fixed_weapon, _set_recipe, _hp
 
 
 def _bite_weapon():
@@ -39,6 +42,31 @@ def _bite_weapon():
 
     c = rpg.AttackCondition()
     c.condition_name = "reduceHPMax"
+    w.conditions = [c]
+    return w
+
+
+def _melee_grapple_weapon(escape_dc=14):
+    """A Vampire's "Melee (Bludgeoning)": 2d10 Bludgeoning that auto-Grapples the target on a hit
+    (the non-contested Grappled rider, matching the bestiary). bonus_hit is huge so the swing always
+    lands, making the auto-grapple deterministic for the multiattack combo test."""
+    w = rpg.Weapon()
+    w.name = "Melee (Bludgeoning)"
+    w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5
+    w.proficient = True
+    w.bonus_hit = 50
+
+    pr = rpg.PhysicalDamageRoll()
+    pr.type = rpg.PhysicalDamage.Bludgeoning
+    pr.num_dice = 2
+    pr.die_size = 10
+    pr.bonus = 0
+    w.physical_damage_types = [pr]
+
+    c = rpg.AttackCondition()
+    c.condition_name = "Grappled"
+    c.escape_dc = escape_dc            # non-contested (contested defaults False) → auto-grapple on hit
     w.conditions = [c]
     return w
 
@@ -314,6 +342,75 @@ def test_bite_con_save_failure_bites():
     print("✅ Bite CON-save failure lands full damage + drain + heal")
 
 
+# ── Multiattack ────────────────────────────────────────────────────────────────────────────────────
+def test_vampire_multiattack_recipe():
+    """A Vampire's authored recipe is 2 Melee + 1 Bite: multiattack=[(0,2),(1,1)]. Run through the NPC
+    auto-turn and confirm the recipe drives EXACTLY 3 swings (2 with slot 0, then 1 with slot 1),
+    overriding num_attacks. Fixed crit-proof damage decodes the per-slot split (2×Melee + 1×Bite)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 6, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 7, 5), hp=1000)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+    # Distinct fixed damage so total HP loss uniquely decodes the composition: 2×Melee(5) + 1×Bite(9) = 19.
+    engine.set_agent_weapons(bm, npc,
+                             [_fixed_weapon("Melee (Bludgeoning)", 5), _fixed_weapon("Bite", 9), rpg.Weapon()])
+    _set_recipe(engine, bm, npc, [(0, 2), (1, 1)], num_attacks=99)   # recipe overrides num_attacks
+    _automate(bm, npc)
+
+    calls = _driver(engine, bm, npc)
+
+    assert calls == [(npc, foe)] * 3, f"Vampire recipe → 3 swings (2 Melee + 1 Bite), got {calls}"
+    dmg = 1000 - _hp(engine, bm, foe)
+    assert dmg == 2 * 5 + 1 * 9, f"expected 2 Melee + 1 Bite = 19 damage, got {dmg}"
+    print("✅ Vampire multiattack recipe drives 2 Melee + 1 Bite (not num_attacks)")
+
+
+def test_vampire_grapple_then_bite_combo():
+    """The whole point of the Vampire's recipe: the two Melee swings Grapple the target, then the Bite
+    auto-hits the now-Grappled creature (via its CON save) and drains its HP maximum, healing the Vampire.
+    Run end-to-end through the NPC auto-turn with the REAL Melee-grapple + save-delivered Bite weapons."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 6, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Victim", 7, 5))
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+
+    # Vampire: high STR (Melee lands), high CON + PB (Bite save DC is unbeatable), low HP so the
+    # life-drain heal is observable. hp_max is set HERE (not at add time) because both agents are added
+    # before this, and the last apply_agent_configs rebuild would otherwise cap the heal at the default max.
+    sa = engine.get_agent_stats(bm, npc)
+    sa.str = 20; sa.con = 30; sa.prof_bonus = 5; sa.hp_cur = 5; sa.hp_max = 200
+    engine.set_agent_stats(bm, npc, sa)
+
+    # Victim: tiny CON (always fails the Bite save), roomy HP (survives all three swings), soft AC.
+    st = engine.get_agent_stats(bm, foe)
+    st.con = 1; st.hp_cur = 300; st.hp_max = 300; st.base_ac = 1; st.available_hit_points = 0
+    engine.set_agent_stats(bm, foe, st)
+
+    bite = _bite_weapon()
+    bite.type = rpg.WeaponType.Melee     # the auto-driver positions per-segment weapon by reach
+    bite.auto_hit_if_grappled = True
+    bite.save_for_damage = True
+    bite.save_for_damage_ability = rpg.SaveAbility.SaveCon
+    engine.set_agent_weapons(bm, npc, [_melee_grapple_weapon(), bite, rpg.Weapon()])
+    _set_recipe(engine, bm, npc, [(0, 2), (1, 1)], num_attacks=3)
+    _automate(bm, npc)
+
+    calls = _driver(engine, bm, npc)
+
+    assert calls == [(npc, foe)] * 3, f"2 Melee + 1 Bite = 3 swings expected, got {calls}"
+    # The Melee swings grappled the victim (grappler = this Vampire) — the gate the Bite relied on.
+    cond = engine.get_agent_conditions(bm, foe)
+    assert cond.grappled and cond.grappler_idx == npc, "the Melee swings should Grapple the victim"
+    # The Bite auto-hit the Grappled victim: HP-max drained (3d6 Necrotic) and the Vampire healed by it.
+    foe_s = engine.get_agent_stats(bm, foe)
+    drain = foe_s.available_hit_points
+    assert 3 <= drain <= 18, f"Bite should drain 3d6 (3..18) of the victim's HP max, got {drain}"
+    assert foe_s.effective_max_hp == foe_s.hp_max - drain, "effective max reflects the Bite drain"
+    assert engine.get_agent_stats(bm, npc).hp_cur == 5 + drain, \
+        f"Vampire should heal by the {drain} it drained (5 → {5 + drain})"
+    print(f"✅ Vampire combo: Melee grapple → Bite auto-hit drained {drain} & healed the Vampire")
+
+
 if __name__ == "__main__":
     test_available_hit_points_basics()
     test_long_rest_clears_drain()
@@ -323,4 +420,6 @@ if __name__ == "__main__":
     test_bite_no_auto_hit_when_grappled_by_other()
     test_bite_con_save_success_negates()
     test_bite_con_save_failure_bites()
+    test_vampire_multiattack_recipe()
+    test_vampire_grapple_then_bite_combo()
     print("\n✅ All vampire-feature tests passed!")

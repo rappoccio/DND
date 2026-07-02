@@ -1314,11 +1314,14 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     // (close in, least OA exposure). With kite=true: MAXIMISE distance from the nearest enemy among in-range
     // cells (ties → fewest steps), so a ranged attacker establishes AND maintains range from one finder.
     // reachableCells includes the current origin, so when already in range this can legitimately "stay put".
-    auto findPositionCell = [&](int t, int w, Cell& out) -> bool {
+    // budgetOverride >= 0 tests a HYPOTHETICAL budget (e.g. "what could I reach WITH a Dash?") without
+    // mutating the agent; < 0 uses the agent's live remaining budget.
+    auto findPositionCell = [&](int t, int w, Cell& out, int budgetOverride = -1) -> bool {
         const auto& pa = bm.placedAgents();
         const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
         const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
-        const int  budget = pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+        const int  budget = budgetOverride >= 0 ? budgetOverride
+                          : pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
         bool found = false; int bestSteps = std::numeric_limits<int>::max();
         int  bestSafety = std::numeric_limits<int>::min();
         for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
@@ -1336,13 +1339,14 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         return found;
     };
     // Closest reachable approach toward `t` (minimise footprint distance) when no attack cell is reachable.
-    auto findApproachCell = [&](int t, Cell& out) -> bool {
+    auto findApproachCell = [&](int t, Cell& out, int budgetOverride = -1) -> bool {
         const auto& pa = bm.placedAgents();
         const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
         const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
         const Cell tg = pa[static_cast<std::size_t>(t)].origin;
         const int  ts = pa[static_cast<std::size_t>(t)].agent->getSize();
-        const int  budget = pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+        const int  budget = budgetOverride >= 0 ? budgetOverride
+                          : pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
         bool found = false; int bestDist = footprintDistance(me, ms, tg, ts);
         for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
             if (c == me) continue;
@@ -1356,6 +1360,26 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     };
     const auto selectTarget = [&]() {
         return npcSelectTarget(bm, agent_idx, policy.prefer_caster, policy.priority);
+    };
+    // Nearest attackable enemy for which weapon `w` has a reachable striking cell within `budget`
+    // (findPositionCell semantics; budget<0 = live budget, >=0 = a hypothetical Dash budget). Used to
+    // RETARGET when the nearest enemy is boxed in / walled off so a melee NPC bites whoever it can reach
+    // rather than burning its turn dashing at an unreachable body. Returns -1 if nobody is reachable.
+    auto nearestReachableTarget = [&](int w, int budget) -> int {
+        const auto& pa = bm.placedAgents();
+        const Cell  me = pa[static_cast<std::size_t>(agent_idx)].origin;
+        const int   ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+        int best = -1; int bestDist = std::numeric_limits<int>::max();
+        for (int j = 0; j < n; ++j) {
+            if (!npcAttackable(bm, agent_idx, j)) continue;
+            Cell d{};
+            if (!findPositionCell(j, w, d, budget)) continue;
+            const Cell tg = pa[static_cast<std::size_t>(j)].origin;
+            const int  ts = pa[static_cast<std::size_t>(j)].agent->getSize();
+            const int  dist = footprintDistance(me, ms, tg, ts);
+            if (dist < bestDist) { bestDist = dist; best = j; }
+        }
+        return best;
     };
     // Seed the turn from an NPC multiattack recipe (ordered (slot,count) segments). Returns true if a
     // non-empty, deliverable recipe was applied — sets st.weapon_idx / attacks_remaining to the FIRST
@@ -1407,6 +1431,18 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         // st.pending_segments BEFORE positioning runs below, so reachNow / findPositionCell already target
         // the recipe's first weapon. When hasRecipe, seedFromRecipe already set attacks_remaining.
         const bool hasRecipe = seedFromRecipe(st);
+        // [DEBUG] Post-seed truth: the pre-seed print above shows npcSelectWeapon's pick (often the
+        // highest-damage weapon, e.g. a vampire's Bite); the recipe overrides st.weapon_idx here. This
+        // line reports whether a multiattack recipe was actually loaded + applied for this NPC.
+        {
+            const auto ma = bm.getAgentStats(agent_idx).multiattack;
+            std::string recipe;
+            for (const auto& seg : ma)
+                recipe += "(" + std::to_string(seg.first) + "," + std::to_string(seg.second) + ")";
+            log_("[DEBUG] NPC {} multiattack: hasRecipe={} stored=[{}] -> weapon_idx={} attacks_remaining={} "
+                 "pending={}", agentName(bm, agent_idx), hasRecipe, recipe, st.weapon_idx,
+                 st.attacks_remaining, st.pending_segments.size());
+        }
         const bool reachNow = inReachOf(st.target_idx, st.weapon_idx);
         // Non-kiters already in reach swing where they stand. Kiters always look for a better-spaced cell
         // first (findPositionCell includes the current cell, so "stay put" remains an option).
@@ -1430,17 +1466,76 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 st.phase = NpcTurnState::Attacking;
                 if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
             } else {
-                // No reachable cell can strike: Dash (action) and advance toward the target. No attack.
-                bm.applyDash(agent_idx);
-                st.phase = NpcTurnState::Done;
-                Cell adv{};
-                if (findApproachCell(st.target_idx, adv)) {
-                    log_("NPC {} dashes toward {}", agentName(bm, agent_idx), agentName(bm, st.target_idx));
-                    if (beginMove(bm, agent_idx, adv, MovementType::Walk) == FlowStatus::AwaitingDecision)
-                        return FlowStatus::AwaitingDecision;
+                // The nearest enemy (st.target_idx) is unreachable with a normal move — it may be boxed in
+                // by other creatures or walled off. Before spending any Dash, RETARGET to the nearest OTHER
+                // enemy we can reach a striking cell for this turn (a vampire ringed by commoners should just
+                // bite whoever it can reach rather than starve over the one that looked at it funny).
+                Cell altDest{};
+                const int altTgt = nearestReachableTarget(st.weapon_idx, /*budget=*/-1);
+                if (altTgt >= 0 && findPositionCell(altTgt, st.weapon_idx, altDest)) {
+                    log_("NPC {} can't reach {} — retargeting to reachable {}",
+                         agentName(bm, agent_idx), agentName(bm, st.target_idx), agentName(bm, altTgt));
+                    st.target_idx = altTgt;
+                    st.phase = NpcTurnState::Attacking;
+                    if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+                    if (altDest != curOrigin()) {
+                        if (beginMove(bm, agent_idx, altDest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                            return FlowStatus::AwaitingDecision;
+                    }
+                    // reached a reachable target → fall through to the swing loop (Action + bonus intact)
+                } else {
+                    // Nobody is reachable with a normal move. Close the gap by Dashing — but only spend a
+                    // Dash that actually BUYS something (a striking cell, or at least a cell closer to the
+                    // target). Probe the hypothetical dashed budget first so we never burn an Action/bonus on
+                    // a Dash that changes nothing (the old bug: a vampire boxed out of its target spent BOTH
+                    // dashes and moved nowhere).
+                    const int dashStep = bm.getAgentStats(agent_idx).speed_walk;
+                    const int walkNow  =
+                        bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+                    const int dashedBudget = walkNow + dashStep;
+                    const bool bonusDashAvail =
+                        bm.getAgentStats(agent_idx).has_cunning_action && hasBonusAction(bm, agent_idx);
+
+                    // 1) BONUS-ACTION Dash — only if the doubled budget makes SOME target reachable, so the
+                    //    Action stays free to swing this same turn.
+                    const int bonusReachTgt =
+                        bonusDashAvail ? nearestReachableTarget(st.weapon_idx, dashedBudget) : -1;
+                    if (bonusReachTgt >= 0) {
+                        bm.applyDash(agent_idx);
+                        (void)spendBonusAction(bm, agent_idx);
+                        st.target_idx = bonusReachTgt;
+                        log_("NPC {} Dashes as a bonus action to close on {}",
+                             agentName(bm, agent_idx), agentName(bm, st.target_idx));
+                        Cell bonusDest{};
+                        if (findPositionCell(st.target_idx, st.weapon_idx, bonusDest)) {
+                            st.phase = NpcTurnState::Attacking;
+                            if (!hasRecipe)
+                                st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+                            if (bonusDest != curOrigin()) {
+                                if (beginMove(bm, agent_idx, bonusDest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                                    return FlowStatus::AwaitingDecision;
+                            }
+                            // fall through to the swing loop (Action stays free)
+                        }
+                    } else {
+                        // 2) No Dash reaches anyone → spend the ACTION to Dash and merely close on the nearest
+                        //    target, but only if that actually gets us a cell closer (else don't waste the
+                        //    Action either — just hold position).
+                        Cell adv{};
+                        if (findApproachCell(st.target_idx, adv, dashedBudget)) {
+                            bm.applyDash(agent_idx);
+                            log_("NPC {} dashes toward {}", agentName(bm, agent_idx), agentName(bm, st.target_idx));
+                            if (beginMove(bm, agent_idx, adv, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                                return FlowStatus::AwaitingDecision;
+                        } else {
+                            log_("NPC {} can't reach or approach any enemy — holding position",
+                                 agentName(bm, agent_idx));
+                        }
+                        st.phase  = NpcTurnState::Done;
+                        st.active = false;
+                        return FlowStatus::Completed;
+                    }
                 }
-                st.active = false;
-                return FlowStatus::Completed;
             }
         }
     }
