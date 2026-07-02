@@ -8670,14 +8670,14 @@
     "width": 0,
     "length": 0,
     "duration": 1,
-    "magic_damage_types": [
+    "magic_damage_types": [],
+    "physical_damage_types": [
       {
         "type": "Bludgeoning",
         "num_dice": 4,
         "die_size": 6
       }
     ],
-    "physical_damage_types": [],
     "level": 0,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,

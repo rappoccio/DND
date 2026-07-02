@@ -268,6 +268,8 @@ def _calculate_total_ac(base_ac: int, dex: int, armor_list: list) -> int:
 #  Damage type parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
+_PHYSICAL_DMG_NAMES = ("Bludgeoning", "Piercing", "Slashing")
+
 def _parse_physical_damage(v):
     """Accept a string name or int ordinal, return rpg.PhysicalDamage."""
     if isinstance(v, str):
@@ -657,52 +659,35 @@ def _dict_to_spell(d: dict):
     # places a light effect when light_level >= 0 (spell.hpp default is -1 = none).
     s.light_level  = int(d.get("light_level", -1))
 
-    # Parse magic damage types - handle both new (object) and old (string) formats
-    magic_dmg_raw = d.get("magic_damage_types", [])
-    magic_rolls = []
-    for dmg in magic_dmg_raw:
+    # Parse damage types — handle both new (object) and old (string) formats.
+    # Route each entry by its TYPE NAME, not by which list it came from: some data
+    # (e.g. a Bludgeoning breath weapon) files a physical type under magic_damage_types.
+    # A physical name parsed as MagicDamage raises AttributeError and crashes the whole
+    # load, so classify by name and drop it in the correct bucket regardless of source.
+    magic_rolls, phys_rolls = [], []
+    for dmg in list(d.get("magic_damage_types", [])) + list(d.get("physical_damage_types", [])):
         if isinstance(dmg, dict):
             # New format: {"type": "Fire", "num_dice": 2, "die_size": 6, "bonus": 1}
-            dmg_type = _parse_magic_damage(dmg.get("type", "Fire"))
-            roll = rpg.MagicDamageRoll()
-            roll.type = dmg_type
-            roll.num_dice = int(dmg.get("num_dice", 1))
-            roll.die_size = int(dmg.get("die_size", 6))
-            roll.bonus = int(dmg.get("bonus", 0))
-            magic_rolls.append(roll)
+            name     = dmg.get("type", "Fire")
+            num_dice = int(dmg.get("num_dice", 1))
+            die_size = int(dmg.get("die_size", 6))
+            bonus    = int(dmg.get("bonus", 0))
         else:
             # Old format: just the string "Fire" — use spell-level num_dice/die_size
-            dmg_type = _parse_magic_damage(dmg)
-            roll = rpg.MagicDamageRoll()
-            roll.type = dmg_type
-            roll.num_dice = int(d.get("num_dice", 1))
-            roll.die_size = int(d.get("die_size", 6))
-            roll.bonus = int(d.get("bonus", 0))
-            magic_rolls.append(roll)
-    s.magic_damage_rolls = magic_rolls
-
-    # Parse physical damage types - handle both new (object) and old (string) formats
-    phys_dmg_raw = d.get("physical_damage_types", [])
-    phys_rolls = []
-    for dmg in phys_dmg_raw:
-        if isinstance(dmg, dict):
-            # New format: {"type": "Slashing", "num_dice": 1, "die_size": 8, "bonus": 0}
-            dmg_type = _parse_physical_damage(dmg.get("type", "Bludgeoning"))
+            name     = dmg
+            num_dice = int(d.get("num_dice", 1))
+            die_size = int(d.get("die_size", 6))
+            bonus    = int(d.get("bonus", 0))
+        if name in _PHYSICAL_DMG_NAMES:
             roll = rpg.PhysicalDamageRoll()
-            roll.type = dmg_type
-            roll.num_dice = int(dmg.get("num_dice", 1))
-            roll.die_size = int(dmg.get("die_size", 6))
-            roll.bonus = int(dmg.get("bonus", 0))
+            roll.type = _parse_physical_damage(name)
             phys_rolls.append(roll)
         else:
-            # Old format: just the string "Slashing" — use spell-level num_dice/die_size
-            dmg_type = _parse_physical_damage(dmg)
-            roll = rpg.PhysicalDamageRoll()
-            roll.type = dmg_type
-            roll.num_dice = int(d.get("num_dice", 1))
-            roll.die_size = int(d.get("die_size", 6))
-            roll.bonus = int(d.get("bonus", 0))
-            phys_rolls.append(roll)
+            roll = rpg.MagicDamageRoll()
+            roll.type = _parse_magic_damage(name)
+            magic_rolls.append(roll)
+        roll.num_dice, roll.die_size, roll.bonus = num_dice, die_size, bonus
+    s.magic_damage_rolls = magic_rolls
     s.physical_damage_rolls = phys_rolls
 
     # Parse healing type (for Heal spells)

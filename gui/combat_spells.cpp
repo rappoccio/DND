@@ -2212,6 +2212,14 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
     } else {
         damageAgent(bm, target_idx, total);
         processDamageTaken(bm, target_idx, total, magicTypeMaskFromSpell(sp));  // zone damage ends/triggers on-damage conditions + regen interrupts
+        // damageAgent only drops concentration at 0 HP; marking unconscious/dead is the caller's
+        // job. Unlike an attack, a zone tick (Spirit Guardians, Cloudkill, …) has no post-hit
+        // resolution step, so do it here — otherwise a creature killed purely by zone damage is
+        // never marked dead and its corpse lingers on the map (NPCs die outright in applyUnconscious).
+        if (bm.getAgentStats(target_idx).hp_cur <= 0) {
+            Agent::Conditions tc = bm.getAgentConditions(target_idx);
+            if (!tc.unconscious && !tc.dead) applyUnconscious(bm, target_idx);
+        }
     }
 }
 

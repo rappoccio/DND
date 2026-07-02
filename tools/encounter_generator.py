@@ -299,7 +299,7 @@ def make_agent(rec: dict, strategy: int, faction: int, automation_level: int) ->
         "col": 0,
         "row": 0,
         "faction": faction,
-        "on_deck": False,
+        "on_deck": True,
         "is_npc_automated": True,
         "npc_automation_difficulty_level": automation_level,
         "npc_automation_strategy": int(strategy),
@@ -828,7 +828,7 @@ def cmd_dungeon(args: argparse.Namespace) -> int:
               f"{res['placed']} mobs{note}")
         room_log.append({"room": res["room"], "is_boss": res["is_boss"],
                          "category": res["category"], "weights": res["weights"],
-                         "floor_cells": res["floor_cells"],
+                         "floor_cells": res["floor_cells"], "floor_cell_coords": rooms[res["room"]],
                          "requested": res["requested"], "placed": res["placed"],
                          "groups": res["detail"]})
 

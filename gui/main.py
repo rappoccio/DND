@@ -1606,13 +1606,34 @@ class App:
                         return c
         return None
 
+    def _place_in_room(self, size: int, room_cells: list[tuple[int, int]],
+                       reserved: set[tuple[int, int]]) -> rpg.Cell | None:
+        """Find a size×size placement within the given room's floor cells, respecting
+        terrain and reserved cells. Returns an rpg.Cell or None if no space fits."""
+        def ok(c) -> bool:
+            if not (0 <= c.col < self.bm.grid_cols and 0 <= c.row < self.bm.grid_rows):
+                return False
+            if not self._can_place(c, size):
+                return False
+            return all((c.col + dc, c.row + dr) not in reserved
+                       for dc in range(size) for dr in range(size))
+
+        # Try cells in the room (shuffled for variety)
+        candidates = [rpg.Cell(c, r) for c, r in room_cells]
+        random.shuffle(candidates)
+        for c in candidates:
+            if ok(c):
+                return c
+        return None
+
     def _on_load_pcs_chosen(self, path: str):
         """Load a party (*_pc_agents.json) ADDITIVELY onto the current scene, so the
         PCs drop onto an already-loaded dungeon without the destructive full-scene
         reload wiping the placed monsters. Mirrors the D&D Beyond import merge:
         persist the current agents, append each PC (relocated off any occupied or
         blocked cell), then reload the combined file. Each PC keeps its own faction
-        and loadout from the party file."""
+        and loadout from the party file. If the current scene is a generated dungeon,
+        PCs start in the first room."""
         try:
             with open(path) as f:
                 pc_doc = json.load(f)
@@ -1635,15 +1656,30 @@ class App:
         except (OSError, json.JSONDecodeError):
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
+
+        # Check if this is a generated dungeon with room metadata; if so, place PCs in first room
+        first_room_cells = None
+        generator_meta = doc.get("generator", {})
+        if isinstance(generator_meta, dict):
+            rooms_meta = generator_meta.get("rooms", [])
+            if rooms_meta and isinstance(rooms_meta[0], dict):
+                first_room_cells = rooms_meta[0].get("floor_cell_coords")
+
         reserved: set[tuple[int, int]] = set()
         added = dropped = 0
         for src in pcs:
             pc = dict(src)                           # don't mutate the source file's dict
             size = int(pc.get("size", 1))
-            spot = self._merge_free_cell(int(pc.get("col", 0)), int(pc.get("row", 0)),
-                                         size, reserved)
+
+            # If we have first room cells, try to place PC there; else use default placement
+            if first_room_cells:
+                spot = self._place_in_room(size, first_room_cells, reserved)
+            else:
+                spot = self._merge_free_cell(int(pc.get("col", 0)), int(pc.get("row", 0)),
+                                             size, reserved)
+
             if spot is None:
-                dropped += 1                         # no free footprint anywhere on this map
+                dropped += 1                         # no free footprint
                 continue
             pc["col"], pc["row"] = spot.col, spot.row
             for dc in range(size):
@@ -1659,6 +1695,8 @@ class App:
         msg = f"Loaded {added} PC(s) from {os.path.basename(path)}"
         if dropped:
             msg += f" ({dropped} didn't fit)"
+        if first_room_cells:
+            msg += " in first room"
         self._flash_status(msg)
 
     # ─────────────────────────────────────────────────────────────────────
@@ -9232,7 +9270,12 @@ class App:
                     "weapon_mastery":     s.weapon_mastery,
                     # Creature-type flags — must round-trip or saved monsters silently lose them
                     # (e.g. a reloaded Vampire stops taking Sunlight radiant damage). dict_to_stats
-                    # reads all three back from this stats block.
+                    # reads all of these back from this stats block.
+                    # is_npc MUST live here: dict_to_stats reads it from the stats sub-dict, and it
+                    # gates "die outright at 0 HP" (no death saves). If it's dropped, a reloaded
+                    # non-caster monster reverts to is_npc=False and its corpse is never cleared
+                    # from the map (only spellcasters get it re-set, via init_npc_spell_groups).
+                    "is_npc":     s.is_npc,
                     "is_undead":  s.is_undead,
                     "is_fiend":   s.is_fiend,
                     "is_vampire": s.is_vampire,
@@ -9750,7 +9793,7 @@ class App:
                     scroll_offset[0] = max(0, min(scroll_offset[0], max_scroll))
                 if btn_ok.clicked(event):
                     return
-                if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mouse_y = event.pos[1] - (content_rect.y)
                     if 0 <= mouse_y < max_visible * item_h and content_rect.collidepoint(event.pos):
                         item_idx = (mouse_y + scroll_offset[0]) // item_h
@@ -10063,6 +10106,13 @@ class App:
             if not sd:
                 continue
             s = dict_to_stats(sd)
+
+            # Back-compat: older GUI saves wrote is_npc only at the top level of the
+            # agent dict (not inside "stats"), so dict_to_stats read it back as False and
+            # the reloaded monster stopped dying outright at 0 HP (its corpse lingered on
+            # the map). Honor the top-level flag as a fallback so those saves self-heal.
+            if t.get("is_npc"):
+                s.is_npc = True
 
             # Restore character class and subclasses BEFORE committing stats to engine
             restore_class_resources(s, t)
@@ -11742,6 +11792,11 @@ class App:
                 continue    # skip the one being dragged (draw as ghost below)
             if pt.removed_from_play:
                 continue    # tombstoned (dismissed summon): not rendered, not selectable
+            # Downed NPCs die outright (no death saves) and their corpses are cleared
+            # from the map. PCs at 0 HP stay drawn — they're unconscious and rolling
+            # death saves, so the DM still needs to see and select them.
+            if pt.conditions.dead:
+                continue
             sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
             # On-deck reserves are still drawn (the DM placed them), but dimmed with an
             # "ON DECK" badge so it's clear they aren't in the initiative yet.

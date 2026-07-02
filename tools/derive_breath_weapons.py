@@ -128,6 +128,12 @@ def make_catalog_spell(name, element, geom, tier, save, num_dice, radius, length
     """Build a generic Breath<...> spell dict for spells.json. Size + dice are the
     bucket-derived values; the Low/Medium/High/Enormous label is footprint-based."""
     elem_cap = element.capitalize()
+    # Most breaths deal a magic (elemental) type, but a few are physical (e.g. a
+    # Bludgeoning rock/force breath). Route the damage roll into the matching list —
+    # the engine (and _dict_to_spell) parse Bludgeoning/Piercing/Slashing only via
+    # PhysicalDamage; putting them in magic_damage_types crashes the loader.
+    dmg_roll = {"type": elem_cap, "num_dice": num_dice, "die_size": 6}
+    is_physical = elem_cap in ("Bludgeoning", "Piercing", "Slashing")
     sp = {
         "name": name,
         "description": f"A {tier.lower()} {element} breath weapon ({geom.lower()}). "
@@ -136,8 +142,8 @@ def make_catalog_spell(name, element, geom, tier, save, num_dice, radius, length
         "type": "Harm", "geometry": geom, "attack_type": "Save",
         "save_ability": save, "range": 0, "radius": 0, "width": 0, "length": 0,
         "duration": 1,
-        "magic_damage_types": [{"type": elem_cap, "num_dice": num_dice, "die_size": 6}],
-        "physical_damage_types": [],
+        "magic_damage_types": [] if is_physical else [dmg_roll],
+        "physical_damage_types": [dmg_roll] if is_physical else [],
         "level": 0, "upcast_dice_bonus": 0, "requires_concentration": False,
         "requires_los": False, "check_los_on_center": True,
         "school": ELEM_SCHOOL.get(element, "evocation"),

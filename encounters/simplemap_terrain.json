@@ -2,58 +2,74 @@
   "regions": [
     {
       "type": "Wall",
-      "x": 708,
-      "y": 138,
+      "x": 358,
+      "y": 89,
+      "width": 50,
+      "height": 49,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 358,
+      "y": 188,
       "width": 50,
       "height": 500,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 58,
-      "y": 288,
-      "width": 250,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 358,
-      "y": 288,
-      "width": 150,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 558,
-      "y": 288,
-      "width": 150,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 358,
+      "x": 408,
       "y": 338,
-      "width": 50,
-      "height": 250,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 358,
-      "y": 638,
-      "width": 300,
+      "width": 500,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 358,
-      "y": 738,
+      "x": 958,
+      "y": 338,
+      "width": 99,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 58,
+      "y": 388,
+      "width": 100,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 208,
+      "y": 388,
+      "width": 150,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 608,
+      "y": 438,
       "width": 50,
-      "height": 149,
+      "height": 300,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 408,
+      "y": 638,
+      "width": 200,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 608,
+      "y": 788,
+      "width": 50,
+      "height": 99,
       "multiplier": 0.0
     }
   ],
@@ -62,61 +78,13 @@
     {
       "cells": [
         [
-          13,
-          0
-        ]
-      ],
-      "cell": [
-        13,
-        0
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          5,
-          4
-        ]
-      ],
-      "cell": [
-        5,
-        4
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          9,
-          4
-        ]
-      ],
-      "cell": [
-        9,
-        4
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
           6,
-          10
+          1
         ]
       ],
       "cell": [
         6,
-        10
+        1
       ],
       "open": false,
       "locked": false,
@@ -126,13 +94,13 @@
     {
       "cells": [
         [
-          12,
-          11
+          17,
+          5
         ]
       ],
       "cell": [
-        12,
-        11
+        17,
+        5
       ],
       "open": false,
       "locked": false,
@@ -142,13 +110,45 @@
     {
       "cells": [
         [
-          6,
-          12
+          2,
+          6
         ]
       ],
       "cell": [
-        6,
-        12
+        2,
+        6
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          11,
+          6
+        ]
+      ],
+      "cell": [
+        11,
+        6
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          11,
+          13
+        ]
+      ],
+      "cell": [
+        11,
+        13
       ],
       "open": false,
       "locked": false,
