@@ -117,6 +117,9 @@ namespace rpg {
       // ── Class-feature capability flags ───────────────────────────────
       // Controls which action/bonus-action buttons are shown in the GUI.
       int  num_attacks{1};             // weapon attacks per Action (Extra Attack feature)
+      // NPC multiattack recipe: ordered (weapon_slot 0..2, count) segments.
+      // Empty ⇒ legacy behavior (num_attacks swings with one auto-selected slot). NPC auto-turn only.
+      std::vector<std::pair<int,int>> multiattack;
       int  bonus_attacks_remaining{0}; // bonus-action attacks queued (Flurry, Martial Arts, etc.)
       // Bonus-action budget (general action economy). Distinct from bonus_attacks_remaining,
       // which sequences multiple attacks WITHIN a single bonus action. A turn grants

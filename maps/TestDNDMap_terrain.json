@@ -81,5 +81,6 @@
       "multiplier": 0.0
     }
   ],
-  "walls_enabled": true
+  "walls_enabled": true,
+  "doors": []
 }

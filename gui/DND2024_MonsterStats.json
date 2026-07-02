@@ -53201,7 +53201,17 @@
       "physical_vulnerabilities": [],
       "spellcasting_ability": "intel",
       "is_vampire": true,
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -53259,7 +53269,9 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
-        "mastery": "None"
+        "mastery": "None",
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon"
       },
       "ranged": ""
     },
@@ -57937,7 +57949,17 @@
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
       "is_vampire": true,
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -57970,7 +57992,7 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -57989,7 +58011,9 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
-        "mastery": "None"
+        "mastery": "None",
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon"
       },
       "ranged": ""
     },
@@ -58067,7 +58091,13 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          2
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -58090,32 +58120,7 @@
         "conditions": [],
         "mastery": "None"
       },
-      "off_hand": {
-        "name": "Bite",
-        "type": "melee",
-        "reach_ft": 5,
-        "proficient": true,
-        "bonus_damage": 0,
-        "physical_damage_types": [
-          {
-            "type": "Piercing",
-            "num_dice": 1,
-            "die_size": 4
-          }
-        ],
-        "magic_damage_types": [
-          {
-            "type": "Necrotic",
-            "num_dice": 3,
-            "die_size": 6
-          }
-        ],
-        "conditions": [
-          "reduceHPMax"
-        ],
-        "auto_hit_if_grappled": true,
-        "mastery": "None"
-      },
+      "off_hand": "",
       "ranged": {
         "name": "Ranged (Piercing)",
         "type": "ranged",
@@ -58206,7 +58211,17 @@
       "physical_vulnerabilities": [],
       "spellcasting_ability": "intel",
       "is_vampire": true,
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -58239,7 +58254,7 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 4,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -58258,7 +58273,9 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
-        "mastery": "None"
+        "mastery": "None",
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon"
       },
       "ranged": ""
     },
@@ -58364,7 +58381,17 @@
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
       "is_vampire": true,
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -58397,7 +58424,7 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 3,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -58416,7 +58443,9 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
-        "mastery": "None"
+        "mastery": "None",
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon"
       },
       "ranged": ""
     },
@@ -58474,6 +58503,16 @@
       "speed_burrow": 0,
       "prof_bonus": 3,
       "num_attacks": 3,
+      "multiattack": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ],
       "save_prof_str": false,
       "save_prof_dex": false,
       "save_prof_con": true,
@@ -58513,7 +58552,7 @@
         "conditions": [
           {
             "condition_name": "Grappled",
-            "escape_dc": 14
+            "escape_dc": 13
           }
         ],
         "mastery": "None"
@@ -58523,7 +58562,7 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 3,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -58542,6 +58581,8 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon",
         "mastery": "None"
       },
       "ranged": ""
@@ -58620,7 +58661,17 @@
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
       "is_vampire": true,
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -58653,7 +58704,7 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 5,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -58672,7 +58723,9 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
-        "mastery": "None"
+        "mastery": "None",
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon"
       },
       "ranged": {
         "name": "Ranged (Necrotic)",
@@ -58777,7 +58830,17 @@
       "physical_vulnerabilities": [],
       "spellcasting_ability": "cha",
       "is_vampire": true,
-      "is_undead": true
+      "is_undead": true,
+      "multiattack": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ]
     },
     "weapons": {
       "main_hand": {
@@ -58810,7 +58873,7 @@
         "type": "melee",
         "reach_ft": 5,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 5,
         "physical_damage_types": [
           {
             "type": "Piercing",
@@ -58829,7 +58892,9 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
-        "mastery": "None"
+        "mastery": "None",
+        "save_for_damage": true,
+        "save_for_damage_ability": "SaveCon"
       },
       "ranged": ""
     },

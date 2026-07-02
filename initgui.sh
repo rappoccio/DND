@@ -1,12 +1,18 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  entrypoint.sh
+#  initgui.sh  (installed inside the image as /entrypoint.sh)
 #  1. Start Xvfb virtual display on :99 with GLX support (crucial!)
 #  2. Expose that display over VNC on port 5900 via x11vnc
 #  3. Bridge VNC to WebSocket for browser access via noVNC on port 6080
 #  4. Run the game
+#
+#  Args (passed by run.sh):  $1 = container repo dir   $2 = map image path
+#  With no args it just keeps the display alive for interactive use.
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
+
+REPO_DIR="${1:-/home/user/Claude/DND}"
+MAP_PATH="$2"
 
 # Virtual framebuffer with GLX extension (CRUCIAL - this was missing!)
 Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
@@ -31,5 +37,11 @@ x11vnc \
 websockify --web=/usr/share/novnc 6080 localhost:5900 \
     2>/dev/null &
 
-# Keep services running
-wait $XVFB_PID
+# ── 4. Run the game ──────────────────────────────────────────────────────────
+cd "$REPO_DIR"
+if [ -n "$MAP_PATH" ]; then
+    exec python3 gui/main.py "$MAP_PATH"
+else
+    # No map given: keep the display services alive for interactive use
+    wait $XVFB_PID
+fi

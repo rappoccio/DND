@@ -1,20 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  RPG Battle Map – Docker build with volume mounts
 #
-#  Build (from project root):
+#  The image ENTRYPOINT is /bin/bash, so pass "-c '<cmd>'" (not "bash -c ...").
+#  $HOME is mounted at /home/user, so this repo lives at
+#  /home/user/Claude/DND inside the container. The convenience scripts
+#  (build.sh / test.sh / run.sh / debug.sh) derive that path automatically.
+#
+#  Build image (from project root):
 #    docker build -t rpg_map .
 #
-#  Run (build + test):
-#    docker run --rm -v /Users/rappoccio:/home/user \
-#      rpg_map
-#
-#  Run (build only, no tests):
-#    docker run --rm -v /Users/rappoccio:/home/user \
-#      rpg_map cmake --build /home/user/Documents/Claude/Projects/DND/build --parallel
-#
-#  Run GUI:
-#    docker run --rm -v /Users/rappoccio:/home/user -p 6080:6080 \
-#      rpg_map python /home/user/Documents/Claude/Projects/DND/main.py /path/to/map.png
+#  Build the C++ extension:            ./build.sh
+#  Build + run the test suite:         ./test.sh
+#  Launch the GUI (browser via noVNC): ./run.sh maps/TestDNDMap.png
+#  Interactive debug shell:            ./debug.sh
 #
 #  The /home/user mount gives the container access to all your source files.
 #  Build artifacts go into the mounted directory for easy access.
@@ -58,8 +56,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /tmp/xdg_runtime && chmod 700 /tmp/xdg_runtime
 
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
+# Copy entrypoint script (renamed from entrypoint.sh -> initgui.sh)
+COPY initgui.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Set working directory (will be overridden by mount)

@@ -689,6 +689,9 @@ struct NpcTurnState {
     // (an out-of-range AoE spell must never fall back to melee). If that approach move parks on an OA, the
     // resume re-enters runAoeTurn, sees this flag, and re-plans + casts from the new cell (no second move).
     bool aoe_moving{false};
+    // Multiattack recipe segments pending AFTER the current (weapon_idx, attacks_remaining) one.
+    // Each is (weapon_slot, count). Empty ⇒ legacy single-weapon multiattack.
+    std::vector<std::pair<int,int>> pending_segments;
 };
 
 // How an NPC strategy ranks candidate targets (NPC_AUTOMATION_PLAN.md Steps 3-5).

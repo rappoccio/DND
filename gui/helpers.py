@@ -338,6 +338,10 @@ def _weapon_to_dict(w) -> dict:
         "light":            w.light,
         "is_shield":        w.is_shield,
         "auto_hit_if_grappled": w.auto_hit_if_grappled,
+        # Save-delivered damage (a Vampire's Bite: CON save, not an attack roll). MUST round-trip or the
+        # bite reverts to a plain auto-hit on save/reload.
+        "save_for_damage":         w.save_for_damage,
+        "save_for_damage_ability": w.save_for_damage_ability.name,
         "permanently_armed": w.permanently_armed,
         "mastery":          w.mastery.name,
         "bonus_hit":        w.bonus_hit,
@@ -389,6 +393,14 @@ def _dict_to_weapon(d: dict):
     w.light           = bool(d.get("light",           False))
     w.is_shield       = bool(d.get("is_shield",       False))
     w.auto_hit_if_grappled = bool(d.get("auto_hit_if_grappled", False))
+    # Save-delivered damage (a Vampire's Bite): the target rolls save_for_damage_ability; a failure lets
+    # the bite land (full damage + riders), a success negates it. Paired with auto_hit_if_grappled.
+    w.save_for_damage = bool(d.get("save_for_damage", False))
+    _sfa = d.get("save_for_damage_ability", "SaveCon")
+    try:
+        w.save_for_damage_ability = getattr(rpg.SaveAbility, _sfa)
+    except AttributeError:
+        w.save_for_damage_ability = rpg.SaveAbility.SaveCon
     w.permanently_armed = bool(d.get("permanently_armed", False))
     w.mastery         = _parse_mastery(d.get("mastery", ""))
     w.bonus_hit       = int(d.get("bonus_hit",       0))

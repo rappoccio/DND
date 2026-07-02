@@ -43,5 +43,9 @@ echo "[*] Access via browser: http://localhost:6080/vnc.html"
 echo "[*] Press Ctrl+C to stop the container"
 echo ""
 
+# Container path of this repo (HOME is mounted at /home/user)
+CONTAINER_DIR="/home/user${SCRIPT_DIR#$HOME}"
+
+# Entrypoint is /bin/bash, so run the display+game launcher script explicitly.
 docker run --rm -v "$HOME":/home/user -p 6080:6080 rpg_map \
-  "$CONTAINER_MAP_PATH"
+  /entrypoint.sh "$CONTAINER_DIR" "$CONTAINER_MAP_PATH"

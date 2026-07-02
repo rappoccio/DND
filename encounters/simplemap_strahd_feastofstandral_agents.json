@@ -7286,7 +7286,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -7326,7 +7336,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -7354,7 +7364,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -7383,7 +7393,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -7561,7 +7573,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -7601,7 +7623,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -7629,7 +7651,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -7658,7 +7680,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -7836,7 +7860,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -7876,7 +7910,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -7904,7 +7938,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -7933,7 +7967,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -8111,7 +8147,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -8151,7 +8197,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -8179,7 +8225,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -8208,7 +8254,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -8386,7 +8434,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -8426,7 +8484,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -8454,7 +8512,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -8483,7 +8541,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -8661,7 +8721,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -8701,7 +8771,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -8729,7 +8799,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -8758,7 +8828,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -17192,7 +17264,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -17232,7 +17314,7 @@
               "push_ft": 0,
               "save_repeat_turns": 1,
               "contested": false,
-              "escape_dc": 14,
+              "escape_dc": 13,
               "requires_save": false,
               "save_ability": "Dexterity",
               "save_dc_ability": "Wisdom",
@@ -17260,7 +17342,7 @@
           "permanently_armed": true,
           "mastery": "None",
           "bonus_hit": 0,
-          "bonus_damage": 0,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "physical_damage_types": [
             {
@@ -17289,7 +17371,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",
@@ -17480,7 +17564,17 @@
         "magic_vulnerabilities": [],
         "physical_resistances": [],
         "physical_immunities": [],
-        "physical_vulnerabilities": []
+        "physical_vulnerabilities": [],
+        "multiattack": [
+          [
+            0,
+            2
+          ],
+          [
+            1,
+            1
+          ]
+        ]
       },
       "weapons": {
         "main_hand": {
@@ -17583,7 +17677,9 @@
               "save_dc_ability": "Wisdom",
               "on_damage": "None"
             }
-          ]
+          ],
+          "save_for_damage": true,
+          "save_for_damage_ability": "SaveCon"
         },
         "ranged": {
           "name": "Unarmed",

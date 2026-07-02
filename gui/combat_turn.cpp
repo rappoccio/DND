@@ -1357,6 +1357,29 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     const auto selectTarget = [&]() {
         return npcSelectTarget(bm, agent_idx, policy.prefer_caster, policy.priority);
     };
+    // Seed the turn from an NPC multiattack recipe (ordered (slot,count) segments). Returns true if a
+    // non-empty, deliverable recipe was applied — sets st.weapon_idx / attacks_remaining to the FIRST
+    // valid segment and st.pending_segments to the rest. Skips leading segments whose slot is invalid or
+    // whose weapon is empty (empty-slot ruling). Empty recipe (or nothing deliverable) → false ⇒ caller
+    // falls back to legacy num_attacks with the already-selected weapon.
+    auto seedFromRecipe = [&](NpcTurnState& s) -> bool {
+        // getAgentStats returns by VALUE — copy the recipe vector out, never bind a reference into the
+        // destroyed temporary (that dangles).
+        const auto ma = bm.getAgentStats(agent_idx).multiattack;
+        if (ma.empty()) return false;
+        const auto weapons = bm.getAgentWeapons(agent_idx);
+        s.pending_segments.assign(ma.begin(), ma.end());
+        while (!s.pending_segments.empty()) {
+            auto [slot, cnt] = s.pending_segments.front();
+            s.pending_segments.erase(s.pending_segments.begin());
+            if (slot < 0 || slot > 2 || cnt <= 0) continue;
+            if (weapons[static_cast<std::size_t>(slot)].name.empty()) continue;
+            s.weapon_idx = slot;
+            s.attacks_remaining = cnt;
+            return true;
+        }
+        return false;
+    };
 
     if (st.phase == NpcTurnState::PickAndMove) {
         st.target_idx = selectTarget();
@@ -1379,19 +1402,24 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                  sel.type == WeaponType::Melee ? "Melee" : "Ranged");
         }
 
+        // A non-empty multiattack recipe overrides prefer_ranged weapon selection (kite ignored when a
+        // recipe is present) and sets st.weapon_idx to the first deliverable segment + queues the rest in
+        // st.pending_segments BEFORE positioning runs below, so reachNow / findPositionCell already target
+        // the recipe's first weapon. When hasRecipe, seedFromRecipe already set attacks_remaining.
+        const bool hasRecipe = seedFromRecipe(st);
         const bool reachNow = inReachOf(st.target_idx, st.weapon_idx);
         // Non-kiters already in reach swing where they stand. Kiters always look for a better-spaced cell
         // first (findPositionCell includes the current cell, so "stay put" remains an option).
         if (reachNow && !policy.kite) {
             st.phase = NpcTurnState::Attacking;
-            st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+            if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
         } else {
             Cell dest{};
             if (findPositionCell(st.target_idx, st.weapon_idx, dest)) {
                 // Commit the phase BEFORE beginMove so that if the move provokes an OA and parks, the resume
                 // re-enters in Attacking (the move is already in flight, not restarted).
                 st.phase = NpcTurnState::Attacking;
-                st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+                if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
                 if (dest != curOrigin()) {             // a kiter may already be on the best cell → no move
                     if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
                         return FlowStatus::AwaitingDecision;
@@ -1400,7 +1428,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
             } else if (reachNow) {
                 // Kiter with no reachable cell at all (e.g. 0 movement budget) but already in range: swing.
                 st.phase = NpcTurnState::Attacking;
-                st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
+                if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
             } else {
                 // No reachable cell can strike: Dash (action) and advance toward the target. No attack.
                 bm.applyDash(agent_idx);
@@ -1418,22 +1446,44 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     }
 
     if (st.phase == NpcTurnState::Attacking) {
-        while (st.attacks_remaining > 0) {
+        while (true) {
+            if (st.attacks_remaining <= 0) {
+                if (st.pending_segments.empty()) break;   // recipe exhausted (or legacy single-weapon done)
+                // Advance to the next recipe segment; skip invalid slots / empty weapons (empty-slot ruling).
+                const auto weapons = bm.getAgentWeapons(agent_idx);
+                bool advanced = false;
+                while (!st.pending_segments.empty()) {
+                    auto [slot, cnt] = st.pending_segments.front();
+                    st.pending_segments.erase(st.pending_segments.begin());
+                    if (slot < 0 || slot > 2 || cnt <= 0) continue;
+                    if (weapons[static_cast<std::size_t>(slot)].name.empty()) continue;
+                    st.weapon_idx = slot;
+                    st.attacks_remaining = cnt;
+                    advanced = true;
+                    break;
+                }
+                if (!advanced) break;
+                continue;   // re-evaluate reach for the NEW weapon
+            }
             // Re-acquire if the current target dropped (or became invalid) mid-multiattack — move to next.
             if (!npcAttackable(bm, agent_idx, st.target_idx)) {
                 const int nt = selectTarget();
                 if (nt < 0) break;                     // nobody left to hit
                 st.target_idx = nt;
             }
-            // A re-acquired target may be out of reach; step in with leftover movement if we can.
+            // Step in with leftover movement if out of reach for THIS segment's weapon.
             if (!inReachOf(st.target_idx, st.weapon_idx)) {
                 Cell dest{};
-                if (!findPositionCell(st.target_idx, st.weapon_idx, dest)) break;  // unreachable → end turn
-                if (dest != curOrigin()) {
-                    if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
-                        return FlowStatus::AwaitingDecision;
+                if (findPositionCell(st.target_idx, st.weapon_idx, dest)) {
+                    if (dest != curOrigin()) {
+                        if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                            return FlowStatus::AwaitingDecision;
+                    }
                 }
-                if (!inReachOf(st.target_idx, st.weapon_idx)) break;   // move couldn't close → bail (no loop)
+                if (!inReachOf(st.target_idx, st.weapon_idx)) {
+                    st.attacks_remaining = 0;   // SKIP this segment (skip-unreachable policy), try next
+                    continue;
+                }
             }
             Attack a;
             a.attacker_idx = agent_idx;

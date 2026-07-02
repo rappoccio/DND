@@ -235,6 +235,85 @@ def test_bite_no_auto_hit_when_grappled_by_other():
     print("✅ no auto-hit when the target is grappled by a different creature")
 
 
+def _grapple(engine, bm, atk, tgt):
+    """Mark tgt as Grappled by atk (the gate for auto_hit_if_grappled / the Bite save)."""
+    cond = engine.get_agent_conditions(bm, tgt)
+    cond.grappled = True
+    cond.grappler_idx = atk
+    engine.set_agent_conditions(bm, tgt, cond)
+
+
+def test_bite_con_save_success_negates():
+    """A save-delivered Bite (save_for_damage, SaveCon) vs a Grappled target that easily makes its
+    CON save deals NO damage and NO HP-max drain — the 'auto-hit' is a saving throw, not a guaranteed hit."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 5, 5), hp=50)
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Victim", 6, 5), hp=60, ac=1)
+
+    # Low-CON attacker → low save DC (8 + PB + CON mod). High-CON target → always saves.
+    sa = engine.get_agent_stats(bm, atk)
+    sa.con = 1; sa.prof_bonus = 2; sa.hp_cur = 50; sa.hp_max = 200
+    engine.set_agent_stats(bm, atk, sa)
+
+    w = _bite_weapon()
+    w.auto_hit_if_grappled = True
+    w.save_for_damage = True
+    w.save_for_damage_ability = rpg.SaveAbility.SaveCon
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+    _grapple(engine, bm, atk, tgt)
+
+    action = rpg.Attack()
+    action.attacker_idx = atk; action.target_idx = tgt; action.weapon_idx = 0
+    for _ in range(20):
+        st = engine.get_agent_stats(bm, tgt)
+        st.con = 30; st.hp_cur = 60; st.hp_max = 60; st.available_hit_points = 0
+        engine.set_agent_stats(bm, tgt, st)
+        r = engine.execute_action(bm, action)
+        assert not r.hit, "a Grappled target that makes its CON save takes nothing from the Bite"
+        st2 = engine.get_agent_stats(bm, tgt)
+        assert st2.hp_cur == 60 and st2.available_hit_points == 0, "no damage, no HP-max drain on a save"
+    print("✅ Bite CON-save success negates damage + drain (no longer a guaranteed hit)")
+
+
+def test_bite_con_save_failure_bites():
+    """A save-delivered Bite vs a Grappled target that always fails its CON save lands with full
+    damage AND the HP-max drain, and the attacker heals by the drained amount."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 5, 5), hp=200)
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Victim", 6, 5), hp=60, ac=1)
+
+    w = _bite_weapon()
+    w.auto_hit_if_grappled = True
+    w.save_for_damage = True
+    w.save_for_damage_ability = rpg.SaveAbility.SaveCon
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+    _grapple(engine, bm, atk, tgt)
+
+    action = rpg.Attack()
+    action.attacker_idx = atk; action.target_idx = tgt; action.weapon_idx = 0
+    for _ in range(20):
+        # High-CON attacker → high save DC; tiny-CON target → always fails. Attacker at low HP so the
+        # life-drain heal is observable. (Re-set each loop: nothing rebuilds agents here, but it keeps
+        # the heal baseline fixed.)
+        sa = engine.get_agent_stats(bm, atk)
+        sa.con = 30; sa.prof_bonus = 3; sa.hp_cur = 5; sa.hp_max = 200
+        engine.set_agent_stats(bm, atk, sa)
+        st = engine.get_agent_stats(bm, tgt)
+        st.con = 1; st.hp_cur = 60; st.hp_max = 60; st.available_hit_points = 0
+        engine.set_agent_stats(bm, tgt, st)
+
+        r = engine.execute_action(bm, action)
+        assert r.hit, "a Grappled target that fails its CON save is bitten"
+        st2 = engine.get_agent_stats(bm, tgt)
+        drain = st2.available_hit_points
+        assert 3 <= drain <= 18, f"3d6 Necrotic drain expected (3..18), got {drain}"
+        assert engine.get_agent_stats(bm, atk).hp_cur == 5 + drain, \
+            f"attacker should heal by the {drain} drained"
+    print("✅ Bite CON-save failure lands full damage + drain + heal")
+
+
 if __name__ == "__main__":
     test_available_hit_points_basics()
     test_long_rest_clears_drain()
@@ -242,4 +321,6 @@ if __name__ == "__main__":
     test_no_necrotic_no_drain()
     test_bite_auto_hits_grappled_target()
     test_bite_no_auto_hit_when_grappled_by_other()
+    test_bite_con_save_success_negates()
+    test_bite_con_save_failure_bites()
     print("\n✅ All vampire-feature tests passed!")

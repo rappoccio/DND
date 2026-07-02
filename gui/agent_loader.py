@@ -38,6 +38,8 @@ def dict_to_stats(stats_dict):
     stats.speed_burrow = int(stats_dict.get("speed_burrow", 0))
     stats.prof_bonus = int(stats_dict.get("prof_bonus", 2))
     stats.num_attacks = int(stats_dict.get("num_attacks", 1))
+    # NPC segmented multiattack recipe: assign whole list (pybind copies on read).
+    stats.multiattack = [(int(a), int(b)) for a, b in stats_dict.get("multiattack", [])]
     stats.weapon_mastery = int(stats_dict.get("weapon_mastery", 0))
     stats.is_npc = bool(stats_dict.get("is_npc", False))
     stats.is_undead = bool(stats_dict.get("is_undead", False))

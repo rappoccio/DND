@@ -1357,11 +1357,55 @@ bool CombatEngine::canRestoreBalance(const BattleMap& bm, int reactor, int rolle
 // still react. No-op when s.auto_hit is false or the attack already hit.
 void CombatEngine::forceAutoHit(BattleMap& bm, InFlightAttack& s)
 {
-    if (!s.auto_hit || s.r.hit) return;
+    if (!s.auto_hit) return;                 // gate (target Grappled by this attacker) computed in Phase A
+    const Weapon& w = s.w;
+
+    // Save-delivered bite (e.g. a Vampire's Bite): the Grappled target makes a saving throw INSTEAD of the
+    // attacker rolling to hit. DC = 8 + attacker PB + attacker's save-ability modifier (CON ⇒ DC 14 for a
+    // CR-5 Vampire Spawn). On a FAILURE the bite lands (full damage + on-hit riders); on a SUCCESS it deals
+    // nothing. This replaces the attack-roll outcome entirely.
+    if (w.save_for_damage) {
+        auto ability_name = [](SaveAbility_t ab) -> std::string {
+            switch (ab) { case SaveStr: return "STR"; case SaveDex: return "DEX"; case SaveCon: return "CON";
+                          case SaveInt: return "INT"; case SaveWis: return "WIS"; default: return "CHA"; }
+        };
+        Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
+        const int  dc    = spellSaveDcFromAbility(atk_stats, w.save_for_damage_ability);
+        int        total = roll(20) + saveModFor(bm, s.action.target_idx, w.save_for_damage_ability);
+        total = applyIndomitableMight(bm, s.action.target_idx, w.save_for_damage_ability, total);
+        if (total >= dc) {                   // saved → the bite has no effect
+            s.r.hit = false; s.r.critical = false; s.r.fumble = false; s.r.total_damage = 0;
+            log_("{} succeeds on its {} save (DC {}, rolled {}) vs {}'s {} — no effect",
+                 agentName(bm, s.action.target_idx), ability_name(w.save_for_damage_ability), dc, total,
+                 agentName(bm, s.action.attacker_idx), w.name);
+            return;
+        }
+        // Failed save → the bite lands. resolveAttack only rolled damage on a natural hit, so roll it now
+        // if the underlying attack roll had missed.
+        if (!s.r.hit) {
+            Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
+            rollDamage(w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage);
+        }
+        s.r.hit = true; s.r.fumble = false;
+        log_("{} fails its {} save (DC {}, rolled {}) vs {}'s {} — bitten",
+             agentName(bm, s.action.target_idx), ability_name(w.save_for_damage_ability), dc, total,
+             agentName(bm, s.action.attacker_idx), w.name);
+        return;
+    }
+
+    // Plain auto-hit (no save): a missed roll is promoted to a hit. Because resolveAttack skips the damage
+    // roll on a miss, roll it here so the promoted hit actually deals damage (otherwise the auto-hit landed
+    // for zero).
+    if (s.r.hit) return;
+    if (s.r.total_damage <= 0) {
+        Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
+        Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
+        rollDamage(w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage);
+    }
     s.r.hit    = true;
     s.r.fumble = false;
-    log_("{} automatically hits the Grappled {} (Bite)",
-         agentName(bm, s.action.attacker_idx), agentName(bm, s.action.target_idx));
+    log_("{} automatically hits the Grappled {} ({})",
+         agentName(bm, s.action.attacker_idx), agentName(bm, s.action.target_idx), w.name);
 }
 
 void CombatEngine::reevaluateAttackHit(AttackResult& r) const noexcept

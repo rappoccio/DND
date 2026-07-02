@@ -1,1 +1,1 @@
-cd /home/user/Documents/Claude/Projects/DND
+cd /home/user/Claude/DND

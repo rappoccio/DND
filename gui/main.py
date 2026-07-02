@@ -9289,6 +9289,9 @@ class App:
                     "sleight_of_hand_prof":      s.sleight_of_hand_prof,
                     "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
                     "num_attacks":        s.num_attacks,
+                    # NPC segmented multiattack recipe: ordered (weapon_slot, count) segments.
+                    # dict_to_stats reads it back; empty ⇒ legacy num_attacks behavior.
+                    "multiattack":        [[int(slot), int(n)] for (slot, n) in s.multiattack],
                     # Weapon Mastery feature count — gates ALL weapon masteries (Cleave/Topple/Sap/...);
                     # if dropped here it reloads as 0 and every mastery silently stops working
                     # (agent_loader.dict_to_stats reads it back).
@@ -10664,7 +10667,10 @@ class App:
                 self.bm.apply_base_lighting(default_lvl, [])
                 # Load light sources using place_light_effect (same as dialog)
                 for src in data.get("light_sources", []):
-                    level_str = src.get("light_level", "Sunlight")
+                    # A plain light source (torch/lantern) is ordinary bright light.
+                    # "Sunlight" is a special level (matters for vampires / sunlight
+                    # sensitivity) and must be opted into explicitly, not defaulted.
+                    level_str = src.get("light_level", "BrightLight")
                     level = self._parse_light_level(level_str)
                     radius = src.get("bright_radius", 5)
 
@@ -11360,6 +11366,10 @@ class App:
         raw_v = self.bm.v_line_positions
 
         for effect in self.bm.active_light_effects:
+            # Ordinary bright light needs no tint (matches the 0-opacity Clear in the
+            # per-cell lighting overlay); only draw levels that alter visibility.
+            if effect.light_level == rpg.VisibilityLevel.Clear:
+                continue
             # Color by light level: Sunlight (bright yellow), Dark/MagicalDark (dark blue)
             if effect.light_level == rpg.VisibilityLevel.Sunlight:
                 color = (255, 255, 100, 50)  # Bright yellow with transparency

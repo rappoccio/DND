@@ -64,6 +64,12 @@ struct Weapon {
     bool         auto_hit_if_grappled = false;  // the attack automatically hits a creature this attacker
                                                 // has Grappled (e.g. a vampire's Bite) — skips the roll
                                                 // (a natural 20 still crits)
+    // Save-delivered damage (e.g. a Vampire's Bite is a CON save, not an attack roll). When true AND the
+    // attack qualifies as an auto-hit (auto_hit_if_grappled vs a creature this attacker has Grappled), the
+    // target instead makes a `save_for_damage_ability` saving throw vs DC = 8 + attacker PB + attacker
+    // ability mod: on a FAILURE the bite lands (full damage + on-hit riders); on a SUCCESS it deals nothing.
+    bool         save_for_damage         = false;
+    SaveAbility_t save_for_damage_ability = SaveCon;
     bool         permanently_armed    = false;  // this weapon cannot be disarmed (e.g., unarmed attacks,
                                                 // which are part of a creature's natural abilities)
 

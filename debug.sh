@@ -7,14 +7,16 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+CONTAINER_DIR="/home/user${SCRIPT_DIR#$HOME}"
+
 echo "[*] Launching debug shell in Docker..."
 echo "[*] Your home directory is mounted at /home/user"
-echo "[*] Project is at: /home/user/Documents/Claude/Projects/DND"
+echo "[*] Project is at: $CONTAINER_DIR"
 echo "[*] Type 'exit' to quit"
 echo ""
 
 docker run --rm -it -v "$HOME":/home/user rpg_map \
-  bash -c "cd /home/user/Documents/Claude/Projects/DND && \
+  -c "cd '$CONTAINER_DIR' && \
            echo '[+] You are in: '$(pwd) && \
            echo '[+] Available commands:' && \
            echo '    cmake -S ./gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release' && \
