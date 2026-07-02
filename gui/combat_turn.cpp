@@ -1102,22 +1102,6 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // later difficulty-level override will swap the algorithm). Strategies are added per step; until a
     // strategy has an executor it falls through to Simple (the always-defined baseline).
     const NpcAutomationStrategy strategy = resolveStrategy(bm, agent_idx);
-    // [DEBUG PreferRange] resolved strategy + raw stored field for this agent.
-    log_("[DEBUG] NPC {} runNpcTurn: resolved strategy={} (raw stored={})",
-         agentName(bm, agent_idx),
-         static_cast<int>(strategy),
-         static_cast<int>(bm.getAgentNpcAutomationStrategy(agent_idx)));
-    {
-        // [DEBUG PreferRange] dump the agent's three weapon slots so we can see whether a Ranged-typed
-        // weapon is actually present at turn time (0=Melee, 1=Ranged).
-        const std::array<Weapon, 3> dbgW = bm.getAgentWeapons(agent_idx);
-        for (int di = 0; di < 3; ++di) {
-            const Weapon& w = dbgW[static_cast<std::size_t>(di)];
-            log_("[DEBUG]   weapon slot {}: name='{}' type={} ({}) is_shield={}",
-                 di, w.name, static_cast<int>(w.type),
-                 w.type == WeaponType::Melee ? "Melee" : "Ranged", w.is_shield);
-        }
-    }
     // Each strategy is just a policy fed to the one shared executor (runWeaponTurn). New strategies add a
     // case + a policy, not a new turn driver. Until a strategy has a policy it falls through to Simple.
     NpcStrategyPolicy policy;   // defaults == Simple (preferMelee): Nearest target, best melee weapon, no kite
@@ -1168,10 +1152,10 @@ static double npcWeaponAvgDamage(const Weapon& w) noexcept
 
 int CombatEngine::npcSelectWeapon(const BattleMap& bm, int agent_idx) const noexcept
 {
-    const std::array<Weapon, 3> weapons = bm.getAgentWeapons(agent_idx);
+    const std::vector<Weapon> weapons = bm.getAgentWeapons(agent_idx);
     int bestMelee = -1; double bestMeleeDmg = -1.0;
     int bestAny   = -1; double bestAnyDmg   = -1.0;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < static_cast<int>(weapons.size()); ++i) {
         const Weapon& w = weapons[static_cast<std::size_t>(i)];
         if (w.is_shield) continue;
         const double dmg = npcWeaponAvgDamage(w);
@@ -1184,9 +1168,9 @@ int CombatEngine::npcSelectWeapon(const BattleMap& bm, int agent_idx) const noex
 
 int CombatEngine::npcSelectRangedWeapon(const BattleMap& bm, int agent_idx) const noexcept
 {
-    const std::array<Weapon, 3> weapons = bm.getAgentWeapons(agent_idx);
+    const std::vector<Weapon> weapons = bm.getAgentWeapons(agent_idx);
     int bestRanged = -1; double bestRangedDmg = -1.0;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < static_cast<int>(weapons.size()); ++i) {
         const Weapon& w = weapons[static_cast<std::size_t>(i)];
         if (w.is_shield || w.type != WeaponType::Ranged) continue;
         const double dmg = npcWeaponAvgDamage(w);
@@ -1396,7 +1380,9 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         while (!s.pending_segments.empty()) {
             auto [slot, cnt] = s.pending_segments.front();
             s.pending_segments.erase(s.pending_segments.begin());
-            if (slot < 0 || slot > 2 || cnt <= 0) continue;
+            // Recipe slot indexes the variable-length weapon list (may exceed the base 3 slots,
+            // e.g. Pit Fiend's Fiery Mace at index 3), so bound against the actual list size.
+            if (slot < 0 || slot >= static_cast<int>(weapons.size()) || cnt <= 0) continue;
             if (weapons[static_cast<std::size_t>(slot)].name.empty()) continue;
             s.weapon_idx = slot;
             s.attacks_remaining = cnt;
@@ -1415,34 +1401,11 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         st.weapon_idx = policy.prefer_ranged ? npcSelectRangedWeapon(bm, agent_idx)
                                              : npcSelectWeapon(bm, agent_idx);
 
-        // [DEBUG PreferRange] report which weapon the policy actually selected.
-        {
-            const Weapon sel = bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(
-                std::clamp(st.weapon_idx, 0, 2))];
-            log_("[DEBUG] NPC {} runWeaponTurn: prefer_ranged={} kite={} -> selected weapon slot {} "
-                 "name='{}' type={} ({})",
-                 agentName(bm, agent_idx), policy.prefer_ranged, policy.kite, st.weapon_idx,
-                 sel.name, static_cast<int>(sel.type),
-                 sel.type == WeaponType::Melee ? "Melee" : "Ranged");
-        }
-
         // A non-empty multiattack recipe overrides prefer_ranged weapon selection (kite ignored when a
         // recipe is present) and sets st.weapon_idx to the first deliverable segment + queues the rest in
         // st.pending_segments BEFORE positioning runs below, so reachNow / findPositionCell already target
         // the recipe's first weapon. When hasRecipe, seedFromRecipe already set attacks_remaining.
         const bool hasRecipe = seedFromRecipe(st);
-        // [DEBUG] Post-seed truth: the pre-seed print above shows npcSelectWeapon's pick (often the
-        // highest-damage weapon, e.g. a vampire's Bite); the recipe overrides st.weapon_idx here. This
-        // line reports whether a multiattack recipe was actually loaded + applied for this NPC.
-        {
-            const auto ma = bm.getAgentStats(agent_idx).multiattack;
-            std::string recipe;
-            for (const auto& seg : ma)
-                recipe += "(" + std::to_string(seg.first) + "," + std::to_string(seg.second) + ")";
-            log_("[DEBUG] NPC {} multiattack: hasRecipe={} stored=[{}] -> weapon_idx={} attacks_remaining={} "
-                 "pending={}", agentName(bm, agent_idx), hasRecipe, recipe, st.weapon_idx,
-                 st.attacks_remaining, st.pending_segments.size());
-        }
         const bool reachNow = inReachOf(st.target_idx, st.weapon_idx);
         // Non-kiters already in reach swing where they stand. Kiters always look for a better-spaced cell
         // first (findPositionCell includes the current cell, so "stay put" remains an option).
@@ -1550,7 +1513,8 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 while (!st.pending_segments.empty()) {
                     auto [slot, cnt] = st.pending_segments.front();
                     st.pending_segments.erase(st.pending_segments.begin());
-                    if (slot < 0 || slot > 2 || cnt <= 0) continue;
+                    // slot indexes the variable-length weapon list (extra attacks live at index 3+).
+                    if (slot < 0 || slot >= static_cast<int>(weapons.size()) || cnt <= 0) continue;
                     if (weapons[static_cast<std::size_t>(slot)].name.empty()) continue;
                     st.weapon_idx = slot;
                     st.attacks_remaining = cnt;

@@ -206,7 +206,9 @@ enum class NpcAutomationStrategy {
 struct PlacedAgent {
     std::shared_ptr<Agent> agent;
     Cell                   origin;        // top-left cell of the NxN footprint
-    std::array<Weapon, 3>  weapons;       // [Main Hand, Off Hand, Ranged]
+    // Variable-length attack list. Invariant: always padded to ≥3 entries so the PC path's
+    // weapons[0]=Main Hand, [1]=Off Hand, [2]=Ranged stays valid; monsters may add more (Attack 4+).
+    std::vector<Weapon>    weapons = std::vector<Weapon>(3);
     std::vector<Spell>     spells;        // known spells (may be empty)
     std::array<Armor, 6>   armor;         // [Helmet, Chest, Leggings, Boots, Gloves, Cloak]
     // ── Summoning ──────────────────────────────────────────────────────────
@@ -336,8 +338,8 @@ public:
     void applyDash(int idx) noexcept;
 
     // Weapon accessors (by index into placedAgents()).
-    [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(int idx) const noexcept;
-    void setAgentWeapons(int idx, std::array<Weapon, 3> weapons) noexcept;
+    [[nodiscard]] std::vector<Weapon> getAgentWeapons(int idx) const noexcept;
+    void setAgentWeapons(int idx, std::vector<Weapon> weapons) noexcept;
 
     // Armor accessors (by index into placedAgents()): 6 slots [helmet, chest, leggings, boots, gloves, cloak].
     [[nodiscard]] std::array<Armor, 6> getAgentArmor(int idx) const noexcept;

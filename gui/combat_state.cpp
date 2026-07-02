@@ -85,14 +85,14 @@ void CombatEngine::setAgentConditions(BattleMap& bm, int idx, const Agent::Condi
 //  Weapon / Armor / Spell accessors
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::array<Weapon, 3> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept
+std::vector<Weapon> CombatEngine::getAgentWeapons(const BattleMap& bm, int idx) const noexcept
 {
     return bm.getAgentWeapons(idx);
 }
 
-void CombatEngine::setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept
+void CombatEngine::setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept
 {
-    bm.setAgentWeapons(idx, weapons);
+    bm.setAgentWeapons(idx, std::move(weapons));
 }
 
 std::array<Armor, 6> CombatEngine::getAgentArmor(const BattleMap& bm, int idx) const noexcept

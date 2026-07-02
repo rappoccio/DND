@@ -588,7 +588,7 @@ CombatEngine::buildReactionCheckpoint(const BattleMap& bm, ReactionWindow window
 
     const auto& agents = bm.placedAgents();
     if (reactor_idx >= 0 && reactor_idx < static_cast<int>(agents.size())) {
-        const std::array<Weapon, 3> weapons = bm.getAgentWeapons(reactor_idx);
+        const std::vector<Weapon> weapons = bm.getAgentWeapons(reactor_idx);
         for (int wi = 0; wi < static_cast<int>(weapons.size()); ++wi) {
             const Weapon& w = weapons[static_cast<std::size_t>(wi)];
             if (w.name.empty() || w.type != WeaponType::Melee) continue;   // OA is a melee strike

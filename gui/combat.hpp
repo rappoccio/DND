@@ -1213,8 +1213,8 @@ public:
     // at a time, so any prior vibrations this monk planted are ended first. Returns true on success.
     bool plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_idx) noexcept;
 
-    [[nodiscard]] std::array<Weapon, 3> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
-    void setAgentWeapons(BattleMap& bm, int idx, std::array<Weapon, 3> weapons) noexcept;
+    [[nodiscard]] std::vector<Weapon> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
+    void setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept;
 
     [[nodiscard]] std::array<Armor, 6> getAgentArmor(const BattleMap& bm, int idx) const noexcept;
     void setAgentArmor(BattleMap& bm, int idx, std::array<Armor, 6> armor) noexcept;
@@ -2233,7 +2233,7 @@ public:
     void reseed(uint32_t seed);
 
     // ── Druid Wild Shape & Starry Form ────────────────────────────────────────
-    bool activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::array<Weapon,3> weapons, const std::string& beast_forms_path = "") noexcept;
+    bool activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::vector<Weapon> weapons, const std::string& beast_forms_path = "") noexcept;
     bool deactivateWildShape(BattleMap& bm, int idx) noexcept;
     bool activateStarryForm(BattleMap& bm, int idx, int constellation) noexcept;
     bool deactivateStarryForm(BattleMap& bm, int idx) noexcept;

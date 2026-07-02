@@ -2529,7 +2529,7 @@ void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Wild Shape Activation / Deactivation ──────────────────────────────────
-bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::array<Weapon,3> weapons, const std::string& beast_forms_path) noexcept {
+bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::vector<Weapon> weapons, const std::string& beast_forms_path) noexcept {
   auto agents = bm.placedAgents();
   if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 

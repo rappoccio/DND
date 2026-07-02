@@ -3284,12 +3284,16 @@ class ArmorDialog:
 
 
 class WeaponsDialog:
-    """Dialog for managing weapon equipment across 3 slots: main hand, off hand, ranged."""
-    DLG_W = 500
-    DLG_H = 300
+    """Dialog for managing a variable-length weapon / "Attack N" list.
+
+    By convention index 0 = Main Hand, 1 = Off Hand, 2 = Ranged (labelled as hints on
+    the first three rows for PC clarity); rows 4+ are extra attacks a monster's
+    multiattack recipe can reference. Rows can be added (＋ Add Attack) and removed (✕).
+    On save the caller drops trailing empties and the engine pads back to >=3."""
+    DLG_W = 560
     PAD = 15
     ITEM_H = 32
-    BTN_W = 100
+    ROW_GAP = 5
     BTN_H = 28
 
     C_BG = (35, 35, 50)
@@ -3299,9 +3303,13 @@ class WeaponsDialog:
     C_SLOT_BORDER = (80, 80, 120)
     C_BUTTON = (70, 70, 100)
     C_BUTTON_H = (90, 90, 130)
+    C_REMOVE = (150, 70, 70)
+    C_REMOVE_H = (190, 90, 90)
+    C_ADD = (70, 120, 90)
+    C_ADD_H = (90, 150, 110)
 
-    SLOT_NAMES = ["Main Hand", "Off Hand", "Ranged"]
-    SLOT_KEYS = ["main_hand", "off_hand", "ranged"]
+    # First three rows carry the PC main/off/ranged convention as a hint.
+    SLOT_HINTS = ["Main Hand", "Off Hand", "Ranged"]
 
     def __init__(self, font_sm=None, font_md=None):
         self.font_sm = font_sm
@@ -3310,10 +3318,24 @@ class WeaponsDialog:
         self.rect = None
         self.agent_idx = -1
         self.agent_name = ""
-        self.current_weapons = [{"name": ""}, {"name": ""}, {"name": ""}]  # 3 slots
+        self.current_weapons = [{"name": ""}, {"name": ""}, {"name": ""}]  # >=3 slots
         self.callback = None
         self._hover_slot = -1
         self.weapon_selection_dialog = None
+
+    def _row_label(self, i: int) -> str:
+        base = f"Attack {i + 1}"
+        if i < len(self.SLOT_HINTS):
+            return f"{base} ({self.SLOT_HINTS[i]})"
+        return base
+
+    def _recompute_rect(self, screen):
+        # Height grows with the row count + header + add button.
+        n = len(self.current_weapons)
+        body = 45 + n * (self.ITEM_H + self.ROW_GAP) + self.BTN_H + self.PAD * 2
+        h = max(body, 160)
+        sw, sh = screen.get_size()
+        self.rect = pygame.Rect((sw - self.DLG_W) // 2, max(20, (sh - h) // 2), self.DLG_W, h)
 
     def open(self, screen, agent_idx: int, agent_name: str, weapon_array, weapon_selection_dialog, callback, combat_engine=None, battle_map=None):
         self.active = True
@@ -3325,8 +3347,9 @@ class WeaponsDialog:
         # so that weapon properties survive the dialog round-trip.
         from helpers import _weapon_to_dict
         self.current_weapons = [_weapon_to_dict(w) for w in weapon_array]
-        sw, sh = screen.get_size()
-        self.rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2, self.DLG_W, self.DLG_H)
+        while len(self.current_weapons) < 3:
+            self.current_weapons.append({"name": ""})
+        self._recompute_rect(screen)
 
     def dismiss(self):
         self.active = False
@@ -3334,8 +3357,22 @@ class WeaponsDialog:
             self.callback()
 
     def _slot_rect(self, slot_idx: int) -> pygame.Rect:
-        y = self.rect.y + 45 + slot_idx * (self.ITEM_H + 5)
-        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2, self.ITEM_H)
+        # Name area: leaves room on the right for the [off] toggle + [✕] remove button.
+        y = self.rect.y + 45 + slot_idx * (self.ITEM_H + self.ROW_GAP)
+        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2 - 120, self.ITEM_H)
+
+    def _offhand_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(sr.right + 6, sr.y, 78, self.ITEM_H)
+
+    def _remove_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(self.rect.right - self.PAD - 28, sr.y, 28, self.ITEM_H)
+
+    def _add_rect(self) -> pygame.Rect:
+        n = len(self.current_weapons)
+        y = self.rect.y + 45 + n * (self.ITEM_H + self.ROW_GAP)
+        return pygame.Rect(self.rect.x + self.PAD, y, 140, self.BTN_H)
 
     def handle(self, event, screen) -> bool:
         if not self.active or not self.rect:
@@ -3357,11 +3394,28 @@ class WeaponsDialog:
                     self.dismiss()
                     return True
 
-                # Check slot clicks
-                for i in range(3):
-                    slot_rect = self._slot_rect(i)
-                    if slot_rect.collidepoint(*event.pos):
-                        # Check if off-hand slot and main hand has two_handed weapon
+                # Add-attack button
+                if self._add_rect().collidepoint(*event.pos):
+                    self.current_weapons.append({"name": ""})
+                    self._recompute_rect(screen)
+                    return True
+
+                # Per-row controls
+                for i in range(len(self.current_weapons)):
+                    # Remove button
+                    if self._remove_rect(i).collidepoint(*event.pos):
+                        del self.current_weapons[i]
+                        while len(self.current_weapons) < 3:
+                            self.current_weapons.append({"name": ""})
+                        self._recompute_rect(screen)
+                        return True
+                    # Off-hand toggle (not meaningful for the ranged hint row, but allowed)
+                    if self._offhand_rect(i).collidepoint(*event.pos):
+                        cur = bool(self.current_weapons[i].get("off_hand", False))
+                        self.current_weapons[i]["off_hand"] = not cur
+                        return True
+                    # Name area → weapon selection
+                    if self._slot_rect(i).collidepoint(*event.pos):
                         if i == 1 and self.current_weapons[0].get("two_handed", False):
                             # Off-hand disabled when main hand is two-handed
                             return True
@@ -3377,10 +3431,8 @@ class WeaponsDialog:
 
         if event.type == pygame.MOUSEMOTION and self.active:
             self._hover_slot = -1
-            for i in range(3):
-                slot_rect = self._slot_rect(i)
-                if slot_rect.collidepoint(*event.pos):
-                    # Don't highlight off-hand if main hand has two_handed
+            for i in range(len(self.current_weapons)):
+                if self._slot_rect(i).collidepoint(*event.pos):
                     if i == 1 and self.current_weapons[0].get("two_handed", False):
                         continue
                     self._hover_slot = i
@@ -3406,11 +3458,11 @@ class WeaponsDialog:
         close_text = self.font_sm.render("✕", True, (220, 220, 220))
         surf.blit(close_text, close_text.get_rect(center=close_rect.center))
 
-        # Slots
-        for i, slot_name in enumerate(self.SLOT_NAMES):
+        # Rows
+        for i in range(len(self.current_weapons)):
             slot_rect = self._slot_rect(i)
 
-            # If off-hand and main hand is two-handed, disable it
+            # If this is the off-hand row and main hand is two-handed, disable it
             disabled = (i == 1 and self.current_weapons[0].get("two_handed", False))
 
             if disabled:
@@ -3423,11 +3475,32 @@ class WeaponsDialog:
             pygame.draw.rect(surf, color, slot_rect, border_radius=4)
             pygame.draw.rect(surf, border_color, slot_rect, 1, border_radius=4)
 
-            # Slot label
-            label = self.font_sm.render(f"{slot_name}:", True, self.C_LABEL)
+            # Row label
+            label = self.font_sm.render(f"{self._row_label(i)}:", True, self.C_LABEL)
             surf.blit(label, (slot_rect.x + 8, slot_rect.y + 4))
 
             # Current weapon name
-            weapon_name = self.current_weapons[i].get("name", "—")
+            weapon_name = self.current_weapons[i].get("name", "")
             weapon_text = self.font_sm.render(weapon_name if weapon_name else "—", True, (200, 200, 220))
-            surf.blit(weapon_text, (slot_rect.x + 120, slot_rect.y + 4))
+            surf.blit(weapon_text, (slot_rect.x + 160, slot_rect.y + 4))
+
+            # Off-hand toggle
+            off_rect = self._offhand_rect(i)
+            is_off = bool(self.current_weapons[i].get("off_hand", False))
+            pygame.draw.rect(surf, (60, 90, 60) if is_off else (50, 50, 65), off_rect, border_radius=4)
+            pygame.draw.rect(surf, self.C_SLOT_BORDER, off_rect, 1, border_radius=4)
+            off_txt = self.font_sm.render("off ✓" if is_off else "off", True,
+                                          (200, 220, 200) if is_off else (150, 150, 170))
+            surf.blit(off_txt, off_txt.get_rect(center=off_rect.center))
+
+            # Remove button
+            rm_rect = self._remove_rect(i)
+            pygame.draw.rect(surf, self.C_REMOVE, rm_rect, border_radius=4)
+            rm_txt = self.font_sm.render("✕", True, (230, 220, 220))
+            surf.blit(rm_txt, rm_txt.get_rect(center=rm_rect.center))
+
+        # Add-attack button
+        add_rect = self._add_rect()
+        pygame.draw.rect(surf, self.C_ADD, add_rect, border_radius=4)
+        add_txt = self.font_sm.render("＋ Add Attack", True, (220, 240, 220))
+        surf.blit(add_txt, add_txt.get_rect(center=add_rect.center))

@@ -45,6 +45,7 @@ from helpers import (
     _dnd_mod, _mod_str,
     _parse_physical_damage, _parse_magic_damage,
     _DEFAULT_WEAPON, _weapon_to_dict, _dict_to_weapon,
+    _weapons_to_list, _weapons_from_list,
     _DEFAULT_ARMOR, _armor_to_dict, _dict_to_armor,
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
@@ -197,9 +198,12 @@ class App:
         else:
             self.combat.reset_bonus_actions(self.bm, idx)
 
-    def __init__(self, map_path: str):
+    def __init__(self, map_path: str, seed=None):
         pygame.init()
         pygame.display.set_caption("RPG Battle Map")
+        # Optional fixed combat RNG seed (CLI --seed) for reproducible play/tests;
+        # None ⇒ time-based random seed (set below).
+        self._cli_seed = seed
 
         # ── Load json file containing all available mobs from a huge spreadsheet
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -492,7 +496,8 @@ class App:
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
         import time
         from replay_record import RecordingCombat
-        self.combat_seed = int(time.time() * 1000) % (2**32)
+        self.combat_seed = (self._cli_seed if self._cli_seed is not None
+                            else int(time.time() * 1000)) % (2**32)
         # Wrap the engine so every state-mutating call is recorded for checked replay.
         self.combat = RecordingCombat(rpg.CombatEngine(self.combat_seed), rpg)
         self.logger = rpg.MessageLogger()
@@ -1253,12 +1258,20 @@ class App:
                    for w in weapons)
 
     def _auto_weapons_from_mob_stats(self, mob_record: dict) -> list:
-        """Slot-aligned [main_hand, off_hand, ranged] rpg.Weapon list built from
-        the bestiary record's pre-synthesized `weapons` dict. Empty slots are
-        blank weapons so callers can assign them positionally."""
-        wdict = mob_record.get("weapons", {})
-        return [self._weapon_from_slot_value(wdict.get(slot, ""))
-                for slot in ("main_hand", "off_hand", "ranged")]
+        """Variable-length rpg.Weapon list built from the bestiary record's
+        pre-synthesized `weapons` field. Accepts BOTH the new flat "Attack N"
+        list AND the legacy {main_hand,off_hand,ranged} dict. Padded to >=3 so
+        callers can still assign main/off/ranged positionally; extra attacks
+        (index 3+) follow. Empty slots are blank weapons."""
+        wfield = mob_record.get("weapons", {})
+        if isinstance(wfield, list):
+            weapons = [self._weapon_from_slot_value(v) for v in wfield]
+        else:
+            weapons = [self._weapon_from_slot_value(wfield.get(slot, ""))
+                       for slot in ("main_hand", "off_hand", "ranged")]
+        while len(weapons) < 3:
+            weapons.append(rpg.Weapon())
+        return weapons
 
     def _size_category_to_grid_size(self, size_category: str) -> int:
         """Convert D&D size category to grid size (cells)."""
@@ -3093,11 +3106,10 @@ class App:
 
         slot = self._find_pickup_slot(item.weapon, weapons)
         print(f"[_pickup_item DEBUG] _find_pickup_slot returned: {slot}")
-        if slot == -1:
-            self._combat_log_add(f"{agent.name}: no free weapon slot for {item.weapon.name}.")
-            return
-
-        weapons[slot] = item.weapon
+        if slot >= len(weapons):
+            weapons.append(item.weapon)     # no free slot: append a new attack slot
+        else:
+            weapons[slot] = item.weapon
         self.combat.set_agent_weapons(self.bm, agent_idx, weapons)
         self.bm.remove_item(item.id)
         self._combat_log_add(f"{agent.name} picks up {item.weapon.name}.")
@@ -3243,21 +3255,27 @@ class App:
         self.drag_item_cell   = None
 
     def _find_pickup_slot(self, weapon, weapons) -> int:
-        """Auto-assign weapon to best available slot. Returns -1 if no slot free."""
+        """Auto-assign weapon to the best available slot. With the variable-length
+        weapon list there is always room: an empty compatible slot is reused, else
+        the first empty interior slot, else a new appended slot (== len(weapons))."""
         EMPTY = lambda w: not w.name or "Unarmed" in w.name or w.name == "Unnamed"
-        # Ranged weapon → prefer ranged slot (index 2) if empty
-        if weapon.type == rpg.WeaponType.Ranged and EMPTY(weapons[2]):
+        # Ranged weapon → prefer the ranged slot (index 2) if empty
+        if weapon.type == rpg.WeaponType.Ranged and len(weapons) > 2 and EMPTY(weapons[2]):
             return 2
         # Main hand empty → slot 0
-        if EMPTY(weapons[0]):
+        if len(weapons) > 0 and EMPTY(weapons[0]):
             return 0
         # Off-hand empty → slot 1
-        if EMPTY(weapons[1]):
+        if len(weapons) > 1 and EMPTY(weapons[1]):
             return 1
         # Ranged slot empty as last resort for melee
-        if EMPTY(weapons[2]):
+        if len(weapons) > 2 and EMPTY(weapons[2]):
             return 2
-        return -1   # all slots full
+        # Any further empty slot (extra attack slots)
+        for i, w in enumerate(weapons):
+            if EMPTY(w):
+                return i
+        return len(weapons)   # no free slot: append a new one
 
     def _open_team_picker(self):
         """Open the modal team picker listing every placed agent. Clicking a row cycles
@@ -9375,13 +9393,11 @@ class App:
                 },
                 # Full weapon dicts (not just names) so NPC / monster weapons and any per-weapon
                 # customizations (bonus_hit, mastery, damage dice, heavy/light) survive the round-trip
-                # without depending on the PC weapons.json catalog. Loader accepts dicts or, for older
-                # saves, bare name strings (catalog lookup).
-                "weapons": {
-                    "main_hand": _weapon_to_dict(self.combat.get_agent_weapons(self.bm, i)[0]),
-                    "off_hand": _weapon_to_dict(self.combat.get_agent_weapons(self.bm, i)[1]),
-                    "ranged": _weapon_to_dict(self.combat.get_agent_weapons(self.bm, i)[2]),
-                },
+                # without depending on the PC weapons.json catalog. Saved as a flat variable-length
+                # "Attack N" list (index 0=main_hand, 1=off_hand, 2=ranged by convention, 3+=extra
+                # attacks). Trailing empty (nameless) slots are dropped. The loader accepts BOTH this
+                # list form and the legacy {main_hand,off_hand,ranged} dict for back-compat.
+                "weapons": _weapons_to_list(self.combat.get_agent_weapons(self.bm, i)),
                 "armor": {
                     "helmet": self.combat.get_agent_armor(self.bm, i)[0].name or "",
                     "chest": self.combat.get_agent_armor(self.bm, i)[1].name or "",
@@ -10209,20 +10225,27 @@ class App:
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            cpp_weapons = [rpg.Weapon(), rpg.Weapon(), rpg.Weapon()]  # 3 slots: main, off, ranged
+            cpp_weapons = [rpg.Weapon(), rpg.Weapon(), rpg.Weapon()]  # >=3 slots: main, off, ranged, then extras
 
-            # Try new weapons dict format first. Each slot holds either a full weapon dict
-            # (current format — lossless, works for NPC/monster/custom weapons) or, for older
-            # saves, a bare weapon name string resolved against the PC weapons.json catalog.
+            # A per-slot value is either a full weapon dict (current, lossless), a bare weapon-name
+            # string (older saves, resolved via the PC weapons.json catalog), or empty.
+            def _resolve_slot(val):
+                if isinstance(val, dict):
+                    return _dict_to_weapon(val)
+                if val and val in self.weapon_name_to_dict:
+                    return _dict_to_weapon(self.weapon_name_to_dict[val])
+                return rpg.Weapon()
+
+            # Try the new flat "Attack N" list first, then the legacy {main_hand,off_hand,ranged} dict.
             weapons_dict = t.get("weapons", {})
-            if weapons_dict and isinstance(weapons_dict, dict):
+            if isinstance(weapons_dict, list):
+                cpp_weapons = [_resolve_slot(v) for v in weapons_dict]
+                while len(cpp_weapons) < 3:
+                    cpp_weapons.append(rpg.Weapon())
+            elif weapons_dict and isinstance(weapons_dict, dict):
                 slot_names = ["main_hand", "off_hand", "ranged"]
                 for slot_idx, slot_name in enumerate(slot_names):
-                    weapon_data = weapons_dict.get(slot_name, "")
-                    if isinstance(weapon_data, dict):
-                        cpp_weapons[slot_idx] = _dict_to_weapon(weapon_data)
-                    elif weapon_data and weapon_data in self.weapon_name_to_dict:
-                        cpp_weapons[slot_idx] = _dict_to_weapon(self.weapon_name_to_dict[weapon_data])
+                    cpp_weapons[slot_idx] = _resolve_slot(weapons_dict.get(slot_name, ""))
             else:
                 # Fallback to legacy weapon_indices format (list of weapon names)
                 weapon_names = t.get("weapon_indices", [])
@@ -14126,7 +14149,9 @@ class App:
                             pt2 = self.bm.placed_agents[h]
                             weapon_array = self.combat.get_agent_weapons(self.bm, h)
                             def _on_weapons_done():
-                                # Collect weapons from dialog and save back to combat engine
+                                # Collect the variable-length "Attack N" list from the dialog and save
+                                # back to the combat engine (C++ pads to >=3). Trailing empty rows are
+                                # kept as blank weapons; interior empties preserve later indices.
                                 cpp_weapons = []
                                 for weapon_dict in self.weapons_dialog.current_weapons:
                                     if weapon_dict.get("name"):
@@ -14134,6 +14159,11 @@ class App:
                                     else:
                                         cpp_weapons.append(rpg.Weapon())
                                 self.combat.set_agent_weapons(self.bm, h, cpp_weapons)
+                                # Keep has_offhand_attack in sync with the off-hand toggles.
+                                stats = self.combat.get_agent_stats(self.bm, h)
+                                stats.has_offhand_attack = any(
+                                    d.get("off_hand", False) for d in self.weapons_dialog.current_weapons)
+                                self.combat.set_agent_stats(self.bm, h, stats)
                             self.weapons_dialog.open(self.screen, h, pt2.name, weapon_array,
                                                     self.weapon_selection_dialog, _on_weapons_done,
                                                     self.combat, self.bm)
@@ -15568,6 +15598,22 @@ class App:
 
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit("Usage: python main.py <map_image.png>")
-    App(sys.argv[1]).run()
+    # Positional: map image. Optional: --seed N to fix the combat RNG for
+    # reproducible live play (0/any int; omitted ⇒ time-based random seed).
+    args = sys.argv[1:]
+    seed = None
+    positional = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--seed":
+            if i + 1 >= len(args):
+                sys.exit("--seed requires an integer value")
+            seed = int(args[i + 1]); i += 2
+        elif a.startswith("--seed="):
+            seed = int(a.split("=", 1)[1]); i += 1
+        else:
+            positional.append(a); i += 1
+    if not positional:
+        sys.exit("Usage: python main.py <map_image.png> [--seed N]")
+    App(positional[0], seed=seed).run()

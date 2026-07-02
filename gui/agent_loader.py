@@ -17,7 +17,7 @@ except ImportError:
     print("ERROR: rpg_battle_map module not found. Run cmake to build it first.")
     sys.exit(1)
 
-from helpers import _dict_to_weapon, _dict_to_armor
+from helpers import _dict_to_weapon, _dict_to_armor, _weapons_from_list
 
 
 def dict_to_stats(stats_dict):
@@ -284,17 +284,9 @@ def load_agents_from_json(json_path, bm, combat, sprites_dir="sprites"):
     for i, t in enumerate(agent_data):
         if i >= len(bm.placed_agents):
             break
-        cpp_weapons = [rpg.Weapon(), rpg.Weapon(), rpg.Weapon()]
-
-        weapons_dict = t.get("weapons", {})
-        if weapons_dict and isinstance(weapons_dict, dict):
-            slot_names = ["main_hand", "off_hand", "ranged"]
-            for slot_idx, slot_name in enumerate(slot_names):
-                weapon_data = weapons_dict.get(slot_name, "")
-                if weapon_data:
-                    # Weapons can be stored as dicts (from replay.py)
-                    if isinstance(weapon_data, dict):
-                        cpp_weapons[slot_idx] = _dict_to_weapon(weapon_data)
+        # Accepts BOTH the new flat "Attack N" list AND the legacy {main_hand,off_hand,ranged}
+        # dict (back-compat for old encounter/PC saves); always padded to >=3 slots.
+        cpp_weapons = _weapons_from_list(t.get("weapons", {}))
 
         combat.set_agent_weapons(bm, i, cpp_weapons)
 

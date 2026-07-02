@@ -484,6 +484,54 @@ def _dict_to_weapon(d: dict):
     return w
 
 
+def _weapon_slot_is_empty(w) -> bool:
+    """True for a blank weapon slot: no name, or the default "Unarmed" sentinel
+    (weapon.hpp defaults Weapon.name = "Unarmed"). "MonkUnarmed" is a REAL monk
+    weapon and is NOT empty."""
+    return (not w.name) or (w.name == "Unarmed")
+
+
+def _weapons_to_list(weapons) -> list:
+    """Serialize an agent's weapon list (from get_agent_weapons) to a flat list of dicts.
+
+    Index convention is preserved (0=main_hand, 1=off_hand, 2=ranged, 3+=extra "Attack N").
+    Trailing empty slots (nameless / the bare "Unarmed" sentinel) are dropped so a plain
+    melee monster stays compact, but interior empties are kept as empty dicts to preserve
+    later slots' indices (a recipe may reference slot 3 even if slot 1 is empty)."""
+    dicts = [{} if _weapon_slot_is_empty(w) else _weapon_to_dict(w) for w in weapons]
+    # Drop trailing empties only.
+    while dicts and not dicts[-1]:
+        dicts.pop()
+    return dicts
+
+
+def _weapons_from_list(data) -> list:
+    """Deserialize the saved weapons field to a list of rpg.Weapon, padded to >=3.
+
+    Accepts BOTH the new flat list form AND the legacy {main_hand,off_hand,ranged} dict so
+    older encounter/PC saves still load. Empty dicts / empty names become blank rpg.Weapon()s."""
+    weapons: list = []
+    if isinstance(data, dict):
+        # Legacy 3-slot dict form.
+        for key in ("main_hand", "off_hand", "ranged"):
+            entry = data.get(key)
+            weapons.append(_dict_to_weapon(entry) if isinstance(entry, dict) and entry.get("name")
+                           else rpg.Weapon())
+    elif isinstance(data, list):
+        for entry in data:
+            if isinstance(entry, dict) and entry.get("name"):
+                weapons.append(_dict_to_weapon(entry))
+            elif isinstance(entry, str) and entry:
+                # Oldest saves stored bare weapon-name strings; look up via catalog if available.
+                weapons.append(_dict_to_weapon({"name": entry}))
+            else:
+                weapons.append(rpg.Weapon())
+    # Invariant: pad to >=3 empty slots so the PC path (main/off/ranged) is always addressable.
+    while len(weapons) < 3:
+        weapons.append(rpg.Weapon())
+    return weapons
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Armor serialization helpers
 # ─────────────────────────────────────────────────────────────────────────────

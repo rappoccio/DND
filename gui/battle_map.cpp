@@ -347,7 +347,7 @@ void BattleMap::applyAgentConfigs()
         }
         auto tok = std::make_shared<ConfiguredAgent>(
             cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-        placedAgents_.push_back({std::move(tok), origin, {}, {}, {}, -1, false, {}});
+        placedAgents_.push_back({std::move(tok), origin, std::vector<Weapon>(3), {}, {}, -1, false, {}});
     }
     std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
 }
@@ -372,7 +372,7 @@ int BattleMap::spawnAgent(const AgentConfig& cfg)
     }
     auto tok = std::make_shared<ConfiguredAgent>(
         cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-    placedAgents_.push_back({std::move(tok), origin, {}, {}, {}, -1, false, {}});
+    placedAgents_.push_back({std::move(tok), origin, std::vector<Weapon>(3), {}, {}, -1, false, {}});
     return static_cast<int>(placedAgents_.size()) - 1;
 }
 
@@ -832,15 +832,17 @@ CellSet BattleMap::reachableCells(Cell origin, int tokenSize,
 //  Weapon accessors
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::array<Weapon, 3> BattleMap::getAgentWeapons(int idx) const noexcept
+std::vector<Weapon> BattleMap::getAgentWeapons(int idx) const noexcept
 {
-    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return std::vector<Weapon>(3);
     return placedAgents_[static_cast<std::size_t>(idx)].weapons;
 }
 
-void BattleMap::setAgentWeapons(int idx, std::array<Weapon, 3> weapons) noexcept
+void BattleMap::setAgentWeapons(int idx, std::vector<Weapon> weapons) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    // Invariant: pad to ≥3 so the PC path (weapons[0]=Main, [1]=Off, [2]=Ranged) is always valid.
+    if (weapons.size() < 3) weapons.resize(3);
     placedAgents_[static_cast<std::size_t>(idx)].weapons = std::move(weapons);
 }
 

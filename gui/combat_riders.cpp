@@ -793,7 +793,8 @@ bool CombatEngine::applyHomingStrike(BattleMap& bm, int attacker_idx, int target
     Resource* ped = atk_stats.getResource("Psionic Energy");
     if (!ped || ped->current < 1) return false;
 
-    const std::array<Weapon, 3> weapons = bm.getAgentWeapons(attacker_idx);
+    const std::vector<Weapon> weapons = bm.getAgentWeapons(attacker_idx);
+    if (weapon_idx < 0 || weapon_idx >= static_cast<int>(weapons.size())) return false;
     const Weapon& w = weapons[static_cast<std::size_t>(weapon_idx)];
     if (!w.psychic_blade) return false;
 
@@ -1218,7 +1219,8 @@ void CombatEngine::applyPrecisionAttackEffect(BattleMap& bm, const Attack& actio
     Agent::Stats atk_g = bm.getAgentStats(atk);
     Agent::Stats tgt_g = bm.getAgentStats(tgt);
     auto weapons = bm.getAgentWeapons(atk);
-    const Weapon& w = weapons[static_cast<std::size_t>(std::clamp(action.weapon_idx, 0, 2))];
+    const int wi_g = std::clamp(action.weapon_idx, 0, static_cast<int>(weapons.size()) - 1);
+    const Weapon& w = weapons[static_cast<std::size_t>(wi_g)];
     rollDamage(w, atk_g, tgt_g, result);
     result.hp_before = tgt_g.hp_cur;
     const int dmg = result.total_damage;
@@ -1278,7 +1280,8 @@ void CombatEngine::applyGuidedStrike(BattleMap& bm, const Attack& action, int cl
     Agent::Stats atk_stats_g = bm.getAgentStats(atk);
     Agent::Stats tgt_stats_g = bm.getAgentStats(tgt);
     auto weapons = bm.getAgentWeapons(atk);
-    const Weapon& w = weapons[static_cast<std::size_t>(std::clamp(action.weapon_idx, 0, 2))];
+    const int wi_g2 = std::clamp(action.weapon_idx, 0, static_cast<int>(weapons.size()) - 1);
+    const Weapon& w = weapons[static_cast<std::size_t>(wi_g2)];
     rollDamage(w, atk_stats_g, tgt_stats_g, result);   // miss was not a crit → normal damage
     result.hp_before = tgt_stats_g.hp_cur;
     const int dmg = result.total_damage;

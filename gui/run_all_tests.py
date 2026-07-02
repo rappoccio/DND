@@ -62,6 +62,8 @@ test_scripts = [
     "test_dual_wield.py",
     "test_reaction_feats.py",
     "test_save_load_weapons.py",
+    "test_weapon_list.py",
+    "test_multiattack_recipes.py",
     "test_evoker_safe_targets.py",
     "test_factions.py",
     "test_emanation.py",

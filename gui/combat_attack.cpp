@@ -1604,7 +1604,8 @@ bool CombatEngine::applyRestoreBalanceMissToAttack(BattleMap& bm, const Attack& 
         Agent::Stats atk_stats = bm.getAgentStats(atk);
         Agent::Stats tgt_stats = bm.getAgentStats(tgt);
         auto weapons = bm.getAgentWeapons(atk);
-        const Weapon& w = weapons[static_cast<std::size_t>(std::clamp(action.weapon_idx, 0, 2))];
+        const int wi_gs = std::clamp(action.weapon_idx, 0, static_cast<int>(weapons.size()) - 1);
+        const Weapon& w = weapons[static_cast<std::size_t>(wi_gs)];
         rollDamage(w, atk_stats, tgt_stats, r);           // the miss was not a crit → normal damage
         r.hp_before = tgt_stats.hp_cur;
         const int dmg = r.total_damage;

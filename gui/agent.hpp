@@ -454,7 +454,7 @@ namespace rpg {
       int wild_shape_saved_str{0};
       int wild_shape_saved_dex{0};
       int wild_shape_saved_con{0};
-      std::array<Weapon,3> wild_shape_saved_weapons{};          // original weapons to restore on deactivate
+      std::vector<Weapon> wild_shape_saved_weapons{};           // original weapons to restore on deactivate
 
       bool starry_form_active{false};
       int starry_constellation{0};                               // 0=none, 1=Archer, 2=Chalice, 3=Dragon

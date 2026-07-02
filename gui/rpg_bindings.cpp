@@ -3328,11 +3328,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("get_agent_weapons",
              &CombatEngine::getAgentWeapons,
              py::arg("battle_map"), py::arg("idx"),
-             "Return a copy of the weapon array [main_hand, off_hand, ranged] for agent[idx].")
+             "Return a copy of the weapon list for agent[idx] (>=3: [0]=main_hand, [1]=off_hand, [2]=ranged, then extra attacks).")
         .def("set_agent_weapons",
              &CombatEngine::setAgentWeapons,
              py::arg("battle_map"), py::arg("idx"), py::arg("weapons"),
-             "Replace the weapon array [main_hand, off_hand, ranged] for agent[idx].")
+             "Replace the weapon list for agent[idx] (padded to >=3; may contain extra attacks beyond slot 2).")
         .def("get_agent_armor",
              &CombatEngine::getAgentArmor,
              py::arg("battle_map"), py::arg("idx"),
@@ -3451,7 +3451,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Activate Druid Wild Shape: spend 1 use, swap to beast form stats, grant Temp HP.\n"
              "For Circle of the Moon: Temp HP = 3×level, AC = max(beast_ac, 13+WIS).\n"
              "For other circles: Temp HP = 1×level, AC = beast_ac.\n"
-             "weapons: array of 3 Weapon objects for the beast form.\n"
+             "weapons: list of Weapon objects for the beast form (padded to >=3 internally).\n"
              "Optional beast_forms_path: if provided, use this path to load beast_forms.json; otherwise try standard locations.")
         .def("deactivate_wild_shape", &CombatEngine::deactivateWildShape,
              py::arg("battle_map"), py::arg("agent_idx"),
