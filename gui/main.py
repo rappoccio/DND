@@ -624,7 +624,7 @@ class App:
         # ── Temporary terrain effects (spells, items, etc. with duration) ───
         self.round_num              = 0     # current round number (incremented when turn_idx wraps)
         self._effect_meta: dict     = {}    # {effect_id: {"name": str, "color": tuple, "cells": [(col,row)]}}
-        self.show_terrain            = False # toggle for showing all terrain regions
+        self.show_terrain            = True  # toggle for showing all terrain regions (shown by default, pre-combat too)
         self._status_msg             = ""    # transient confirmation text (Save/Load Terrain, …)
         self._status_msg_until       = 0     # pygame ticks (ms) when _status_msg expires
         self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
@@ -1631,8 +1631,10 @@ class App:
         PCs drop onto an already-loaded dungeon without the destructive full-scene
         reload wiping the placed monsters. Mirrors the D&D Beyond import merge:
         persist the current agents, append each PC (relocated off any occupied or
-        blocked cell), then reload the combined file. Each PC keeps its own faction
-        and loadout from the party file. If the current scene is a generated dungeon,
+        blocked cell), then reload the combined file. Every PC is forced onto the
+        blue team (PC_FACTION) so the whole party fights the red encounter mobs as
+        one side, regardless of what faction the party file stored. Each PC keeps its
+        loadout from the party file. If the current scene is a generated dungeon,
         PCs start in the first room."""
         try:
             with open(path) as f:
@@ -1657,18 +1659,22 @@ class App:
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
 
-        # Check if this is a generated dungeon with room metadata; if so, place PCs in first room
+        # If the scene has carved walk-order rooms (from Generate Terrain/Dungeon), drop
+        # the PCs into the first room. We read the LIVE `_terrain_rooms` attribute rather
+        # than the saved agents doc: _save_agents() writes only {agents, map_items} and
+        # drops any `generator` block, so by the time we re-read `doc` above the room
+        # metadata is already gone. `_terrain_rooms` is loaded from the terrain sidecar
+        # and each entry carries its floor "cells" as [c, r] pairs.
         first_room_cells = None
-        generator_meta = doc.get("generator", {})
-        if isinstance(generator_meta, dict):
-            rooms_meta = generator_meta.get("rooms", [])
-            if rooms_meta and isinstance(rooms_meta[0], dict):
-                first_room_cells = rooms_meta[0].get("floor_cell_coords")
+        terrain_rooms = getattr(self, "_terrain_rooms", None) or []
+        if terrain_rooms and isinstance(terrain_rooms[0], dict):
+            first_room_cells = terrain_rooms[0].get("cells")
 
         reserved: set[tuple[int, int]] = set()
         added = dropped = 0
         for src in pcs:
             pc = dict(src)                           # don't mutate the source file's dict
+            pc["faction"] = PC_FACTION               # whole party fights as the blue team
             size = int(pc.get("size", 1))
 
             # If we have first room cells, try to place PC there; else use default placement
@@ -2485,8 +2491,21 @@ class App:
         idxs = [i for i, pt in enumerate(self.bm.placed_agents)
                 if not pt.removed_from_play and self.bm.is_agent_on_deck(i)
                 and pt.name == name]
+        self._deploy_on_deck_idxs(idxs, name)
+
+    def _deploy_on_deck_idxs(self, idxs, label):
+        """Bring a specific set of on-deck reserve agents into the battle (the shared core
+        of group Deploy and per-mob Recall). Clears their on-deck flag; if combat is live,
+        the whole set shares ONE freshly-rolled Initiative and is inserted into the order
+        without disturbing the current actor or existing summon adjacencies. `label` is the
+        display name used only in the combat log."""
+        idxs = [i for i in idxs
+                if 0 <= i < len(self.bm.placed_agents)
+                and not self.bm.placed_agents[i].removed_from_play
+                and self.bm.is_agent_on_deck(i)]
         if not idxs:
             return
+        name = label
         for i in idxs:
             self.bm.set_agent_on_deck(i, False)
 
@@ -3999,15 +4018,9 @@ class App:
             # FLAG: Move to C++
             if slot == "action":
                 self.action_used = True
-                # Check Berserker Frenzy: bonus melee attack every turn while raging
-                atk_stats = self.combat.get_agent_stats(self.bm, atk_idx)
-                atk_cond  = self.combat.get_agent_conditions(self.bm, atk_idx)
-                if (atk_stats.character_class == rpg.CharacterClass.Barbarian and
-                        atk_stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and
-                        atk_cond.raging and
-                        not self.bonus_used):
-                    self._combat_log_add(f"{atk_name}: Berserker Frenzy — bonus melee attack!")
-                    self._start_attack("bonus")
+                # 2024 Berserker Frenzy = extra Nd6 damage (N = Rage damage bonus),
+                # applied engine-side in combat_attack.cpp. No bonus attack in 2024
+                # (that was the 2014 version), so nothing to trigger here.
             else:
                 self.bonus_used = True
         # Refresh attack overlay (HP may have changed).
@@ -7163,7 +7176,17 @@ class App:
         def _ordinal(n):
             return {1:"1st",2:"2nd",3:"3rd"}.get(n, f"{n}th")
 
-        # Build spell menu from available spells
+        def _show_level_menu(name, subs):
+            # Second popup: pick the slot level for one already-chosen spell. Shown at the
+            # mouse so it appears next to the click that selected the spell.
+            self.context_menu.show(
+                pygame.mouse.get_pos(),
+                [(f"{name} {lbl}", cb) for lbl, cb in subs],
+                self.screen.get_size())
+
+        # Build spell menu from available spells. Each spell contributes ONE top-level row;
+        # leveled player spells with more than one castable level open a follow-up popup to
+        # pick the slot level, instead of flooding this list with one row per spell per level.
         options = []
         for si in available_indices:
             sp = spells[si]
@@ -7177,52 +7200,54 @@ class App:
                 continue  # Skip non-bonus-action spells from the bonus menu
 
             if sp_level == 0:
-                # Cantrip - always available
+                # Cantrip - always available, no level to pick
                 def _pick_cantrip(s=slot, si_=si):
                     _activate(s, si_, 0)
                 options.append((f"{sp.name} ∞", _pick_cantrip))
+            elif stats.is_npc:
+                # NPC: just add the spell (availability already checked by available_castable_spells)
+                def _pick_npc(s=slot, si_=si):
+                    _activate(s, si_, 0)
+                options.append((sp.name, _pick_npc))
             else:
-                # Leveled spell - check available slots for players
-                if not stats.is_npc:
-                    available_levels = []
-                    for lvl in range(sp_level, 10):
-                        if stats.spell_slots_remaining[lvl - 1] > 0:
-                            available_levels.append((lvl, stats.spell_slots_remaining[lvl - 1]))
-
-                    # Aberrant Mind L3+ Psionic Sorcery: offer SP-spend option for psionic spells
-                    # even when no regular slots are available (or in addition to slots).
-                    psionic_options = []
-                    if (sp.name in self._PSIONIC_SPELL_NAMES and
-                            stats.character_class == rpg.CharacterClass.Sorcerer and
-                            stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
-                            stats.char_level >= 3):
-                        sp_res = stats.get_resource("Sorcery Points")
-                        if sp_res:
-                            for psi_lvl in range(sp_level, 6):  # Psionic Sorcery caps at L5
-                                if sp_res.current >= psi_lvl:
-                                    def _pick_psionic(s=slot, si_=si, sl=psi_lvl):
-                                        ok = self.combat.spend_sorcery_points_for_spell(self.bm, idx, sl)
-                                        if ok:
-                                            _activate(s, si_, sl)
-                                            self.pending_spell_free_cast = True
-                                    psionic_options.append(
-                                        (f"{sp.name} @ {_ordinal(psi_lvl)} — {psi_lvl} SP (no slot)", _pick_psionic))
-
-                    if not available_levels and not psionic_options:
-                        continue
-
-                    # Add submenu for each available slot level
-                    for slot_lvl, remaining in available_levels:
-                        label = f"{sp.name} @ {_ordinal(slot_lvl)} ({remaining})"
-                        def _pick_slot(s=slot, si_=si, sl=slot_lvl):
+                # Player leveled spell: gather every castable level into a per-spell sub-list.
+                level_options = []
+                for lvl in range(sp_level, 10):
+                    remaining = stats.spell_slots_remaining[lvl - 1]
+                    if remaining > 0:
+                        label = f"@ {_ordinal(lvl)} ({remaining} slot{'s' if remaining != 1 else ''})"
+                        def _pick_slot(s=slot, si_=si, sl=lvl):
                             _activate(s, si_, sl)
-                        options.append((label, _pick_slot))
-                    options.extend(psionic_options)
+                        level_options.append((label, _pick_slot))
+
+                # Aberrant Mind L3+ Psionic Sorcery: offer SP-spend option for psionic spells
+                # even when no regular slots are available (or in addition to slots).
+                if (sp.name in self._PSIONIC_SPELL_NAMES and
+                        stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
+                        stats.char_level >= 3):
+                    sp_res = stats.get_resource("Sorcery Points")
+                    if sp_res:
+                        for psi_lvl in range(sp_level, 6):  # Psionic Sorcery caps at L5
+                            if sp_res.current >= psi_lvl:
+                                def _pick_psionic(s=slot, si_=si, sl=psi_lvl):
+                                    ok = self.combat.spend_sorcery_points_for_spell(self.bm, idx, sl)
+                                    if ok:
+                                        _activate(s, si_, sl)
+                                        self.pending_spell_free_cast = True
+                                level_options.append(
+                                    (f"@ {_ordinal(psi_lvl)} — {psi_lvl} SP (no slot)", _pick_psionic))
+
+                if not level_options:
+                    continue
+
+                if len(level_options) == 1:
+                    # Only one castable level — cast directly, no second popup needed.
+                    options.append((f"{sp.name} {level_options[0][0]}", level_options[0][1]))
                 else:
-                    # NPC: just add the spell (availability already checked by available_castable_spells)
-                    def _pick_npc(s=slot, si_=si):
-                        _activate(s, si_, 0)
-                    options.append((sp.name, _pick_npc))
+                    def _open_levels(name=sp.name, subs=level_options):
+                        _show_level_menu(name, subs)
+                    options.append((f"{sp.name} ▸", _open_levels))
 
         if not options:
             self._combat_log_add("No available spells!")
@@ -14230,6 +14255,25 @@ class App:
                             self.context_menu.show(pos, _sub_opts, self.screen.get_size())
                         _menu_opts.append(("NPC Automation ▸", _npc_automation_menu))
                         self.context_menu.show(event.pos, _menu_opts, self.screen.get_size())
+
+            # During combat, right-click an On Deck reserve to recall (deploy) just that one
+            # mob — the per-mob counterpart to the On Deck section's group Deploy rows. The
+            # full agent menu above is disabled mid-combat; reserves sit outside initiative,
+            # so recalling one never disturbs the current actor's turn.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and self.combat_active and not self.context_menu.visible:
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None:
+                    hit = self._agent_at(cell)
+                    if hit >= 0 and self.bm.is_agent_on_deck(hit) \
+                            and not self.bm.is_agent_removed_from_play(hit):
+                        nm = self.bm.placed_agents[hit].name
+                        def _recall_one(h=hit, label=nm):
+                            self._deploy_on_deck_idxs([h], label)
+                        self.context_menu.show(
+                            event.pos,
+                            [(f"Recall '{nm}' from On Deck", _recall_one)],
+                            self.screen.get_size())
 
             # Right-click a dropped weapon (no agent on the cell) → DM delete menu.
             # Works during combat too, so the DM can clean up the battlefield.

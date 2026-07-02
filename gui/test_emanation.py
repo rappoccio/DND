@@ -219,7 +219,11 @@ def test_emanation_halves_enemy_speed_spares_allies():
     reach_caster = bm.reachable_cells(origin, 1, speed, rpg.MovementType.Walk, caster)
     assert len(reach_enemy) < len(reach_ally), \
         f"enemy should be slowed by the zone: enemy={len(reach_enemy)} ally={len(reach_ally)}"
-    assert len(reach_caster) == len(reach_ally), "the caster is never slowed by its own emanation"
+    # The caster is spared exactly like the ally (full speed), so it reaches AT LEAST as many cells.
+    # It may reach one MORE: a mover can stop on its own (vacated) origin square, but the ally cannot
+    # stop on the caster's occupied square — the engine forbids ending a move on an ally's cell. That
+    # occupancy artifact is not slowing, so we assert "not slowed" as >= a spared ally's reach.
+    assert len(reach_caster) >= len(reach_ally), "the caster is never slowed by its own emanation"
 
     # The terrain follows the caster: move the caster, the old center clears and the new one is Halved.
     engine.begin_turn(bm, caster)

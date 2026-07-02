@@ -35,6 +35,12 @@ class SpellDialog:
         self._active_field: str | None = None
         self._f: dict = {}
         self._rects: dict = {}
+        # Scrolling state for the (tabs + form) region between the header and
+        # the fixed bottom buttons. content_h/view_h are recomputed each draw.
+        self._scroll_y = 0
+        self._content_h = 0
+        self._view_h = 0
+        self._view_rect: pygame.Rect | None = None
 
     def open(self, screen, agent_idx: int, agent_name: str,
              spells: list[dict], callback, add_spell_callback=None):
@@ -52,6 +58,7 @@ class SpellDialog:
         y = (sh - self.DLG_H) // 2
         self._rect = pygame.Rect(x, y, self.DLG_W, self.DLG_H)
         self._sel = 0 if self._spells else -1
+        self._scroll_y = 0
         self._load_form()
 
     def _load_form(self):
@@ -95,7 +102,7 @@ class SpellDialog:
     TAB_GAP = 4     # gap between tabs (both axes)
     ADD_W   = 56    # width of the trailing "+ Add" cell
 
-    def _layout_tabs(self):
+    def _layout_tabs(self, base_y=None):
         """Compute wrapping multi-row layout for the spell tabs + [+ Add].
 
         Returns (tab_rects, add_rect, content_y) where content_y is the first
@@ -103,6 +110,10 @@ class SpellDialog:
         The tabs flow left-to-right and wrap onto new rows so they never run
         past the right edge of the dialog. The [+ Add] button is the cell that
         immediately follows the last tab in this same flow.
+
+        ``base_y`` is the y where the first tab row starts; callers pass a
+        scroll-adjusted value so the tabs scroll with the rest of the form.
+        Defaults to the unscrolled position just below the header.
         """
         r   = self._rect
         PAD = self.PAD
@@ -110,7 +121,7 @@ class SpellDialog:
         gap = self.TAB_GAP
         tw  = self.TAB_W
         start_x = r.x + PAD
-        start_y = r.y + self.HDR_H + PAD
+        start_y = base_y if base_y is not None else (r.y + self.HDR_H + PAD - self._scroll_y)
         avail_w = W - PAD * 2
         cols = max(1, (avail_w + gap) // (tw + gap))
 
@@ -182,6 +193,12 @@ class SpellDialog:
                 self._confirm()
                 return True
 
+        # Mouse wheel scrolls the tabs + form region.
+        if event.type == pygame.MOUSEWHEEL:
+            max_scroll = max(0, self._content_h - self._view_h)
+            self._scroll_y = max(0, min(self._scroll_y - event.y * 30, max_scroll))
+            return True
+
         if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
             return True
 
@@ -190,22 +207,27 @@ class SpellDialog:
         if not r:
             return True
 
+        if not r.collidepoint(mx, my):
+            self._confirm()
+            return True
+
+        # Whether the click landed inside the scrollable viewport. Clicks that
+        # fall on the fixed header or button strip must not hit scrolled-out
+        # tab/field rects that happen to sit at those coordinates.
+        in_view = (self._view_rect is None) or self._view_rect.collidepoint(mx, my)
+
         # Check Add button first
-        if "add" in self._rects and self._rects["add"].collidepoint(mx, my):
+        if in_view and "add" in self._rects and self._rects["add"].collidepoint(mx, my):
             if self._add_spell_cb:
                 self._add_spell_cb()  # Open spell selection dialog
             else:
                 self._add_spell()     # Fallback (shouldn't happen)
             return True
 
-        if not r.collidepoint(mx, my):
-            self._confirm()
-            return True
-
         self._active_field = None
 
         # Spell tabs
-        if "tab" in self._rects:
+        if in_view and "tab" in self._rects:
             for i, tr in enumerate(self._rects["tab"]):
                 if tr.collidepoint(mx, my):
                     self._save_form()
@@ -213,7 +235,7 @@ class SpellDialog:
                     self._load_form()
                     return True
 
-        if self._f:
+        if in_view and self._f:
             # Toggle buttons (single choice)
             for group_key, options in [
                 ("type",        ["Harm", "Heal", "Help"]),
@@ -292,9 +314,24 @@ class SpellDialog:
             f"✨ SPELLS — {self._agent_name}", True, (220, 200, 255))
         screen.blit(title_s, (r.x + PAD, r.y + (self.HDR_H - title_s.get_height()) // 2))
 
+        # Scrollable region: everything between the fixed header and the fixed
+        # bottom buttons (tabs + editing form). Clip drawing to this viewport
+        # and offset all content by -scroll_y so a tall form / many spell tabs
+        # scroll instead of spilling off the bottom of the dialog.
+        btn_y     = r.bottom - self.BTN_H - PAD
+        view_top  = r.y + self.HDR_H
+        view_bot  = btn_y - 10
+        view_rect = pygame.Rect(r.x + 2, view_top, W - 4, max(0, view_bot - view_top))
+        self._view_rect = view_rect
+        base_y   = view_top + PAD - self._scroll_y   # top of first tab row
+        self._view_h = max(0, view_bot - (view_top + PAD))
+
+        prev_clip = screen.get_clip()
+        screen.set_clip(view_rect)
+
         # Spell tabs + [+ Add] — wrapping multi-row layout so a long spell
         # list never overflows the dialog width.
-        tab_rects, add_r, content_y = self._layout_tabs()
+        tab_rects, add_r, content_y = self._layout_tabs(base_y=base_y)
         for i, sp in enumerate(self._spells):
             tr = tab_rects[i]
             active = (i == self._sel)
@@ -470,6 +507,23 @@ class SpellDialog:
         else:
             hint = self._font_md.render('Click "+ Add" to add a spell.', True, (120, 110, 150))
             screen.blit(hint, (r.x + (W - hint.get_width()) // 2, cy + 20))
+
+        # Done with the scrolled region: measure content, un-clip, draw scrollbar.
+        content_bottom = cy + FH
+        self._content_h = max(0, content_bottom - base_y)
+        screen.set_clip(prev_clip)
+
+        max_scroll = max(0, self._content_h - self._view_h)
+        if max_scroll > 0 and self._view_h > 0:
+            track_top = view_top + PAD
+            thumb_h = max(24, int(self._view_h * self._view_h / self._content_h))
+            thumb_y = track_top + int((self._view_h - thumb_h) * self._scroll_y / max_scroll)
+            pygame.draw.rect(screen, (60, 50, 85),
+                             pygame.Rect(r.right - 9, track_top, 4, self._view_h),
+                             border_radius=2)
+            pygame.draw.rect(screen, (150, 110, 210),
+                             pygame.Rect(r.right - 9, thumb_y, 4, thumb_h),
+                             border_radius=2)
 
         # Bottom buttons
         btn_y = r.bottom - self.BTN_H - PAD

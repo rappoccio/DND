@@ -13,6 +13,8 @@ FACTION_COLORS = {
 }
 # Team ids offered in the GUI picker (neutral + the playable teams).
 FACTION_CHOICES = [0, 1, 2]
+# Team the party is dropped onto (encounter mobs are the "red" team, so PCs go "blue").
+PC_FACTION = 2
 
 def faction_name(fid: int) -> str:
     return FACTION_NAMES.get(int(fid), f"faction {fid}")

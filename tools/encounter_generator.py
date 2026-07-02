@@ -22,11 +22,11 @@ Two sub-commands:
 
 Encounter categories (x = target CR):
 
-  A: 4-5 x (CR x-2, Simple)
-  B: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-1, PreferRange)
-  C: 1-2 x (CR x-1, Simple)  + 1-2 x (CR x-1, PreferRange)
-  D: 1-2 x (CR x-1, Simple)  + 1   x (CR x-1, PreferAOE)
-  E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-1, PreferRange) + 1 Dragon (CR <= x, PreferAOE)
+  A: 4-5 x (CR x-3, Simple)
+  B: 2-3 x (CR x-3, Simple)  + 1-2 x (CR x-2, PreferRange)
+  C: 1-2 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
+  D: 1-2 x (CR x-2, Simple)  + 1   x (CR x-2, PreferAOE)
+  E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange) + 1 Dragon (CR <= x, PreferAOE)
 
 Mob counts are drawn uniformly from the stated ranges.
 
@@ -86,15 +86,15 @@ ENEMY_FACTION = 1
 # weapon; 'aoe' = must have an area spell / breath weapon; 'dragon' = any dragon
 # with CR <= x (cr_offset ignored).
 CATEGORY_TABLE: dict[str, list[tuple[int, int, str, int, int]]] = {
-    "A": [(-2, STRAT_SIMPLE, "any", 4, 5)],
-    "B": [(-2, STRAT_SIMPLE, "any", 2, 3),
-          (-1, STRAT_PREFER_RANGE, "ranged", 1, 2)],
-    "C": [(-1, STRAT_SIMPLE, "any", 1, 2),
-          (-1, STRAT_PREFER_RANGE, "ranged", 1, 2)],
-    "D": [(-1, STRAT_SIMPLE, "any", 1, 2),
-          (-1, STRAT_PREFER_AOE, "aoe", 1, 1)],
+    "A": [(-3, STRAT_SIMPLE, "any", 4, 5)],
+    "B": [(-3, STRAT_SIMPLE, "any", 2, 3),
+          (-2, STRAT_PREFER_RANGE, "ranged", 1, 2)],
+    "C": [(-2, STRAT_SIMPLE, "any", 1, 2),
+          (-2, STRAT_PREFER_RANGE, "ranged", 1, 2)],
+    "D": [(-2, STRAT_SIMPLE, "any", 1, 2),
+          (-2, STRAT_PREFER_AOE, "aoe", 1, 1)],
     "E": [(-2, STRAT_SIMPLE, "any", 2, 3),
-          (-1, STRAT_PREFER_RANGE, "ranged", 1, 2),
+          (-2, STRAT_PREFER_RANGE, "ranged", 1, 2),
           (0, STRAT_PREFER_AOE, "dragon", 1, 1)],
 }
 
@@ -889,11 +889,11 @@ _ENCOUNTER_DESC = """\
 Generate ONE random encounter of a single category (A-E) at target CR x.
 
 Category compositions (mob counts are uniform over the stated ranges):
-  A: 4-5 x (CR x-2, Simple)
-  B: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-1, PreferRange)
-  C: 1-2 x (CR x-1, Simple)  + 1-2 x (CR x-1, PreferRange)
-  D: 1-2 x (CR x-1, Simple)  + 1   x (CR x-1, PreferAOE)
-  E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-1, PreferRange)
+  A: 4-5 x (CR x-3, Simple)
+  B: 2-3 x (CR x-3, Simple)  + 1-2 x (CR x-2, PreferRange)
+  C: 1-2 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
+  D: 1-2 x (CR x-2, Simple)  + 1   x (CR x-2, PreferAOE)
+  E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
                              + 1 Dragon (CR <= x, PreferAOE)
 
 Candidate pools: 'Simple' = any monster at the required CR; 'PreferRange' = a

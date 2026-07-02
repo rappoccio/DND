@@ -1511,9 +1511,13 @@ NpcAoePlan CombatEngine::npcPlanAoeCast(const BattleMap& bm, int agent_idx) cons
         for (int ai : enemies) {
             const Cell aim = agents[static_cast<std::size_t>(ai)].origin;
             if (placedArea) {
-                const double dCells = std::hypot(static_cast<double>(aim.col - casterOrigin.col),
-                                                 static_cast<double>(aim.row - casterOrigin.row));
-                if (dCells * 5.0 > rangeFt + 1e-6) continue;          // aim beyond casting range
+                // D&D 5e uses grid (Chebyshev) distance — every cell, diagonals included, is 5 ft.
+                // Match the engine's canonical range test (BattleMap range uses std::max(dc,dr)). A
+                // Euclidean hypot here made a diagonally-adjacent aim read as ~7.07 ft and wrongly fail
+                // the 5-ft gate, so an NPC that closed to a diagonal cell could never cast its short blast.
+                const int dCells = std::max(std::abs(aim.col - casterOrigin.col),
+                                            std::abs(aim.row - casterOrigin.row));
+                if (dCells * 5 > rangeFt) continue;                   // aim beyond casting range
             }
             if (!bm.hasLineOfSight(casterOrigin, casterSize, aim, 1)) continue;
 

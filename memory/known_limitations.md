@@ -211,17 +211,19 @@ Two coupled on-hit-rider fixes (surfaced by a Vampire Spawn Claw Grappled rider 
 
 </details>
 
-### Rider-laden Attack actions skip Frenzy / unarmed-weapon restore [minor]
+### Rider-laden Attack actions skip the unarmed-weapon restore [minor]
 The Attack-action sequence advance (disarm between attacks, `action_used`, ending the sequence) is now
 done **centrally** in `_finish_attack` right after the attack-count decrement, so it runs for every
 valid action attack regardless of which on-hit/on-miss rider (if any) fired — this fixes both the
 "clicking your own sprite mid-sequence = self-attack/out of range" report and the re-seed-on-the-last-
-attack bug for riders. However, **Berserker Frenzy's bonus attack and the unarmed-weapon restore** still
-live only in the *no-rider* branch of `_finish_attack`, so when the triggering attack carried a rider
-(brutal/cunning/divine/psionic/smite/etc.) those two side effects are skipped that swing. Rare in
-practice (a Berserker's last action attack would need a rider for Frenzy to be missed). When unified,
-move Frenzy + the unarmed restore next to the central commit (or route every rider through one complete
-`_continue_attack_sequence_after_rider`).
+attack bug for riders. However, **the unarmed-weapon restore** still lives only in the *no-rider* branch
+of `_finish_attack`, so when the triggering attack carried a rider (brutal/cunning/divine/psionic/smite/
+etc.) that side effect is skipped that swing. When unified, move the unarmed restore next to the central
+commit (or route every rider through one complete `_continue_attack_sequence_after_rider`).
+
+NOTE: 2024 Berserker Frenzy is NOT a bonus attack — it is extra Nd6 damage (N = Rage damage bonus),
+applied engine-side in `combat_attack.cpp` on the first hit each turn. The old 2014 bonus-attack code
+was removed from `main.py` (it double-dipped alongside the engine's 2024 dice).
 
 ---
 
