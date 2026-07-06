@@ -477,6 +477,435 @@ def test_aoe_falls_back_to_weapon_without_aoe_spell():
     print("✅ test_aoe_falls_back_to_weapon_without_aoe_spell passed")
 
 
+# ── Bucket D: rechargeable features (breath weapons) ─────────────────────────
+# A monster with an AVAILABLE recharge AoE feature spends it as often as it recharges, whatever its base
+# strategy — runNpcTurn routes through the AoE executor. An expended breath is not "available", so a
+# monster on cooldown falls through to its normal (weapon) turn. Determinism: recharge_min=99 can never be
+# met by a d6 (stays expended); a spell built with expended=True starts on cooldown.
+def _recharge_breath(radius_ft=5, range_ft=60, recharge_min=5, expended=False):
+    """A level-0 Sphere Harm breath weapon modelled exactly like the derived catalog spells: uses_max=1 +
+    a recharge threshold. Automatic damage so a cast deterministically damages every enemy in the area."""
+    s = _aoe_cantrip(radius_ft=radius_ft, range_ft=range_ft)
+    s.name = "Fire Breath"
+    s.uses_max = 1
+    s.uses_remaining = 0 if expended else 1
+    s.recharge_min = recharge_min
+    s.expended = expended
+    return s
+
+
+def _make_npc(engine, bm, idx):
+    """Flag an agent is_npc so the NPC uses/recharge gate in available_castable_spells applies."""
+    cs = engine.get_agent_stats(bm, idx)
+    cs.is_npc = True
+    engine.set_agent_stats(bm, idx, cs)
+
+
+def test_recharge_breath_gating_respects_expended():
+    """The C++ gate fix: a level-0 NPC breath is NOT an at-will cantrip. It is offered while it has a use
+    and is not expended, and withheld once expended (previously level-0 bypassed the uses/recharge check)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Dragon", 5, 5))
+    _make_npc(engine, bm, npc)
+
+    engine.set_agent_spells(bm, npc, [_recharge_breath()])
+    assert 0 in engine.available_castable_spells(bm, npc), "an available breath must be castable"
+
+    engine.set_agent_spells(bm, npc, [_recharge_breath(expended=True)])
+    assert engine.available_castable_spells(bm, npc) == [], "an expended breath must NOT be castable"
+    print("✅ test_recharge_breath_gating_respects_expended passed")
+
+
+def test_recharge_breath_used_regardless_of_strategy():
+    """A Simple (preferMelee) dragon with an available recharge breath uses it anyway — Bucket D routes any
+    strategy through the AoE executor when a recharge AoE is up, catching the whole cluster."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Dragon", 1, 1))
+    a   = add_agent_to_battle(engine, bm, create_test_agent("FoeA", 6, 5), hp=30)
+    b   = add_agent_to_battle(engine, bm, create_test_agent("FoeB", 6, 6), hp=30)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(a, 2); bm.set_agent_faction(b, 2)
+    _make_npc(engine, bm, npc)
+    _arm_melee(engine, bm, npc)                                    # HAS a melee option …
+    engine.set_agent_spells(bm, npc, [_recharge_breath()])         # … but breathes instead
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)           # NOT PreferAOE
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _hp(engine, bm, a) < 30 and _hp(engine, bm, b) < 30, "both foes caught by the breath"
+    assert engine.get_agent_spells(bm, npc)[0].expended, "the breath is spent (expended) after use"
+    print("✅ test_recharge_breath_used_regardless_of_strategy passed")
+
+
+def test_recharge_breath_on_cooldown_falls_back_to_weapon():
+    """When the breath is expended (on cooldown), a Simple dragon does NOT try to re-cast it — it falls
+    through to a normal weapon turn and bites the adjacent foe."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Dragon", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+    _make_npc(engine, bm, npc)
+    _arm_melee(engine, bm, npc)
+    # recharge_min=99 can never be met by a begin_turn d6, so the expended breath stays on cooldown.
+    engine.set_agent_spells(bm, npc, [_recharge_breath(recharge_min=99, expended=True)])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)
+
+    calls = []
+    engine.set_render_attack_hook(lambda at, t: calls.append((at, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    # An expended breath is not castable at all (see the gating test), so the ONLY way the foe can be
+    # attacked is the weapon fallback — the render hook firing a swing at it proves the Simple weapon turn
+    # ran instead of a breath. (HP isn't asserted: the attack roll may miss on the seeded RNG, exactly as
+    # the other Simple-turn tests only check the render hook.)
+    assert (npc, foe) in calls, "breath on cooldown → fall back to a weapon attack"
+    assert engine.get_agent_spells(bm, npc)[0].expended, "the breath stays expended (was never re-cast)"
+    print("✅ test_recharge_breath_on_cooldown_falls_back_to_weapon passed")
+
+
+# ── Step 7: PreferHide ───────────────────────────────────────────────────────
+def test_hide_focus_fires_lowest_hp():
+    """CP0 — PreferHide is (for now) a non-kiting focused ranged attacker: with a closer healthy foe and a
+    farther wounded foe both in range, it shoots the wounded one and ends its turn. (The Conceal tail is a
+    no-op at CP0, so this mirrors PreferRange's focus-fire minus the kite.)"""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    # Keep both enemies out of melee adjacency so the shot never provokes an OA (which would park the flow
+    # waiting on a human reaction and never Complete in this headless test).
+    npc     = add_agent_to_battle(engine, bm, create_test_agent("Sniper", 5, 5))
+    tank    = add_agent_to_battle(engine, bm, create_test_agent("Tank", 5, 7),  hp=60)   # closer, healthy
+    wounded = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 9),  hp=20)   # farther, low HP
+    for a, f in ((npc, 1), (tank, 2), (wounded, 2)):
+        bm.set_agent_faction(a, f)
+    _arm_ranged(engine, bm, npc)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, wounded) in calls, "should focus-fire the lowest-HP enemy"
+    assert (npc, tank) not in calls, "should NOT shoot the closer healthy enemy"
+    print("✅ test_hide_focus_fires_lowest_hp passed")
+
+
+# ── Step 7 CP1: conceal pure helpers (cover finder + invis-spell finder) ─────────
+def _invis_spell(name, casting_time, condition_name, level=0):
+    """A self-Invisibility spell as the finder recognises it: a Help buff whose condition list carries
+    the Invisible / GreaterInvisible condition. Level 0 keeps it castable without slot bookkeeping."""
+    sp = rpg.Spell()
+    sp.name = name
+    sp.type = rpg.SpellType.Help
+    sp.casting_time = casting_time
+    sp.level = level
+    ac = rpg.AttackCondition()
+    ac.condition_name = condition_name
+    sp.conditions = [ac]
+    return sp
+
+
+def test_hide_cover_cell_found():
+    """CP1 — npc_find_cover_cell returns a reachable cell with no enemy LoS when a wall casts a shadow the
+    NPC can step into, and None when it is fully exposed on open ground."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc   = add_agent_to_battle(engine, bm, create_test_agent("Sniper", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Watcher", 1, 5))
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(enemy, 2)
+    # Seed the walk budget the finder reads (headless: no GUI _reset_movement seeds it).
+    bm.placed_agents[npc].init_movement(30)   # 6 cells
+
+    npc_o = bm.placed_agents[npc].origin
+    enemy_o = bm.placed_agents[enemy].origin
+
+    # Wall one cell EAST of the sniper, in line with the watcher → the cells directly behind it (still
+    # reachable by going around) fall in the watcher's shadow. The sniper's own cell stays exposed.
+    bm.set_terrain_type(rpg.Cell(6, 5), rpg.TerrainType.Wall)
+    assert bm.has_line_of_sight(enemy_o, 1, npc_o, 1), "sniper's current cell should be exposed"
+
+    cover = engine.npc_find_cover_cell(bm, npc)
+    assert cover is not None, "a no-LoS cover cell should be reachable behind the wall"
+    assert not bm.has_line_of_sight(cover, 1, enemy_o, 1), "the chosen cover cell must have no enemy LoS"
+
+    # Fully exposed: remove the wall → every reachable cell is in the open → no cover.
+    bm.set_terrain_type(rpg.Cell(6, 5), rpg.TerrainType.Standard)
+    assert engine.npc_find_cover_cell(bm, npc) is None, "open ground offers no cover"
+    print("✅ test_hide_cover_cell_found passed")
+
+
+def test_hide_invis_finder():
+    """CP1 — npc_find_self_invis_spell matches by casting time, and prefers Greater Invisibility."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 5, 5))
+
+    action_invis = _invis_spell("Invisibility", rpg.CastingTime.Action, "Invisible")
+    engine.set_agent_spells(bm, idx, [action_invis])
+    assert engine.npc_find_self_invis_spell(bm, idx, rpg.CastingTime.Action) == 0
+    assert engine.npc_find_self_invis_spell(bm, idx, rpg.CastingTime.BonusAction) == -1, \
+        "an Action-cast invis must not satisfy a BonusAction query"
+
+    # A bonus-action copy → the BonusAction query now hits it.
+    bonus_invis = _invis_spell("Invisibility (Swift)", rpg.CastingTime.BonusAction, "Invisible")
+    engine.set_agent_spells(bm, idx, [action_invis, bonus_invis])
+    assert engine.npc_find_self_invis_spell(bm, idx, rpg.CastingTime.BonusAction) == 1
+
+    # Greater Invisibility present → preferred among the Action-cast matches over plain Invisibility.
+    greater = _invis_spell("Greater Invisibility", rpg.CastingTime.Action, "GreaterInvisible")
+    engine.set_agent_spells(bm, idx, [action_invis, bonus_invis, greater])
+    assert engine.npc_find_self_invis_spell(bm, idx, rpg.CastingTime.Action) == 2, \
+        "the finder should prefer Greater Invisibility"
+    print("✅ test_hide_invis_finder passed")
+
+
+# ── Step 7 CP2: Route B (cunning-action cover Hide) ──────────────────────────────
+def _grant_cunning_action(engine, bm, idx):
+    """Flag the agent as having Cunning Action (the bonus-action Hide that route B leans on)."""
+    s = engine.get_agent_stats(bm, idx)
+    s.has_cunning_action = True
+    engine.set_agent_stats(bm, idx, s)
+
+
+def _wall_cover_setup():
+    """A PreferHide sniper at (5,5) with a Cunning Action, a west-side enemy at (1,5), and a wall at (6,5).
+    The sniper's own cell is exposed (it can shoot), but the cells east of the wall sit in the enemy's
+    shadow — reachable no-LoS cover to retreat into. Mirrors the proven geometry of test_hide_cover_cell_found."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc   = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Guard", 1, 5), hp=60)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(enemy, 2)
+    _arm_ranged(engine, bm, npc)
+    _grant_cunning_action(engine, bm, npc)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+    bm.set_terrain_type(rpg.Cell(6, 5), rpg.TerrainType.Wall)
+    return bm, engine, npc, enemy
+
+
+def test_hide_route_b_attacks_then_hides():
+    """CP2 — a Cunning-Action ranged NPC with reachable cover shoots the enemy, retreats behind the wall,
+    and bonus-action Hides, ending its turn Hidden."""
+    bm, engine, npc, enemy = _wall_cover_setup()
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, enemy) in calls, "route B still spends its Action attacking"
+    assert _cond(engine, bm, npc).hidden, "route B ends its turn Hidden behind cover"
+    print("✅ test_hide_route_b_attacks_then_hides passed")
+
+
+def test_hide_route_b_advantage_when_prehidden():
+    """CP2 — entering the turn already Hidden, the route-B attack rolls with advantage (the swing reveals
+    the attacker), then it re-hides behind cover for next round."""
+    bm, engine, npc, enemy = _wall_cover_setup()
+
+    c = engine.get_agent_conditions(bm, npc)
+    c.hidden = True
+    engine.set_agent_conditions(bm, npc, c)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert engine.last_attack_result().advantage, "a pre-hidden attacker's shot should roll with advantage"
+    assert _cond(engine, bm, npc).hidden, "route B re-hides after revealing itself with the attack"
+    print("✅ test_hide_route_b_advantage_when_prehidden passed")
+
+
+def test_hide_route_b_no_cover_ends_exposed():
+    """CP2 — a Cunning-Action ranged NPC with NO reachable no-LoS cell attacks and ends its turn NOT
+    hidden, with its bonus action still unspent (it re-tries the hide next round). No crash."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc   = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Guard", 1, 5), hp=60)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(enemy, 2)
+    _arm_ranged(engine, bm, npc)
+    _grant_cunning_action(engine, bm, npc)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+    # No wall anywhere → open ground → every reachable cell keeps the enemy's line of sight → no cover.
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, enemy) in calls, "still attacks even with nowhere to hide"
+    assert not _cond(engine, bm, npc).hidden, "exposed on open ground → not hidden"
+    assert engine.has_bonus_action(bm, npc), "no hide attempted → bonus action left unspent"
+    print("✅ test_hide_route_b_no_cover_ends_exposed passed")
+
+
+# ── Step 7 CP3: Route C (action-cast Invisibility, alternating) ──────────────────
+def test_hide_route_c_alternates():
+    """CP3 — Route C: an NPC that knows self-Invisibility as an ACTION cast but has NO Cunning Action
+    alternates cast/attack across rounds. Turn 1 (visible) casts Invisibility and makes NO attack (the
+    target takes no damage), ending Invisible. Turn 2 (still Invisible at start) attacks WITH advantage,
+    revealing itself."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc   = add_agent_to_battle(engine, bm, create_test_agent("Assassin", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Guard", 3, 5), hp=60)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(enemy, 2)
+    _arm_ranged(engine, bm, npc)
+
+    # An ACTION-cast self-Invisibility, no Cunning Action → npcClassifyConceal returns Route C. attack_type
+    # Automatic makes the Help buff auto-apply to the caster (no attack roll / save gate), like real Invisibility.
+    invis = _invis_spell("Invisibility", rpg.CastingTime.Action, "Invisible")
+    invis.attack_type = rpg.SpellAttack.Automatic
+    engine.set_agent_spells(bm, npc, [invis])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+    assert engine.npc_classify_conceal(bm, npc) == rpg.NpcConcealRoute.RouteC
+
+    hp0 = engine.get_agent_stats(bm, enemy).hp_cur
+
+    # Turn 1 — visible: cast Invisibility instead of attacking.
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    assert engine.run_npc_turn(bm, npc) == rpg.FlowStatus.Completed
+    assert (npc, enemy) not in calls, "route C turn 1 casts instead of attacking — no swing"
+    assert engine.get_agent_stats(bm, enemy).hp_cur == hp0, "no attack → target unharmed on the cast round"
+    assert _cond(engine, bm, npc).invisible, "route C turn 1 ends Invisible"
+
+    # Turn 2 — still Invisible at start: attack with advantage, revealing.
+    calls.clear()
+    engine.begin_turn(bm, npc)
+    assert engine.run_npc_turn(bm, npc) == rpg.FlowStatus.Completed
+    assert (npc, enemy) in calls, "route C turn 2 spends its Action attacking"
+    assert engine.last_attack_result().advantage, "attacking from Invisibility rolls with advantage"
+    assert not _cond(engine, bm, npc).invisible, "the attack reveals the attacker (Invisibility ends)"
+    print("✅ test_hide_route_c_alternates passed")
+
+
+# ── Step 7 CP4: Route A (bonus-action Invisibility after a full-damage attack) ────
+def _arm_ranged_sure_hit(engine, bm, idx, range_ft=80):
+    """A ranged weapon with a huge to-hit bonus so the shot lands on the seeded RNG (target AC 10),
+    letting Route A's 'attack deals damage' be asserted deterministically."""
+    w = rpg.Weapon()
+    w.name = "Shortbow"
+    w.type = rpg.WeaponType.Ranged
+    w.normal_range_ft = range_ft
+    # rollDamage reads physical_damage_types (not the legacy damage_dice fields), so build an explicit roll.
+    pr = rpg.PhysicalDamageRoll()
+    pr.type = rpg.PhysicalDamage.Piercing
+    pr.num_dice = 1
+    pr.die_size = 6
+    w.physical_damage_types = [pr]
+    w.bonus_hit = 20          # AC 10 enemy → never misses (short of a natural 1)
+    engine.set_agent_weapons(bm, idx, [w, rpg.Weapon(), rpg.Weapon()])
+
+
+def test_hide_route_a_attack_and_bonus_invis():
+    """CP4 — Route A: an NPC with a BONUS-ACTION self-Invisibility spell attacks with its Action (target
+    takes damage) AND bonus-casts Invisibility in the same turn, ending Invisible."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc   = add_agent_to_battle(engine, bm, create_test_agent("Fey Scout", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Guard", 3, 5), hp=60)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(enemy, 2)
+    _arm_ranged_sure_hit(engine, bm, npc)
+
+    # A BONUS-ACTION self-Invisibility, auto-applied to the caster → npcClassifyConceal returns Route A.
+    invis = _invis_spell("Invisibility (Swift)", rpg.CastingTime.BonusAction, "Invisible")
+    invis.attack_type = rpg.SpellAttack.Automatic
+    engine.set_agent_spells(bm, npc, [invis])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+    assert engine.npc_classify_conceal(bm, npc) == rpg.NpcConcealRoute.RouteA
+
+    hp0 = engine.get_agent_stats(bm, enemy).hp_cur
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    assert engine.run_npc_turn(bm, npc) == rpg.FlowStatus.Completed
+
+    assert (npc, enemy) in calls, "route A spends its Action attacking (full damage)"
+    assert engine.get_agent_stats(bm, enemy).hp_cur < hp0, "the attack should deal damage"
+    assert _cond(engine, bm, npc).invisible, "route A bonus-casts Invisibility, ending the turn Invisible"
+    print("✅ test_hide_route_a_attack_and_bonus_invis passed")
+
+
+def test_hide_route_a_beats_route_b():
+    """CP4 — when an NPC has BOTH a BonusAction invis spell AND a Cunning Action, Route A outranks Route B:
+    it ends Invisible (spell), not merely Hidden."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc   = add_agent_to_battle(engine, bm, create_test_agent("Fey Rogue", 5, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Guard", 1, 5), hp=60)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(enemy, 2)
+    _arm_ranged_sure_hit(engine, bm, npc)
+    _grant_cunning_action(engine, bm, npc)
+    # Cover is available too (Route B could fire) — Route A must still win.
+    bm.set_terrain_type(rpg.Cell(6, 5), rpg.TerrainType.Wall)
+
+    invis = _invis_spell("Invisibility (Swift)", rpg.CastingTime.BonusAction, "Invisible")
+    invis.attack_type = rpg.SpellAttack.Automatic
+    engine.set_agent_spells(bm, npc, [invis])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+    assert engine.npc_classify_conceal(bm, npc) == rpg.NpcConcealRoute.RouteA, \
+        "a BonusAction invis spell must outrank Cunning-Action Hide"
+
+    engine.begin_turn(bm, npc)
+    assert engine.run_npc_turn(bm, npc) == rpg.FlowStatus.Completed
+    assert _cond(engine, bm, npc).invisible, "route A ends Invisible (the spell), not merely Hidden"
+    print("✅ test_hide_route_a_beats_route_b passed")
+
+
+# ── Step 7 CP5: no-target ambush + Route D (plain kite fallback) ─────────────────
+def test_hide_no_target_ambush():
+    """CP5 — a lone PreferHide NPC with no attackable target does not idle: it Hides as an Action (moving to
+    cover first if any is reachable) and ends its turn Hidden, making no attack."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Scout", 5, 5))
+    bm.set_agent_faction(npc, 1)
+    _arm_ranged(engine, bm, npc)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert calls == [], "no target → no attack in a pure ambush"
+    assert _cond(engine, bm, npc).hidden, "the ambusher ends its turn Hidden"
+
+    # Already concealed with still no target → hold, stay Hidden, no crash.
+    engine.begin_turn(bm, npc)
+    assert engine.run_npc_turn(bm, npc) == rpg.FlowStatus.Completed
+    assert _cond(engine, bm, npc).hidden, "already hidden with no target → holds in concealment"
+    print("✅ test_hide_no_target_ambush passed")
+
+
+def test_hide_route_d_falls_back_to_kite():
+    """CP5 — Route D: a PreferHide NPC with NO Cunning Action and NO invis spell has no way to conceal, so it
+    falls back to a plain PreferRange kite — it attacks from range without closing the gap and does not hide."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Slinger", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 8), hp=30)   # 3 cells away, in range
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+    _arm_ranged(engine, bm, npc)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferHide)
+    assert engine.npc_classify_conceal(bm, npc) == rpg.NpcConcealRoute.RouteD, \
+        "no cunning action + no invis spell → Route D"
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    dist_before = _fp_dist(bm, npc, foe)
+    assert dist_before == 3
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, foe) in calls, "Route D still attacks from range"
+    assert _fp_dist(bm, npc, foe) >= dist_before, "Route D kites like PreferRange (does not close the gap)"
+    assert not _cond(engine, bm, npc).hidden, "Route D has no stealth tools → does not end Hidden"
+    print("✅ test_hide_route_d_falls_back_to_kite passed")
+
+
 def run_all():
     test_flags_round_trip()
     test_resolve_strategy_returns_agent_field()
@@ -495,7 +924,21 @@ def run_all():
     test_aoe_avoids_friendly_fire()
     test_aoe_moves_into_range_before_meleeing()
     test_aoe_falls_back_to_weapon_without_aoe_spell()
-    print("\nAll NPC automation (Steps 1–6) tests passed ✅")
+    test_recharge_breath_gating_respects_expended()
+    test_recharge_breath_used_regardless_of_strategy()
+    test_recharge_breath_on_cooldown_falls_back_to_weapon()
+    test_hide_focus_fires_lowest_hp()
+    test_hide_cover_cell_found()
+    test_hide_invis_finder()
+    test_hide_route_b_attacks_then_hides()
+    test_hide_route_b_advantage_when_prehidden()
+    test_hide_route_b_no_cover_ends_exposed()
+    test_hide_route_c_alternates()
+    test_hide_route_a_attack_and_bonus_invis()
+    test_hide_route_a_beats_route_b()
+    test_hide_no_target_ambush()
+    test_hide_route_d_falls_back_to_kite()
+    print("\nAll NPC automation (Steps 1–7 + Bucket D) tests passed ✅")
 
 
 if __name__ == "__main__":

@@ -946,6 +946,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("PreferHide",         NpcAutomationStrategy::PreferHide)
         .export_values();
 
+    py::enum_<NpcConcealRoute>(m, "NpcConcealRoute")
+        .value("RouteA", NpcConcealRoute::RouteA)
+        .value("RouteB", NpcConcealRoute::RouteB)
+        .value("RouteC", NpcConcealRoute::RouteC)
+        .value("RouteD", NpcConcealRoute::RouteD)
+        .export_values();
+
     py::enum_<Spell::SpellType_t>(m, "SpellType")
         .value("Harm", Spell::Harm)
         .value("Heal", Spell::Heal)
@@ -2253,6 +2260,27 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Resolve which NpcAutomationStrategy an automated agent uses this turn. The single seam where\n"
              "the later difficulty-level override will live; today returns the per-agent strategy field.")
+        .def("npc_find_self_invis_spell",
+             &CombatEngine::npcFindSelfInvisSpell,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("casting_time"),
+             "PreferHide (Step 7) helper: index in agent[idx]'s spell list of a castable Help spell that\n"
+             "grants Invisible to the caster with the given CastingTime (Action/BonusAction); prefers\n"
+             "Greater Invisibility. Returns -1 if none. Gated by available_castable_spells.")
+        .def("npc_find_cover_cell",
+             [](CombatEngine& self, BattleMap& bm, int agent_idx) -> py::object {
+                 Cell out{};
+                 if (self.npcFindCoverCell(bm, agent_idx, out)) return py::cast(out);
+                 return py::none();
+             },
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "PreferHide (Step 7) helper: nearest reachable cell (live walk budget) with no enemy line of\n"
+             "sight to agent[idx]'s footprint — 'move to cover'. Returns the Cell, or None if every\n"
+             "reachable cell is exposed.")
+        .def("npc_classify_conceal",
+             &CombatEngine::npcClassifyConceal,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "PreferHide (Step 7) helper: classify the conceal route (A/B/C/D) for agent[idx] from its\n"
+             "current tools — bonus-invis (A), cunning action + cover (B), action-invis (C), else kite (D).")
         .def("set_render_attack_hook",
              &CombatEngine::setRenderAttackHook,
              py::arg("hook"),

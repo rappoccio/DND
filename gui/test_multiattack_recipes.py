@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Golden-file regression test for the Bucket A NPC multiattack recipes.
+"""Golden-file regression test for the Bucket A + Bucket B NPC multiattack recipes.
 
-Each of the 17 "Bucket A" monsters is loaded straight from the authoritative
-bestiary (DND2024_MonsterStats.json) WITH its authored `multiattack` recipe,
+Each of the 17 "Bucket A" monsters plus the 2 "Bucket B" monsters (Pit Fiend,
+Chimera — whose recipes reference a 4th weapon slot) is loaded straight from the
+authoritative bestiary (DND2024_MonsterStats.json) WITH its authored `multiattack`
+recipe,
 placed on the NEUTRAL team (faction 0 → allied with no one, so every creature is
 a mutual enemy) next to a neutral NPC "Test Dummy" that is itself an automated
 NPC, and driven through one automated turn under a FIXED RNG seed. The full
@@ -42,6 +44,15 @@ BUCKET_A = [
     "Ettin", "Giant Crocodile", "Tyrannosaurus Rex", "Unicorn", "Purple Worm",
     "Bearded Devil", "Balor", "Giant Scorpion", "Cloaker", "Tarrasque",
 ]
+
+# Bucket B: recipes that reference a 4th weapon (index 3), only expressible once the
+# record is in flat-list weapon form (tools/author_bucket_b.py). Regenerate the golden
+# AFTER running that script, or these two fall back to legacy num_attacks free-combo.
+BUCKET_B = [
+    "Pit Fiend", "Chimera",
+]
+
+MONSTERS = BUCKET_A + BUCKET_B
 
 with open(STATS_PATH) as _f:
     BESTIARY = json.load(_f)
@@ -97,7 +108,7 @@ def _run_monster_log(name):
 
 def build_output():
     out = []
-    for name in BUCKET_A:
+    for name in MONSTERS:
         out.extend(_run_monster_log(name))
         out.append("")
     return "\n".join(out).rstrip() + "\n"
@@ -124,7 +135,7 @@ def main():
         expected = f.read()
 
     if actual == expected:
-        print(f"✅ test_multiattack_recipes: all {len(BUCKET_A)} Bucket A "
+        print(f"✅ test_multiattack_recipes: all {len(MONSTERS)} Bucket A+B "
               f"recipe logs match the golden file")
         return 0
 

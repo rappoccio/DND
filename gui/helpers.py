@@ -14,7 +14,9 @@ import rpg_battle_map as rpg
 def can_place_agent(bm, cell, size, exclude_idx=-1) -> bool:
     """Return True if a size×size agent fits at top-left `cell`: in bounds, not on a
     wall/blocked cell, and not overlapping another LIVE agent's footprint. A tombstoned
-    agent (removed_from_play, e.g. a dismissed summon) no longer occupies its cell."""
+    agent (removed_from_play, e.g. a dismissed summon) no longer occupies its cell, and
+    neither does a downed body (hp_cur <= 0) — mirroring the engine's agentOccupancy,
+    so a killed agent's square frees up for others to move into or be placed on."""
     cols, rows = bm.grid_cols, bm.grid_rows
     if cell.col < 0 or cell.row < 0:
         return False
@@ -23,7 +25,7 @@ def can_place_agent(bm, cell, size, exclude_idx=-1) -> bool:
     if bm.is_blocked(cell, size):
         return False
     for i, pt in enumerate(bm.placed_agents):
-        if i == exclude_idx or pt.removed_from_play:
+        if i == exclude_idx or pt.removed_from_play or pt.stats.hp_cur <= 0:
             continue
         if (cell.col < pt.origin.col + pt.size and
                 cell.col + size > pt.origin.col and

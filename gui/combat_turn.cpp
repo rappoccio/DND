@@ -1098,10 +1098,30 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     const int n = static_cast<int>(bm.placedAgents().size());
     if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
 
+    // Resume routing (Bucket D + PreferAOE): if a parked NPC turn is mid-flight for this agent and it was
+    // launched as an AoE/recharge cast (or its approach move), it MUST re-enter runAoeTurn to finish. The
+    // recharge feature that triggered the AoE route below is expended once the cast launches, so the
+    // fresh-turn heuristic would mis-route the resume. A weapon-turn resume leaves both flags clear and
+    // falls through — runWeaponTurn/runAoeTurn detect it via npc_turn_.
+    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx &&
+        (npc_turn_.aoe_cast_launched || npc_turn_.aoe_moving))
+        return runAoeTurn(bm, agent_idx);
+
     // Dispatch on the resolved strategy (NEVER the raw field — resolveStrategy is the single seam where a
     // later difficulty-level override will swap the algorithm). Strategies are added per step; until a
     // strategy has an executor it falls through to Simple (the always-defined baseline).
     const NpcAutomationStrategy strategy = resolveStrategy(bm, agent_idx);
+
+    // Bucket D — rechargeable features (dragon breath etc.): whatever the base strategy, a monster with a
+    // currently-available recharge AoE action should spend it as often as it recharges. Route through the
+    // AoE executor (it prioritises the area breath, respects friendly-fire/ally-sparing, and falls back to
+    // a weapon turn when the breath can't catch an enemy this turn). An expended breath is not "available",
+    // so a dragon on cooldown correctly bites instead. PreferAOE already routes to runAoeTurn below.
+    if (strategy != NpcAutomationStrategy::PreferAOE &&
+        strategy != NpcAutomationStrategy::PreferHide &&
+        npcHasAvailableRechargeAoe(bm, agent_idx))
+        return runAoeTurn(bm, agent_idx);
+
     // Each strategy is just a policy fed to the one shared executor (runWeaponTurn). New strategies add a
     // case + a policy, not a new turn driver. Until a strategy has a policy it falls through to Simple.
     NpcStrategyPolicy policy;   // defaults == Simple (preferMelee): Nearest target, best melee weapon, no kite
@@ -1115,6 +1135,14 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
             policy.prefer_ranged = true;
             policy.kite          = true;
             policy.priority      = NpcTargetPriority::LowestHp;
+            break;
+        case NpcAutomationStrategy::PreferHide:
+            // Step 7: a ranged ambusher. Best ranged weapon, focus-fire the lowest-HP enemy, but spend the
+            // MINIMUM movement to reach range+LoS (kite stays false — the saved movement funds the retreat),
+            // then run the Conceal tail to re-hide / go invisible each round. Route D flips kite on internally.
+            policy.prefer_ranged = true;
+            policy.priority      = NpcTargetPriority::LowestHp;
+            policy.conceal       = true;
             break;
         case NpcAutomationStrategy::PreferAOE:
             // Step 6: cast the available area spell that catches the most enemies; this is NOT a weapon
@@ -1234,6 +1262,84 @@ int CombatEngine::npcSelectTarget(const BattleMap& bm, int agent_idx, bool prefe
     return best;
 }
 
+int CombatEngine::npcFindSelfInvisSpell(const BattleMap& bm, int agent_idx,
+                                        Spell::CastingTime_t want) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return -1;
+    const auto& spells = agents[static_cast<std::size_t>(agent_idx)].spells;
+
+    int fallback = -1;   // a plain Invisibility match (used unless a Greater one turns up)
+    // availableCastableSpells applies the slot / N-day / per-turn gating, so a matched spell is
+    // one the agent can actually cast right now with the requested casting time.
+    for (int si : availableCastableSpells(bm, agent_idx)) {
+        const Spell& sp = spells[static_cast<std::size_t>(si)];
+        if (sp.type != Spell::Help)          continue;   // self-invis ships as a Help buff
+        if (sp.casting_time != want)         continue;   // Action vs BonusAction gate
+        bool greater = false, plain = false;
+        for (const AttackCondition& c : sp.conditions) {
+            if (c.condition_name == "GreaterInvisible") greater = true;   // persists through attacks
+            else if (c.condition_name == "Invisible")   plain   = true;
+        }
+        if (greater) return si;              // prefer Greater Invisibility outright
+        if (plain && fallback < 0) fallback = si;
+    }
+    return fallback;
+}
+
+bool CombatEngine::npcFindCoverCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+    const PlacedAgent& me_pa = agents[static_cast<std::size_t>(agent_idx)];
+    const Cell me     = me_pa.origin;
+    const int  ms     = me_pa.agent->getSize();
+    const int  budget = me_pa.agent->getWalkRemaining();
+
+    // A cell is "cover" when no living, non-incapacitated ENEMY has line of sight to the agent's
+    // footprint placed there — the exact LoS/enemy filter checkHide uses to gate a Hide.
+    auto noEnemyLos = [&](Cell c) -> bool {
+        for (int i = 0; i < n; ++i) {
+            if (i == agent_idx) continue;
+            if (areAllies(bm, agent_idx, i)) continue;
+            const PlacedAgent& obs = agents[static_cast<std::size_t>(i)];
+            if (obs.agent->getConditions().incapacitated || obs.agent->getStats().hp_cur <= 0) continue;
+            if (bm.hasLineOfSight(c, ms, obs.origin, obs.agent->getSize())) return false;
+        }
+        return true;
+    };
+
+    bool found = false; int bestSteps = std::numeric_limits<int>::max();
+    // reachableCells is the single geometry source (respects the live walk budget + footprints) and
+    // includes the current origin, so an agent already in cover legitimately "stays put" (0 steps).
+    for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
+        if (!noEnemyLos(c)) continue;
+        const int steps = std::max(std::abs(c.col - me.col), std::abs(c.row - me.row));
+        if (steps < bestSteps) { bestSteps = steps; out = c; found = true; }
+    }
+    return found;
+}
+
+NpcConcealRoute CombatEngine::npcClassifyConceal(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // Route A — a bonus-action self-Invisibility: full damage AND stealth every turn, no LoS
+    // constraint, so it outranks the cover-Hide route.
+    if (npcFindSelfInvisSpell(bm, agent_idx, Spell::BonusAction) >= 0) return NpcConcealRoute::RouteA;
+
+    // Route B — cunning action + a reachable no-LoS cover cell to Hide into after attacking.
+    if (bm.getAgentStats(agent_idx).has_cunning_action) {
+        Cell cover{};
+        if (npcFindCoverCell(bm, agent_idx, cover)) return NpcConcealRoute::RouteB;
+    }
+
+    // Route C — an action-cast self-Invisibility (alternates cast/attack across rounds).
+    if (npcFindSelfInvisSpell(bm, agent_idx, Spell::Action) >= 0) return NpcConcealRoute::RouteC;
+
+    // Route D — no stealth tools: plain PreferRange kite (handled by the caller flipping kite on).
+    return NpcConcealRoute::RouteD;
+}
+
 FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcStrategyPolicy& policy)
 {
     const int n = static_cast<int>(bm.placedAgents().size());
@@ -1254,6 +1360,11 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
             s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
     }
+
+    // Live kite flag: usually just policy.kite, but a PreferHide Route-D agent (no stealth tools) flips this
+    // on below so it runs the plain PreferRange kiting path. Kept as a local (policy is const&) that the
+    // positioning lambdas capture by reference and read at call time — after the Route-D override runs.
+    bool kite = policy.kite;
 
     // Reach of weapon slot `w`, in CELLS (footprintDistance units): melee uses reach_ft, ranged uses
     // normal_range_ft. reachableCells/footprintDistance are the single geometry source — never re-derived.
@@ -1311,7 +1422,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
             if (!canAttackFrom(c, t, w)) continue;
             const int steps = std::max(std::abs(c.col - me.col), std::abs(c.row - me.row));
-            if (policy.kite) {
+            if (kite) {
                 const int safety = enemyMinDist(c);
                 if (safety > bestSafety || (safety == bestSafety && steps < bestSteps)) {
                     bestSafety = safety; bestSteps = steps; out = c; found = true;
@@ -1391,6 +1502,42 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         return false;
     };
 
+    // ── PreferHide (Step 7): up-front conceal-route classification + Route-C skip-attack ────────────
+    // Classify the conceal route ONCE, up front, so it is stable across a park→resume AND known before the
+    // attack loop. Route C (action-cast self-Invisibility) alternates cast/attack: on a round we are NOT yet
+    // invisible, the Action goes to casting Invisibility (no attack) and we then retreat to cover; on a round
+    // we START invisible we attack with advantage and retreat. On a cast round, jump straight to the Conceal
+    // tail (skip the whole pick/move/attack path). Only runs on a fresh turn (phase == PickAndMove).
+    if (policy.conceal && st.phase == NpcTurnState::PickAndMove) {
+        st.conceal_route = static_cast<int>(npcClassifyConceal(bm, agent_idx));
+        const auto& cond =
+            bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->getConditions();
+
+        // No attackable target → pure ambush (CP5): if already Hidden/Invisible, hold; otherwise slip to the
+        // nearest no-LoS cover and Hide as an ACTION (free — no attack was made, so no cunning action needed).
+        // st.target_idx == -1 flags the ambush for the Conceal tail (which runs the cover-move + Hide). Takes
+        // precedence over the Route-C cast: with nobody to hide from there is nothing to cast Invisibility for.
+        if (selectTarget() < 0) {
+            st.target_idx = -1;
+            if (cond.hidden || cond.invisible) {       // already concealed — hold position and stay hidden
+                log_("NPC {} has no target — holding in concealment", agentName(bm, agent_idx));
+                st.active = false;
+                return FlowStatus::Completed;
+            }
+            st.phase = NpcTurnState::Conceal;          // ambush: cover-move + action Hide run in the tail
+        } else if (static_cast<NpcConcealRoute>(st.conceal_route) == NpcConcealRoute::RouteC
+                   && !cond.invisible) {
+            st.target_idx        = selectTarget();
+            st.conceal_spell_idx = npcFindSelfInvisSpell(bm, agent_idx, Spell::Action);
+            st.phase = NpcTurnState::Conceal;          // no attack this round — cast + retreat run in the tail
+        }
+    }
+    // Route D (no stealth tools): behave as a plain PreferRange kiter for the whole turn. Guarded on
+    // st.conceal_route (set on the fresh turn above) so a park→resume keeps kiting. Set BEFORE the PickAndMove
+    // positioning path reads `kite` via findPositionCell.
+    if (policy.conceal && static_cast<NpcConcealRoute>(st.conceal_route) == NpcConcealRoute::RouteD)
+        kite = true;
+
     if (st.phase == NpcTurnState::PickAndMove) {
         st.target_idx = selectTarget();
         if (st.target_idx < 0) {                       // no enemies on the field
@@ -1409,7 +1556,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const bool reachNow = inReachOf(st.target_idx, st.weapon_idx);
         // Non-kiters already in reach swing where they stand. Kiters always look for a better-spaced cell
         // first (findPositionCell includes the current cell, so "stay put" remains an option).
-        if (reachNow && !policy.kite) {
+        if (reachNow && !kite) {
             st.phase = NpcTurnState::Attacking;
             if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
         } else {
@@ -1557,6 +1704,120 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         }
     }
 
+    // ── Conceal tail (PreferHide — NPC_AUTOMATION_PLAN.md Step 7, PREFER_HIDE_PLAN.md) ─────────────
+    // After the attack loop a hider re-conceals. The route (A/B/C/D) was classified ONCE up front and cached
+    // in st.conceal_route (stable across a park→resume) — don't re-classify here. CP2 implements Route B
+    // (cunning-action cover Hide); CP3 adds Route C (action-cast Invisibility); CP4 adds Route A (bonus-cast
+    // Invisibility after a full-damage attack). Route D (plain kite, no stealth tools) falls through to Done.
+    if (policy.conceal && st.phase == NpcTurnState::Attacking) {
+        st.phase = NpcTurnState::Conceal;
+    }
+
+    if (st.phase == NpcTurnState::Conceal) {
+        const NpcConcealRoute route = static_cast<NpcConcealRoute>(st.conceal_route);
+        if (st.target_idx < 0) {
+            // No-target ambush (CP5) — no attack was made this turn, so the ACTION is free for a Hide. Slip to
+            // the nearest no-LoS cover (parkable: an OA may fire on the way), then Hide as an Action. checkHide
+            // gates on enemy LoS itself, so an agent that reached no cover simply fails the hide and stays put.
+            if (!st.conceal_move_launched) {
+                st.conceal_move_launched = true;
+                Cell cover{};
+                if (npcFindCoverCell(bm, agent_idx, cover) && cover != curOrigin()) {
+                    if (beginMove(bm, agent_idx, cover, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+            }
+            if (!st.conceal_act_launched) {
+                st.conceal_act_launched = true;
+                (void)checkHide(bm, agent_idx, /*in_combat=*/true);   // Action Hide; no bonus/cunning action
+            }
+        } else if (route == NpcConcealRoute::RouteA) {
+            // Route A (CP4) — best of both worlds: the attack already landed for full damage in the loop
+            // above; now retreat to cover and BONUS-CAST a BonusAction self-Invisibility spell. Preferred
+            // over B (classified first) because it delivers damage AND stealth every round with no LoS
+            // constraint (invisibility beats line of sight — the cover move is a bonus, not required).
+            // Phase 1 — retreat to nearest no-LoS cover (parkable: an OA may fire on the way).
+            if (!st.conceal_move_launched) {
+                st.conceal_move_launched = true;
+                Cell cover{};
+                if (npcFindCoverCell(bm, agent_idx, cover) && cover != curOrigin()) {
+                    if (beginMove(bm, agent_idx, cover, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+            }
+            // Phase 2 — bonus-action cast self-Invisibility. The finder was not resolved up front (Route A
+            // runs the normal attack path), so look it up now. spendBonusAction BEFORE beginCast, and the
+            // conceal_act_launched guard is set first, so a parked/resumed cast (Counterspell) never repeats.
+            if (!st.conceal_act_launched) {
+                st.conceal_act_launched = true;
+                if (st.conceal_spell_idx < 0)
+                    st.conceal_spell_idx = npcFindSelfInvisSpell(bm, agent_idx, Spell::BonusAction);
+                if (st.conceal_spell_idx >= 0 && hasBonusAction(bm, agent_idx)) {
+                    (void)spendBonusAction(bm, agent_idx);
+                    SpellAction cast;
+                    cast.caster_idx     = agent_idx;
+                    cast.spell_idx      = st.conceal_spell_idx;
+                    cast.slot_level     = 0;               // NPC mode: spends an N/day use, not a player slot
+                    cast.target_indices = { agent_idx };   // self-buff: apply Invisible to the caster
+                    log_("NPC {} bonus-casts {} to vanish", agentName(bm, agent_idx),
+                         bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name);
+                    if (beginCast(bm, cast) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+            }
+        } else if (route == NpcConcealRoute::RouteC) {
+            // Route C — action-cast self-Invisibility, alternating with attacks. On a cast round
+            // (conceal_spell_idx was set in PickAndMove because we were not yet invisible) the Action goes to
+            // the spell and NO attack was made; on an attack round (spell_idx == -1, we started invisible) we
+            // already swung with advantage. Either way we now retreat to cover. No bonus-action Hide — the
+            // Invisible condition IS the concealment.
+            if (st.conceal_spell_idx >= 0 && !st.conceal_act_launched) {
+                st.conceal_act_launched = true;   // set BEFORE beginCast so a parked/resumed cast never repeats
+                SpellAction cast;
+                cast.caster_idx     = agent_idx;
+                cast.spell_idx      = st.conceal_spell_idx;
+                cast.slot_level     = 0;          // NPC mode: spends an N/day use, not a player slot
+                cast.target_indices = { agent_idx };   // self-buff: apply Invisible to the caster
+                log_("NPC {} casts {} to vanish", agentName(bm, agent_idx),
+                     bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name);
+                if (beginCast(bm, cast) == FlowStatus::AwaitingDecision)
+                    return FlowStatus::AwaitingDecision;   // parked (OnDeclareCast/Counterspell); resume re-enters
+            }
+            // Retreat to cover (move only — already invisible, so no Hide). Parkable OA window on the way.
+            if (!st.conceal_move_launched) {
+                st.conceal_move_launched = true;
+                Cell cover{};
+                if (npcFindCoverCell(bm, agent_idx, cover) && cover != curOrigin()) {
+                    if (beginMove(bm, agent_idx, cover, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+            }
+        } else if (route == NpcConcealRoute::RouteB) {
+            // Phase 1 — retreat to the nearest no-LoS cover cell (parkable: an OA may fire on the way).
+            // Commit conceal_move_launched BEFORE beginMove so a parked/resumed move skips this scan.
+            if (!st.conceal_move_launched) {
+                st.conceal_move_launched = true;
+                Cell cover{};
+                if (npcFindCoverCell(bm, agent_idx, cover) && cover != curOrigin()) {
+                    if (beginMove(bm, agent_idx, cover, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        return FlowStatus::AwaitingDecision;
+                }
+                // No reachable cover (or already on it) → fall through; the checkHide gate below leaves
+                // the bonus action intact when an enemy still has line of sight (ends exposed, retries next round).
+            }
+            // Phase 2 — bonus-action Hide. checkHide's own LoS gate returns valid=false (no roll, no
+            // condition applied) when any enemy can still see us, so an agent that reached no cover ends
+            // exposed with its bonus action UNSPENT. Only pay the bonus action for a genuine hide attempt.
+            if (!st.conceal_act_launched) {
+                st.conceal_act_launched = true;
+                if (hasBonusAction(bm, agent_idx)) {
+                    const HideResult hr = checkHide(bm, agent_idx, /*in_combat=*/true);
+                    if (hr.valid) (void)spendBonusAction(bm, agent_idx);
+                }
+            }
+        }
+    }
+
     st.phase  = NpcTurnState::Done;
     st.active = false;
     return FlowStatus::Completed;
@@ -1661,6 +1922,23 @@ bool CombatEngine::npcHasCastableAoeSpell(const BattleMap& bm, int agent_idx) co
     const auto& spells = agents[static_cast<std::size_t>(agent_idx)].spells;
     for (int si : availableCastableSpells(bm, agent_idx))
         if (isAoeBlastSpell(spells[static_cast<std::size_t>(si)])) return true;
+    return false;
+}
+
+bool CombatEngine::npcHasAvailableRechargeAoe(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // Bucket D gate: does the agent have a currently-castable recharge feature that runAoeTurn can fire?
+    // "Recharge" == recharge_min > 0 (the (Recharge 5–6) mechanic); "castable" == returned by
+    // availableCastableSpells (so it has a remaining use and is NOT expended); "AoE blast" so the AoE
+    // executor actually casts it (single-target / control recharge actions are out of Bucket D's scope).
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+    const auto& spells = agents[static_cast<std::size_t>(agent_idx)].spells;
+    for (int si : availableCastableSpells(bm, agent_idx)) {
+        const Spell& sp = spells[static_cast<std::size_t>(si)];
+        if (sp.recharge_min > 0 && isAoeBlastSpell(sp)) return true;
+    }
     return false;
 }
 

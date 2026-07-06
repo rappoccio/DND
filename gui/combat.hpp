@@ -680,7 +680,7 @@ struct NpcTurnState {
     int  weapon_idx{0};          // slot 0..2 into the agent's weapons
     int  attacks_remaining{0};   // swings left in the Attack action (decremented BEFORE beginAttack so a
                                  // park-then-resume never repeats the swing that already resolved)
-    enum Phase { PickAndMove, Attacking, Done } phase{PickAndMove};
+    enum Phase { PickAndMove, Attacking, Conceal, Done } phase{PickAndMove};
     // PreferAOE (Step 6): set TRUE immediately before the single beginCast so a park-then-resume of the
     // OnDeclareCast window does NOT re-cast — submitDecision resolves the parked cast, then re-calls
     // run_npc_turn, which sees this flag and simply ends the turn (the blast already resolved).
@@ -692,6 +692,13 @@ struct NpcTurnState {
     // Multiattack recipe segments pending AFTER the current (weapon_idx, attacks_remaining) one.
     // Each is (weapon_slot, count). Empty ⇒ legacy single-weapon multiattack.
     std::vector<std::pair<int,int>> pending_segments;
+    // PreferHide (Step 7): the Conceal tail phase runs after the attack loop when policy.conceal is set.
+    // These cache the chosen conceal route + spell and gate the parkable primitives on resume (mirrors
+    // aoe_cast_launched / aoe_moving) so a park→resume does not re-move or re-cast.
+    int  conceal_route{0};                // cached A/B/C/D route (NpcConcealRoute) so a resume is stable
+    int  conceal_spell_idx{-1};           // chosen invis spell (route A bonus / route C action); -1 = none
+    bool conceal_move_launched{false};    // post-attack cover move started (resume: don't re-move)
+    bool conceal_act_launched{false};     // Hide/cast started (resume after Counterspell: don't re-cast)
 };
 
 // How an NPC strategy ranks candidate targets (NPC_AUTOMATION_PLAN.md Steps 3-5).
@@ -700,6 +707,13 @@ enum class NpcTargetPriority {
     LowestHp,   // lowest current HP, ties → closest (PreferRange focus-fires the weakest enemy)
 };
 
+// PreferHide (NPC_AUTOMATION_PLAN.md Step 7) conceal routes, in preference order (PREFER_HIDE_PLAN.md).
+//   RouteA — bonus-action self-Invisibility: attack (action) → retreat → bonus-cast invis. Best.
+//   RouteB — cunning-action Hide: attack (action) → move to no-LoS cover → bonus-action Hide.
+//   RouteC — action self-Invisibility (alternates cast/attack across rounds).
+//   RouteD — no stealth tools: plain PreferRange kite (never idle).
+enum class NpcConcealRoute { RouteA=0, RouteB, RouteC, RouteD };
+
 // The behavioural knobs that distinguish one NPC strategy from another, fed to the single shared
 // turn executor runWeaponTurn. Each runNpcTurn dispatch case builds one of these from a strategy enum
 // value; the executor itself is strategy-agnostic. Defaults reproduce the Simple (preferMelee) strategy.
@@ -707,6 +721,7 @@ struct NpcStrategyPolicy {
     bool prefer_caster      = false;   // restrict targets to enemy spellcasters when any are attackable (Step 4)
     bool prefer_ranged      = false;   // pick the best RANGED weapon (else fall back to best melee) (Step 5)
     bool kite               = false;   // position to MAXIMISE distance from enemies among in-range cells (Step 5)
+    bool conceal            = false;   // after attacking, run the Conceal tail phase: hide/go-invisible each turn (Step 7)
     NpcTargetPriority priority = NpcTargetPriority::Nearest;
 };
 
@@ -1103,6 +1118,21 @@ public:
     // OVERRIDE"). Today it returns the per-agent npc_automation_strategy field unchanged. runNpcTurn must
     // always go through this, never read the raw field, so the executors stay decoupled from the resolver.
     [[nodiscard]] NpcAutomationStrategy resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // ── PreferHide conceal helpers (Step 7, PREFER_HIDE_PLAN.md CP1) ───────────────────────────
+    // Public so tests / the GUI can query them read-only (bound in rpg_bindings.cpp).
+    // Index (into the agent's spell list) of a castable spell that grants the Invisible condition to
+    // the caster with casting time `want` (Action / BonusAction); prefers Greater Invisibility (it
+    // persists through attacks). -1 if none. Uses availableCastableSpells so slot/uses gating matches.
+    [[nodiscard]] int npcFindSelfInvisSpell(const BattleMap& bm, int agent_idx,
+                                            Spell::CastingTime_t want) const noexcept;
+    // Nearest reachable cell (live walk budget) with NO enemy line of sight to the agent's footprint —
+    // "move to cover". Mirrors checkHide's enemy-LoS loop over reachableCells; geometry single-sourced.
+    // `out` = the chosen cell; returns false when every reachable cell is exposed. Nearest = fewest steps.
+    [[nodiscard]] bool npcFindCoverCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept;
+    // Classify the conceal route (A/B/C/D per PREFER_HIDE_PLAN.md) for agent_idx from its current tools:
+    // has_cunning_action, the two invis finders (bonus/action), and whether it is currently Invisible.
+    [[nodiscard]] NpcConcealRoute npcClassifyConceal(const BattleMap& bm, int agent_idx) const noexcept;
 
     // Visualization seam (NPC_AUTOMATION_PLAN.md Step 2e). runNpcTurn calls renderAttack(...) when an NPC
     // action resolves so the GUI can later animate it (highlight attacker + target, ranged arrow, AoE
@@ -2415,6 +2445,10 @@ private:
     // regardless of whether an enemy is in range right now. Distinguishes "no AoE to cast → melee" from
     // "has an AoE but must first move into range" so PreferAOE never falls back to melee while it holds one.
     [[nodiscard]] bool npcHasCastableAoeSpell(const BattleMap& bm, int agent_idx) const noexcept;
+    // Bucket D: true if the agent has a currently-castable RECHARGE AoE feature (recharge_min > 0, a
+    // remaining/un-expended use, and an AoE blast shape). runNpcTurn routes any strategy through runAoeTurn
+    // when this holds so a monster spends its breath weapon as often as it recharges — see MULTIATTACK_RECIPES_PLAN.md.
+    [[nodiscard]] bool npcHasAvailableRechargeAoe(const BattleMap& bm, int agent_idx) const noexcept;
     // The reachable cell that most reduces footprint distance to the nearest attackable enemy — an AoE
     // caster's "close the gap so the blast can reach" move. Mirrors runWeaponTurn's approach finder.
     [[nodiscard]] bool npcFindAoeApproachCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept;

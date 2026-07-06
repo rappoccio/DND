@@ -1471,8 +1471,15 @@ class App:
         return int(raw_v[col] * s + self.pan_x), int(raw_h[row] * s + self.pan_y)
 
     def _agent_at(self, cell):
-        """Return index of the placed agent whose footprint contains cell, or -1."""
+        """Return index of the placed agent whose footprint contains cell, or -1.
+
+        A truly dead corpse (conditions.dead) or a tombstoned agent is skipped so it can
+        never be clicked/targeted — a live creature now shares its square, and that's the
+        one we want. A downed-but-alive creature (hp 0, making death saves) is NOT skipped,
+        so it can still be selected to be healed."""
         for i, pt in enumerate(self.bm.placed_agents):
+            if pt.removed_from_play or pt.conditions.dead:
+                continue
             oc, or_ = pt.origin.col, pt.origin.row
             if oc <= cell.col < oc + pt.size and or_ <= cell.row < or_ + pt.size:
                 return i

@@ -360,9 +360,10 @@ int BattleMap::spawnAgent(const AgentConfig& cfg)
         return -1;
     }
     // Reject a cell already occupied by a live agent's footprint (a tombstoned/dismissed
-    // summon no longer occupies its cell). isBlocked only covers walls/terrain, not agents.
+    // summon no longer occupies its cell, and neither does a downed body — mirroring
+    // agentOccupancy). isBlocked only covers walls/terrain, not agents.
     for (const auto& pa : placedAgents_) {
-        if (pa.removed_from_play) continue;
+        if (pa.removed_from_play || pa.agent->getStats().hp_cur <= 0) continue;
         int psize = pa.agent->getSize();
         if (origin.col < pa.origin.col + psize && origin.col + cfg.size > pa.origin.col &&
             origin.row < pa.origin.row + psize && origin.row + cfg.size > pa.origin.row) {

@@ -2011,8 +2011,13 @@ std::vector<int> CombatEngine::availableCastableSpells(
             continue;
         }
 
-        // Cantrips (level 0) are always available
-        if (spell.level == 0) {
+        // Cantrips (level 0) are always available — EXCEPT limited-use / recharge NPC actions.
+        // Breath weapons ship as level-0 catalog spells that carry uses_max / recharge_min (see
+        // NPC_USES_RECHARGE_PLAN.md); those are NOT at-will, so they must fall through to the NPC
+        // uses/expended gate below rather than being offered unconditionally. Without this an
+        // expended breath keeps showing as castable and the automation re-casts it every turn.
+        if (spell.level == 0 &&
+            !(stats.is_npc && (spell.uses_max > 0 || spell.recharge_min > 0))) {
             result.push_back(static_cast<int>(i));
             continue;
         }
