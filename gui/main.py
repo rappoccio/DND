@@ -49,6 +49,7 @@ from helpers import (
     _DEFAULT_ARMOR, _armor_to_dict, _dict_to_armor,
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
+    _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
@@ -155,6 +156,27 @@ ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4
 # failed save (applyCommandEffect): Drop=drop weapons+Disarmed, Flee/Approach=1-turn movement
 # restriction toward/away from the bard, Grovel=Prone, Halt=Incapacitated for one turn.
 COMMAND_WORD_OPTIONS = [("Drop", 0), ("Flee", 1), ("Grovel", 2), ("Halt", 3), ("Approach", 4)]
+
+# Vistani Curse sub-choices, reused via the ElementPickerDialog. Each maps to
+# SpellAction.curse_choice, decoded in executeSpell's condition chokepoint:
+#   Vulnerability → damage type: 0..9 = MagicDamage_t, 100+i = PhysicalDamage_t i.
+#   Weakness      → SaveAbility_t: Str=0, Dex=1, Con=2, Int=3, Wis=4, Cha=5.
+#   Affliction    → 0=Blinded, 1=Deafened, 2=Both.
+CURSE_VULNERABILITY_OPTIONS = [
+    ("Acid", 0), ("Cold", 1), ("Fire", 2), ("Force", 3), ("Lightning", 4),
+    ("Necrotic", 5), ("Poison", 6), ("Psychic", 7), ("Radiant", 8), ("Thunder", 9),
+    ("Bludgeoning", 100), ("Piercing", 101), ("Slashing", 102),
+]
+CURSE_WEAKNESS_OPTIONS = [
+    ("Strength", 0), ("Dexterity", 1), ("Constitution", 2),
+    ("Intelligence", 3), ("Wisdom", 4), ("Charisma", 5),
+]
+CURSE_AFFLICTION_OPTIONS = [("Blinded", 0), ("Deafened", 1), ("Both", 2)]
+CURSE_CHOICE_SPELLS = {
+    "Curse of Vulnerability": CURSE_VULNERABILITY_OPTIONS,
+    "Curse of Weakness":      CURSE_WEAKNESS_OPTIONS,
+    "Curse of Affliction":    CURSE_AFFLICTION_OPTIONS,
+}
 
 # MagicDamage_t index → human-readable name (Acid=0 … Thunder=9).
 _DAMAGE_TYPE_NAMES = {0: "Acid", 1: "Cold", 2: "Fire", 3: "Force", 4: "Lightning",
@@ -644,6 +666,7 @@ class App:
                                                         # Burst); -1 = use the spell's stored type
         self.pending_spell_free_cast: bool = False      # Mantle of Majesty: cast Command with no slot
         self.pending_spell_command_word: int = -1       # Command word (0=Drop..4=Approach); -1 = n/a
+        self.pending_spell_curse_choice: int = -1       # Vistani Curse sub-choice (see CURSE_CHOICE_SPELLS); -1 = n/a
 
         # ── Agent config GUI state ────────────────────────────────────────
         # Combat panel first: it creates btn_show_terrain, which the config panel
@@ -6697,6 +6720,7 @@ class App:
             self.pending_spell_damage_type  = -1
             self.pending_spell_free_cast    = True
             self.pending_spell_command_word = word
+            self.pending_spell_curse_choice = -1
             self.pending_chromatic_active   = False
             self.pending_chromatic_chain    = []
             word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
@@ -7164,6 +7188,7 @@ class App:
             # Normal casts are never free / never carry a Command word (only Mantle of Majesty does).
             self.pending_spell_free_cast    = False
             self.pending_spell_command_word = -1
+            self.pending_spell_curse_choice = -1
             # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
             # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
             self.pending_chromatic_active  = False
@@ -7188,6 +7213,26 @@ class App:
                     self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
                 self._element_dialog.show(_on_elem, elem_opts, current_values=None, multi=False,
                                           title=f"{sp_.name}: damage type")
+                return
+
+            # Vistani Curse sub-choice (Curse of Vulnerability / Weakness / Affliction): pick the
+            # damage type / ability / blind-vs-deafen via the ElementPickerDialog, store it as
+            # SpellAction.curse_choice, then continue to Single-target selection (all curses are
+            # Single geometry). Mirrors the Chromatic Orb element-choice flow above.
+            curse_opts = CURSE_CHOICE_SPELLS.get(sp_.name)
+            if curse_opts is not None:
+                def _on_curse(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, curse_opts=curse_opts):
+                    self.pending_spell_curse_choice = chosen[0] if chosen else -1
+                    self.pending_spell_is_aoe     = False
+                    self.pending_spell_targets    = []
+                    self.pending_spell_slot       = s
+                    self.pending_spell_idx        = si_
+                    self.pending_spell_slot_level = slot_level_
+                    choice_name = next((lbl for lbl, val in curse_opts
+                                        if val == self.pending_spell_curse_choice), "?")
+                    self._combat_log_add(f"Casting {sp_.name} ({choice_name}) — click a target.")
+                self._element_dialog.show(_on_curse, curse_opts, current_values=None, multi=False,
+                                          title=f"{sp_.name}: choose")
                 return
 
             # Cast-time word choice (Command): pick the command word via the ElementPickerDialog
@@ -8624,6 +8669,7 @@ class App:
         # Mantle of Majesty: free Command cast (no slot) + the chosen Command word.
         action.free_cast      = self.pending_spell_free_cast
         action.command_word   = self.pending_spell_command_word
+        action.curse_choice   = self.pending_spell_curse_choice  # Vistani Curse sub-choice (-1 = n/a)
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         self._apply_pact_slot_level(caster_idx, sp, action)
@@ -8650,6 +8696,7 @@ class App:
         self.pending_spell_damage_type = -1
         self.pending_spell_free_cast   = False
         self.pending_spell_command_word = -1
+        self.pending_spell_curse_choice = -1
         self.spell_hover_cell          = None
         self.pending_chromatic_active  = False
         self.pending_chromatic_primary = -1
@@ -9607,8 +9654,31 @@ class App:
                 "weapon_name": item.weapon.name,
                 "sprite_path": item.sprite_path,
             })
+        # Serialize the live active-condition list (durations, save timers, delayed effects, and
+        # Vistani-Curse kickbacks). agent_idx/caster_idx are indices into placed_agents, but the
+        # saved `agents` list SKIPS summoned/removed agents — so a raw index would drift on reload.
+        # Remap each saved agent to its post-reload (compacted) index; drop any condition that
+        # references a skipped agent (its target/caster won't exist after reload anyway).
+        old_to_new = {}
+        new_idx = 0
+        for old_idx, pt in enumerate(self.bm.placed_agents):
+            if pt.summoner_idx >= 0 or pt.removed_from_play:
+                continue
+            old_to_new[old_idx] = new_idx
+            new_idx += 1
+        conditions_data = []
+        for c in self.combat.active_agent_conditions:
+            if c.agent_idx not in old_to_new:
+                continue
+            if c.caster_idx >= 0 and c.caster_idx not in old_to_new:
+                continue
+            cd = _condition_to_dict(c)
+            cd["agent_idx"]  = old_to_new[c.agent_idx]
+            cd["caster_idx"] = old_to_new.get(c.caster_idx, -1)
+            conditions_data.append(cd)
         with open(path, "w") as f:
-            json.dump({"agents": data, "map_items": items_data}, f, indent=2)
+            json.dump({"agents": data, "map_items": items_data,
+                       "active_conditions": conditions_data}, f, indent=2)
 
     # FLAG: Move to C++
     # ── D&D Beyond import ─────────────────────────────────────────────────────
@@ -10561,6 +10631,21 @@ class App:
                 self._agent_meta[i] = {"is_npc": True,
                                        "npc_spell_groups": npc_spell_groups,
                                        "npc_spell_recharge": recharge_map}
+
+        # Restore the live active-condition list (durations, save timers, delayed effects, and
+        # Vistani-Curse kickbacks). Done AFTER every agent is placed + stats/spells restored so the
+        # saved agent_idx/caster_idx (already remapped to compacted order on save) resolve. Without
+        # this a curse's flag might linger but its tracking entry — and thus its kickback — is lost.
+        n_placed = len(self.bm.placed_agents)
+        for cd in data.get("active_conditions", []):
+            try:
+                cond = _dict_to_condition(cd)
+            except Exception as e:                       # noqa: BLE001 — skip a malformed entry, keep loading
+                print(f"WARNING: could not restore active condition {cd}: {e}")
+                continue
+            if not (0 <= cond.agent_idx < n_placed):
+                continue                                 # target no longer on the map
+            self.combat.add_agent_condition(self.bm, cond)
 
         # Restore map items
         self.bm.clear_items()

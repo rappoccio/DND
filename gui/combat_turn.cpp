@@ -637,7 +637,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         // Save modifier (ability + proficiency + Aura of Protection).
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
-        int save_d20 = roll(20);
+        // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
+        int save_d20 = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability)
+                           ? rollDisadvantage(20) : roll(20);
         int save_total = save_d20 + save_mod;
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
@@ -655,7 +657,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         if (save_total >= save_dc) {
             // Save succeeded, remove condition
-            removeAgentCondition(active_cond.condition_id);
+            removeAgentCondition(bm, active_cond.condition_id);
 
             // Handle condition-specific cleanup
             if (active_cond.condition_name == "Paralyzed") {
@@ -774,7 +776,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         // Save modifier (ability + proficiency + Aura of Protection).
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
-        int save_d20 = roll(20);
+        // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
+        int save_d20 = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability)
+                           ? rollDisadvantage(20) : roll(20);
         int save_total = save_d20 + save_mod - (2 * agent_cond.exhaustion_level);
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
@@ -792,7 +796,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         if (save_total >= save_dc) {
             // Save succeeded, remove condition
-            removeAgentCondition(active_cond.condition_id);
+            removeAgentCondition(bm, active_cond.condition_id);
             log_("{} save vs {} — rolled {} + {} = {} vs DC {} — SAVED!",
                  ability_name(active_cond.save_ability), active_cond.condition_name,
                  save_d20, save_mod, save_total, save_dc);

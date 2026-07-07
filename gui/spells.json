@@ -9703,5 +9703,104 @@
     "uses_max": 1,
     "uses_remaining": 1,
     "recharge_min": 0
+  },
+  {
+    "name": "Curse of Vulnerability",
+    "description": "The Vistana lays a curse on one creature it can see within 30 feet. The target gains Vulnerability to a damage type of the Vistana's choice. The curse lasts until it ends. When the curse ends, the Vistana takes 3d6 Psychic damage.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveWis",
+    "range": 30,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 100,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "num_targets": 1,
+    "targets_per_upcast_level": 0,
+    "requires_concentration": false,
+    "conditions": [
+      {
+        "condition_name": "Cursed",
+        "condition_duration": 0,
+        "curse_kind": 1,
+        "kickback_dice": 3,
+        "kickback_die_size": 6,
+        "kickback_damage_type": "Psychic"
+      }
+    ],
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "enchantment"
+  },
+  {
+    "name": "Curse of Weakness",
+    "description": "The Vistana lays a curse on one creature it can see within 30 feet. The target has Disadvantage on saving throws tied to one ability score of the Vistana's choice. The curse lasts until it ends. When the curse ends, the Vistana takes 3d6 Psychic damage.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveWis",
+    "range": 30,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 100,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "num_targets": 1,
+    "targets_per_upcast_level": 0,
+    "requires_concentration": false,
+    "conditions": [
+      {
+        "condition_name": "Cursed",
+        "condition_duration": 0,
+        "curse_kind": 2,
+        "kickback_dice": 3,
+        "kickback_die_size": 6,
+        "kickback_damage_type": "Psychic"
+      }
+    ],
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "enchantment"
+  },
+  {
+    "name": "Curse of Affliction",
+    "description": "The Vistana lays a curse on one creature it can see within 30 feet. The target has the Blinded condition, the Deafened condition, or both (the Vistana's choice). The curse lasts until it ends. When the curse ends, the Vistana takes 5d6 Psychic damage.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveWis",
+    "range": 30,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 100,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "num_targets": 1,
+    "targets_per_upcast_level": 0,
+    "requires_concentration": false,
+    "conditions": [
+      {
+        "condition_name": "Blinded",
+        "condition_duration": 0,
+        "curse_kind": 3,
+        "kickback_dice": 5,
+        "kickback_die_size": 6,
+        "kickback_damage_type": "Psychic"
+      }
+    ],
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "enchantment"
   }
 ]

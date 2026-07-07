@@ -188,6 +188,28 @@ struct ActiveAgentCondition {
     bool          delay_drop_to_zero   = false;    // failed save drops the target to 0 HP
     bool          delay_auto_on_expire = false;    // detonate when duration ends (vs. owner-triggered)
     std::string   delay_label;                     // display label, e.g. "Quivering Palm"
+
+    // ── Caster "kickback" on condition end (Vistani Curse) ──────────────────────
+    // When kickback_dice > 0, ending this condition by ANY path deals
+    // kickback_dice × d(kickback_die_size) of kickback_damage_type to the CASTER
+    // (caster_idx), automatically (no save). Recipient is always the caster, NOT the
+    // condition's target. Suppressed when the target has died (see onConditionEnded).
+    int           kickback_dice         = 0;        // e.g. 3 or 5
+    int           kickback_die_size      = 0;        // e.g. 6 → d6
+    MagicDamage_t kickback_damage_type   = MagicDamage_t::Psychic;
+
+    // ── Vistani Curse effect state ──────────────────────────────────────────────
+    // Which curse effect this tracked condition carries (beyond any base condition
+    // flag such as Blinded/Deafened). These are set at apply time from the spell's
+    // AttackCondition::curse_kind + the cast-time SpellAction::curse_choice, and
+    // torn down in onConditionEnded when the curse ends.
+    //   curse_disadv_ability : SaveAbility_t made to roll at Disadvantage; -1 = none.
+    //   curse_vuln_type_code : encoded damage type made vulnerable (2.0×); -1 = none.
+    //                          0..NumMagicDamage_t-1 = magic, 100+i = physical type i.
+    //   curse_vuln_prev_mult : the target's prior multiplier for that type, restored on end.
+    int   curse_disadv_ability = -1;
+    int   curse_vuln_type_code = -1;
+    float curse_vuln_prev_mult = 1.0f;
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────

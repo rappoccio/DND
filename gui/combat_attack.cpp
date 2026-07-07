@@ -639,7 +639,7 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount, unsign
             }
         }
     }
-    for (int cid : to_remove) removeAgentCondition(cid);
+    for (int cid : to_remove) removeAgentCondition(bm, cid);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

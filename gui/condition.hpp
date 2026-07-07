@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include "damage.hpp"
+
 namespace rpg {
 
 // Save ability types (used by spells, weapons, and conditions)
@@ -30,6 +32,17 @@ struct AttackCondition {
     bool contested = false;   // true  → contested Athletics vs max(Athletics,Acrobatics)
                               // false → grapple lands automatically on the qualifying hit
     int  escape_dc = 0;       // fixed escape DC override; 0 → compute 10 + STR mod + prof
+
+    // ── Vistani Curse authoring ────────────────────────────────────────────────
+    // curse_kind selects which curse effect this condition installs when applied
+    // (see ActiveAgentCondition). The kickback fields are copied verbatim onto the
+    // tracked ActiveAgentCondition so the caster takes damage when the curse ends.
+    //   0 = none (ordinary condition), 1 = vulnerability, 2 = weakness (save disadv),
+    //   3 = affliction (Blinded/Deafened/Both — chosen at cast time).
+    int           curse_kind          = 0;
+    int           kickback_dice       = 0;         // e.g. 3 or 5
+    int           kickback_die_size    = 0;         // e.g. 6 → d6
+    MagicDamage_t kickback_damage_type = Psychic;
 };
 
 } // namespace rpg

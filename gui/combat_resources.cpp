@@ -456,7 +456,7 @@ bool CombatEngine::plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_id
     for (const auto& c : activeAgentConditions_)
         if (c.delayed_trigger && c.caster_idx == monk_idx && c.condition_name == "QuiveringPalm")
             stale.push_back(c.condition_id);
-    for (int id : stale) removeAgentCondition(id);
+    for (int id : stale) removeAgentCondition(bm, id);
 
     spendResource(bm, monk_idx, "Focus Points", 4);
 
@@ -1725,7 +1725,7 @@ int CombatEngine::clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept
             clearSpellConditionEffect(bm, cond);
             to_remove.push_back(cond.condition_id);
         }
-        for (int cid : to_remove) removeAgentCondition(cid);
+        for (int cid : to_remove) removeAgentCondition(bm, cid);
         if (!to_remove.empty())
             log_("Clockwork Cavalcade ends {} spell effect(s) on {}",
                  to_remove.size(), agentName(bm, tgt_idx));

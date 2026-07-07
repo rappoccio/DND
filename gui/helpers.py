@@ -490,6 +490,94 @@ def _dict_to_weapon(d: dict):
     return w
 
 
+def _condition_to_dict(c) -> dict:
+    """Serialize an rpg.ActiveAgentCondition (a LIVE, in-flight tracking entry — duration,
+    save timers, delayed/stored effect, and the Vistani-Curse kickback) to a plain dict.
+
+    The whole struct is serialized, not just the kickback fields: a half-serialized entry is
+    worse than none (a lingering curse would reload with the wrong timer/save). Round-trip
+    discipline — every field written here MUST be read back in _dict_to_condition or it resets
+    on reload. Enums round-trip by .name (see MagicDamage / SaveAbility bindings)."""
+    return {
+        "agent_idx":         c.agent_idx,
+        "caster_idx":        c.caster_idx,
+        "spell_idx":         c.spell_idx,
+        "condition_name":    c.condition_name,
+        "turns_remaining":   c.turns_remaining,
+        "next_save_turn":    c.next_save_turn,
+        "save_ability":      c.save_ability.name,
+        "save_dc":           c.save_dc,
+        "save_repeat_turns": c.save_repeat_turns,
+        "condition_id":      c.condition_id,
+        "on_damage":         c.on_damage.name,
+        # Delayed / stored effect (Quivering Palm, Delayed Blast Fireball).
+        "delayed_trigger":      c.delayed_trigger,
+        "delay_dice":           c.delay_dice,
+        "delay_die_size":       c.delay_die_size,
+        "delay_flat_bonus":     c.delay_flat_bonus,
+        "delay_damage_type":    c.delay_damage_type.name,
+        "delay_requires_save":  c.delay_requires_save,
+        "delay_half_on_save":   c.delay_half_on_save,
+        "delay_drop_to_zero":   c.delay_drop_to_zero,
+        "delay_auto_on_expire": c.delay_auto_on_expire,
+        "delay_label":          c.delay_label,
+        # Caster "kickback" on condition end (Vistani Curse).
+        "kickback_dice":        c.kickback_dice,
+        "kickback_die_size":    c.kickback_die_size,
+        "kickback_damage_type": c.kickback_damage_type.name,
+        # Vistani Curse effect state.
+        "curse_disadv_ability": c.curse_disadv_ability,
+        "curse_vuln_type_code": c.curse_vuln_type_code,
+        "curse_vuln_prev_mult": c.curse_vuln_prev_mult,
+    }
+
+
+def _dict_to_condition(d: dict):
+    """Rebuild an rpg.ActiveAgentCondition from a dict produced by _condition_to_dict.
+
+    agent_idx / caster_idx are indices into placed_agents; the caller must re-add this via
+    combat.add_agent_condition only AFTER the agents are placed in the SAME order they were
+    saved, or the indices resolve to the wrong creatures."""
+    c = rpg.ActiveAgentCondition()
+    c.agent_idx         = int(d.get("agent_idx",  -1))
+    c.caster_idx        = int(d.get("caster_idx", -1))
+    c.spell_idx         = int(d.get("spell_idx",  -1))
+    c.condition_name    = d.get("condition_name", "")
+    c.turns_remaining   = int(d.get("turns_remaining",   0))
+    c.next_save_turn    = int(d.get("next_save_turn",    0))
+    try:
+        c.save_ability  = getattr(rpg.SaveAbility, d.get("save_ability", "SaveDex"))
+    except AttributeError:
+        c.save_ability  = rpg.SaveAbility.SaveDex
+    c.save_dc           = int(d.get("save_dc",           0))
+    c.save_repeat_turns = int(d.get("save_repeat_turns", 1))
+    c.condition_id      = int(d.get("condition_id",     -1))
+    try:
+        c.on_damage     = getattr(rpg.OnDamage, d.get("on_damage", "None"))
+    except AttributeError:
+        pass
+    # Delayed / stored effect.
+    c.delayed_trigger      = bool(d.get("delayed_trigger",      False))
+    c.delay_dice           = int(d.get("delay_dice",           0))
+    c.delay_die_size       = int(d.get("delay_die_size",       0))
+    c.delay_flat_bonus     = int(d.get("delay_flat_bonus",     0))
+    c.delay_damage_type    = _parse_magic_damage(d.get("delay_damage_type", "Force"))
+    c.delay_requires_save  = bool(d.get("delay_requires_save",  True))
+    c.delay_half_on_save   = bool(d.get("delay_half_on_save",   True))
+    c.delay_drop_to_zero   = bool(d.get("delay_drop_to_zero",   False))
+    c.delay_auto_on_expire = bool(d.get("delay_auto_on_expire", False))
+    c.delay_label          = d.get("delay_label", "")
+    # Caster "kickback" on condition end (Vistani Curse).
+    c.kickback_dice        = int(d.get("kickback_dice",     0))
+    c.kickback_die_size    = int(d.get("kickback_die_size", 0))
+    c.kickback_damage_type = _parse_magic_damage(d.get("kickback_damage_type", "Psychic"))
+    # Vistani Curse effect state.
+    c.curse_disadv_ability = int(d.get("curse_disadv_ability", -1))
+    c.curse_vuln_type_code = int(d.get("curse_vuln_type_code", -1))
+    c.curse_vuln_prev_mult = float(d.get("curse_vuln_prev_mult", 1.0))
+    return c
+
+
 def _weapon_slot_is_empty(w) -> bool:
     """True for a blank weapon slot: no name, or the default "Unarmed" sentinel
     (weapon.hpp defaults Weapon.name = "Unarmed"). "MonkUnarmed" is a REAL monk
@@ -835,6 +923,16 @@ def _dict_to_spell(d: dict):
                 c.on_damage = rpg.OnDamage.End
             elif od in ("repeat_save", "repeatsave", "repeat-save"):
                 c.on_damage = rpg.OnDamage.RepeatSave
+            # Vistani Curse authoring: curse_kind (1=vuln, 2=weakness, 3=affliction) plus the
+            # caster kickback (psychic damage to the Vistana when the curse ends).
+            c.curse_kind = int(cond_entry.get("curse_kind", 0))
+            c.kickback_dice = int(cond_entry.get("kickback_dice", 0))
+            c.kickback_die_size = int(cond_entry.get("kickback_die_size", 0))
+            kb_type_str = cond_entry.get("kickback_damage_type", "Psychic")
+            try:
+                c.kickback_damage_type = getattr(rpg.MagicDamage, kb_type_str)
+            except AttributeError:
+                c.kickback_damage_type = rpg.MagicDamage.Psychic
             conditions.append(c)
         else:
             # Simple string: just the condition name (legacy support)

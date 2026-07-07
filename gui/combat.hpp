@@ -171,6 +171,11 @@ struct SpellAction {
     // 2=Grovel, 3=Halt, 4=Approach. -1 = caller did not specify → engine defaults to Halt. Applied
     // to each target that fails the save (see applyCommandEffect).
     int  command_word = -1;
+    // Vistani Curse sub-choice (only read when the cast is a curse spell, curse_kind>0).
+    // Meaning depends on the spell's curse_kind: vulnerability → encoded damage type
+    // (0..NumMagicDamage_t-1 = magic, 100+i = physical); weakness → SaveAbility_t;
+    // affliction → 0=Blinded, 1=Deafened, 2=Both. -1 = caller did not specify.
+    int  curse_choice = -1;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1227,8 +1232,8 @@ public:
     // Duration is counted in the caster's turns, not absolute turns.
     // Returns list of removed condition ids.
     [[nodiscard]] std::vector<int> tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept;
-    // Remove a condition by id.
-    void removeAgentCondition(int condition_id) noexcept;
+    // Remove a condition by id. Fires onConditionEnded (caster kickback) before erasing.
+    void removeAgentCondition(BattleMap& bm, int condition_id) noexcept;
 
     // ── Delayed / stored effects (general mechanism) ──────────────────────
     // Detonate a planted delayed-trigger condition by its id: rolls its damage, applies the optional
@@ -1319,6 +1324,10 @@ public:
     // Indomitable Might (Barbarian L18): a STR saving throw total can't be lower than the
     // Barbarian's STR score. Returns the (possibly raised) total.
     [[nodiscard]] int applyIndomitableMight(const BattleMap& bm, int saver_idx, SaveAbility_t ab, int total) const noexcept;
+
+    // Vistani Curse of Weakness: true when agent_idx is under a curse imposing Disadvantage on
+    // saving throws tied to ability `ab`. Consulted at the combat-relevant save-roll sites.
+    [[nodiscard]] bool curseSaveDisadvantage(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
 
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
@@ -2658,6 +2667,13 @@ private:
     // Shared by triggerDelayedEffect (owner detonates) and tickAgentConditions (auto-on-expire).
     // Returns the damage dealt.
     int resolveDelayedEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
+
+    // Fire a condition's caster "kickback" (Vistani Curse) when it ends by ANY path: rolls
+    // kickback_dice × d(kickback_die_size) of kickback_damage_type onto the CASTER (no save).
+    // No-op unless cond.kickback_dice > 0; suppressed when the cursed target has died. Called
+    // from removeAgentCondition (save-success / concentration-drop / detonate) and from both
+    // tick loops on natural duration expiry (deferred, to keep the container stable).
+    void onConditionEnded(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
 };
 
 } // namespace rpg

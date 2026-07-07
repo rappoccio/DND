@@ -830,7 +830,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("on_damage",          &AttackCondition::on_damage,
              "What happens to this condition when the affected creature takes damage:\n"
              "OnDamage.None (default), OnDamage.End (ends immediately), or\n"
-             "OnDamage.RepeatSave (repeat the save at Advantage; success ends it).");
+             "OnDamage.RepeatSave (repeat the save at Advantage; success ends it).")
+        .def_readwrite("curse_kind",          &AttackCondition::curse_kind,
+             "Vistani Curse kind installed on apply: 0=none, 1=vulnerability, 2=weakness\n"
+             "(save disadvantage), 3=affliction (Blinded/Deafened/Both).")
+        .def_readwrite("kickback_dice",       &AttackCondition::kickback_dice,
+             "Vistani Curse kickback: number of dice of psychic damage to the caster when the curse ends.")
+        .def_readwrite("kickback_die_size",   &AttackCondition::kickback_die_size,
+             "Vistani Curse kickback die size (e.g. 6 → d6).")
+        .def_readwrite("kickback_damage_type", &AttackCondition::kickback_damage_type,
+             "Vistani Curse kickback damage type (MagicDamage; default Psychic).");
 
     py::enum_<OnDamage_t>(m, "OnDamage")
         .value("None", OnDamage_t::None)
@@ -1424,6 +1433,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("command_word", &SpellAction::command_word,
              "Command spell word (only read for the Command spell): 0=Drop, 1=Flee, 2=Grovel,\n"
              "3=Halt, 4=Approach. -1 = unspecified → engine defaults to Halt.")
+        .def_readwrite("curse_choice", &SpellAction::curse_choice,
+             "Vistani Curse sub-choice (only read for curse spells): vulnerability → encoded damage\n"
+             "type (0..9 magic, 100+i physical); weakness → SaveAbility value; affliction →\n"
+             "0=Blinded, 1=Deafened, 2=Both. -1 = unspecified.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
@@ -1775,6 +1788,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_dc",         &ActiveAgentCondition::save_dc)
         .def_readwrite("save_repeat_turns", &ActiveAgentCondition::save_repeat_turns)
         .def_readwrite("condition_id",    &ActiveAgentCondition::condition_id)
+        .def_readwrite("on_damage",       &ActiveAgentCondition::on_damage)
         // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──
         .def_readwrite("delayed_trigger",      &ActiveAgentCondition::delayed_trigger)
         .def_readwrite("delay_dice",           &ActiveAgentCondition::delay_dice)
@@ -1786,6 +1800,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("delay_drop_to_zero",   &ActiveAgentCondition::delay_drop_to_zero)
         .def_readwrite("delay_auto_on_expire", &ActiveAgentCondition::delay_auto_on_expire)
         .def_readwrite("delay_label",          &ActiveAgentCondition::delay_label)
+        // ── Caster "kickback" on condition end (Vistani Curse) ──────────────────
+        .def_readwrite("kickback_dice",        &ActiveAgentCondition::kickback_dice)
+        .def_readwrite("kickback_die_size",    &ActiveAgentCondition::kickback_die_size)
+        .def_readwrite("kickback_damage_type", &ActiveAgentCondition::kickback_damage_type)
+        // ── Vistani Curse effect state ──────────────────────────────────────────
+        .def_readwrite("curse_disadv_ability", &ActiveAgentCondition::curse_disadv_ability,
+             "SaveAbility value made to roll at Disadvantage by a Curse of Weakness (-1 = none).")
+        .def_readwrite("curse_vuln_type_code", &ActiveAgentCondition::curse_vuln_type_code,
+             "Encoded damage type made vulnerable by a Curse of Vulnerability: 0..9 magic, 100+i\n"
+             "physical (-1 = none).")
+        .def_readwrite("curse_vuln_prev_mult", &ActiveAgentCondition::curse_vuln_prev_mult,
+             "Target's prior damage multiplier for the cursed type, restored when the curse ends.")
         .def("__repr__", [](const ActiveAgentCondition& c){
             return "<ActiveAgentCondition '" + c.condition_name
                  + "' on agent[" + std::to_string(c.agent_idx)
@@ -3428,8 +3454,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Returns list of expired condition IDs.")
         .def("remove_agent_condition",
              &CombatEngine::removeAgentCondition,
-             py::arg("condition_id"),
-             "Explicitly remove an active agent condition by its ID.")
+             py::arg("battle_map"), py::arg("condition_id"),
+             "Explicitly remove an active agent condition by its ID.\n"
+             "Fires the condition's caster kickback (Vistani Curse) before erasing.")
+        .def("curse_save_disadvantage",
+             &CombatEngine::curseSaveDisadvantage,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("save_ability"),
+             "True when agent_idx is under a Vistani Curse of Weakness imposing Disadvantage on\n"
+             "saving throws tied to the given SaveAbility.")
 
         // ── Prone mechanics ──────────────────────────────────────────────────
         .def("apply_prone",

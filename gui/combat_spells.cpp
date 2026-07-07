@@ -260,6 +260,12 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         log_("Metamagic Heightened: {} has disadvantage on the save", agentName(bm, tgt_idx));
     }
 
+    // Vistani Curse of Weakness: Disadvantage on saving throws tied to the cursed ability.
+    if (curseSaveDisadvantage(bm, tgt_idx, sp.save_ability)) {
+        target_dis = true;
+        log_("Curse of Weakness: {} has Disadvantage on the save", agentName(bm, tgt_idx));
+    }
+
     // Eldritch Knight L10 — Eldritch Strike: a creature the EK hit with a weapon has disadvantage on its
     // next save vs a spell the EK casts. One-shot: consume the tag.
     if (target_cond.eldritch_strike_by == action.caster_idx) {
@@ -1561,7 +1567,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                             tgt_stats.char_level >= 6 &&
                             (spell_cond.condition_name == "Charmed" ||
                              spell_cond.condition_name == "Frightened");
-                        int save_d20 = (fey_twist || aberrant_defense) ? rollAdvantage(20) : roll(20);
+                        // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed
+                        // ability (cancels the Fey/Aberrant Advantage when both apply).
+                        const bool cond_adv = (fey_twist || aberrant_defense);
+                        const bool cond_dis = curseSaveDisadvantage(bm, tgt_idx, spell_cond.save_ability);
+                        int save_d20 = (cond_adv == cond_dis) ? roll(20)
+                                     : cond_adv               ? rollAdvantage(20)
+                                                              : rollDisadvantage(20);
                         // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10).
                         save_d20 = tgt_stats.applyTranceFloor(save_d20);
                         int cond_save_mod = saveModFor(bm, tgt_idx, spell_cond.save_ability);
@@ -1613,6 +1625,56 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     cond.save_repeat_turns = spell_cond.save_repeat_turns;
                     // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
                     cond.next_save_turn = 0;
+
+                    // ── Vistani Curse ──────────────────────────────────────────────
+                    // Copy the caster kickback so onConditionEnded rebounds psychic damage
+                    // onto the Vistana when this curse ends, then install the chosen effect.
+                    cond.kickback_dice        = spell_cond.kickback_dice;
+                    cond.kickback_die_size    = spell_cond.kickback_die_size;
+                    cond.kickback_damage_type = spell_cond.kickback_damage_type;
+
+                    if (spell_cond.curse_kind == 3) {
+                        // Curse of Affliction: Blinded (choice 0/default), Deafened (1), or Both (2).
+                        // Reuse the base Blinded/Deafened conditions; the kickback rides only the
+                        // first one applied so "both" still rebounds once.
+                        const int choice = action.curse_choice;
+                        const bool do_blind = (choice == 0 || choice == 2 || choice < 0);
+                        const bool do_deaf  = (choice == 1 || choice == 2);
+                        bool first = true;
+                        auto add_affliction = [&](const char* name) {
+                            ActiveAgentCondition ac = cond;
+                            ac.condition_name = name;
+                            if (!first) { ac.kickback_dice = 0; ac.kickback_die_size = 0; }
+                            first = false;
+                            (void)addAgentCondition(bm, ac);
+                        };
+                        if (do_blind) add_affliction("Blinded");
+                        if (do_deaf)  add_affliction("Deafened");
+                        any_conditions_applied = true;
+                        continue;   // custom application done; skip the generic add below
+                    } else if (spell_cond.curse_kind == 1) {
+                        // Curse of Vulnerability: target gains 2.0× vulnerability to the chosen
+                        // damage type. Remember the prior multiplier so onConditionEnded restores it.
+                        Agent::Stats ts = bm.getAgentStats(tgt_idx);
+                        const int code = action.curse_choice;   // 0..9 magic, 100+i physical
+                        if (code >= 100) {
+                            const int pi = code - 100;
+                            if (pi >= 0 && pi < NumPhysicalDamage_t) {
+                                cond.curse_vuln_type_code = code;
+                                cond.curse_vuln_prev_mult = ts.physical_damage_multipliers[static_cast<std::size_t>(pi)];
+                                ts.physical_damage_multipliers[static_cast<std::size_t>(pi)] = 2.0f;
+                                bm.setAgentStats(tgt_idx, ts);
+                            }
+                        } else if (code >= 0 && code < NumMagicDamage_t) {
+                            cond.curse_vuln_type_code = code;
+                            cond.curse_vuln_prev_mult = ts.magic_damage_multipliers[static_cast<std::size_t>(code)];
+                            ts.magic_damage_multipliers[static_cast<std::size_t>(code)] = 2.0f;
+                            bm.setAgentStats(tgt_idx, ts);
+                        }
+                    } else if (spell_cond.curse_kind == 2) {
+                        // Curse of Weakness: Disadvantage on saving throws tied to the chosen ability.
+                        cond.curse_disadv_ability = action.curse_choice;
+                    }
 
                     [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
                     any_conditions_applied = true;
@@ -2153,6 +2215,8 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
             for (const auto& c : sp.conditions)
                 if (c.condition_name == "Charmed" || c.condition_name == "Frightened") { adv = true; break; }
         }
+        // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
+        if (curseSaveDisadvantage(bm, target_idx, sp.save_ability)) dis = true;
 
         int save_d20;
         if (auto_fail)       save_d20 = 1;
@@ -2544,7 +2608,7 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
         }
     }
     for (int cid : result.removed_condition_ids)
-        removeAgentCondition(cid);
+        removeAgentCondition(bm, cid);
 
     // 4. Clear C++ concentration state
     const bool was_mantle_majesty       = (cond.concentrating_on == "Mantle of Majesty");

@@ -503,12 +503,17 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
     return cond.condition_id;
 }
 
-void CombatEngine::removeAgentCondition(int condition_id) noexcept
+void CombatEngine::removeAgentCondition(BattleMap& bm, int condition_id) noexcept
 {
     auto it = std::find_if(activeAgentConditions_.begin(), activeAgentConditions_.end(),
                           [condition_id](const ActiveAgentCondition& c) { return c.condition_id == condition_id; });
     if (it != activeAgentConditions_.end()) {
+        // Fire the caster "kickback" (Vistani Curse) on a copy BEFORE erasing — onConditionEnded
+        // may apply damage that drops the caster and cascades into dropConcentration →
+        // removeAgentCondition, mutating this container. No-op unless kickback_dice > 0.
+        ActiveAgentCondition ended = *it;
         activeAgentConditions_.erase(it);
+        onConditionEnded(bm, ended);
     }
 }
 
@@ -524,6 +529,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
     // loop: resolveDelayedEffect can drop a creature unconscious → dropConcentration, which mutates
     // activeAgentConditions_ and would invalidate the iterators below. Copy them out and fire later.
     std::vector<ActiveAgentCondition> auto_detonate;
+    // Curse "kickbacks" (Vistani) are likewise deferred: onConditionEnded may damage the caster and
+    // cascade into dropConcentration, mutating activeAgentConditions_ mid-loop. Fire after rebuild.
+    std::vector<ActiveAgentCondition> ended_kickbacks;
 
     for (auto& cond : activeAgentConditions_) {
         --cond.turns_remaining;
@@ -534,6 +542,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
             // fade harmlessly when the duration runs out.
             if (cond.delayed_trigger && cond.delay_auto_on_expire)
                 auto_detonate.push_back(cond);
+            if (cond.kickback_dice > 0)
+                ended_kickbacks.push_back(cond);
 
             // Remove the condition from the agent
             if (cond.agent_idx >= 0) {
@@ -588,6 +598,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
     // Now that the condition list is stable again, fire any auto-detonations (Delayed Blast Fireball).
     for (const auto& cond : auto_detonate)
         (void)resolveDelayedEffect(bm, cond);
+    // ...and any curse kickbacks whose duration ran out (Vistani Curse).
+    for (const auto& cond : ended_kickbacks)
+        onConditionEnded(bm, cond);
 
     return removed_ids;
 }
@@ -595,6 +608,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
 std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept
 {
     std::vector<int> removed_ids;
+    // Deferred curse kickbacks (Vistani) — same iterator-stability rationale as tickAgentConditions.
+    std::vector<ActiveAgentCondition> ended_kickbacks;
 
     for (auto& cond : activeAgentConditions_) {
         // Only tick conditions cast by this caster
@@ -603,6 +618,8 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
         --cond.turns_remaining;
         if (cond.turns_remaining <= 0) {
             removed_ids.push_back(cond.condition_id);
+            if (cond.kickback_dice > 0)
+                ended_kickbacks.push_back(cond);
 
             // Remove the condition from the agent
             if (cond.agent_idx >= 0) {
@@ -650,6 +667,10 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
         }
     }
     activeAgentConditions_ = remaining;
+
+    // Container is stable again — fire any curse kickbacks (Vistani Curse).
+    for (const auto& cond : ended_kickbacks)
+        onConditionEnded(bm, cond);
 
     return removed_ids;
 }
@@ -731,6 +752,75 @@ int CombatEngine::resolveDelayedEffect(BattleMap& bm, const ActiveAgentCondition
     return dmg;
 }
 
+void CombatEngine::onConditionEnded(BattleMap& bm, const ActiveAgentCondition& cond) noexcept
+{
+    const auto& agents = bm.placedAgents();
+
+    // ── Vistani Curse of Vulnerability teardown ─────────────────────────────────
+    // Restore the target's prior damage multiplier for the cursed type. Done on EVERY
+    // end path (before the kickback gates below) so the vulnerability never lingers.
+    if (cond.curse_vuln_type_code >= 0) {
+        const int tv = cond.agent_idx;
+        if (tv >= 0 && tv < static_cast<int>(agents.size())) {
+            Agent::Stats ts = bm.getAgentStats(tv);
+            const int code = cond.curse_vuln_type_code;
+            if (code >= 100) {
+                const int pi = code - 100;
+                if (pi >= 0 && pi < NumPhysicalDamage_t)
+                    ts.physical_damage_multipliers[static_cast<std::size_t>(pi)] = cond.curse_vuln_prev_mult;
+            } else if (code < NumMagicDamage_t) {
+                ts.magic_damage_multipliers[static_cast<std::size_t>(code)] = cond.curse_vuln_prev_mult;
+            }
+            bm.setAgentStats(tv, ts);
+        }
+    }
+
+    // Only curse-style conditions carry a kickback; everything else ends silently here.
+    if (cond.kickback_dice <= 0) return;
+
+    // Decision (LOCKED, Vistani plan): no kickback when the cursed target has died — the Vistana
+    // is not punished for killing its victim. The tracking entry may still reach an end-path
+    // (e.g. duration expiry) while the target is dead, so gate here rather than at each call site.
+    const int t = cond.agent_idx;
+    if (t >= 0 && t < static_cast<int>(agents.size())) {
+        Agent::Conditions tc = bm.getAgentConditions(t);
+        if (tc.dead || bm.getAgentStats(t).hp_cur <= 0) return;
+    }
+
+    const int c = cond.caster_idx;
+    if (c < 0 || c >= static_cast<int>(agents.size())) return;
+
+    Agent::Stats cs = bm.getAgentStats(c);
+    if (cs.hp_max == 0 && cs.hp_cur == 0) return;               // not a real combatant
+
+    // Roll the kickback dice (automatic — no save).
+    int rolled = 0;
+    for (int i = 0; i < cond.kickback_dice; ++i)
+        rolled += roll(cond.kickback_die_size > 0 ? cond.kickback_die_size : 1);
+
+    // Honor the caster's own resistance / vulnerability to the kickback damage type.
+    float multiplier = effectiveMagicDamageMult(cs, cs, cond.kickback_damage_type, true);
+    int dmg = static_cast<int>(static_cast<float>(rolled) * multiplier);
+
+    log_("Curse rebounds on {}: {} {} damage",
+         agentName(bm, c), dmg, delayDamageName(cond.kickback_damage_type));
+
+    if (dmg > 0) {
+        // Apply temp HP first, then real HP (mirrors resolveDelayedEffect).
+        int overflow = std::max(0, dmg - cs.temp_hp);
+        cs.temp_hp = std::max(0, cs.temp_hp - dmg);
+        cs.hp_cur  = std::clamp(cs.hp_cur - overflow, 0, cs.hp_max);
+        bm.setAgentStats(c, cs);
+
+        checkConcentrationOnDamage(bm, c, dmg);
+        processDamageTaken(bm, c, dmg);
+        if (cs.hp_cur <= 0) {
+            Agent::Conditions cc = bm.getAgentConditions(c);
+            if (!cc.unconscious && !cc.dead) applyUnconscious(bm, c);
+        }
+    }
+}
+
 int CombatEngine::triggerDelayedEffect(BattleMap& bm, int condition_id) noexcept
 {
     auto it = std::find_if(activeAgentConditions_.begin(), activeAgentConditions_.end(),
@@ -743,7 +833,7 @@ int CombatEngine::triggerDelayedEffect(BattleMap& bm, int condition_id) noexcept
     // Resolve on a copy, then remove the planted condition (it is spent whether it hits or misses).
     ActiveAgentCondition cond = *it;
     int dmg = resolveDelayedEffect(bm, cond);
-    removeAgentCondition(condition_id);
+    removeAgentCondition(bm, condition_id);
     return dmg;
 }
 

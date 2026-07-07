@@ -131,6 +131,9 @@ test_scripts = [
 
     # Regeneration (turn-start HP regain + damage-type / Sunlight interrupt)
     "test_regeneration.py",
+
+    # Vistani Curse "kickback" (caster takes psychic damage when its curse ends)
+    "test_vistani.py",
 ]
 
 def run_tests():

@@ -1,4 +1,109 @@
 {
+  "Vistani Seer": {
+    "name": "Vistani Seer",
+    "size": "Medium",
+    "stats": {
+      "str": 10,
+      "dex": 13,
+      "con": 12,
+      "intel": 12,
+      "wis": 14,
+      "cha": 16,
+      "hp_max": 44,
+      "hp_cur": 44,
+      "ac": 13,
+      "speed_walk": 30,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 2,
+      "num_attacks": 1,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": true,
+      "save_prof_cha": true,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": [],
+      "spellcasting_ability": "cha"
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Dagger",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 20,
+        "long_range_ft": 60,
+        "proficient": true,
+        "bonus_damage": 1,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Humanoid (Vistani)",
+      "cr": "2",
+      "alignment": "Neutral",
+      "source": "Van Richten's Guide to Ravenloft",
+      "traits": [],
+      "languages": [
+        "Common"
+      ],
+      "senses": {},
+      "passive_perception": 12,
+      "immunities_conditions": [],
+      "save_dc": 13,
+      "saving_throws": [
+        "Wisdom",
+        "Charisma"
+      ],
+      "action_notes": "Curse (Curse of Vulnerability / Weakness / Affliction): the Seer curses one creature within 30 ft; the curse rebounds Psychic damage on the Seer when it ends. Evil Eye (Charm Person / Hold Person): 1/rest.",
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    },
+    "spell_indices": [
+      "Curse of Vulnerability",
+      "Curse of Weakness",
+      "Curse of Affliction",
+      "Charm Person",
+      "Hold Person"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Curse of Vulnerability",
+        "Curse of Weakness",
+        "Curse of Affliction"
+      ],
+      "1": [
+        "Charm Person",
+        "Hold Person"
+      ]
+    }
+  },
   "Aarakocra Aeromancer": {
     "name": "Aarakocra Aeromancer",
     "size": "Medium",
