@@ -632,6 +632,8 @@ class App:
         self.show_terrain            = True  # toggle for showing all terrain regions (shown by default, pre-combat too)
         self._status_msg             = ""    # transient confirmation text (Save/Load Terrain, …)
         self._status_msg_until       = 0     # pygame ticks (ms) when _status_msg expires
+        self._floating_texts: list   = []    # transient on-map outcome flashes
+                                             # {agent_idx, text, color, spawn_ms, dur_ms, rise}
         self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
         self.show_visible_targets    = False # toggle for showing visible target debug info
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
@@ -1054,6 +1056,10 @@ class App:
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
+        # Auto-offer Bite vs a creature this attacker is Grappling (Vampire Bite). Highlighted red-violet.
+        self.btn_cbt_bite_grappled = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🧛 Bite (grappled)",
+                                          (160, 40, 70), (200, 70, 100), self.font_md)
         self.btn_cbt_gwm_hew = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Hew (Bonus Attack)",
                                           (190, 100, 70), (225, 135, 100), self.font_md)
@@ -1555,6 +1561,53 @@ class App:
         """Show a transient confirmation message in the panel for `secs` seconds."""
         self._status_msg = msg
         self._status_msg_until = pygame.time.get_ticks() + int(secs * 1000)
+
+    def _spawn_flash(self, agent_idx, text: str, color, secs: float = 1.5):
+        """Spawn a short-lived floating text flash above an agent's token (e.g.
+        "Hit (12)" / "Miss" / "Saved" / "Failed"). Session-only visual state; drawn
+        each frame by _draw_floating_texts until it expires."""
+        if agent_idx is None or agent_idx < 0:
+            return
+        # Stagger multiple flashes on the same agent (e.g. multiattack) so they
+        # rise from different heights rather than overlapping.
+        rise = sum(20 for f in self._floating_texts if f["agent_idx"] == agent_idx)
+        self._floating_texts.append({
+            "agent_idx": agent_idx, "text": text, "color": color,
+            "spawn_ms": pygame.time.get_ticks(), "dur_ms": int(secs * 1000),
+            "rise": rise,
+        })
+
+    def _draw_floating_texts(self):
+        """Render active floating-outcome flashes above their agents, drifting up
+        and fading out over their lifetime. Called each frame after _draw_agents."""
+        if not self._floating_texts:
+            return
+        now = pygame.time.get_ticks()
+        # Prune expired entries in place.
+        self._floating_texts = [
+            f for f in self._floating_texts if now - f["spawn_ms"] < f["dur_ms"]
+        ]
+        agents = self.bm.placed_agents
+        cpx = int(self.bm.cell_pixel_size * self.map_scale)
+        font = getattr(self, "font_md", None) or self.font_sm
+        for f in self._floating_texts:
+            idx = f["agent_idx"]
+            if idx < 0 or idx >= len(agents):
+                continue
+            pt = agents[idx]
+            if pt.removed_from_play or pt.conditions.dead:
+                continue
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            size_px = cpx * pt.size
+            p = (now - f["spawn_ms"]) / max(1, f["dur_ms"])   # 0 → 1 over lifetime
+            label = font.render(f["text"], True, f["color"]).convert_alpha()
+            # Antialiased text has per-pixel alpha, so set_alpha() is ignored — fade by
+            # multiplying the whole surface's alpha channel instead.
+            alpha = max(0, int(255 * (1.0 - p)))
+            label.fill((255, 255, 255, alpha), None, pygame.BLEND_RGBA_MULT)
+            lx = sx + size_px // 2 - label.get_width() // 2
+            ly = sy - 6 - f["rise"] - int(p * 20)
+            self.screen.blit(label, (lx, ly))
 
     def _on_save_terrain_chosen(self, path: str):
         """Export the current terrain to a chosen _terrain.json (does not change the
@@ -2705,6 +2758,13 @@ class App:
                   f"(pending={self.pending_vitality_target}, opt={self._vitality_option_index})")
         self.pending_vitality_target   = False
         self._vitality_option_index    = -1
+        # College of Glamour Beguiling Magic: the post-cast "click a creature" offer must not leak
+        # across turns. If the bard cast a qualifying Enchantment/Illusion spell but never clicked a
+        # target (nor pressed Esc), the flag would otherwise stay armed and swallow the next creature
+        # click on a later turn into _beguiling_pick_target — the offer appearing to "show up on the
+        # next action." The window is immediate-only, so clear it defensively at every turn start.
+        self.pending_beguiling         = False
+        self.pending_beguiling_bard    = -1
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++). The turn start
         # opens the OnTurnStartNearby reaction window (Branches of the Tree) via the
@@ -3886,6 +3946,13 @@ class App:
                        f"miss (roll {result.total_roll} vs AC {result.target_ac})"
                        f"{exh_note}")
 
+        # On-map outcome flash above the targeted token.
+        if result.hit:
+            flash_txt = f"Crit ({result.total_damage})" if result.critical else f"Hit ({result.total_damage})"
+            self._spawn_flash(target_idx, flash_txt, FLASH_CRIT if result.critical else FLASH_GOOD)
+        else:
+            self._spawn_flash(target_idx, "Miss", FLASH_BAD)
+
         # Green Slaad Chaos Staff: on a hit, the target gains a random condition until the
         # start of the Slaad's next turn. The 1d4 condition pick happens here in Python.
         if result.hit:
@@ -4156,9 +4223,11 @@ class App:
                 if res.toppled:
                     self._combat_log_add(
                         f"{tgt_name} is knocked Prone (Topple — save {res.save_roll} vs DC {res.save_dc}).")
+                    self._spawn_flash(target_idx, "Failed", FLASH_BAD)
                 else:
                     self._combat_log_add(
                         f"{tgt_name} resists Topple (save {res.save_roll} vs DC {res.save_dc}).")
+                    self._spawn_flash(target_idx, "Saved", FLASH_GOOD)
             else:
                 # Skip topple: clear the availability flag so it won't be offered again this turn.
                 # (topple_used_this_turn is not bound to Python; the overlay gates on topple_available.)
@@ -4294,11 +4363,14 @@ class App:
                 f"Cleave {atk_name}→{tgt_name}: HIT {result.total_damage}"
                 f"{self._damage_breakdown_str(result)} {dmg_type_str}"
                 f"{' — DOWN' if result.target_down else ''}")
+            self._spawn_flash(second_target, f"Hit ({result.total_damage})",
+                              FLASH_CRIT if result.critical else FLASH_GOOD)
             if result.target_down:
                 self._drop_concentration_for_agent(second_target)
         else:
             self._combat_log_add(
                 f"Cleave {atk_name}→{tgt_name}: miss (roll {result.total_roll} vs AC {result.target_ac})")
+            self._spawn_flash(second_target, "Miss", FLASH_BAD)
         self._flush_combat_log()
         self._update_attack_overlay()
 
@@ -4792,6 +4864,11 @@ class App:
             else:
                 msg1 += "MISS"
             self._combat_log_add(msg1)
+            if result.attack1.hit:
+                self._spawn_flash(target_idx, f"Hit ({result.attack1.total_damage})",
+                                  FLASH_CRIT if result.attack1.critical else FLASH_GOOD)
+            else:
+                self._spawn_flash(target_idx, "Miss", FLASH_BAD)
 
         if result.attack2.valid:
             msg2 = f"{atk_name}→{tgt_name}: "
@@ -4800,6 +4877,11 @@ class App:
             else:
                 msg2 += "MISS"
             self._combat_log_add(msg2)
+            if result.attack2.hit:
+                self._spawn_flash(target_idx, f"Hit ({result.attack2.total_damage})",
+                                  FLASH_CRIT if result.attack2.critical else FLASH_GOOD)
+            else:
+                self._spawn_flash(target_idx, "Miss", FLASH_BAD)
 
         # Log rider results if applicable
         if result.rider1.valid and result.attack1.hit:
@@ -4807,6 +4889,8 @@ class App:
                 self._combat_log_add(
                     f"  → Knockdown (STR save DC {result.rider1.knockdown_save_dc}: rolled {result.rider1.knockdown_save_roll}) "
                     f"— {'Prone!' if result.rider1.target_knocked_prone else 'Resisted'}")
+                self._spawn_flash(target_idx, "Failed" if result.rider1.target_knocked_prone else "Saved",
+                                  FLASH_BAD if result.rider1.target_knocked_prone else FLASH_GOOD)
             elif result.rider1.option == 1:
                 self._combat_log_add(f"  → Push: {tgt_name} pushed back {result.rider1.push_distance} feet")
             elif result.rider1.option == 2:
@@ -4817,6 +4901,8 @@ class App:
                 self._combat_log_add(
                     f"  → Knockdown (STR save DC {result.rider2.knockdown_save_dc}: rolled {result.rider2.knockdown_save_roll}) "
                     f"— {'Prone!' if result.rider2.target_knocked_prone else 'Resisted'}")
+                self._spawn_flash(target_idx, "Failed" if result.rider2.target_knocked_prone else "Saved",
+                                  FLASH_BAD if result.rider2.target_knocked_prone else FLASH_GOOD)
             elif result.rider2.option == 1:
                 self._combat_log_add(f"  → Push: {tgt_name} pushed back {result.rider2.push_distance} feet")
             elif result.rider2.option == 2:
@@ -4894,9 +4980,11 @@ class App:
                 if res.stunned:
                     self._combat_log_add(
                         f"  → CON save DC {res.save_dc}: rolled {res.save_roll} vs DC {res.save_dc} — Stunned!")
+                    self._spawn_flash(target_idx, "Failed", FLASH_BAD)
                 else:
                     self._combat_log_add(
                         f"  → CON save DC {res.save_dc}: rolled {res.save_roll} vs DC {res.save_dc} — Resisted")
+                    self._spawn_flash(target_idx, "Saved", FLASH_GOOD)
 
             # Log original attack
             self._combat_log_add(atk_msg)
@@ -5003,6 +5091,8 @@ class App:
                 outcome = "applied!" if res.condition_applied else "Resisted"
                 self._combat_log_add(
                     f"  → {label} ({save_name} save DC {res.save_dc}: rolled {res.save_roll}) — {outcome}")
+                self._spawn_flash(target_idx, "Failed" if res.condition_applied else "Saved",
+                                  FLASH_BAD if res.condition_applied else FLASH_GOOD)
             self._combat_log_add(atk_msg)
             self._flush_combat_log()
             if result.target_down:
@@ -5090,11 +5180,13 @@ class App:
             self._combat_log_add(
                 f"  → Sweeping Attack: {tgt2} takes {res.extra_damage} damage "
                 f"(roll {res.save_roll} vs AC {res.save_dc}){' — DOWN' if res.extra_target_down else ''}")
+            self._spawn_flash(second_target, f"Hit ({res.extra_damage})", FLASH_GOOD)
             if res.extra_target_down:
                 self._drop_concentration_for_agent(second_target)
         elif res.valid:
             self._combat_log_add(
                 f"  → Sweeping Attack misses {tgt2} (roll {res.save_roll} vs AC {res.save_dc})")
+            self._spawn_flash(second_target, "Miss", FLASH_BAD)
         self._flush_combat_log()
         self._update_attack_overlay()
         self._continue_attack_sequence_after_rider(atk)
@@ -5257,12 +5349,15 @@ class App:
                     f"{tgt_name}→{atk_name}: Riposte → HIT {rip.total_damage}"
                     f"{self._damage_breakdown_str(rip)} {dmg_type_str}"
                     f"{' CRIT!' if rip.critical else ''}{' — DOWN' if rip.target_down else ''}")
+                self._spawn_flash(atk_idx, f"Hit ({rip.total_damage})",
+                                  FLASH_CRIT if rip.critical else FLASH_GOOD)
                 if rip.target_down:
                     self._drop_concentration_for_agent(atk_idx)
             elif rip.valid:
                 self._combat_log_add(
                     f"{tgt_name}→{atk_name}: Riposte → misses "
                     f"(roll {rip.total_roll} vs AC {rip.target_ac})")
+                self._spawn_flash(atk_idx, "Miss", FLASH_BAD)
             self._flush_combat_log()
             self._sync_spell_effect_cache()
             self._update_attack_overlay()
@@ -7458,6 +7553,11 @@ class App:
 
                 msg = f"{cast_name}→{tgt_name}: {result.spell_name} {tr.log_message}{modifier_suffix}"
             elif result.attack_type == rpg.SpellAttack.Save:
+                # On-map outcome flash above the saving agent's token (per target for AoE).
+                # Hoisted out of the spell/tgt_agent gate below so it fires even when the
+                # spell-metadata lookup fails (e.g. NPC innate spells).
+                self._spawn_flash(tr.target_idx, "Saved" if tr.saved else "Failed",
+                                  FLASH_GOOD if tr.saved else FLASH_BAD)
                 if spell and tgt_agent:
                     save_ability_map = {
                         rpg.SaveAbility.SaveStr: "STR",
@@ -8677,10 +8777,32 @@ class App:
             return
         if sp.level < 1:   # cantrips don't use a slot
             return
+        # Present the offer as a MODAL popup at the caster rather than a bare combat-log line. This
+        # lands right after any OnDeclareCast reaction popup (e.g. Counterspell); a quiet log message
+        # there is easy to miss and the DM ends up pressing End Turn, silently wasting the once/rest
+        # use. The popup consumes clicks (blocking End Turn) until the DM picks Use or Decline.
+        px, py = self._agent_screen_pos(caster_idx)
+        self.context_menu.show(
+            (px, py),
+            [(f"Use Beguiling Magic ({sp.name})",
+              lambda i=caster_idx: self._arm_beguiling_target_pick(i)),
+             ("Decline Beguiling Magic", self._decline_beguiling_offer)],
+            self.screen.get_size())
+
+    def _arm_beguiling_target_pick(self, caster_idx: int):
+        """DM accepted the Beguiling Magic offer — arm the click-a-creature target pick (a following
+        creature click routes to _beguiling_pick_target for the WIS save + Charmed/Frightened pick)."""
         self.pending_beguiling      = True
         self.pending_beguiling_bard = caster_idx
         self._combat_log_add(
             "Beguiling Magic — click a creature within 60 ft to force a WIS save (Esc declines).")
+        self._flush_combat_log()
+
+    def _decline_beguiling_offer(self):
+        """DM declined the Beguiling Magic offer — spend nothing, disarm."""
+        self.pending_beguiling      = False
+        self.pending_beguiling_bard = -1
+        self._combat_log_add("Beguiling Magic not used.")
         self._flush_combat_log()
 
     def _beguiling_pick_target(self, hit: int):
@@ -12573,10 +12695,18 @@ class App:
 
         # Drop grapple button (free action — show regardless of bonus action status)
         if 0 <= cur_idx < len(agents):
-            is_grappling = any(
-                agents[i].conditions.grappler_idx == cur_idx and agents[i].conditions.grappled
-                for i in range(len(agents)) if i != cur_idx
-            )
+            # Scan every OTHER agent for one this agent is grappling. Read conditions live from
+            # the engine (get_agent_conditions) rather than agents[i].conditions, which can be a
+            # stale pybind copy — the same fresh-read pattern the Escape button uses above.
+            _grip = []
+            for i in range(len(agents)):
+                if i == cur_idx:
+                    continue
+                c = self.combat.get_agent_conditions(self.bm, i)
+                if c.grappled and c.grappler_idx == cur_idx:
+                    _grip.append(i)
+            is_grappling = bool(_grip)
+
             if is_grappling:
                 self.btn_cbt_grapple_drop.rect.x = lx
                 self.btn_cbt_grapple_drop.rect.y = y
@@ -12966,6 +13096,20 @@ class App:
                         self.btn_cbt_war_priest.rect.w = W
                         self.btn_cbt_war_priest.draw(self.screen)
                         y += B + gap
+
+            # Bite (grappled) button — a weapon flagged auto_use_when_grappling (Vampire Bite) whose
+            # wielder is currently Grappling a creature: one-click auto-offer to fire that weapon at the
+            # grappled victim. Available when the Attack action is unspent OR mid-multiattack (the common
+            # case: a claw grapples, then the trailing Bite fires). Resolution (CON save / auto-hit /
+            # HP-max drain) is unchanged — the button just removes the manual weapon+target selection.
+            if 0 <= cur_idx < len(agents) and (not self.action_used or mid_sequence_action):
+                wslot, victim = self.combat.pending_auto_grapple_strike(self.bm, cur_idx)
+                if wslot >= 0 and victim >= 0:
+                    self.btn_cbt_bite_grappled.rect.x = lx
+                    self.btn_cbt_bite_grappled.rect.y = y
+                    self.btn_cbt_bite_grappled.rect.w = W
+                    self.btn_cbt_bite_grappled.draw(self.screen)
+                    y += B + gap
 
             # Great Weapon Master — Hew button: a melee crit/kill with a Heavy weapon (flagged in C++
             # as gwm_hew_available) arms one bonus-action attack with that weapon. Shown as a standalone
@@ -15186,6 +15330,18 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_extra_attack(weapon_idx=0, offhand=False,
                                                      resource="War Priest", label="War Priest")
+                    if self.btn_cbt_bite_grappled.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            wslot, victim = self.combat.pending_auto_grapple_strike(self.bm, idx)
+                            if wslot >= 0 and victim >= 0:
+                                # Pre-seed the flagged weapon + grappled victim, then resolve straight
+                                # away (the button IS the DM's confirmation). Routes through the normal
+                                # attack dispatch on the Attack budget so forceAutoHit / save_for_damage
+                                # / the HP-max drain all fire unchanged (the victim still gets its save).
+                                self._start_extra_attack(weapon_idx=wslot, offhand=False,
+                                                         slot="action", label="🧛 Bite (grappled)")
+                                self._resolve_combat_attack(victim)
                     if self.btn_cbt_gwm_hew.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -15522,7 +15678,14 @@ class App:
                 if self.btn_cbt_pause_resume.clicked(event):
                     self.combat_paused = not self.combat_paused
                 if self.btn_cbt_end_turn.clicked(event):
-                    if not self.combat_paused:
+                    if self.pending_beguiling:
+                        # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
+                        # DM resolve (click a creature) or decline (Esc) it first.
+                        self._combat_log_add(
+                            "Resolve Beguiling Magic first — click a creature within 60 ft, "
+                            "or press Esc to decline.")
+                        self._flush_combat_log()
+                    elif not self.combat_paused:
                         self._advance_turn()
                         self._flush_combat_log()
                 if self.btn_cbt_end_combat.clicked(event):
@@ -15571,6 +15734,7 @@ class App:
             self.screen.fill(COL_BG)
             self._draw_map()
             self._draw_agents()
+            self._draw_floating_texts()                     # transient outcome flashes above tokens
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_panel()

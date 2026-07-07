@@ -858,6 +858,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("auto_hit_if_grappled", &Weapon::auto_hit_if_grappled)
         .def_readwrite("save_for_damage",  &Weapon::save_for_damage)
         .def_readwrite("save_for_damage_ability", &Weapon::save_for_damage_ability)
+        .def_readwrite("auto_use_when_grappling", &Weapon::auto_use_when_grappling)
         .def_readwrite("permanently_armed", &Weapon::permanently_armed)
         .def_readwrite("mastery",          &Weapon::mastery)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
@@ -2203,6 +2204,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::availableAttacks,
              py::arg("battle_map"), py::arg("attacker_idx"),
              "Return all legal (weapon, target) pairs for the attacker.")
+        .def("pending_auto_grapple_strike",
+             &CombatEngine::pendingAutoGrappleStrike,
+             py::arg("battle_map"), py::arg("attacker_idx"),
+             "Vampire-Bite auto-use intent: return the (weapon_slot, victim_idx) of a weapon flagged\n"
+             "auto_use_when_grappling fired at a creature the attacker is currently Grappling (alive, in\n"
+             "reach), or (-1, -1) if none. Manual play offers this as a one-click Bite; NPC automation\n"
+             "auto-attempts it. Resolution (CON save / auto-hit / drain) is unchanged.")
         .def("get_battle_observation",
              &CombatEngine::getBattleObservation,
              py::arg("battle_map"), py::arg("attacker_idx"),

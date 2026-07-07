@@ -1351,6 +1351,40 @@ bool CombatEngine::canRestoreBalance(const BattleMap& bm, int reactor, int rolle
     return rb && rb->current >= 1;
 }
 
+// "Auto-use-when-grappling" intent: for attacker `atk`, return the {weapon_slot, victim_idx} of a
+// weapon flagged auto_use_when_grappling (a Vampire's Bite) fired at a creature `atk` is currently
+// Grappling — or {-1,-1} if there is no such weapon or no legal victim. A legal victim must be
+// grappled BY this attacker, alive, not tombstoned, and within the weapon's reach. This governs
+// INITIATION only (prompting/automation); resolution stays with forceAutoHit / save_for_damage.
+std::pair<int,int> CombatEngine::pendingAutoGrappleStrike(const BattleMap& bm, int atk) const
+{
+    auto agents = bm.placedAgents();
+    if (atk < 0 || atk >= static_cast<int>(agents.size())) return {-1, -1};
+    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(atk)];
+    if (!atk_pt.agent || atk_pt.removed_from_play) return {-1, -1};
+    if (atk_pt.agent->getStats().hp_cur <= 0) return {-1, -1};
+
+    for (int slot = 0; slot < static_cast<int>(atk_pt.weapons.size()); ++slot) {
+        const Weapon& w = atk_pt.weapons[static_cast<std::size_t>(slot)];
+        if (!w.auto_use_when_grappling) continue;
+
+        // Find a creature this attacker is currently grappling.
+        for (int v = 0; v < static_cast<int>(agents.size()); ++v) {
+            if (v == atk) continue;
+            const PlacedAgent& vp = agents[static_cast<std::size_t>(v)];
+            if (!vp.agent || vp.removed_from_play) continue;
+            const Agent::Conditions& vc = vp.agent->getConditions();
+            if (!vc.grappled || vc.grappler_idx != atk) continue;
+            if (vp.agent->getStats().hp_cur <= 0) continue;         // not a legal target if downed
+            if (!canAttack(w, bm, atk_pt.origin, atk_pt.agent->getSize(),
+                           vp.origin, vp.agent->getSize()))
+                continue;                                            // out of reach / no LoS
+            return {slot, v};
+        }
+    }
+    return {-1, -1};
+}
+
 // Force an auto-hit (e.g. a vampire's Bite vs a creature it has Grappled) after the roll: a missed
 // roll is promoted to a hit. The roll itself stands (a natural 20 still crits; a nat 1 that was
 // going to fumble is rescued), and this runs BEFORE the OnD20Seen/Shield windows so a defender can

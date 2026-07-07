@@ -411,6 +411,99 @@ def test_vampire_grapple_then_bite_combo():
     print(f"✅ Vampire combo: Melee grapple → Bite auto-hit drained {drain} & healed the Vampire")
 
 
+def test_pending_auto_grapple_strike_gating():
+    """CP2 helper (MONSTER_AUTO_EFFECTS_PLAN.md): pending_auto_grapple_strike returns the
+    (bite_slot, victim) of an auto_use_when_grappling weapon ONLY when the attacker is currently
+    grappling a legal, in-reach victim — and (-1, -1) otherwise (no flag, not grappling, or the
+    victim is held by someone else)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 6, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Victim", 7, 5))
+    bm.set_agent_faction(atk, 1); bm.set_agent_faction(foe, 2)
+
+    bite = _bite_weapon()
+    bite.type = rpg.WeaponType.Melee     # in-reach check uses canAttack → needs a melee/reach weapon
+    engine.set_agent_weapons(bm, atk, [_melee_grapple_weapon(), bite, rpg.Weapon()])
+
+    # Bite carries no auto_use_when_grappling yet: even while grappling, the helper stays silent.
+    _grapple(engine, bm, atk, foe)
+    assert engine.pending_auto_grapple_strike(bm, atk) == (-1, -1), \
+        "no auto-strike without the auto_use_when_grappling flag"
+
+    # Flag the Bite (slot 1) and re-set the weapons so the engine's copy carries the flag.
+    bite.auto_use_when_grappling = True
+    engine.set_agent_weapons(bm, atk, [_melee_grapple_weapon(), bite, rpg.Weapon()])
+
+    # Not grappling anyone → still empty. (get_agent_conditions returns a COPY, so write it back.)
+    cond = engine.get_agent_conditions(bm, foe)
+    cond.grappled = False; cond.grappler_idx = -1
+    engine.set_agent_conditions(bm, foe, cond)
+    assert engine.pending_auto_grapple_strike(bm, atk) == (-1, -1), \
+        "no auto-strike when not grappling anyone"
+
+    # Grappling the adjacent victim → the helper points the flagged Bite (slot 1) at it.
+    _grapple(engine, bm, atk, foe)
+    assert engine.pending_auto_grapple_strike(bm, atk) == (1, foe), \
+        f"expected (1, {foe}), got {engine.pending_auto_grapple_strike(bm, atk)}"
+
+    # Victim held by a DIFFERENT creature (not this attacker) → empty (mirror of the auto-hit gate).
+    cond = engine.get_agent_conditions(bm, foe)
+    cond.grappler_idx = 99
+    engine.set_agent_conditions(bm, foe, cond)
+    assert engine.pending_auto_grapple_strike(bm, atk) == (-1, -1), \
+        "no auto-strike when the victim is grappled by someone else"
+    print("✅ pending_auto_grapple_strike gates on flag + grappled-by-me + in reach")
+
+
+def test_vampire_auto_bite_no_recipe():
+    """CP2 automation: a Vampire that is ALREADY grappling a creature coming into its turn with NO
+    multiattack recipe still bites it. The legacy path picks its best melee (the Claw), then the CP2
+    append fires one auto_use_when_grappling Bite at the grappled victim — proven by the reduceHPMax
+    drain, which only the Bite produces."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 6, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Victim", 7, 5))
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+
+    # Vampire: unbeatable Bite save DC (high CON + PB), low HP so the life-drain heal is observable.
+    sa = engine.get_agent_stats(bm, npc)
+    sa.str = 20; sa.con = 30; sa.prof_bonus = 5; sa.hp_cur = 5; sa.hp_max = 200
+    sa.num_attacks = 1; sa.multiattack = []        # NO recipe — legacy num_attacks path
+    engine.set_agent_stats(bm, npc, sa)
+
+    # Victim: tiny CON (always fails the Bite save), roomy HP, soft AC.
+    st = engine.get_agent_stats(bm, foe)
+    st.con = 1; st.hp_cur = 300; st.hp_max = 300; st.base_ac = 1; st.available_hit_points = 0
+    engine.set_agent_stats(bm, foe, st)
+
+    # Slot 0 = a Claw with higher avg damage than the Bite (20 > ~13) so npcSelectWeapon prefers it —
+    # the Bite must therefore come from the CP2 append, not legacy weapon selection. It does NOT grapple,
+    # so the only grapple in play is the pre-existing one set below.
+    bite = _bite_weapon()
+    bite.type = rpg.WeaponType.Melee
+    bite.auto_use_when_grappling = True          # CP2 initiation flag
+    bite.auto_hit_if_grappled = True
+    bite.save_for_damage = True
+    bite.save_for_damage_ability = rpg.SaveAbility.SaveCon
+    engine.set_agent_weapons(bm, npc, [_fixed_weapon("Claw", 20), bite, rpg.Weapon()])
+    _automate(bm, npc)
+
+    # Already grappling the victim BEFORE the turn starts (no recipe seeded it) — set last so nothing
+    # rebuilds the agent and wipes the condition.
+    _grapple(engine, bm, npc, foe)
+
+    calls = _driver(engine, bm, npc)
+
+    # Two swings: the legacy Claw, then the appended auto-grapple Bite — both at the grappled victim.
+    assert calls == [(npc, foe), (npc, foe)], f"expected Claw + auto Bite (2 swings), got {calls}"
+    foe_s = engine.get_agent_stats(bm, foe)
+    drain = foe_s.available_hit_points
+    assert 3 <= drain <= 18, f"the appended Bite should drain 3d6 (3..18) of HP max, got {drain}"
+    assert engine.get_agent_stats(bm, npc).hp_cur == 5 + drain, \
+        f"Vampire should heal by the {drain} it drained (5 → {5 + drain})"
+    print(f"✅ Recipe-less Vampire auto-bites its grappled victim (drained {drain})")
+
+
 if __name__ == "__main__":
     test_available_hit_points_basics()
     test_long_rest_clears_drain()
@@ -422,4 +515,6 @@ if __name__ == "__main__":
     test_bite_con_save_failure_bites()
     test_vampire_multiattack_recipe()
     test_vampire_grapple_then_bite_combo()
+    test_pending_auto_grapple_strike_gating()
+    test_vampire_auto_bite_no_recipe()
     print("\n✅ All vampire-feature tests passed!")

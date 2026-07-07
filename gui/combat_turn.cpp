@@ -1553,6 +1553,16 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         // st.pending_segments BEFORE positioning runs below, so reachNow / findPositionCell already target
         // the recipe's first weapon. When hasRecipe, seedFromRecipe already set attacks_remaining.
         const bool hasRecipe = seedFromRecipe(st);
+        // Auto-use-when-grappling (MONSTER_AUTO_EFFECTS_PLAN.md CP2): a vampire that is ALREADY
+        // grappling a creature coming into its turn with NO multiattack recipe would otherwise never
+        // bite (legacy selection picks a single weapon by proximity). Append one grapple-bite segment
+        // so the Bite is attempted regardless of statblock recipe; the loop below forces its target to
+        // the grappled victim. Skip when the legacy weapon IS the bite (avoid a double bite).
+        if (!hasRecipe) {
+            const auto [biteSlot, biteVictim] = pendingAutoGrappleStrike(bm, agent_idx);
+            if (biteVictim >= 0 && biteSlot != st.weapon_idx)
+                st.pending_segments.push_back({biteSlot, 1});
+        }
         const bool reachNow = inReachOf(st.target_idx, st.weapon_idx);
         // Non-kiters already in reach swing where they stand. Kiters always look for a better-spaced cell
         // first (findPositionCell includes the current cell, so "stay put" remains an option).
@@ -1670,6 +1680,16 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 }
                 if (!advanced) break;
                 continue;   // re-evaluate reach for the NEW weapon
+            }
+            // Auto-use-when-grappling (MONSTER_AUTO_EFFECTS_PLAN.md CP2): if THIS segment's weapon is a
+            // grapple-bite (auto_use_when_grappling) and this agent is currently grappling a legal victim,
+            // force the segment onto that victim — the Bite lands on the thing being held, overriding the
+            // proximity/lowest-HP pick. Resolution (CON save via save_for_damage / forceAutoHit) is
+            // unchanged. Runs before re-acquire so the forced (valid) victim survives the drop-check below.
+            {
+                const auto [biteSlot, biteVictim] = pendingAutoGrappleStrike(bm, agent_idx);
+                if (biteVictim >= 0 && biteSlot == st.weapon_idx)
+                    st.target_idx = biteVictim;
             }
             // Re-acquire if the current target dropped (or became invalid) mid-multiattack — move to next.
             if (!npcAttackable(bm, agent_idx, st.target_idx)) {

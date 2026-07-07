@@ -1018,4 +1018,15 @@ The same `from_size` path also protects the Monk's Elemental Attunement pull (`c
 
 </details>
 
+<details>
+<summary><b>Floating combat-outcome flashes — emanation/zone saves not covered (2026-07-06)</b></summary>
+
+Short-lived on-map text flashes above the involved token: **"Hit (N)" / "Crit (N)" / "Miss"** over an attack's target, **"Saved" / "Failed"** over a saving creature. Pure GUI (pygame), no engine change. Infra in `gui/main.py`: `self._floating_texts` list, `_spawn_flash(agent_idx, text, color, secs=1.5)` (mirrors `_flash_status`; auto-staggers stacked flashes on one token), and `_draw_floating_texts()` (drift-up + fade via `BLEND_RGBA_MULT`, since `set_alpha` is ignored on antialiased text) called each frame after `_draw_agents()`. Colors `FLASH_GOOD`/`FLASH_BAD`/`FLASH_CRIT` in `constants.py`.
+
+**Fire sites (covered):** `_finish_attack` (single attacks), `_log_spell_results` (cast-time spell saves — the flash is hoisted above the `if spell and tgt_agent:` gate so it fires even when the spell-metadata lookup returns None), Flurry sub-hits, Cleave, Riposte, Sweeping, Topple, Stunning Strike, Battle Master save-maneuvers, Flurry knockdown riders. Verified live: weapon Hit/Miss and Fireball Saved/Failed both flash.
+
+**NOT covered — persistent emanations / zones (e.g. Spirit Guardians, Cloudkill).** Their save+damage is applied deep in C++ (`applySpellEffect`, `combat_spells.cpp:2122`) when a creature starts its turn in the zone or enters it — NOT at cast time — and that path emits **only a text log line** (`"{name} took N from {spell} (made/failed save)"`). No structured (target_idx, saved) result reaches Python (`TurnStartResult` carries none), so the GUI has nothing to anchor a flash to — same limitation as **opportunity attacks** (also C++-resolved, text-only). **To fix later (needs a rebuild):** have `applySpellEffect` record `(target_idx, saved)` into a per-turn/per-move member vector, expose it via a binding (e.g. `last_zone_save_outcomes()`), and have the GUI read it after `begin_turn_flow` + movement and call `_spawn_flash`. Index-based, so it survives duplicate-named tokens. A GUI-side log-parse alternative was rejected as brittle (name→index ambiguity, wording-dependent).
+
+</details>
+
 

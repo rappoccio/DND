@@ -2496,6 +2496,12 @@ public:
     // Promote a missed roll to a hit when s.auto_hit is set (vampire Bite vs a creature it has
     // Grappled). Runs after resolveAttack, before the defender reaction windows. No-op otherwise.
     void forceAutoHit(BattleMap& bm, InFlightAttack& s);
+    // "Auto-use-when-grappling" intent (Vampire Bite auto-offer/auto-attempt). For attacker `atk`,
+    // scan its weapons for one flagged auto_use_when_grappling and find a legal victim it is currently
+    // Grappling (alive, not tombstoned, in reach of that weapon). Returns {weapon_slot, victim_idx},
+    // or {-1,-1} if none. Shared by manual play (CP1) and NPC automation (CP2). See
+    // MONSTER_AUTO_EFFECTS_PLAN.md.
+    [[nodiscard]] std::pair<int,int> pendingAutoGrappleStrike(const BattleMap& bm, int atk) const;
     // Apply one lowering reaction to the in-flight roll r (spends the resource + the reactor's reaction,
     // mutates r, reevaluates). Return true if r changed. Write to the in-flight r, not pending_roll_bonus_.
     bool applyBendLuckToAttack    (BattleMap& bm, int reactor, AttackResult& r);

@@ -70,6 +70,11 @@ struct Weapon {
     // ability mod: on a FAILURE the bite lands (full damage + on-hit riders); on a SUCCESS it deals nothing.
     bool         save_for_damage         = false;
     SaveAbility_t save_for_damage_ability = SaveCon;
+    // Initiation/prompting flag (distinct from auto_hit_if_grappled, which governs RESOLUTION):
+    // when true, this weapon should be auto-offered (manual play) or auto-attempted (NPC automation)
+    // against a creature the wielder is currently Grappling, without the DM selecting weapon+target.
+    // A vampire's Bite sets BOTH this and auto_hit_if_grappled. See MONSTER_AUTO_EFFECTS_PLAN.md.
+    bool         auto_use_when_grappling = false;
     bool         permanently_armed    = false;  // this weapon cannot be disarmed (e.g., unarmed attacks,
                                                 // which are part of a creature's natural abilities)
 

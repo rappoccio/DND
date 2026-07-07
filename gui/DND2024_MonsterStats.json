@@ -53742,6 +53742,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "mastery": "None",
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon"
@@ -58534,6 +58535,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "mastery": "None",
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon"
@@ -58796,6 +58798,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "mastery": "None",
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon"
@@ -58966,6 +58969,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "mastery": "None",
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon"
@@ -59104,6 +59108,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon",
         "mastery": "None"
@@ -59246,6 +59251,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "mastery": "None",
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon"
@@ -59415,6 +59421,7 @@
           "reduceHPMax"
         ],
         "auto_hit_if_grappled": true,
+        "auto_use_when_grappling": true,
         "mastery": "None",
         "save_for_damage": true,
         "save_for_damage_ability": "SaveCon"

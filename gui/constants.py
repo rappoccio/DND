@@ -39,6 +39,11 @@ COL_BTN_DANGER  = (130,  50,  50)
 COL_INPUT_BG    = (35,  35,  45)
 COL_INPUT_ACTIVE= (55,  55,  75)
 
+# ── Floating combat-outcome flash colours ─────────────────────────────────────
+FLASH_GOOD = (120, 220, 140)   # green — Hit / Saved
+FLASH_BAD  = (220, 110, 110)   # red   — Miss / Failed
+FLASH_CRIT = (255, 215,   0)   # gold  — critical hit
+
 # ── Combat panel colours ──────────────────────────────────────────────────────
 COL_INITIATIVE_CUR  = (255, 210,  50)   # gold — current combatant row
 COL_HP_HIGH         = ( 60, 200,  80)   # green  – > 66 % HP
