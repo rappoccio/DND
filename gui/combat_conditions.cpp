@@ -424,6 +424,9 @@ void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_id
             c.caster_idx      = bard_idx;
             c.condition_name  = "CommandFlee";
             c.turns_remaining = 1;
+            c.save_repeat_turns = -1;  // Command grants NO repeated save (RAW). Without this the struct
+                                       // default (repeat every turn, DC 0, SaveDex) auto-passes at the
+                                       // victim's turn start and strips the command before it can flee.
             (void)addAgentCondition(bm, c);
             log_("Command (Flee): {} must move away from {} on its next turn",
                  agentName(bm, target_idx), agentName(bm, bard_idx));
@@ -450,6 +453,7 @@ void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_id
             c.caster_idx      = bard_idx;
             c.condition_name  = "CommandApproach";
             c.turns_remaining = 1;
+            c.save_repeat_turns = -1;  // no repeated save (RAW) — see the Flee case above
             (void)addAgentCondition(bm, c);
             log_("Command (Approach): {} must move toward {} on its next turn",
                  agentName(bm, target_idx), agentName(bm, bard_idx));

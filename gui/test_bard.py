@@ -683,6 +683,30 @@ def test_command_word_effects_on_failed_save():
     print("✅ test_command_word_effects_on_failed_save passed")
 
 
+def test_command_flee_survives_victim_turn_start():
+    """A CommandFlee condition must NOT be stripped by a bogus turn-start re-save. Command grants no
+    repeated save (RAW): without save_repeat_turns=-1 the condition inherits the struct default (repeat
+    every turn, DC 0, SaveDex), which auto-passes at the victim's turn start and cancels the command
+    before it can force movement. Regression guard for that."""
+    for word, name in [(1, "CommandFlee"), (4, "CommandApproach")]:
+        bm = setup_battle_map(); engine = setup_combat_engine()
+        bidx = add_agent_to_battle(engine, bm, create_test_agent("GlamourBard", 5, 5))
+        enemy = add_agent_to_battle(engine, bm, create_test_agent("Foe", 6, 5))
+        _glamour6(engine, bm, bidx)
+        engine.activate_mantle_of_majesty(bm, bidx)
+        _charm(engine, bm, enemy, bidx)              # force the initial save to auto-fail
+        _cast_command(engine, bm, bidx, enemy, word)
+
+        # The victim begins its turn: the turn-start condition processing must LEAVE the command in place
+        # (no free re-save) so it can be forced to move this turn.
+        engine.begin_turn(bm, enemy)
+        match = [c for c in engine.active_agent_conditions
+                 if c.agent_idx == enemy and c.condition_name == name and c.caster_idx == bidx]
+        assert match, f"{name} must survive the victim's turn start (no repeated save)"
+        assert match[0].save_repeat_turns == -1, f"{name} must not allow a repeated save"
+    print("✅ test_command_flee_survives_victim_turn_start passed")
+
+
 def test_mantle_window_ends_on_drop_concentration():
     """Dropping concentration ends the unearthly-appearance window immediately."""
     bm = setup_battle_map(); engine = setup_combat_engine()
@@ -1177,6 +1201,7 @@ if __name__ == "__main__":
         test_restore_mantle_of_majesty_from_slot,
         test_command_auto_fails_for_creature_charmed_by_bard,
         test_command_word_effects_on_failed_save,
+        test_command_flee_survives_victim_turn_start,
         test_mantle_window_ends_on_drop_concentration,
         test_unbreakable_majesty_seeded_only_at_glamour_l14,
         test_activate_unbreakable_majesty_opens_window,

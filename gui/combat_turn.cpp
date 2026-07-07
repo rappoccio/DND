@@ -1097,10 +1097,104 @@ NpcAutomationStrategy CombatEngine::resolveStrategy(const BattleMap& bm, int age
     return bm.getAgentNpcAutomationStrategy(agent_idx);
 }
 
+int CombatEngine::npcCommandFleeSource(int agent_idx) const noexcept
+{
+    for (const auto& ac : activeAgentConditions_)
+        if (ac.agent_idx == agent_idx && ac.condition_name == "CommandFlee" && ac.caster_idx >= 0)
+            return ac.caster_idx;
+    return -1;
+}
+
+FlowStatus CombatEngine::runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n || fear_idx < 0 || fear_idx >= n)
+        return FlowStatus::Completed;
+
+    NpcTurnState& st = npc_turn_;
+    // Resume after a parked OA on the way out: the flee move already resolved during advanceMove, so just
+    // end the turn (Command Flee grants no action). Guarded on flee_move_launched (mirrors aoe_moving).
+    if (st.active && st.agent_idx == agent_idx && st.flee_move_launched) {
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+
+    // Fresh flee turn: seed the agent's OWN movement budget (the one moveAgent/reachableCells read), exactly
+    // as runWeaponTurn does — beginTurn only seeds the parallel engine budget, and headless RL has no GUI
+    // _reset_movement to seed this one.
+    st = NpcTurnState{};
+    st.active    = true;
+    st.agent_idx = agent_idx;
+    const Agent::Stats s = bm.getAgentStats(agent_idx);
+    bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
+        s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+
+    const auto& pa  = bm.placedAgents();
+    const Cell  me  = pa[static_cast<std::size_t>(agent_idx)].origin;
+    const int   ms  = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+    const Cell  src = pa[static_cast<std::size_t>(fear_idx)].origin;
+    const int   ss  = pa[static_cast<std::size_t>(fear_idx)].agent->getSize();
+    const int   budget = pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+
+    // Among all reachable cells, pick the one that MAXIMISES footprint distance from the fear source
+    // (running away by the fastest available route). reachableCells only ever returns passable, unobstructed
+    // cells, so the winner is by construction a clear cell — satisfying the "flee to a clear area" fallback
+    // when a straight line away is blocked. Ties → the farthest-travelled cell (commit to the getaway).
+    Cell dest = me;
+    int  bestAway = footprintDistance(me, ms, src, ss);
+    int  bestSteps = 0;
+    for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
+        const int away  = footprintDistance(c, ms, src, ss);
+        const int steps = std::max(std::abs(c.col - me.col), std::abs(c.row - me.row));
+        if (away > bestAway || (away == bestAway && steps > bestSteps)) {
+            bestAway = away; bestSteps = steps; dest = c;
+        }
+    }
+
+    if (dest == me) {   // boxed in — nowhere farther to run; the turn is spent (no action either way)
+        log_("Command (Flee): {} is cornered and cannot get farther from {}",
+             agentName(bm, agent_idx), agentName(bm, fear_idx));
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+
+    log_("Command (Flee): {} flees from {}", agentName(bm, agent_idx), agentName(bm, fear_idx));
+    st.flee_move_launched = true;   // set BEFORE beginMove so a park→resume ends the turn (no re-flee)
+    if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+        return FlowStatus::AwaitingDecision;
+
+    st = NpcTurnState{};            // move resolved inline → flee complete, no action taken
+    return FlowStatus::Completed;
+}
+
 FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
 {
     const int n = static_cast<int>(bm.placedAgents().size());
     if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
+
+    // A dead/downed/removed NPC must NOT act. Initiative can still hand a turn to a creature that was
+    // killed earlier this round (or tombstoned/benched), and without this gate that corpse would run a
+    // full strategy — Anastrasya, already dead, cast Hunger of Hadar. Mirror npcAttackable's in-play test
+    // on the ACTOR: no HP, dead/unconscious condition, or out of play → end the turn immediately, taking
+    // no action. Clear any parked turn state so a stale resume doesn't fire on the corpse next round.
+    {
+        const PlacedAgent& self = bm.placedAgents()[static_cast<std::size_t>(agent_idx)];
+        const auto cond = bm.getAgentConditions(agent_idx);
+        if (self.removed_from_play || self.on_deck ||
+            bm.getAgentStats(agent_idx).hp_cur <= 0 || cond.dead || cond.unconscious) {
+            if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
+                npc_turn_ = NpcTurnState{};
+            return FlowStatus::Completed;
+        }
+    }
+
+    // Command (Flee) overrides all strategy: the creature spends its whole turn running away from the fear
+    // source and takes no action (Command RAW). Intercept BEFORE the strategy dispatch so it applies to any
+    // NPC regardless of role. On a park→resume the flee flag routes back here (the condition persists until
+    // the caster's next turn), and runFleeTurn's flee_move_launched guard ends the turn without re-fleeing.
+    const int fearIdx = npcCommandFleeSource(agent_idx);
+    if (fearIdx >= 0)
+        return runFleeTurn(bm, agent_idx, fearIdx);
 
     // Resume routing (Bucket D + PreferAOE): if a parked NPC turn is mid-flight for this agent and it was
     // launched as an AoE/recharge cast (or its approach move), it MUST re-enter runAoeTurn to finish. The

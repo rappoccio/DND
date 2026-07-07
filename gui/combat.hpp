@@ -704,6 +704,10 @@ struct NpcTurnState {
     int  conceal_spell_idx{-1};           // chosen invis spell (route A bonus / route C action); -1 = none
     bool conceal_move_launched{false};    // post-attack cover move started (resume: don't re-move)
     bool conceal_act_launched{false};     // Hide/cast started (resume after Counterspell: don't re-cast)
+    // Command (Flee): a commanded creature spends its whole turn running away by the fastest route and
+    // takes no action. Set TRUE the moment the flee move is launched so a park→resume (an OA fired on the
+    // way out) simply ends the turn instead of re-fleeing. Mirrors aoe_moving / conceal_move_launched.
+    bool flee_move_launched{false};
 };
 
 // How an NPC strategy ranks candidate targets (NPC_AUTOMATION_PLAN.md Steps 3-5).
@@ -2442,6 +2446,15 @@ private:
     // Resumable: returns AwaitingDecision when a move/attack it attempts parks at a human reaction window;
     // the GUI resolves it and re-calls run_npc_turn to continue (npc_turn_ holds the resume point).
     FlowStatus runWeaponTurn(BattleMap& bm, int agent_idx, const NpcStrategyPolicy& policy);
+    // Command (Flee) turn: a creature commanded to flee spends its whole turn moving away from the fear
+    // source (the caster) by the fastest available route and takes no action (Command RAW). Picks the
+    // reachable cell that MAXIMISES footprint distance from the fear source; if boxed in and no cell is
+    // farther, it holds. Movement runs through the parkable beginMove (an OA on the way out surfaces
+    // normally); resumable via npc_turn_.flee_move_launched. Returns -1 fear source ⇒ caller falls through.
+    FlowStatus runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx);
+    // Index of the creature a Command (Flee) condition on agent_idx points its victim away from (the
+    // condition's caster), or -1 if agent_idx is not currently under Command (Flee).
+    [[nodiscard]] int  npcCommandFleeSource(int agent_idx) const noexcept;
     // Best attackable enemy of agent_idx by the given priority (Nearest, ties→lowest HP; or LowestHp,
     // ties→nearest), or -1 if none. "Enemy" = any non-ally (areAllies==false) alive, in play, in initiative.
     // prefer_caster (Step 4): restrict the pool to enemy spellcasters if any are attackable, else fall back

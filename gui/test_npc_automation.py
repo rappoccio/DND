@@ -906,6 +906,69 @@ def test_hide_route_d_falls_back_to_kite():
     print("✅ test_hide_route_d_falls_back_to_kite passed")
 
 
+# ── Command (Flee): a commanded creature runs away and takes no action ───────────
+def _command_flee(engine, bm, victim, fear_source):
+    """Plant a 1-turn CommandFlee condition on `victim` keyed to `fear_source` (the caster it must flee)."""
+    c = rpg.ActiveAgentCondition()
+    c.agent_idx       = victim
+    c.caster_idx      = fear_source
+    c.condition_name  = "CommandFlee"
+    c.turns_remaining = 1
+    engine.add_agent_condition(bm, c)
+
+
+def test_command_flee_runs_away_no_attack():
+    """An NPC commanded to Flee spends its whole turn moving AWAY from the fear source and does NOT
+    attack, even though it is adjacent to an enemy it could otherwise strike."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)                       # armed + adjacent: would attack if not fleeing
+    s = engine.get_agent_stats(bm, npc); s.speed_walk = 30; engine.set_agent_stats(bm, npc, s)
+    _automate(bm, npc)
+    _command_flee(engine, bm, npc, foe)              # flee from the Hero
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    dist_before = _fp_dist(bm, npc, foe)
+    assert dist_before == 1, "fleer starts adjacent to the fear source"
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert not engine.pending_decision().active
+    assert _fp_dist(bm, npc, foe) > dist_before, "a commanded creature must move away from the fear source"
+    assert calls == [], "Command (Flee) grants no action — the fleer never attacks"
+    print("✅ test_command_flee_runs_away_no_attack passed")
+
+
+def test_command_flee_overrides_strategy():
+    """The flee override applies regardless of the NPC's strategy (here a ranged kiter): it runs away
+    from the fear source instead of engaging."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Archer", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 7), hp=30)
+    bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
+    _arm_ranged(engine, bm, npc)
+    s = engine.get_agent_stats(bm, npc); s.speed_walk = 30; engine.set_agent_stats(bm, npc, s)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferRange)
+    _command_flee(engine, bm, npc, foe)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    dist_before = _fp_dist(bm, npc, foe)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _fp_dist(bm, npc, foe) > dist_before, "flee overrides PreferRange: it retreats from the fear source"
+    assert calls == [], "no action on a flee turn"
+    print("✅ test_command_flee_overrides_strategy passed")
+
+
 def run_all():
     test_flags_round_trip()
     test_resolve_strategy_returns_agent_field()
@@ -938,6 +1001,8 @@ def run_all():
     test_hide_route_a_beats_route_b()
     test_hide_no_target_ambush()
     test_hide_route_d_falls_back_to_kite()
+    test_command_flee_runs_away_no_attack()
+    test_command_flee_overrides_strategy()
     print("\nAll NPC automation (Steps 1–7 + Bucket D) tests passed ✅")
 
 

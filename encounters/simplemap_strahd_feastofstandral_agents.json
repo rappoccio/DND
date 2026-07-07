@@ -4967,6 +4967,9 @@
         "cloak": ""
       },
       "spell_indices": [
+        "Curse of Vulnerability",
+        "Curse of Weakness",
+        "Curse of Affliction",
         "Fire Bolt",
         "True Strike",
         "Chromatic Orb",
@@ -4975,7 +4978,9 @@
         "Greater Invisibility",
         "Lightning Bolt",
         "Shatter",
-        "Mirror Image"
+        "Mirror Image",
+        "Charm Person",
+        "Hold Person"
       ],
       "agent_class": "Wizard",
       "agent_char_level": 6,
@@ -5005,9 +5010,9 @@
       "druid_land_type": 0,
       "druid_wrath_of_sea_active": false,
       "spell_slots_max": [
-        4,
-        3,
-        3,
+        0,
+        0,
+        0,
         0,
         0,
         0,
@@ -5016,9 +5021,9 @@
         0
       ],
       "spell_slots_cur": [
-        4,
-        3,
-        3,
+        0,
+        0,
+        0,
         0,
         0,
         0,
@@ -5027,9 +5032,47 @@
         0
       ],
       "is_npc": true,
-      "npc_spell_groups": {},
+      "npc_spell_groups": {
+        "99": [
+          "Curse of Vulnerability",
+          "Curse of Weakness",
+          "Curse of Affliction",
+          "Fire Bolt",
+          "True Strike"
+        ],
+        "4": [
+          "Chromatic Orb",
+          "Shield",
+          "Magic Missile"
+        ],
+        "3": [
+          "Shatter",
+          "Mirror Image",
+          "Lightning Bolt"
+        ],
+        "1": [
+          "Greater Invisibility",
+          "Charm Person",
+          "Hold Person"
+        ]
+      },
       "npc_spell_recharge": {},
-      "npc_spell_uses_cur": {},
+      "npc_spell_uses_cur": {
+        "Curse of Vulnerability": 99,
+        "Curse of Weakness": 99,
+        "Curse of Affliction": 99,
+        "Fire Bolt": 99,
+        "True Strike": 99,
+        "Chromatic Orb": 4,
+        "Shield": 4,
+        "Magic Missile": 4,
+        "Shatter": 3,
+        "Mirror Image": 3,
+        "Lightning Bolt": 3,
+        "Greater Invisibility": 1,
+        "Charm Person": 1,
+        "Hold Person": 1
+      },
       "npc_spell_expended": {}
     },
     {
