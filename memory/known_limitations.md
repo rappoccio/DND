@@ -1030,3 +1030,14 @@ Short-lived on-map text flashes above the involved token: **"Hit (N)" / "Crit (N
 </details>
 
 
+
+<details>
+<summary><b>Petrified reversal loses state across save/reload (2026-07-07)</b></summary>
+
+Remove Curse / Greater Restoration now cure conditions (`cureCurses` / `greaterRestoration` in `combat_spells.cpp`, name-keyed in `executeSpell`). `curePetrified` reverses the Petrified condition — but `applyPetrified` **destroys** the creature's real speeds (→0) and every damage multiplier (→all 0.5×). It is restored from `petrifySnapshots_`, a **session-only** `unordered_map<int, PetrifySnapshot>` populated at petrify time (guarded against a double-apply clobbering a good snapshot).
+
+**Limitation:** a save taken WHILE a creature is petrified loses the snapshot (it is not serialized). On reload, `curePetrified` falls back to normalising the flat 0.5× multipliers back to 1.0× (stripping any innate resistance/immunity/vulnerability the creature had) and **cannot recover the original speeds** (they stay 0). Rare edge case (petrify → save → reload → Greater Restoration). To fix properly: serialize the snapshot alongside `active_conditions` in `main.py`, or store pre-petrify state on a serialized Stats/condition field.
+
+**Also not modelled:** Greater Restoration's RAW "any reduction to an ability score" — there is no ability-score-drain mechanic in the engine, so nothing to restore. Bestow Curse applies no "Cursed" condition yet, so Remove Curse finds nothing on a Bestow-Curse target.
+
+</details>

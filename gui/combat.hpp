@@ -1205,6 +1205,7 @@ public:
     void applyPoisoned(BattleMap& bm, int idx) noexcept;  // disadvantage on attacks and ability checks
     void applyDeafened(BattleMap& bm, int idx) noexcept;  // cannot hear; auto-fail ability checks requiring hearing
     void applyPetrified(BattleMap& bm, int idx) noexcept;  // incapacitated, speed 0, resistance to all damage, immune to poisoned
+    void curePetrified(BattleMap& bm, int idx) noexcept;   // reverse Petrified: restore speeds + damage multipliers from the pre-petrify snapshot
     void rollDeathSave(BattleMap& bm, int idx) noexcept;  // roll a death save for unconscious agent
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 
@@ -1234,6 +1235,15 @@ public:
     [[nodiscard]] std::vector<int> tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept;
     // Remove a condition by id. Fires onConditionEnded (caster kickback) before erasing.
     void removeAgentCondition(BattleMap& bm, int condition_id) noexcept;
+
+    // ── Restoration spells ────────────────────────────────────────────────
+    // Remove Curse: strip every curse-tracked condition (Vistani Curse of Vulnerability/Weakness/
+    // Affliction) from the target. Returns the number removed. Ending each curse fires its normal
+    // teardown (restores the vulnerability multiplier and rebounds the caster kickback).
+    int  cureCurses(BattleMap& bm, int target_idx) noexcept;
+    // Greater Restoration: cureCurses + end Charmed + end Petrified + reduce Exhaustion by one level
+    // + restore any HP-maximum reduction (vampiric drain). Returns true if anything changed.
+    bool greaterRestoration(BattleMap& bm, int target_idx) noexcept;
 
     // ── Delayed / stored effects (general mechanism) ──────────────────────
     // Detonate a planted delayed-trigger condition by its id: rolls its damage, applies the optional
@@ -2303,6 +2313,17 @@ private:
     // Active spell-applied conditions (Hold Person, Stun, etc.)
     std::vector<ActiveAgentCondition> activeAgentConditions_;
     int nextConditionId_{0};
+
+    // Pre-Petrified snapshot so curePetrified (Greater Restoration) can restore a creature's real
+    // speeds and damage multipliers — applyPetrified overwrites them (speed 0, all 0.5×) and discards
+    // the originals. Keyed by agent index. Session-only: a save taken mid-Petrify loses this, so
+    // curePetrified falls back to normalising the 0.5× multipliers (speeds unrecoverable).
+    struct PetrifySnapshot {
+        int speed_walk = 0, speed_fly = 0, speed_swim = 0, speed_burrow = 0;
+        std::array<float, NumMagicDamage_t>    magic_mult{};
+        std::array<float, NumPhysicalDamage_t> phys_mult{};
+    };
+    std::unordered_map<int, PetrifySnapshot> petrifySnapshots_;
 
     std::vector<ActiveEffect> activeEffects_;
 

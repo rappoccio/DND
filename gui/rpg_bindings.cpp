@@ -3462,6 +3462,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("save_ability"),
              "True when agent_idx is under a Vistani Curse of Weakness imposing Disadvantage on\n"
              "saving throws tied to the given SaveAbility.")
+        .def("cure_curses",
+             &CombatEngine::cureCurses,
+             py::arg("battle_map"), py::arg("target_idx"),
+             "Remove Curse: strip every curse-tracked condition (Vistani Curse of Vulnerability/\n"
+             "Weakness/Affliction) from the target. Returns the number of curses cleared.")
+        .def("greater_restoration",
+             &CombatEngine::greaterRestoration,
+             py::arg("battle_map"), py::arg("target_idx"),
+             "Greater Restoration: cure curses, end Charmed/Petrified, reduce Exhaustion by one\n"
+             "level, and restore any HP-maximum reduction. Returns True if anything changed.")
+        .def("cure_petrified",
+             &CombatEngine::curePetrified,
+             py::arg("battle_map"), py::arg("idx"),
+             "Reverse the Petrified condition: restore speeds and damage multipliers from the\n"
+             "snapshot taken when the creature was petrified.")
 
         // ── Prone mechanics ──────────────────────────────────────────────────
         .def("apply_prone",

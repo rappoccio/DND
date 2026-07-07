@@ -1633,6 +1633,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     cond.kickback_die_size    = spell_cond.kickback_die_size;
                     cond.kickback_damage_type = spell_cond.kickback_damage_type;
 
+                    // A Vistani curse "lasts until it ends" (Remove Curse / duration expiry) — it
+                    // never grants the cursed creature a per-turn save to shrug it off. Override the
+                    // default repeat-save cadence (AttackCondition::save_repeat_turns = 1) so the
+                    // curse can't break on the target's very next turn (which also fired the caster
+                    // kickback a round early). curse_kind covers vuln/weakness/affliction; the
+                    // kickback_dice check catches any future kickback-bearing curse.
+                    if (spell_cond.curse_kind > 0 || spell_cond.kickback_dice > 0) {
+                        cond.save_repeat_turns = -1;
+                        cond.next_save_turn    = -1;
+                    }
+
                     if (spell_cond.curse_kind == 3) {
                         // Curse of Affliction: Blinded (choice 0/default), Deafened (1), or Both (2).
                         // Reuse the base Blinded/Deafened conditions; the kickback rides only the
@@ -1709,6 +1720,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         if (sp.name == "Command" && !tr.saved && tgt_idx >= 0 &&
             tgt_idx < static_cast<int>(agents.size())) {
             applyCommandEffect(bm, action.caster_idx, tgt_idx, action.command_word);
+        }
+
+        // Remove Curse / Greater Restoration: restorative spells whose only mechanical effect is
+        // to strip debilitating conditions from the (allied) target rather than deal damage. Keyed
+        // by name like Command; both carry no sp.conditions of their own.
+        if (tgt_idx >= 0 && tgt_idx < static_cast<int>(agents.size())) {
+            if (sp.name == "Remove Curse") {
+                cureCurses(bm, tgt_idx);
+            } else if (sp.name == "Greater Restoration") {
+                greaterRestoration(bm, tgt_idx);
+            }
         }
 
         result.target_results.push_back(tr);
@@ -2688,9 +2710,137 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; }
     else if (n == "Charmed")       { ac.charmed = false; ac.charmed_by = -1; }
     else if (n == "Frightened")    { ac.frightened = false; }
+    else if (n == "Deafened")      { ac.deafened = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
     else if (n == "Prone")         { ac.prone = false; }
     bm.setAgentConditions(cond.agent_idx, ac);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Restoration spells (Remove Curse, Greater Restoration)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::cureCurses(BattleMap& bm, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return 0;
+
+    // Collect first: removeAgentCondition mutates activeAgentConditions_ (and its onConditionEnded
+    // kickback can cascade into dropConcentration), so we must not iterate-and-erase in place.
+    std::vector<int> curse_ids;
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.agent_idx != target_idx) continue;
+        // A curse-tracked condition is one named "Cursed" (Vistani Curse of Vulnerability/Weakness),
+        // one that carries a curse effect marker, or any condition bearing a Vistani kickback (Curse
+        // of Affliction rides Blinded/Deafened). Kickback is only ever a curse in this engine.
+        const bool is_curse = ac.condition_name == "Cursed"
+                           || ac.curse_vuln_type_code >= 0
+                           || ac.curse_disadv_ability >= 0
+                           || ac.kickback_dice > 0;
+        if (!is_curse) continue;
+        clearSpellConditionEffect(bm, ac);   // reverse any base flag the curse set (Blinded/Deafened)
+        curse_ids.push_back(ac.condition_id);
+    }
+    // Ending each curse fires onConditionEnded: restores the vulnerability multiplier and rebounds
+    // the caster kickback (the Vistani curse punishes its caster when the victim is freed).
+    for (int cid : curse_ids)
+        removeAgentCondition(bm, cid);
+
+    if (!curse_ids.empty())
+        log_("Remove Curse: cleared {} curse(s) from {}",
+             curse_ids.size(), agentName(bm, target_idx));
+    return static_cast<int>(curse_ids.size());
+}
+
+void CombatEngine::curePetrified(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    cond.petrified     = false;
+    cond.incapacitated = false;
+    bm.setAgentConditions(idx, cond);
+
+    // applyPetrified overwrites the creature's speeds (→0) and every damage multiplier (→0.5×),
+    // discarding the originals, so restore from the snapshot taken at petrify time.
+    Agent::Stats st = bm.getAgentStats(idx);
+    auto it = petrifySnapshots_.find(idx);
+    if (it != petrifySnapshots_.end()) {
+        st.speed_walk   = it->second.speed_walk;
+        st.speed_fly    = it->second.speed_fly;
+        st.speed_swim   = it->second.speed_swim;
+        st.speed_burrow = it->second.speed_burrow;
+        st.magic_damage_multipliers    = it->second.magic_mult;
+        st.physical_damage_multipliers = it->second.phys_mult;
+        petrifySnapshots_.erase(it);
+    } else {
+        // No snapshot (e.g. a save taken mid-Petrify, then reloaded): the originals are unrecoverable.
+        // Restore the flat 0.5× resistances back to normal; speeds stay as-is (known limitation).
+        for (auto& m : st.magic_damage_multipliers)    if (m == 0.5f) m = 1.0f;
+        for (auto& m : st.physical_damage_multipliers) if (m == 0.5f) m = 1.0f;
+    }
+    st.speed_walk_remaining   = st.speed_walk;
+    st.speed_fly_remaining    = st.speed_fly;
+    st.speed_swim_remaining   = st.speed_swim;
+    st.speed_burrow_remaining = st.speed_burrow;
+    bm.setAgentStats(idx, st);
+    log_("{} is no longer Petrified", agentName(bm, idx));
+}
+
+bool CombatEngine::greaterRestoration(BattleMap& bm, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+
+    bool changed = (cureCurses(bm, target_idx) > 0);
+
+    // End any tracked Charmed / Petrified condition entries (clear the live flag AND remove the
+    // tracker, so a later tick doesn't re-clear a stale entry). Petrified needs curePetrified below
+    // to restore speeds/multipliers, which the generic teardown does not do.
+    std::vector<int> end_ids;
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.agent_idx != target_idx) continue;
+        if (ac.condition_name == "Charmed") {
+            clearSpellConditionEffect(bm, ac);
+            end_ids.push_back(ac.condition_id);
+        } else if (ac.condition_name == "Petrified") {
+            end_ids.push_back(ac.condition_id);
+        }
+    }
+    for (int cid : end_ids) removeAgentCondition(bm, cid);
+    if (!end_ids.empty()) changed = true;
+
+    Agent::Conditions cond = bm.getAgentConditions(target_idx);
+    // Petrified may also have been applied directly (basilisk gaze) with no tracked condition —
+    // reverse it off the live flag either way.
+    if (cond.petrified) {
+        curePetrified(bm, target_idx);
+        cond = bm.getAgentConditions(target_idx);
+        changed = true;
+    }
+    if (cond.charmed) {
+        cond.charmed = false; cond.charmed_by = -1;
+        bm.setAgentConditions(target_idx, cond);
+        changed = true;
+    }
+    // Reduce Exhaustion by one level.
+    if (cond.exhaustion_level > 0) {
+        cond.exhaustion_level -= 1;
+        bm.setAgentConditions(target_idx, cond);
+        changed = true;
+    }
+    // Restore any reduction to the HP maximum (e.g. a vampire's Bite life-drain).
+    Agent::Stats st = bm.getAgentStats(target_idx);
+    if (st.available_hit_points > 0) {
+        st.available_hit_points = 0;
+        bm.setAgentStats(target_idx, st);
+        changed = true;
+    }
+
+    if (changed)
+        log_("Greater Restoration restores {}", agentName(bm, target_idx));
+    return changed;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

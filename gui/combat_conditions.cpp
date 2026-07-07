@@ -337,8 +337,22 @@ void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
     cond.incapacitated = true;
     bm.setAgentConditions(idx, cond);
 
-    // Set all movement speeds to 0
+    // Snapshot the real speeds and damage multipliers BEFORE overwriting them, so curePetrified
+    // (Greater Restoration) can restore them. Guard against a double-apply clobbering a good snapshot
+    // with the already-petrified 0-speed / 0.5× values.
     Agent::Stats stats = bm.getAgentStats(idx);
+    if (petrifySnapshots_.find(idx) == petrifySnapshots_.end()) {
+        PetrifySnapshot snap;
+        snap.speed_walk   = stats.speed_walk;
+        snap.speed_fly    = stats.speed_fly;
+        snap.speed_swim   = stats.speed_swim;
+        snap.speed_burrow = stats.speed_burrow;
+        snap.magic_mult   = stats.magic_damage_multipliers;
+        snap.phys_mult    = stats.physical_damage_multipliers;
+        petrifySnapshots_[idx] = snap;
+    }
+
+    // Set all movement speeds to 0
     stats.speed_walk = 0;
     stats.speed_fly = 0;
     stats.speed_swim = 0;

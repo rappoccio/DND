@@ -3643,7 +3643,7 @@
   {
     "name": "Greater Restoration",
     "description": "You touch a creature and magically remove one of the following effects from it:\n\n- 1 Exhaustion level\n- The Charmed or Petrified condition\n- A curse, including the target's Attunement to a cursed magic item\n- Any reduction to one of the target's ability scores\n- Any reduction to the target's Hit Point maximum",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -6208,7 +6208,7 @@
   {
     "name": "Remove Curse",
     "description": "At your touch, all curses affecting one creature or object end. If the object is a cursed magic item, its curse remains, but the spell breaks its owner's Attunement to the object so it can be removed or discarded.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
