@@ -400,6 +400,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     const PlacedAgent& caster_pa = agents[static_cast<std::size_t>(action.caster_idx)];
     if (caster_pa.agent->getConditions().incapacitated) return result;
     if (caster_pa.agent->hasSlippedThisTurn()) return result;
+    // A creature in gaseous form (Gaseous Form / vampire Misty Escape) can't cast spells. The flag is
+    // only raised once this cast's own condition lands, so the Misty Escape cast itself is unaffected.
+    if (caster_pa.agent->getConditions().gaseous_form) {
+        log_("{} is in gaseous form and can't cast spells", agentName(bm, action.caster_idx));
+        return result;
+    }
 
     const auto& spells = bm.getAgentSpells(action.caster_idx);
     if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size()))
@@ -2809,6 +2815,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Deafened")      { ac.deafened = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
     else if (n == "Prone")         { ac.prone = false; }
+    else if (n == "Gaseous")       { endGaseousForm(bm, cond.agent_idx); return; }  // restores speeds/multipliers + clears the flag
     bm.setAgentConditions(cond.agent_idx, ac);
 }
 

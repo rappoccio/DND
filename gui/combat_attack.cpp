@@ -1906,6 +1906,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         return false;
     }
 
+    // A creature in gaseous form (Gaseous Form / vampire Misty Escape) can't attack.
+    if (atk_pt.agent->getConditions().gaseous_form) {
+        log_("Attack blocked: {} is in gaseous form and cannot attack", atk_pt.agent->name());
+        return false;
+    }
+
     // Sanctuary ward: attacking a warded creature forces the attacker to make a WIS save or
     // lose the attack (RAW). Allies are exempt so a deliberate ally-targeted attack isn't blocked.
     {

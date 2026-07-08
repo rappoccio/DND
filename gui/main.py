@@ -11504,6 +11504,14 @@ class App:
             badge_y = int(screen_y + 22)  # Below grappled badge if both present
             self.screen.blit(fr_badge, (badge_x, badge_y))
 
+        # Gaseous Form / Misty Escape indicator (pale-cyan "MIST" badge)
+        if getattr(pt.conditions, "gaseous_form", False):
+            badge_font = self.font_sm
+            mist_badge = badge_font.render("MIST", True, (170, 210, 230))  # Pale cyan
+            badge_x = int(screen_x + 4)
+            badge_y = int(screen_y + 40)  # Below grappled/frightened badges if present
+            self.screen.blit(mist_badge, (badge_x, badge_y))
+
         # Hidden indicator (eye-slash symbol)
         if pt.conditions.hidden:
             # Draw an eye-slash symbol in the top-right corner

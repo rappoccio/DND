@@ -3408,6 +3408,34 @@
     "school": "transmutation"
   },
   {
+    "name": "Misty Escape",
+    "description": "The vampire uses its action to assume a gaseous form, as the Gaseous Form spell, with one exception: it is IMMUNE to Bludgeoning, Piercing, and Slashing damage rather than resistant. While gaseous it has a Fly Speed of 20 feet and can hover, is immune to the Prone condition, and can't attack or cast spells until it reverts. (Modeled as a self-buff: the physical Immunity vs Resistance is driven by is_vampire.)",
+    "type": "Help",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveCon",
+    "range": 5,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 10,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "transmutation",
+    "conditions": [
+      {
+        "condition_name": "Gaseous",
+        "condition_duration": 10,
+        "save_repeat_turns": -1
+      }
+    ]
+  },
+  {
     "name": "Gate",
     "description": "You conjure a portal linking an unoccupied space you can see within range to a precise location on a different plane of existence. The portal is a circular opening, which you can make 5 to 20 feet in diameter. You can orient the portal in any direction you choose. The portal lasts for the duration, and the portal's destination is visible through it. The portal has a front and a back on each plane where it appears. Travel through the portal is possible only by moving through its front. Anything that does so is instantly transported to the other plane, appearing in the unoccupied space nearest to the portal. Deities and other planar rulers can prevent portals created by this spell from opening in their presence or anywhere within their domains. When you cast this spell, you can speak the name of a specific creature (a pseudonym, title, or nickname doesn't work). If that creature is on a plane other than the one you are on, the portal opens next to the named creature and transports it to the nearest unoccupied space on your side of the portal. You gain no special power over the creature, and it is free to act as the GM deems appropriate. It might leave, attack you, or help you.",
     "type": "Harm",

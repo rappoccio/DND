@@ -10822,7 +10822,11 @@
           "actions": 4,
           "actions_in_lair": 4,
           "has_lair": true,
-          "action_names": []
+          "action_names": [
+            "Melee (Slashing)",
+            "Bite",
+            "Dash"
+          ]
         },
         "magic_resistances": [
           "Fire",

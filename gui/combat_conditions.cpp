@@ -203,6 +203,11 @@ void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
 
     // Set prone condition (movement restricted to crawling, disadvantage on attacks)
     Agent::Conditions cond = bm.getAgentConditions(idx);
+    // A creature in gaseous form (Gaseous Form / vampire Misty Escape) is immune to the Prone condition.
+    if (cond.gaseous_form) {
+        log_("{} is in gaseous form and is immune to Prone", agentName(bm, idx));
+        return;
+    }
     cond.prone = true;
     bm.setAgentConditions(idx, cond);
 
@@ -264,6 +269,18 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     // Release all remaining influence: non-concentration conditions this agent imposed on others,
     // plus every reverse-reference mark (charmed_by, *_marked_by, goaded_by, …) pointing back at it.
     releaseAgentInfluence(bm, idx);
+
+    // Gaseous Form / vampire Misty Escape ends when the creature drops to 0 HP (RAW). It is a SELF
+    // condition, which releaseAgentInfluence deliberately skips, so end it here: restore the snapshot,
+    // clear the flag, and drop the tracked "Gaseous" condition so nothing lingers past death/revival.
+    if (bm.getAgentConditions(idx).gaseous_form) {
+        endGaseousForm(bm, idx);
+        std::vector<int> gaseous_ids;
+        for (const auto& ac : activeAgentConditions_)
+            if (ac.agent_idx == idx && ac.condition_name == "Gaseous")
+                gaseous_ids.push_back(ac.condition_id);
+        for (int gid : gaseous_ids) removeAgentCondition(bm, gid);
+    }
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.unconscious = true;
@@ -385,6 +402,81 @@ void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
 
     bm.setAgentStats(idx, stats);
     log_("Agent is Petrified: incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, attacks have advantage");
+}
+
+void CombatEngine::applyGaseousForm(BattleMap& bm, int idx, bool physical_immune) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.gaseous_form) return;   // already gaseous — don't re-snapshot the mist-form values
+    cond.gaseous_form = true;
+    bm.setAgentConditions(idx, cond);
+
+    // Snapshot the real speeds and physical multipliers BEFORE overwriting them so endGaseousForm
+    // can restore them. Guard against a double-apply clobbering a good snapshot.
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (gaseousSnapshots_.find(idx) == gaseousSnapshots_.end()) {
+        GaseousSnapshot snap;
+        snap.speed_walk   = stats.speed_walk;
+        snap.speed_fly    = stats.speed_fly;
+        snap.speed_swim   = stats.speed_swim;
+        snap.speed_burrow = stats.speed_burrow;
+        snap.phys_mult    = stats.physical_damage_multipliers;
+        gaseousSnapshots_[idx] = snap;
+    }
+
+    // Fly-only movement: Fly Speed 20 ft, all other speeds 0. Also zero this turn's remaining walk
+    // budget and seed the fly budget so the change takes effect immediately (mirrors applyPetrified).
+    stats.speed_walk = 0;
+    stats.speed_fly = 20;
+    stats.speed_swim = 0;
+    stats.speed_burrow = 0;
+    stats.speed_walk_remaining = 0;
+    stats.speed_fly_remaining = 20;
+    stats.speed_swim_remaining = 0;
+    stats.speed_burrow_remaining = 0;
+
+    // Resistance to Bludgeoning/Piercing/Slashing — Immunity (0x) for a vampire's Misty Escape.
+    const float mult = physical_immune ? 0.0f : 0.5f;
+    for (auto t : {PhysicalDamage_t::Bludgeoning, PhysicalDamage_t::Piercing, PhysicalDamage_t::Slashing})
+        stats.physical_damage_multipliers[static_cast<std::size_t>(t)] = mult;
+
+    bm.setAgentStats(idx, stats);
+    log_("{} assumes gaseous form: Fly 20 ft, can't attack or cast, {} to Bludgeoning/Piercing/Slashing, immune to Prone",
+         agentName(bm, idx), physical_immune ? "Immunity" : "Resistance");
+}
+
+void CombatEngine::endGaseousForm(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (!cond.gaseous_form) return;
+    cond.gaseous_form = false;
+    bm.setAgentConditions(idx, cond);
+
+    // Restore the pre-form speeds + physical multipliers from the snapshot (fall back to a plain
+    // reset if the snapshot was lost to a save taken mid-form).
+    Agent::Stats stats = bm.getAgentStats(idx);
+    auto it = gaseousSnapshots_.find(idx);
+    if (it != gaseousSnapshots_.end()) {
+        stats.speed_walk   = it->second.speed_walk;
+        stats.speed_fly    = it->second.speed_fly;
+        stats.speed_swim   = it->second.speed_swim;
+        stats.speed_burrow = it->second.speed_burrow;
+        stats.physical_damage_multipliers = it->second.phys_mult;
+        gaseousSnapshots_.erase(it);
+    } else {
+        stats.speed_walk = std::max(stats.speed_walk, 0);
+        for (auto t : {PhysicalDamage_t::Bludgeoning, PhysicalDamage_t::Piercing, PhysicalDamage_t::Slashing})
+            stats.physical_damage_multipliers[static_cast<std::size_t>(t)] = 1.0f;
+    }
+
+    bm.setAgentStats(idx, stats);
+    log_("{} reverts from gaseous form", agentName(bm, idx));
 }
 
 void CombatEngine::applyGrappled(BattleMap& bm, int target_idx, int grappler_idx, int escape_dc) noexcept
@@ -614,6 +706,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 ac.sanctuary_active = true;
                 ac.sanctuary_dc     = cond.save_dc;
                 bm.setAgentConditions(cond.agent_idx, ac);
+            } else if (cond.condition_name == "Gaseous") {
+                // Gaseous Form (self-buff). A vampire's Misty Escape grants Immunity to physical
+                // damage instead of Resistance — driven by the target's is_vampire, so the exception
+                // is intrinsic to being a vampire rather than keyed off the spell name.
+                const bool physical_immune = bm.getAgentStats(cond.agent_idx).is_vampire;
+                applyGaseousForm(bm, cond.agent_idx, physical_immune);
             }
             log_("Applied condition '{}' to {} for {} turns",
                  cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);
@@ -698,6 +796,11 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     } else if (cond.condition_name == "Sanctuary") {
                         agent_cond.sanctuary_active = false;
                         agent_cond.sanctuary_dc     = 0;
+                    } else if (cond.condition_name == "Gaseous") {
+                        // endGaseousForm restores speeds/multipliers AND clears the flag via its own
+                        // setAgentConditions; re-fetch so the unconditional write below stays consistent.
+                        endGaseousForm(bm, cond.agent_idx);
+                        agent_cond = bm.getAgentConditions(cond.agent_idx);
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for {}",
@@ -771,6 +874,11 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
                     } else if (cond.condition_name == "Sanctuary") {
                         agent_cond.sanctuary_active = false;
                         agent_cond.sanctuary_dc     = 0;
+                    } else if (cond.condition_name == "Gaseous") {
+                        // endGaseousForm restores speeds/multipliers AND clears the flag via its own
+                        // setAgentConditions; re-fetch so the unconditional write below stays consistent.
+                        endGaseousForm(bm, cond.agent_idx);
+                        agent_cond = bm.getAgentConditions(cond.agent_idx);
                     }
                     bm.setAgentConditions(cond.agent_idx, agent_cond);
                     log_("Condition '{}' expired for {} (spell duration ended)",

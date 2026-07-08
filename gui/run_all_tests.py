@@ -135,6 +135,9 @@ test_scripts = [
 
     # Vistani Curse "kickback" (caster takes psychic damage when its curse ends)
     "test_vistani.py",
+
+    # Vampire Misty Escape (Gaseous Form self-buff: physical immunity, fly-only, attack/cast lockout)
+    "test_misty_escape.py",
 ]
 
 def run_tests():

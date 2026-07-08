@@ -53890,7 +53890,12 @@
         "resistance_in_lair": 4,
         "actions": 3,
         "actions_in_lair": 4,
-        "has_lair": true
+        "has_lair": true,
+        "action_names": [
+          "Melee (Slashing)",
+          "Bite",
+          "Dash"
+        ]
       }
     },
     "spell_indices": [
@@ -53909,7 +53914,8 @@
       "Mirror Image",
       "Charm Person Bonus",
       "Greater Invisibility",
-      "Command"
+      "Command",
+      "Misty Escape"
     ],
     "npc_spell_groups": {
       "99": [
@@ -53918,7 +53924,8 @@
         "Dispel Magic",
         "Fog Cloud",
         "Charm Person Bonus",
-        "Command"
+        "Command",
+        "Misty Escape"
       ],
       "2": [
         "Scrying",

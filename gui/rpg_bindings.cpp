@@ -640,6 +640,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
         .def_readwrite("poisoned",      &Agent::Conditions::poisoned)
         .def_readwrite("petrified",     &Agent::Conditions::petrified)
+        .def_readwrite("gaseous_form",  &Agent::Conditions::gaseous_form)
         .def_readwrite("prone",         &Agent::Conditions::prone)
         .def_readwrite("unconscious",   &Agent::Conditions::unconscious)
         .def_readwrite("dead",          &Agent::Conditions::dead)
@@ -3395,6 +3396,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::applyPetrified,
              py::arg("battle_map"), py::arg("idx"),
              "Apply petrified condition to agent[idx]: incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned.")
+        .def("apply_unconscious",
+             &CombatEngine::applyUnconscious,
+             py::arg("battle_map"), py::arg("idx"),
+             "Drop agent[idx] (the single down/death chokepoint): releases grapples/concentration/imposed\n"
+             "conditions and self-buffs (Gaseous Form), sets Unconscious (NPCs die outright at 0 HP).")
         .def("get_agent_weapons",
              &CombatEngine::getAgentWeapons,
              py::arg("battle_map"), py::arg("idx"),

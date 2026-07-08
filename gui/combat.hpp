@@ -1215,6 +1215,12 @@ public:
     void applyDeafened(BattleMap& bm, int idx) noexcept;  // cannot hear; auto-fail ability checks requiring hearing
     void applyPetrified(BattleMap& bm, int idx) noexcept;  // incapacitated, speed 0, resistance to all damage, immune to poisoned
     void curePetrified(BattleMap& bm, int idx) noexcept;   // reverse Petrified: restore speeds + damage multipliers from the pre-petrify snapshot
+    // Gaseous Form (and the vampire "Misty Escape" variant): snapshot the caster's speeds + physical
+    // multipliers, then set fly-only Speed 20 and Resistance (physical_immune ⇒ Immunity) to B/P/S and
+    // raise the gaseous_form flag (the attack/cast lockout). endGaseousForm restores the snapshot and
+    // clears the flag. Driven by the "Gaseous" ActiveAgentCondition (apply on add, end on expiry).
+    void applyGaseousForm(BattleMap& bm, int idx, bool physical_immune) noexcept;
+    void endGaseousForm(BattleMap& bm, int idx) noexcept;
     void rollDeathSave(BattleMap& bm, int idx) noexcept;  // roll a death save for unconscious agent
     void standup(BattleMap& bm, int idx) noexcept;  // stand up from prone, costs half speed
 
@@ -2351,6 +2357,15 @@ private:
         std::array<float, NumPhysicalDamage_t> phys_mult{};
     };
     std::unordered_map<int, PetrifySnapshot> petrifySnapshots_;
+
+    // Pre-Gaseous-Form snapshot so endGaseousForm can restore a creature's real speeds and physical
+    // damage multipliers — applyGaseousForm overwrites them (fly-only Speed 20, B/P/S set to 0.5×/0×).
+    // Keyed by agent index. Session-only, mirroring petrifySnapshots_ (a mid-form save loses it).
+    struct GaseousSnapshot {
+        int speed_walk = 0, speed_fly = 0, speed_swim = 0, speed_burrow = 0;
+        std::array<float, NumPhysicalDamage_t> phys_mult{};
+    };
+    std::unordered_map<int, GaseousSnapshot> gaseousSnapshots_;
 
     std::vector<ActiveEffect> activeEffects_;
 
