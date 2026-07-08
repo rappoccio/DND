@@ -248,9 +248,22 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
 
     dropAgentWeapons(bm, idx);
 
+    // ── Single down/death chokepoint: release EVERY effect this creature sustains on the battle ──
     // Dropping to 0 HP makes the agent Incapacitated, which ends any grapple it was
     // maintaining — free its victims so they aren't stuck at Speed 0 by a dead grappler.
     dropGrapplesBy(bm, idx);
+
+    // Break concentration (cascades removal of this caster's concentration terrain, spell-effects,
+    // light effects, and the conditions those sustained). Mirrors applyIncapacitated, which
+    // applyUnconscious does NOT route through (it sets the incapacitated flag directly below).
+    if (bm.getAgentConditions(idx).concentrating) {
+        [[maybe_unused]] auto dropped = dropConcentration(bm, idx);
+        log_("Agent falls unconscious: concentration broken");
+    }
+
+    // Release all remaining influence: non-concentration conditions this agent imposed on others,
+    // plus every reverse-reference mark (charmed_by, *_marked_by, goaded_by, …) pointing back at it.
+    releaseAgentInfluence(bm, idx);
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.unconscious = true;
@@ -396,6 +409,96 @@ void CombatEngine::dropGrapplesBy(BattleMap& bm, int agent_idx) noexcept
             cond.grappler_idx = -1;
             setAgentConditions(bm, static_cast<int>(i), cond);
         }
+    }
+}
+
+void CombatEngine::releaseAgentInfluence(BattleMap& bm, int agent_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
+
+    // 1. End every ActiveAgentCondition this agent imposed on others. Concentration-sustained ones
+    //    were already cleared by dropConcentration (called first in applyUnconscious); this catches
+    //    the rest (innate/monster-ability conditions, non-concentration spell riders). Collect the ids
+    //    first — removeAgentCondition mutates activeAgentConditions_ (and its onConditionEnded kickback
+    //    can cascade into dropConcentration), so we must not iterate-and-erase in place.
+    std::vector<int> imposed_ids;
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.caster_idx != agent_idx) continue;
+        if (ac.agent_idx == agent_idx) continue;   // a self-condition is not "influence over others"
+        clearSpellConditionEffect(bm, ac);          // reverse the flag it set (restores speed/actions)
+        imposed_ids.push_back(ac.condition_id);
+    }
+    for (int cid : imposed_ids)
+        removeAgentCondition(bm, cid);
+
+    // 2. Clear every reverse-reference mark that other creatures hold pointing back at this agent.
+    //    These are cross-turn fields normally cleared "at the start of <agent_idx>'s next turn" — a
+    //    turn that never comes once it is down — so they must be released here or they dangle forever.
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        if (static_cast<int>(i) == agent_idx) continue;
+        Agent::Conditions c = getAgentConditions(bm, static_cast<int>(i));
+        bool dirty = false;
+
+        auto clear_ref = [&](int& field) {
+            if (field == agent_idx) { field = -1; dirty = true; }
+        };
+        // Paired mark+source fields: clear the source AND the effect flag it gated.
+        auto clear_marked = [&](int& src, bool& flag) {
+            if (src == agent_idx) { src = -1; flag = false; dirty = true; }
+        };
+
+        clear_ref(c.charmed_by);
+        clear_ref(c.retaliation_target_idx);
+        clear_ref(c.eldritch_strike_by);
+        clear_ref(c.goaded_by);
+        clear_ref(c.distracted_by);
+        clear_ref(c.feint_target_idx);
+        clear_ref(c.vex_target_idx);
+        clear_ref(c.sundering_target_idx);
+        clear_marked(c.disarmed_by,        c.disarmed);
+        clear_marked(c.crusher_marked_by,  c.crusher_marked);
+        clear_marked(c.slasher_marked_by,  c.slasher_marked);
+        clear_marked(c.zealous_blessing_by, c.zealous_blessing);
+
+        // Hunter Multiattack Defense tracks a list of attackers — drop this agent from it.
+        auto& hit_by = c.multiattack_def_hit_by;
+        if (!hit_by.empty()) {
+            auto it = std::remove(hit_by.begin(), hit_by.end(), agent_idx);
+            if (it != hit_by.end()) { hit_by.erase(it, hit_by.end()); dirty = true; }
+        }
+
+        if (dirty) setAgentConditions(bm, static_cast<int>(i), c);
+    }
+}
+
+bool CombatEngine::grapplerActive(const BattleMap& bm, int victim_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (victim_idx < 0 || victim_idx >= static_cast<int>(agents.size())) return false;
+    Agent::Conditions vc = bm.getAgentConditions(victim_idx);
+    if (!vc.grappled) return false;
+    const int g = vc.grappler_idx;
+    if (g < 0 || g >= static_cast<int>(agents.size())) return false;   // stale / out-of-bounds
+    Agent::Conditions gc = bm.getAgentConditions(g);
+    const Agent::Stats& gs = bm.getAgentStats(g);
+    // A grapple ends the instant the grappler is Incapacitated/Unconscious/dead (RAW).
+    if (gc.dead || gc.unconscious || gc.incapacitated || gs.hp_cur <= 0) return false;
+    return true;
+}
+
+void CombatEngine::reconcileGrapples(BattleMap& bm) noexcept
+{
+    auto agents = bm.placedAgents();
+    for (std::size_t i = 0; i < agents.size(); ++i) {
+        Agent::Conditions vc = getAgentConditions(bm, static_cast<int>(i));
+        if (!vc.grappled) continue;
+        if (grapplerActive(bm, static_cast<int>(i))) continue;   // grapple still legitimately held
+        vc.grappled = false;
+        vc.grappler_idx = -1;
+        setAgentConditions(bm, static_cast<int>(i), vc);
+        log_("{}'s grapple ends: the grappler can no longer maintain it",
+             agentName(bm, static_cast<int>(i)));
     }
 }
 

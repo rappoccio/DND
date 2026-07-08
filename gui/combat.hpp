@@ -176,6 +176,11 @@ struct SpellAction {
     // (0..NumMagicDamage_t-1 = magic, 100+i = physical); weakness → SaveAbility_t;
     // affliction → 0=Blinded, 1=Deafened, 2=Both. -1 = caller did not specify.
     int  curse_choice = -1;
+    // Overchannel (Evoker Wizard L14): when true, request maximum damage on this cast. The engine
+    // honors it only for an Evoker L14+ casting a damaging spell of effective level 1–5; otherwise
+    // it is ignored. The first use per Long Rest is free; each later use inflicts escalating
+    // Necrotic damage on the caster (see executeSpell / Agent::Stats::overchannel_uses).
+    bool overchannel = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2218,6 +2223,24 @@ public:
     // Iterates through all agents and clears grappled/grappler_idx for those held by agent_idx.
     void dropGrapplesBy(BattleMap& bm, int agent_idx) noexcept;
 
+    // Single "this creature stops influencing the battlefield" sweep, invoked from the down/death
+    // chokepoint (applyUnconscious). Ends EVERY effect this agent was sustaining on others:
+    //   · all ActiveAgentConditions with caster_idx == agent_idx (reverses their flags, then
+    //     removes the tracking entry) — not just concentration ones (dropConcentration handles those);
+    //   · every reverse-reference mark other creatures hold pointing back at this agent
+    //     (charmed_by, *_marked_by, goaded_by, distracted_by, disarmed_by, feint/vex/sundering
+    //     target, retaliation/eldritch-strike/zealous-blessing sources, multiattack-defense list).
+    // Grapples and concentration are handled by their own helpers alongside this one.
+    void releaseAgentInfluence(BattleMap& bm, int agent_idx) noexcept;
+
+    // Self-healing grapple validity. grapplerActive returns true iff victim_idx is grappled AND its
+    // grappler is a live, conscious, non-incapacitated agent (a grapple ends the instant the grappler
+    // is Incapacitated/Unconscious/dead, RAW). reconcileGrapples sweeps every agent and clears any
+    // grapple whose grappler can no longer maintain it — recovering from a missed release or a stale
+    // grappler_idx. Called at the top of beginTurn; the movement gate self-heals the mover inline.
+    [[nodiscard]] bool grapplerActive(const BattleMap& bm, int victim_idx) const noexcept;
+    void reconcileGrapples(BattleMap& bm) noexcept;
+
     // Decrement turns_remaining on all active effects; apply per-tick damage/heal;
     // remove effects whose turns_remaining reaches 0.
     void tickEffects(BattleMap& bm);
@@ -2334,6 +2357,11 @@ private:
     // Visibility map: (source_idx, target_idx) -> VisibilityLevel
     // Computed at turn start and cached until next turn
     std::unordered_map<int64_t, VisibilityLevel> visibilityMap_;
+
+    // Overchannel (Evoker Wizard L14): while true, rollDamageDice returns each die at its maximum
+    // face instead of rolling. Scoped tightly inside executeSpell (set before the damage rolls,
+    // cleared right after) so no unrelated roll is ever maximized.
+    bool force_max_damage_{false};
 
     // Portent Dice system (Diviner Wizard L3+)
     int pending_portent_die_{-1};    // d20 value to use on next roll (-1 = none pending)

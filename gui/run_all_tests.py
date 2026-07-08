@@ -85,6 +85,7 @@ test_scripts = [
     "test_wizard_l3_arcaneward.py",
     "test_wizard_l5.py",
     "test_wizard_l6_diviner.py",
+    "test_evoker.py",
 
     # Warlock features
     "test_warlock_l1_5.py",

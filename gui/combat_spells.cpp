@@ -53,7 +53,8 @@ int CombatEngine::rollDamageDice(int num_dice, int die_size, std::vector<int>& o
     std::vector<int> rolled;
     rolled.reserve(static_cast<std::size_t>(num_dice));
     for (int i = 0; i < num_dice; ++i) {
-        int d = roll(die_size);
+        // Overchannel (Evoker L14): every die lands on its maximum face.
+        int d = force_max_damage_ ? die_size : roll(die_size);
         if (boost1to2 && d == 1) d = 2;
         rolled.push_back(d);
     }
@@ -736,6 +737,35 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         for (const auto& rinfo : sp.physical_damage_rolls)
             if (rinfo.type == 8 || rinfo.type == 2) { spell_radiant_or_fire = true; break; }
 
+    // ── Evoker (Wizard) subclass features ─────────────────────────────────────
+    const bool is_evoker = caster_stats.character_class == Wizard &&
+                           caster_stats.wizard_subclass == EvokerPath;
+    const int int_mod = abilityMod(caster_stats.intel);
+    // Empowered Evocation (L10): add INT mod to ONE damage roll of a Wizard Evocation spell you
+    // cast. A fresh executeSpell call is a fresh cast, so this local flag gives exactly-once-per-cast
+    // semantics; empowerEvocation() consumes it on the first magic damage roll (works for AoE shared
+    // rolls, single/save targets, and multi-beam spells alike).
+    bool empowered_evoc_available = is_evoker && caster_stats.char_level >= 10 &&
+                                    sp.school == Spell::Evocation && int_mod != 0;
+    auto empowerEvocation = [&](int base) -> int {
+        if (!empowered_evoc_available) return base;
+        empowered_evoc_available = false;
+        log_("Empowered Evocation: +{} damage (INT mod)", int_mod);
+        return base + int_mod;
+    };
+    // Potent Cantrip (L3): a creature that succeeds on the save — or that the attack roll misses —
+    // still takes half the cantrip's damage. The Save branch already halves on a success; the extra
+    // work is dealing half on a *missed* attack cantrip (handled in the AttackRoll branch below).
+    const bool potent_cantrip = is_evoker && caster_stats.char_level >= 3 && sp.level == 0;
+    // Overchannel (L14): deal maximum damage with a damaging Wizard spell of effective level 1–5.
+    // First use per Long Rest is free; later uses inflict escalating Necrotic self-damage (applied
+    // after the spell resolves, below). Honored only for a genuine Evoker L14+ damaging spell.
+    const int overchannel_level = std::max(sp.level, action.slot_level);
+    const bool overchannel_active = action.overchannel && is_evoker &&
+                                    caster_stats.char_level >= 14 && sp.type == Spell::Harm &&
+                                    overchannel_level >= 1 && overchannel_level <= 5;
+    force_max_damage_ = overchannel_active;
+
     // Draconic Elemental Affinity (L6): +CHA mod to first damage roll of matching type this turn.
     // Local flag prevents double-application across multiple targets of the same AoE.
     // The per-turn gate (draconic_affinity_used_this_turn) is read once and persisted on first apply.
@@ -776,6 +806,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 bm.setAgentStats(action.caster_idx, mc);
                 log_("Elemental Affinity: +{} {} damage (CHA mod)", cha_bonus, static_cast<int>(roll_info.type));
             }
+            type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
             shared_magic_base.push_back(type_damage);
         }
         for (const auto& roll_info : sp.physical_damage_rolls) {
@@ -914,6 +945,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                             bm.setAgentStats(action.caster_idx, mc);
                             log_("Elemental Affinity: +{} {} damage (CHA mod)", cha_bonus, static_cast<int>(roll_info.type));
                         }
+                        type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
                         // Resistance/vuln/immunity multiplier — Elemental Adept / Poisoner lift the
                         // caster-relevant Resistance to 1.0.
                         float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
@@ -1020,6 +1052,35 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         }
                     }
                 }
+            } else if (potent_cantrip && sp.type == Spell::Harm) {
+                // Potent Cantrip (Evoker L3): a missed attack-roll cantrip still deals HALF its
+                // damage (no crit, and no additional effect — conditions ride only on a hit). Roll
+                // the cantrip's damage, halve it, and apply it just like a hit.
+                std::vector<int> dice;
+                int dmg = 0;
+                for (const auto& roll_info : sp.magic_damage_rolls) {
+                    int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
+                                                          roll_info.die_size, dice, true, nullptr);
+                    type_damage += roll_info.bonus;
+                    type_damage = empowerEvocation(type_damage);  // Empowered Evocation still applies
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    dmg += static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                }
+                for (const auto& roll_info : sp.physical_damage_rolls) {
+                    int type_damage = rollDamageDice(roll_info.num_dice, roll_info.die_size, dice, false, nullptr);
+                    type_damage += roll_info.bonus;
+                    float multiplier = tgt_stats.physical_damage_multipliers[roll_info.type];
+                    dmg += static_cast<int>(static_cast<float>(type_damage) * multiplier);
+                }
+                dmg /= 2;  // half on a miss
+                tr.dice_results = dice;
+                tr.total_damage = std::max(0, dmg);
+                tr.total_damage = applyBastionWard(bm, tgt_idx, tgt_stats, tr.total_damage);
+                int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
+                tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
+                log_("Potent Cantrip: {} still takes {} damage despite the miss",
+                     agentName(bm, tgt_idx), tr.total_damage);
             }
 
             // Generate log message
@@ -1137,6 +1198,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         bm.setAgentStats(action.caster_idx, mc);
                         log_("Elemental Affinity: +{} {} damage (CHA mod)", cha_bonus, static_cast<int>(roll_info.type));
                     }
+                    type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
                     // Resistance/vuln/immunity multiplier first (Elemental Adept / Poisoner lift the
                     // caster-relevant Resistance to 1.0).
                     float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
@@ -1382,6 +1444,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
                                                           roll_info.die_size, dice, true, &empower_budget);
                     type_damage += roll_info.bonus;
+                    type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
                     // Resistance/vuln/immunity multiplier (Elemental Adept / Poisoner lift the
                     // caster-relevant Resistance to 1.0).
                     float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
@@ -1734,6 +1797,39 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
 
         result.target_results.push_back(tr);
+    }
+
+    // ── Overchannel (Evoker L14): resolve after all damage lands ──────────────
+    // Clear the max-damage flag first (before any further rolls below), then charge the escalating
+    // Necrotic self-damage. The first use since a Long Rest is free; the 2nd costs 2d12 Necrotic per
+    // spell level, and each further use before a rest adds +1d12 per level. This damage ignores
+    // Resistance and Immunity, so it is applied straight to the caster.
+    force_max_damage_ = false;
+    if (overchannel_active) {
+        const int prior = bm.getAgentStats(action.caster_idx).overchannel_uses;
+        if (prior == 0) {
+            log_("Overchannel: {} unleashes maximum damage (first use since a Long Rest — no cost)",
+                 agentName(bm, action.caster_idx));
+        } else {
+            const int n_dice = (prior + 1) * overchannel_level;   // 2d12/level, +1d12/level each reuse
+            int self_dmg = 0;
+            for (int i = 0; i < n_dice; ++i) self_dmg += roll(12);
+            Agent::Stats cs = bm.getAgentStats(action.caster_idx);
+            const int overflow = std::max(0, self_dmg - cs.temp_hp);
+            cs.temp_hp = std::max(0, cs.temp_hp - self_dmg);
+            cs.hp_cur  = std::max(0, cs.hp_cur - overflow);
+            bm.setAgentStats(action.caster_idx, cs);
+            log_("Overchannel: {} takes {} Necrotic self-damage ({}d12, ignoring resistance)",
+                 agentName(bm, action.caster_idx), self_dmg, n_dice);
+            processDamageTaken(bm, action.caster_idx, self_dmg, 0);
+            if (bm.getAgentStats(action.caster_idx).hp_cur <= 0) {
+                Agent::Conditions cc = bm.getAgentConditions(action.caster_idx);
+                if (!cc.unconscious && !cc.dead) applyUnconscious(bm, action.caster_idx);
+            }
+        }
+        Agent::Stats cs2 = bm.getAgentStats(action.caster_idx);
+        cs2.overchannel_uses = prior + 1;
+        bm.setAgentStats(action.caster_idx, cs2);
     }
 
     // Life Domain — Blessed Healer (L6): when a slot-level-1+ heal restores HP to another creature,

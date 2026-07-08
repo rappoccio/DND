@@ -103,10 +103,14 @@ bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     // Check for any condition that reduces speed to 0
-    if (cond.incapacitated || cond.unconscious || cond.grappled || cond.paralyzed
+    if (cond.incapacitated || cond.unconscious || cond.paralyzed
             || cond.branches_speed_zeroed) {   // World Tree Branches of the Tree: Speed 0 this turn
         return false;
     }
+    // A grapple only pins the creature while its grappler can still maintain it (alive, conscious,
+    // not incapacitated). A grapple whose grappler is gone no longer zeroes Speed.
+    if (cond.grappled && grapplerActive(bm, idx))
+        return false;
     return true;
 }
 
@@ -126,12 +130,20 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
 
     // Check if agent is grappled - cannot move (Speed = 0).
     // A grapple is released the instant the grappler becomes Incapacitated/Unconscious/dies
-    // (see dropGrapplesBy in applyIncapacitated/applyUnconscious), so reaching here while
-    // grappled means the grappler is still active. Distance alone does NOT break a grapple —
-    // the grappler can drag this creature along (at 2x cost); it ends only via drop or escape.
+    // (see dropGrapplesBy in applyIncapacitated/applyUnconscious). Distance alone does NOT break a
+    // grapple — the grappler can drag this creature along (at 2x cost); it ends only via drop/escape.
     if (cond.grappled) {
-        log_("Movement blocked: grappled creature cannot move (Speed = 0)");
-        return false;
+        if (grapplerActive(bm, idx)) {
+            log_("Movement blocked: grappled creature cannot move (Speed = 0)");
+            return false;
+        }
+        // Grappler is gone/downed/incapacitated (or the reference is stale): the grapple has silently
+        // ended. Self-heal the flag so this creature regains its Speed instead of staying pinned.
+        cond.grappled = false;
+        cond.grappler_idx = -1;
+        bm.setAgentConditions(idx, cond);
+        log_("{}'s grapple has ended (grappler can no longer maintain it); movement allowed",
+             agentName(bm, idx));
     }
 
     Cell oldOrigin = agents[static_cast<std::size_t>(idx)].origin;

@@ -483,6 +483,11 @@ class App:
         # edited via map clicks (-1 = not editing). Out-of-combat only.
         self.safe_target_edit_idx = -1
 
+        # Evoker L14 Overchannel: while True, the caster's next eligible damaging spell (level 1-5)
+        # is cast at maximum damage. Armed/disarmed from the Evoker's right-click menu. Persistent
+        # (stays on until disarmed) since the escalating self-damage is handled by the engine.
+        self.overchannel_armed = False
+
         # ── Drag-and-drop state ───────────────────────────────────────────
         self.drag_idx     = -1         # index of agent being dragged
         self.drag_origin  = None       # Cell: original position (for cancel)
@@ -8672,6 +8677,7 @@ class App:
         action.curse_choice   = self.pending_spell_curse_choice  # Vistani Curse sub-choice (-1 = n/a)
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
+        action.overchannel   = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
         self._apply_pact_slot_level(caster_idx, sp, action)
 
         # Cast through the OnDeclareCast window (begin_cast): a targeted creature may react before the
@@ -8981,6 +8987,7 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = []
+        action.overchannel    = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
         if sp.geometry == rpg.SpellGeometry.Rectangle and self.spell_anchor_cell is not None:
             # Oriented wall: anchor is the first click, `cell` is the endpoint.
             action.aoe_col  = self.spell_anchor_cell.col
@@ -14470,6 +14477,17 @@ class App:
                         if (_hs.character_class == rpg.CharacterClass.Wizard and
                                 _hs.wizard_subclass == rpg.WizardSubclass.Evoker):
                             _menu_opts.append(("Edit Safe Targets", _edit_safe_targets))
+                            # Overchannel (L14): arm/disarm maximum-damage casting.
+                            if _hs.char_level >= 14:
+                                def _toggle_overchannel(h=hit):
+                                    self.overchannel_armed = not self.overchannel_armed
+                                    self._combat_log_add(
+                                        f"Overchannel {'ARMED' if self.overchannel_armed else 'disarmed'} — "
+                                        f"{self.bm.placed_agents[h].name}'s next damaging spell (level 1-5) "
+                                        f"{'deals maximum damage (first use free, then escalating Necrotic self-damage).' if self.overchannel_armed else 'rolls damage normally.'}")
+                                _menu_opts.append(
+                                    ("Overchannel: " + ("Disarm" if self.overchannel_armed else "Arm"),
+                                     _toggle_overchannel))
                         # Fiend Warlock L10+: choose the Fiendish Resilience damage resistance.
                         if (_hs.character_class == rpg.CharacterClass.Warlock and
                                 _hs.warlock_subclass == rpg.WarlockSubclass.Fiend and

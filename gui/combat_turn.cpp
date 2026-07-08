@@ -149,6 +149,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // New turn: advance the counter used for persistent-zone "once per turn" dedup.
     ++turnCounter_;
 
+    // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
+    // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
+    // a stale grappler_idx). This frees a creature grappled by a now-dead captor at the start of its
+    // own turn even if the release was never explicitly propagated.
+    reconcileGrapples(bm);
+
     auto agent_name = agentName(bm, agent_idx);
     // Reset slip distance counter and slipped flag for the new turn
     slipDistanceMoved_[agent_idx] = 0;
@@ -345,9 +351,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     if (cond.exhaustion_level >= 6 && stats.hp_cur > 0) {
         stats.hp_cur = 0;
-        cond.dead = true;
-        cond.unconscious = true;
         bm.setAgentStats(agent_idx, stats);
+        // Route through the single down/death chokepoint so ALL of this creature's influence
+        // (grapples, concentration, imposed conditions, reverse-reference marks) is released at once.
+        // applyUnconscious sets dead for NPCs; force it for PCs too — Exhaustion 6 kills outright.
+        applyUnconscious(bm, agent_idx);
+        cond = bm.getAgentConditions(agent_idx);
+        cond.dead = true;
         bm.setAgentConditions(agent_idx, cond);
         log_("{} dies from Exhaustion Level 6", agent_name);
         result.save_roll_message = "DEATH: Exhaustion Level 6";
@@ -376,8 +386,14 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     log_("{} takes 20 radiant damage from Sunlight exposure → {}/{}", agent_name,
                          stats.hp_cur, stats.hp_max);
                     if (stats.hp_cur == 0) {
+                        // Route through the single down/death chokepoint (releases grapples,
+                        // concentration, imposed conditions, and reverse-reference marks at once).
+                        // A dead grappler (e.g. a vampire that grapple-bit a victim) frees its victims
+                        // here. applyUnconscious sets dead for NPCs; force it in case this ever runs
+                        // on a non-NPC sunlight-vulnerable creature.
+                        applyUnconscious(bm, agent_idx);
+                        cond = bm.getAgentConditions(agent_idx);
                         cond.dead = true;
-                        cond.unconscious = true;
                         bm.setAgentConditions(agent_idx, cond);
                         log_("{} dies from Sunlight exposure", agent_name);
                         result.save_roll_message = "Sunlight Exposure: Death";

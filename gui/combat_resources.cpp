@@ -744,6 +744,9 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
             stats.barbarian_subclass == ZealotPath)
             stats.rage_of_gods_used = false;
 
+        // Evoker L14 Overchannel: the next use is free again after a Long Rest.
+        stats.overchannel_uses = 0;
+
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);
 

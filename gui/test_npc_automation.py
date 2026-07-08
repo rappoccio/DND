@@ -914,7 +914,26 @@ def _command_flee(engine, bm, victim, fear_source):
     c.caster_idx      = fear_source
     c.condition_name  = "CommandFlee"
     c.turns_remaining = 1
+    c.save_repeat_turns = -1   # mirror the real Command path (combat_conditions.cpp): without this the
+                               # struct default (repeat every turn, DC 0) auto-passes at begin_turn and
+                               # strips CommandFlee before run_npc_turn can flee.
     engine.add_agent_condition(bm, c)
+
+
+def _drive_npc_turn(engine, bm, idx):
+    """Run run_npc_turn to a terminal Completed, auto-Skipping any reaction the turn provokes.
+
+    A commanded flee out of an adjacent enemy's reach provokes that enemy's opportunity attack;
+    runFleeTurn uses the interactive begin_move (like runWeaponTurn), so it parks at the OA
+    checkpoint and returns AwaitingDecision. Mirror the GUI resume: Skip the OA and re-enter
+    run_npc_turn, whose flee_move_launched guard then ends the turn (no re-flee)."""
+    status = engine.run_npc_turn(bm, idx)
+    while status == rpg.FlowStatus.AwaitingDecision:
+        resp = rpg.ReactionResponse()
+        resp.option = -1                       # Skip the offered reaction
+        engine.submit_decision(bm, resp)
+        status = engine.run_npc_turn(bm, idx)
+    return status
 
 
 def test_command_flee_runs_away_no_attack():
@@ -935,7 +954,7 @@ def test_command_flee_runs_away_no_attack():
     assert dist_before == 1, "fleer starts adjacent to the fear source"
 
     engine.begin_turn(bm, npc)
-    status = engine.run_npc_turn(bm, npc)
+    status = _drive_npc_turn(engine, bm, npc)        # resolves the OA the flee-out-of-reach provokes
 
     assert status == rpg.FlowStatus.Completed
     assert not engine.pending_decision().active
@@ -961,7 +980,7 @@ def test_command_flee_overrides_strategy():
     dist_before = _fp_dist(bm, npc, foe)
 
     engine.begin_turn(bm, npc)
-    status = engine.run_npc_turn(bm, npc)
+    status = _drive_npc_turn(engine, bm, npc)
 
     assert status == rpg.FlowStatus.Completed
     assert _fp_dist(bm, npc, foe) > dist_before, "flee overrides PreferRange: it retreats from the fear source"

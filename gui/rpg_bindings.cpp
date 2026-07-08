@@ -417,6 +417,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "(1 hour = 600 rounds; ticks in beginTurn; 0 = inactive)")
         .def_readwrite("dragon_wings_active", &Agent::Stats::dragon_wings_active,
              "Draconic L14 Dragon Wings: fly speed = walk speed is active")
+        .def_readwrite("overchannel_uses", &Agent::Stats::overchannel_uses,
+             "Evoker L14 Overchannel: times used since last Long Rest (0 = next use is free). "
+             "Escalating Necrotic self-damage kicks in from the 2nd use. Reset to 0 on Long Rest.")
         .def_readwrite("trance_of_order_turns", &Agent::Stats::trance_of_order_turns,
              "Clockwork L14 Trance of Order window in rounds (>0 = active: attacks vs you lose "
              "Advantage + you floor your own d20s to 10; ticks in beginTurn)")
@@ -1438,6 +1441,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Vistani Curse sub-choice (only read for curse spells): vulnerability → encoded damage\n"
              "type (0..9 magic, 100+i physical); weakness → SaveAbility value; affliction →\n"
              "0=Blinded, 1=Deafened, 2=Both. -1 = unspecified.")
+        .def_readwrite("overchannel", &SpellAction::overchannel,
+             "Overchannel (Evoker Wizard L14): request maximum damage on this cast. Honored only for\n"
+             "an Evoker L14+ casting a damaging spell of effective level 1-5; first use per Long Rest\n"
+             "is free, later uses inflict escalating Necrotic self-damage. Default false.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
