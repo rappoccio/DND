@@ -954,6 +954,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("PreferAOE",          NpcAutomationStrategy::PreferAOE)
         .value("PreferRange",        NpcAutomationStrategy::PreferRange)
         .value("PreferHide",         NpcAutomationStrategy::PreferHide)
+        .value("NoOp",               NpcAutomationStrategy::NoOp)
         .export_values();
 
     py::enum_<NpcConcealRoute>(m, "NpcConcealRoute")

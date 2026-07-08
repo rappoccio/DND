@@ -14512,7 +14512,8 @@ class App:
                                     ("Prefer Target Caster", rpg.NpcAutomationStrategy.PreferTargetCaster),
                                     ("Prefer AOE",          rpg.NpcAutomationStrategy.PreferAOE),
                                     ("Prefer Range",        rpg.NpcAutomationStrategy.PreferRange),
-                                    ("Prefer Hide",         rpg.NpcAutomationStrategy.PreferHide)]
+                                    ("Prefer Hide",         rpg.NpcAutomationStrategy.PreferHide),
+                                    ("No-op (Cower)",       rpg.NpcAutomationStrategy.NoOp)]
                                 def _set_strat(strat, h2=hh):
                                     self.bm.set_agent_npc_automation_strategy(h2, strat)
                                     self._combat_log_add(

@@ -223,6 +223,7 @@ enum class NpcAutomationStrategy {
     PreferAOE = 2,          // Prefer area-of-effect options that catch multiple enemies
     PreferRange = 3,        // Keep distance and favour ranged attacks
     PreferHide = 4,         // Favour stealth/hiding and ambush positioning
+    NoOp = 5,               // Bystander: take no action and no movement — cower in place, end turn
 };
 
 struct PlacedAgent {

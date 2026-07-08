@@ -1210,6 +1210,16 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // strategy has an executor it falls through to Simple (the always-defined baseline).
     const NpcAutomationStrategy strategy = resolveStrategy(bm, agent_idx);
 
+    // No-op (bystander): take no action and no movement — cower in place and end the turn. Intercept
+    // BEFORE the Bucket D recharge route so a cowering monster never fires a breath either. Clear any
+    // parked turn state defensively (a No-op turn never parks a decision window).
+    if (strategy == NpcAutomationStrategy::NoOp) {
+        log_("{} cowers in place and takes no action.", agentName(bm, agent_idx));
+        if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
+            npc_turn_ = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+
     // Bucket D — rechargeable features (dragon breath etc.): whatever the base strategy, a monster with a
     // currently-available recharge AoE action should spend it as often as it recharges. Route through the
     // AoE executor (it prioritises the area breath, respects friendly-fire/ally-sparing, and falls back to
