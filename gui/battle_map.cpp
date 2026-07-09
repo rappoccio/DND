@@ -110,6 +110,9 @@ void BattleMap::analyzeGrid()
     baseVisibilityLevel_.assign(static_cast<std::size_t>(rows_ * cols_), VisibilityLevel::Clear);
     lightLevel_.assign(static_cast<std::size_t>(rows_ * cols_), VisibilityLevel::Clear);
 
+    // Reset fog-of-war explored mask (all fogged) for the new grid dimensions.
+    explored_.assign(static_cast<std::size_t>(rows_ * cols_), 0);
+
     std::cout << std::format("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
 
@@ -149,6 +152,7 @@ void BattleMap::setUniformGrid(int cellPx, int anchorX, int anchorY)
     tempTerrainDiff_.assign(n, TerrainDifficulty::Normal);
     baseVisibilityLevel_.assign(n, VisibilityLevel::Clear);
     lightLevel_.assign(n, VisibilityLevel::Clear);
+    explored_.assign(n, 0);  // fog-of-war: all fogged on a fresh grid
 
     clearWalls();
 
@@ -1713,6 +1717,93 @@ bool BattleMap::perceptionDisadvantage(Cell obs_origin, int obs_size,
 
     // All other cases: no disadvantage
     return false;
+}
+
+// ── Fog of war (persistent explored mask, PC-party scoped) ─────────────────────
+void BattleMap::revealFogForFaction(int faction) noexcept {
+    if (explored_.size() != static_cast<std::size_t>(rows_) * static_cast<std::size_t>(cols_))
+        return;  // grid not analyzed yet
+
+    for (const PlacedAgent& pa : placedAgents_) {
+        if (!pa.agent) continue;
+        if (pa.faction != faction) continue;
+        if (pa.removed_from_play) continue;
+
+        const Agent::Stats& s = pa.agent->getStats();
+        // Only living observers reveal fog (a downed/dead party member has no active senses).
+        if (s.hp_cur <= 0 || pa.agent->getConditions().dead) continue;
+
+        const int size = pa.agent->getSize();
+        const int dv = s.darkvision_range;
+        const int ts = s.truesight_range;
+        const int ds = s.devilssight_range;
+        // Base perception range (feet): mirrors CombatEngine::computeVisibility's heuristic.
+        const int base_perception = std::max(20, (s.wis / 2) * 5);
+
+        // Maximum range this observer could possibly see, in cells, to bound the scan.
+        const int max_ft = std::max({base_perception, dv, ts, ds});
+        const int reach = max_ft / 5;
+
+        // Scan the bounding box of the observer's footprint expanded by `reach`.
+        const int r0 = std::max(0, pa.origin.row - reach);
+        const int r1 = std::min(rows_ - 1, pa.origin.row + (size - 1) + reach);
+        const int c0 = std::max(0, pa.origin.col - reach);
+        const int c1 = std::min(cols_ - 1, pa.origin.col + (size - 1) + reach);
+
+        for (int r = r0; r <= r1; ++r) {
+            for (int c = c0; c <= c1; ++c) {
+                const std::size_t idx = static_cast<std::size_t>(r) * static_cast<std::size_t>(cols_)
+                                      + static_cast<std::size_t>(c);
+                if (explored_[idx]) continue;  // monotonic: already revealed
+                if (canSee(pa.origin, size, dv, ts, ds, Cell{c, r}, 1))
+                    explored_[idx] = 1;
+            }
+        }
+    }
+}
+
+bool BattleMap::isExplored(Cell c) const noexcept {
+    if (c.col < 0 || c.row < 0 || c.col >= cols_ || c.row >= rows_)
+        return false;
+    const std::size_t idx = static_cast<std::size_t>(c.row) * static_cast<std::size_t>(cols_)
+                          + static_cast<std::size_t>(c.col);
+    return idx < explored_.size() && explored_[idx] != 0;
+}
+
+std::vector<Cell> BattleMap::exploredCells() const {
+    std::vector<Cell> out;
+    for (int r = 0; r < rows_; ++r) {
+        for (int c = 0; c < cols_; ++c) {
+            const std::size_t idx = static_cast<std::size_t>(r) * static_cast<std::size_t>(cols_)
+                                  + static_cast<std::size_t>(c);
+            if (idx < explored_.size() && explored_[idx])
+                out.push_back(Cell{c, r});
+        }
+    }
+    return out;
+}
+
+void BattleMap::setExplored(Cell c, bool v) noexcept {
+    if (c.col < 0 || c.row < 0 || c.col >= cols_ || c.row >= rows_)
+        return;
+    const std::size_t idx = static_cast<std::size_t>(c.row) * static_cast<std::size_t>(cols_)
+                          + static_cast<std::size_t>(c.col);
+    if (idx < explored_.size())
+        explored_[idx] = v ? 1 : 0;
+}
+
+void BattleMap::setExploredCells(const std::vector<Cell>& cells) noexcept {
+    std::fill(explored_.begin(), explored_.end(), static_cast<uint8_t>(0));
+    for (const Cell& c : cells)
+        setExplored(c, true);
+}
+
+void BattleMap::revealAllFog() noexcept {
+    std::fill(explored_.begin(), explored_.end(), static_cast<uint8_t>(1));
+}
+
+void BattleMap::clearFog() noexcept {
+    std::fill(explored_.begin(), explored_.end(), static_cast<uint8_t>(0));
 }
 
 PlacedAgent& BattleMap::placedAgentMut(int idx) noexcept {

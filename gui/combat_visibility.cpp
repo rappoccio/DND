@@ -48,6 +48,8 @@ bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int ta
     const PlacedAgent& target = agents[static_cast<std::size_t>(target_idx)];
     if (!target.agent->getConditions().invisible)
         return true;  // not invisible → perceivable (geometric LoS handled elsewhere)
+    if (areAllies(bm, viewer_idx, target_idx))
+        return true;  // allies always know where their invisible friend is (RAW: you hide from enemies)
     const PlacedAgent& viewer = agents[static_cast<std::size_t>(viewer_idx)];
     return piercesInvisibility(viewer.agent->getStats(), chebyshevFeet(viewer, target));
 }
@@ -88,15 +90,19 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 
         const PlacedAgent& target = agents[target_idx];
 
-        // Check if target is hidden — if so, they're invisible
-        if (target.agent->getConditions().hidden) {
+        // Allies (same faction) always know where each other are — a hidden or invisible
+        // teammate does not vanish from their own party's map (RAW: you hide from enemies).
+        const bool ally = areAllies(bm, agent_idx, static_cast<int>(target_idx));
+
+        // Check if target is hidden — if so, they're invisible (to enemies only).
+        if (target.agent->getConditions().hidden && !ally) {
             int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
             visibilityMap_[key] = VisibilityLevel::Blocked;
             continue;
         }
 
         // Invisible condition: blocked unless the viewer has Truesight/Blindsight in range.
-        if (target.agent->getConditions().invisible &&
+        if (!ally && target.agent->getConditions().invisible &&
             !piercesInvisibility(viewer_stats, chebyshevFeet(viewer, target))) {
             int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
             visibilityMap_[key] = VisibilityLevel::Blocked;

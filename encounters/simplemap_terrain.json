@@ -2,49 +2,65 @@
   "regions": [
     {
       "type": "Wall",
-      "x": 258,
+      "x": 358,
       "y": 89,
       "width": 50,
-      "height": 149,
+      "height": 249,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 808,
-      "y": 89,
+      "x": 58,
+      "y": 388,
       "width": 50,
-      "height": 399,
+      "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 258,
-      "y": 288,
-      "width": 50,
-      "height": 200,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 308,
-      "y": 438,
-      "width": 100,
+      "x": 158,
+      "y": 388,
+      "width": 150,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
       "x": 358,
-      "y": 488,
+      "y": 388,
+      "width": 150,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 558,
+      "y": 388,
+      "width": 250,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 858,
+      "y": 388,
+      "width": 199,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 258,
+      "y": 438,
       "width": 50,
-      "height": 200,
+      "height": 350,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
       "x": 608,
-      "y": 488,
-      "width": 150,
+      "y": 438,
+      "width": 50,
       "height": 50,
       "multiplier": 0.0
     },
@@ -53,44 +69,20 @@
       "x": 608,
       "y": 538,
       "width": 50,
-      "height": 250,
+      "height": 100,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 58,
-      "y": 638,
-      "width": 50,
+      "x": 658,
+      "y": 588,
+      "width": 399,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 158,
-      "y": 638,
-      "width": 200,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 408,
-      "y": 638,
-      "width": 100,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 558,
-      "y": 638,
-      "width": 50,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 608,
+      "x": 258,
       "y": 838,
       "width": 50,
       "height": 49,
@@ -102,29 +94,13 @@
     {
       "cells": [
         [
-          4,
-          3
+          6,
+          5
         ]
       ],
       "cell": [
-        4,
-        3
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          14,
-          8
-        ]
-      ],
-      "cell": [
-        14,
-        8
+        6,
+        5
       ],
       "open": false,
       "locked": false,
@@ -135,12 +111,28 @@
       "cells": [
         [
           1,
-          11
+          6
         ]
       ],
       "cell": [
         1,
-        11
+        6
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          5,
+          6
+        ]
+      ],
+      "cell": [
+        5,
+        6
       ],
       "open": false,
       "locked": false,
@@ -151,12 +143,44 @@
       "cells": [
         [
           9,
-          11
+          6
         ]
       ],
       "cell": [
         9,
-        11
+        6
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          15,
+          6
+        ]
+      ],
+      "cell": [
+        15,
+        6
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false
+    },
+    {
+      "cells": [
+        [
+          4,
+          14
+        ]
+      ],
+      "cell": [
+        4,
+        14
       ],
       "open": false,
       "locked": false,
@@ -167,17 +191,18 @@
       "cells": [
         [
           11,
-          14
+          8
         ]
       ],
       "cell": [
         11,
-        14
+        8
       ],
       "open": false,
       "locked": false,
       "lock_dc": 15,
       "arcane_lock": false
     }
-  ]
+  ],
+  "explored": []
 }

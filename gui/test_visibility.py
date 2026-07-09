@@ -303,6 +303,66 @@ def _melee_wpn():
     return [w, rpg.Weapon(), rpg.Weapon()]
 
 
+def test_ally_still_perceives_invisible_teammate():
+    """An invisible creature does NOT vanish from its own party's map.
+
+    Regression: sight lines were gated against everyone, so an invisible PC
+    dropped off their own teammates' visible-target list (Astarion → Karlach).
+    Allies (same non-zero faction) should keep perceiving the invisible friend,
+    while enemies are still blocked.
+    """
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    ally = add_agent_to_battle(engine, bm, create_test_agent("Karlach", 5, 5))
+    sneak = add_agent_to_battle(engine, bm, create_test_agent("Astarion", 6, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Nalfeshnee", 7, 5))
+    # Karlach + Astarion on the blue team; Nalfeshnee on the red team.
+    bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(sneak, 1)
+    bm.set_agent_faction(enemy, 2)
+
+    _set_invisible(engine, bm, sneak, True)
+
+    # Ally perceives the invisible teammate (no truesight needed).
+    assert engine.can_perceive_target(bm, ally, sneak), \
+        "ally should still perceive an invisible teammate"
+    engine.compute_visibility(bm, ally)
+    assert engine.get_visibility(ally, sneak) != rpg.VisibilityLevel.Blocked, \
+        "invisible teammate must not be Blocked on an ally's visibility map"
+
+    # Enemy without truesight is still blocked — the fix must not leak to foes.
+    assert not engine.can_perceive_target(bm, enemy, sneak), \
+        "enemy must NOT perceive the invisible target"
+    engine.compute_visibility(bm, enemy)
+    assert engine.get_visibility(enemy, sneak) == rpg.VisibilityLevel.Blocked, \
+        "invisible target should stay Blocked for enemies"
+    print("✅ test_ally_still_perceives_invisible_teammate")
+
+
+def test_ally_still_perceives_hidden_teammate():
+    """A Hidden teammate likewise stays visible to its own party, not to enemies."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    ally = add_agent_to_battle(engine, bm, create_test_agent("Karlach", 5, 5))
+    hider = add_agent_to_battle(engine, bm, create_test_agent("Astarion", 6, 5))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Nalfeshnee", 7, 5))
+    bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(hider, 1)
+    bm.set_agent_faction(enemy, 2)
+
+    cond = engine.get_agent_conditions(bm, hider)
+    cond.hidden = True
+    engine.set_agent_conditions(bm, hider, cond)
+
+    engine.compute_visibility(bm, ally)
+    assert engine.get_visibility(ally, hider) != rpg.VisibilityLevel.Blocked, \
+        "hidden teammate must not be Blocked on an ally's visibility map"
+    engine.compute_visibility(bm, enemy)
+    assert engine.get_visibility(enemy, hider) == rpg.VisibilityLevel.Blocked, \
+        "hidden target should stay Blocked for enemies"
+    print("✅ test_ally_still_perceives_hidden_teammate")
+
+
 def test_invisible_attacker_has_advantage():
     """An invisible attacker rolls its attacks with advantage."""
     bm = setup_battle_map()
@@ -348,6 +408,8 @@ if __name__ == "__main__":
         test_invisible_target_not_attackable,
         test_truesight_and_blindsight_pierce_invisibility,
         test_invisible_target_visibility_blocked,
+        test_ally_still_perceives_invisible_teammate,
+        test_ally_still_perceives_hidden_teammate,
         test_invisible_attacker_has_advantage,
     ]
 

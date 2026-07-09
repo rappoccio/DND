@@ -520,6 +520,17 @@ class App:
         # ── Visualization toggles ─────────────────────────────────────────
         self.show_lighting_overlay = False  # Toggle for lighting visualization
 
+        # ── Fog of war (see FOG_OF_WAR_PLAN.md) ───────────────────────────
+        # Persistent explored mask lives in the C++ BattleMap; the GUI just re-runs
+        # the monotonic reveal after any event that can change party vision. A dirty
+        # flag keeps that off the hot render path — reveal only recomputes when a
+        # trigger has marked the mask stale since the last _refresh_fog().
+        self._fog_dirty = True   # force one reveal on first frame
+        # Render toggle for the grey "never seen" overlay + enemy-token hiding. Default
+        # OFF so a freshly opened map (terrain authoring / dungeon gen) isn't a wall of
+        # grey; the DM flips "Fog: ON" (btn_toggle_fog) when running a party through.
+        self.show_fog = False
+
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
         import time
         from replay_record import RecordingCombat
@@ -856,7 +867,11 @@ class App:
         self.btn_toggle_walls = Button(pygame.Rect(px, toggle_walls_y, W, B),
                                        "Walls: ON" if self._walls_enabled else "Walls: OFF",
                                        (90, 80, 110), (125, 110, 150), font=self.font_md)
-        set_grid_y = toggle_walls_y + B + self._BTN_GAP
+        toggle_fog_y = toggle_walls_y + B + self._BTN_GAP
+        self.btn_toggle_fog = Button(pygame.Rect(px, toggle_fog_y, W, B),
+                                     "Fog: ON" if self.show_fog else "Fog: OFF",
+                                     (70, 90, 105), (100, 125, 145), font=self.font_md)
+        set_grid_y = toggle_fog_y + B + self._BTN_GAP
         self.btn_set_grid = Button(pygame.Rect(px, set_grid_y, W, B),
                                    "Set Grid…",
                                    (80, 95, 95), (110, 130, 130), font=self.font_md)
@@ -903,7 +918,9 @@ class App:
         self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
         toggle_walls_y = toggle_light_y + self._BTN_H + self._BTN_GAP
         self.btn_toggle_walls.rect.update(px, toggle_walls_y, W, self._BTN_H)
-        set_grid_y = toggle_walls_y + self._BTN_H + self._BTN_GAP
+        toggle_fog_y = toggle_walls_y + self._BTN_H + self._BTN_GAP
+        self.btn_toggle_fog.rect.update(px, toggle_fog_y, W, self._BTN_H)
+        set_grid_y = toggle_fog_y + self._BTN_H + self._BTN_GAP
         self.btn_set_grid.rect.update(px, set_grid_y, W, self._BTN_H)
         quit_y = set_grid_y + self._BTN_H + self._BTN_GAP
         self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
@@ -1953,6 +1970,7 @@ class App:
 
         self.sprites.clear()
         self.selected_idx = new_idx
+        self._mark_fog_dirty()   # a pasted token may be a party member with its own vision
         self._update_reach()
         self._update_attack_overlay()
         self._flash_status(f"Pasted {cfg.name}")
@@ -2475,6 +2493,7 @@ class App:
         """Roll initiative and enter combat mode."""
         if not self.bm.placed_agents:
             return
+        self._mark_fog_dirty()   # combat start: reveal from the party's opening positions
         order = list(self.combat.roll_initiative(self.bm))
         if not order:
             return
@@ -2740,6 +2759,7 @@ class App:
         """Advance to the next living combatant in initiative order."""
         if not self.initiative_order:
             return
+        self._mark_fog_dirty()   # lights tick + positions settle at each turn boundary
         n = len(self.initiative_order)
         prev_turn_idx = self.turn_idx
         prev_idx = self._current_agent_idx()
@@ -3138,6 +3158,7 @@ class App:
         if not self.combat_active or idx < 0 or idx >= len(self.bm.placed_agents):
             return
         status = self.combat.run_npc_turn(self.bm, idx)
+        self._mark_fog_dirty()   # the automated turn moved tokens / opened doors / placed lights
         self._flush_combat_log()
         if status == rpg.FlowStatus.AwaitingDecision and self.combat.pending_decision().active:
             # The NPC attempted an action; a human gets a reaction/counter window. When it closes,
@@ -3319,6 +3340,7 @@ class App:
     def _after_door_change(self):
         """Refresh movement/attack overlays after a door's open state (and thus LOS and
         passability) changed."""
+        self._mark_fog_dirty()   # a door opening/closing changes party LOS through it
         if self.selected_idx >= 0:
             self._update_reach()
             self._update_attack_overlay()
@@ -8265,6 +8287,7 @@ class App:
         if idx < 0 or idx >= len(agents):
             return
         ag = agents[idx]
+        self._mark_fog_dirty()   # any creature moving can change what the party sees
         self._flush_combat_log()
         self._sync_spell_effect_cache()
         # Slip ends the turn (the engine sets slipped_this_turn during the committed move).
@@ -10695,6 +10718,7 @@ class App:
             self.combat.add_agent_config(self.bm, cfg)
             self.pending_configs.append(cfg)
         self.combat.apply_agent_configs(self.bm)
+        self._mark_fog_dirty()   # roster (re)built — party placed, so re-run reveal
         self.sprites.clear()
         # Restore stats for each placed agent
         for i, t in enumerate(agent_data):
@@ -11048,6 +11072,7 @@ class App:
         for d in list(self.bm.doors):
             self.bm.remove_door(d.id)
         doors_data = []
+        explored_data = None  # fog-of-war mask from JSON; None = key absent (start fogged)
 
         if os.path.exists(path):
             try:
@@ -11069,6 +11094,7 @@ class App:
                 self._terrain_rooms = data.get("rooms", [])
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 doors_data = data.get("doors", [])
+                explored_data = data.get("explored")  # None if absent → stays fully fogged
             except Exception:
                 self._terrain_regions = []
 
@@ -11104,6 +11130,19 @@ class App:
             except Exception:
                 continue
 
+        # Grid (re)analysis in C++ resets the explored mask to fully fogged. Restore the
+        # persisted mask here (after all grid/wall/door processing that would clear it), so
+        # rooms seen in a prior session stay revealed. An absent "explored" key (old saves)
+        # leaves the map fully fogged. _mark_fog_dirty then ORs in whatever the party can
+        # currently see on top of the restored set (monotonic, so this is always safe).
+        if explored_data is not None:
+            try:
+                cells = [rpg.Cell(int(c[0]), int(c[1])) for c in explored_data]
+                self.bm.set_explored_cells(cells)
+            except Exception:
+                pass
+        self._mark_fog_dirty()
+
     def _save_terrain(self, path: str | None = None):
         """Save terrain data to JSON file (defaults to the active encounter's path)."""
         path = path or self._terrain_path
@@ -11118,6 +11157,9 @@ class App:
         ]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
+        # Fog of war: persist the PC-party explored mask so a room seen once stays
+        # revealed across save/reload. Compact [col, row] pairs; absent → fully fogged.
+        data["explored"] = [[c.col, c.row] for c in self.bm.explored_cells()]
         with open(path, 'w') as f:
             json.dump(data, f, indent=2)
 
@@ -11375,6 +11417,83 @@ class App:
         }
         return mapping.get(s, rpg.VisibilityLevel.Clear)
 
+    def _mark_fog_dirty(self):
+        """Flag the fog-of-war explored mask as stale.
+
+        Called from every event that can change party vision (movement, doors,
+        lights, turn/combat boundaries, terrain reload). The actual reveal is
+        deferred to the next _refresh_fog() so we never recompute on the hot path
+        or multiple times per frame. Reveal is monotonic, so an extra mark is
+        harmless — the flag only exists to skip work, never for correctness."""
+        self._fog_dirty = True
+
+    def _refresh_fog(self):
+        """Re-run the PC-party fog reveal if the mask has been marked stale.
+
+        Monotonic OR of every cell any living party member can currently see into
+        the persistent C++ explored mask. No-op unless a trigger set _fog_dirty."""
+        if not self._fog_dirty:
+            return
+        self._fog_dirty = False
+        try:
+            self.bm.reveal_fog_for_faction(PC_FACTION)
+        except Exception:
+            # Never let a fog refresh take down the render loop.
+            pass
+
+    def _fog_active(self) -> bool:
+        """True when the fog overlay + enemy-hide gate should be applied.
+
+        Suppressed while a map-authoring modal (lighting / terrain editor) is open so
+        the DM can see the whole map they're editing, and off entirely unless the DM
+        has toggled fog on (btn_toggle_fog)."""
+        return (self.show_fog
+                and not self.lighting_editor.active
+                and not self.terrain_editor.active)
+
+    def _draw_fog_overlay(self):
+        """Grey out every cell the PC party has never seen (fog of war).
+
+        Mirrors _draw_lighting_overlay's per-cell overlay pattern but keys each cell
+        on the persistent C++ explored mask (is_explored) instead of light level, and
+        is scale-correct: v/h line positions are raw image px, so multiply by map_scale
+        for screen px (same convention as _draw_hover_cursor). A never-explored cell
+        gets a dark opaque grey; explored cells are left clear. Drawn on top of the map
+        + lighting overlay and beneath agents/UI, so it also hides beneath-agent
+        spell/terrain overlays in unexplored areas."""
+        if not self._fog_active():
+            return
+        bm = self.bm
+        if not bm or not self.map_rect:
+            return
+        v_lines = bm.v_line_positions
+        h_lines = bm.h_line_positions
+        if not v_lines or not h_lines:
+            return
+        s    = self.map_scale
+        cols = bm.grid_cols
+        rows = bm.grid_rows
+        fog_surf = pygame.Surface((self.map_rect.width, self.map_rect.height), pygame.SRCALPHA)
+        FOG_COL  = (24, 24, 28, 245)   # dark opaque grey (see plan)
+        Cell = rpg.Cell
+        for r in range(rows):
+            if r >= len(h_lines) - 1:
+                break
+            cy = int(h_lines[r] * s)
+            ch = int(h_lines[r + 1] * s) - cy
+            for c in range(cols):
+                if c >= len(v_lines) - 1:
+                    break
+                if bm.is_explored(Cell(c, r)):
+                    continue
+                cx = int(v_lines[c] * s)
+                cw = int(v_lines[c + 1] * s) - cx
+                pygame.draw.rect(fog_surf, FOG_COL, (cx, cy, cw, ch))
+        panned_rect = self.map_rect.copy()
+        panned_rect.x += self.pan_x
+        panned_rect.y += self.pan_y
+        self.screen.blit(fog_surf, panned_rect)
+
     def _apply_light_effects(self, light_sources):
         """Apply editor-placed light effects to the battle map."""
         if not light_sources:
@@ -11424,6 +11543,8 @@ class App:
                 -1,  # -1 = permanent
                 -1   # -1 = DM-placed (no source agent)
             )
+
+        self._mark_fog_dirty()   # new lighting changes which cells the party can see
 
     def _clear_temporary_terrain(self):
         """Remove spell-created temporary terrain (regions with 'source' field)."""
@@ -12453,6 +12574,14 @@ class App:
             # death saves, so the DM still needs to see and select them.
             if pt.conditions.dead:
                 continue
+            # Fog of war: hide a non-party token whose whole footprint sits in cells the
+            # party has never seen. Party-faction tokens are always drawn. Keyed off the
+            # same explored mask as _draw_fog_overlay, so a sprite can never sit on fog.
+            if self._fog_active() and pt.faction != PC_FACTION:
+                fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
+                      for dc in range(pt.size) for dr in range(pt.size)]
+                if fp and all(not self.bm.is_explored(cell) for cell in fp):
+                    continue
             sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
             # On-deck reserves are still drawn (the DM placed them), but dimmed with an
             # "ON DECK" badge so it's clear they aren't in the initiative yet.
@@ -14359,6 +14488,9 @@ class App:
         # ── Toggle Wall Auto-Detection button ──────────────────────────────
         self.btn_toggle_walls.draw(self.screen)
 
+        # ── Toggle Fog of War button ───────────────────────────────────────
+        self.btn_toggle_fog.draw(self.screen)
+
         # ── Set Grid (sample a tile) button ────────────────────────────────
         self.btn_set_grid.draw(self.screen)
 
@@ -14821,6 +14953,7 @@ class App:
                     if self.selected_idx >= 0:
                         idx = self.selected_idx
                         self.bm.remove_agent(idx)
+                        self._mark_fog_dirty()   # roster changed (a party member may be gone)
                         # Weapon data lives in C++ and is removed with the agent.
                         self.selected_idx        = -1
                         self.drag_idx            = -1
@@ -15088,6 +15221,25 @@ class App:
                     if items_at_cell:
                         self._show_item_context_menu(cell, items_at_cell, event.pos)
 
+            # Right-click an empty map cell (no agent, no items) → DM fog-of-war menu.
+            # Manual overrides on the persistent explored mask: reveal everything, or
+            # reset back to fully fogged. Only offered while fog is toggled on.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and self.show_fog and not self.context_menu.visible:
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None and self._agent_at(cell) < 0 \
+                        and not self.bm.get_items_at_cell(cell):
+                    def _reveal_all_fog():
+                        self.bm.reveal_all_fog()
+                    def _reset_fog():
+                        self.bm.clear_fog()
+                        self._mark_fog_dirty()   # re-reveal whatever the party can currently see
+                    self.context_menu.show(
+                        event.pos,
+                        [("Reveal all fog", _reveal_all_fog),
+                         ("Reset fog", _reset_fog)],
+                        self.screen.get_size())
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map:
                 cell = self._screen_to_cell(*event.pos)
                 if cell is not None:
@@ -15346,6 +15498,7 @@ class App:
                         # pathing) entirely and set the agent's position directly.
                         if self.bm.set_agent_position(self.drag_idx, self.drag_cell):
                             self.selected_idx = self.drag_idx
+                            self._mark_fog_dirty()   # DM/pre-combat reposition moves a token
                         self._update_reach()
                         self._update_attack_overlay()
                     elif self.drag_valid and self.drag_cell is not None:
@@ -15601,6 +15754,12 @@ class App:
                 # Toggle Wall Auto-Detection
                 if self.btn_toggle_walls.clicked(event):
                     self._toggle_walls()
+
+                # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
+                if self.btn_toggle_fog.clicked(event):
+                    self.show_fog = not self.show_fog
+                    self.btn_toggle_fog.text = "Fog: ON" if self.show_fog else "Fog: OFF"
+                    self._mark_fog_dirty()   # ensure the mask is current the moment fog turns on
 
                 # Set Grid (sample a tile to define a uniform grid)
                 if self.btn_set_grid.clicked(event):
@@ -16399,8 +16558,10 @@ class App:
         while running:
             running = self._handle_events()
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
+            self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
             self.screen.fill(COL_BG)
             self._draw_map()
+            self._draw_fog_overlay()            # fog of war: grey never-seen cells (above map, below agents)
             self._draw_agents()
             self._draw_floating_texts()                     # transient outcome flashes above tokens
             self._draw_safe_target_highlights()

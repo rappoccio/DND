@@ -4045,6 +4045,30 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Check if observer has disadvantage on perception vs target.\n"
              "Returns true for: DimLight (normal/devil's sight), Darkness (darkvision only).")
 
+        // Fog of war (persistent explored mask, PC-party scoped) — see FOG_OF_WAR_PLAN.md.
+        .def("reveal_fog_for_faction", &BattleMap::revealFogForFaction,
+             py::arg("faction"),
+             "Monotonically OR every cell currently seen by a LIVING agent on `faction`\n"
+             "into the persistent explored mask (honors LOS/doors/lighting/senses via can_see).\n"
+             "Never clears a bit. Cheap to call redundantly; drive it from a dirty flag.")
+        .def("is_explored", &BattleMap::isExplored,
+             py::arg("cell"),
+             "True if the given cell has ever been seen by the PC party (revealed).\n"
+             "Out-of-bounds cells return false. Drives the GUI fog overlay / enemy gate.")
+        .def("explored_cells", &BattleMap::exploredCells,
+             "List of all currently-revealed cells (for terrain-JSON serialization).")
+        .def("set_explored", &BattleMap::setExplored,
+             py::arg("cell"), py::arg("value"),
+             "DM paint: set a single cell's explored bit (True = revealed, False = fogged).")
+        .def("set_explored_cells", &BattleMap::setExploredCells,
+             py::arg("cells"),
+             "Replace the explored mask with exactly these cells revealed (JSON import).\n"
+             "Clears every other bit first, so an empty list fully re-fogs the map.")
+        .def("reveal_all_fog", &BattleMap::revealAllFog,
+             "DM 'reveal all': mark every cell explored.")
+        .def("clear_fog", &BattleMap::clearFog,
+             "DM 'reset fog': mark every cell unexplored (fully fogged).")
+
         // Temporary terrain effects (spells, items, etc. with duration)
         .def("place_terrain_effect", &BattleMap::placeTerrainEffect,
              py::arg("name"), py::arg("cells"), py::arg("difficulty"),

@@ -6,7 +6,7 @@
       "size": 1,
       "col": 2,
       "row": 2,
-      "faction": 0,
+      "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
       "npc_automation_difficulty_level": 0,
@@ -20,7 +20,7 @@
         "cha": 8,
         "hp_max": 135,
         "hp_cur": 135,
-        "ac": 18,
+        "ac": 15,
         "speed_walk": 40,
         "speed_swim": 0,
         "speed_fly": 0,
@@ -52,8 +52,9 @@
         "feats": [
           "Alert",
           "Weapon Mastery",
-          "Great Weapon Master",
-          "Savage Attacker"
+          "Savage Attacker",
+          "Athlete",
+          "Great Weapon Master"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
@@ -263,7 +264,7 @@
       "size": 1,
       "col": 0,
       "row": 2,
-      "faction": 0,
+      "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
       "npc_automation_difficulty_level": 0,
@@ -277,7 +278,7 @@
         "cha": 11,
         "hp_max": 107,
         "hp_cur": 107,
-        "ac": 11,
+        "ac": 14,
         "speed_walk": 30,
         "speed_swim": 0,
         "speed_fly": 0,
@@ -308,8 +309,9 @@
         "available_hit_points": 0,
         "feats": [
           "Alert",
-          "Telekinetic",
-          "Weapon Mastery"
+          "Weapon Mastery",
+          "Dual Wielder",
+          "Two-Weapon Fighting"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
@@ -522,7 +524,7 @@
       "size": 1,
       "col": 2,
       "row": 0,
-      "faction": 0,
+      "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
       "npc_automation_difficulty_level": 0,
@@ -567,8 +569,8 @@
         "available_hit_points": 0,
         "feats": [
           "Tough",
-          "War Caster",
-          "Resilient"
+          "Shield Master",
+          "War Caster"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
@@ -727,7 +729,6 @@
         "Spirit Guardians",
         "Hold Person",
         "Healing Word",
-        "Guidance",
         "Light",
         "Dispel Magic",
         "Mass Healing Word",
@@ -739,7 +740,6 @@
         "Heroes' Feast",
         "Harm",
         "Mage Hand",
-        "Detect Magic",
         "Misty Step",
         "Warding Bond",
         "Sunbeam",
@@ -749,13 +749,13 @@
         "See Invisibility",
         "Daylight",
         "Fireball",
-        "Arcane Eye",
         "Wall of Fire",
         "Flame Strike",
-        "Scrying",
         "Divine Spark (Harm)",
         "Divine Spark (Heal)",
-        "Radiance of the Dawn"
+        "Radiance of the Dawn",
+        "Arcane Eye",
+        "Scrying"
       ],
       "agent_class": "Cleric",
       "agent_char_level": 13,
@@ -813,7 +813,7 @@
       "size": 1,
       "col": 0,
       "row": 0,
-      "faction": 0,
+      "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
       "npc_automation_difficulty_level": 0,
@@ -822,9 +822,9 @@
         "str": 9,
         "dex": 16,
         "con": 17,
-        "intel": 12,
-        "wis": 9,
-        "cha": 22,
+        "intel": 22,
+        "wis": 10,
+        "cha": 10,
         "hp_max": 93,
         "hp_cur": 93,
         "ac": 13,
@@ -857,6 +857,7 @@
         "temp_hp": 0,
         "available_hit_points": 0,
         "feats": [
+          "Alert",
           "Durable",
           "War Caster"
         ],
@@ -1083,5 +1084,6 @@
       ]
     }
   ],
-  "map_items": []
+  "map_items": [],
+  "active_conditions": []
 }

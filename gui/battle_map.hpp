@@ -16,6 +16,7 @@
 #include "cell.hpp"
 #include "item.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -616,6 +617,27 @@ public:
     // Clear all spell effects (end of combat).
     void clearSpellEffects() noexcept;
 
+    // ── Fog of war (persistent explored mask, PC-party scoped) ─────────────
+    // A monotonic "has ever been seen" mask over the grid. Cells only ever go
+    // unexplored → explored (revealFogForFaction ORs in newly-seen cells; nothing
+    // clears a bit except the DM-facing clearFog / a fresh grid analysis). The GUI
+    // greys out unexplored cells and hides enemy tokens standing entirely in them.
+    // Single mask, PC-party only (see FOG_OF_WAR_PLAN.md); promote to a per-faction
+    // map if multi-side fog is ever needed.
+    //
+    // Reveal (monotonic OR): for each LIVING placed agent on `faction`, mark every
+    // cell it can currently see (canSee, honoring LOS/doors/lighting/senses). Reads
+    // the agent's full Stats directly so blindsight can fold in later without
+    // touching canSee's signature.
+    void revealFogForFaction(int faction) noexcept;
+    [[nodiscard]] bool isExplored(Cell c) const noexcept;
+    [[nodiscard]] const std::vector<uint8_t>& exploredMask() const noexcept { return explored_; }
+    [[nodiscard]] std::vector<Cell> exploredCells() const;         // for JSON export
+    void setExplored(Cell c, bool v) noexcept;                     // DM paint
+    void setExploredCells(const std::vector<Cell>& cells) noexcept; // JSON import (replaces mask)
+    void revealAllFog() noexcept;                                  // DM "reveal all"
+    void clearFog() noexcept;                                      // DM "reset fog"
+
     // Get/set light level at a cell (for debugging or manual map configuration).
     [[nodiscard]] VisibilityLevel getLightLevel(Cell c) const noexcept;
     // Light level at a cell as perceived BY a specific observer: a MagicalDark light effect tagged
@@ -707,6 +729,7 @@ private:
     int                      nextDoorId_{0};  // monotonically increasing door id generator
     std::vector<VisibilityLevel>  baseVisibilityLevel_; // cols × rows base light levels (from JSON; default BrightLight)
     std::vector<VisibilityLevel>  lightLevel_;     // cols × rows computed light levels (base + effects; default BrightLight)
+    std::vector<uint8_t>          explored_;       // cols × rows fog-of-war "ever seen" mask (0 = fogged, 1 = revealed); reset on grid analysis
     std::vector<AgentConfig>  agentConfigs_;
     std::vector<PlacedAgent>  placedAgents_;
 
