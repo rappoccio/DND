@@ -1613,6 +1613,27 @@ public:
     // iff teleport succeeds. The GUI handles target-cell selection (like Psychic Teleportation).
     bool shadowStepTeleport(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
 
+    // Steps of the Fey (Archfey Warlock L3): a Bonus-Action Misty Step (30 ft) cast with no slot,
+    // spending one "Steps of the Fey" use. effect selects the rider: 0 None, 1 Refreshing (self 1d10
+    // temp HP), 2 Taunting (WIS save near departure → FeyTaunt Disadvantage), 3 Disappearing (L6+,
+    // self Invisible), 4 Dreadful (L6+, 2d10 Psychic near departure on a failed WIS save). The GUI
+    // handles effect selection + target-cell selection. Returns true iff the teleport happens.
+    // Misty Escape (L6): pass as_reaction=true to cast this Misty Step as a Reaction (spending the
+    // reaction instead of a Bonus Action) in response to taking damage.
+    bool stepsOfTheFey(BattleMap& bm, int idx, int target_col, int target_row, int effect,
+                       bool as_reaction = false) noexcept;
+
+    // Shared additional-effect rider for a Steps of the Fey / Misty Escape / Bewitching Magic Misty
+    // Step. `from` is the square the warlock departed (Taunting/Dreadful key off it). effect: 1
+    // Refreshing (self 1d10 temp HP), 2 Taunting (FeyTaunt on a failed WIS save), 3 Disappearing (self
+    // Invisible), 4 Dreadful (2d10 Psychic on a failed WIS save), 0 = none. Caller has already gated.
+    void applyStepsOfFeyRider(BattleMap& bm, int idx, const Cell& from, int effect) noexcept;
+
+    // Bewitching Magic (Archfey Warlock L14): a free (no slot, no use, no action) Misty Step cast
+    // immediately after an Enchantment/Illusion action-cast. Gates patron/L14 + 30-ft range, teleports,
+    // and applies the chosen rider. The GUI enforces the "just cast Enchantment/Illusion" timing.
+    bool bewitchingMistyStep(BattleMap& bm, int idx, int target_col, int target_row, int effect) noexcept;
+
     // Cloak of Shadows (L17): a Bonus Action for Warrior of Shadow Monks. Gain Invisible condition
     // in dim/dark light. Invisibility persists through attacks (doesn't end on action). Returns true
     // iff activated. Expires on turn start if agent moves to bright light.
@@ -2012,6 +2033,16 @@ public:
     // the triggering instance (see known_limitations.md).
     [[nodiscard]] bool canSuperiorHunterDefense(const BattleMap& bm, int target_idx) const;
     bool applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, AttackResult& r);
+
+    // Beguiling Defenses (Archfey Warlock L10) — OnHit defender reaction. After a creature the warlock
+    // can see hits it, the warlock may reduce the damage by half AND force the attacker to make a WIS
+    // save vs the warlock's CHA spell save DC; on a failure the attacker takes Psychic damage equal to
+    // the (halved) damage the warlock takes. Costs the reaction plus one "Beguiling Defenses" use, or —
+    // when that use is spent — a Pact Magic slot (no action) to restore it. canBeguilingDefenses gates
+    // patron/level/reaction/alive + a use-or-slot; applyBeguilingDefenses halves r, spends the cost,
+    // and applies the reflected Psychic. (The separate Charmed immunity lives in applyCharmed.)
+    [[nodiscard]] bool canBeguilingDefenses(const BattleMap& bm, int target_idx) const;
+    bool applyBeguilingDefenses(BattleMap& bm, int reactor_idx, const Attack& action, AttackResult& r);
 
     // Battle Master Parry — OnHit defender reaction. When a melee attack damages the Battle Master, it
     // may spend its reaction + 1 Superiority Die to reduce the damage by (die roll + DEX modifier).

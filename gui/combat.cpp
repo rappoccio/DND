@@ -568,6 +568,26 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         resources["Dark One's Own Luck"] = luck;
       }
 
+      // Steps of the Fey (Archfey L3): cast Misty Step without a slot CHA-mod (min 1) times per long
+      // rest. Each cast may attach an additional effect (Refreshing/Taunting at L3; Disappearing/
+      // Dreadful add at L6). Consumed by stepsOfTheFey. See also Misty Escape (the L6 reaction).
+      if (warlock_subclass == ArchfeyPath && level >= 3) {
+        int step_uses = std::max(1, _mod(cha));
+        Resource steps("Steps of the Fey", step_uses);  // current=max=step_uses, available now
+        steps.long_rest_regen = step_uses;
+        resources["Steps of the Fey"] = steps;
+      }
+
+      // Beguiling Defenses (Archfey L10): immune to Charmed (handled in applyCharmed), plus a reaction
+      // after being hit that halves the damage and forces the attacker to take that much Psychic on a
+      // failed WIS save. Once per long rest, but restorable by spending a Pact Magic slot (no action).
+      // Consumed via the OnHit defender window. See canBeguilingDefenses / applyBeguilingDefenses.
+      if (warlock_subclass == ArchfeyPath && level >= 10) {
+        Resource bd("Beguiling Defenses", 1);  // current=max=1, available now
+        bd.long_rest_regen = 1;
+        resources["Beguiling Defenses"] = bd;
+      }
+
       // Thirsting Blade (invocation 14, L5+, requires Pact of the Blade): a second
       // attack with the pact weapon as part of the Attack action. Modeled as the engine's
       // global Extra Attack (num_attacks = 2). v1 simplification: this is not gated to

@@ -584,6 +584,11 @@ class App:
         self.pending_wild_magic_teleport = False # Wild Magic Sorcerer: awaiting a teleport destination (20 ft)
         self.pending_warping_implosion = False # Aberrant L18 Warping Implosion: awaiting a teleport destination (120 ft)
         self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
+        # Archfey Warlock — Misty Step teleports (Steps of the Fey / Misty Escape / Bewitching Magic).
+        self.pending_steps_of_fey      = False # Archfey L3+: awaiting a Steps of the Fey destination (Bonus)
+        self.pending_misty_escape      = False # Archfey L6+: awaiting a Misty Escape destination (Reaction)
+        self.pending_bewitching_misty  = False # Archfey L14: awaiting a free Bewitching Magic Misty Step
+        self.steps_of_fey_effect       = 0     # rider: 0 None,1 Refreshing,2 Taunting,3 Disappearing,4 Dreadful
         self.pending_elemental_burst   = -1    # Warrior of the Elements L6: chosen element (MagicDamage_t) awaiting an Elemental Burst center cell; -1 = inactive
         # Trickery Cleric — Invoke Duplicity (Channel Divinity illusion).
         self.pending_invoke_duplicity  = False # awaiting a cell to place an illusory duplicate
@@ -1185,6 +1190,16 @@ class App:
                                           (80, 60, 120), (110, 90, 150), self.font_md)
         self.btn_cbt_cloak_of_shadows = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Cloak of Shadows (Bonus)",
+                                          (60, 40, 100), (90, 70, 130), self.font_md)
+        # Archfey Warlock — Steps of the Fey (Bonus), the rider selector, and Misty Escape (Reaction).
+        self.btn_cbt_fey_effect = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Fey Step: None",
+                                          (70, 50, 110), (100, 80, 140), self.font_md)
+        self.btn_cbt_steps_of_fey = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Steps of the Fey (Bonus)",
+                                          (80, 60, 120), (110, 90, 150), self.font_md)
+        self.btn_cbt_misty_escape = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Misty Escape (React)",
                                           (60, 40, 100), (90, 70, 130), self.font_md)
         self.btn_cbt_shadow_arts_darkness = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Shadow Arts: Darkness (1 Focus)",
@@ -2795,6 +2810,9 @@ class App:
         self.pending_psychic_teleport    = False
         self.pending_wild_magic_teleport = False
         self.pending_warping_implosion   = False
+        self.pending_steps_of_fey        = False
+        self.pending_misty_escape        = False
+        self.pending_bewitching_misty    = False
         self.pending_invoke_duplicity    = False
         self.pending_duplicity_remaining = 0
         self._duplicity_cd_pending     = False
@@ -6317,6 +6335,73 @@ class App:
             self._flush_combat_log()
             self._combat_log_add("Shadow Step: out of range, blocked, or light requirement not met — pick a closer cell.")
 
+    def _resolve_steps_of_fey(self, cell):
+        """Archfey L3+ Steps of the Fey: a Bonus-Action Misty Step (30 ft) with the selected rider.
+        Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_steps_of_fey = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_steps_of_fey = False
+            self._combat_log_add("Steps of the Fey cancelled.")
+            return
+        if self.combat.steps_of_the_fey(self.bm, idx, cell.col, cell.row, self.steps_of_fey_effect, False):
+            self.pending_steps_of_fey = False
+            self._flush_combat_log()
+            self.bonus_used = True
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Steps of the Fey: out of range or no use — pick a closer cell.")
+
+    def _resolve_misty_escape(self, cell):
+        """Archfey L6+ Misty Escape: the same Misty Step, spending the Reaction instead of a Bonus
+        Action. Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_misty_escape = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_misty_escape = False
+            self._combat_log_add("Misty Escape cancelled.")
+            return
+        if self.combat.steps_of_the_fey(self.bm, idx, cell.col, cell.row, self.steps_of_fey_effect, True):
+            self.pending_misty_escape = False
+            self._flush_combat_log()
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Misty Escape: out of range, no reaction, or no use — pick a closer cell.")
+
+    def _resolve_bewitching_misty(self, cell):
+        """Archfey L14 Bewitching Magic: a free Misty Step (no slot/use/action) offered right after an
+        Enchantment/Illusion action-cast. Click your own cell to decline."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.pending_bewitching_misty = False
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self.pending_bewitching_misty = False
+            self._combat_log_add("Bewitching Magic Misty Step declined.")
+            return
+        if self.combat.bewitching_misty_step(self.bm, idx, cell.col, cell.row, self.steps_of_fey_effect):
+            self.pending_bewitching_misty = False
+            self._flush_combat_log()
+            self._reset_movement(idx)
+            self._update_reach()
+            self._update_attack_overlay()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Bewitching Magic: out of range — pick a closer cell (or click yourself to decline).")
+
     def _resolve_wild_magic_teleport(self, cell):
         """Wild Magic Sorcerer: teleport up to 20 ft to the clicked cell (uses wild_magic_teleport_bonus_turns).
         Click your own cell to cancel."""
@@ -7232,6 +7317,10 @@ class App:
     }
 
     # Always-prepared Warlock patron spells by subclass and Warlock level (2024 PHB). The
+    # Archfey Steps of the Fey rider names, indexed by effect code (0-4). Effects 3/4 (Disappearing /
+    # Dreadful) are Warlock L6+ only — the effect selector caps the cycle at 3 options below L6.
+    _FEY_EFFECT_NAMES = ["None", "Refreshing", "Taunting", "Disappearing", "Dreadful"]
+
     # subclass-key uses WarlockSubclass.name ("Archfey"/"Celestial"/"Fiend"/"GreatOldOne").
     # Names not in spells.json are skipped gracefully by _grant_class_features.
     _WARLOCK_SUBCLASS_SPELLS = {
@@ -8969,6 +9058,8 @@ class App:
         # Enchantment/Illusion cast (a free Mantle-of-Majesty Command uses no slot, so it's excluded).
         if not ctx.get("free_cast"):
             self._maybe_offer_beguiling_magic(caster_idx, ctx["spell_idx"])
+            # Archfey Bewitching Magic (L14): a free Misty Step after a slot-fueled Enchantment/Illusion.
+            self._maybe_offer_bewitching_magic(caster_idx, ctx["spell_idx"])
         # Wild Magic Surge: a Wild Magic Sorcerer who just cast a spell WITH A SPELL SLOT (level ≥ 1,
         # not a free cast) checks for a surge (natural 20, or forced if Tides of Chaos is expended).
         if not ctx.get("free_cast") and ctx.get("slot_level", 0) >= 1:
@@ -9054,6 +9145,47 @@ class App:
               lambda i=caster_idx: self._arm_beguiling_target_pick(i)),
              ("Decline Beguiling Magic", self._decline_beguiling_offer)],
             self.screen.get_size())
+
+    def _maybe_offer_bewitching_magic(self, caster_idx: int, spell_idx: int):
+        """Archfey Bewitching Magic (L14): if the caster is an Archfey L14+ warlock that just cast an
+        Enchantment or Illusion spell with a slot, offer a free Misty Step (30 ft, no slot/use/action)
+        as part of the same action. Presented as a modal popup at the caster (like Beguiling Magic)."""
+        if not (0 <= caster_idx < len(self.bm.placed_agents)):
+            return
+        stats = self.combat.get_agent_stats(self.bm, caster_idx)
+        if (stats.character_class != rpg.CharacterClass.Warlock or
+                stats.warlock_subclass != rpg.WarlockSubclass.Archfey or stats.char_level < 14):
+            return
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        if not (0 <= spell_idx < len(spells)):
+            return
+        sp = spells[spell_idx]
+        if sp.school not in (rpg.SpellSchool.Enchantment, rpg.SpellSchool.Illusion):
+            return
+        if sp.level < 1:   # cantrips don't use a slot
+            return
+        px, py = self._agent_screen_pos(caster_idx)
+        self.context_menu.show(
+            (px, py),
+            [(f"Bewitching Magic: free Misty Step ({sp.name})",
+              lambda i=caster_idx: self._arm_bewitching_misty(i)),
+             ("Decline Bewitching Magic", self._decline_bewitching_offer)],
+            self.screen.get_size())
+
+    def _arm_bewitching_misty(self, caster_idx: int):
+        """DM accepted Bewitching Magic — arm the free Misty Step destination pick (with the currently
+        selected Steps of the Fey rider)."""
+        self.pending_bewitching_misty = True
+        self.hint = "Bewitching Magic: click a destination cell (up to 30 ft) or yourself to decline"
+        self._combat_log_add(
+            "Bewitching Magic — click a destination within 30 ft (or click yourself to decline).")
+        self._flush_combat_log()
+
+    def _decline_bewitching_offer(self):
+        """DM declined the free Bewitching Magic Misty Step."""
+        self.pending_bewitching_misty = False
+        self._combat_log_add("Bewitching Magic not used.")
+        self._flush_combat_log()
 
     def _arm_beguiling_target_pick(self, caster_idx: int):
         """DM accepted the Beguiling Magic offer — arm the click-a-creature target pick (a following
@@ -9840,6 +9972,9 @@ class App:
             if s.is_npc or i in self._agent_meta:
                 meta = self._agent_meta.get(i, {})
                 data[-1]["is_npc"] = bool(s.is_npc) or bool(meta.get("is_npc", False))
+                # Cosmetic boss-finale flag (dungeon generator) — round-trip so the ★ persists.
+                if meta.get("is_boss"):
+                    data[-1]["is_boss"] = True
                 # Derive ALL NPC spell metadata from the LIVE spell objects of THIS agent
                 # (index i), NOT from the index-keyed _agent_meta. _agent_meta is keyed by a
                 # volatile agent index that drifts whenever the agent list is reordered,
@@ -10852,6 +10987,15 @@ class App:
                                        "npc_spell_groups": npc_spell_groups,
                                        "npc_spell_recharge": recharge_map}
 
+        # Boss finale flag (set by the dungeon generator on the deepest room's toughest mob).
+        # Cosmetic only — drives the ★ badge in _draw_one_agent. Merged (not overwritten) so a
+        # boss that is also a spellcaster keeps its npc_spell metadata from the loop above.
+        for i, t in enumerate(agent_data):
+            if i >= len(self.bm.placed_agents):
+                break
+            if t.get("is_boss"):
+                self._agent_meta.setdefault(i, {})["is_boss"] = True
+
         # Restore the live active-condition list (durations, save timers, delayed effects, and
         # Vistani-Curse kickbacks). Done AFTER every agent is placed + stats/spells restored so the
         # saved agent_idx/caster_idx (already remapped to compacted order on save) resolve. Without
@@ -11623,6 +11767,21 @@ class App:
         # Name label
         lbl = self.font_sm.render(pt.name, True, (255, 255, 255))
         self.screen.blit(lbl, (screen_x + 3, screen_y + 3))
+
+        # Boss-finale star (dungeon generator flags the deepest room's big-bad in
+        # _agent_meta). Drawn as a gold vector star above the agent so it reads even
+        # when the "sans" SysFont lacks the ★ glyph. Skipped for translucent previews.
+        if alpha == 255 and agent_idx >= 0 and self._agent_meta.get(agent_idx, {}).get("is_boss"):
+            r_out = max(8, int(size_px * 0.22))
+            cx = int(screen_x + size_px / 2)
+            cy = int(screen_y - r_out - 2)
+            pts = []
+            for k in range(10):
+                ang = -math.pi / 2 + k * math.pi / 5
+                rad = r_out if k % 2 == 0 else r_out * 0.42
+                pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
+            pygame.draw.polygon(self.screen, (255, 205, 40), pts, 0)   # gold fill
+            pygame.draw.polygon(self.screen, (90, 55, 0), pts, 2)      # dark rim
 
         # Concentration indicator (circle around agent if concentrating)
         if pt.conditions.concentrating:
@@ -13822,6 +13981,40 @@ class App:
                         self.btn_cbt_shadow_arts_darkness.draw(self.screen)
                         y += B + gap
 
+            # Archfey Warlock: rider selector + Steps of the Fey (L3+, Bonus) and Misty Escape (L6+).
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Warlock and
+                        stats.warlock_subclass == rpg.WarlockSubclass.Archfey and stats.char_level >= 3):
+                    sof = stats.get_resource("Steps of the Fey")
+                    uses = sof.current if sof else 0
+                    # Cap the rider cycle to the level-appropriate options and clamp a stale selection.
+                    n_effects = 5 if stats.char_level >= 6 else 3
+                    if self.steps_of_fey_effect >= n_effects:
+                        self.steps_of_fey_effect = 0
+                    eff_name = self._FEY_EFFECT_NAMES[self.steps_of_fey_effect]
+                    self.btn_cbt_fey_effect.text = f"Fey Step: {eff_name}"
+                    self.btn_cbt_fey_effect.rect.x = lx
+                    self.btn_cbt_fey_effect.rect.y = y
+                    self.btn_cbt_fey_effect.rect.w = W
+                    self.btn_cbt_fey_effect.draw(self.screen)
+                    y += B + gap
+                    if uses > 0 and not self.bonus_used:
+                        self.btn_cbt_steps_of_fey.text = f"Steps of the Fey ({uses}) (Bonus)"
+                        self.btn_cbt_steps_of_fey.rect.x = lx
+                        self.btn_cbt_steps_of_fey.rect.y = y
+                        self.btn_cbt_steps_of_fey.rect.w = W
+                        self.btn_cbt_steps_of_fey.draw(self.screen)
+                        y += B + gap
+                    if (stats.char_level >= 6 and uses > 0 and
+                            not agents[cur_idx].conditions.reaction_used):
+                        self.btn_cbt_misty_escape.text = f"Misty Escape ({uses}) (React)"
+                        self.btn_cbt_misty_escape.rect.x = lx
+                        self.btn_cbt_misty_escape.rect.y = y
+                        self.btn_cbt_misty_escape.rect.w = W
+                        self.btn_cbt_misty_escape.draw(self.screen)
+                        y += B + gap
+
             # Warrior of the Elements Monk: Elemental Attunement (L3, Magic action, 1 Focus) and
             # Elemental Burst (L6, Magic action, 2 Focus). Both are Magic-action features.
             if 0 <= cur_idx < len(agents):
@@ -14926,6 +15119,12 @@ class App:
                             self._resolve_psychic_teleport(cell)
                         elif self.pending_shadow_step:
                             self._resolve_shadow_step(cell)
+                        elif self.pending_steps_of_fey:
+                            self._resolve_steps_of_fey(cell)
+                        elif self.pending_misty_escape:
+                            self._resolve_misty_escape(cell)
+                        elif self.pending_bewitching_misty:
+                            self._resolve_bewitching_misty(cell)
                         elif self.pending_wild_magic_teleport:
                             self._resolve_wild_magic_teleport(cell)
                         elif self.pending_warping_implosion:
@@ -15933,6 +16132,28 @@ class App:
                             self.hint = "Shadow Arts: Darkness: click the center of the 15-ft Sphere"
                             self._combat_log_add(
                                 "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
+                    if self.btn_cbt_fey_effect.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            stats = self.combat.get_agent_stats(self.bm, idx)
+                            n_effects = 5 if stats.char_level >= 6 else 3
+                            self.steps_of_fey_effect = (self.steps_of_fey_effect + 1) % n_effects
+                            self._combat_log_add(
+                                f"Steps of the Fey rider: {self._FEY_EFFECT_NAMES[self.steps_of_fey_effect]}")
+                    if self.btn_cbt_steps_of_fey.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_steps_of_fey = True
+                            self.hint = "Steps of the Fey: click a destination cell (up to 30 ft)"
+                            self._combat_log_add(
+                                "Steps of the Fey: click a destination (or click yourself to cancel).")
+                    if self.btn_cbt_misty_escape.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_misty_escape = True
+                            self.hint = "Misty Escape: click a destination cell (up to 30 ft)"
+                            self._combat_log_add(
+                                "Misty Escape: click a destination (or click yourself to cancel).")
                     if self.btn_cbt_elemental_attunement.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

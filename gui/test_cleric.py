@@ -36,7 +36,6 @@ def test_channel_divinity_uses_by_level():
 def _melee_weapon():
     w = rpg.Weapon()
     w.name = "Mace"
-    w.attack_bonus = 30  # effectively always hits (only a natural 1 misses)
     w.range_short_feet = 5
     w.range_long_feet = 5
     pr = rpg.PhysicalDamageRoll()
@@ -337,7 +336,6 @@ def test_avatar_of_battle_resistance():
 def _war_mace():
     w = rpg.Weapon()
     w.name = "Mace"
-    w.attack_bonus = 0          # +0 so misses are common against AC 11
     w.range_short_feet = 5
     w.range_long_feet = 5
     pr = rpg.PhysicalDamageRoll()
@@ -784,7 +782,6 @@ def test_preserve_life_revives_downed_ally():
 def _reach_weapon(reach_ft=5):
     w = rpg.Weapon()
     w.name = "Mace"
-    w.attack_bonus = 30          # always hits; we only read r.advantage
     w.reach_ft = reach_ft        # melee reach (canAttack uses this for Melee)
     w.range_short_feet = reach_ft
     w.range_long_feet = reach_ft

@@ -142,7 +142,6 @@ def _original_weapons():
     w1.type = rpg.WeaponType.Melee
     w1.proficient = True
     w1.reach_ft = 5
-    w1.attack_bonus = 5
     return [w1, rpg.Weapon(), rpg.Weapon()]
 
 
@@ -153,14 +152,12 @@ def _beast_weapons():
     w1.type = rpg.WeaponType.Melee
     w1.proficient = True
     w1.reach_ft = 5
-    w1.attack_bonus = 4
 
     w2 = rpg.Weapon()
     w2.name = "Bite"
     w2.type = rpg.WeaponType.Melee
     w2.proficient = True
     w2.reach_ft = 5
-    w2.attack_bonus = 4
 
     return [w1, w2, rpg.Weapon()]
 
@@ -244,7 +241,7 @@ def test_wild_shape_activation_replaces_weapons():
     engine.activate_wild_shape(bm, druid_idx, "Brown Bear", beast_weapons, _get_beast_forms_path())
 
     current_weapons = engine.get_agent_weapons(bm, druid_idx)
-    assert current_weapons[0].attack_bonus > 0, "Beast weapons should have attack bonuses"
+    assert current_weapons[0].name == "Claw", "Weapons should be replaced with beast form weapons"
     print("✅ test_wild_shape_activation_replaces_weapons passed")
 
 

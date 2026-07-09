@@ -28,7 +28,7 @@ from test_helpers import setup_battle_map, setup_combat_engine, create_test_agen
 _NO_MASTERY = getattr(rpg.WeaponMastery, "None")
 
 
-def _mk_weapon(name, mastery, attack_bonus=30, finesse=False, proficient=True, die=8):
+def _mk_weapon(name, mastery, finesse=False, proficient=True, die=8):
     w = rpg.Weapon()
     w.name = name
     w.type = rpg.WeaponType.Melee
@@ -38,7 +38,6 @@ def _mk_weapon(name, mastery, attack_bonus=30, finesse=False, proficient=True, d
     w.finesse = finesse
     w.proficient = proficient
     w.mastery = mastery
-    w.attack_bonus = attack_bonus
     pr = rpg.PhysicalDamageRoll()
     pr.type = rpg.PhysicalDamage.Slashing
     pr.num_dice = 1
@@ -158,8 +157,8 @@ def test_graze_deals_modifier_damage_on_miss():
     bm = setup_battle_map(); engine = setup_combat_engine()
     a = _place(engine, bm, "Atk", 5, 5)
     t = _place(engine, bm, "Tgt", 6, 5)
-    # attack_bonus 0 vs AC 40 -> nearly every roll is a clean miss (only nat-20 hits, nat-1 fumbles).
-    _arm_attacker(engine, bm, a, [_mk_weapon("Grazer", rpg.WeaponMastery.Graze, attack_bonus=0)], strv=16)
+    # STR 16 (+3 to hit) vs AC 40 -> nearly every roll is a clean miss (only nat-20 hits, nat-1 fumbles).
+    _arm_attacker(engine, bm, a, [_mk_weapon("Grazer", rpg.WeaponMastery.Graze)], strv=16)
     _set_target(engine, bm, t, ac=40)
     expected = 3  # STR 16 -> +3 attack ability modifier
 
@@ -321,7 +320,6 @@ def _fixed_weapon(name, num_dice, mastery=None):
     w.range_long_feet = 5
     w.proficient = True
     w.mastery = mastery if mastery is not None else _NO_MASTERY
-    w.attack_bonus = 30
     pr = rpg.PhysicalDamageRoll()
     pr.type = rpg.PhysicalDamage.Slashing
     pr.num_dice = num_dice

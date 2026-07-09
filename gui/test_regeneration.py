@@ -52,7 +52,6 @@ def _fire_weapon(num_dice=4, die_size=6, bonus=20, dtype=FIRE):
     w.type = rpg.WeaponType.Melee
     w.proficient = True
     w.reach_ft = 10
-    w.attack_bonus = 50
     w.bonus_hit = 50
     w.bonus_damage = 0
     roll = rpg.MagicDamageRoll()

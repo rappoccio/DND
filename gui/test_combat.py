@@ -147,13 +147,6 @@ def test_constitution_affects_hp():
     assert con_mod == 3
     print("✅ CON modifier calculation correct")
 
-def test_attack_bonus_from_weapon():
-    """Test that weapon attack bonus is applied."""
-    weapon = create_melee_weapon()
-    weapon.attack_bonus = 2
-    assert weapon.attack_bonus == 2
-    print("✅ Weapon attack bonus applied")
-
 def test_damage_dice_count():
     """Test damage dice count for different weapons."""
     longsword = create_melee_weapon()
@@ -179,7 +172,6 @@ if __name__ == "__main__":
         test_ac_with_dexterity,
         test_multiple_agents_independent_stats,
         test_constitution_affects_hp,
-        test_attack_bonus_from_weapon,
         test_damage_dice_count,
     ]
 

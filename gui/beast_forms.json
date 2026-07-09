@@ -11,7 +11,6 @@
     "attacks": [
       {
         "name": "Bite",
-        "attack_bonus": 4,
         "num_dice": 2,
         "die_size": 4,
         "bonus": 2,
@@ -32,7 +31,6 @@
     "attacks": [
       {
         "name": "Bite",
-        "attack_bonus": 4,
         "num_dice": 1,
         "die_size": 6,
         "bonus": 2,
@@ -53,7 +51,6 @@
     "attacks": [
       {
         "name": "Hooves",
-        "attack_bonus": 4,
         "num_dice": 2,
         "die_size": 4,
         "bonus": 4,
@@ -74,7 +71,6 @@
     "attacks": [
       {
         "name": "Bite",
-        "attack_bonus": 5,
         "num_dice": 1,
         "die_size": 8,
         "bonus": 3,
@@ -95,7 +91,6 @@
     "attacks": [
       {
         "name": "Talons",
-        "attack_bonus": 5,
         "num_dice": 2,
         "die_size": 6,
         "bonus": 3,
@@ -104,7 +99,6 @@
       },
       {
         "name": "Beak",
-        "attack_bonus": 5,
         "num_dice": 1,
         "die_size": 6,
         "bonus": 3,
@@ -125,7 +119,6 @@
     "attacks": [
       {
         "name": "Bite",
-        "attack_bonus": 5,
         "num_dice": 1,
         "die_size": 8,
         "bonus": 3,

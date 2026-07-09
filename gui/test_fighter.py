@@ -53,7 +53,6 @@ def _longsword():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 50  # guaranteed hit
     w.bonus_damage = 0
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
@@ -119,7 +118,7 @@ def test_trip_sets_prone():
     bm, engine, atk, tgt = _setup(3)
 
     result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
-    assert result.hit, "attack_bonus=50 should guarantee a hit"
+    assert result.hit, "the attack should hit against the low-AC target"
 
     cond = engine.get_agent_conditions(bm, atk)
     cond.maneuver_available = True
@@ -213,7 +212,6 @@ def test_precision_attack_no_dice_no_flag():
     w.name = "Longsword"
     w.type = rpg.WeaponType.Melee
     w.proficient = True
-    w.attack_bonus = -10  # guaranteed miss
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
@@ -361,7 +359,7 @@ def test_psionic_strike_adds_force_damage():
     bm, engine, atk, tgt = _psi_setup(5, intel=16)  # d8 die, INT +3
 
     result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
-    assert result.hit, "attack_bonus=50 should guarantee a hit"
+    assert result.hit, "the attack should hit against the low-AC target"
     base_damage = result.total_damage
 
     ped_before = engine.get_agent_stats(bm, atk).get_resource("Psionic Energy").current
@@ -539,7 +537,7 @@ def test_eldritch_strike_tags_target():
     assert engine.get_agent_conditions(bm, tgt).eldritch_strike_by == -1, "no tag before the hit"
 
     result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
-    assert result.hit, "attack_bonus=50 should guarantee a hit"
+    assert result.hit, "the attack should hit against the low-AC target"
     assert engine.get_agent_conditions(bm, tgt).eldritch_strike_by == atk, \
         "Eldritch Strike should tag the target with the EK's index"
     print("✅ test_eldritch_strike_tags_target passed")
@@ -707,7 +705,7 @@ def test_sweeping_attack_splashes_second():
     sec_before = engine.get_agent_stats(bm, sec).hp_cur
     res = engine.apply_sweeping_attack(bm, action, result, sec)
     assert res.valid and res.maneuver_type == 6
-    assert res.condition_applied, "attack_bonus=50 → the high roll hits the 2nd creature"
+    assert res.condition_applied, "the high roll hits the 2nd creature"
     assert res.extra_damage > 0
     assert engine.get_agent_stats(bm, sec).hp_cur == sec_before - res.extra_damage
     s = engine.get_agent_stats(bm, atk); sd = s.get_resource("Superiority Dice")
@@ -744,7 +742,7 @@ def test_quick_toss_adds_die_to_thrown():
     """Quick Toss: arm a superiority die on the next thrown-weapon attack this turn."""
     bm, engine, atk, tgt = _setup(3)
     w = rpg.Weapon(); w.name = "Handaxe"; w.type = rpg.WeaponType.Melee
-    w.thrown = True; w.proficient = True; w.attack_bonus = 50
+    w.thrown = True; w.proficient = True
     w.reach_ft = 5; w.range_short_feet = 20; w.range_long_feet = 60
     roll = rpg.PhysicalDamageRoll(); roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 1; roll.die_size = 6

@@ -29,7 +29,6 @@ def test_attack_condition_automatic():
     weapon.name = "Poisoned Dagger"
     weapon.damage_dice_count = 1
     weapon.damage_dice = 4
-    weapon.attack_bonus = 0
     weapon.reach_ft = 5
     weapon.proficient = True
 
@@ -78,7 +77,6 @@ def test_attack_condition_requires_save():
     weapon.name = "Paralyzing Blade"
     weapon.damage_dice_count = 1
     weapon.damage_dice = 8
-    weapon.attack_bonus = 0
     weapon.reach_ft = 5
     weapon.proficient = True
 

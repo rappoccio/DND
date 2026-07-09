@@ -44,7 +44,7 @@ def _rogue(engine, bm, idx, level, subclass=None, dex=16):
     return engine.get_agent_stats(bm, idx)
 
 
-def _finesse_weapon(attack_bonus=50):
+def _finesse_weapon():
     w = rpg.Weapon()
     w.name = "Test Dagger"
     w.type = rpg.WeaponType.Melee
@@ -53,7 +53,6 @@ def _finesse_weapon(attack_bonus=50):
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = attack_bonus
     w.bonus_damage = 100  # flat, always added in rollDamage (independent of dice/ability mod)
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Piercing
@@ -63,9 +62,9 @@ def _finesse_weapon(attack_bonus=50):
     return w
 
 
-def _plain_melee_weapon(attack_bonus=50):
+def _plain_melee_weapon():
     """A non-finesse, non-ranged melee weapon (Sneak Attack must NOT apply)."""
-    w = _finesse_weapon(attack_bonus)
+    w = _finesse_weapon()
     w.name = "Test Club"
     w.finesse = False
     return w

@@ -898,7 +898,6 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("damage_dice",      &Weapon::damage_dice)
         .def_readwrite("damage_dice_count",&Weapon::damage_dice_count)
         .def_readwrite("damage_modifier",  &Weapon::damage_modifier)
-        .def_readwrite("attack_bonus",     &Weapon::attack_bonus)
         .def_readwrite("range_short_feet", &Weapon::range_short_feet)
         .def_readwrite("range_long_feet",  &Weapon::range_long_feet)
         .def_readwrite("bonus_hit",        &Weapon::bonus_hit)
@@ -2807,6 +2806,24 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
              "Warrior of Shadow Shadow Step (L6+): Bonus Action teleport up to 30 ft in dim/dark (L6) or\n"
              "any light (L11+). Sets Advantage on next attack. Returns True iff teleport succeeds.")
+        .def("steps_of_the_fey",
+             &CombatEngine::stepsOfTheFey,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             py::arg("effect"), py::arg("as_reaction") = false,
+             "Archfey Warlock Steps of the Fey (L3+): Bonus-Action Misty Step (30 ft) with no slot,\n"
+             "spending one 'Steps of the Fey' use. effect: 0 None, 1 Refreshing (self 1d10 temp HP),\n"
+             "2 Taunting (WIS save near departure or Disadvantage attacking anyone but the warlock),\n"
+             "3 Disappearing (L6+, self Invisible), 4 Dreadful (L6+, 2d10 psychic near departure on a\n"
+             "failed WIS save). Pass as_reaction=True for Misty Escape (L6+): spend the Reaction instead\n"
+             "of a Bonus Action in response to taking damage. Returns True iff the teleport happens.")
+        .def("bewitching_misty_step",
+             &CombatEngine::bewitchingMistyStep,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             py::arg("effect"),
+             "Archfey Warlock Bewitching Magic (L14+): a free Misty Step (30 ft, no slot/use/action)\n"
+             "cast right after an Enchantment/Illusion action-cast. effect matches steps_of_the_fey\n"
+             "(0 None, 1 Refreshing, 2 Taunting, 3 Disappearing, 4 Dreadful). The GUI enforces the\n"
+             "'just cast Enchantment/Illusion' timing. Returns True iff the teleport happens.")
         .def("cloak_of_shadows",
              &CombatEngine::cloakOfShadows,
              py::arg("battle_map"), py::arg("idx"),

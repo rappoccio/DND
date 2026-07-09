@@ -208,6 +208,183 @@ bool CombatEngine::shadowStepTeleport(BattleMap& bm, int idx, int target_col, in
     return true;
 }
 
+// Steps of the Fey (Archfey Warlock L3): cast Misty Step (30-ft Bonus-Action teleport) without a slot,
+// spending one "Steps of the Fey" use. Each cast may attach one additional effect:
+//   effect 0 = None          — plain teleport.
+//   effect 1 = Refreshing    — the warlock gains 1d10 Temporary HP. (RAW allows an ally within 10 ft;
+//                              v1 applies it to the warlock — the common case.)
+//   effect 2 = Taunting      — creatures within 5 ft of the space left make a WIS save vs the warlock's
+//                              CHA DC or have Disadvantage attacking anyone but the warlock until the
+//                              start of the warlock's next turn (directed "FeyTaunt" mark).
+//   effect 3 = Disappearing  — (L6+) the warlock gains the Invisible condition (ends on attack/cast).
+//   effect 4 = Dreadful      — (L6+) creatures within 5 ft of the space left make a WIS save or take
+//                              2d10 Psychic damage.
+bool CombatEngine::stepsOfTheFey(BattleMap& bm, int idx, int target_col, int target_row,
+                                 int effect, bool as_reaction) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Warlock ||
+        s.warlock_subclass != ArchfeyPath || s.char_level < 3) return false;
+
+    // Misty Escape (L6): casting Misty Step reactively (in response to taking damage) requires L6+.
+    if (as_reaction && s.char_level < 6) {
+        log_("{}: Misty Escape (reaction Misty Step) unlocks at Warlock level 6", agentName(bm, idx));
+        return false;
+    }
+
+    // L6+ gate for the Disappearing / Dreadful step options.
+    if ((effect == 3 || effect == 4) && s.char_level < 6) {
+        log_("{}: that Steps of the Fey option unlocks at Warlock level 6", agentName(bm, idx));
+        return false;
+    }
+
+    Resource* steps = s.getResource("Steps of the Fey");
+    if (!steps || steps->current <= 0) {
+        log_("{} has no Steps of the Fey uses left", agentName(bm, idx));
+        return false;
+    }
+
+    // Timing: normally a Bonus Action; Misty Escape spends the Reaction instead.
+    Agent::Conditions rc = bm.getAgentConditions(idx);
+    if (as_reaction) {
+        if (rc.reaction_used || rc.incapacitated) {
+            log_("{} has no reaction available for Misty Escape", agentName(bm, idx));
+            return false;
+        }
+    } else if (!hasBonusAction(bm, idx)) {
+        return false;
+    }
+
+    // Misty Step range = 30 ft (Chebyshev cells × 5).
+    const Cell from = agents[static_cast<std::size_t>(idx)].origin;
+    const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
+    if (dcells * 5 > 30) {
+        log_("{}: Steps of the Fey destination too far ({} ft > 30 ft)", agentName(bm, idx), dcells * 5);
+        return false;
+    }
+
+    // Teleport first — a blocked/occupied destination must not waste the use or the action.
+    if (!teleportAgent(bm, idx, target_col, target_row)) return false;
+
+    // Spend the use + the action (re-fetch stats: teleportAgent may re-persist the caster's slot).
+    s = bm.getAgentStats(idx);
+    steps = s.getResource("Steps of the Fey");
+    if (steps) steps->spend(1);
+    bm.setAgentStats(idx, s);
+    if (as_reaction) {
+        rc = bm.getAgentConditions(idx);
+        rc.reaction_used = true;
+        bm.setAgentConditions(idx, rc);
+        log_("{}: Misty Escape — casts Misty Step as a Reaction ({} ft)", agentName(bm, idx), dcells * 5);
+    } else {
+        spendBonusAction(bm, idx);
+        log_("{}: Steps of the Fey — casts Misty Step ({} ft)", agentName(bm, idx), dcells * 5);
+    }
+
+    applyStepsOfFeyRider(bm, idx, from, effect);
+    return true;
+}
+
+// Shared "additional effect" rider for a Steps of the Fey / Misty Escape / Bewitching Magic Misty Step.
+// `from` is the square the warlock LEFT (Taunting/Dreadful key off it). effect: 1 Refreshing, 2 Taunting,
+// 3 Disappearing, 4 Dreadful (0 = no rider). Caller has already gated the L6 options + teleported.
+void CombatEngine::applyStepsOfFeyRider(BattleMap& bm, int idx, const Cell& from, int effect) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    const int save_dc = spellSaveDcFromAbility(bm.getAgentStats(idx), SaveCha);
+
+    if (effect == 1) {
+        // Refreshing Step: 1d10 Temporary HP to the warlock.
+        const int thp = roll(10);
+        Agent::Stats gs = bm.getAgentStats(idx);
+        grantTempHp(gs, thp);
+        bm.setAgentStats(idx, gs);
+        log_("Refreshing Step: {} gains {} temporary HP", agentName(bm, idx), thp);
+    } else if (effect == 2 || effect == 4) {
+        // Taunting / Dreadful: affect creatures within 5 ft of the space the warlock LEFT.
+        for (std::size_t i = 0; i < agents.size(); ++i) {
+            const int tgt = static_cast<int>(i);
+            if (tgt == idx) continue;
+            const PlacedAgent& tp = agents[i];
+            const int dc_cells = std::max(std::abs(tp.origin.col - from.col),
+                                          std::abs(tp.origin.row - from.row));
+            if (dc_cells > 1) continue;                     // within 5 ft of the departed square
+            Agent::Stats ts = bm.getAgentStats(tgt);
+            if (ts.hp_cur <= 0) continue;
+
+            const int save_mod = saveModFor(bm, tgt, SaveWis);
+            const int save_d20 = roll(20);
+            const bool failed = save_d20 + save_mod < save_dc;
+            log_("{} makes a WIS save vs Steps of the Fey (DC {}): {} + {} = {} ({})",
+                 agentName(bm, tgt), save_dc, save_d20, save_mod, save_d20 + save_mod,
+                 failed ? "FAILED" : "PASSED");
+            if (!failed) continue;
+
+            if (effect == 2) {
+                // Taunting Step: directed mark — Disadvantage attacking anyone but the warlock, until
+                // the start of the warlock's next turn (ticked on the warlock's turns, like Clairvoyant).
+                ActiveAgentCondition aac{};
+                aac.agent_idx       = tgt;
+                aac.condition_name  = "FeyTaunt";
+                aac.caster_idx      = idx;
+                aac.turns_remaining = 1;
+                (void)addAgentCondition(bm, aac);
+                log_("Taunting Step: {} has Disadvantage attacking anyone but {}",
+                     agentName(bm, tgt), agentName(bm, idx));
+            } else {
+                // Dreadful Step: 2d10 Psychic.
+                int dmg = roll(10) + roll(10);
+                dmg = std::max(0, static_cast<int>(std::lround(
+                          static_cast<double>(dmg) * ts.get_magic_damage_multiplier(7 /* Psychic */))));
+                if (dmg > 0) {
+                    damageAgent(bm, tgt, dmg);
+                    checkConcentrationOnDamage(bm, tgt, dmg, idx);
+                    log_("Dreadful Step: {} takes {} psychic damage", agentName(bm, tgt), dmg);
+                }
+            }
+        }
+    } else if (effect == 3) {
+        // Disappearing Step: the warlock gains the Invisible condition (ends on attack/cast).
+        Agent::Conditions c = bm.getAgentConditions(idx);
+        c.invisible = true;
+        c.invisible_persists_on_action = false;
+        bm.setAgentConditions(idx, c);
+        log_("Disappearing Step: {} becomes Invisible", agentName(bm, idx));
+    }
+}
+
+// Bewitching Magic (Archfey Warlock L14): immediately after casting an Enchantment or Illusion spell
+// with an action and a slot, cast Misty Step as part of the same action WITHOUT expending a slot (and
+// with no Steps of the Fey use / action cost). The GUI gates on the "just cast Enchantment/Illusion"
+// timing; here we validate patron/level + range, teleport, and apply the chosen Steps of the Fey rider.
+bool CombatEngine::bewitchingMistyStep(BattleMap& bm, int idx, int target_col, int target_row,
+                                       int effect) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Warlock ||
+        s.warlock_subclass != ArchfeyPath || s.char_level < 14) return false;
+
+    // The Disappearing / Dreadful riders are L6+ — always satisfied at L14, but keep the shared gate.
+    if ((effect == 3 || effect == 4) && s.char_level < 6) return false;
+
+    const Cell from = agents[static_cast<std::size_t>(idx)].origin;
+    const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
+    if (dcells * 5 > 30) {
+        log_("{}: Bewitching Magic Misty Step destination too far ({} ft > 30 ft)",
+             agentName(bm, idx), dcells * 5);
+        return false;
+    }
+    if (!teleportAgent(bm, idx, target_col, target_row)) return false;
+    log_("{}: Bewitching Magic — casts a free Misty Step ({} ft)", agentName(bm, idx), dcells * 5);
+    applyStepsOfFeyRider(bm, idx, from, effect);
+    return true;
+}
+
 // Warrior of Shadow Monk — Cloak of Shadows (L17): a Bonus Action. Gain Invisible in dim/dark.
 // Invisibility persists through attacks (doesn't end on action like standard Invisibility).
 // Expires on turn start if in bright light, or at end of turn naturally.

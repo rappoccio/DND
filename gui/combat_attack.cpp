@@ -750,6 +750,84 @@ bool CombatEngine::applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResul
     return true;
 }
 
+bool CombatEngine::canBeguilingDefenses(const BattleMap& bm, int target_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    if (bm.isAgentOnDeck(target_idx)) return false;       // On Deck reserves take no reactions until deployed
+    const Agent::Conditions cond = bm.getAgentConditions(target_idx);
+    if (cond.reaction_used || cond.incapacitated) return false;
+    const Agent::Stats s = bm.getAgentStats(target_idx);
+    if (s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Warlock ||
+        s.warlock_subclass != ArchfeyPath || s.char_level < 10) return false;
+    // Needs either an unspent use or a Pact Magic slot to restore it (spent as part of the reaction).
+    const Resource* bd = s.getResource("Beguiling Defenses");
+    const bool has_use = bd && bd->current > 0;
+    const int  psl = s.pact_slot_level();
+    const bool can_spend_slot =
+        psl >= 1 && s.spell_slots_remaining[static_cast<std::size_t>(psl - 1)] > 0;
+    return has_use || can_spend_slot;
+}
+
+bool CombatEngine::applyBeguilingDefenses(BattleMap& bm, int reactor_idx, const Attack& action, AttackResult& r)
+{
+    if (!canBeguilingDefenses(bm, reactor_idx)) return false;
+    if (!r.hit || r.total_damage <= 0) return false;
+
+    // Spend the cost: one use first, else a Pact Magic slot restores it (the use is then consumed).
+    Agent::Stats s = bm.getAgentStats(reactor_idx);
+    Resource* bd = s.getResource("Beguiling Defenses");
+    const bool has_use = bd && bd->current > 0;
+    if (has_use) {
+        bd->spend(1);
+        s.resources["Beguiling Defenses"] = *bd;
+    } else {
+        const int psl = s.pact_slot_level();
+        s.spell_slots_remaining[static_cast<std::size_t>(psl - 1)] -= 1;
+        log_("{} spends a Pact Magic slot to reuse Beguiling Defenses", agentName(bm, reactor_idx));
+    }
+    bm.setAgentStats(reactor_idx, s);
+
+    // Halve the incoming damage (round down) and spend the reaction.
+    const int before = r.total_damage;
+    r.total_damage   = before / 2;
+    Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
+    cond.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, cond);
+    r.damage_breakdown.push_back({"beguiling defenses", r.total_damage - before});  // negative: reduction
+    log_("Beguiling Defenses: {} halves the attack ({} -> {})",
+         agentName(bm, reactor_idx), before, r.total_damage);
+
+    // Force the attacker to make a WIS save vs the warlock's CHA spell save DC; on a failure the
+    // attacker takes Psychic damage equal to the (halved) damage the warlock takes.
+    const int attacker = action.attacker_idx;
+    const auto& agents = bm.placedAgents();
+    if (attacker < 0 || attacker >= static_cast<int>(agents.size())) return true;
+    Agent::Stats atk = bm.getAgentStats(attacker);
+    if (atk.hp_cur <= 0) return true;
+
+    const int save_dc  = spellSaveDcFromAbility(s, SaveCha);
+    const int save_mod = saveModFor(bm, attacker, SaveWis);
+    const int save_d20 = roll(20);
+    const int save_total = save_d20 + save_mod;
+    const bool failed = save_total < save_dc;
+    log_("{} makes a WIS save vs Beguiling Defenses (DC {}): {} + {} = {} ({})",
+         agentName(bm, attacker), save_dc, save_d20, save_mod, save_total,
+         failed ? "FAILED" : "PASSED");
+    if (failed && r.total_damage > 0) {
+        int dmg = std::max(0, static_cast<int>(std::lround(
+                      static_cast<double>(r.total_damage) *
+                      atk.get_magic_damage_multiplier(7 /* Psychic */))));
+        if (dmg > 0) {
+            damageAgent(bm, attacker, dmg);
+            checkConcentrationOnDamage(bm, attacker, dmg, reactor_idx);
+            log_("Beguiling Defenses: {} takes {} psychic damage", agentName(bm, attacker), dmg);
+        }
+    }
+    return true;
+}
+
 // Superior Hunter's Defense (Hunter Ranger L15): when you take damage, you may spend your reaction to
 // gain Resistance to that damage's type until the end of the turn. Modeled as a damage-reduction OnHit
 // reaction (halve the triggering damage instance), mirroring Uncanny Dodge — the dominant combat effect.
@@ -1054,6 +1132,9 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (r.hit && r.total_damage > 0 && canSuperiorHunterDefense(bm, action.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Superior Hunter's Defense (resist the damage)", "SuperiorHuntersDefense"});
+    if (r.hit && r.total_damage > 0 && canBeguilingDefenses(bm, action.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Beguiling Defenses (halve the damage, reflect psychic)", "BeguilingDefenses"});
     // Monk Deflect Attacks (L3+) / Deflect Energy (L13+): reduce B/P/S (any type at L13) by 1d10+DEX+level.
     if (r.hit && r.total_damage > 0 && canDeflectAttacks(bm, action.target_idx)) {
         const Agent::Stats ds = bm.getAgentStats(action.target_idx);
@@ -1118,6 +1199,8 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
         return applyUncannyDodge(bm, action.target_idx, r);
     if (opt.feature == "SuperiorHuntersDefense")
         return applySuperiorHunterDefense(bm, action.target_idx, r);
+    if (opt.feature == "BeguilingDefenses")
+        return applyBeguilingDefenses(bm, action.target_idx, action, r);
     if (opt.feature == "DeflectAttacks")
         return applyDeflectAttacks(bm, action.target_idx, r);
     if (opt.feature == "Parry")
@@ -1981,6 +2064,8 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
         applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "SuperiorHuntersDefense") {
         applySuperiorHunterDefense(bm, ctx.reactor_idx, in_flight_attack_.r);
+    } else if (opt.feature == "BeguilingDefenses") {
+        applyBeguilingDefenses(bm, ctx.reactor_idx, in_flight_attack_.action, in_flight_attack_.r);
     } else if (opt.feature == "DeflectAttacks") {
         applyDeflectAttacks(bm, ctx.reactor_idx, in_flight_attack_.r);
     } else if (opt.feature == "Parry") {
@@ -2301,6 +2386,18 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         } else if (ac.agent_idx == action.attacker_idx && ac.caster_idx == action.target_idx) {
             dis = true;
             log_("Clairvoyant Combatant: Disadvantage attacking the warlock");
+        }
+    }
+
+    // Taunting Step (Archfey Warlock L3, Steps of the Fey): a directed "FeyTaunt" mark on a creature
+    // caught near the warlock's departure square. Until it expires (start of the warlock's next turn),
+    // that creature attacks anyone OTHER than the warlock (caster_idx) with Disadvantage.
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.condition_name != "FeyTaunt") continue;
+        if (ac.agent_idx == action.attacker_idx && ac.caster_idx != action.target_idx) {
+            dis = true;
+            log_("Taunting Step: {} has Disadvantage attacking anyone but the Archfey warlock",
+                 agentName(bm, action.attacker_idx));
         }
     }
 

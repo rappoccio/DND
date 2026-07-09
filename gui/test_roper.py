@@ -29,8 +29,7 @@ def _tentacle():
     w.reach_ft = 60
     w.range_short_feet = 80
     w.range_long_feet = 320
-    w.attack_bonus = 50          # guaranteed hit for a deterministic test
-    w.bonus_hit = 50
+    w.bonus_hit = 50          # guaranteed hit for a deterministic test
     w.bonus_damage = 0
 
     grapple = rpg.AttackCondition()

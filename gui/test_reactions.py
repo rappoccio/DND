@@ -48,7 +48,7 @@ def pick_skip(ctx):
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
-def equip_oa_weapon(engine, bm, idx, attack_bonus=20, num_dice=1, die_size=8, bonus=0):
+def equip_oa_weapon(engine, bm, idx, num_dice=1, die_size=8, bonus=0):
     """Give an agent a guaranteed-hit melee weapon in slot 0 (others empty).
 
     Damage lives in physical_damage_types (PhysicalDamageRoll list) — the scalar
@@ -58,7 +58,6 @@ def equip_oa_weapon(engine, bm, idx, attack_bonus=20, num_dice=1, die_size=8, bo
     w.name = "Test Blade"
     w.type = rpg.WeaponType.Melee
     w.reach_ft = 5
-    w.attack_bonus = attack_bonus
     w.range_short_feet = 5
     w.range_long_feet = 5
     pr = rpg.PhysicalDamageRoll()
@@ -267,8 +266,8 @@ def test_sentinel_oa_hit_halts_mover_speed_zero():
     bm = setup_battle_map(); engine = setup_combat_engine()
     m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
     a = add_agent_to_battle(engine, bm, create_test_agent("Sentinel", 4, 5))
-    # Survive the OA (→ halted, not down) but make the hit reliable: the engine ignores
-    # weapon.attack_bonus, so guarantee the hit with base_ac = 1 (same idiom as the stop-on-down test).
+    # Survive the OA (→ halted, not down) but make the hit reliable by giving the
+    # target base_ac = 1 (same idiom as the stop-on-down test).
     s = engine.get_agent_stats(bm, m); s.hp_max = 50; s.hp_cur = 50; s.base_ac = 1
     engine.set_agent_stats(bm, m, s)
     ready_mover(engine, bm, m); equip_oa_weapon(engine, bm, a)
@@ -318,8 +317,8 @@ def test_stop_on_down_halts_movement():
     m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
     a = add_agent_to_battle(engine, bm, create_test_agent("ThreatA", 4, 5))
     # Set the mover frail + low-AC AFTER all adds: apply_agent_configs (run on every add) recreates
-    # agents from configs and resets the earlier agent's stats. Low AC so the OA lands (the engine's
-    # to-hit ignores weapon.attack_bonus); huge weapon damage so any hit is lethal.
+    # agents from configs and resets the earlier agent's stats. Low AC so the OA lands;
+    # huge weapon damage so any hit is lethal.
     s = engine.get_agent_stats(bm, m); s.hp_max = 1; s.hp_cur = 1; s.base_ac = 1
     engine.set_agent_stats(bm, m, s)
     ready_mover(engine, bm, m)
@@ -382,8 +381,8 @@ def test_sentinel_guardian_counterattacks_adjacent_attacker():
     atk  = add_agent_to_battle(engine, bm, create_test_agent("Attacker", 5, 5))
     ally = add_agent_to_battle(engine, bm, create_test_agent("Ally", 6, 5))
     sent = add_agent_to_battle(engine, bm, create_test_agent("Sentinel", 4, 5))
-    # Make the attacker frail/low-AC so the Sentinel's counter-attack reliably lands (the engine's
-    # to-hit ignores weapon.attack_bonus); equip both attacker and Sentinel with a melee weapon.
+    # Make the attacker frail/low-AC so the Sentinel's counter-attack reliably lands;
+    # equip both attacker and Sentinel with a melee weapon.
     s = engine.get_agent_stats(bm, atk); s.hp_max = 50; s.hp_cur = 50; s.base_ac = 1
     engine.set_agent_stats(bm, atk, s)
     equip_oa_weapon(engine, bm, atk); equip_oa_weapon(engine, bm, sent)

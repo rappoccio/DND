@@ -132,7 +132,6 @@ def _maul(num_dice, die_size):
     # rollDamage reads physical_damage_types (not damage_dice/modifier).
     w = rpg.Weapon()
     w.name = "Maul"
-    w.attack_bonus = 30          # effectively always hits (only a natural 1 misses)
     w.range_short_feet = 5
     w.range_long_feet = 5
     pr = rpg.PhysicalDamageRoll()

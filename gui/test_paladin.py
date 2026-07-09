@@ -32,7 +32,6 @@ def _melee_weapon():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 0
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 1
@@ -273,7 +272,6 @@ def _smite_weapon():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 50  # guaranteed hit
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 1
@@ -290,7 +288,6 @@ def _smite_ranged_weapon():
     w.proficient = True
     w.range_short_feet = 150
     w.range_long_feet = 600
-    w.attack_bonus = 50
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Piercing
     roll.num_dice = 1
@@ -749,7 +746,7 @@ def _guaranteed_miss_weapon():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.bonus_hit = -50           # the field the to-hit roll actually consults (attack_bonus is unused by the engine)
+    w.bonus_hit = -50           # the field the to-hit roll actually consults; -50 guarantees a miss
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 1

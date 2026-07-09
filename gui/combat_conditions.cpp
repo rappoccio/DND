@@ -158,6 +158,16 @@ void CombatEngine::applyCharmed(BattleMap& bm, int idx) noexcept
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
+    // Beguiling Defenses (Archfey Warlock L10+): immune to the Charmed condition.
+    {
+        const Agent::Stats s = bm.getAgentStats(idx);
+        if (s.character_class == CharacterClass::Warlock &&
+            s.warlock_subclass == ArchfeyPath && s.char_level >= 10) {
+            log_("{} can't be Charmed (Beguiling Defenses)", agentName(bm, idx));
+            return;
+        }
+    }
+
     // Set charmed condition
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.charmed = true;

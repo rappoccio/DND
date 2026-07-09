@@ -62,7 +62,6 @@ def _recharge_weapon(name="Breath Weapon", uses_max=1, recharge_min=5):
     w.name = name
     w.damage_dice_count = 1
     w.damage_dice = 6
-    w.attack_bonus = 10           # essentially always hits AC 1 (spend is hit-or-miss anyway)
     w.reach_ft = 5
     w.proficient = True
     w.uses_max = uses_max

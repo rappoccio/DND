@@ -49,7 +49,7 @@ def _high_ac_target(engine, bm, idx):
     return engine.get_agent_stats(bm, idx)
 
 
-def _finesse_weapon(attack_bonus=50):
+def _finesse_weapon():
     w = rpg.Weapon()
     w.name = "Test Dagger"
     w.type = rpg.WeaponType.Melee
@@ -58,7 +58,6 @@ def _finesse_weapon(attack_bonus=50):
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = attack_bonus
     w.bonus_damage = 100
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Piercing

@@ -32,7 +32,7 @@ def _soulknife(engine, bm, idx, level, dex=20):
     return engine.get_agent_stats(bm, idx)
 
 
-def _psychic_blade(attack_bonus=0):
+def _psychic_blade():
     """A Psychic Blade: finesse, psychic_blade flag, 1d6 (Piercing here for deterministic test damage)."""
     w = rpg.Weapon()
     w.name = "PsychicBlade"
@@ -43,7 +43,6 @@ def _psychic_blade(attack_bonus=0):
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = attack_bonus
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Piercing
     roll.num_dice = 1

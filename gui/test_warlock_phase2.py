@@ -23,9 +23,9 @@ def _warlock_stats(level, subclass=None):
     return s
 
 
-def _attack_weapon(attack_bonus=50, num_dice=1, die_size=4):
+def _attack_weapon(num_dice=1, die_size=4):
     """A melee weapon with a big flat damage bonus (added directly in rollDamage, independent of
-    dice or ability mod) and a huge to-hit bonus, so any landed hit deals lethal damage."""
+    dice or ability mod), so any landed hit deals lethal damage."""
     w = rpg.Weapon()
     w.name = "Test Blade"
     w.type = rpg.WeaponType.Melee
@@ -33,7 +33,6 @@ def _attack_weapon(attack_bonus=50, num_dice=1, die_size=4):
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = attack_bonus
     w.bonus_damage = 100  # flat, always added: rollDamage does damage_mod = abilityMod + bonus_damage
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing

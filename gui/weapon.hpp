@@ -95,7 +95,6 @@ struct Weapon {
     int          damage_dice       = 6;           // primary damage die size (for tests)
     int          damage_dice_count = 1;           // primary damage die count (for tests)
     int          damage_modifier   = 0;           // primary damage modifier (for tests)
-    int          attack_bonus      = 0;           // primary attack bonus (for tests)
     int          range_short_feet  = 80;          // primary short range (for tests)
     int          range_long_feet   = 320;         // primary long range (for tests)
 

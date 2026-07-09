@@ -90,7 +90,6 @@ def create_melee_weapon():
     weapon.damage_dice = 8
     weapon.damage_dice_count = 1
     weapon.damage_modifier = 0
-    weapon.attack_bonus = 0
     weapon.range_short_feet = 5
     weapon.range_long_feet = 5
     return weapon
@@ -102,7 +101,6 @@ def create_ranged_weapon():
     weapon.damage_dice = 6
     weapon.damage_dice_count = 1
     weapon.damage_modifier = 0
-    weapon.attack_bonus = 0
     weapon.range_short_feet = 80
     weapon.range_long_feet = 320
     return weapon

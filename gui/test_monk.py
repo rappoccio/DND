@@ -58,7 +58,6 @@ def _unarmed_weapons():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 50  # Guaranteed hit for testing
     w.bonus_damage = 0
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Bludgeoning
@@ -134,7 +133,7 @@ def test_unarmed_strike_damage():
     """Monk unarmed strike does 1d4 + DEX mod base damage."""
     bm, engine, atk, tgt = _setup(1, dex=16)
 
-    # Land an unarmed strike (attack_bonus=50 guarantees hit)
+    # Land an unarmed strike (low-AC target makes the hit reliable)
     for _ in range(10):
         result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
         if result.hit:
@@ -250,7 +249,7 @@ def test_martial_arts_scaling():
         s = engine.get_agent_stats(bm, atk)
 
         # The actual damage die is computed in C++; we verify it by attacking.
-        # Since attack_bonus=50, we're guaranteed a hit. Damage range tells us the die.
+        # The low-AC target makes the hit reliable. Damage range tells us the die.
         min_dmg = None
         max_dmg = None
 
@@ -461,7 +460,6 @@ def _slashing_weapon():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 50  # guaranteed hit
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 2
@@ -479,7 +477,6 @@ def _fire_weapon():
     w.reach_ft = 5
     w.range_short_feet = 30
     w.range_long_feet = 30
-    w.attack_bonus = 50  # guaranteed hit
     mr = rpg.MagicDamageRoll()
     mr.type = rpg.MagicDamage.Fire
     mr.num_dice = 4

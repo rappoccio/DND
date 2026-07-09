@@ -22,8 +22,8 @@ Two sub-commands:
 
 Encounter categories (x = target CR):
 
-  A: 4-5 x (CR x-3, Simple)
-  B: 2-3 x (CR x-3, Simple)  + 1-2 x (CR x-2, PreferRange)
+  A: 4-5 x (CR x-4, Simple)
+  B: 2-3 x (CR x-4, Simple)  + 1-2 x (CR x-2, PreferRange)
   C: 1-2 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
   D: 1-2 x (CR x-2, Simple)  + 1   x (CR x-2, PreferAOE)
   E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange) + 1 Dragon (CR <= x, PreferAOE)
@@ -86,8 +86,8 @@ ENEMY_FACTION = 1
 # weapon; 'aoe' = must have an area spell / breath weapon; 'dragon' = any dragon
 # with CR <= x (cr_offset ignored).
 CATEGORY_TABLE: dict[str, list[tuple[int, int, str, int, int]]] = {
-    "A": [(-3, STRAT_SIMPLE, "any", 4, 5)],
-    "B": [(-3, STRAT_SIMPLE, "any", 2, 3),
+    "A": [(-4, STRAT_SIMPLE, "any", 4, 5)],
+    "B": [(-4, STRAT_SIMPLE, "any", 2, 3),
           (-2, STRAT_PREFER_RANGE, "ranged", 1, 2)],
     "C": [(-2, STRAT_SIMPLE, "any", 1, 2),
           (-2, STRAT_PREFER_RANGE, "ranged", 1, 2)],
@@ -242,11 +242,15 @@ class Bestiary:
 
     def pick(self, cr: float, kind: str, x_float: float,
              rng: random.Random, count: int,
-             filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None) -> list[str]:
-        """Pick `count` monster names (independent draws -> a mixed pack).
+             filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None,
+             avoid: set[str] | None = None) -> list[str]:
+        """Pick `count` monster names, preferring VARIETY over a monoculture pack.
 
-        Falls back to the nearest CR (or, for dragons, the lowest-CR dragon) when
-        the exact CR has no monster that satisfies `kind`."""
+        Draws favour species not already used elsewhere (`avoid`, e.g. other rooms
+        of the same dungeon) and not already drawn in this call, only repeating a
+        species once the distinct options are exhausted — so the same mob no longer
+        floods every room. Falls back to the nearest CR (or, for dragons, the
+        lowest-CR dragon) when the exact CR has no monster that satisfies `kind`."""
         pool = self._pool(cr, kind, x_float, filter_types, filter_languages)
         if not pool:
             if kind == "dragon":
@@ -268,7 +272,23 @@ class Bestiary:
                         break
         if not pool:
             return []
-        return [rng.choice(pool) for _ in range(count)]
+        avoid = avoid or set()
+        # Names not used in earlier rooms are the first-choice pool; the whole pool
+        # is the fallback when every candidate has already appeared.
+        preferred = [n for n in pool if n not in avoid]
+        result: list[str] = []
+        used_here: set[str] = set()
+        for _ in range(count):
+            # Prefer: unused elsewhere AND not yet drawn here -> unused elsewhere
+            # -> not yet drawn here -> anything in the pool.
+            choices = ([n for n in preferred if n not in used_here]
+                       or preferred
+                       or [n for n in pool if n not in used_here]
+                       or pool)
+            nm = rng.choice(choices)
+            result.append(nm)
+            used_here.add(nm)
+        return result
 
 
 # ── Sprite selection ─────────────────────────────────────────────────────────
@@ -316,12 +336,16 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
                     faction: int = ENEMY_FACTION,
                     automation_level: int = 1,
                     filter_types: str | list[str] | None = None,
-                    filter_languages: list[str] | None = None) -> tuple[list[dict], list[dict]]:
+                    filter_languages: list[str] | None = None,
+                    avoid: set[str] | None = None) -> tuple[list[dict], list[dict]]:
     """Build the agent list for one encounter of `category` at target CR `x`.
 
     Returns (agents, detail) where detail describes each mob group for logging.
     If filter_types is set (string or list), all mobs will be of those types.
-    If filter_languages is set, all mobs will speak at least one of those languages."""
+    If filter_languages is set, all mobs will speak at least one of those languages.
+    `avoid` is a set of species names already used (e.g. earlier dungeon rooms);
+    picks steer away from them and every newly chosen species is added to it so a
+    multi-room caller keeps diversifying."""
     if category not in CATEGORY_TABLE:
         raise ValueError(f"Unknown category {category!r} (expected one of A-E)")
     x_float = float(x)
@@ -332,7 +356,10 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
         target_cr = None if kind == "dragon" else max(0.0, x_float + offset)
         names = bestiary.pick(target_cr if target_cr is not None else x_float,
                               kind, x_float, rng, count,
-                              filter_types=filter_types, filter_languages=filter_languages)
+                              filter_types=filter_types, filter_languages=filter_languages,
+                              avoid=avoid)
+        if avoid is not None:
+            avoid.update(names)
         for nm in names:
             agents.append(make_agent(bestiary.mobs[nm], strat, faction, automation_level))
         detail.append({
@@ -638,6 +665,9 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
     end_row = DIFFICULTY_WEIGHTS[difficulty_end]
     n = len(rooms)
     results: list[dict] = []
+    # Species used so far across the whole dungeon — build_encounter steers picks
+    # away from these so the same mob doesn't reappear in room after room.
+    used_names: set[str] = set()
     for i, floor in enumerate(rooms):
         is_boss = boss and i == n - 1
         if is_boss:
@@ -651,8 +681,14 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
         agents, detail = build_encounter(category, cr, bestiary, rng,
                                          automation_level=automation_level,
                                          filter_types=filter_types,
-                                         filter_languages=filter_languages)
+                                         filter_languages=filter_languages,
+                                         avoid=used_names)
         placed = place_agents_in_room(agents, floor, rng) if place else agents
+        # Tag the toughest mob in the boss room (highest max HP — the dragon/big-bad)
+        # so the GUI can flag the finale with a star.
+        if is_boss and placed:
+            boss_ag = max(placed, key=lambda a: a.get("stats", {}).get("hp_max", 0))
+            boss_ag["is_boss"] = True
         results.append({
             "room": i, "is_boss": is_boss, "category": category,
             "weights": weights, "floor_cells": len(floor),
@@ -889,8 +925,8 @@ _ENCOUNTER_DESC = """\
 Generate ONE random encounter of a single category (A-E) at target CR x.
 
 Category compositions (mob counts are uniform over the stated ranges):
-  A: 4-5 x (CR x-3, Simple)
-  B: 2-3 x (CR x-3, Simple)  + 1-2 x (CR x-2, PreferRange)
+  A: 4-5 x (CR x-4, Simple)
+  B: 2-3 x (CR x-4, Simple)  + 1-2 x (CR x-2, PreferRange)
   C: 1-2 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
   D: 1-2 x (CR x-2, Simple)  + 1   x (CR x-2, PreferAOE)
   E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)

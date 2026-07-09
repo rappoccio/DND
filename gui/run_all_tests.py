@@ -91,6 +91,7 @@ test_scripts = [
     "test_warlock_l1_5.py",
     "test_warlock_phase2.py",
     "test_warlock_phase3.py",
+    "test_archfey.py",
 
     # Rogue features
     "test_rogue_l1_18.py",

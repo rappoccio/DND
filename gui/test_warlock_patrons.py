@@ -37,7 +37,7 @@ def _warlock(level, subclass, cha=10):
 
 
 def _guaranteed_blade(die_size=8):
-    """A guaranteed-hit melee weapon in slot 0 (attack_bonus 50)."""
+    """A high-damage melee weapon in slot 0 for combat-path testing."""
     w = rpg.Weapon()
     w.name = "Test Blade"
     w.type = rpg.WeaponType.Melee
@@ -45,7 +45,6 @@ def _guaranteed_blade(die_size=8):
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 50
     pr = rpg.PhysicalDamageRoll()
     pr.type = rpg.PhysicalDamage.Slashing
     pr.num_dice = 1

@@ -293,7 +293,6 @@ def _alter_self_claws():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = 50  # guarantee a hit
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 1
@@ -315,7 +314,7 @@ def test_master_of_myriad_forms_claws_attack():
     engine.set_agent_weapons(bm, atk, _alter_self_claws())
     engine.begin_turn(bm, atk)
     result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
-    assert result.hit, "AlterSelfClaws attack should hit (attack_bonus 50)"
+    assert result.hit, "AlterSelfClaws attack should hit"
     assert result.total_damage >= 1, f"expected positive claw damage, got {result.total_damage}"
     print("✅ test_master_of_myriad_forms_claws_attack passed")
 
@@ -463,7 +462,7 @@ def test_greater_invisibility_persists_through_attack():
 
 # ── Pact of the Blade family ─────────────────────────────────────────────────
 
-def _pact_blade(die_size=1, attack_bonus=50):
+def _pact_blade(die_size=1):
     """A guaranteed-hit pact weapon (pact_weapon=True) for combat-path testing. die_size=1 makes
     the weapon die deterministic (roll(1)==1) so damage = 1 + ability-mod is exact."""
     w = rpg.Weapon()
@@ -474,7 +473,6 @@ def _pact_blade(die_size=1, attack_bonus=50):
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
-    w.attack_bonus = attack_bonus
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 1
@@ -498,7 +496,7 @@ def test_pact_blade_uses_charisma():
     engine.set_agent_weapons(bm, atk, _pact_blade())
     engine.begin_turn(bm, atk)
     result = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
-    assert result.hit, "pact blade should hit (attack_bonus 50)"
+    assert result.hit, "pact blade should hit"
     assert result.total_damage == 6, f"expected 1(die) + 5(CHA) = 6, got {result.total_damage}"
 
     # Control: identical weapon but NOT a pact weapon → no CHA, damage = 1 + 0.

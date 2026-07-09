@@ -291,7 +291,6 @@ def _grapple_weapon(escape_dc=0, contested=False):
     w.type = rpg.WeaponType.Melee
     w.reach_ft = 5
     w.proficient = True
-    w.attack_bonus = 30  # force the attack to land
     pr = rpg.PhysicalDamageRoll()
     pr.type = rpg.PhysicalDamage.Bludgeoning
     pr.num_dice = 1
