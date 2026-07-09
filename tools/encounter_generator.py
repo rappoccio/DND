@@ -80,22 +80,28 @@ ENEMY_FACTION = 1
 
 # ── Encounter category table ────────────────────────────────────────────────
 # Each category is a list of "mob requests":
-#   (cr_offset, strategy, kind, count_lo, count_hi)
-# cr_offset is added to the target CR x (clamped at 0). kind constrains the
-# candidate pool: 'any' = any monster at that CR; 'ranged' = must have a ranged
-# weapon; 'aoe' = must have an area spell / breath weapon; 'dragon' = any dragon
-# with CR <= x (cr_offset ignored).
-CATEGORY_TABLE: dict[str, list[tuple[int, int, str, int, int]]] = {
-    "A": [(-4, STRAT_SIMPLE, "any", 4, 5)],
-    "B": [(-4, STRAT_SIMPLE, "any", 2, 3),
-          (-2, STRAT_PREFER_RANGE, "ranged", 1, 2)],
-    "C": [(-2, STRAT_SIMPLE, "any", 1, 2),
-          (-2, STRAT_PREFER_RANGE, "ranged", 1, 2)],
-    "D": [(-2, STRAT_SIMPLE, "any", 1, 2),
-          (-2, STRAT_PREFER_AOE, "aoe", 1, 1)],
-    "E": [(-2, STRAT_SIMPLE, "any", 2, 3),
-          (-2, STRAT_PREFER_RANGE, "ranged", 1, 2),
-          (0, STRAT_PREFER_AOE, "dragon", 1, 1)],
+#   (cr_lo_offset, cr_hi_offset, strategy, kind, count_lo, count_hi)
+# The offsets are added to the target CR x (each clamped at 0) to form an
+# inclusive CR *band* [x+lo_off, x+hi_off]. Candidates are drawn from every
+# monster whose CR falls in that band — a much larger, more varied pool than a
+# single exact CR. The lighter "filler" categories (A/B) span a WIDE, LOW band
+# so easy packs vary heavily and stay well below the medium/hard bands, which
+# sit tight near x. kind constrains the pool: 'any' = any monster in-band;
+# 'ranged' = must have a ranged weapon; 'aoe' = must have an area spell / breath
+# weapon. The category-E finale slot is just 'any' at exactly CR x — the toughest
+# thing in the room (which the dungeon builder tags as the boss); a dragon can
+# still surface there naturally when one exists at that CR.
+CATEGORY_TABLE: dict[str, list[tuple[int, int, int, str, int, int]]] = {
+    "A": [(-5, -2, STRAT_SIMPLE, "any", 4, 5)],
+    "B": [(-4, -2, STRAT_SIMPLE, "any", 2, 3),
+          (-3, -1, STRAT_PREFER_RANGE, "ranged", 1, 2)],
+    "C": [(-3, -1, STRAT_SIMPLE, "any", 1, 2),
+          (-3, -1, STRAT_PREFER_RANGE, "ranged", 1, 2)],
+    "D": [(-3, -1, STRAT_SIMPLE, "any", 1, 2),
+          (-2, 0, STRAT_PREFER_AOE, "aoe", 1, 1)],
+    "E": [(-3, -1, STRAT_SIMPLE, "any", 2, 3),
+          (-2, 0, STRAT_PREFER_RANGE, "ranged", 1, 2),
+          (0, 0, STRAT_PREFER_AOE, "any", 1, 1)],
 }
 
 # Difficulty -> per-category integer weights.
@@ -166,10 +172,6 @@ class Bestiary:
 
     # ── candidate predicates ────────────────────────────────────────────────
     @staticmethod
-    def is_dragon(rec: dict) -> bool:
-        return "Dragon" in (rec.get("meta", {}).get("type") or "")
-
-    @staticmethod
     def has_ranged(rec: dict) -> bool:
         rng = rec.get("weapons", {}).get("ranged")
         return isinstance(rng, dict) and bool(rng.get("name"))
@@ -208,19 +210,17 @@ class Bestiary:
                 return True
         return False
 
-    def _pool(self, cr: float, kind: str, x_float: float,
+    def _pool(self, cr_lo: float, cr_hi: float, kind: str,
               filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None) -> list[str]:
-        """Names matching `kind` at exactly challenge rating `cr` (dragon ignores cr).
+        """Names matching `kind` whose CR falls in the inclusive band [cr_lo, cr_hi].
 
+        Drawing from a band rather than a single exact CR is what gives packs
+        their variety — the pool is the union of every CR bucket in range.
         If filter_types is set (string or list), only return mobs whose meta.type matches any of them.
         If filter_languages is set, only return mobs that have at least one of those languages.
         """
-        if kind == "dragon":
-            candidates = [n for n, r in self.mobs.items()
-                         if r.get("_cr") is not None and r["_cr"] <= x_float
-                         and self.is_dragon(r)]
-        else:
-            candidates = list(self.by_cr.get(cr, []))
+        candidates = [n for c in self._crs_sorted if cr_lo <= c <= cr_hi
+                      for n in self.by_cr[c]]
 
         out = []
         for name in candidates:
@@ -240,36 +240,25 @@ class Bestiary:
             out.append(name)
         return out
 
-    def pick(self, cr: float, kind: str, x_float: float,
+    def pick(self, cr_lo: float, cr_hi: float, kind: str,
              rng: random.Random, count: int,
              filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None,
              avoid: set[str] | None = None) -> list[str]:
-        """Pick `count` monster names, preferring VARIETY over a monoculture pack.
+        """Pick `count` monster names from the CR band [cr_lo, cr_hi], preferring
+        VARIETY over a monoculture pack.
 
         Draws favour species not already used elsewhere (`avoid`, e.g. other rooms
         of the same dungeon) and not already drawn in this call, only repeating a
         species once the distinct options are exhausted — so the same mob no longer
-        floods every room. Falls back to the nearest CR (or, for dragons, the
-        lowest-CR dragon) when the exact CR has no monster that satisfies `kind`."""
-        pool = self._pool(cr, kind, x_float, filter_types, filter_languages)
+        floods every room. Falls back to the nearest CR bucket when the band has no
+        monster that satisfies `kind`."""
+        pool = self._pool(cr_lo, cr_hi, kind, filter_types, filter_languages)
         if not pool:
-            if kind == "dragon":
-                dragons = [(r["_cr"], n) for n, r in self.mobs.items()
-                           if r.get("_cr") is not None and self.is_dragon(r)]
-                if filter_types:
-                    dragons = [(cr_val, n) for cr_val, n in dragons
-                              if self._matches_type_filter(self.mobs[n].get("meta", {}).get("type"), filter_types)]
-                if filter_languages:
-                    dragons = [(cr_val, n) for cr_val, n in dragons
-                              if any(lang in self.mobs[n].get("meta", {}).get("languages", [])
-                                    for lang in filter_languages)]
-                if dragons:
-                    pool = [min(dragons)[1]]        # lowest-CR dragon overall
-            else:
-                for near in sorted(self._crs_sorted, key=lambda c: (abs(c - cr), c)):
-                    pool = self._pool(near, kind, x_float, filter_types, filter_languages)
-                    if pool:
-                        break
+            cr_mid = (cr_lo + cr_hi) / 2.0
+            for near in sorted(self._crs_sorted, key=lambda c: (abs(c - cr_mid), c)):
+                pool = self._pool(near, near, kind, filter_types, filter_languages)
+                if pool:
+                    break
         if not pool:
             return []
         avoid = avoid or set()
@@ -351,11 +340,11 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
     x_float = float(x)
     agents: list[dict] = []
     detail: list[dict] = []
-    for offset, strat, kind, lo, hi in CATEGORY_TABLE[category]:
+    for lo_off, hi_off, strat, kind, lo, hi in CATEGORY_TABLE[category]:
         count = rng.randint(lo, hi)
-        target_cr = None if kind == "dragon" else max(0.0, x_float + offset)
-        names = bestiary.pick(target_cr if target_cr is not None else x_float,
-                              kind, x_float, rng, count,
+        cr_lo = max(0.0, x_float + lo_off)
+        cr_hi = max(0.0, x_float + hi_off)
+        names = bestiary.pick(cr_lo, cr_hi, kind, rng, count,
                               filter_types=filter_types, filter_languages=filter_languages,
                               avoid=avoid)
         if avoid is not None:
@@ -365,7 +354,7 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
         detail.append({
             "count": len(names),
             "requested": count,
-            "cr": ("<=%g" % x_float) if kind == "dragon" else target_cr,
+            "cr": f"{cr_lo:g}-{cr_hi:g}" if cr_lo != cr_hi else f"{cr_lo:g}",
             "kind": kind,
             "strategy": _STRAT_NAME.get(strat, str(strat)),
             "monsters": names,
@@ -684,8 +673,8 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
                                          filter_languages=filter_languages,
                                          avoid=used_names)
         placed = place_agents_in_room(agents, floor, rng) if place else agents
-        # Tag the toughest mob in the boss room (highest max HP — the dragon/big-bad)
-        # so the GUI can flag the finale with a star.
+        # Tag the toughest mob in the boss room (highest max HP — the big-bad)
+        # so the GUI can flag the finale with its golden ring.
         if is_boss and placed:
             boss_ag = max(placed, key=lambda a: a.get("stats", {}).get("hp_max", 0))
             boss_ag["is_boss"] = True
@@ -924,21 +913,24 @@ notes:
 _ENCOUNTER_DESC = """\
 Generate ONE random encounter of a single category (A-E) at target CR x.
 
-Category compositions (mob counts are uniform over the stated ranges):
-  A: 4-5 x (CR x-4, Simple)
-  B: 2-3 x (CR x-4, Simple)  + 1-2 x (CR x-2, PreferRange)
-  C: 1-2 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
-  D: 1-2 x (CR x-2, Simple)  + 1   x (CR x-2, PreferAOE)
-  E: 2-3 x (CR x-2, Simple)  + 1-2 x (CR x-2, PreferRange)
-                             + 1 Dragon (CR <= x, PreferAOE)
+Each slot draws from an inclusive CR *band* around x (not a single exact CR),
+which is what gives the packs their variety. Compositions (mob counts uniform
+over the stated ranges):
+  A: 4-5 x (CR x-5..x-2, Simple)
+  B: 2-3 x (CR x-4..x-2, Simple)  + 1-2 x (CR x-3..x-1, PreferRange)
+  C: 1-2 x (CR x-3..x-1, Simple)  + 1-2 x (CR x-3..x-1, PreferRange)
+  D: 1-2 x (CR x-3..x-1, Simple)  + 1   x (CR x-2..x,   PreferAOE)
+  E: 2-3 x (CR x-3..x-1, Simple)  + 1-2 x (CR x-2..x,   PreferRange)
+                                  + 1   x (CR x,         PreferAOE)  <- finale
 
-Candidate pools: 'Simple' = any monster at the required CR; 'PreferRange' = a
-monster with a ranged weapon; 'PreferAOE' = a monster with an area spell or a
-recharge breath weapon; the Dragon slot = any monster whose meta.type contains
-"Dragon" with CR <= x. If no monster satisfies a slot at the exact CR, the tool
-falls back to the nearest available CR (nearest/lowest-CR dragon for the Dragon
-slot). No map is loaded: the mobs are laid out in a simple block so the file is
-still directly loadable.
+The filler categories (A/B) span a wide, low band so easy packs vary heavily
+and stay below the medium/hard bands. Candidate pools: 'Simple' = any monster in
+the band; 'PreferRange' = a monster with a ranged weapon; 'PreferAOE' = a monster
+with an area spell or a recharge breath weapon. The category-E finale slot is any
+monster at exactly CR x (the toughest in the room, tagged as the boss). If no
+monster satisfies a slot in its band, the tool falls back to the nearest available
+CR bucket. No map is loaded: the mobs are laid out in a simple block so the file
+is still directly loadable.
 """
 
 _ENCOUNTER_EPILOG = """\
@@ -946,7 +938,7 @@ examples:
   # a pack of Category-A goblins-and-friends around CR 5
   python tools/encounter_generator.py encounter --cr 5 --category A
 
-  # reproducible Category-E (dragon boss) written to encounters/ with a custom name
+  # reproducible Category-E (boss finale) written to encounters/ with a custom name
   python tools/encounter_generator.py encounter --cr 8 --category E \\
       --seed 7 --out-dir encounters --out throne_room_ambush
 
@@ -972,8 +964,8 @@ Difficulty ramp: each room's category is rolled from A:B:C:D:E weights blended
 linearly from --difficulty-start (first room) to --difficulty (deepest room):
   Easy    3:1:0:0:0     (mostly weak mob packs)
   Medium  3:2:1:1:1     (a spread across all five categories)
-  Hard    0:1:2:2:1     (ranged / AOE / dragon-heavy)
-So early rooms skew to weak packs and later rooms to AOE/dragon fights. Unless
+  Hard    0:1:2:2:1     (ranged / AOE / elite-heavy)
+So early rooms skew to weak packs and later rooms to AOE/elite fights. Unless
 --no-boss is given, the deepest room is forced to a category-E boss encounter.
 CR is uniform across the dungeon (single --cr); difficulty is carried entirely by
 encounter composition.

@@ -11768,20 +11768,17 @@ class App:
         lbl = self.font_sm.render(pt.name, True, (255, 255, 255))
         self.screen.blit(lbl, (screen_x + 3, screen_y + 3))
 
-        # Boss-finale star (dungeon generator flags the deepest room's big-bad in
-        # _agent_meta). Drawn as a gold vector star above the agent so it reads even
-        # when the "sans" SysFont lacks the ★ glyph. Skipped for translucent previews.
-        if alpha == 255 and agent_idx >= 0 and self._agent_meta.get(agent_idx, {}).get("is_boss"):
-            r_out = max(8, int(size_px * 0.22))
-            cx = int(screen_x + size_px / 2)
-            cy = int(screen_y - r_out - 2)
-            pts = []
-            for k in range(10):
-                ang = -math.pi / 2 + k * math.pi / 5
-                rad = r_out if k % 2 == 0 else r_out * 0.42
-                pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
-            pygame.draw.polygon(self.screen, (255, 205, 40), pts, 0)   # gold fill
-            pygame.draw.polygon(self.screen, (90, 55, 0), pts, 2)      # dark rim
+        # Boss-finale marker (dungeon generator flags the deepest room's big-bad in
+        # _agent_meta). Drawn as a golden square ringing the agent's cell so it reads
+        # clearly at any zoom. agent_idx >= 0 excludes movement ghosts (which pass no
+        # index); drawn even for On Deck reserves (alpha 110) so the boss is visible
+        # before it's deployed into the fight.
+        if agent_idx >= 0 and self._agent_meta.get(agent_idx, {}).get("is_boss"):
+            pad = max(3, int(size_px * 0.10))
+            ring = pygame.Rect(int(screen_x - pad), int(screen_y - pad),
+                               int(size_px + 2 * pad), int(size_px + 2 * pad))
+            pygame.draw.rect(self.screen, (90, 55, 0),  ring.inflate(4, 4), 5)  # dark backing
+            pygame.draw.rect(self.screen, (255, 205, 40), ring, 3)             # gold ring
 
         # Concentration indicator (circle around agent if concentrating)
         if pt.conditions.concentrating:
