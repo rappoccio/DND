@@ -976,6 +976,21 @@ void CombatEngine::applyShortRest(BattleMap& bm) noexcept
         }
 
         bm.setAgentStats(agent_idx, stats);
+
+        // House rule: a short rest heals each creature for half its (drained-adjusted) maximum HP.
+        // Route through healAgent so a downed-but-living creature is brought back to consciousness
+        // and rejoins the initiative rotation (reviveOnHeal clears unconscious/stabilized/death saves);
+        // true-dead corpses are skipped so a short rest never revives them.
+        if (!bm.getAgentConditions(agent_idx).dead) {
+            int heal = stats.effectiveMaxHp() / 2;
+            if (heal > 0) {
+                healAgent(bm, agent_idx, heal);
+                Agent::Stats healed = bm.getAgentStats(agent_idx);
+                log_("{} completed short rest: short-rest resources restored, regained {} HP (now {}/{})",
+                     agentName(bm, agent_idx), heal, healed.hp_cur, healed.effectiveMaxHp());
+                continue;
+            }
+        }
         log_("{} completed short rest: short-rest resources restored", agentName(bm, agent_idx));
     }
 }
