@@ -270,6 +270,33 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     // plus every reverse-reference mark (charmed_by, *_marked_by, goaded_by, …) pointing back at it.
     releaseAgentInfluence(bm, idx);
 
+    // Paladin Oath of Vengeance — Vow of Enmity transfer: if this creature was a paladin's sworn
+    // foe, the vow moves (no action) to a different creature within 30 ft of that paladin; if none
+    // is in range, the vow simply lapses. Runs before the NPC early-return so corpses hand it off.
+    for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
+        Agent::Stats ps = bm.getAgentStats(p);
+        if (ps.vow_of_enmity_turns <= 0 || ps.vow_of_enmity_target != idx) continue;
+        const PlacedAgent& pp = agents[static_cast<std::size_t>(p)];
+        int best = -1, best_d = 7;   // 30 ft = 6 cells; keep the nearest strictly within range
+        for (int e = 0; e < static_cast<int>(agents.size()); ++e) {
+            if (e == p || e == idx) continue;
+            if (areAllies(bm, p, e)) continue;
+            const PlacedAgent& ep = agents[static_cast<std::size_t>(e)];
+            if (bm.getAgentStats(e).hp_cur <= 0 || bm.getAgentConditions(e).dead) continue;
+            const int d = footprintDistance(pp.origin, pp.agent->getSize(),
+                                            ep.origin, ep.agent->getSize());
+            if (d * 5 > 30) continue;
+            if (!bm.hasLineOfSight(pp.origin, pp.agent->getSize(), ep.origin, ep.agent->getSize())) continue;
+            if (d < best_d) { best_d = d; best = e; }
+        }
+        ps.vow_of_enmity_target = best;
+        if (best < 0) ps.vow_of_enmity_turns = 0;
+        bm.setAgentStats(p, ps);
+        if (best >= 0)
+            log_("Vow of Enmity transfers from {} to {}",
+                 agentName(bm, idx), agentName(bm, best));
+    }
+
     // Gaseous Form / vampire Misty Escape ends when the creature drops to 0 HP (RAW). It is a SELF
     // condition, which releaseAgentInfluence deliberately skips, so end it here: restore the snapshot,
     // clear the flag, and drop the tracked "Gaseous" condition so nothing lingers past death/revival.
@@ -686,6 +713,10 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 bm.setAgentConditions(cond.agent_idx, cc);
             } else if (cond.condition_name == "Frightened") {
                 applyFrightened(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Restrained") {
+                auto ac = bm.getAgentConditions(cond.agent_idx);
+                ac.restrained = true;
+                bm.setAgentConditions(cond.agent_idx, ac);
             } else if (cond.condition_name == "Unconscious") {
                 applyUnconscious(bm, cond.agent_idx);
             } else if (cond.condition_name == "Poisoned") {
@@ -784,6 +815,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                         agent_cond.charmed_by = -1;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
+                    } else if (cond.condition_name == "Restrained") {
+                        agent_cond.restrained = false;
                     } else if (cond.condition_name == "Poisoned") {
                         agent_cond.poisoned = false;
                     } else if (cond.condition_name == "Unconscious") {
@@ -865,6 +898,8 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
                         agent_cond.charmed_by = -1;
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
+                    } else if (cond.condition_name == "Restrained") {
+                        agent_cond.restrained = false;
                     } else if (cond.condition_name == "Poisoned") {
                         agent_cond.poisoned = false;
                     } else if (cond.condition_name == "Unconscious") {

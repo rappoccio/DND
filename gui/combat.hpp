@@ -645,6 +645,9 @@ struct InFlightAttack {
     bool dis{false};
     bool auto_hit{false};           // this attack auto-hits (vampire Bite vs a creature it has Grappled);
                                     // forced after the roll, before the defender windows (a nat 20 still crits)
+    bool unerring_fired{false};     // Oath of Glory L20 Unerring Strike promoted this attack's miss → hit;
+                                    // the once-per-turn flag is committed as the LAST attacker-conditions
+                                    // write in applyAttackResult (a mid-attack write would be clobbered)
     bool onhit_offered{false};      // the OnHit defender window (Shield / Uncanny Dodge) has been opened once
     // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
@@ -830,6 +833,37 @@ public:
     // and an available Channel Oath use. Returns the attack bonus granted, or -1 if it could not
     // be activated (wrong oath, no resource, or already active).
     int activateSacredWeapon(BattleMap& bm, int idx) noexcept;
+
+    // Vow of Enmity (Paladin Oath of Vengeance L3): spend 1 Channel Oath use to swear enmity against
+    // a visible enemy within 30 ft, gaining Advantage on attacks against it for 1 minute (or until
+    // used again). On the target's death the vow auto-transfers to the nearest enemy within 30 ft
+    // (see applyUnconscious). Returns true on success, false if not eligible (wrong oath, no resource,
+    // out of range/LOS). Sets vow_of_enmity_target/turns; ticked down in beginTurn.
+    bool activateVowOfEnmity(BattleMap& bm, int idx, int target_idx) noexcept;
+
+    // Avenging Angel (Paladin Oath of Vengeance L20): Bonus Action, 10 minutes. Grants Fly 60 (+ hover)
+    // and a Frightful Aura in the Aura of Protection (enemy WIS save at turn start or Frightened until
+    // damaged; applied in beginTurn). Costs one "Avenging Angel" use per long rest, or a level-5 spell
+    // slot when exhausted. Returns true on success. Sets avenging_angel_turns; ticked down in beginTurn.
+    bool activateAvengingAngel(BattleMap& bm, int idx) noexcept;
+
+    // Elder Champion (Paladin Oath of the Ancients L20): Bonus Action, 1 minute. Regain 10 HP at each
+    // of your turn starts (beginTurn), and enemies in your Aura of Protection have Disadvantage on saves
+    // vs your spells & Channel Oath options (rollSpellSave). Costs one "Elder Champion" use per long
+    // rest, or a level-5 spell slot when exhausted. Returns true on success. Sets elder_champion_turns.
+    bool activateElderChampion(BattleMap& bm, int idx) noexcept;
+
+    // Inspiring Smite (Paladin Oath of Glory L3): immediately after a Divine Smite this turn, spend one
+    // Channel Oath use to grant a creature within 30 ft (may be self) 2d8 + Paladin level temporary HP.
+    // Once per turn. Returns the temp HP granted, or -1 if not allowed (wrong oath, no smite this turn,
+    // already used, no resource, out of range).
+    int activateInspiringSmite(BattleMap& bm, int idx, int target_idx) noexcept;
+
+    // Living Legend (Paladin Oath of Glory L20): Bonus Action, 10 minutes. While active you gain a
+    // reaction to reroll a failed saving throw (canLivingLegendReroll) and can turn your first weapon
+    // miss each turn into a hit (maybeUnerringStrike). Costs one "Living Legend" use per long rest, or
+    // a level-5 spell slot when exhausted. Returns true on success. Sets living_legend_turns.
+    bool activateLivingLegend(BattleMap& bm, int idx) noexcept;
 
     // Cleric Light Domain — Corona of Light (L17+): a Magic action that lights a 60-ft radius for 1
     // minute (10 rounds). While active, enemies within 60 ft have Disadvantage on saves vs the
@@ -1330,12 +1364,20 @@ public:
     // A Paladin's aura reaches itself and same-team allies within 10 ft (30 ft
     // at L18). The aura is suppressed while the Paladin is unconscious/incapacitated.
     // bestPaladinAura returns the strongest CHA-mod (min 1) bonus from any qualifying
-    // Paladin of level >= min_level reaching agent_idx, or 0 if none.
-    [[nodiscard]] int bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level) const noexcept;
+    // Paladin of level >= min_level reaching agent_idx, or 0 if none. When require_oath is not
+    // PaladinOathNone, only Paladins who have taken that oath emanate (oath-specific auras).
+    [[nodiscard]] int bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level,
+                                      PaladinOath require_oath = PaladinOathNone) const noexcept;
     // Aura of Protection (L6+): the bonus that agent_idx adds to every saving throw.
     [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
     // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
     [[nodiscard]] bool hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept;
+    // Aura of Warding (Oath of the Ancients L7+): agent_idx has Resistance to Necrotic, Psychic, and
+    // Radiant damage while in an allied Ancients Paladin's Aura of Protection.
+    [[nodiscard]] bool hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept;
+    // Aura of Alacrity (Oath of Glory L7+): agent_idx's Speed increases by 10 ft while in an allied
+    // Glory Paladin's Aura of Protection (the paladin itself always benefits — it is in its own aura).
+    [[nodiscard]] bool hasAuraOfAlacrity(const BattleMap& bm, int agent_idx) const noexcept;
     // Advantage emanation (data-driven, on Spell::grants_advantage_aura): true if agent_idx is
     // inside an active advantage-granting emanation it benefits from — i.e. it is the caster, or
     // a same-faction ally, within the spell's radius of a conscious caster whose persistent
@@ -1406,9 +1448,12 @@ public:
     // effectiveMagicDamageMult: the target's multiplier for `type`, but Resistance (0 < m < 1) is
     // lifted to 1.0 when the caster ignores it — Poisoner (Poison, from any source) or Elemental
     // Adept (its chosen elements, spells only). Immunity (0.0) and Vulnerability are untouched (the
-    // feats ignore Resistance only, not Immunity).
+    // feats ignore Resistance only, not Immunity). When bm is non-null and target_idx >= 0, the
+    // Oath of the Ancients L7 Aura of Warding folds in Resistance to Necrotic/Psychic/Radiant for a
+    // target standing in the aura (before the caster-side bypasses, so Elemental Adept can still lift it).
     [[nodiscard]] float effectiveMagicDamageMult(const Agent::Stats& caster, const Agent::Stats& target,
-                                                 MagicDamage_t type, bool from_spell) const noexcept;
+                                                 MagicDamage_t type, bool from_spell,
+                                                 const BattleMap* bm = nullptr, int target_idx = -1) const noexcept;
     // rollSpellTypeDamage: roll `num_dice` d`die_size`, applying Elemental Adept's "treat a 1 as a 2"
     // for the caster's chosen elements (spells only). Appends each die to `out_dice`; returns the sum.
     // empower_budget: when non-null and > 0, applies Empowered Spell metamagic (see rollDamageDice).
@@ -2038,6 +2083,30 @@ public:
     [[nodiscard]] AttackResult applySentinelGuard(BattleMap& bm, int sentinel_idx,
                                                   int attacker_idx, int weapon_idx) noexcept;
 
+    // Paladin Oath of Vengeance — Soul of Vengeance (L15). Eligibility: pal_idx is an L15+ Vengeance
+    // paladin with an active Vow of Enmity on action.attacker_idx, a free reaction, and a melee weapon,
+    // with the sworn foe within 5 ft. Fires on the sworn foe's hit OR miss (keys on the attack, not its
+    // outcome). Sets soul_of_vengeance_available (GUI) and enumerates the auto/RL reactor.
+    [[nodiscard]] bool canSoulOfVengeance(const BattleMap& bm, const Attack& action, int pal_idx) const;
+    // Auto/RL sibling of maybeSentinelGuardInline for Soul of Vengeance; shares resolving_sentinel_guard_
+    // as the reaction-nesting guard. Called from executeAction after the attack fully resolves.
+    bool maybeSoulOfVengeanceInline(BattleMap& bm, const Attack& action, AttackResult& r);
+    // Apply Soul of Vengeance: the paladin makes a melee attack against its sworn foe and spends its
+    // reaction. Re-validates the reaction is free. Returns the counter-attack's result.
+    [[nodiscard]] AttackResult applySoulOfVengeance(BattleMap& bm, int paladin_idx,
+                                                    int attacker_idx, int weapon_idx) noexcept;
+
+    // Glorious Defense (Paladin Oath of Glory L15) — OnHit reaction. pal_idx (the reacting paladin,
+    // possibly the hit creature itself or a bystander within 10 ft) adds +CHA (min 1) to the hit
+    // creature's AC vs this attack; offered only when that boost flips the hit to a miss. On the miss,
+    // the paladin counter-attacks the attacker if in range. Uses = CHA mod / long rest.
+    [[nodiscard]] bool canGloriousDefense(const BattleMap& bm, const Attack& action,
+                                          const AttackResult& r, int pal_idx) const;
+    bool applyGloriousDefense(BattleMap& bm, int pal_idx, const Attack& action, AttackResult& r);
+    // Auto/RL bystander scan for the protect-an-ally case (the self case flows through the defender
+    // OnHit window). Called in executeAction's pre-damage OnHit window.
+    bool maybeGloriousDefenseInline(BattleMap& bm, const Attack& action, AttackResult& r);
+
     // Interception fighting style (OnAllyAttacked bystander damage-reduction). RAW 2024: when a creature
     // you can see hits a target OTHER than you within 5 ft of you with an attack roll, you may use your
     // reaction to reduce that target's damage by 1d10 + PB (min 0); you must be holding a Shield or a
@@ -2582,6 +2651,9 @@ public:
     // Promote a missed roll to a hit when s.auto_hit is set (vampire Bite vs a creature it has
     // Grappled). Runs after resolveAttack, before the defender reaction windows. No-op otherwise.
     void forceAutoHit(BattleMap& bm, InFlightAttack& s);
+    // Living Legend (Oath of Glory L20) Unerring Strike: promote the attacker's first weapon miss of the
+    // turn into a hit while Living Legend is active. Called right after forceAutoHit in both attack paths.
+    void maybeUnerringStrike(BattleMap& bm, InFlightAttack& s);
     // "Auto-use-when-grappling" intent (Vampire Bite auto-offer/auto-attempt). For attacker `atk`,
     // scan its weapons for one flagged auto_use_when_grappling and find a legal victim it is currently
     // Grappling (alive, not tombstoned, in reach of that weapon). Returns {weapon_slot, victim_idx},
@@ -2640,6 +2712,9 @@ public:
     // Fiend Warlock L6+, ≥1 "Dark One's Own Luck" use, alive, and reactor == save_target (you add a
     // d10 to your OWN failed save after seeing the roll). No range/LoS, costs no reaction (RAW).
     [[nodiscard]] bool canDarkOnesOwnLuck(const BattleMap& bm, int reactor, int save_target) const;
+    // Paladin Oath of Glory L20 Living Legend (while active): reactor == save_target rerolls its OWN
+    // failed save. Costs the reaction. No range/LoS (self).
+    [[nodiscard]] bool canLivingLegendReroll(const BattleMap& bm, int reactor, int save_target) const;
     // Creature with Legendary Resistance, ≥1 use remaining, alive, and reactor == save_target.
     // No range/LoS test (it's self); does NOT require a free reaction.
     [[nodiscard]] bool canLegendaryResist(const BattleMap& bm, int reactor, int save_target) const;
@@ -2657,6 +2732,8 @@ public:
     bool applyIndomitableToSave (BattleMap& bm, int reactor, SpellSave& ss);
     // Dark One's Own Luck adds 1d10 to ss.bonus + spends 1 "Dark One's Own Luck" use (not the reaction).
     bool applyDarkOnesOwnLuckToSave(BattleMap& bm, int reactor, SpellSave& ss);
+    // Living Legend rerolls ss.d20 (no added bonus — "you must use the new roll") + spends the reaction.
+    bool applyLivingLegendRerollToSave(BattleMap& bm, int reactor, SpellSave& ss);
     bool applyLegendaryResistanceToSave(BattleMap& bm, int reactor, SpellSave& ss);
     // War God's Blessing adds +10 to ss.bonus + spends 1 Channel Divinity use + the cleric's reaction.
     bool applyWarGodsBlessingToSave(BattleMap& bm, int reactor, SpellSave& ss);

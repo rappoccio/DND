@@ -384,6 +384,8 @@ void CombatEngine::rollDamage(const Weapon& w,
         // Apply target's resistance/vulnerability/immunity multiplier. Poisoner (Potent Poison) lets a
         // weapon's Poison damage ignore the target's Poison Resistance (from_spell=false → no Elemental
         // Adept, which is spells-only).
+        // (Aura of Warding is not applied on the weapon-damage path: rollDamage has no BattleMap/target
+        // index in scope. Weapon-borne Necrotic/Psychic/Radiant is rare — see known_limitations.)
         float multiplier = effectiveMagicDamageMult(attacker, target, dmg_roll.type, false);
         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += modified_damage;
@@ -525,6 +527,22 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
                      agentName(bm, idx), s.relentless_rage_dc - 5, save_roll, s.relentless_rage_dc);
                 return s.hp_cur;
             }
+        }
+    }
+
+    // Paladin Oath of the Ancients L15 Undying Sentinel: when reduced to 0 HP and not killed outright,
+    // drop to 1 HP instead and regain 3× Paladin level HP. Once per long rest. The paladin's own
+    // life-save, so it runs before an ally's Rage of the Gods rescue below.
+    if (s.hp_cur <= 0) {
+        if (s.character_class == CharacterClass::Paladin &&
+            s.paladin_oath == OathOfAncientsPath &&
+            s.char_level >= 15 && !s.undying_sentinel_used) {
+            s.undying_sentinel_used = true;
+            s.hp_cur = std::min(s.hp_max, 1 + 3 * s.char_level);
+            bm.setAgentStats(idx, s);
+            log_("{} refuses to fall (Undying Sentinel): drops to 1 HP and regains {} — now at {} HP",
+                 agentName(bm, idx), 3 * s.char_level, s.hp_cur);
+            return s.hp_cur;
         }
     }
 
@@ -797,6 +815,101 @@ bool CombatEngine::applyParry(BattleMap& bm, int reactor_idx, AttackResult& r)
     return true;
 }
 
+// Paladin Oath of Glory — Glorious Defense (L15). OnHit reaction: when you OR a creature you can see
+// within 10 ft is hit by an attack roll, add +CHA (min +1) to that creature's AC vs the attack,
+// potentially flipping the hit to a miss; on a resulting miss you may make one weapon attack against
+// the attacker if it is within range. pal_idx is the reacting paladin (may be the hit creature itself
+// or a bystander within 10 ft of it). Only offered when the +CHA boost would actually flip the hit.
+bool CombatEngine::canGloriousDefense(const BattleMap& bm, const Attack& action,
+                                      const AttackResult& r, int pal_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int tgt = action.target_idx;
+    if (pal_idx < 0 || pal_idx >= n || tgt < 0 || tgt >= n) return false;
+    if (!r.hit || r.critical) return false;                // a natural-20 crit auto-hits; can't be flipped
+    if (bm.isAgentOnDeck(pal_idx)) return false;
+    const Agent::Stats ps = bm.getAgentStats(pal_idx);
+    if (ps.character_class != CharacterClass::Paladin || ps.paladin_oath != OathOfGloryPath ||
+        ps.char_level < 15 || ps.hp_cur <= 0) return false;
+    const Agent::Conditions pc = bm.getAgentConditions(pal_idx);
+    if (pc.reaction_used || pc.incapacitated) return false;
+    const Resource* gd = ps.getResource("Glorious Defense");
+    if (!gd || gd->current <= 0) return false;
+    // The +CHA (min 1) AC boost must actually turn this hit into a miss to be worth offering.
+    const int cha_mod = std::max(1, dndMod(ps.cha));
+    if (r.total_roll >= r.target_ac + cha_mod) return false;
+    // The protected creature must be the paladin itself, or a creature it can see within 10 ft (2 cells).
+    if (pal_idx != tgt) {
+        const PlacedAgent& pp = agents[static_cast<std::size_t>(pal_idx)];
+        const PlacedAgent& tp = agents[static_cast<std::size_t>(tgt)];
+        if (footprintDistance(pp.origin, pp.agent->getSize(), tp.origin, tp.agent->getSize()) * 5 > 10)
+            return false;
+        if (!canPerceiveTarget(bm, pal_idx, tgt)) return false;
+    }
+    return true;
+}
+
+bool CombatEngine::applyGloriousDefense(BattleMap& bm, int pal_idx, const Attack& action, AttackResult& r)
+{
+    if (!canGloriousDefense(bm, action, r, pal_idx)) return false;
+    const Agent::Stats ps = bm.getAgentStats(pal_idx);
+    const int cha_mod = std::max(1, dndMod(ps.cha));
+
+    // Spend a Glorious Defense use and the reaction.
+    spendResource(bm, pal_idx, "Glorious Defense", 1);
+    Agent::Conditions pc = bm.getAgentConditions(pal_idx);
+    pc.reaction_used = true;
+    bm.setAgentConditions(pal_idx, pc);
+
+    // +CHA AC flips the hit to a miss (canGloriousDefense already verified total_roll < AC + cha_mod).
+    r.hit = false;
+    log_("Glorious Defense: {} grants +{} AC to {} — the attack misses!",
+         agentName(bm, pal_idx), cha_mod, agentName(bm, action.target_idx));
+
+    // On the resulting miss, the paladin may make one weapon attack against the attacker if in range.
+    const int widx = riposteWeaponIdx(bm, pal_idx);
+    if (widx >= 0 && !resolving_sentinel_guard_) {
+        const auto threats = threateningAgents(bm, pal_idx, 1);
+        if (std::find(threats.begin(), threats.end(), action.attacker_idx) != threats.end()) {
+            log_("Glorious Defense: {} counter-attacks {}",
+                 agentName(bm, pal_idx), agentName(bm, action.attacker_idx));
+            resolving_sentinel_guard_ = true;
+            AttackResult cr = executeAction(bm, Attack{pal_idx, action.attacker_idx, widx});
+            resolving_sentinel_guard_ = false;
+            (void)cr;
+        }
+    }
+    return true;
+}
+
+// Auto/RL Glorious Defense bystander scan: a Glory L15+ paladin OTHER than the hit creature may spend
+// its reaction to protect it. The self-protection case flows through defenderOnHitOptions instead.
+bool CombatEngine::maybeGloriousDefenseInline(BattleMap& bm, const Attack& action, AttackResult& r)
+{
+    if (!decider_) return false;
+    if (!r.hit || r.critical) return false;
+    if (resolving_sentinel_guard_) return false;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int pal = 0; pal < n; ++pal) {
+        if (pal == action.target_idx) continue;           // self case handled via the defender window
+        if (!canGloriousDefense(bm, action, r, pal)) continue;
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnHit;
+        ctx.reactor_idx = pal;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Glorious Defense (+CHA AC to the ally — the attack misses, then counter)", "GloriousDefense"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "GloriousDefense") continue;
+        return applyGloriousDefense(bm, pal, action, r);
+    }
+    return false;
+}
+
 // Monk Deflect Attacks (L3+) — OnHit defender reaction. When hit by an attack that deals Bludgeoning,
 // Piercing, or Slashing damage, the Monk may spend its reaction to reduce that damage by
 // 1d10 + DEX modifier + Monk level. At L13 (Deflect Energy) the reaction applies to an attack of ANY
@@ -953,6 +1066,11 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     if (canDefensiveDuelist(bm, action, r))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Defensive Duelist (+PB AC — the attack misses)", "DefensiveDuelist"});
+    // Glorious Defense (Oath of Glory L15): self-protection case (the hit creature is the paladin).
+    // The protect-an-ally (bystander) case is handled by the auto/RL scan maybeGloriousDefenseInline.
+    if (canGloriousDefense(bm, action, r, action.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Glorious Defense (+CHA AC — the attack misses, then counter)", "GloriousDefense"});
     if (canCombatInspirationAC(bm, action, r))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Combat Inspiration (add die to AC — attack may miss)", "CombatInspirationAC"});
@@ -1011,6 +1129,8 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
         }
         return false;
     }
+    if (opt.feature == "GloriousDefense")
+        return applyGloriousDefense(bm, action.target_idx, action, r);
     if (opt.feature == "CombatInspirationAC") {
         int die_val = applyCombatInspirationAC(bm, action.target_idx);
         if (die_val >= 0) {
@@ -1178,6 +1298,58 @@ bool CombatEngine::maybeSentinelGuardInline(BattleMap& bm, const Attack& action,
         if (opt.kind != ReactionOption::Feature || opt.feature != "SentinelGuard") continue;
         (void)applySentinelGuard(bm, sentinel, action.attacker_idx, widx);
         return true;                                      // one guard per attack (reaction-economy bounds the chain)
+    }
+    return false;
+}
+
+// ── Paladin Oath of Vengeance — Soul of Vengeance (L15) ─────────────────────
+// RAW 2024: immediately after a creature under the effect of your Vow of Enmity hits OR misses with
+// an attack roll, you may use your Reaction to make a melee attack against that creature if it's in
+// range. Keys on the attack being made (like Sentinel Guardian), not its outcome. The attacker (the
+// sworn foe) may even be striking the paladin itself — the paladin still gets the counter.
+bool CombatEngine::canSoulOfVengeance(const BattleMap& bm, const Attack& action, int pal_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx;
+    if (pal_idx < 0 || pal_idx >= n || atk < 0 || atk >= n) return false;
+    if (pal_idx == atk) return false;                     // a creature is never its own vow target
+    if (bm.isAgentOnDeck(pal_idx)) return false;          // On Deck reserves take no reactions until deployed
+    const Agent::Stats ps = bm.getAgentStats(pal_idx);
+    if (ps.character_class != CharacterClass::Paladin || ps.paladin_oath != OathOfVengeancePath ||
+        ps.char_level < 15 || ps.hp_cur <= 0) return false;
+    // The attacker must be this paladin's currently-sworn foe.
+    if (ps.vow_of_enmity_turns <= 0 || ps.vow_of_enmity_target != atk) return false;
+    const Agent::Conditions pc = bm.getAgentConditions(pal_idx);
+    if (pc.reaction_used || pc.incapacitated) return false;
+    if (riposteWeaponIdx(bm, pal_idx) < 0) return false;  // needs a melee weapon to strike back
+    // "if it's within range": the sworn foe must be within the paladin's 5 ft melee reach (1 cell).
+    const auto threats = threateningAgents(bm, pal_idx, 1);
+    return std::find(threats.begin(), threats.end(), atk) != threats.end();
+}
+
+bool CombatEngine::maybeSoulOfVengeanceInline(BattleMap& bm, const Attack& action, AttackResult& /*r*/)
+{
+    // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via soul_of_vengeance_available.
+    if (!decider_) return false;
+    if (resolving_sentinel_guard_) return false;          // a reaction counter-strike doesn't provoke another
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int pal = 0; pal < n; ++pal) {
+        if (!canSoulOfVengeance(bm, action, pal)) continue;
+        const int widx = riposteWeaponIdx(bm, pal);
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnAllyAttacked;
+        ctx.reactor_idx = pal;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, widx,
+                                             "Soul of Vengeance (melee attack vs the sworn foe)", "SoulOfVengeance"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "SoulOfVengeance") continue;
+        (void)applySoulOfVengeance(bm, pal, action.attacker_idx, widx);
+        return true;                                      // one counter per attack (reaction economy bounds the chain)
     }
     return false;
 }
@@ -1440,6 +1612,32 @@ void CombatEngine::forceAutoHit(BattleMap& bm, InFlightAttack& s)
     s.r.fumble = false;
     log_("{} automatically hits the Grappled {} ({})",
          agentName(bm, s.action.attacker_idx), agentName(bm, s.action.target_idx), w.name);
+}
+
+// Paladin Oath of Glory L20 Living Legend — Unerring Strike: once on each of your turns, when you make
+// a weapon attack roll and miss, cause that attack to hit instead. Auto-fires on the first miss of the
+// turn while Living Legend is active (strictly beneficial; the "save it for later" choice is not modeled
+// — see known_limitations). Runs right after the roll so the promoted hit still opens the defender's
+// OnHit window (Shield, etc.). Mirrors forceAutoHit's damage-roll-on-promotion.
+void CombatEngine::maybeUnerringStrike(BattleMap& bm, InFlightAttack& s)
+{
+    if (s.r.hit || !s.r.valid) return;                   // only a resolved miss can be promoted
+    const Agent::Stats as = bm.getAgentStats(s.action.attacker_idx);
+    if (as.character_class != CharacterClass::Paladin || as.paladin_oath != OathOfGloryPath ||
+        as.char_level < 20 || as.living_legend_turns <= 0) return;
+    if (bm.getAgentConditions(s.action.attacker_idx).unerring_strike_used) return;  // once per turn
+    // Record intent; the once-per-turn flag is committed as the LAST attacker-conditions write in
+    // applyAttackResult (setting it here would be clobbered by that finalize's updated_atk_cond write).
+    s.unerring_fired = true;
+    // resolveAttack skips the damage roll on a miss, so roll it now for the promoted hit.
+    if (s.r.total_damage <= 0) {
+        Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
+        Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
+        rollDamage(s.w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage);
+    }
+    s.r.hit    = true;
+    s.r.fumble = false;
+    log_("{} refuses to miss (Unerring Strike): the attack hits instead", agentName(bm, s.action.attacker_idx));
 }
 
 void CombatEngine::reevaluateAttackHit(AttackResult& r) const noexcept
@@ -1790,6 +1988,8 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
     } else if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, ctx.reactor_idx))
             in_flight_attack_.r.hit = false;
+    } else if (opt.feature == "GloriousDefense") {
+        applyGloriousDefense(bm, ctx.reactor_idx, in_flight_attack_.action, in_flight_attack_.r);
     }
 }
 
@@ -1814,6 +2014,7 @@ FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
     s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
     forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
+    maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
     return advanceAttack(bm);
 }
 
@@ -2146,6 +2347,16 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: inside an advantage aura");
     }
 
+    // Paladin Oath of Vengeance — Vow of Enmity (L3): the paladin has Advantage on attacks
+    // against the sworn creature while the vow is active.
+    {
+        const Agent::Stats& asv = atk_pt.agent->getStats();
+        if (asv.vow_of_enmity_turns > 0 && asv.vow_of_enmity_target == action.target_idx) {
+            adv = true;
+            log_("Advantage: Vow of Enmity");
+        }
+    }
+
     // Attacker blinded: attacks have disadvantage
     if (atk_cond.blinded) {
         dis = true;
@@ -2211,6 +2422,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
             dis = true;
             log_("Disadvantage: attacker is grappled");
         }
+    }
+
+    // Attacker restrained: disadvantage on its attacks
+    if (atk_cond.restrained) {
+        dis = true;
+        log_("Disadvantage: attacker is restrained");
     }
 
     // Attacker is hidden: attacks have advantage (will be revealed after attack)
@@ -2299,6 +2516,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (tgt_cond.unconscious) {
         adv = true;
         log_("Advantage: target is unconscious");
+    }
+
+    // Target is restrained: attacker gets advantage
+    if (tgt_cond.restrained) {
+        adv = true;
+        log_("Advantage: target is restrained");
     }
 
     // Target has Reckless Attack active (Barbarian): attacker gets advantage
@@ -2456,6 +2679,7 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
     s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
     forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
+    maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
     // Auto/RL OnD20Seen window (inline): nearby creatures may LOWER the roll (Bend Luck / Cutting
     // Words / Silvery Barbs) before it commits — runs BEFORE Shield so a lowered-to-miss attack opens
     // no Shield window (shouldOfferDefenderShield is gated on r.hit).
@@ -2464,6 +2688,10 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // applyAttackResult re-fetches the target's stats, so a Shield slot-spend/AC or the halved damage are
     // reflected (no stale-snapshot clobber).
     maybeDefenderOnHitInline(bm, action, s.r);
+    // Auto/RL Glorious Defense bystander window (Oath of Glory L15): a nearby Glory paladin may add
+    // +CHA AC to a hit ally within 10 ft, flipping the hit to a miss (and counter-attacking). Runs in
+    // the same pre-damage window; no-ops if the self case above already negated the hit (r.hit false).
+    maybeGloriousDefenseInline(bm, action, s.r);
     AttackResult r = applyAttackResult(bm, s);
     // Auto/RL Interception (OnAllyAttacked): a nearby ally with the Interception fighting style may
     // spend its reaction to reduce the damage this hit dealt (post-hit heal-back). On-hit only.
@@ -2481,6 +2709,9 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // Auto/RL Sentinel Guardian (OnAllyAttacked): a Sentinel adjacent to the attacker may counter-attack
     // it after it struck an ally. Runs last — it's a bystander's reaction and never alters this attack.
     maybeSentinelGuardInline(bm, action, r);
+    // Auto/RL Soul of Vengeance (Oath of Vengeance L15): if the attacker is under a paladin's Vow of
+    // Enmity, that paladin may make a melee counter-strike. Also a pure reaction; never alters this attack.
+    maybeSoulOfVengeanceInline(bm, action, r);
     return r;
 }
 
@@ -2876,6 +3107,21 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         for (int g = 0; g < static_cast<int>(agents.size()); ++g) {
             if (canSentinelGuard(bm, action, g)) {
                 updated_atk_cond.sentinel_guard_available = true;
+                bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+                break;
+            }
+        }
+    }
+
+    // ── Paladin Oath of Vengeance — Soul of Vengeance eligibility (OnAllyAttacked-style) ──
+    // After ANY attack (hit or miss) by a creature under a paladin's Vow of Enmity, that L15+
+    // Vengeance paladin may spend its reaction for a melee counter-strike. Flagged on the ATTACKER
+    // for the GUI (which scans via canSoulOfVengeance + applySoulOfVengeance); the auto/RL path uses
+    // maybeSoulOfVengeanceInline. Skipped while a reaction counter-strike is itself resolving.
+    if (!resolving_sentinel_guard_) {
+        for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
+            if (canSoulOfVengeance(bm, action, p)) {
+                updated_atk_cond.soul_of_vengeance_available = true;
                 bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
                 break;
             }
@@ -3829,6 +4075,15 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             bm.setAgentConditions(action.attacker_idx, cond);
             log_("{}'s Sanctuary ends (made an attack)", agents[action.attacker_idx].agent->name());
         }
+    }
+
+    // Oath of Glory L20 Unerring Strike: commit the once-per-turn flag as the LAST attacker-conditions
+    // write, so it survives every finalize write above (which copy a pre-promotion updated_atk_cond).
+    if (s.unerring_fired && action.attacker_idx >= 0 &&
+        action.attacker_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions uc = bm.getAgentConditions(action.attacker_idx);
+        uc.unerring_strike_used = true;
+        bm.setAgentConditions(action.attacker_idx, uc);
     }
 
     return r;

@@ -104,6 +104,7 @@ bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
     Agent::Conditions cond = bm.getAgentConditions(idx);
     // Check for any condition that reduces speed to 0
     if (cond.incapacitated || cond.unconscious || cond.paralyzed
+            || cond.restrained                 // Restrained (e.g. Nature's Wrath): Speed 0
             || cond.branches_speed_zeroed) {   // World Tree Branches of the Tree: Speed 0 this turn
         return false;
     }
@@ -633,30 +634,38 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
     const Cell saved = agents[static_cast<std::size_t>(ctx.source_idx)].origin;
     bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
 
-    // Sentinel feat clause 1: when a Sentinel-feated reactor HITS with its opportunity attack, the
-    // target's speed becomes 0 for the rest of the turn (it stops where the OA triggered).
-    const bool reactor_has_sentinel = bm.getAgentStats(reactor).has_sentinel;
-    bool sentinel_hit = false;
+    // Speed→0 on an opportunity-attack hit: shared by two features whose reactor HITS the mover with
+    // its OA, freezing the mover's Speed for the rest of the turn (it stops where the OA triggered).
+    //   • Sentinel feat clause 1 (any Sentinel-feated reactor).
+    //   • Paladin Oath of Vengeance L7 Relentless Avenger (adds the rider to a normal OA hit).
+    const Agent::Stats rstats = bm.getAgentStats(reactor);
+    const bool reactor_has_sentinel = rstats.has_sentinel;
+    const bool reactor_relentless =
+        rstats.character_class == CharacterClass::Paladin &&
+        rstats.paladin_oath == OathOfVengeancePath && rstats.char_level >= 7;
+    bool sentinel_hit = false;   // an OA hit that reduces the mover's Speed to 0 (either source)
 
     if (opt.kind == ReactionOption::Weapon) {
         Attack oa{reactor, target, opt.index};
         oa.opportunity = true;   // a Speedy target imposes Disadvantage on the OA roll
         AttackResult r = executeAction(bm, oa);
-        const bool is_sentinel_oa = reactor_has_sentinel && target == ctx.source_idx;
+        const bool halts_mover = (reactor_has_sentinel || reactor_relentless) && target == ctx.source_idx;
+        const char* oa_label = reactor_has_sentinel ? "Sentinel OA"
+                             : (reactor_relentless ? "Relentless Avenger OA" : "OA");
         // Log the to-hit result (executeAction logs damage/conditions but not the roll). The old
         // Python OA path logged this; it now lives here so OA hits/misses aren't silent.
         if (!r.valid) {
-            log_("{}: {} can't reach {}", is_sentinel_oa ? "Sentinel OA" : "OA",
+            log_("{}: {} can't reach {}", oa_label,
                  agentName(bm, reactor), agentName(bm, target));
         } else if (r.hit) {
-            sentinel_hit = is_sentinel_oa;
+            sentinel_hit = halts_mover;
             log_("{}: {} hits {} — roll {} vs AC {}{}{}{}",
-                 is_sentinel_oa ? "Sentinel OA" : "OA",
+                 oa_label,
                  agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac,
                  r.critical ? " (CRIT)" : "", r.target_down ? " — DOWN" : "",
-                 (sentinel_hit && !r.target_down) ? " — Sentinel: speed → 0" : "");
+                 (sentinel_hit && !r.target_down) ? " — Speed → 0" : "");
         } else {
-            log_("{}: {} misses {} — roll {} vs AC {}", is_sentinel_oa ? "Sentinel OA" : "OA",
+            log_("{}: {} misses {} — roll {} vs AC {}", oa_label,
                  agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac);
         }
         in_flight_move_.results.push_back(r);
@@ -721,7 +730,7 @@ CombatEngine::advanceMove(BattleMap& bm)
         const Cell commit = m.mover_halted ? m.halt_cell : m.dest;
         (void)moveAgent(bm, m.mover_idx, commit, m.type);   // real budgeted move + terrain/zone checks
         if (m.mover_halted) {
-            // Sentinel feat: speed becomes 0 for the rest of the turn. Zero BOTH the engine budgets and
+            // Sentinel / Relentless Avenger: speed becomes 0 for the rest of the turn. Zero BOTH the engine budgets and
             // the Agent's own remaining (BattleMap::moveAgent reads the latter) so no further movement —
             // including a fresh begin_move — is possible this turn.
             walkRemaining_[m.mover_idx]   = 0;

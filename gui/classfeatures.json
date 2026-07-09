@@ -79,5 +79,30 @@
   "physical_damage_types": [],
   "healing_type": {"num_dice": 1, "die_size": 10, "bonus": 0},
   "scaling": {"level_bonus": true}
+ },
+ {
+  "name": "Nature's Wrath",
+  "class": "Paladin",
+  "subclass": "OathOfAncients",
+  "min_level": 3,
+  "description": "Channel Divinity: as a Magic action, conjure spectral vines around nearby creatures. Each creature of your choice that you can see within 15 feet must succeed on a Strength saving throw or have the Restrained condition for 1 minute. A Restrained creature repeats the save at the end of each of its turns, ending the effect on itself on a success.",
+  "type": "Harm",
+  "geometry": "Sphere",
+  "selective_targeting": true,
+  "attack_type": "Save",
+  "save_ability": "SaveStr",
+  "casting_time": "Action",
+  "school": "conjuration",
+  "range": 0,
+  "radius": 15,
+  "duration": 1,
+  "level": 0,
+  "resource_name": "Channel Oath",
+  "resource_cost": 1,
+  "magic_damage_types": [],
+  "physical_damage_types": [],
+  "conditions": [
+   {"condition_name": "Restrained", "condition_duration": 10, "save_repeat_turns": 1, "save_ability": "SaveStr", "save_dc_ability": "SaveSpellcasterMod"}
+  ]
  }
 ]

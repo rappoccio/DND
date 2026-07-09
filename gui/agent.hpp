@@ -514,6 +514,16 @@ namespace rpg {
       int  relentless_rage_dc{10};                               // Relentless Rage save DC (10 base, +5 per use in same Rage); reset on rage end
       int  sacred_weapon_bonus{0};                               // Paladin Oath of Devotion: Sacred Weapon attack bonus (0 = inactive)
       int  sacred_weapon_turns{0};                               // Sacred Weapon remaining duration in rounds (decrements at turn start)
+      // ── Paladin Oath of Vengeance ───────────────────────────────────────────
+      int  vow_of_enmity_target{-1};                             // L3 Vow of Enmity: target agent index (-1 = none). Grants Advantage on this paladin's attacks vs that creature while active.
+      int  vow_of_enmity_turns{0};                               // Vow of Enmity remaining duration in rounds (decrements at turn start); 0 = inactive.
+      int  avenging_angel_turns{0};                              // L20 Avenging Angel: rounds remaining (>0 = active: Fly 60 + hover; Frightful Aura in Aura of Protection). 10 min = 100 rounds; ticks at turn start.
+      int  avenging_angel_prior_fly{0};                          // Avenging Angel: speed_fly snapshot before the grant, restored on expiry.
+      // ── Paladin Oath of the Ancients ────────────────────────────────────────
+      bool undying_sentinel_used{false};                         // L15 Undying Sentinel: the 1/long-rest drop-to-1-HP-and-heal has been used (reset on long rest).
+      int  elder_champion_turns{0};                              // L20 Elder Champion: rounds remaining (>0 = active: regen 10/turn; enemies in aura have Disadvantage on saves vs your spells/CD). 1 min = 10 rounds; ticks at turn start.
+      // ── Paladin Oath of Glory ───────────────────────────────────────────────
+      int  living_legend_turns{0};                               // L20 Living Legend: rounds remaining (>0 = active: reaction save-reroll + once/turn Unerring Strike miss→hit). 10 min = 100 rounds; ticks at turn start.
       int  corona_of_light_turns{0};                             // Cleric Light Domain (L17): Corona of Light remaining duration in rounds (>0 = enemies in 60ft have Disadvantage on saves vs the caster's Fire/Radiant spells)
       int  innate_sorcery_turns{0};                              // Sorcerer Innate Sorcery: remaining duration in rounds (>0 = active: +1 spell DC, advantage on spell attacks)
       // ── Sorcerer Subclass Features ──────────────────────────────────────────
@@ -725,6 +735,9 @@ namespace rpg {
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
       bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)
       bool sentinel_guard_available{false}; // Sentinel feat (Guardian): an adjacent enemy attacked an ally; a nearby Sentinel may guard (set on the ATTACKER)
+      bool soul_of_vengeance_available{false}; // Paladin Oath of Vengeance L15 Soul of Vengeance: a creature under a paladin's Vow of Enmity just attacked; that paladin may react-strike it (set on the ATTACKER)
+      bool inspiring_smite_used{false};     // Paladin Oath of Glory L3 Inspiring Smite: already distributed temp HP this turn (once per Divine Smite); reset at turn start
+      bool unerring_strike_used{false};     // Paladin Oath of Glory L20 Living Legend: the once-per-turn Unerring Strike (weapon miss→hit) has fired this turn; reset at turn start
       bool colossus_slayer_used{false};     // Hunter L3 Colossus Slayer: +1d8 already applied this turn (once/turn)
       bool horde_breaker_available{false};  // Hunter L3 Horde Breaker: a weapon hit can grant an extra attack vs an adjacent creature (GUI prompt)
       bool horde_breaker_used{false};       // Hunter L3 Horde Breaker already used this turn (once/turn)
@@ -937,6 +950,9 @@ namespace rpg {
       conditions_.feint_target_idx             = -1;
       conditions_.quick_toss_die_pending       = false;
       conditions_.sentinel_guard_available     = false;
+      conditions_.soul_of_vengeance_available  = false;
+      conditions_.inspiring_smite_used         = false;
+      conditions_.unerring_strike_used         = false;
       // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
       // they are consumed on the next qualifying attack roll (and survive into this
       // turn so a sapped creature's attack still suffers disadvantage). slowed and

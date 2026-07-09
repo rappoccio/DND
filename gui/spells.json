@@ -8476,7 +8476,7 @@
       }
     ],
     "physical_damage_types": [],
-    "level": 3,
+    "level": 0,
     "upcast_dice_bonus": 1,
     "requires_concentration": false,
     "requires_los": false,

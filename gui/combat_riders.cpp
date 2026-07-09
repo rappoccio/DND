@@ -1403,6 +1403,32 @@ AttackResult CombatEngine::applySentinelGuard(BattleMap& bm, int sentinel_idx,
     return r;
 }
 
+AttackResult CombatEngine::applySoulOfVengeance(BattleMap& bm, int paladin_idx,
+                                                int attacker_idx, int weapon_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (paladin_idx < 0 || paladin_idx >= n || attacker_idx < 0 || attacker_idx >= n)
+        return AttackResult{};
+    Agent::Conditions pc = bm.getAgentConditions(paladin_idx);
+    if (pc.reaction_used) return AttackResult{};          // re-validate (canSoulOfVengeance checked, but be safe)
+
+    log_("Soul of Vengeance: {} reacts — melee attack vs its sworn foe {}",
+         agentName(bm, paladin_idx), agentName(bm, attacker_idx));
+
+    // A fresh melee attack at the sworn foe. resolving_sentinel_guard_ (shared reaction-nesting guard)
+    // keeps this counter-strike from re-opening the reaction window (no counter-of-a-counter).
+    resolving_sentinel_guard_ = true;
+    AttackResult r = executeAction(bm, Attack{paladin_idx, attacker_idx, weapon_idx});
+    resolving_sentinel_guard_ = false;
+
+    // Spend the reaction (re-fetch: executeAction may have mutated the paladin's conditions).
+    pc = bm.getAgentConditions(paladin_idx);
+    pc.reaction_used = true;
+    bm.setAgentConditions(paladin_idx, pc);
+    return r;
+}
+
 ToppleResult CombatEngine::applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept
 {
     ToppleResult res;

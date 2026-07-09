@@ -207,7 +207,8 @@ int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ab
 // dndMod (floor-rounding ability modifier) now lives in combat_internal.hpp so every
 // translation unit shares one correct implementation. See note there.
 
-int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level) const noexcept
+int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level,
+                                  PaladinOath require_oath) const noexcept
 {
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return 0;
@@ -219,6 +220,8 @@ int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_le
         const PlacedAgent& ppa = agents[static_cast<std::size_t>(p)];
         const Agent::Stats& ps = ppa.agent->getStats();
         if (ps.character_class != CharacterClass::Paladin || ps.char_level < min_level) continue;
+        // Oath-specific auras (e.g. Aura of Warding) emanate only from a Paladin of that oath.
+        if (require_oath != PaladinOathNone && ps.paladin_oath != require_oath) continue;
         // The aura emanates only from a conscious Paladin.
         if (ps.hp_cur <= 0) continue;
         const Agent::Conditions& pc = ppa.agent->getConditions();
@@ -242,6 +245,18 @@ int CombatEngine::auraSaveBonus(const BattleMap& bm, int agent_idx) const noexce
 bool CombatEngine::hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept
 {
     return bestPaladinAura(bm, agent_idx, 10) > 0;   // Aura of Courage (L10+)
+}
+
+bool CombatEngine::hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // Oath of the Ancients L7+ Aura of Warding: Resistance to Necrotic/Psychic/Radiant in the aura.
+    return bestPaladinAura(bm, agent_idx, 7, OathOfAncientsPath) > 0;
+}
+
+bool CombatEngine::hasAuraOfAlacrity(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // Oath of Glory L7+ Aura of Alacrity: +10 ft Speed while in the aura (self always qualifies).
+    return bestPaladinAura(bm, agent_idx, 7, OathOfGloryPath) > 0;
 }
 
 bool CombatEngine::hasAdvantageAura(const BattleMap& bm, int agent_idx) const noexcept

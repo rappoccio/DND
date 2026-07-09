@@ -607,6 +607,8 @@ class App:
         self.pending_beguiling         = False # Glamour Bard Beguiling Magic: awaiting target click after cast
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
         self.pending_clairvoyant       = False # Great Old One Warlock Clairvoyant Combatant: awaiting enemy target click
+        self.pending_vow_of_enmity     = False # Paladin Oath of Vengeance Vow of Enmity: awaiting enemy target click
+        self.pending_inspiring_smite   = False # Paladin Oath of Glory Inspiring Smite: awaiting temp-HP recipient click
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
@@ -1136,6 +1138,21 @@ class App:
         self.btn_cbt_corona = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Corona of Light (Action)",
                                           (235, 215, 120), (255, 240, 160), self.font_md)
+        self.btn_cbt_vow_of_enmity = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Vow of Enmity (Channel Oath)",
+                                          (170, 60, 70), (210, 90, 100), self.font_md)
+        self.btn_cbt_avenging_angel = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Avenging Angel (Bonus Action)",
+                                          (200, 70, 90), (240, 105, 125), self.font_md)
+        self.btn_cbt_elder_champion = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Elder Champion (Bonus Action)",
+                                          (70, 140, 90), (100, 180, 120), self.font_md)
+        self.btn_cbt_inspiring_smite = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Inspiring Smite (Channel Oath)",
+                                          (210, 180, 80), (245, 215, 115), self.font_md)
+        self.btn_cbt_living_legend = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Living Legend (Bonus Action)",
+                                          (215, 160, 60), (250, 195, 95), self.font_md)
         self.btn_cbt_telekinetic = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Telekinetic Movement",
                                           (140, 160, 210), (170, 190, 240), self.font_md)
@@ -2294,6 +2311,10 @@ class App:
             fly    = stats.speed_fly
             swim   = stats.speed_swim
             burrow = stats.speed_burrow
+            # Aura of Alacrity (Paladin Oath of Glory L7): +10 ft Speed while in a Glory paladin's aura
+            # (the paladin itself always qualifies). Seed the agent's own budget so real moves get it.
+            if self.combat.has_aura_of_alacrity(self.bm, agent_idx):
+                walk += 10
             # World Tree Branches of the Tree: a failed save zeroes the target's Speed until end of turn
             # (canAgentMove also blocks the move); reflect it in the budget/overlay so the UI agrees.
             if cond.branches_speed_zeroed:
@@ -2470,6 +2491,8 @@ class App:
         self.pending_beguiling         = False
         self.pending_beguiling_bard    = -1
         self.pending_clairvoyant       = False
+        self.pending_vow_of_enmity     = False
+        self.pending_inspiring_smite   = False
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -2547,6 +2570,8 @@ class App:
         self.pending_beguiling         = False
         self.pending_beguiling_bard    = -1
         self.pending_clairvoyant       = False
+        self.pending_vow_of_enmity     = False
+        self.pending_inspiring_smite   = False
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -3874,6 +3899,7 @@ class App:
         has_protective_field = False
         has_interception = False
         has_sentinel_guard = False
+        has_soul_of_vengeance = False
         has_sudden_strike = False
         has_homing_strike = False
         if result.valid:
@@ -3952,6 +3978,10 @@ class App:
             # attacker's own rider shadows it this swing — see known_limitations.md).
             elif atk_cond and atk_cond.sentinel_guard_available:
                 has_sentinel_guard = True
+            # Soul of Vengeance (Oath of Vengeance L15): the sworn foe just attacked; the paladin holding
+            # the Vow of Enmity may counter-strike. Flagged on the attacker (the sworn foe); fires on hit OR miss.
+            elif atk_cond and atk_cond.soul_of_vengeance_available:
+                has_soul_of_vengeance = True
             # Stalker's Flurry — Sudden Strike (Gloom Stalker L11): a Dreadful Strike hit grants one
             # FREE extra weapon attack (no action/bonus cost). Flagged on the attacker by the engine
             # when the Dreadful Strike rider fires; offered last (an attacker's own rider shadows it
@@ -4071,6 +4101,8 @@ class App:
             self._offer_interception(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_sentinel_guard:
             self._offer_sentinel_guard(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_soul_of_vengeance:
+            self._offer_soul_of_vengeance(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             self._offer_push(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
@@ -5458,6 +5490,60 @@ class App:
         px, py = self._agent_screen_pos(sentinel_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _offer_soul_of_vengeance(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """Offer a Vengeance paladin (L15+) a Soul of Vengeance reaction after its sworn foe (under the
+        paladin's Vow of Enmity) makes an attack: spend the reaction to make a melee attack at that foe.
+        The reactor is found by scan via can_soul_of_vengeance. Fires on a hit OR a miss; never alters the
+        original attack. Mirrors _offer_sentinel_guard."""
+        agents = self.bm.placed_agents
+        pal_idx = -1
+        for i in range(len(agents)):
+            if self.combat.can_soul_of_vengeance(self.bm, action, i):
+                pal_idx = i
+                break
+        if pal_idx < 0:                            # eligibility lapsed since the flag was set
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+            return
+        pal_name = agents[pal_idx].name if pal_idx < len(agents) else "?"
+        # First melee weapon the paladin wields (mirrors C++ riposteWeaponIdx; the engine re-validates).
+        widx = next((i for i, w in enumerate(self.combat.get_agent_weapons(self.bm, pal_idx))
+                     if w.type == rpg.WeaponType.Melee), -1)
+
+        def _apply():
+            self._combat_log_add(atk_msg)          # the original attack still happened
+            grd = self.combat.apply_soul_of_vengeance(self.bm, pal_idx, atk_idx, widx)
+            if grd.valid and grd.hit:
+                dmg_parts = self._get_damage_type_names(grd.magic_damage_types, grd.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                self._combat_log_add(
+                    f"{pal_name}→{atk_name}: Soul of Vengeance → HIT {grd.total_damage}"
+                    f"{self._damage_breakdown_str(grd)} {dmg_type_str}"
+                    f"{' CRIT!' if grd.critical else ''}{' — DOWN' if grd.target_down else ''}")
+                if grd.target_down:
+                    self._drop_concentration_for_agent(atk_idx)
+            elif grd.valid:
+                self._combat_log_add(
+                    f"{pal_name}→{atk_name}: Soul of Vengeance → misses "
+                    f"(roll {grd.total_roll} vs AC {grd.target_ac})")
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        def _skip():
+            self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            (f"Soul of Vengeance — {pal_name} melee attacks its sworn foe (reaction)", _apply),
+            ("Skip", _skip),
+        ]
+        px, py = self._agent_screen_pos(pal_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
     def _can_protective_field(self, target_idx, result):
         """Eligibility gate for the Psi Warrior Protective Field reaction (mirrors the checks in
         applyProtectiveField). Reactor = the hit target: Fighter L3+ Psi Warrior, reaction free, not
@@ -6421,6 +6507,49 @@ class App:
         self.bonus_used = True
         self._combat_log_add(f"{name}: Sacred Weapon! +{bonus} to weapon attack rolls for 1 minute.")
 
+    def _use_avenging_angel(self, agent_idx: int):
+        """Paladin Oath of Vengeance (L20) Avenging Angel: Bonus Action, 10 minutes — Fly 60 (hover)
+        and a Frightful Aura in the Aura of Protection. 1/long rest, or a level-5 slot when exhausted."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        ok = self.combat.activate_avenging_angel(self.bm, agent_idx)
+        name = self.bm.placed_agents[agent_idx].name
+        if not ok:
+            self._combat_log_add(f"{name}: Cannot use Avenging Angel (needs Oath of Vengeance L20, a use or level-5 slot, and a bonus action).")
+            self._flush_combat_log()
+            return
+        self.bonus_used = True
+        self._flush_combat_log()
+
+    def _use_living_legend(self, agent_idx: int):
+        """Paladin Oath of Glory (L20) Living Legend: Bonus Action, 10 minutes — a reaction to reroll a
+        failed save and once-per-turn Unerring Strike (weapon miss→hit). 1/long rest, or a level-5 slot."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        ok = self.combat.activate_living_legend(self.bm, agent_idx)
+        name = self.bm.placed_agents[agent_idx].name
+        if not ok:
+            self._combat_log_add(f"{name}: Cannot use Living Legend (needs Oath of Glory L20, a use or level-5 slot, and a bonus action).")
+            self._flush_combat_log()
+            return
+        self.bonus_used = True
+        self._flush_combat_log()
+
+    def _use_elder_champion(self, agent_idx: int):
+        """Paladin Oath of the Ancients (L20) Elder Champion: Bonus Action, 1 minute — regain 10 HP each
+        turn and enemies in the Aura of Protection have Disadvantage on saves vs your spells/Channel Oath.
+        1/long rest, or a level-5 slot when exhausted."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return
+        ok = self.combat.activate_elder_champion(self.bm, agent_idx)
+        name = self.bm.placed_agents[agent_idx].name
+        if not ok:
+            self._combat_log_add(f"{name}: Cannot use Elder Champion (needs Oath of the Ancients L20, a use or level-5 slot, and a bonus action).")
+            self._flush_combat_log()
+            return
+        self.bonus_used = True
+        self._flush_combat_log()
+
     def _use_corona_of_light(self, agent_idx: int):
         """Cleric Light Domain (L17+) Corona of Light: Magic action, 1-minute aura giving enemies
         within 60 ft Disadvantage on saves vs this caster's Fire/Radiant spells."""
@@ -6468,6 +6597,36 @@ class App:
         else:
             self._flush_combat_log()
             self._combat_log_add("Clairvoyant Combatant unavailable.")
+
+    def _resolve_vow_of_enmity(self, target_idx: int):
+        """Paladin Oath of Vengeance Vow of Enmity: the clicked enemy becomes the sworn foe — the
+        paladin gains Advantage on attacks against it for 1 minute. Spends one Channel Oath use."""
+        self.pending_vow_of_enmity = False
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        if target_idx == idx:
+            self._combat_log_add("Vow of Enmity: pick an enemy, not yourself.")
+            return
+        if self.combat.activate_vow_of_enmity(self.bm, idx, target_idx):
+            self._flush_combat_log()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Vow of Enmity unavailable (needs Oath of Vengeance, a Channel Oath use, and a target within 30 ft).")
+
+    def _resolve_inspiring_smite(self, target_idx: int):
+        """Paladin Oath of Glory Inspiring Smite: grant the clicked creature (within 30 ft, may be self)
+        2d8 + Paladin level temporary HP. Spends one Channel Oath use; only right after a Divine Smite."""
+        self.pending_inspiring_smite = False
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        thp = self.combat.activate_inspiring_smite(self.bm, idx, target_idx)
+        if thp >= 0:
+            self._flush_combat_log()
+        else:
+            self._flush_combat_log()
+            self._combat_log_add("Inspiring Smite unavailable (needs Oath of Glory, a Divine Smite this turn, a Channel Oath use, and a target within 30 ft).")
 
     def _resolve_lay_on_hands(self, target_idx: int):
         """Paladin Lay on Hands: spend from pool, heal target."""
@@ -6934,10 +7093,16 @@ class App:
                 continue
             if level < int(feat.get("min_level", 1)):
                 continue
-            # Subclass-gated features (e.g. Radiance of the Dawn) only for the matching domain.
+            # Subclass-gated features (e.g. Radiance of the Dawn, Nature's Wrath) only for the matching
+            # subclass. Map each class to the Stats attribute that names its chosen subclass.
             sub = feat.get("subclass")
-            if sub and (class_name != "Cleric" or stats.cleric_subclass.name != sub):
-                continue
+            if sub:
+                agent_sub = {
+                    "Cleric": stats.cleric_subclass.name,
+                    "Paladin": stats.paladin_oath.name,
+                }.get(class_name)
+                if agent_sub != sub:
+                    continue
             name = feat.get("name")
             if name in existing:
                 continue
@@ -7023,6 +7188,23 @@ class App:
                         continue  # not in spells.json — skip gracefully
                     cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
+
+        # Paladin oath always-prepared spells — regular spells from spells.json, granted by
+        # oath + Paladin level (2024 PHB). Uses PaladinOath.name as the key. Pure-utility oath
+        # spells (e.g. Scrying, Commune with Nature) are intentionally omitted — see known_limitations.
+        if class_name == "Paladin":
+            sub_table = self._PALADIN_OATH_SPELLS.get(stats.paladin_oath.name, {})
+            for min_lvl, names in sub_table.items():
+                if level < min_lvl:
+                    continue
+                for name in names:
+                    if name in existing:
+                        continue
+                    idx = self.spell_name_to_idx.get(name)
+                    if idx is None:
+                        continue  # not in spells.json — skip gracefully
+                    cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
+                    existing.add(name)
         return cpp_spells
 
     # Always-prepared Bard college spells by college and Bard level (2024 PHB).
@@ -7095,6 +7277,34 @@ class App:
             5: ["Misty Step"],
             13: ["Dimension Door"],
             17: ["Mislead"],
+        },
+    }
+
+    # Always-prepared Paladin oath spells by oath and Paladin level (2024 PHB). Keyed by
+    # PaladinOath.name. Combat-relevant spells only — all listed here exist in spells.json;
+    # pure-utility oath spells (Scrying, Commune with Nature, Speak with Animals, Tree Stride,
+    # Legend Lore, Yolande's Regal Presence) are omitted per combat-sim scope (see known_limitations).
+    _PALADIN_OATH_SPELLS = {
+        "OathOfVengeance": {
+            3:  ["Bane", "Hunter's Mark"],
+            5:  ["Hold Person", "Misty Step"],
+            9:  ["Haste", "Protection from Energy"],
+            13: ["Banishment", "Dimension Door"],
+            17: ["Hold Monster"],
+        },
+        "OathOfAncients": {
+            3:  ["Ensnaring Strike"],                       # Speak with Animals (utility) omitted
+            5:  ["Misty Step", "Moonbeam"],
+            9:  ["Plant Growth", "Protection from Energy"],
+            13: ["Ice Storm", "Stoneskin"],
+            # 17: Commune with Nature, Tree Stride — utility, omitted
+        },
+        "OathOfGlory": {
+            3:  ["Guiding Bolt", "Heroism"],
+            5:  ["Enhance Ability", "Magic Weapon"],
+            9:  ["Haste", "Protection from Energy"],
+            13: ["Compulsion"],                             # Freedom of Movement (utility) omitted
+            # 17: Legend Lore, Yolande's Regal Presence — utility / not in spells.json, omitted
         },
     }
 
@@ -7785,7 +7995,8 @@ class App:
                 names = {"Shield": "Shield", "UncannyDodge": "Uncanny Dodge",
                          "SuperiorHuntersDefense": "Superior Hunter's Defense",
                          "DeflectAttacks": "Deflect Attacks",
-                         "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry"}
+                         "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry",
+                         "GloriousDefense": "Glorious Defense"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
                 self._combat_log_add(
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
@@ -7805,7 +8016,9 @@ class App:
                        else f"{agents[ctx.source_idx].name}'s")
                 names = {"Countercharm": "Countercharm", "Indomitable": "Indomitable",
                          "LegendaryResistance": "Legendary Resistance",
-                         "WarGodsBlessing": "War God's Blessing"}
+                         "WarGodsBlessing": "War God's Blessing",
+                         "DarkOnesOwnLuck": "Dark One's Own Luck",
+                         "LivingLegend": "Living Legend"}
                 feats = [o.feature for o in ctx.options
                          if o.kind == rpg.ReactionOptionKind.Feature]
                 choices = " / ".join(names.get(f, f) for f in feats) or "react"
@@ -13393,6 +13606,95 @@ class App:
                         self.btn_cbt_sacred_weapon.draw(self.screen)
                         y += B + gap
 
+            # Vow of Enmity button — Paladin Oath of Vengeance (L3+), part of the Attack action,
+            # spend a Channel Oath use to swear enmity against an enemy within 30 ft (Advantage vs it).
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Paladin and
+                        stats.paladin_oath == rpg.PaladinOath.OathOfVengeance):
+                    co = stats.get_resource("Channel Oath")
+                    if co and co.current > 0:
+                        self.btn_cbt_vow_of_enmity.text = f"Vow of Enmity ({co.current})"
+                        self.btn_cbt_vow_of_enmity.rect.x = lx
+                        self.btn_cbt_vow_of_enmity.rect.y = y
+                        self.btn_cbt_vow_of_enmity.rect.w = W
+                        self.btn_cbt_vow_of_enmity.draw(self.screen)
+                        y += B + gap
+
+            # Inspiring Smite button — Paladin Oath of Glory (L3+): appears right after a Divine Smite
+            # this turn; spend a Channel Oath use to hand out 2d8 + level temp HP to a creature in 30 ft.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                cond = self.combat.get_agent_conditions(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Paladin and
+                        stats.paladin_oath == rpg.PaladinOath.OathOfGlory and
+                        cond.divine_smite_used and not cond.inspiring_smite_used):
+                    co = stats.get_resource("Channel Oath")
+                    if co and co.current > 0:
+                        self.btn_cbt_inspiring_smite.text = f"Inspiring Smite ({co.current})"
+                        self.btn_cbt_inspiring_smite.rect.x = lx
+                        self.btn_cbt_inspiring_smite.rect.y = y
+                        self.btn_cbt_inspiring_smite.rect.w = W
+                        self.btn_cbt_inspiring_smite.draw(self.screen)
+                        y += B + gap
+
+            # Avenging Angel button — Paladin Oath of Vengeance (L20), bonus action, 1/long rest (or a
+            # level-5 slot). Fly 60 + hover and a Frightful Aura for 10 minutes.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Paladin and
+                        stats.paladin_oath == rpg.PaladinOath.OathOfVengeance and
+                        stats.char_level >= 20 and stats.avenging_angel_turns == 0):
+                    aa = stats.get_resource("Avenging Angel")
+                    uses = aa.current if aa else 0
+                    has_l5_slot = stats.spell_slots_remaining[4] > 0
+                    if uses > 0 or has_l5_slot:
+                        self.btn_cbt_avenging_angel.text = (
+                            f"Avenging Angel ({uses})" if uses > 0 else "Avenging Angel (L5 slot)")
+                        self.btn_cbt_avenging_angel.rect.x = lx
+                        self.btn_cbt_avenging_angel.rect.y = y
+                        self.btn_cbt_avenging_angel.rect.w = W
+                        self.btn_cbt_avenging_angel.draw(self.screen)
+                        y += B + gap
+
+            # Elder Champion button — Paladin Oath of the Ancients (L20), bonus action, 1/long rest (or a
+            # level-5 slot). Regen 10/turn + enemies in aura have Disadvantage on saves vs your spells.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Paladin and
+                        stats.paladin_oath == rpg.PaladinOath.OathOfAncients and
+                        stats.char_level >= 20 and stats.elder_champion_turns == 0):
+                    ec = stats.get_resource("Elder Champion")
+                    uses = ec.current if ec else 0
+                    has_l5_slot = stats.spell_slots_remaining[4] > 0
+                    if uses > 0 or has_l5_slot:
+                        self.btn_cbt_elder_champion.text = (
+                            f"Elder Champion ({uses})" if uses > 0 else "Elder Champion (L5 slot)")
+                        self.btn_cbt_elder_champion.rect.x = lx
+                        self.btn_cbt_elder_champion.rect.y = y
+                        self.btn_cbt_elder_champion.rect.w = W
+                        self.btn_cbt_elder_champion.draw(self.screen)
+                        y += B + gap
+
+            # Living Legend button — Paladin Oath of Glory (L20), bonus action, 1/long rest (or a level-5
+            # slot). Save-reroll reaction + once/turn Unerring Strike (weapon miss→hit) for 10 minutes.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Paladin and
+                        stats.paladin_oath == rpg.PaladinOath.OathOfGlory and
+                        stats.char_level >= 20 and stats.living_legend_turns == 0):
+                    ll = stats.get_resource("Living Legend")
+                    uses = ll.current if ll else 0
+                    has_l5_slot = stats.spell_slots_remaining[4] > 0
+                    if uses > 0 or has_l5_slot:
+                        self.btn_cbt_living_legend.text = (
+                            f"Living Legend ({uses})" if uses > 0 else "Living Legend (L5 slot)")
+                        self.btn_cbt_living_legend.rect.x = lx
+                        self.btn_cbt_living_legend.rect.y = y
+                        self.btn_cbt_living_legend.rect.w = W
+                        self.btn_cbt_living_legend.draw(self.screen)
+                        y += B + gap
+
             # Corona of Light button — Cleric Light Domain (L17+), Magic action, 1-minute aura
             if 0 <= cur_idx < len(agents) and not self.action_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -14301,6 +14603,14 @@ class App:
                     self.pending_clairvoyant = False
                     self._combat_log_add("Clairvoyant Combatant cancelled.")
                     continue
+                if self.pending_vow_of_enmity and event.key == pygame.K_ESCAPE:
+                    self.pending_vow_of_enmity = False
+                    self._combat_log_add("Vow of Enmity cancelled.")
+                    continue
+                if self.pending_inspiring_smite and event.key == pygame.K_ESCAPE:
+                    self.pending_inspiring_smite = False
+                    self._combat_log_add("Inspiring Smite cancelled.")
+                    continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
@@ -14649,6 +14959,12 @@ class App:
                         elif self.pending_clairvoyant and hit >= 0:
                             # Clairvoyant Combatant: the clicked enemy makes a WIS save against the GOO warlock.
                             self._resolve_clairvoyant_combatant(hit)
+                        elif self.pending_vow_of_enmity and hit >= 0:
+                            # Vow of Enmity: the clicked enemy becomes the Vengeance paladin's sworn foe.
+                            self._resolve_vow_of_enmity(hit)
+                        elif self.pending_inspiring_smite and hit >= 0:
+                            # Inspiring Smite: the clicked creature (within 30 ft) gains temp HP.
+                            self._resolve_inspiring_smite(hit)
                         elif self._legendary_target_pick and hit >= 0:
                             self._resolve_legendary_attack(hit)
                         elif self.pending_attack_slot and hit >= 0:
@@ -15309,6 +15625,28 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_clairvoyant = True
                             self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
+                    if self.btn_cbt_vow_of_enmity.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_vow_of_enmity = True
+                            self._combat_log_add("Vow of Enmity: click an enemy within 30 ft to swear enmity against it.")
+                    if self.btn_cbt_inspiring_smite.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self.pending_inspiring_smite = True
+                            self._combat_log_add("Inspiring Smite: click a creature within 30 ft (including yourself) to grant temp HP.")
+                    if self.btn_cbt_avenging_angel.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_avenging_angel(idx)
+                    if self.btn_cbt_elder_champion.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_elder_champion(idx)
+                    if self.btn_cbt_living_legend.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            self._use_living_legend(idx)
                     if self.btn_cbt_reckless.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

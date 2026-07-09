@@ -605,6 +605,40 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       Resource loh("Lay on Hands", 5 * level, 5 * level);
       loh.long_rest_regen = 5 * level;
       resources["Lay on Hands"] = loh;
+
+      // Avenging Angel (Oath of Vengeance L20 capstone): 1 use per long rest. It can also be
+      // restored by expending a level-5 spell slot (handled in activateAvengingAngel).
+      if (level >= 20 && paladin_oath == OathOfVengeancePath) {
+        Resource aa("Avenging Angel", 1);   // current=max=1, no duration
+        aa.long_rest_regen = 1;
+        resources["Avenging Angel"] = aa;
+      }
+
+      // Elder Champion (Oath of the Ancients L20 capstone): 1 use per long rest (also restorable
+      // via a level-5 spell slot; handled in activateElderChampion).
+      if (level >= 20 && paladin_oath == OathOfAncientsPath) {
+        Resource ec("Elder Champion", 1);
+        ec.long_rest_regen = 1;
+        resources["Elder Champion"] = ec;
+      }
+
+      // Glorious Defense (Oath of Glory L15): usable CHA-modifier (min 1) times per long rest.
+      if (level >= 15 && paladin_oath == OathOfGloryPath) {
+        int cha_mod = (cha - 10) / 2;
+        if (cha < 10 && (cha - 10) % 2 != 0) --cha_mod;
+        int gd_uses = std::max(1, cha_mod);
+        Resource gd("Glorious Defense", gd_uses);
+        gd.long_rest_regen = gd_uses;
+        resources["Glorious Defense"] = gd;
+      }
+
+      // Living Legend (Oath of Glory L20 capstone): 1 use per long rest (also restorable via a
+      // level-5 spell slot; handled in activateLivingLegend).
+      if (level >= 20 && paladin_oath == OathOfGloryPath) {
+        Resource ll("Living Legend", 1);
+        ll.long_rest_regen = 1;
+        resources["Living Legend"] = ll;
+      }
       break;
     }
 

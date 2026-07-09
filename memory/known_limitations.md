@@ -1041,3 +1041,44 @@ Remove Curse / Greater Restoration now cure conditions (`cureCurses` / `greaterR
 **Also not modelled:** Greater Restoration's RAW "any reduction to an ability score" — there is no ability-score-drain mechanic in the engine, so nothing to restore. Bestow Curse applies no "Cursed" condition yet, so Remove Curse finds nothing on a Bestow-Curse target.
 
 </details>
+
+
+
+<details>
+<summary><b>Paladin Oath of Vengeance — deferred sub-clauses (2026-07-08)</b></summary>
+
+Oath of Vengeance is implemented (Vow of Enmity L3, Relentless Avenger L7, Soul of Vengeance L15, Avenging Angel L20 + always-prepared oath spells). Three secondary clauses are intentionally deferred as out-of-scope-for-now:
+
+- **Relentless Avenger (L7) — the optional half-Speed follow-move.** The impactful clause (a Vengeance paladin's OA hit reduces the mover's Speed to 0 for the turn) is implemented by reusing the Sentinel `mover_halted`/budget-zero path in `combat_movement.cpp`. The RAW "you can then move up to half your Speed as part of the same Reaction (no OA)" repositioning is **not** implemented — auto-driving a reacting creature's movement mid-OA is involved and low combat value.
+- **Avenging Angel (L20) — "attacks against the Frightened creature have Advantage."** The Frightful Aura itself is implemented (enemy WIS save at turn start in the Aura of Protection → Frightened until damaged, modeled as a Turn-Undead-style tracked condition in `beginTurn`). The engine has no generic "attackers have Advantage vs a Frightened creature" mechanism (standard 2024 Frightened doesn't grant it), so this Avenging-Angel-specific rider is not applied.
+- **Oath spells — utility-only entries omitted.** `Scrying` (Vengeance L17) is list-only per combat-sim scope; it is simply not added to the always-prepared list (`_PALADIN_OATH_SPELLS` in `main.py`). All combat-relevant oath spells already exist in `spells.json` and are auto-granted.
+
+</details>
+
+
+
+<details>
+<summary><b>Paladin Oath of the Ancients — deferred sub-clauses (2026-07-08)</b></summary>
+
+Oath of the Ancients implemented (Nature's Wrath L3, Aura of Warding L7, Undying Sentinel L15, Elder Champion L20 + oath spells). Implementing Nature's Wrath also made the previously-inert **Restrained** condition functional (Speed 0 in `canAgentMove`; attackers get Advantage / a Restrained creature's attacks get Disadvantage in `combat_attack.cpp`; Disadvantage on DEX saves in `rollSpellSave`; apply/clear wired into the condition dispatchers). Deferred:
+
+- **Elder Champion (L20) — Swift Spells.** "Diminish Defiance" (enemies in the aura roll saves vs your spells/CD at Disadvantage, via `rollSpellSave`) and "Regeneration" (10 HP at each turn start, in `beginTurn`) are implemented. **Swift Spells** (cast an action-cast spell as a Bonus Action) is NOT — it touches the action-economy plumbing and is low combat value in the sim.
+- **Aura of Warding — weapon-damage & some rider/splash sites.** The resistance to Necrotic/Psychic/Radiant is folded into the central `effectiveMagicDamageMult` helper, which covers all **spell / persistent-zone / DoT-tick** damage (where `bm` + the target index are in scope). It is **not** applied on the **weapon-damage path** (`rollDamage` has no `BattleMap`/target-index in scope — threading it through would ripple across every attack caller), nor at a few raw-multiplier rider/splash reads (delayed-blast, curse kickback). Weapon-borne Necrotic/Psychic/Radiant is rare, so this is an accepted edge case.
+- **Oath spells — utility omitted.** Speak with Animals (L3), Commune with Nature / Tree Stride (L17) are list-only and not added to `_PALADIN_OATH_SPELLS`.
+
+</details>
+
+
+
+<details>
+<summary><b>Paladin Oath of Glory — deferred sub-clauses (2026-07-08)</b></summary>
+
+Oath of Glory implemented (Inspiring Smite L3, Aura of Alacrity L7, Glorious Defense L15, Living Legend L20 + oath spells). Deferred / simplified:
+
+- **Peerless Athlete (L3)** — non-combat (Athletics/Acrobatics Advantage, jump distance). Not implemented.
+- **Inspiring Smite (L3) — single recipient.** RAW lets you split the 2d8+level temp-HP pool among several creatures within 30 ft; `activateInspiringSmite` grants the whole pool to one chosen creature (temp HP doesn't stack anyway). Gated to once per turn (`inspiring_smite_used`), right after a Divine Smite.
+- **Aura of Alacrity (L7) — turn-start membership model + NPC path.** The +10 ft Speed is applied when a creature starts its turn in a Glory L7+ paladin's aura (self always qualifies): seeded into the engine budget (`beginTurn`) and the GUI's own budget (`_reset_movement`). The RAW "enters the aura mid-move" and "lingers until end of next turn" nuances are simplified to per-turn membership. NPC-automated movement paths (`runNpcTurn`/`runFleeTurn` initMovement sites) don't add the bonus — GUI + engine budget only.
+- **Glorious Defense (L15) — GUI protect-an-ally case.** The self-protection case (the paladin is the hit creature) flows through the standard OnHit defender reaction window → works in the GUI and auto/RL. The **protect-an-ally-within-10 ft** (bystander) case is auto/RL only (`maybeGloriousDefenseInline`); the GUI does not yet offer a bystander Glorious Defense (the OnHit suspend window is defender-keyed).
+- **Living Legend (L20).** Save-Throw Reroll wired into the OnSaveFail reaction window (spell saves only — non-spell saves don't open that window). Unerring Strike (once/turn weapon miss→hit) **auto-fires on the first miss each turn** while active — the RAW "save it for a later attack" player choice is not modeled (it's strictly beneficial). Charismatic (Advantage on CHA checks) is non-combat, not modeled.
+
+</details>

@@ -202,11 +202,86 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         }
     }
 
+    // Paladin Oath of Vengeance — Avenging Angel: Frightful Aura. When this creature starts its turn
+    // inside an enemy Avenging Angel paladin's Aura of Protection, it must succeed on a WIS save or be
+    // Frightened for 1 minute (or until it takes any damage). Modeled as a Turn-Undead-style tracked
+    // Frightened condition (fear source = the paladin; ends on damage). One save per turn.
+    if (!bm.getAgentConditions(agent_idx).frightened) {
+        for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
+            if (p == agent_idx) continue;
+            const Agent::Stats ps = bm.getAgentStats(p);
+            if (ps.avenging_angel_turns <= 0) continue;
+            if (ps.hp_cur <= 0) continue;
+            const Agent::Conditions pc = bm.getAgentConditions(p);
+            if (pc.unconscious || pc.incapacitated) continue;
+            if (areAllies(bm, p, agent_idx)) continue;
+            const int radius_ft = (ps.char_level >= 18) ? 30 : 10;
+            const int d = footprintDistance(agents[static_cast<std::size_t>(p)].origin,
+                                            agents[static_cast<std::size_t>(p)].agent->getSize(),
+                                            agents[static_cast<std::size_t>(agent_idx)].origin,
+                                            agents[static_cast<std::size_t>(agent_idx)].agent->getSize());
+            if (d * 5 > radius_ft) continue;
+            const int save_dc  = spellSaveDcFromAbility(ps, SaveCha);
+            const int save_mod = saveModFor(bm, agent_idx, SaveWis);
+            const int save_d20 = roll(20);
+            const int save_total = save_d20 + save_mod;
+            log_("{} makes a WIS save vs Frightful Aura (DC {}): {} + {} = {} ({})",
+                 agent_name, save_dc, save_d20, save_mod, save_total,
+                 (save_total < save_dc) ? "FAILED" : "PASSED");
+            if (save_total < save_dc) {
+                ActiveAgentCondition cond;
+                cond.agent_idx        = agent_idx;
+                cond.caster_idx       = p;              // fear source (Frightened LOS/movement rule)
+                cond.condition_name   = "Frightened";
+                cond.save_ability     = SaveWis;
+                cond.save_dc          = save_dc;
+                cond.save_repeat_turns = -1;            // no per-turn save; ends on damage / after 1 min
+                cond.turns_remaining  = 10;             // 1 minute
+                cond.on_damage        = OnDamage_t::End;
+                cond.next_save_turn   = 0;
+                (void)addAgentCondition(bm, cond);
+            }
+            break;   // one Frightful Aura save per turn
+        }
+    }
+
     // Paladin Oath of Devotion — Sacred Weapon: tick down its 1-minute (10-round) duration.
     // Persisted immediately so the rest of this turn (and the GUI) sees the updated count.
     if (stats.sacred_weapon_turns > 0) {
         --stats.sacred_weapon_turns;
         if (stats.sacred_weapon_turns == 0) stats.sacred_weapon_bonus = 0;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
+    // Paladin Oath of Vengeance — Vow of Enmity: tick down its 1-minute (10-round) duration.
+    // When it lapses, drop the sworn target so the Advantage stops applying.
+    if (stats.vow_of_enmity_turns > 0) {
+        --stats.vow_of_enmity_turns;
+        if (stats.vow_of_enmity_turns == 0) stats.vow_of_enmity_target = -1;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
+    // Paladin Oath of Vengeance — Avenging Angel: tick down its 10-minute (100-round) duration.
+    // On expiry, revert the granted Fly speed to the pre-activation snapshot.
+    if (stats.avenging_angel_turns > 0) {
+        --stats.avenging_angel_turns;
+        if (stats.avenging_angel_turns == 0)
+            stats.speed_fly = stats.avenging_angel_prior_fly;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
+    // Paladin Oath of the Ancients — Elder Champion: regain 10 HP at the start of each of your turns,
+    // then tick down its 1-minute (10-round) duration.
+    if (stats.elder_champion_turns > 0) {
+        stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 10);
+        --stats.elder_champion_turns;
+        bm.setAgentStats(agent_idx, stats);
+        log_("{} regains 10 HP (Elder Champion) — now at {} HP", agent_name, stats.hp_cur);
+    }
+
+    // Paladin Oath of Glory — Living Legend: tick down its 10-minute (100-round) duration.
+    if (stats.living_legend_turns > 0) {
+        --stats.living_legend_turns;
         bm.setAgentStats(agent_idx, stats);
     }
 
@@ -839,6 +914,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Speedy (general feat) — your Speed increases by 10 feet. Applied as a budget bonus (not a
     // stat mutation, so it's idempotent across turns/reloads); affects the walking budget only.
     int speed_bonus = stats.hasFeat("Speedy") ? 10 : 0;
+    // Aura of Alacrity (Paladin Oath of Glory L7): +10 ft Speed while in a Glory paladin's aura (the
+    // paladin itself always qualifies). A budget bonus for this turn — no stat mutation.
+    if (hasAuraOfAlacrity(bm, agent_idx)) speed_bonus += 10;
     walkRemaining_[agent_idx] = std::max(0, stats.speed_walk + speed_bonus - move_penalty);
     flyRemaining_ [agent_idx] = std::max(0, stats.speed_fly - move_penalty);
     swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - move_penalty);

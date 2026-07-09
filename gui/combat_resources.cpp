@@ -739,6 +739,19 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
             stats.revelation_in_flesh_turns = 0;
         }
 
+        // Paladin Oath of Vengeance L20 Avenging Angel: if still active, end it and restore the Fly speed.
+        if (stats.avenging_angel_turns > 0) {
+            stats.speed_fly = stats.avenging_angel_prior_fly;
+            stats.avenging_angel_turns = 0;
+        }
+
+        // Paladin Oath of the Ancients L15 Undying Sentinel: recharge the once-per-long-rest use.
+        stats.undying_sentinel_used = false;
+        // Elder Champion (L20): end any lingering form (it lasts only 1 minute, but be safe).
+        stats.elder_champion_turns = 0;
+        // Paladin Oath of Glory L20 Living Legend: end any lingering form on a long rest.
+        stats.living_legend_turns = 0;
+
         // Zealot L14 Rage of the Gods is usable once per long rest — restore it here.
         if (stats.character_class == CharacterClass::Barbarian &&
             stats.barbarian_subclass == ZealotPath)
@@ -1488,6 +1501,237 @@ int CombatEngine::activateSacredWeapon(BattleMap& bm, int idx) noexcept
     log_("{} activates Sacred Weapon: +{} to weapon attack rolls for 1 minute",
          agentName(bm, idx), bonus);
     return bonus;
+}
+
+// Paladin Oath of Vengeance — Vow of Enmity (L3). Spend one Channel Oath use to swear
+// enmity against a creature within 30 ft: the paladin gains Advantage on attacks against
+// it for 1 minute (or until this feature is used again). Returns true on success.
+bool CombatEngine::activateVowOfEnmity(BattleMap& bm, int idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
+    if (target_idx == idx) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+
+    // Requires a Paladin who has taken the Oath of Vengeance.
+    if (stats.character_class != CharacterClass::Paladin ||
+        stats.paladin_oath != OathOfVengeancePath) return false;
+
+    // Needs an available Channel Oath use.
+    Resource* co = stats.getResource("Channel Oath");
+    if (!co || co->current <= 0) return false;
+
+    // Target must be a visible enemy within 30 ft.
+    if (areAllies(bm, idx, target_idx)) return false;
+    const PlacedAgent& sp = agents[static_cast<std::size_t>(idx)];
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    const int dist_ft = footprintDistance(sp.origin, sp.agent->getSize(),
+                                          tp.origin, tp.agent->getSize()) * 5;
+    if (dist_ft > 30) {
+        log_("{} is more than 30 ft away — Vow of Enmity fails", agentName(bm, target_idx));
+        return false;
+    }
+    if (!bm.hasLineOfSight(sp.origin, sp.agent->getSize(), tp.origin, tp.agent->getSize())) {
+        log_("{} can't see {} — Vow of Enmity fails",
+             agentName(bm, idx), agentName(bm, target_idx));
+        return false;
+    }
+
+    // Spend 1 Channel Oath use, then re-fetch so we keep that decrement.
+    spendResource(bm, idx, "Channel Oath", 1);
+    stats = bm.getAgentStats(idx);
+    stats.vow_of_enmity_target = target_idx;   // overwrites any prior vow ("until you use this again")
+    stats.vow_of_enmity_turns  = 10;           // 1 minute = 10 rounds
+    bm.setAgentStats(idx, stats);
+
+    log_("{} swears a Vow of Enmity against {}: Advantage on attacks against it for 1 minute",
+         agentName(bm, idx), agentName(bm, target_idx));
+    return true;
+}
+
+// Paladin Oath of Vengeance — Avenging Angel (L20). Bonus action, 10 minutes: gain a Fly Speed of
+// 60 ft (+ hover) and a Frightful Aura inside the Aura of Protection (applied at enemy turn start in
+// beginTurn). Costs one "Avenging Angel" use per long rest, or a level-5 spell slot when exhausted.
+bool CombatEngine::activateAvengingAngel(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Paladin ||
+        s.paladin_oath != OathOfVengeancePath || s.char_level < 20) {
+        log_("{} cannot use Avenging Angel (not a L20 Oath of Vengeance paladin)", agentName(bm, idx));
+        return false;
+    }
+    if (s.avenging_angel_turns > 0) {
+        log_("{}'s Avenging Angel is already active", agentName(bm, idx));
+        return false;
+    }
+    if (!hasBonusAction(bm, idx)) return false;
+
+    // Cost: one Avenging Angel use, or — when exhausted — a level-5 spell slot.
+    Resource* aa = s.getResource("Avenging Angel");
+    const bool has_use = aa && aa->current > 0;
+    const bool can_spend_slot = s.spell_slots_remaining[4] > 0;   // index 4 = level-5 slots
+    if (!has_use && !can_spend_slot) {
+        log_("{} cannot use Avenging Angel (no use or level-5 slot available)", agentName(bm, idx));
+        return false;
+    }
+    if (has_use) {
+        aa->spend(1);
+        s.resources["Avenging Angel"] = *aa;
+    } else {
+        s.spell_slots_remaining[4] -= 1;
+        log_("{} spends a level-5 spell slot to restore Avenging Angel", agentName(bm, idx));
+    }
+
+    // Snapshot the prior Fly speed so it reverts on expiry (beginTurn) — then grant Fly 60 + hover.
+    s.avenging_angel_prior_fly = s.speed_fly;
+    s.speed_fly = std::max(s.speed_fly, 60);
+    s.avenging_angel_turns = 100;   // 10 minutes
+    bm.setAgentStats(idx, s);
+    spendBonusAction(bm, idx);
+
+    log_("{} becomes an Avenging Angel: Fly 60 ft (hover) and a Frightful Aura for 10 minutes",
+         agentName(bm, idx));
+    return true;
+}
+
+// Paladin Oath of the Ancients — Elder Champion (L20). Bonus action, 1 minute: regain 10 HP at the
+// start of each of your turns, and enemies in your Aura of Protection have Disadvantage on saves vs
+// your spells & Channel Oath options (applied in rollSpellSave). Costs one "Elder Champion" use per
+// long rest, or a level-5 spell slot when exhausted. (Swift Spells is deferred — see known_limitations.)
+bool CombatEngine::activateElderChampion(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Paladin ||
+        s.paladin_oath != OathOfAncientsPath || s.char_level < 20) {
+        log_("{} cannot use Elder Champion (not a L20 Oath of the Ancients paladin)", agentName(bm, idx));
+        return false;
+    }
+    if (s.elder_champion_turns > 0) {
+        log_("{}'s Elder Champion is already active", agentName(bm, idx));
+        return false;
+    }
+    if (!hasBonusAction(bm, idx)) return false;
+
+    Resource* ec = s.getResource("Elder Champion");
+    const bool has_use = ec && ec->current > 0;
+    const bool can_spend_slot = s.spell_slots_remaining[4] > 0;   // index 4 = level-5 slots
+    if (!has_use && !can_spend_slot) {
+        log_("{} cannot use Elder Champion (no use or level-5 slot available)", agentName(bm, idx));
+        return false;
+    }
+    if (has_use) {
+        ec->spend(1);
+        s.resources["Elder Champion"] = *ec;
+    } else {
+        s.spell_slots_remaining[4] -= 1;
+        log_("{} spends a level-5 spell slot to restore Elder Champion", agentName(bm, idx));
+    }
+
+    s.elder_champion_turns = 10;   // 1 minute
+    bm.setAgentStats(idx, s);
+    spendBonusAction(bm, idx);
+
+    log_("{} channels primal power (Elder Champion): 10 HP/turn regen and Disadvantage on enemy saves "
+         "vs your spells for 1 minute", agentName(bm, idx));
+    return true;
+}
+
+// Paladin Oath of Glory — Inspiring Smite (L3). Immediately after casting Divine Smite this turn,
+// spend one Channel Oath use to grant a creature within 30 ft (may be self) 2d8 + Paladin level
+// temporary HP. Returns the temp HP granted, or -1 if not allowed. (RAW lets you split the pool
+// among several creatures; this grants the whole pool to one chosen creature — see known_limitations.)
+int CombatEngine::activateInspiringSmite(BattleMap& bm, int idx, int target_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return -1;
+
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Paladin || s.paladin_oath != OathOfGloryPath) return -1;
+
+    // Must immediately follow a Divine Smite this turn, and only once per turn.
+    const Agent::Conditions ic = bm.getAgentConditions(idx);
+    if (!ic.divine_smite_used || ic.inspiring_smite_used) return -1;
+
+    Resource* co = s.getResource("Channel Oath");
+    if (!co || co->current <= 0) return -1;
+
+    // Target must be within 30 ft (may be the paladin itself).
+    const PlacedAgent& sp = agents[static_cast<std::size_t>(idx)];
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    if (footprintDistance(sp.origin, sp.agent->getSize(), tp.origin, tp.agent->getSize()) * 5 > 30) {
+        log_("{} is more than 30 ft away — Inspiring Smite fails", agentName(bm, target_idx));
+        return -1;
+    }
+
+    const int pool = roll(8) + roll(8) + s.char_level;   // 2d8 + Paladin level
+    spendResource(bm, idx, "Channel Oath", 1);
+
+    // Mark used this turn (re-fetch conditions in case spendResource touched them).
+    Agent::Conditions pc = bm.getAgentConditions(idx);
+    pc.inspiring_smite_used = true;
+    bm.setAgentConditions(idx, pc);
+
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+    grantTempHp(ts, pool, idx);
+    bm.setAgentStats(target_idx, ts);
+
+    log_("{} channels Inspiring Smite: {} temporary HP to {}",
+         agentName(bm, idx), pool, agentName(bm, target_idx));
+    return pool;
+}
+
+// Paladin Oath of Glory — Living Legend (L20). Bonus action, 10 minutes: gain a reaction to reroll a
+// failed saving throw (Living Legend save-reroll) and, once on each of your turns, turn a weapon miss
+// into a hit (Unerring Strike). Costs one "Living Legend" use per long rest, or a level-5 spell slot
+// when exhausted. (Charismatic — Advantage on CHA checks — is non-combat and not modeled.)
+bool CombatEngine::activateLivingLegend(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.character_class != CharacterClass::Paladin ||
+        s.paladin_oath != OathOfGloryPath || s.char_level < 20) {
+        log_("{} cannot use Living Legend (not a L20 Oath of Glory paladin)", agentName(bm, idx));
+        return false;
+    }
+    if (s.living_legend_turns > 0) {
+        log_("{}'s Living Legend is already active", agentName(bm, idx));
+        return false;
+    }
+    if (!hasBonusAction(bm, idx)) return false;
+
+    Resource* ll = s.getResource("Living Legend");
+    const bool has_use = ll && ll->current > 0;
+    const bool can_spend_slot = s.spell_slots_remaining[4] > 0;   // index 4 = level-5 slots
+    if (!has_use && !can_spend_slot) {
+        log_("{} cannot use Living Legend (no use or level-5 slot available)", agentName(bm, idx));
+        return false;
+    }
+    if (has_use) {
+        ll->spend(1);
+        s.resources["Living Legend"] = *ll;
+    } else {
+        s.spell_slots_remaining[4] -= 1;
+        log_("{} spends a level-5 spell slot to restore Living Legend", agentName(bm, idx));
+    }
+
+    s.living_legend_turns = 100;   // 10 minutes
+    bm.setAgentStats(idx, s);
+    spendBonusAction(bm, idx);
+
+    log_("{} becomes a Living Legend: save-reroll reaction and once-per-turn Unerring Strike for 10 minutes",
+         agentName(bm, idx));
+    return true;
 }
 
 bool CombatEngine::activateCoronaOfLight(BattleMap& bm, int idx) noexcept

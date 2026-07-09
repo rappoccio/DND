@@ -292,6 +292,7 @@ enum MonkSubclass {
 enum PaladinOath {
     PaladinOathNone = 0,
     OathOfDevotionPath, OathOftheMountedWarriorPath, OathOfRedemptionPath, OathOfVengeancePath,
+    OathOfAncientsPath, OathOfGloryPath,
     NumPaladinOath
 };
 

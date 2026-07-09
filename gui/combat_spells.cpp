@@ -36,9 +36,16 @@ namespace rpg {
 // ─────────────────────────────────────────────────────────────────────────────
 
 float CombatEngine::effectiveMagicDamageMult(const Agent::Stats& caster, const Agent::Stats& target,
-                                             MagicDamage_t type, bool from_spell) const noexcept
+                                             MagicDamage_t type, bool from_spell,
+                                             const BattleMap* bm, int target_idx) const noexcept
 {
     float m = target.magic_damage_multipliers[type];
+    // Aura of Warding (Oath of the Ancients L7): a creature in the aura gains Resistance to Necrotic,
+    // Psychic, and Radiant. Folded in first so the caster-side bypasses below can still lift it.
+    if (bm && target_idx >= 0 && (type == Necrotic || type == Psychic || type == Radiant) &&
+        m > 0.5f && m != 2.0f && hasAuraOfWarding(*bm, target_idx)) {
+        m = 0.5f;
+    }
     if (m > 0.0f && m < 1.0f) {  // Resistance only — leave Immunity (0.0) and Vulnerability untouched
         if (type == Poison && caster.hasFeat("Poisoner")) return 1.0f;            // Potent Poison (any source)
         if (from_spell && caster.hasElementalAdeptType(type)) return 1.0f;        // Elemental Adept (spells)
@@ -300,6 +307,19 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
                               target_pa.origin, target_pa.agent->getSize()) * 5 <= 60) {
             target_dis = true;
             log_("Corona of Light: {} has Disadvantage on the save", agentName(bm, tgt_idx));
+        }
+    }
+
+    // Paladin Oath of the Ancients L20 — Elder Champion (Diminish Defiance): enemies inside the
+    // paladin's Aura of Protection have Disadvantage on saves vs the paladin's spells and Channel
+    // Oath options (both flow through this save path) while Elder Champion is active.
+    if (caster_stats.elder_champion_turns > 0 && action.caster_idx != tgt_idx &&
+        !areAllies(bm, action.caster_idx, tgt_idx)) {
+        const int radius_ft = (caster_stats.char_level >= 18) ? 30 : 10;
+        if (footprintDistance(caster_pa.origin, caster_pa.agent->getSize(),
+                              target_pa.origin, target_pa.agent->getSize()) * 5 <= radius_ft) {
+            target_dis = true;
+            log_("Elder Champion (Diminish Defiance): {} has Disadvantage on the save", agentName(bm, tgt_idx));
         }
     }
 
@@ -954,7 +974,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
                         // Resistance/vuln/immunity multiplier — Elemental Adept / Poisoner lift the
                         // caster-relevant Resistance to 1.0.
-                        float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                        float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
                         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
                         log_("[DAMAGE] Spell attack: type={} base={} mult={} result={}", static_cast<int>(roll_info.type), type_damage, multiplier, modified_damage);
                         dmg += modified_damage;
@@ -1069,7 +1089,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                                                           roll_info.die_size, dice, true, nullptr);
                     type_damage += roll_info.bonus;
                     type_damage = empowerEvocation(type_damage);  // Empowered Evocation still applies
-                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
                     dmg += static_cast<int>(static_cast<float>(type_damage) * multiplier);
                 }
                 for (const auto& roll_info : sp.physical_damage_rolls) {
@@ -1165,7 +1185,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 dice = shared_dice;
                 for (std::size_t r = 0; r < sp.magic_damage_rolls.size(); ++r) {
                     const auto& roll_info = sp.magic_damage_rolls[r];
-                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
                     int modified_damage = static_cast<int>(static_cast<float>(shared_magic_base[r]) * multiplier);
                     if (tr.saved) modified_damage /= 2;
                     dmg += modified_damage;
@@ -1207,7 +1227,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
                     // Resistance/vuln/immunity multiplier first (Elemental Adept / Poisoner lift the
                     // caster-relevant Resistance to 1.0).
-                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
                     int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
                     // Then apply half damage on successful save
                     if (tr.saved) modified_damage /= 2;
@@ -1435,7 +1455,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 dice = shared_dice;
                 for (std::size_t r = 0; r < sp.magic_damage_rolls.size(); ++r) {
                     const auto& roll_info = sp.magic_damage_rolls[r];
-                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
                     total += static_cast<int>(static_cast<float>(shared_magic_base[r]) * multiplier);
                 }
                 for (std::size_t r = 0; r < sp.physical_damage_rolls.size(); ++r) {
@@ -1453,7 +1473,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     type_damage = empowerEvocation(type_damage);  // Empowered Evocation: +INT to one roll
                     // Resistance/vuln/immunity multiplier (Elemental Adept / Poisoner lift the
                     // caster-relevant Resistance to 1.0).
-                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true);
+                    float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
                     int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
                     total += modified_damage;
                 }
@@ -2328,6 +2348,9 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
 
         bool adv = tgt.hasAdvantage();
         bool dis = tgt.hasDisadvantage();
+        // Restrained: Disadvantage on DEX saving throws.
+        if (sp.save_ability == SaveDex && tc.restrained)
+            dis = true;
         // Barbarian Danger Sense (L2+): advantage on DEX saves unless incapacitated.
         if (sp.save_ability == SaveDex && !tc.incapacitated &&
             target_stats.character_class == CharacterClass::Barbarian && target_stats.char_level >= 2)
@@ -2369,7 +2392,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         int type_damage = rollSpellTypeDamage(zone_caster, roll_info.type, roll_info.num_dice,
                                               roll_info.die_size, zdice, true);
         type_damage += roll_info.bonus;
-        float multiplier = effectiveMagicDamageMult(zone_caster, target_stats, roll_info.type, true);
+        float multiplier = effectiveMagicDamageMult(zone_caster, target_stats, roll_info.type, true, &bm, target_idx);
         int modified = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         if (saved) modified /= 2;
         total += modified;
@@ -2520,7 +2543,7 @@ void CombatEngine::tickEffects(BattleMap& bm)
         for (const auto& roll_info : fx.spell.magic_damage_rolls) {
             int type_damage = rollSpellTypeDamage(tick_caster, roll_info.type, roll_info.num_dice,
                                                   roll_info.die_size, dice, true);
-            float multiplier = effectiveMagicDamageMult(tick_caster, s, roll_info.type, true);
+            float multiplier = effectiveMagicDamageMult(tick_caster, s, roll_info.type, true, &bm, fx.target_idx);
             int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
             total += modified_damage;
         }
@@ -2812,6 +2835,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; }
     else if (n == "Charmed")       { ac.charmed = false; ac.charmed_by = -1; }
     else if (n == "Frightened")    { ac.frightened = false; }
+    else if (n == "Restrained")    { ac.restrained = false; }
     else if (n == "Deafened")      { ac.deafened = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
     else if (n == "Prone")         { ac.prone = false; }
@@ -3379,6 +3403,15 @@ bool CombatEngine::canDarkOnesOwnLuck(const BattleMap& bm, int reactor, int save
     return luck && luck->current >= 1;
 }
 
+bool CombatEngine::canLivingLegendReroll(const BattleMap& bm, int reactor, int save_target) const
+{
+    if (reactor != save_target) return false;                     // you reroll your OWN save
+    if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/true)) return false;  // costs a Reaction
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    return s.character_class == CharacterClass::Paladin && s.paladin_oath == OathOfGloryPath &&
+           s.char_level >= 20 && s.living_legend_turns > 0;
+}
+
 void CombatEngine::reevaluateSave(SpellSave& ss) const noexcept
 {
     ss.total = ss.d20 + ss.save_mod + ss.bonus;
@@ -3424,6 +3457,26 @@ bool CombatEngine::applyIndomitableToSave(BattleMap& bm, int reactor, SpellSave&
     log_("{} uses Indomitable: rerolls the save {}→{} +{} (level) = {} vs DC {} → {}",
          agentName(bm, reactor), old_d20, ss.d20, ss.bonus, ss.total, ss.dc,
          ss.saved ? "SAVES" : "still fails");
+    return true;
+}
+
+bool CombatEngine::applyLivingLegendRerollToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    const auto& agents = bm.placedAgents();
+    if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    if (s.hp_cur <= 0) return false;
+    if (s.character_class != CharacterClass::Paladin || s.paladin_oath != OathOfGloryPath ||
+        s.char_level < 20 || s.living_legend_turns <= 0) return false;
+    Agent::Conditions c = bm.getAgentConditions(reactor);
+    if (c.reaction_used) return false;
+    c.reaction_used = true;                                       // Living Legend's reroll costs the Reaction
+    bm.setAgentConditions(reactor, c);
+    const int old_d20 = ss.d20;
+    ss.d20 = roll(20);                                            // reroll — "you must use the new roll"
+    reevaluateSave(ss);
+    log_("{} uses Living Legend: rerolls the save {}→{} = {} vs DC {} → {}",
+         agentName(bm, reactor), old_d20, ss.d20, ss.total, ss.dc, ss.saved ? "SAVES" : "still fails");
     return true;
 }
 
@@ -3551,6 +3604,9 @@ std::vector<ReactionOption> CombatEngine::saveFailOptions(const BattleMap& bm, i
     if (canDarkOnesOwnLuck(bm, reactor, ss.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Use Dark One's Own Luck (+1d10 to the failed save)", "DarkOnesOwnLuck"});
+    if (canLivingLegendReroll(bm, reactor, ss.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use Living Legend (reroll your failed save)", "LivingLegend"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -3571,6 +3627,7 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
     else if (opt.feature == "LegendaryResistance")  applyLegendaryResistanceToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "WarGodsBlessing")      applyWarGodsBlessingToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "DarkOnesOwnLuck")       applyDarkOnesOwnLuckToSave(bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "LivingLegend")          applyLivingLegendRerollToSave(bm, ctx.reactor_idx, *ss);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

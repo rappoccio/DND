@@ -401,6 +401,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Paladin Oath of Devotion: Sacred Weapon attack-roll bonus (0 = inactive)")
         .def_readwrite("sacred_weapon_turns", &Agent::Stats::sacred_weapon_turns,
              "Sacred Weapon remaining duration in rounds (decrements at turn start)")
+        .def_readwrite("vow_of_enmity_target", &Agent::Stats::vow_of_enmity_target,
+             "Paladin Oath of Vengeance L3 Vow of Enmity: sworn target agent index (-1 = none)")
+        .def_readwrite("vow_of_enmity_turns", &Agent::Stats::vow_of_enmity_turns,
+             "Vow of Enmity remaining duration in rounds (decrements at turn start; 0 = inactive)")
+        .def_readwrite("avenging_angel_turns", &Agent::Stats::avenging_angel_turns,
+             "Paladin Oath of Vengeance L20 Avenging Angel: remaining duration in rounds "
+             "(>0 = Fly 60 + hover and a Frightful Aura in the Aura of Protection)")
+        .def_readwrite("undying_sentinel_used", &Agent::Stats::undying_sentinel_used,
+             "Paladin Oath of the Ancients L15 Undying Sentinel: 1/long-rest drop-to-1-HP used (reset on long rest)")
+        .def_readwrite("elder_champion_turns", &Agent::Stats::elder_champion_turns,
+             "Paladin Oath of the Ancients L20 Elder Champion: remaining duration in rounds "
+             "(>0 = regen 10/turn; enemies in aura have Disadvantage on saves vs your spells/CD)")
+        .def_readwrite("living_legend_turns", &Agent::Stats::living_legend_turns,
+             "Paladin Oath of Glory L20 Living Legend: remaining duration in rounds "
+             "(>0 = save-reroll reaction + once/turn Unerring Strike miss→hit)")
         .def_readwrite("corona_of_light_turns", &Agent::Stats::corona_of_light_turns,
              "Cleric Light Domain (L17) Corona of Light remaining duration in rounds (>0 = enemies in 60ft "
              "have Disadvantage on saves vs the caster's Fire/Radiant spells)")
@@ -666,6 +681,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
         .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
         .def_readwrite("sentinel_guard_available", &Agent::Conditions::sentinel_guard_available)
+        .def_readwrite("soul_of_vengeance_available", &Agent::Conditions::soul_of_vengeance_available)
+        .def_readwrite("inspiring_smite_used", &Agent::Conditions::inspiring_smite_used)
+        .def_readwrite("unerring_strike_used", &Agent::Conditions::unerring_strike_used)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("colossus_slayer_used", &Agent::Conditions::colossus_slayer_used)
         .def_readwrite("horde_breaker_available", &Agent::Conditions::horde_breaker_available)
@@ -1138,6 +1156,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("OathOftheMountedWarrior", OathOftheMountedWarriorPath)
         .value("OathOfRedemption", OathOfRedemptionPath)
         .value("OathOfVengeance", OathOfVengeancePath)
+        .value("OathOfAncients", OathOfAncientsPath)
+        .value("OathOfGlory", OathOfGloryPath)
         .export_values();
 
     // ── Ranger Subclass Enum (2024 D&D) ──────────────────────────────────────
@@ -2026,6 +2046,37 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "+CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires\n"
              "Oath of Devotion and an available Channel Oath use. Returns the bonus granted,\n"
              "or -1 if it could not be activated.")
+        .def("activate_vow_of_enmity",
+             &CombatEngine::activateVowOfEnmity,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_idx"),
+             "Paladin Oath of Vengeance — Vow of Enmity: spend 1 Channel Oath use to swear\n"
+             "enmity against a visible enemy within 30 ft, gaining Advantage on attacks against\n"
+             "it for 1 minute (or until used again). The vow auto-transfers to the nearest enemy\n"
+             "within 30 ft if the target dies. Returns True on success, False if not eligible.")
+        .def("activate_avenging_angel",
+             &CombatEngine::activateAvengingAngel,
+             py::arg("battle_map"), py::arg("idx"),
+             "Paladin Oath of Vengeance — Avenging Angel (L20): Bonus Action, 10 minutes. Grants\n"
+             "Fly 60 ft (hover) and a Frightful Aura in the Aura of Protection. Costs one Avenging\n"
+             "Angel use per long rest, or a level-5 spell slot when exhausted. Returns True on success.")
+        .def("activate_elder_champion",
+             &CombatEngine::activateElderChampion,
+             py::arg("battle_map"), py::arg("idx"),
+             "Paladin Oath of the Ancients — Elder Champion (L20): Bonus Action, 1 minute. Regain 10 HP\n"
+             "each turn start and enemies in your Aura of Protection have Disadvantage on saves vs your\n"
+             "spells/Channel Oath. Costs one use per long rest, or a level-5 slot. Returns True on success.")
+        .def("activate_inspiring_smite",
+             &CombatEngine::activateInspiringSmite,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_idx"),
+             "Paladin Oath of Glory — Inspiring Smite (L3): immediately after a Divine Smite this turn,\n"
+             "spend one Channel Oath use to grant a creature within 30 ft (may be self) 2d8 + Paladin\n"
+             "level temporary HP. Once per turn. Returns the temp HP granted, or -1 if not allowed.")
+        .def("activate_living_legend",
+             &CombatEngine::activateLivingLegend,
+             py::arg("battle_map"), py::arg("idx"),
+             "Paladin Oath of Glory — Living Legend (L20): Bonus Action, 10 minutes. Grants a save-reroll\n"
+             "reaction and once-per-turn Unerring Strike (weapon miss→hit). Costs one use per long rest,\n"
+             "or a level-5 spell slot when exhausted. Returns True on success.")
         .def("activate_corona_of_light",
              &CombatEngine::activateCoronaOfLight,
              py::arg("battle_map"), py::arg("idx"),
@@ -2370,6 +2421,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "Aura of Courage: True iff this agent is immune to Frightened (a Paladin L10+ aura\n"
              "reaches it — itself or a same-team ally in range).")
+        .def("has_aura_of_warding",
+             &CombatEngine::hasAuraOfWarding,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Warding (Oath of the Ancients L7+): True iff this agent has Resistance to\n"
+             "Necrotic/Psychic/Radiant (an allied Ancients Paladin L7+ aura reaches it).")
+        .def("has_aura_of_alacrity",
+             &CombatEngine::hasAuraOfAlacrity,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Alacrity (Oath of Glory L7+): True iff this agent's Speed is +10 ft (an allied\n"
+             "Glory Paladin L7+ aura reaches it — itself or a same-team ally in range).")
         .def("save_mod_for",
              &CombatEngine::saveModFor,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("ability"),
@@ -2947,6 +3008,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "ally (flagged via the attacker's conditions.sentinel_guard_available), the Sentinel spends\n"
              "its reaction to make a melee attack at the attacker. Returns the counter-attack's\n"
              "AttackResult (invalid if the reaction was already used).")
+        .def("can_glorious_defense", &CombatEngine::canGloriousDefense,
+             py::arg("battle_map"), py::arg("action"), py::arg("result"), py::arg("pal_idx"),
+             "True iff pal_idx (L15+ Oath of Glory paladin, a Glorious Defense use, reaction free) may\n"
+             "add +CHA AC to the hit creature (itself or an ally within 10 ft) to flip this hit to a\n"
+             "miss — only when the boost actually would flip it.")
+        .def("can_soul_of_vengeance", &CombatEngine::canSoulOfVengeance,
+             py::arg("battle_map"), py::arg("action"), py::arg("pal_idx"),
+             "True iff pal_idx (L15+ Oath of Vengeance paladin, active Vow of Enmity on action's\n"
+             "attacker, reaction free, a melee weapon, and the sworn foe within 5 ft) may use Soul of\n"
+             "Vengeance to counter-strike. Shared by the GUI flag and the auto/RL OnAllyAttacked window.")
+        .def("apply_soul_of_vengeance",
+             &CombatEngine::applySoulOfVengeance,
+             py::arg("battle_map"), py::arg("paladin_idx"), py::arg("attacker_idx"), py::arg("weapon_idx"),
+             "Soul of Vengeance (Oath of Vengeance L15): after the sworn foe attacks (flagged via the\n"
+             "attacker's conditions.soul_of_vengeance_available), the paladin spends its reaction to make\n"
+             "a melee attack at that foe. Returns the counter-attack's AttackResult (invalid if the\n"
+             "reaction was already used).")
         // ── OnD20Seen reactions (attack rolls only). The interactive window reuses
         //    begin_attack/pending_decision/submit_decision/last_attack_result; these are the eligibility
         //    gates + direct apply hooks (used by tests, and by the GUI to label the menu). ──

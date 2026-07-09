@@ -65970,6 +65970,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "spellcasting_ability": "con",
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -66035,7 +66036,7 @@
         "Prone",
         "Stunned"
       ],
-      "save_dc": null,
+      "save_dc": 14,
       "saving_throws": [],
       "action_notes": null,
       "bonus_action": null,
