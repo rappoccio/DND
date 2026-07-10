@@ -61,6 +61,7 @@ from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
+from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
@@ -252,6 +253,13 @@ class App:
             json_path = read_stats_from_csv.save_stats_as_json(csv_path, json_path)
         self.mob_stats_json = read_stats_from_csv.load_stats_from_json(json_path)
         self.all_mobs = self.mob_stats_json
+        # Challenge Rating by bestiary name, for XP awards when enemies are defeated.
+        # Keyed by the exact bestiary name; placed copies ("Goblin 2") strip the
+        # trailing number in _agent_cr() to hit this map. See xp.py.
+        self._cr_by_name = {
+            name: rec.get("meta", {}).get("cr")
+            for name, rec in self.mob_stats_json.items()
+        }
 
         # Determine sprites directory (CSV moved to gui, but sprites may be in sprites/ or ../sprites/)
         possible_sprite_dirs = [
@@ -379,6 +387,7 @@ class App:
         self.font_sm = pygame.font.SysFont("sans", FONT_SM)
         self.font_md = pygame.font.SysFont("sans", FONT_MD)
         self.font_lg = pygame.font.SysFont("sans", FONT_LG, bold=True)
+        self._letter_fonts = {}   # size -> bold SysFont, for on-token placeholder glyphs
 
         # ── Load C++ battle map + image + overlay (re-entrant) ────────────
         # Builds self.bm, map_surf, map_scale, map_rect, overlay and (re)creates
@@ -422,6 +431,11 @@ class App:
 
         # ── NPC spell mechanics ──────────────────────────────────────────────
         self._agent_meta: dict[int, dict] = {}  # {agent_idx: {"npc_spell_groups": {...}}} — for stats dialog
+        # XP awards: cumulative party XP this session, and the set of enemy agent
+        # indices already counted (so repeated / phased End-Combat tallies never
+        # double-award the same corpse). Reset when a new scene loads.
+        self.party_xp_total: int = 0
+        self._xp_awarded_agents: set[int] = set()
 
         self._map_dir  = os.path.dirname(os.path.abspath(map_path)) or "/"
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
@@ -2885,8 +2899,91 @@ class App:
         # initiative wrapped back to it ("waited a round before acting").
         self._proceed_to_new_turn()
 
+    def _agent_cr(self, idx: int):
+        """Challenge Rating string for a placed agent, or None if unknown (PCs,
+        custom-named tokens). Looks up the bestiary by name, stripping a trailing
+        copy number ("Goblin 2" → "Goblin") added by _unique_agent_name."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return None
+        name = self.bm.placed_agents[idx].name
+        cr = self._cr_by_name.get(name)
+        if cr is None:
+            base = name.rsplit(" ", 1)
+            if len(base) == 2 and base[1].isdigit():
+                cr = self._cr_by_name.get(base[0])
+        return cr
+
+    def _award_encounter_xp(self):
+        """Tally XP for enemies of the party defeated since the last tally, log the
+        award, and roll it into the session's cumulative party total. Called when
+        combat ends. Awards are per-corpse-once (see _xp_awarded_agents)."""
+        newly_crs = []          # CRs of enemies defeated this combat
+        for i, pt in enumerate(self.bm.placed_agents):
+            if i in self._xp_awarded_agents:
+                continue
+            if pt.faction == PC_FACTION:
+                continue        # party members / their summons never grant XP
+            # Defeated = dead corpse or dropped to 0 HP.
+            down = pt.conditions.dead or \
+                self.combat.get_agent_stats(self.bm, i).hp_cur <= 0
+            if not down:
+                continue
+            cr = self._agent_cr(i)
+            if cr is None:
+                continue        # no CR on record → not a rated monster, skip
+            newly_crs.append(cr)
+            self._xp_awarded_agents.add(i)
+
+        if not newly_crs:
+            return
+        old_total = self.party_xp_total
+        result = compute_encounter_xp(newly_crs)
+        self.party_xp_total += result["total_xp"]
+        mult = result["multiplier"]
+        mult_str = "" if abs(mult - 1.0) < 1e-6 else f" ×{mult:g}"
+        self._combat_log_add(
+            f"⚔ XP earned: {result['total_xp']} "
+            f"({result['count']} defeated, {result['base_xp']} base{mult_str}) "
+            f"— party total {self.party_xp_total}")
+        self._announce_level_ups(old_total, self.party_xp_total)
+
+    def _announce_level_ups(self, old_total: int, new_total: int):
+        """If the party's cumulative XP just crossed one or more Character
+        Advancement thresholds (SRD 5.2), pop up a message naming every party
+        member (PC) who is now eligible to gain a level. A PC can advance when
+        the party's XP total reaches the threshold for the level above their
+        current char_level. Purely advisory — leveling itself stays manual."""
+        # No new tier crossed → nothing to announce (avoids repeat popups).
+        if level_for_xp(new_total) <= level_for_xp(old_total):
+            return
+        eligible = []          # (name, current_level, attainable_level)
+        for i, pt in enumerate(self.bm.placed_agents):
+            if pt.faction != PC_FACTION:
+                continue        # only actual party members level up
+            stats = self.combat.get_agent_stats(self.bm, i)
+            if getattr(stats, "is_npc", False):
+                continue        # PC-faction summons/pets are not characters
+            cur = stats.char_level
+            attainable = level_for_xp(new_total)
+            if attainable > cur:
+                eligible.append((pt.name, cur, attainable))
+
+        if not eligible:
+            return
+        lines = ["⭐ Level Up!",
+                 f"Party XP total {new_total:,} reached a new tier."]
+        for name, cur, attainable in eligible:
+            need = xp_for_level(attainable)
+            lines.append(f"{name}: level {cur} → {attainable}  (needs {need:,} XP)")
+            self._combat_log_add(
+                f"⭐ {name} can advance to level {attainable} "
+                f"(party XP {new_total:,} ≥ {need:,}).")
+        self._modal_message(lines)
+
     def _end_combat(self):
         """Leave combat mode and clear all combat state."""
+        # Award XP for enemies defeated this combat before combat state is cleared.
+        self._award_encounter_xp()
         self.move_remaining_walk   = 0
         self.move_remaining_fly    = 0
         self.move_remaining_swim   = 0
@@ -11435,6 +11532,9 @@ class App:
         # otherwise bleed onto whatever agent lands at that index (e.g. a non-NPC
         # written out as an NPC on the next save). It is repopulated below per agent.
         self._agent_meta.clear()
+        # Fresh scene → new agent indices; drop the awarded-corpse set so the
+        # next combat's XP tally starts clean (cumulative party_xp_total persists).
+        self._xp_awarded_agents.clear()
         agent_data = data.get("agents", [])
         for t in agent_data:
             cfg = rpg.AgentConfig()
@@ -12500,6 +12600,14 @@ class App:
             box = pygame.Rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
             pygame.draw.rect(self.screen, (255, 220, 60), box, 2)
 
+    def _letter_font(self, size):
+        """Cached bold font sized for the on-token first-letter placeholder glyph."""
+        f = self._letter_fonts.get(size)
+        if f is None:
+            f = pygame.font.SysFont("sans", size, bold=True)
+            self._letter_fonts[size] = f
+        return f
+
     def _draw_hover_cursor(self):
         """Highlight the grid cell under the mouse, in and out of combat.
 
@@ -12531,6 +12639,51 @@ class App:
         fill.fill((255, 255, 255, 26))            # faint wash so the cell reads as 'hot'
         self.screen.blit(fill, (sx, sy))
         pygame.draw.rect(self.screen, (235, 235, 250), rect, 2)
+
+    def _draw_agent_hover_name(self):
+        """Show the name of the token under the pointer as a floating tooltip.
+
+        Names are no longer painted on the tokens (they cluttered the cells); instead
+        the DM hovers a token to read it. Suppressed while a modal is open or the
+        pointer is over the config panel."""
+        if self._modal_active():
+            return
+        if not self.bm or not self.map_rect:
+            return
+        mx, my = pygame.mouse.get_pos()
+        if mx >= self._panel_x():
+            return                     # pointer is over the panel, not the map
+        cell = self._screen_to_cell(mx, my)
+        if cell is None:
+            return
+        idx = self._agent_at(cell)
+        if idx < 0:
+            return
+        pt = self.bm.placed_agents[idx]
+        # Fog of war: don't reveal a hidden non-party token's name.
+        if self._fog_active() and pt.faction != PC_FACTION:
+            fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
+                  for dc in range(pt.size) for dr in range(pt.size)]
+            if fp and all(not self.bm.is_explored(c) for c in fp):
+                return
+
+        label = self.font_md.render(pt.name, True, (240, 240, 240))
+        pad = 5
+        box_w = label.get_width() + pad * 2
+        box_h = label.get_height() + pad * 2
+        # Anchor above-right of the cursor, clamped to the map viewport.
+        bx = mx + 14
+        by = my - box_h - 6
+        if bx + box_w > self._panel_x():
+            bx = self._panel_x() - box_w - 2
+        if by < 0:
+            by = my + 18
+        box = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+        box.fill((20, 20, 26, 230))
+        self.screen.blit(box, (bx, by))
+        pygame.draw.rect(self.screen, faction_color(pt.faction),
+                         pygame.Rect(bx, by, box_w, box_h), 2, border_radius=4)
+        self.screen.blit(label, (bx + pad, by + pad))
 
     def _draw_lighting_overlay(self):
         """Draw the lighting visualization overlay on the map."""
@@ -12690,7 +12843,24 @@ class App:
         if getattr(pt, "removed_from_play", False):
             return
         size_px = cpx * pt.size
-        sprite  = self._get_sprite(pt.sprite_path, size_px)
+        team_col = faction_color(pt.faction)   # red / blue / grey by team
+
+        # Team-colored background square behind every token. Sprites (which are mostly
+        # transparent) sit on top of it, so the whole cell reads as red / blue / grey.
+        r = pygame.Rect(screen_x + 1, screen_y + 1, size_px - 2, size_px - 2)
+        bg_fill = tint if tint else team_col
+        bg = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+        bg.fill((*bg_fill[:3], alpha))
+        self.screen.blit(bg, r)
+        border_col = tint if tint else tuple(min(c + 50, 255) for c in team_col[:3])
+        pygame.draw.rect(self.screen, border_col, r, 2, border_radius=3)
+
+        # Skip first-letter placeholder sprites (e.g. sprites/C.png). They're opaque
+        # tiles that would hide the team color; a bare team-colored square + hover name
+        # reads cleaner. Real art (multi-char filenames) is still drawn.
+        stem = os.path.splitext(os.path.basename(pt.sprite_path))[0] if pt.sprite_path else ""
+        is_letter_placeholder = len(stem) == 1 and stem.isalpha()
+        sprite = None if is_letter_placeholder else self._get_sprite(pt.sprite_path, size_px)
         if sprite:
             if alpha < 255 or tint:
                 surf = sprite.copy()
@@ -12701,12 +12871,20 @@ class App:
             else:
                 self.screen.blit(sprite, (screen_x, screen_y))
         else:
-            r = pygame.Rect(screen_x+2, screen_y+2, size_px-4, size_px-4)
-            placeholder = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
-            fill_col    = tint if tint else COL_AGENT_FILL
-            placeholder.fill((*fill_col[:3], alpha))
-            self.screen.blit(placeholder, r)
-            pygame.draw.rect(self.screen, COL_AGENT_BORDER, r, 2, border_radius=3)
+            # No real art (letter-placeholder file, or an empty/missing path as
+            # PCs have) — draw the token's first letter, centered, on the
+            # team-colored square. Splits the difference between a bare square
+            # and the old opaque letter-tile: keeps the team color, adds an
+            # at-a-glance glyph. Full name still shown on hover.
+            glyph = (pt.name[:1] if pt.name else stem).upper()
+            fsz = max(FONT_SM, int(size_px * 0.55))
+            gfont = self._letter_font(fsz)
+            lt = gfont.render(glyph, True, (25, 25, 30))
+            if alpha < 255:
+                lt = lt.copy()
+                lt.set_alpha(alpha)
+            self.screen.blit(lt, (screen_x + (size_px - lt.get_width()) // 2,
+                                  screen_y + (size_px - lt.get_height()) // 2))
         # Down hatching (diagonal lines when HP <= 0)
         if pt.stats.hp_cur <= 0:
             hatch = pygame.Surface((size_px, size_px), pygame.SRCALPHA)
@@ -12722,9 +12900,11 @@ class App:
         if alpha == 255:
             self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats)
 
-        # Name label
-        lbl = self.font_sm.render(pt.name, True, (255, 255, 255))
-        self.screen.blit(lbl, (screen_x + 3, screen_y + 3))
+        # Name is shown on hover (see _draw_agent_hover_name), not painted on the token.
+
+        # Accumulate (label, color) for each active condition so it can be
+        # rendered as stacked text below the agent, matching the ring color.
+        cond_labels = []
 
         # Boss-finale marker (dungeon generator flags the deepest room's big-bad in
         # _agent_meta). Drawn as a golden square ringing the agent's cell so it reads
@@ -12749,6 +12929,7 @@ class App:
             spell_name = pt.conditions.concentrating_on or 'Spell'
             spell_lbl = self.font_sm.render(spell_name, True, caster_color)
             self.screen.blit(spell_lbl, (screen_x + size_px + 5, screen_y))
+            cond_labels.append((f"Concentrating ({spell_name})", caster_color))
 
         # Paralyzed indicator (circle linking to caster)
         if pt.conditions.paralyzed and agent_idx >= 0:
@@ -12761,6 +12942,7 @@ class App:
                     center_y = int(screen_y + size_px / 2)
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 3)
+                    cond_labels.append(("Paralyzed", caster_color))
                     break
 
         # Blinded indicator (circle linking to caster)
@@ -12774,6 +12956,7 @@ class App:
                     center_y = int(screen_y + size_px / 2)
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, caster_color, (center_x, center_y), radius, 3)
+                    cond_labels.append(("Blinded", caster_color))
                     break
 
         # Incapacitated indicator (circle linking to source)
@@ -12787,6 +12970,7 @@ class App:
                     center_y = int(screen_y + size_px / 2)
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, source_color, (center_x, center_y), radius, 3)
+                    cond_labels.append(("Incapacitated", source_color))
                     break
 
         # Stunned indicator (circle linking to source)
@@ -12800,6 +12984,7 @@ class App:
                     center_y = int(screen_y + size_px / 2)
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, source_color, (center_x, center_y), radius, 3)
+                    cond_labels.append(("Stunned", source_color))
                     break
 
         # Charmed indicator (circle linking to charmer)
@@ -12813,6 +12998,7 @@ class App:
                     center_y = int(screen_y + size_px / 2)
                     radius = int(size_px / 2 + 10)  # Slightly larger than concentration circle
                     pygame.draw.circle(self.screen, charmer_color, (center_x, center_y), radius, 3)
+                    cond_labels.append(("Charmed", charmer_color))
                     break
 
         # Grappled indicator (brown "GR" badge)
@@ -12822,6 +13008,7 @@ class App:
             badge_x = int(screen_x + 4)
             badge_y = int(screen_y + 4)
             self.screen.blit(gr_badge, (badge_x, badge_y))
+            cond_labels.append(("Grappled", (210, 150, 80)))
 
         # Frightened indicator (purple "FR" badge)
         if pt.conditions.frightened:
@@ -12830,6 +13017,7 @@ class App:
             badge_x = int(screen_x + 4)
             badge_y = int(screen_y + 22)  # Below grappled badge if both present
             self.screen.blit(fr_badge, (badge_x, badge_y))
+            cond_labels.append(("Frightened", (180, 100, 200)))
 
         # Gaseous Form / Misty Escape indicator (pale-cyan "MIST" badge)
         if getattr(pt.conditions, "gaseous_form", False):
@@ -12838,6 +13026,7 @@ class App:
             badge_x = int(screen_x + 4)
             badge_y = int(screen_y + 40)  # Below grappled/frightened badges if present
             self.screen.blit(mist_badge, (badge_x, badge_y))
+            cond_labels.append(("Gaseous Form", (170, 210, 230)))
 
         # Hidden indicator (eye-slash symbol)
         if pt.conditions.hidden:
@@ -12879,6 +13068,19 @@ class App:
             skull_x = int(screen_x + size_px // 2 - 8)
             skull_y = int(screen_y + size_px // 2 - 12)
             self.screen.blit(skull_icon, (skull_x, skull_y))
+
+        # Condition text labels, stacked below the agent. Each is drawn in the same
+        # color as its ring/badge so the text and the circle read as one indicator.
+        if cond_labels:
+            label_y = int(screen_y + size_px + 2)
+            # If death-save bubbles are drawn below the agent, start beneath them.
+            if pt.conditions.unconscious and pt.stats.hp_cur <= 0:
+                label_y += 14
+            for text, color in cond_labels:
+                surf = self.font_sm.render(text, True, color)
+                lx = int(screen_x + size_px / 2 - surf.get_width() / 2)
+                self.screen.blit(surf, (lx, label_y))
+                label_y += surf.get_height() + 1
 
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
@@ -15399,6 +15601,25 @@ class App:
             bar = pygame.Rect(px + PANEL_W - 6, thumb_y, 4, thumb_h)
             pygame.draw.rect(self.screen, (90, 92, 110), bar, border_radius=2)
 
+    def _draw_xp_total(self):
+        """Persistent running-total party-XP scoreboard, pinned to the bottom-right
+        of the config panel just above the cursor strip. Drawn unclipped every frame
+        (in and out of combat) so the total accrued across finished combats — rolled
+        up by _award_encounter_xp() — is always visible. See xp.py."""
+        px = self._panel_x()
+        sh = self.screen.get_height()
+        label = f"★ XP  {self.party_xp_total:,}"
+        surf  = self.font_md.render(label, True, (245, 215, 90))   # gold
+        pad   = 6
+        w     = surf.get_width() + pad * 2
+        h     = surf.get_height() + 4
+        x     = px + PANEL_W - self._PANEL_PAD - w
+        y     = sh - 22 - h - 4                                    # above the 22px cursor strip
+        bg    = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(self.screen, (40, 40, 52), bg, border_radius=5)
+        pygame.draw.rect(self.screen, (95, 82, 40), bg, width=1, border_radius=5)
+        self.screen.blit(surf, (x + pad, y + 2))
+
     def _draw_cursor_cell_info(self):
         """Debug readout of the grid cell under the mouse, drawn at the bottom of the
         config panel. Shows col/row plus terrain type and whether the engine treats the
@@ -17557,8 +17778,10 @@ class App:
             self._draw_floating_texts()                     # transient outcome flashes above tokens
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
+            self._draw_agent_hover_name()                   # token name shown only under the pointer
             self._draw_panel()                              # config panel (hosts the Floor-nav block)
             self._draw_cursor_cell_info()                   # debug: cell under cursor
+            self._draw_xp_total()                           # running party-XP scoreboard (bottom-right)
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
             self.terrain_placement_dialog.draw(self.screen)  # modal — always on top

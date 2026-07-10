@@ -29,19 +29,15 @@ void CombatEngine::applyParalyzed(BattleMap& bm, int idx) noexcept
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
-    // Set paralyzed condition
+    // Paralyzed IS Incapacitated: route the shared side-effects (movement→0, grapples released,
+    // and — critically — concentration broken) through applyIncapacitated so a paralyzed caster
+    // (e.g. Hold Person) drops its concentration spell like Spirit Guardians. Then layer on the
+    // Paralyzed-specific flag.
+    applyIncapacitated(bm, idx);
+
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.paralyzed = true;
-    cond.incapacitated = true;  // Paralyzed is incapacitated
     bm.setAgentConditions(idx, cond);
-
-    // Set all movement speeds to 0
-    Agent::Stats stats = bm.getAgentStats(idx);
-    stats.speed_walk_remaining = 0;
-    stats.speed_fly_remaining = 0;
-    stats.speed_swim_remaining = 0;
-    stats.speed_burrow_remaining = 0;
-    bm.setAgentStats(idx, stats);
 
     log_("Agent paralyzed: movement speed set to 0, incapacitated");
 }
@@ -144,10 +140,13 @@ void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
-    // Set stunned condition
+    // Stunned IS Incapacitated: route the shared side-effects (movement→0, grapples released,
+    // concentration broken) through applyIncapacitated so a stunned caster drops its concentration
+    // spell. Then layer on the Stunned-specific flag.
+    applyIncapacitated(bm, idx);
+
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.stunned = true;
-    cond.incapacitated = true;  // Stunned is incapacitated
     bm.setAgentConditions(idx, cond);
 
     log_("Agent stunned: cannot act, auto-fails STR/DEX saves, attacks have advantage");
