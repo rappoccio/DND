@@ -57,9 +57,10 @@ from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, S
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
-from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph
+from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph, draw_ladder_glyph, door_link_key
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
+from dungeon import Dungeon, MapPage, dungeon_path_for
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
@@ -372,47 +373,18 @@ class App:
         self._pending_pc_class = None
         self._pending_pc_stats = None
 
-        # ── Load C++ battle map ───────────────────────────────────────────
-        self.bm = rpg.BattleMap(map_path)
-        self.bm.analyze_grid()
-        self.bm.detect_walls()
-
-        # ── Load image to get size BEFORE creating the display ────────────
-        # convert_alpha() requires a display surface to exist first, so we
-        # load raw here, create the window, then convert/scale below.
-        raw_map = pygame.image.load(map_path)
-        mw, mh  = raw_map.get_size()
-
-        # ── Auto-scale map to fit within a reasonable display area ────────
-        # Leave room for the right-side config panel and keep some margin.
-        MAX_MAP_W = 1860 - PANEL_W   # fits comfortably on a 1920-wide display
-        MAX_MAP_H = 1040             # fits comfortably on a 1080-tall display
-        scale = min(MAX_MAP_W / mw, MAX_MAP_H / mh, 1.0)  # never upscale
-        disp_mw = int(mw * scale)
-        disp_mh = int(mh * scale)
-        self.map_scale = scale       # used to convert C++ pixel coords → screen
-
-        # ── Window sizing ─────────────────────────────────────────────────
-        win_w = disp_mw + PANEL_W
-        win_h = max(disp_mh, 600)
-        self.screen = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
-
-        # ── Now safe to convert (display surface exists) ──────────────────
-        converted = raw_map.convert_alpha()
-        if scale < 1.0:
-            self.map_surf = pygame.transform.smoothscale(converted, (disp_mw, disp_mh))
-        else:
-            self.map_surf = converted
-        self.map_rect = pygame.Rect(0, 0, disp_mw, disp_mh)
-
         # ── Fonts ─────────────────────────────────────────────────────────
+        # Set up once, independent of the active map. SysFont needs no display
+        # surface, and _build_overlay (called from _load_map_png) doesn't use them.
         self.font_sm = pygame.font.SysFont("sans", FONT_SM)
         self.font_md = pygame.font.SysFont("sans", FONT_MD)
         self.font_lg = pygame.font.SysFont("sans", FONT_LG, bold=True)
 
-        # ── Overlay surfaces (alpha) – matches the displayed (scaled) size ──
-        self.overlay = pygame.Surface((disp_mw, disp_mh), pygame.SRCALPHA)
-        self._build_overlay()
+        # ── Load C++ battle map + image + overlay (re-entrant) ────────────
+        # Builds self.bm, map_surf, map_scale, map_rect, overlay and (re)creates
+        # the display window. Callable at runtime to swap the active PNG (floor
+        # paging — see FLOORS_IMPLEMENTATION_PLAN.md Phase 0).
+        self._load_map_png(map_path)
 
         # ── Sprite cache  {sprite_path: pygame.Surface} ───────────────────
         self.sprites: dict[str, pygame.Surface] = {}
@@ -453,6 +425,15 @@ class App:
 
         self._map_dir  = os.path.dirname(os.path.abspath(map_path)) or "/"
         self._terrain_regions = []  # List of {type, x, y, width, height, multiplier}
+        # Ladders: Python-only vertical portals (Phase 4). Each is
+        # {"cells": [(col,row),...], "target": [X, Y, Z]} in GLOBAL coords. Round-trips
+        # through _terrain.json alongside doors; resolved against the dungeon manifest.
+        self._ladders = []
+        # Cross-map door staples (Floors Phase 5): a door's cell-key -> global [X,Y,Z]
+        # target on an abutting same-z page. The door itself lives in bm.doors (C++) and
+        # can't hold this, so links are kept side-by-side, keyed by the door's cells, and
+        # round-trip through _terrain.json as each door record's "link_target".
+        self._door_links = {}
         self._painted_terrain_cells = []  # cells set to Wall/Chasm/Water by _apply_terrain_to_battle_map
         self._walls_enabled = True   # auto-detected walls active? (toggle persists in terrain JSON)
 
@@ -473,6 +454,16 @@ class App:
             os.path.splitext(os.path.basename(map_path))[0] + "_agents.json"
         )
         self._set_encounter_base(default_agents)
+
+        # ── Multi-map dungeon state (FLOORS_IMPLEMENTATION_PLAN.md, Phase 3) ─
+        # self.dungeon is None outside "dungeon mode"; when set, the app is paging
+        # between the manifest's PNG pages on a shared (X, Y, Z) global grid.
+        # dungeon_page is the MapPage currently loaded into the engine.
+        self.dungeon: Dungeon | None = None
+        self.dungeon_page: MapPage | None = None
+        # Clickable rects for the on-map paging overlay, rebuilt each draw:
+        #   {"left"/"right"/"up"/"down"/"floor_up"/"floor_down": pygame.Rect}
+        self._dungeon_nav_rects: dict = {}
 
         # Load terrain, spell effects, and lighting data if they exist
         self._load_terrain()
@@ -705,6 +696,90 @@ class App:
         self.pan_y = 0            # vertical pan offset in pixels
 
         self.clock = pygame.time.Clock()
+
+        # If a dungeon manifest sits next to this map's encounter, enter dungeon
+        # mode and open its entry page (so paging controls appear). Deferred to the
+        # end of __init__ so _switch_to_page's _load_agents has the combat engine,
+        # sprite/spell catalogs and panels it depends on. Non-fatal.
+        self._load_dungeon_manifest_if_present()
+
+    # ─────────────────────────────────────────────────────────────────────
+    #  (Re)build the active battle map from a PNG (re-entrant map loading)
+    # ─────────────────────────────────────────────────────────────────────
+    def _load_map_png(self, path):
+        """Load (or swap to) the PNG at ``path`` as the active battle map.
+
+        Rebuilds ``self.bm`` (running ``analyze_grid`` / ``detect_walls``),
+        ``self.map_surf``, ``self.map_scale``, ``self.map_rect`` and
+        ``self.overlay``, resizes the display window to fit, and resets the
+        viewport / interaction state (pan, selection, drag). Safe to call at
+        runtime to page between floors/maps (FLOORS_IMPLEMENTATION_PLAN.md).
+
+        The sprite cache (``self.sprites``) is keyed by sprite path and is
+        intentionally left untouched so it survives a swap.
+        """
+        # ── C++ battle map ─────────────────────────────────────────────────
+        self._map_path = path       # active PNG (dungeon pages reference it by name)
+        self.bm = rpg.BattleMap(path)
+        self.bm.analyze_grid()
+        self.bm.detect_walls()
+
+        # ── Load image to get size BEFORE creating/resizing the display ────
+        # convert_alpha() requires a display surface to exist first, so we
+        # load raw here, create the window, then convert/scale below.
+        raw_map = pygame.image.load(path)
+        mw, mh  = raw_map.get_size()
+
+        # ── Auto-scale map to fit within a reasonable display area ────────
+        # Leave room for the right-side config panel and keep some margin.
+        MAX_MAP_W = 1860 - PANEL_W   # fits comfortably on a 1920-wide display
+        MAX_MAP_H = 1040             # fits comfortably on a 1080-tall display
+        scale = min(MAX_MAP_W / mw, MAX_MAP_H / mh, 1.0)  # never upscale
+        disp_mw = int(mw * scale)
+        disp_mh = int(mh * scale)
+        self.map_scale = scale       # used to convert C++ pixel coords → screen
+
+        # ── Window sizing ─────────────────────────────────────────────────
+        win_w = disp_mw + PANEL_W
+        win_h = max(disp_mh, 600)
+        self.screen = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
+
+        # ── Now safe to convert (display surface exists) ──────────────────
+        converted = raw_map.convert_alpha()
+        if scale < 1.0:
+            self.map_surf = pygame.transform.smoothscale(converted, (disp_mw, disp_mh))
+        else:
+            self.map_surf = converted
+        self.map_rect = pygame.Rect(0, 0, disp_mw, disp_mh)
+
+        # ── Overlay surface (alpha) – matches the displayed (scaled) size ──
+        self.overlay = pygame.Surface((disp_mw, disp_mh), pygame.SRCALPHA)
+        self._build_overlay()
+
+        # ── Reset viewport / interaction state ─────────────────────────────
+        # On first load these attributes may not exist yet (they're initialized
+        # later in __init__); guard so the initial call is a harmless no-op and
+        # a mid-session swap starts from a clean viewport.
+        self.pan_x = 0
+        self.pan_y = 0
+        if hasattr(self, "selected_idx"):
+            self.selected_idx = -1
+        if hasattr(self, "drag_idx"):
+            self.drag_idx    = -1
+            self.drag_origin = None
+            self.drag_cell   = None
+            self.drag_valid  = False
+        if hasattr(self, "drag_item_id"):
+            self.drag_item_id     = -1
+            self.drag_item        = None
+            self.drag_item_origin = None
+            self.drag_item_cell   = None
+
+        # A mid-session swap to a differently sized map resizes the window, so the
+        # right-side panel widgets (absolute rects) must be re-anchored. Guarded so
+        # the first __init__ call — before the panel exists — is a no-op.
+        if hasattr(self, "btn_load"):
+            self._reposition_panel()
 
     # ─────────────────────────────────────────────────────────────────────
     #  Build the static grid / wall / blocked overlay (drawn once)
@@ -1634,6 +1709,191 @@ class App:
         self._load_lighting()
         self._load_spell_effects()
 
+    # ─────────────────────────────────────────────────────────────────────
+    #  Multi-map dungeons — active-map switching & paging (Phase 3)
+    #  FLOORS_IMPLEMENTATION_PLAN.md. The engine simulates one BattleMap at a
+    #  time; a "page" is one PNG placed on a shared global (X, Y, Z) grid.
+    # ─────────────────────────────────────────────────────────────────────
+    def _load_dungeon_manifest_if_present(self):
+        """Enter dungeon mode if a ``<base>.dungeon.json`` sits beside the current
+        encounter. The manifest's entry page is loaded into the engine so the paging
+        overlay lights up. Silent no-op when there is no manifest (single-map mode)."""
+        manifest = dungeon_path_for(self._save_path)
+        if not os.path.exists(manifest):
+            return
+        try:
+            dungeon = Dungeon.load(manifest)
+        except Exception as e:                       # noqa: BLE001 — bad manifest ⇒ stay single-map
+            print(f"Warning: could not load dungeon manifest {manifest}: {e}")
+            return
+        entry = dungeon.entry_page()
+        if entry is None:
+            return
+        self.dungeon = dungeon
+        self._dungeon_manifest_path = manifest
+        # Load the entry page fresh (its PNG may differ from the CLI map). No carry:
+        # this is the initial load, not a portal crossing.
+        self._switch_to_page(entry, force=True)
+
+    def _apply_page_origin(self, page: MapPage):
+        """Stamp the engine map's global placement from ``page`` (Phase 1 fields).
+        Defensive: skips silently if the extension predates the origin/z_level
+        bindings so the app still runs on an un-rebuilt engine."""
+        try:
+            self.bm.origin_col = int(page.gx)
+            self.bm.origin_row = int(page.gy)
+            self.bm.z_level    = int(page.z)
+        except AttributeError:
+            pass  # engine not yet rebuilt with Phase 1 bindings — global coords stay 0
+
+    def _switch_to_page(self, page: MapPage, drop_cell=None, carry=None, force=False):
+        """Save the current scene, make ``page`` the active map, and reload its scene.
+
+        - ``drop_cell``  : (col,row) on the target where carried agents land (else a
+                           free spot near the top-left is chosen).
+        - ``carry``      : list of agent indices on the CURRENT page to move onto the
+                           target (a portal crossing). They are removed from the source
+                           encounter and injected onto the target (incremental spawn,
+                           never apply_agent_configs — see [[agent_dual_list_gotcha]]).
+        - ``force``      : bypass the out-of-combat guard (used for the initial load).
+
+        Returns True on success. Cross-page switching is out-of-combat only for the
+        MVP (see Known Limitations); in combat it refuses with a flash unless forced.
+        """
+        if self.combat_active and not force:
+            self._flash_status("Finish combat before changing maps.")
+            return False
+
+        already_here = (self.dungeon_page is not None and page.id == self.dungeon_page.id)
+
+        # ── 1. Serialize carried agents, then persist the current scene ────────
+        carried_records = self._read_agent_records(carry) if carry else []
+        if self.dungeon_page is not None and not already_here:
+            # Save the source scene WITHOUT the carried agents — they have left it.
+            self._save_agents(exclude_indices=set(carry) if carry else None)
+            self._save_terrain()
+            # Lighting / effects have no GUI re-serializer; they were written when
+            # last edited and travel with their encounter base, so nothing to do.
+
+        # Manifest paths may be relative (portability); resolve against the map dir
+        # (where the .dungeon.json and its PNGs live) so the engine gets valid paths.
+        def _resolve(p):
+            return p if (not p or os.path.isabs(p)) else os.path.join(self._map_dir, p)
+
+        # ── 2. Swap the PNG + engine map (skip if we're re-entering the same page) ─
+        if not already_here:
+            self._load_map_png(_resolve(page.png))
+        self._apply_page_origin(page)
+
+        # ── 3. Re-point the sidecars and reload the target scene ───────────────
+        self._set_encounter_base(_resolve(page.encounter_base))
+        self._load_terrain()
+        self._load_lighting()
+        self._load_spell_effects()
+        self._load_agents()
+
+        self.dungeon_page = page
+
+        # ── 4. Inject carried agents onto the target (incremental) ─────────────
+        if carried_records:
+            self._inject_carried_agents(carried_records, drop_cell)
+
+        self._mark_fog_dirty()
+        return True
+
+    def _read_agent_records(self, indices):
+        """Return full serialized agent records (the same shape ``_save_agents``
+        writes) for ``indices`` on the CURRENT engine map, by round-tripping through a
+        temporary encounter file. Reusing the canonical serializer keeps carried agents
+        lossless (stats/weapons/spells/armor) without duplicating its logic."""
+        if not indices:
+            return []
+        want = set(indices)
+        all_idx = set(range(len(self.bm.placed_agents)))
+        tmp = os.path.join(self._map_dir, f".carry_{os.getpid()}.json")
+        try:
+            self._save_agents(tmp, exclude_indices=(all_idx - want))
+            with open(tmp) as f:
+                doc = json.load(f)
+        except Exception as e:                       # noqa: BLE001 — carry is best-effort
+            print(f"Warning: could not serialize carried agents: {e}")
+            return []
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        return doc.get("agents", [])
+
+    def _inject_carried_agents(self, records, drop_cell):
+        """Persist ``records`` onto the freshly loaded target page and reload so the
+        carried party appears there. Agents are repositioned to free cells at/around
+        ``drop_cell`` (or the top-left) so they don't collide with the target's own
+        residents. This writes them into the target's encounter file — after a crossing
+        the party belongs to that page."""
+        if not records:
+            return
+        try:
+            with open(self._save_path) as f:
+                doc = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            doc = {"agents": [], "map_items": []}
+        agents = doc.setdefault("agents", [])
+        occupied = {(a.get("col"), a.get("row")) for a in agents}
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
+        start_c, start_r = (drop_cell if drop_cell is not None else (0, 0))
+
+        def _free_spot():
+            # Spiral-ish scan outward from the drop cell for the first open cell.
+            for radius in range(0, max(cols, rows) + 1):
+                for r in range(max(0, start_r - radius), min(rows, start_r + radius + 1)):
+                    for c in range(max(0, start_c - radius), min(cols, start_c + radius + 1)):
+                        if (c, r) not in occupied:
+                            return c, r
+            return start_c, start_r
+
+        for rec in records:
+            c, r = _free_spot()
+            rec["col"], rec["row"] = c, r
+            occupied.add((c, r))
+            agents.append(rec)
+        doc.setdefault("map_items", [])
+        with open(self._save_path, "w") as f:
+            json.dump(doc, f, indent=2)
+        self._load_agents()
+
+    def _page_step(self, direction: str):
+        """Page to the neighbouring same-floor map (view switch, no carry)."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return
+        nxt = self.dungeon.neighbor(self.dungeon_page, direction)
+        if nxt is None:
+            self._flash_status(f"No map to the {direction}.")
+            return
+        if self._switch_to_page(nxt):
+            self._flash_status(f"Map: {nxt.id}")
+
+    def _floor_step(self, delta: int):
+        """Change floors (Z ± delta), landing on the page at the party's current
+        global (X, Y) if one exists there, else the first page on that floor."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return
+        cur = self.dungeon_page
+        target_z = cur.z + delta
+        if target_z not in self.dungeon.floors():
+            self._flash_status("No floor there.")
+            return
+        # Prefer the page directly above/below the current view's top-left corner.
+        below = self.dungeon.page_at_global(cur.gx, cur.gy, target_z)
+        if below is None:
+            on_floor = self.dungeon.pages_on_floor(target_z)
+            below = on_floor[0] if on_floor else None
+        if below is None:
+            self._flash_status("No floor there.")
+            return
+        if self._switch_to_page(below):
+            self._flash_status(f"Floor {target_z}: {below.id}")
+
     def _flash_status(self, msg: str, secs: float = 2.5):
         """Show a transient confirmation message in the panel for `secs` seconds."""
         self._status_msg = msg
@@ -1784,8 +2044,8 @@ class App:
         blocked cell), then reload the combined file. Every PC is forced onto the
         blue team (PC_FACTION) so the whole party fights the red encounter mobs as
         one side, regardless of what faction the party file stored. Each PC keeps its
-        loadout from the party file. If the current scene is a generated dungeon,
-        PCs start in the first room."""
+        loadout from the party file. In a generated dungeon the PCs start in room 0 on
+        floor 0 (the generator leaves that room empty for them)."""
         try:
             with open(path) as f:
                 pc_doc = json.load(f)
@@ -1800,6 +2060,16 @@ class App:
             self._flash_status("Finish combat before loading PCs")
             return
 
+        # In a generated dungeon the party enters on floor 0, whose room 0 the generator
+        # leaves empty as a staging room. If another floor is showing, drop back to the
+        # entry (floor 0) page first so the PCs always start there.
+        if self.dungeon is not None and self.dungeon_page is not None:
+            entry = self.dungeon.entry_page()
+            if entry is not None and self.dungeon_page.id != entry.id:
+                if not self._switch_to_page(entry):
+                    self._flash_status("Could not switch to floor 0 to place PCs.")
+                    return
+
         # Persist current placements, then merge the PCs into that saved doc and reload.
         self._save_agents()
         try:
@@ -1810,15 +2080,20 @@ class App:
         agents = doc.setdefault("agents", [])
 
         # If the scene has carved walk-order rooms (from Generate Terrain/Dungeon), drop
-        # the PCs into the first room. We read the LIVE `_terrain_rooms` attribute rather
-        # than the saved agents doc: _save_agents() writes only {agents, map_items} and
-        # drops any `generator` block, so by the time we re-read `doc` above the room
-        # metadata is already gone. `_terrain_rooms` is loaded from the terrain sidecar
-        # and each entry carries its floor "cells" as [c, r] pairs.
-        first_room_cells = None
+        # the PCs into room 0 (the walk-order entrance, left empty by the generator). We
+        # read the LIVE `_terrain_rooms` attribute rather than the saved agents doc:
+        # _save_agents() writes only {agents, map_items} and drops any `generator` block,
+        # so by the time we re-read `doc` above the room metadata is already gone.
+        # `_terrain_rooms` is loaded from the terrain sidecar and each entry carries its
+        # floor "cells" as [c, r] pairs.
+        # The generator leaves the WALK-ORDER entrance empty (results[0]); build_dungeon
+        # orders rooms by path_index, so match that here rather than trusting file order.
+        room0_cells = None
         terrain_rooms = getattr(self, "_terrain_rooms", None) or []
-        if terrain_rooms and isinstance(terrain_rooms[0], dict):
-            first_room_cells = terrain_rooms[0].get("cells")
+        dict_rooms = [m for m in terrain_rooms if isinstance(m, dict)]
+        if dict_rooms:
+            entrance = min(dict_rooms, key=lambda m: m.get("path_index", 0))
+            room0_cells = entrance.get("cells")
 
         reserved: set[tuple[int, int]] = set()
         added = dropped = 0
@@ -1827,9 +2102,9 @@ class App:
             pc["faction"] = PC_FACTION               # whole party fights as the blue team
             size = int(pc.get("size", 1))
 
-            # If we have first room cells, try to place PC there; else use default placement
-            if first_room_cells:
-                spot = self._place_in_room(size, first_room_cells, reserved)
+            # If we have room 0's cells, try to place the PC there; else default placement
+            if room0_cells:
+                spot = self._place_in_room(size, room0_cells, reserved)
             else:
                 spot = self._merge_free_cell(int(pc.get("col", 0)), int(pc.get("row", 0)),
                                              size, reserved)
@@ -1851,8 +2126,8 @@ class App:
         msg = f"Loaded {added} PC(s) from {os.path.basename(path)}"
         if dropped:
             msg += f" ({dropped} didn't fit)"
-        if first_room_cells:
-            msg += " in first room"
+        if room0_cells:
+            msg += " in room 0"
         self._flash_status(msg)
 
     # ─────────────────────────────────────────────────────────────────────
@@ -3334,8 +3609,101 @@ class App:
             else:
                 options.append(("Open door", lambda d=door_id: self._door_open(d)))
 
+        # Cross-map staple (Floors Phase 5): an open, linked door offers passage to the
+        # abutting page. A locked/arcane-locked (thus closed) door blocks it — the option
+        # only appears once the door is open. Explicit action, matching the ladder menu.
+        link = self._door_link_at(door)
+        if link is not None and door.open:
+            options.append((f"Go through door (to floor {link[2]})",
+                            lambda a=actor, d=door_id: self._use_door_link(d, a)))
+
         if options:
             self.context_menu.show(pos, options, self.screen.get_size())
+
+    def _show_ladder_menu(self, cell, pos):
+        """Context menu for a ladder cell: a "Use Ladder" action that carries the acting
+        (or selected) creature to the target floor via the dungeon manifest.
+
+        Out-of-combat only for the MVP (see Floors plan Known Limitations); the actual
+        page switch is gated by _switch_to_page's combat guard, which flashes if in combat."""
+        li = self._ladder_at(cell)
+        if li < 0:
+            return
+        lad = self._ladders[li]
+        X, Y, Z = lad["target"]
+        actor = self._current_agent_idx() if self.combat_active else self.selected_idx
+
+        if self.combat_active:
+            agent = self.bm.placed_agents[actor] if actor >= 0 else None
+            if agent is not None and not any(
+                    self._cell_adjacent_to_agent(agent, rpg.Cell(c[0], c[1])) for c in lad["cells"]):
+                self._combat_log_add("Move adjacent to the ladder to use it.")
+                return
+
+        label = f"Use Ladder (to floor {Z})"
+        options = [(label, lambda a=actor, l=li: self._use_ladder(l, a))]
+        self.context_menu.show(pos, options, self.screen.get_size())
+
+    def _use_ladder(self, ladder_idx: int, actor_idx: int):
+        """Resolve a ladder's global target to a page + local cell and switch to it,
+        carrying the acting creature. No-ops with a flash if the dungeon isn't loaded
+        or the target lands on no page."""
+        if ladder_idx < 0 or ladder_idx >= len(self._ladders):
+            return
+        if self.dungeon is None:
+            self._flash_status("Ladders need a dungeon manifest (open a .dungeon.json).")
+            return
+        X, Y, Z = self._ladders[ladder_idx]["target"]
+        page = self.dungeon.page_at_global(X, Y, Z)
+        if page is None:
+            self._flash_status("The ladder leads nowhere (no map on that floor).")
+            return
+        local = page.global_to_local(X, Y, Z)
+        if local is None:
+            self._flash_status("The ladder's exit is off the target map.")
+            return
+        carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        if self._switch_to_page(page, drop_cell=local, carry=carry):
+            self._flash_status(f"Climbed to floor {Z}: {page.id}")
+
+    def _door_by_id(self, door_id: int):
+        """The rpg.Door with ``id == door_id`` on the active map, or None."""
+        for d in self.bm.doors:
+            if d.id == door_id:
+                return d
+        return None
+
+    def _door_link_at(self, door):
+        """The global ``[X, Y, Z]`` cross-map target for ``door`` (an rpg.Door), or None
+        for an ordinary in-map door. Looked up by the door's cell footprint."""
+        return self._door_links.get(door_link_key(door.cells))
+
+    def _use_door_link(self, door_id: int, actor_idx: int):
+        """Step through a linked door to the abutting page, carrying the acting (or
+        selected) creature. Mirrors _use_ladder: resolve the global target to a page +
+        local cell via the dungeon manifest and switch. No-ops with a flash if the
+        dungeon isn't loaded or the target lands on no page."""
+        if self.dungeon is None:
+            self._flash_status("Door links need a dungeon manifest (open a .dungeon.json).")
+            return
+        door = self._door_by_id(door_id)
+        if door is None:
+            return
+        link = self._door_link_at(door)
+        if link is None:
+            return
+        X, Y, Z = link
+        page = self.dungeon.page_at_global(X, Y, Z)
+        if page is None:
+            self._flash_status("The door leads nowhere (no map on that floor).")
+            return
+        local = page.global_to_local(X, Y, Z)
+        if local is None:
+            self._flash_status("The door's exit is off the target map.")
+            return
+        carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        if self._switch_to_page(page, drop_cell=local, carry=carry):
+            self._flash_status(f"Stepped through to {page.id} (floor {Z}).")
 
     def _after_door_change(self):
         """Refresh movement/attack overlays after a door's open state (and thus LOS and
@@ -9818,14 +10186,19 @@ class App:
     # later `light_level` from the other. All callers use the free function directly.
 
     # FLAG: Move to C++
-    def _save_agents(self, path: str | None = None):
+    def _save_agents(self, path: str | None = None, exclude_indices=None):
         path = path or self._save_path
+        # exclude_indices: agent indices to omit (e.g. a party being carried to another
+        # page — they are written to the destination instead of this page's file).
+        exclude_indices = exclude_indices or set()
         data = []
         for i, pt in enumerate(self.bm.placed_agents):
             # Summoned creatures are transient (concentration-tied) and have no persisted
             # summoner link, so they are never written to the save — they vanish on reload
             # rather than becoming orphaned permanent agents.
             if pt.summoner_idx >= 0 or pt.removed_from_play:
+                continue
+            if i in exclude_indices:
                 continue
             s = self.combat.get_agent_stats(self.bm, i)
             # Save only the filename, not the full path, for portability
@@ -10042,6 +10415,8 @@ class App:
         for old_idx, pt in enumerate(self.bm.placed_agents):
             if pt.summoner_idx >= 0 or pt.removed_from_play:
                 continue
+            if old_idx in exclude_indices:
+                continue
             old_to_new[old_idx] = new_idx
             new_idx += 1
         conditions_data = []
@@ -10226,7 +10601,7 @@ class App:
         count, min_room = smallest room side in cells, margin = wall padding around
         each room)."""
         sw, sh = self.screen.get_size()
-        W, H = min(460, sw - 80), 300
+        W, H = min(460, sw - 80), min(340, sh - 80)
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         lx = box.x + 20
         fx = box.right - 150       # field column
@@ -10238,13 +10613,16 @@ class App:
         room_step   = IntStepper(pygame.Rect(fx, y0 + 1 * row_h, fw, 30), 3, 2, 20, font=self.font_md)
         margin_step = IntStepper(pygame.Rect(fx, y0 + 2 * row_h, fw, 30), 1, 0, 5, font=self.font_md)
         seed_inp    = TextInput(pygame.Rect(fx, y0 + 3 * row_h, fw, 30), placeholder="random", font=self.font_md)
+        # Floors > 1 builds a stacked multi-floor dungeon (each floor a fresh layout,
+        # linked by ladders) instead of carving the single active map.
+        floors_step = IntStepper(pygame.Rect(fx, y0 + 4 * row_h, fw, 30), 1, 1, 8, font=self.font_md)
 
         gen    = Button(pygame.Rect(box.right - 220, box.bottom - 46, 95, 32), "Generate",
                         (60, 110, 70), (80, 140, 90), font=self.font_md)
         cancel = Button(pygame.Rect(box.right - 115, box.bottom - 46, 95, 32), "Cancel",
                         (110, 60, 60), (150, 80, 80), font=self.font_md)
 
-        labels = ["Room count", "Min room side", "Wall margin", "Seed"]
+        labels = ["Room count", "Min room side", "Wall margin", "Seed", "Floors"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -10257,6 +10635,7 @@ class App:
                 room_step.handle(event)
                 margin_step.handle(event)
                 seed_inp.handle(event)
+                floors_step.handle(event)
                 if cancel.clicked(event):
                     return None
                 if gen.clicked(event):
@@ -10268,7 +10647,8 @@ class App:
                         except ValueError:
                             seed = None
                     return {"rooms": rooms_step.value, "min_room": room_step.value,
-                            "margin": margin_step.value, "seed": seed}
+                            "margin": margin_step.value, "seed": seed,
+                            "floors": floors_step.value}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
@@ -10277,10 +10657,221 @@ class App:
             for i, lab in enumerate(labels):
                 self.screen.blit(self.font_md.render(lab, True, (185, 185, 200)),
                                  (lx, y0 + i * row_h + 6))
-            for w in (rooms_step, room_step, margin_step, seed_inp, gen, cancel):
+            for w in (rooms_step, room_step, margin_step, seed_inp, floors_step, gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
+
+    def _carve_dungeon_layout(self, dfp, cols, rows, raw_v, raw_h, blocked, params, rng,
+                              force_floor=None):
+        """Carve one BSP layout on the current grid and return
+        ``(regions, rooms_meta, door_cells)``:
+
+        - ``regions``    pixel-space Wall rects for the terrain JSON / engine.
+        - ``rooms_meta`` walk-order room records (with exact ``cells``) that
+                         Generate Dungeon populates.
+        - ``door_cells`` (c,r) cells where the carver punched doors.
+
+        ``force_floor`` is an optional iterable of (c,r) cells opened to FLOOR after
+        carving (portal landings), so a ladder never drops a creature into rock.
+        Raises ``ValueError`` from ``dfp.carve`` on a too-tight layout. Shared by the
+        single-map Generate Terrain path and the multi-floor generator."""
+        grid, rooms, doors = dfp.carve(cols, rows, params["rooms"], params["min_room"],
+                                       params["margin"], rng, blocked=blocked)
+        for (c, r) in (force_floor or ()):
+            if 0 <= r < len(grid) and 0 <= c < len(grid[0]):
+                grid[r][c] = dfp.FLOOR
+
+        def cell_to_px(c, r, w, h):
+            c2 = min(c + w, len(raw_v) - 1)
+            r2 = min(r + h, len(raw_h) - 1)
+            x, y = raw_v[c], raw_h[r]
+            return x, y, raw_v[c2] - x, raw_h[r2] - y
+
+        regions = []
+        for (c, r, w, h) in dfp.wall_rects(grid):
+            x, y, pw, ph = cell_to_px(c, r, w, h)
+            if pw <= 0 or ph <= 0:
+                continue
+            regions.append({"type": "Wall", "x": x, "y": y,
+                            "width": pw, "height": ph, "multiplier": 0.0})
+        rooms_meta = [
+            {"path_index": i, "c": rm["c"], "r": rm["r"], "w": rm["w"], "h": rm["h"],
+             "cells": [[c, r] for (c, r) in rm["cells"]]}
+            for i, rm in enumerate(rooms)
+        ]
+        return regions, rooms_meta, doors
+
+    def _write_generated_terrain(self, path, regions, rooms_meta, door_cells, ladders):
+        """Write a page's ``_terrain.json`` directly (bypassing the live-scene
+        serializer) for the multi-floor generator. Mirrors ``_save_terrain``'s schema:
+        carved Wall regions, walk-order room metadata, closed inter-room doors, and
+        vertical ``ladders`` (global targets). Walls are explicit, so ``walls_enabled``
+        is False (no auto-detect). No ``explored`` key ⇒ the floor starts fully fogged."""
+        data = {
+            "regions": regions,
+            "walls_enabled": False,
+            "rooms": rooms_meta,
+            "doors": [
+                {"cells": [[c, r]], "cell": [c, r], "open": False, "locked": False,
+                 "lock_dc": 15, "arcane_lock": False, "link_target": None}
+                for (c, r) in door_cells
+            ],
+            "ladders": ladders,
+        }
+        if self._manual_grid:
+            data["manual_grid"] = self._manual_grid
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    @staticmethod
+    def _pick_room_cell(rooms_meta, rng, avoid=None):
+        """A random floor cell drawn from a random substantial room (largest rooms
+        favoured), avoiding cells in ``avoid``. Returns (c, r) or None. Used to seat a
+        ladder somewhere walkable rather than in a corridor or wall pocket."""
+        avoid = set(avoid or ())
+        # Largest rooms first, so a ladder tends to land in an open chamber; fall through
+        # to smaller rooms rather than fail to place one.
+        for m in sorted(rooms_meta, key=lambda m: -len(m.get("cells", []))):
+            cells = [(int(c), int(r)) for c, r in m.get("cells", [])
+                     if (int(c), int(r)) not in avoid]
+            if cells:
+                return rng.choice(cells)
+        return None
+
+    def _generate_multifloor(self, num_floors, terrain_params, encounter_params, base):
+        """Generate an ``num_floors``-floor dungeon on the current map's PNG, each floor
+        a freshly carved random layout (plus a populated encounter when
+        ``encounter_params`` is given), wired into a ``<base>.dungeon.json`` with
+        inter-floor ladders, then activate the entry floor.
+
+        All pages share the active PNG and grid (Decision: "use simplemap.png for now").
+        Floors stack on the global Z axis at the same origin, so a ladder up from local
+        (c,r) lands at the same (c,r) one floor higher — that cell is force-opened to
+        FLOOR on the upper page so the climb never ends in rock. Returns a summary list
+        of strings; raises ValueError if a floor can't be carved."""
+        cols = int(getattr(self.bm, "grid_cols", 0) or 0)
+        rows = int(getattr(self.bm, "grid_rows", 0) or 0)
+        raw_v = list(self.bm.v_line_positions)
+        raw_h = list(self.bm.h_line_positions)
+        # Capture the source map's own walls ONCE — they are the exterior shell for
+        # every floor (each floor is carved into the same free area).
+        blocked = {(c.col, c.row) for c in self.bm.disallowed_cells}
+        png_name = os.path.basename(getattr(self, "_map_path", "") or "simplemap.png")
+
+        # Lazy import: repo/tools is not on sys.path for the GUI process.
+        gui_dir = os.path.dirname(os.path.abspath(__file__))
+        tools_dir = os.path.join(os.path.dirname(gui_dir), "tools")
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        import dungeon_from_png as dfp
+
+        bestiary = None
+        eg = None
+        if encounter_params is not None:
+            import encounter_generator as eg  # noqa: F401
+            bestiary = eg.Bestiary(data_dir=gui_dir)
+        seed0 = terrain_params.get("seed")
+        base_seed = seed0 if seed0 is not None else random.randrange(1 << 30)
+
+        pages = []
+        down_cell = None      # cell this floor's DOWN-ladder occupies (set by floor below)
+        total_mobs = 0
+        for z in range(num_floors):
+            force = [down_cell] if down_cell is not None else None
+            # Retry with a bumped seed if a floor's layout is too tight to carve, so one
+            # unlucky RNG doesn't abort the whole dungeon. The rng that succeeds is reused
+            # for that floor's ladder pick + encounter, keeping the floor deterministic.
+            rng = None
+            regions = rooms_meta = door_cells = None
+            for attempt in range(6):
+                rng = random.Random(base_seed + z * 7919 + attempt * 131)
+                try:
+                    regions, rooms_meta, door_cells = self._carve_dungeon_layout(
+                        dfp, cols, rows, raw_v, raw_h, blocked, terrain_params, rng,
+                        force_floor=force)
+                    break
+                except ValueError:
+                    regions = None
+            if regions is None:
+                raise ValueError(f"Floor {z}: could not carve a layout after 6 tries. "
+                                 "Try fewer/smaller rooms.")
+
+            ladders = []
+            if down_cell is not None:                     # link back down to floor z-1
+                dc, dr = down_cell
+                ladders.append({"cells": [[dc, dr]], "target": [dc, dr, z - 1]})
+            up_cell = None
+            if z < num_floors - 1:                        # link up to floor z+1
+                up_cell = self._pick_room_cell(rooms_meta, rng, avoid=[down_cell] if down_cell else None)
+                if up_cell is not None:
+                    uc, ur = up_cell
+                    ladders.append({"cells": [[uc, ur]], "target": [uc, ur, z + 1]})
+
+            # Populate this floor's rooms (optional). Placement reads bm.is_blocked, so
+            # apply the carved walls to the engine first (mirrors Generate Terrain →
+            # Generate Dungeon). The live scene is transient; we reload floor 0 at the end.
+            agents = []
+            if encounter_params is not None:
+                self._terrain_regions = regions
+                self._walls_enabled = False
+                self._apply_terrain_to_battle_map()
+                self.bm.clear_walls()
+                _, results, _ = eg.build_dungeon(
+                    self.bm, rpg, {"rooms": rooms_meta}, bestiary,
+                    cr=encounter_params["cr"],
+                    difficulty_start=encounter_params["start"],
+                    difficulty_end=encounter_params["end"],
+                    min_room=encounter_params["min_room"],
+                    boss=encounter_params["boss"] and z == num_floors - 1,
+                    entrance=None, automation_level=1, rng=rng, place=True,
+                    filter_types=encounter_params.get("types"),
+                    filter_languages=encounter_params.get("languages"))
+                # Leave floor 0's entrance (room 0, walk-order first) empty so the party
+                # has a clear staging room to Load PCs into. build_dungeon returns results
+                # in room order, so results[0] is that entrance room.
+                keep = results[1:] if (z == 0 and len(results) > 1) else results
+                agents = [a for res in keep for a in res["agents"]]
+                total_mobs += len(agents)
+
+            page_base = os.path.join(self._map_dir, f"{base}_f{z}")
+            ter_path = page_base + "_terrain.json"
+            agt_path = page_base + "_agents.json"
+            self._write_generated_terrain(ter_path, regions, rooms_meta, door_cells, ladders)
+            if encounter_params is not None:
+                eg.write_agents_file(
+                    agt_path, agents, difficulty=encounter_params["end"],
+                    target_cr=encounter_params["cr"],
+                    generator_meta={"mode": "multifloor-gui", "floor": z, "seed": base_seed})
+            else:
+                # Terrain-only floor: an empty roster so the page loads cleanly.
+                with open(agt_path, "w") as f:
+                    json.dump({"agents": [], "map_items": []}, f, indent=2)
+
+            pages.append(MapPage(id=f"floor{z}", png=png_name,
+                                 encounter_base=os.path.basename(agt_path),
+                                 origin=[0, 0, z], cols=cols, rows=rows))
+            down_cell = up_cell   # the next floor gets a down-ladder where we climbed up
+
+        dungeon = Dungeon(pages=pages, entry_page_id="floor0")
+        manifest = os.path.join(self._map_dir, f"{base}.dungeon.json")
+        dungeon.save(manifest)
+
+        # Activate: drop any stale page pointer so _switch_to_page treats this as an
+        # initial load (no save-back of the transient generation scene), then open floor 0.
+        self.dungeon = dungeon
+        self._dungeon_manifest_path = manifest
+        self.dungeon_page = None
+        self._switch_to_page(dungeon.entry_page(), force=True)
+
+        summary = [f"Dungeon generated: {num_floors} floors on {png_name}"]
+        if encounter_params is not None:
+            summary.append(f"{total_mobs} mobs total; ladders link every floor")
+        else:
+            summary.append("terrain only; ladders link every floor")
+        summary.append(f"Saved manifest: {os.path.basename(manifest)}")
+        summary.append("Use Floor +/- (top-left) or a ladder to move between floors.")
+        return summary
 
     def _on_generate_terrain(self):
         """DM-mode: carve a BSP room/corridor dungeon into the CURRENT map's grid,
@@ -10315,6 +10906,19 @@ class App:
             self._modal_message(["Generate Terrain failed", f"Could not load carver: {e}"])
             return
 
+        # Multi-floor: hand off to the stacked-dungeon generator (terrain only, no mobs).
+        if params.get("floors", 1) > 1:
+            self._modal_message(["Generating floors…"], blocking=False)
+            try:
+                summary = self._generate_multifloor(
+                    params["floors"], params, encounter_params=None, base=self._generated_base())
+            except ValueError as e:
+                self._modal_message(["Generate Terrain failed", str(e),
+                                     "Try fewer/smaller rooms or a bigger grid."])
+                return
+            self._modal_message(summary)
+            return
+
         # Use the map's own detected walls as the exterior boundary: the rooms are
         # tessellated inside the free (non-blocked) area and never carve floor into
         # a wall, so the PNG's walls become the dungeon's outer shell.
@@ -10322,40 +10926,17 @@ class App:
 
         rng = random.Random(params["seed"])
         try:
-            grid, rooms, doors = dfp.carve(cols, rows, params["rooms"],
-                                           params["min_room"], params["margin"],
-                                           rng, blocked=blocked)
+            regions, rooms_meta, doors = self._carve_dungeon_layout(
+                dfp, cols, rows, raw_v, raw_h, blocked, params, rng)
         except ValueError as e:
             self._modal_message(["Generate Terrain failed", str(e),
                                  "Try fewer/smaller rooms or a bigger grid."])
             return
 
-        # Cell rects -> pixel regions, using the map's own grid-line positions so the
-        # walls line up exactly with how the rest of the app maps pixels <-> cells.
-        def cell_to_px(c, r, w, h):
-            c2 = min(c + w, len(raw_v) - 1)
-            r2 = min(r + h, len(raw_h) - 1)
-            x, y = raw_v[c], raw_h[r]
-            return x, y, raw_v[c2] - x, raw_h[r2] - y
-
-        regions = []
-        for (c, r, w, h) in dfp.wall_rects(grid):
-            x, y, pw, ph = cell_to_px(c, r, w, h)
-            if pw <= 0 or ph <= 0:
-                continue
-            regions.append({"type": "Wall", "x": x, "y": y,
-                            "width": pw, "height": ph, "multiplier": 0.0})
-
         # Replace the scene's terrain with the carved layout and record walk-order rooms
         # (cell coords) for Generate Dungeon. Walls are explicit here, so drop auto-detect.
         self._terrain_regions = regions
-        # Rooms are unions of rectangles, so carry each room's exact "cells"
-        # footprint (Generate Dungeon places mobs on it) plus a bounding box.
-        self._terrain_rooms = [
-            {"path_index": i, "c": rm["c"], "r": rm["r"], "w": rm["w"], "h": rm["h"],
-             "cells": [[c, r] for (c, r) in rm["cells"]]}
-            for i, rm in enumerate(rooms)
-        ]
+        self._terrain_rooms = rooms_meta
         self._walls_enabled = False
         self.btn_toggle_walls.text = "Walls: OFF"
         self._apply_terrain_to_battle_map()
@@ -10374,10 +10955,18 @@ class App:
         self._save_terrain()
 
         self._modal_message([
-            f"Terrain generated: {len(rooms)} rooms, {len(doors)} doors",
+            f"Terrain generated: {len(rooms_meta)} rooms, {len(doors)} doors",
             f"{len(regions)} wall rects on a {cols}×{rows} grid",
             "Now press Generate Dungeon to populate the rooms.",
         ])
+
+    def _generated_base(self) -> str:
+        """Base filename stem for generator output next to the map (strips a trailing
+        ``_agents``). Shared by the single-map and multi-floor generators."""
+        base = os.path.splitext(os.path.basename(self._save_path or "generated"))[0]
+        if base.endswith("_agents"):
+            base = base[:-len("_agents")]
+        return base
 
     def _modal_select_items(self, title: str, items: list[str], selection: set[str] | list,
                             multi_select: bool = True) -> None:
@@ -10511,6 +11100,10 @@ class App:
         cr_step   = IntStepper(pygame.Rect(fx, y0 + 0 * row_h, fw, 30), 5, 0, 30, font=self.font_md)
         room_step = IntStepper(pygame.Rect(fx, y0 + 1 * row_h, fw, 30), 9, 1, 99, font=self.font_md)
         seed_inp  = TextInput(pygame.Rect(fx, y0 + 5 * row_h, fw, 30), placeholder="random", font=self.font_md)
+        # Floors > 1 builds a stacked multi-floor dungeon (fresh layout + encounter per
+        # floor, linked by ladders); Rooms/floor is the carver's per-floor room count.
+        floors_step = IntStepper(pygame.Rect(fx, y0 + 8 * row_h, fw, 30), 1, 1, 8, font=self.font_md)
+        roomsfloor_step = IntStepper(pygame.Rect(fx, y0 + 9 * row_h, fw, 30), 4, 3, 12, font=self.font_md)
         start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
         type_selection, lang_selection = set(), set()  # multi-select for both
 
@@ -10532,7 +11125,8 @@ class App:
                         (110, 60, 60), (150, 80, 80), font=self.font_md)
 
         labels = ["Target CR", "Min room cells", "Start difficulty",
-                  "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages"]
+                  "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages",
+                  "Floors", "Rooms/floor"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -10544,6 +11138,8 @@ class App:
                 cr_step.handle(event)
                 room_step.handle(event)
                 seed_inp.handle(event)
+                floors_step.handle(event)
+                roomsfloor_step.handle(event)
                 if btn_start.clicked(event):
                     start_i[0] = (start_i[0] + 1) % len(DIFFS)
                     btn_start.text = DIFFS[start_i[0]]
@@ -10587,7 +11183,9 @@ class App:
                             "start": DIFFS[start_i[0]], "end": DIFFS[end_i[0]],
                             "boss": boss_on[0], "seed": seed,
                             "types": list(type_selection) if type_selection else None,
-                            "languages": list(lang_selection) if lang_selection else None}
+                            "languages": list(lang_selection) if lang_selection else None,
+                            "floors": floors_step.value,
+                            "rooms_per_floor": roomsfloor_step.value}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
@@ -10596,7 +11194,8 @@ class App:
             for i, lab in enumerate(labels):
                 self.screen.blit(self.font_md.render(lab, True, (185, 185, 200)),
                                  (lx, y0 + i * row_h + 6))
-            for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type, btn_lang, gen, cancel):
+            for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
+                      btn_lang, floors_step, roomsfloor_step, gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
@@ -10625,6 +11224,27 @@ class App:
             self._modal_message(["Generate Dungeon failed", f"Could not load generator: {e}"])
             return
 
+        # Multi-floor: carve + populate a fresh layout per floor and wire up the manifest.
+        # Terrain params for the carver are derived from the dungeon modal (Rooms/floor +
+        # a min room side inferred from "Min room cells"); floors stack with ladders.
+        if params.get("floors", 1) > 1:
+            terrain_params = {
+                "rooms": params["rooms_per_floor"],
+                "min_room": max(2, int(round(params["min_room"] ** 0.5))),
+                "margin": 1, "seed": params["seed"], "floors": params["floors"],
+            }
+            self._modal_message(["Generating floors…"], blocking=False)
+            try:
+                summary = self._generate_multifloor(
+                    params["floors"], terrain_params, encounter_params=params,
+                    base=self._generated_base())
+            except ValueError as e:
+                self._modal_message(["Generate Dungeon failed", str(e),
+                                     "Try fewer/smaller rooms or a bigger grid."])
+                return
+            self._modal_message(summary)
+            return
+
         self._modal_message(["Generating dungeon…"], blocking=False)
         try:
             bestiary = eg.Bestiary(data_dir=gui_dir)
@@ -10646,7 +11266,11 @@ class App:
             self._modal_message(["Generate Dungeon", "No rooms detected on this map.",
                                  "Load/paint terrain with walls, or lower Min room cells."])
             return
-        all_agents = [a for res in results for a in res["agents"]]
+        # Leave the walk-order entrance (room 0) empty so Load PCs has a clear staging
+        # room to drop the party into. results are in walk order, so results[0] is that
+        # entrance; the boss (if any) is forced into the LAST room, so this never drops it.
+        keep = results[1:] if len(results) > 1 else results
+        all_agents = [a for res in keep for a in res["agents"]]
         if not all_agents:
             self._modal_message(["Generate Dungeon",
                                  "Rooms were too small to place any mobs."])
@@ -10676,6 +11300,7 @@ class App:
         self._modal_message([
             f"Dungeon generated: {len(all_agents)} mobs",
             f"{len(rooms)} rooms, {params['start']} -> {params['end']}{boss_line}",
+            f"Room 0 left empty -> click Load PCs to drop the party there",
             f"Ordering: {note}",
             f"Saved: {os.path.basename(out_path)}",
         ])
@@ -11072,6 +11697,10 @@ class App:
         for d in list(self.bm.doors):
             self.bm.remove_door(d.id)
         doors_data = []
+        # Ladders are Python-side; clear the previous scene's before loading this one.
+        self._ladders = []
+        # Cross-map door links are also Python-side; rebuilt from door records below.
+        self._door_links = {}
         explored_data = None  # fog-of-war mask from JSON; None = key absent (start fogged)
 
         if os.path.exists(path):
@@ -11094,6 +11723,7 @@ class App:
                 self._terrain_rooms = data.get("rooms", [])
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 doors_data = data.get("doors", [])
+                self._ladders = self._normalize_ladders(data.get("ladders", []))
                 explored_data = data.get("explored")  # None if absent → stays fully fogged
             except Exception:
                 self._terrain_regions = []
@@ -11127,6 +11757,10 @@ class App:
                                  bool(d.get("locked", False)),
                                  int(d.get("lock_dc", 15)),
                                  bool(d.get("arcane_lock", False)))
+                # Re-associate a cross-map staple target (null/absent on ordinary doors).
+                lt = d.get("link_target")
+                if lt:
+                    self._door_links[door_link_key(cells)] = [int(lt[0]), int(lt[1]), int(lt[2])]
             except Exception:
                 continue
 
@@ -11143,6 +11777,30 @@ class App:
                 pass
         self._mark_fog_dirty()
 
+    @staticmethod
+    def _normalize_ladders(raw):
+        """Coerce ladder records from JSON into the in-memory shape
+        ``{"cells": [(col,row),...], "target": [X, Y, Z]}``. Skips malformed entries."""
+        out = []
+        for lad in raw or []:
+            try:
+                cells = [(int(c[0]), int(c[1])) for c in lad["cells"]]
+                tgt = lad["target"]
+                target = [int(tgt[0]), int(tgt[1]), int(tgt[2])]
+                if cells:
+                    out.append({"cells": cells, "target": target})
+            except (KeyError, IndexError, TypeError, ValueError):
+                continue
+        return out
+
+    def _ladder_at(self, cell):
+        """Index of the ladder occupying ``cell`` (an rpg.Cell), or -1."""
+        col, row = cell.col, cell.row
+        for i, lad in enumerate(self._ladders):
+            if any(c[0] == col and c[1] == row for c in lad["cells"]):
+                return i
+        return -1
+
     def _save_terrain(self, path: str | None = None):
         """Save terrain data to JSON file (defaults to the active encounter's path)."""
         path = path or self._terrain_path
@@ -11152,8 +11810,16 @@ class App:
         data["doors"] = [
             {"cells": [[c.col, c.row] for c in d.cells],
              "cell": [d.cell.col, d.cell.row], "open": d.open,
-             "locked": d.locked, "lock_dc": d.lock_dc, "arcane_lock": d.arcane_lock}
+             "locked": d.locked, "lock_dc": d.lock_dc, "arcane_lock": d.arcane_lock,
+             # Cross-map staple target in GLOBAL (X,Y,Z); null for an ordinary in-map door.
+             "link_target": self._door_links.get(door_link_key(d.cells))}
             for d in self.bm.doors
+        ]
+        # Ladders (vertical portals) — Python-only cell objects; target is GLOBAL (X,Y,Z).
+        data["ladders"] = [
+            {"cells": [[int(c[0]), int(c[1])] for c in lad["cells"]],
+             "target": [int(lad["target"][0]), int(lad["target"][1]), int(lad["target"][2])]}
+            for lad in self._ladders
         ]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
@@ -11440,6 +12106,64 @@ class App:
         except Exception:
             # Never let a fog refresh take down the render loop.
             pass
+        else:
+            # A freshly-uncovered room wakes its lurking reserves: any on-deck enemy
+            # standing in a room the party has now at least partially seen deploys off
+            # deck. Runs right after the reveal so it's driven by the same trigger set.
+            self._deploy_fog_revealed_enemies()
+
+    def _deploy_fog_revealed_enemies(self):
+        """Bring on-deck enemies off deck once the party uncovers their room.
+
+        The user rule: "all enemies in a room with the fog at least partially cleared
+        come off deck." Rooms come from the carved terrain metadata (`_terrain_rooms`,
+        cells as [c, r]); an enemy sitting in a room with ANY explored cell wakes. An
+        enemy on a cell no room claims falls back to its own footprint (deploys once any
+        cell it occupies is explored). No-op unless the DM is actually running fog."""
+        if not self.show_fog:
+            return
+        bm = self.bm
+        # On-deck enemies only — nothing to do if there are no reserves in play.
+        reserves = [i for i, pt in enumerate(bm.placed_agents)
+                    if not pt.removed_from_play and pt.faction != PC_FACTION
+                    and bm.is_agent_on_deck(i)]
+        if not reserves:
+            return
+        Cell = rpg.Cell
+        rooms = getattr(self, "_terrain_rooms", None) or []
+        # cell -> room index, so each enemy finds its room in O(footprint).
+        cell_room: dict[tuple[int, int], int] = {}
+        for ri, m in enumerate(rooms):
+            if isinstance(m, dict):
+                for c in m.get("cells", []):
+                    cell_room[(int(c[0]), int(c[1]))] = ri
+        room_seen: dict[int, bool] = {}   # memoize each room's explored test
+
+        def _room_revealed(ri: int) -> bool:
+            if ri not in room_seen:
+                room_seen[ri] = any(
+                    bm.is_explored(Cell(int(c[0]), int(c[1])))
+                    for c in rooms[ri].get("cells", []))
+            return room_seen[ri]
+
+        to_deploy = []
+        for i in reserves:
+            pt = bm.placed_agents[i]
+            fp = [(pt.origin.col + dc, pt.origin.row + dr)
+                  for dc in range(pt.size) for dr in range(pt.size)]
+            ri = next((cell_room[cell] for cell in fp if cell in cell_room), None)
+            revealed = (_room_revealed(ri) if ri is not None
+                        else any(bm.is_explored(Cell(c, r)) for c, r in fp))
+            if revealed:
+                to_deploy.append(i)
+        if not to_deploy:
+            return
+        # Group by name so same-type reserves share one initiative and the log reads well.
+        by_name: dict[str, list[int]] = {}
+        for i in to_deploy:
+            by_name.setdefault(bm.placed_agents[i].name, []).append(i)
+        for name, idxs in by_name.items():
+            self._deploy_on_deck_idxs(idxs, name)
 
     def _fog_active(self) -> bool:
         """True when the fog overlay + enemy-hide gate should be applied.
@@ -12352,7 +13076,28 @@ class App:
             sx, sy = self._cell_to_screen(min_col, min_row)
             draw_door_glyph(self.screen, sx, sy, cpx, door, self.font_sm,
                             w=(max(cols) - min_col + 1) * cpx,
-                            h=(max(rows) - min_row + 1) * cpx)
+                            h=(max(rows) - min_row + 1) * cpx,
+                            linked=self._door_link_at(door) is not None)
+
+    def _draw_ladders(self, cpx: int):
+        """Draw every ladder as a rung-and-rails portal glyph (reads self._ladders).
+
+        Like doors, ladders always draw (they are interactive objects). The arrow
+        direction is derived from the target floor vs the active map's z_level."""
+        z_here = int(getattr(self.bm, "z_level", 0) or 0)
+        for lad in self._ladders:
+            cells = lad["cells"]
+            cols = [c[0] for c in cells]
+            rows = [c[1] for c in cells]
+            if not cols:
+                continue
+            min_col, min_row = min(cols), min(rows)
+            sx, sy = self._cell_to_screen(min_col, min_row)
+            going_up = lad["target"][2] > z_here
+            draw_ladder_glyph(self.screen, sx, sy, cpx, going_up=going_up,
+                              font_sm=self.font_sm,
+                              w=(max(cols) - min_col + 1) * cpx,
+                              h=(max(rows) - min_row + 1) * cpx)
 
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""
@@ -12556,6 +13301,9 @@ class App:
 
         # ── Doors (slab + lock glyphs; beneath all agents) ─────────────────
         self._draw_doors(cpx)
+
+        # ── Ladders (vertical portals; beneath all agents) ────────────────
+        self._draw_ladders(cpx)
 
         # ── Paladin aura rings (beneath all agents) ───────────────────────
         self._draw_paladin_auras(cpx)
@@ -14587,6 +15335,22 @@ class App:
             # menu is open, so scrolling a dialog doesn't also pan the map.
             map_input_allowed = not self._modal_active()
 
+            # ── Dungeon paging overlay (Phase 3): the on-map nav buttons take
+            # priority over map/agent clicks so paging never places an agent. ──
+            if (map_input_allowed and self.dungeon is not None
+                    and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                    and self._dungeon_nav_rects):
+                nav_hit = next((k for k, r in self._dungeon_nav_rects.items()
+                                if r.collidepoint(event.pos)), None)
+                if nav_hit is not None:
+                    if nav_hit == "floor_up":
+                        self._floor_step(+1)
+                    elif nav_hit == "floor_down":
+                        self._floor_step(-1)
+                    else:
+                        self._page_step(nav_hit)
+                    continue
+
             # ── Grid sample mode: drag one tile to define a uniform grid ──────
             # Intercepts left-click drags on the map before any agent/placement
             # handling. Panel clicks (e.g. cancelling via the button) fall through.
@@ -14672,6 +15436,8 @@ class App:
                 # Handle close/save for terrain editor
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._terrain_regions = self.terrain_editor.terrain_regions
+                    self._ladders = self.terrain_editor.ladders
+                    self._door_links = self.terrain_editor.door_links
                     self._save_terrain()
                     self._apply_terrain_to_battle_map()
                     self.terrain_editor.close()
@@ -15385,6 +16151,8 @@ class App:
                         elif hit < 0 and self.bm.door_at(cell) >= 0:
                             # No pending action and an empty door cell: offer door interaction.
                             self._show_door_menu(cell, event.pos)
+                        elif hit < 0 and self._ladder_at(cell) >= 0:
+                            self._show_ladder_menu(cell, event.pos)
                         else:
                             # When paused, allow dragging any agent; otherwise only the current
                             # combatant — or the legendary creature performing an out-of-turn Dash.
@@ -15408,6 +16176,8 @@ class App:
                         # But disable dragging if jump overlay is active (use jump instead)
                         if hit < 0 and self.bm.door_at(cell) >= 0:
                             self._show_door_menu(cell, event.pos)
+                        elif hit < 0 and self._ladder_at(cell) >= 0:
+                            self._show_ladder_menu(cell, event.pos)
                         elif hit >= 0 and not self.jump_overlay_active:
                             pt = self.bm.placed_agents[hit]
                             self.drag_idx    = hit
@@ -15660,7 +16430,8 @@ class App:
 
                 # Edit Terrain
                 if self.btn_edit_terrain.clicked(event):
-                    self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm)
+                    self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
+                                             ladders=self._ladders, door_links=self._door_links)
 
                 # Show/Hide Terrain (same toggle as in combat)
                 if self.btn_show_terrain.clicked(event):
@@ -16551,6 +17322,59 @@ class App:
         return True
 
     # ─────────────────────────────────────────────────────────────────────
+    #  Dungeon paging HUD (Phase 3) — drawn over the map in dungeon mode
+    # ─────────────────────────────────────────────────────────────────────
+    def _draw_dungeon_nav(self):
+        """Compact top-left HUD for multi-map dungeons: page between abutting maps on
+        the current floor (West/North/South/East) and change floors (Floor ±). Buttons
+        with no neighbour / no floor are greyed and inert. Rects are cached in
+        ``self._dungeon_nav_rects`` for the event handler."""
+        self._dungeon_nav_rects = {}
+        if self.dungeon is None or self.dungeon_page is None:
+            return
+        page   = self.dungeon_page
+        floors = self.dungeon.floors()
+        specs = [
+            ("West",  "left",       self.dungeon.neighbor(page, "left")  is not None),
+            ("North", "up",         self.dungeon.neighbor(page, "up")    is not None),
+            ("South", "down",       self.dungeon.neighbor(page, "down")  is not None),
+            ("East",  "right",      self.dungeon.neighbor(page, "right") is not None),
+            ("Floor+", "floor_up",   (page.z + 1) in floors),
+            ("Floor-", "floor_down", (page.z - 1) in floors),
+        ]
+
+        pad, gap = 8, 4
+        bw, bh   = 62, 24
+        bx, by   = 10, 10
+        label    = f"Floor {page.z} — {page.id}"
+        lbl_surf = self.font_sm.render(label, True, (222, 222, 236))
+        strip_w  = max(pad * 2 + len(specs) * bw + (len(specs) - 1) * gap,
+                       lbl_surf.get_width() + pad * 2)
+        strip_h  = pad * 2 + lbl_surf.get_height() + 4 + bh
+
+        bg = pygame.Surface((strip_w, strip_h), pygame.SRCALPHA)
+        bg.fill((20, 22, 32, 205))
+        self.screen.blit(bg, (bx, by))
+        pygame.draw.rect(self.screen, (95, 95, 120),
+                         pygame.Rect(bx, by, strip_w, strip_h), 1, border_radius=6)
+        self.screen.blit(lbl_surf, (bx + pad, by + pad))
+
+        row_y = by + pad + lbl_surf.get_height() + 4
+        x = bx + pad
+        for text, key, enabled in specs:
+            rect = pygame.Rect(x, row_y, bw, bh)
+            fill = (58, 82, 116) if enabled else (44, 46, 56)
+            tcol = (236, 236, 246) if enabled else (108, 108, 120)
+            pygame.draw.rect(self.screen, fill, rect, border_radius=5)
+            pygame.draw.rect(self.screen, (102, 102, 128), rect, 1, border_radius=5)
+            t = self.font_sm.render(text, True, tcol)
+            self.screen.blit(t, (rect.centerx - t.get_width() // 2,
+                                 rect.centery - t.get_height() // 2))
+            if enabled:
+                self._dungeon_nav_rects[key] = rect
+            x += bw + gap
+
+    # ─────────────────────────────────────────────────────────────────────
     #  Main loop
     # ─────────────────────────────────────────────────────────────────────
     def run(self):
@@ -16566,6 +17390,7 @@ class App:
             self._draw_floating_texts()                     # transient outcome flashes above tokens
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
+            self._draw_dungeon_nav()                        # multi-map paging HUD (dungeon mode only)
             self._draw_panel()
             self._draw_cursor_cell_info()                   # debug: cell under cursor
             self.terrain_editor.draw(self.screen)          # modal — always on top
@@ -16615,5 +17440,11 @@ if __name__ == "__main__":
         else:
             positional.append(a); i += 1
     if not positional:
-        sys.exit("Usage: python main.py <map_image.png> [--seed N]")
+        # Default to the bundled simplemap.png (sibling encounters/ dir) so the app
+        # launches with a map for the multi-floor dungeon generator to build onto.
+        default_map = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "encounters", "simplemap.png"))
+        if not os.path.exists(default_map):
+            sys.exit("Usage: python main.py <map_image.png> [--seed N]")
+        positional.append(default_map)
     App(positional[0], seed=seed).run()

@@ -18,6 +18,7 @@ test_scripts = [
     "test_items.py",
     "test_movement.py",
     "test_teleportation.py",
+    "test_floors.py",
     "test_visibility.py",
     "test_light_effects.py",
     "test_heavily_obscured.py",

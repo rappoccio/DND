@@ -2,90 +2,58 @@
   "regions": [
     {
       "type": "Wall",
-      "x": 358,
-      "y": 89,
-      "width": 50,
-      "height": 249,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 58,
-      "y": 388,
-      "width": 50,
+      "x": 0,
+      "y": 200,
+      "width": 350,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 158,
-      "y": 388,
-      "width": 150,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 358,
-      "y": 388,
-      "width": 150,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 558,
-      "y": 388,
-      "width": 250,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 858,
-      "y": 388,
-      "width": 199,
-      "height": 50,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 258,
-      "y": 438,
-      "width": 50,
-      "height": 350,
-      "multiplier": 0.0
-    },
-    {
-      "type": "Wall",
-      "x": 608,
-      "y": 438,
+      "x": 300,
+      "y": 250,
       "width": 50,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 608,
-      "y": 538,
+      "x": 300,
+      "y": 350,
+      "width": 50,
+      "height": 250,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 550,
+      "y": 350,
+      "width": 450,
+      "height": 50,
+      "multiplier": 0.0
+    },
+    {
+      "type": "Wall",
+      "x": 550,
+      "y": 400,
       "width": 50,
       "height": 100,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 658,
-      "y": 588,
-      "width": 399,
+      "x": 350,
+      "y": 550,
+      "width": 250,
       "height": 50,
       "multiplier": 0.0
     },
     {
       "type": "Wall",
-      "x": 258,
-      "y": 838,
+      "x": 550,
+      "y": 600,
       "width": 50,
-      "height": 49,
+      "height": 150,
       "multiplier": 0.0
     }
   ],
@@ -95,114 +63,61 @@
       "cells": [
         [
           6,
-          5
+          6
         ]
       ],
       "cell": [
         6,
-        5
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          1,
-          6
-        ]
-      ],
-      "cell": [
-        1,
         6
       ],
       "open": false,
       "locked": false,
       "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          5,
-          6
-        ]
-      ],
-      "cell": [
-        5,
-        6
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          9,
-          6
-        ]
-      ],
-      "cell": [
-        9,
-        6
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          15,
-          6
-        ]
-      ],
-      "cell": [
-        15,
-        6
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
-    },
-    {
-      "cells": [
-        [
-          4,
-          14
-        ]
-      ],
-      "cell": [
-        4,
-        14
-      ],
-      "open": false,
-      "locked": false,
-      "lock_dc": 15,
-      "arcane_lock": false
+      "arcane_lock": false,
+      "link_target": null
     },
     {
       "cells": [
         [
           11,
-          8
+          10
         ]
       ],
       "cell": [
         11,
-        8
+        10
       ],
       "open": false,
       "locked": false,
       "lock_dc": 15,
-      "arcane_lock": false
+      "arcane_lock": false,
+      "link_target": null
+    },
+    {
+      "cells": [
+        [
+          11,
+          15
+        ]
+      ],
+      "cell": [
+        11,
+        15
+      ],
+      "open": false,
+      "locked": false,
+      "lock_dc": 15,
+      "arcane_lock": false,
+      "link_target": null
     }
   ],
+  "ladders": [],
+  "manual_grid": {
+    "cell_px": 50,
+    "anchor": [
+      0,
+      0
+    ]
+  },
   "explored": []
 }

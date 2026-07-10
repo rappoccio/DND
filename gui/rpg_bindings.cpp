@@ -63,12 +63,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
     py::class_<Cell>(m, "Cell")
         .def(py::init<>())
         .def(py::init<int, int>(), py::arg("col"), py::arg("row"))
+        .def(py::init([](int col, int row, int z){ return Cell{col, row, z}; }),
+             py::arg("col"), py::arg("row"), py::arg("z"))
         .def_readwrite("col", &Cell::col)
         .def_readwrite("row", &Cell::row)
+        .def_readwrite("z",   &Cell::z)  // FLOOR at the global layer only; engine cells stay z=0
         .def("__eq__",   &Cell::operator==)
         .def("__repr__", [](const Cell& c){
             return "<Cell col=" + std::to_string(c.col)
-                 + " row=" + std::to_string(c.row) + ">"; });
+                 + " row=" + std::to_string(c.row)
+                 + " z=" + std::to_string(c.z) + ">"; });
 
     // ── Geometry helpers (single source of truth, shared with the combat engine) ──
     // Chebyshev gap (in CELLS) between two NxN footprints — 0 if their cells are
@@ -3788,6 +3792,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_property_readonly("cell_pixel_size", &BattleMap::cellPixelSize)
         .def_property_readonly("h_line_positions",&BattleMap::hLinePositions)
         .def_property_readonly("v_line_positions",&BattleMap::vLinePositions)
+
+        // Global placement on the shared dungeon grid (multi-map dungeons).
+        // origin_(col,row) = global (X,Y) of this page's local (0,0); z_level = floor.
+        .def_property("origin_col", &BattleMap::originCol, &BattleMap::setOriginCol)
+        .def_property("origin_row", &BattleMap::originRow, &BattleMap::setOriginRow)
+        .def_property("z_level",    &BattleMap::zLevel,    &BattleMap::setZLevel)
+        .def("local_to_global", &BattleMap::localToGlobal, py::arg("local"),
+             "Local (col,row) → global Cell (X,Y,z=z_level) on the shared dungeon grid.")
+        .def("global_to_local", &BattleMap::globalToLocal,
+             py::arg("x"), py::arg("y"), py::arg("z"),
+             "Global (X,Y,Z) → local Cell on THIS page, or None if wrong floor / off-page.")
 
         // Wall / passability data
         .def_property_readonly("walls", [](const BattleMap& bm) -> std::vector<Wall> {

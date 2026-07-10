@@ -295,6 +295,31 @@ public:
     [[nodiscard]] int gridRows()      const noexcept { return rows_; }
     [[nodiscard]] int cellPixelSize() const noexcept { return cellPx_; }
 
+    // ── Global placement (multi-map dungeons) ─────────────────────────────
+    // This page's origin on the shared dungeon grid: the global (X, Y, Z) of the
+    // page's local (0, 0). All engine hot paths stay local (z=0); these convert
+    // between local (col,row) and global (X,Y,Z) only at the dungeon-manifest seam.
+    [[nodiscard]] int originCol() const noexcept { return origin_col_; }
+    [[nodiscard]] int originRow() const noexcept { return origin_row_; }
+    [[nodiscard]] int zLevel()    const noexcept { return z_level_; }
+    void setOriginCol(int v) noexcept { origin_col_ = v; }
+    void setOriginRow(int v) noexcept { origin_row_ = v; }
+    void setZLevel(int v)    noexcept { z_level_    = v; }
+
+    // Local (col,row) → global cell (X = origin_col_+col, Y = origin_row_+row, z = z_level_).
+    [[nodiscard]] Cell localToGlobal(Cell local) const noexcept {
+        return Cell{origin_col_ + local.col, origin_row_ + local.row, z_level_};
+    }
+    // Global (X,Y,Z) → local (col,row) on THIS page; nullopt if the wrong floor or
+    // outside this page's [0,cols)×[0,rows) footprint. Returned cell keeps z=0 (local).
+    [[nodiscard]] std::optional<Cell> globalToLocal(int X, int Y, int Z) const noexcept {
+        if (Z != z_level_) return std::nullopt;
+        int c = X - origin_col_;
+        int r = Y - origin_row_;
+        if (c < 0 || r < 0 || c >= cols_ || r >= rows_) return std::nullopt;
+        return Cell{c, r, 0};
+    }
+
     [[nodiscard]] const std::vector<int>& hLinePositions() const noexcept { return hLines_; }
     [[nodiscard]] const std::vector<int>& vLinePositions() const noexcept { return vLines_; }
 
@@ -720,6 +745,9 @@ private:
 
     std::filesystem::path mapImagePath_;
     int cols_{0}, rows_{0}, cellPx_{0};
+    // Global placement on the shared dungeon grid (all default 0 ⇒ standalone map
+    // sits at the global origin on floor 0; unchanged behavior for single-map use).
+    int origin_col_{0}, origin_row_{0}, z_level_{0};
     std::vector<int>   hLines_, vLines_;
     std::vector<Wall>  walls_;
     CellSet            disallowed_;

@@ -7,15 +7,22 @@
 namespace rpg {
 
 // ── Grid coordinate ────────────────────────────────────────────────────
+// `z` carries the FLOOR at the global addressing layer only. The engine's live
+// cells (movement/LOS/occupancy/terrain) always keep z = 0; z is meaningful only
+// on cells produced by BattleMap::local_to_global. Never mix a nonzero-z cell into
+// a CellSet that the engine hot paths touch (defaulted-== is now z-sensitive).
 struct Cell {
     int col{0};
     int row{0};
+    int z{0};
     bool operator==(const Cell&) const noexcept = default;
 };
 
 struct CellHash {
     std::size_t operator()(const Cell& c) const noexcept {
-        return std::hash<int>{}(c.col) ^ (std::hash<int>{}(c.row) << 16);
+        return std::hash<int>{}(c.col)
+             ^ (std::hash<int>{}(c.row) << 16)
+             ^ (std::hash<int>{}(c.z)   << 8);
     }
 };
 

@@ -9,7 +9,23 @@ from constants import *
 from widgets import Button
 
 
-def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None):
+def door_link_key(cells):
+    """Canonical, order-independent key for a door's cell footprint.
+
+    A door lives in the C++ ``BattleMap`` and cannot itself hold the Python-only
+    cross-map ``link_target`` (Floors Phase 5). We therefore key links by the door's
+    cells, which are stable across save/reload (doors are re-added with the same
+    cells). Accepts ``rpg.Cell`` objects or ``(col, row)`` tuples."""
+    out = []
+    for c in cells:
+        if hasattr(c, "col"):
+            out.append((int(c.col), int(c.row)))
+        else:
+            out.append((int(c[0]), int(c[1])))
+    return tuple(sorted(out))
+
+
+def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, linked=False):
     """Draw a door over screen rect (x, y, w, h) — defaults to a single cell (size×size).
 
     `door` is an rpg.Door. Closed doors are a filled wooden slab; open doors are an
@@ -17,6 +33,8 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None):
     Used by both the in-game render loop (main.py) and the terrain editor below so the
     door looks identical wherever it is drawn. A wide (multi-cell) door is drawn as one
     elongated slab over its full bounding rect: pass w/h covering all of its cells.
+    `linked` marks a cross-map door staple (leads to an abutting page) with a small
+    teal corner chevron so a DM can tell a portal door from an ordinary one.
     """
     if w is None:
         w = size
@@ -56,6 +74,61 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None):
         pygame.draw.arc(screen, lock_col,
                         pygame.Rect(cx - sh_r, cy - sh_r, sh_r * 2, sh_r * 2),
                         0.0, math.pi, 2)
+
+    if linked:
+        # Cross-map staple marker: a small teal chevron ">>" in the top-right corner.
+        m = max(3, short // 6)
+        tx, ty = x + w - m - 2, y + 3
+        teal = (90, 210, 210)
+        pygame.draw.lines(screen, teal, False,
+                          [(tx, ty), (tx + m, ty + m // 2), (tx, ty + m)], 2)
+        pygame.draw.lines(screen, teal, False,
+                          [(tx + m // 2, ty), (tx + m + m // 2, ty + m // 2),
+                           (tx + m // 2, ty + m)], 2)
+
+
+def draw_ladder_glyph(screen, x, y, size, going_up=True, font_sm=None, w=None, h=None):
+    """Draw a ladder (vertical portal to another floor) over screen rect (x, y, w, h).
+
+    Two side rails with rungs, plus a small arrow showing travel direction: `going_up`
+    ascends a floor (z+1), else descends (z-1). Used by both the in-game render loop
+    (main.py) and the terrain editor so a ladder looks identical wherever it is drawn.
+    Wide (multi-cell) ladders pass w/h covering all of their cells.
+    """
+    if w is None:
+        w = size
+    if h is None:
+        h = size
+    short = min(w, h)
+    pad = max(2, short // 6)
+    rail_col = (170, 130, 70)
+    # Translucent backing so the ladder reads over any terrain colour.
+    back = pygame.Surface((max(1, w - 2 * pad), max(1, h - 2 * pad)), pygame.SRCALPHA)
+    back.fill((90, 60, 30, 90))
+    screen.blit(back, (x + pad, y + pad))
+    # Two side rails.
+    rail_gap = max(4, (w - 2 * pad) // 3)
+    lx = x + (w - rail_gap) // 2
+    rx = x + (w + rail_gap) // 2
+    top = y + pad
+    bot = y + h - pad
+    pygame.draw.line(screen, rail_col, (lx, top), (lx, bot), 2)
+    pygame.draw.line(screen, rail_col, (rx, top), (rx, bot), 2)
+    # Rungs.
+    n_rungs = max(2, (h - 2 * pad) // max(4, short // 4))
+    for i in range(n_rungs + 1):
+        ry = top + (bot - top) * i // max(1, n_rungs)
+        pygame.draw.line(screen, rail_col, (lx, ry), (rx, ry), 2)
+    # Direction arrow (up = ascends, down = descends).
+    cx = x + w // 2
+    arr = max(3, short // 6)
+    arr_col = (230, 220, 120)
+    if going_up:
+        pygame.draw.polygon(screen, arr_col,
+                            [(cx, top - 1), (cx - arr, top + arr), (cx + arr, top + arr)])
+    else:
+        pygame.draw.polygon(screen, arr_col,
+                            [(cx, bot + 1), (cx - arr, bot - arr), (cx + arr, bot - arr)])
 
 
 class TemporaryTerrainPlacementDialog:
@@ -248,6 +321,17 @@ class TerrainEditorDialog:
         # Drag-to-span door placement: start/end cells while the mouse is held.
         self.door_drag_start = None
         self.door_drag_end = None
+        # Cross-map door staples (Floors Phase 5). When ``door_link`` is on, a door
+        # placed on a page edge is auto-targeted to the abutting page's matching global
+        # cell. ``door_links`` is app-owned (key -> [X,Y,Z]); the editor mutates the
+        # reference passed to open() in place, like ``ladders``.
+        self.door_link = False
+        self.door_links = {}
+        # Ladder placement (vertical portals). Ladders are Python-only cell objects —
+        # the app owns the list; the editor mutates the reference passed to open().
+        # Each entry is {"cells": [(col,row),...], "target": [X, Y, Z]} in GLOBAL coords.
+        self.ladders = []
+        self.ladder_up = False  # direction the next placed ladder travels (True = z+1)
         # Mapping from terrain type names to rpg.TerrainType enum values
         self.terrain_type_map = {
             "Standard": rpg.TerrainType.Standard,
@@ -256,14 +340,21 @@ class TerrainEditorDialog:
             "Chasm": rpg.TerrainType.Chasm,
         }
 
-    def open(self, map_surf, terrain_regions, bm=None):
-        """Open the terrain editor with existing terrain data."""
+    def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None):
+        """Open the terrain editor with existing terrain data.
+
+        ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
+        mutates it in place, so the caller sees placements/removals without a copy-back.
+        ``door_links`` is the app's live door-link table (key -> [X,Y,Z]), mutated the
+        same way for cross-map door staples."""
         self.active = True
         self.map_surf = map_surf
         self.terrain_regions = [r.copy() for r in terrain_regions] if terrain_regions else []
         self.selection_start = None
         self.selection_rect = None
         self.bm = bm
+        self.ladders = ladders if ladders is not None else []
+        self.door_links = door_links if door_links is not None else {}
 
     def close(self):
         """Close the terrain editor."""
@@ -275,6 +366,14 @@ class TerrainEditorDialog:
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1 and self.selected_type == "Ladder":
+                # A ladder is a single-cell portal: click places one (target auto-filled
+                # to the same global X,Y one floor up/down); clicking an existing one
+                # removes it (toggle, like a single-cell door).
+                cell = self._pos_to_cell(event.pos)
+                if cell is not None:
+                    self._place_ladder(cell)
+                return
             if event.button == 1 and self.selected_type == "Door":
                 # A door spans 1..4 cells: press starts the span, drag sizes it, release
                 # places it. (A press-and-release on one cell is the single-cell toggle.)
@@ -334,10 +433,16 @@ class TerrainEditorDialog:
                 self.selected_type = "Difficult Terrain"
             elif event.key == pygame.K_5:
                 self.selected_type = "Door"
+            elif event.key == pygame.K_6:
+                self.selected_type = "Ladder"
+            elif event.key == pygame.K_u and self.selected_type == "Ladder":
+                self.ladder_up = not self.ladder_up
             elif event.key == pygame.K_l and self.selected_type == "Door":
                 self.door_locked = not self.door_locked
             elif event.key == pygame.K_a and self.selected_type == "Door":
                 self.door_arcane = not self.door_arcane
+            elif event.key == pygame.K_k and self.selected_type == "Door":
+                self.door_link = not self.door_link
             elif event.key in (pygame.K_PLUS, pygame.K_EQUALS) and self.selected_type == "Door":
                 self.door_lock_dc = min(30, self.door_lock_dc + 1)
             elif event.key == pygame.K_MINUS and self.selected_type == "Door":
@@ -428,10 +533,70 @@ class TerrainEditorDialog:
         if len(cells) == 1:
             di = self.bm.door_at(cells[0])
             if di >= 0:
+                self.door_links.pop(door_link_key(self.bm.doors[di].cells), None)
                 self.bm.remove_door(self.bm.doors[di].id)
                 return
         self.bm.add_door(cells, False, self.door_locked,
                          self.door_lock_dc, self.door_arcane)
+        # Cross-map staple: if link mode is on and this door sits on a page edge, target
+        # the abutting page's matching global cell (resolved to a page at use time).
+        key = door_link_key(cells)
+        if self.door_link:
+            tgt = self._door_link_target(cells)
+            if tgt is not None:
+                self.door_links[key] = tgt
+            else:
+                self.door_links.pop(key, None)
+        else:
+            self.door_links.pop(key, None)
+
+    def _door_link_target(self, cells):
+        """Global ``[X, Y, Z]`` one cell beyond the page edge a door touches, for a
+        cross-map staple. Returns None if the door isn't on a page edge (nothing to link
+        to). Derived from the active map's origin/z_level (Phase 1 fields), so no manifest
+        access is needed here — the target page is resolved at use time. A wide door uses
+        its middle cell as the representative crossing point."""
+        rep = cells[len(cells) // 2]
+        c, r = int(rep.col), int(rep.row)
+        ox = int(getattr(self.bm, "origin_col", 0) or 0)
+        oy = int(getattr(self.bm, "origin_row", 0) or 0)
+        z = int(getattr(self.bm, "z_level", 0) or 0)
+        ncols = int(getattr(self.bm, "grid_cols", 0) or 0)
+        nrows = int(getattr(self.bm, "grid_rows", 0) or 0)
+        if c <= 0:
+            return [ox + c - 1, oy + r, z]
+        if ncols and c >= ncols - 1:
+            return [ox + c + 1, oy + r, z]
+        if r <= 0:
+            return [ox + c, oy + r - 1, z]
+        if nrows and r >= nrows - 1:
+            return [ox + c, oy + r + 1, z]
+        return None
+
+    def _ladder_index_at(self, col, row):
+        """Index of the ladder occupying cell (col, row), or -1."""
+        for i, lad in enumerate(self.ladders):
+            if any(int(c[0]) == col and int(c[1]) == row for c in lad.get("cells", [])):
+                return i
+        return -1
+
+    def _place_ladder(self, cell):
+        """Place a single-cell ladder at ``cell`` (or remove one already there).
+
+        The target auto-fills to the same GLOBAL (X, Y) one floor up or down, derived
+        from the active map's origin/z_level (Phase 1 fields). If the engine predates
+        those bindings the global coords fall back to the local cell on z±1."""
+        col, row = cell.col, cell.row
+        existing = self._ladder_index_at(col, row)
+        if existing >= 0:
+            self.ladders.pop(existing)   # toggle: click an existing ladder to remove it
+            return
+        ox = int(getattr(self.bm, "origin_col", 0) or 0)
+        oy = int(getattr(self.bm, "origin_row", 0) or 0)
+        z = int(getattr(self.bm, "z_level", 0) or 0)
+        dz = 1 if self.ladder_up else -1
+        self.ladders.append({"cells": [(col, row)],
+                             "target": [ox + col, oy + row, z + dz]})
 
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
@@ -570,9 +735,21 @@ class TerrainEditorDialog:
                 min_col, max_col = min(cols), max(cols)
                 min_row, max_row = min(rows), max(rows)
                 if min_col < len(v) and min_row < len(h):
+                    linked = door_link_key(door.cells) in self.door_links
                     draw_door_glyph(screen, v[min_col], h[min_row], size, door, self.font_sm,
                                     w=(max_col - min_col + 1) * size,
-                                    h=(max_row - min_row + 1) * size)
+                                    h=(max_row - min_row + 1) * size, linked=linked)
+            # Draw ladders (Python-only cell objects; editor mutates self.ladders).
+            for lad in self.ladders:
+                cells = lad.get("cells", [])
+                if not cells or not v or not h:
+                    continue
+                c, r = int(cells[0][0]), int(cells[0][1])
+                if c < len(v) and r < len(h):
+                    tz = lad.get("target", [0, 0, 0])[2]
+                    z_here = int(getattr(self.bm, "z_level", 0) or 0)
+                    draw_ladder_glyph(screen, v[c], h[r], size,
+                                      going_up=(tz > z_here), font_sm=self.font_sm)
             # Preview the in-progress door span while dragging.
             if self.door_drag_start is not None and self.door_drag_end is not None:
                 for cell in self._door_span_cells(self.door_drag_start, self.door_drag_end):
@@ -597,7 +774,8 @@ class TerrainEditorDialog:
             f"[2] Chasm (grey)",
             f"[3] Water (blue)",
             f"[4] Difficult Terrain (brown)",
-            f"[5] Door (click a cell)"
+            f"[5] Door (click a cell)",
+            f"[6] Ladder (click a cell)"
         ]
         y = 10
         for text in sel_texts:
@@ -607,18 +785,27 @@ class TerrainEditorDialog:
 
         # Current type highlight
         current_idx = {"Wall": 0, "Chasm": 1, "Water": 2,
-                       "Difficult Terrain": 3, "Door": 4}.get(self.selected_type, 3)
+                       "Difficult Terrain": 3, "Door": 4, "Ladder": 5}.get(self.selected_type, 3)
         pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 175, 16), 2)
 
-        if self.selected_type == "Door":
+        if self.selected_type == "Ladder":
+            dir_str = "UP (z+1)" if self.ladder_up else "DOWN (z-1)"
+            lad_surf = self.font_sm.render(f"Ladder travels: {dir_str}", True, (220, 200, 120))
+            screen.blit(lad_surf, (10, y + 10))
+            keys_surf = self.font_sm.render(
+                "[U] toggle up/down  (click places; click again removes)",
+                True, (170, 170, 170))
+            screen.blit(keys_surf, (10, y + 28))
+        elif self.selected_type == "Door":
             # Door placement settings (toggled with keyboard while Door is selected).
             lock_str = "Locked" if self.door_locked else "Unlocked"
             arc_str = " + Arcane Lock" if self.door_arcane else ""
-            door_text = f"Door: [{lock_str}{arc_str}]  DC {self.door_lock_dc}"
+            link_str = "  + Link→neighbor" if self.door_link else ""
+            door_text = f"Door: [{lock_str}{arc_str}]  DC {self.door_lock_dc}{link_str}"
             door_surf = self.font_sm.render(door_text, True, (220, 200, 120))
             screen.blit(door_surf, (10, y + 10))
             keys_surf = self.font_sm.render(
-                "[L] lock  [A] arcane  [+/-] DC  (click toggles; drag for a wide door, max 4)",
+                "[L] lock  [A] arcane  [K] link  [+/-] DC  (click toggles; drag for a wide door, max 4)",
                 True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         else:
