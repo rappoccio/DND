@@ -568,12 +568,19 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
         if (disengaging && !ra.agent->getStats().has_sentinel) continue;
 
         const int rSize = ra.agent->getSize();
-        bool wasIn = footprintDistance(ra.origin, rSize, path.front(), moverSize) <= reach;
+        // A reactor only threatens a cell it can both reach AND see: a wall
+        // between the reactor and the mover blocks the opportunity attack even
+        // when the two are geometrically adjacent (e.g. either side of a wall).
+        const auto threatens = [&](Cell moverCell) {
+            if (footprintDistance(ra.origin, rSize, moverCell, moverSize) > reach) return false;
+            return bm.hasLineOfSight(ra.origin, rSize, moverCell, moverSize);
+        };
+        bool wasIn = threatens(path.front());
         bool provoked = false;
         Cell leftCell = path.front();
         int  leftStep = 0;
         for (std::size_t i = 1; i < path.size(); ++i) {
-            const bool nowIn = footprintDistance(ra.origin, rSize, path[i], moverSize) <= reach;
+            const bool nowIn = threatens(path[i]);
             if (wasIn && !nowIn) {                       // left this reactor's reach on this step
                 leftCell = path[i - 1];
                 leftStep = static_cast<int>(i - 1);
