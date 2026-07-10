@@ -2619,6 +2619,134 @@ class ContextMenu:
                                ir.centery - lbl.get_height() // 2))
 
 
+class SpellGridMenu:
+    """Multi-column grid of clickable buttons.  Items are (label, callback) pairs.
+
+    Used for the in-combat spell list, which can hold dozens of spells — far more
+    than the single-column ContextMenu can show without running off the bottom of
+    the screen.  Buttons flow column-major (fill down a column, then start the next)
+    so the list still reads top-to-bottom, and the whole grid is centred and sized
+    to always fit inside the current screen.
+    """
+    BTN_H     = 30    # button height
+    GAP       = 4     # gap between buttons
+    PAD       = 12    # padding inside the popup frame
+    TITLE_H   = 26    # header strip height
+    MARGIN    = 24    # min gap between popup and screen edge
+    MIN_COL_W = 150
+    MAX_COL_W = 260
+
+    def __init__(self, font=None):
+        self._font   = font
+        self.items:  list = []
+        self.visible = False
+        self.title   = ""
+        self.rect:   pygame.Rect | None = None
+        self._btn_rects: list = []   # (rect, item_index)
+        self._hover_idx  = -1
+        self._cols = 1
+        self._rows = 1
+
+    def show(self, items, screen_size=(9999, 9999), title="Cast a spell"):
+        if self._font is None:
+            self._font = pygame.font.SysFont(None, 18)
+        self.items   = list(items)
+        self.title   = title
+        self.visible = True
+        self._hover_idx = -1
+
+        n = len(self.items)
+        screen_w, screen_h = screen_size
+
+        # Column width driven by the widest label (clamped to a sane range).
+        widest = max((self._font.size(t)[0] for t, _ in self.items), default=0)
+        col_w  = max(self.MIN_COL_W, min(self.MAX_COL_W, widest + 24))
+
+        # How many rows fit vertically, and how many columns fit horizontally.
+        avail_h  = screen_h - 2 * self.MARGIN - self.TITLE_H - 2 * self.PAD
+        rows_max = max(1, (avail_h + self.GAP) // (self.BTN_H + self.GAP))
+        avail_w  = screen_w - 2 * self.MARGIN - 2 * self.PAD
+        cols_max = max(1, (avail_w + self.GAP) // (col_w + self.GAP))
+
+        cols = min(cols_max, max(1, (n + rows_max - 1) // rows_max))
+        rows = (n + cols - 1) // cols
+        self._cols, self._rows = cols, rows
+
+        grid_w = cols * col_w + (cols - 1) * self.GAP
+        grid_h = rows * self.BTN_H + (rows - 1) * self.GAP
+        w = grid_w + 2 * self.PAD
+        h = grid_h + 2 * self.PAD + self.TITLE_H
+        x = max(self.MARGIN, (screen_w - w) // 2)
+        y = max(self.MARGIN, (screen_h - h) // 2)
+        self.rect = pygame.Rect(x, y, w, h)
+
+        # Pre-compute a rect for every button (column-major layout).
+        self._btn_rects = []
+        gx = x + self.PAD
+        gy = y + self.PAD + self.TITLE_H
+        for i in range(n):
+            c = i // rows
+            r = i % rows
+            bx = gx + c * (col_w + self.GAP)
+            by = gy + r * (self.BTN_H + self.GAP)
+            self._btn_rects.append((pygame.Rect(bx, by, col_w, self.BTN_H), i))
+
+    def dismiss(self):
+        self.visible = False
+        self.items   = []
+        self.rect    = None
+        self._btn_rects = []
+        self._hover_idx = -1
+
+    def handle(self, event) -> bool:
+        """Returns True if the event was consumed (menu was visible)."""
+        if not self.visible:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for rect, i in self._btn_rects:
+                if rect.collidepoint(*event.pos):
+                    _, cb = self.items[i]
+                    self.dismiss()
+                    cb()
+                    return True
+            self.dismiss()   # click outside any button = dismiss
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            self.dismiss()
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.dismiss()
+            return True
+        if event.type == pygame.MOUSEMOTION:
+            self._hover_idx = -1
+            for rect, i in self._btn_rects:
+                if rect.collidepoint(*event.pos):
+                    self._hover_idx = i
+                    break
+        return False
+
+    def draw(self, screen):
+        if not self.visible or not self.rect:
+            return
+        pygame.draw.rect(screen, (40, 40, 54), self.rect, border_radius=6)
+        pygame.draw.rect(screen, (120, 120, 165), self.rect, 1, border_radius=6)
+        # Title strip.
+        if self.title:
+            tlbl = self._font.render(self.title, True, (235, 220, 140))
+            screen.blit(tlbl, (self.rect.x + self.PAD,
+                               self.rect.y + (self.TITLE_H - tlbl.get_height()) // 2 + 2))
+        # Buttons.
+        for rect, i in self._btn_rects:
+            hovered = (i == self._hover_idx)
+            bg = (78, 104, 150) if hovered else (58, 58, 74)
+            pygame.draw.rect(screen, bg, rect, border_radius=4)
+            pygame.draw.rect(screen, (100, 100, 135), rect, 1, border_radius=4)
+            text = self.items[i][0]
+            lbl  = self._font.render(text, True, (232, 232, 232))
+            # Clip overly long labels to the button width.
+            if lbl.get_width() > rect.width - 12:
+                lbl = lbl.subsurface((0, 0, rect.width - 12, lbl.get_height()))
+            screen.blit(lbl, (rect.x + 8, rect.centery - lbl.get_height() // 2))
 
 
 class SpellSelectionDialog:

@@ -53,7 +53,7 @@ from helpers import (
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -415,6 +415,7 @@ class App:
         self.lighting_editor = LightingEditorDialog(self.font_sm, self.font_md)
         self.conditions_dialog = ConditionsDialog(self.font_sm, self.font_md, self.font_lg)
         self.context_menu   = ContextMenu()
+        self.spell_grid_menu = SpellGridMenu()   # multi-column grid for the combat spell list
         # Cast-time element picker (Chromatic Orb / Sorcerous Burst). Reuses the same modal as
         # Elemental Adept's feat picker; opened from _activate, single-select.
         self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
@@ -8249,12 +8250,11 @@ class App:
         if len(options) == 1:
             options[0][1]()  # Call the action directly
         else:
-            px_popup = self._panel_x() + self._PANEL_PAD
-            self.context_menu.show(
-                (px_popup, 290),
-                options,
-                self.screen.get_size()
-            )
+            # Multi-column grid of clickable buttons — the spell list can hold dozens
+            # of entries, far more than a single vertical column can show on-screen.
+            slot_label = {"action": "Cast a spell", "bonus": "Bonus-action spell",
+                          "war_magic": "War Magic spell"}.get(slot, "Cast a spell")
+            self.spell_grid_menu.show(options, self.screen.get_size(), title=slot_label)
 
     def _get_damage_type_names(self, magic_damage_types, physical_damage_types):
         """Convert damage type enums to their string names."""
@@ -15608,7 +15608,7 @@ class App:
         up by _award_encounter_xp() — is always visible. See xp.py."""
         px = self._panel_x()
         sh = self.screen.get_height()
-        label = f"★ XP  {self.party_xp_total:,}"
+        label = f"★ XP  {self.party_xp_total:,}  (Lv {level_for_xp(self.party_xp_total)})"
         surf  = self.font_md.render(label, True, (245, 215, 90))   # gold
         pad   = 6
         w     = surf.get_width() + pad * 2
@@ -15680,6 +15680,7 @@ class App:
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
                 self.mob_dialog.visible or self.context_menu.visible or
+                self.spell_grid_menu.visible or
                 self._grid_span_dialog.visible or self.name_prompt.visible or
                 self.team_dialog.visible)
 
@@ -15982,6 +15983,11 @@ class App:
                     self.placement_config = None
                     self.placement_cell = None
                     self._pc_name_input = None
+                    continue
+
+            # Spell grid popup sits above normal map events but below modals.
+            if self.spell_grid_menu.visible:
+                if self.spell_grid_menu.handle(event):
                     continue
 
             # Context menu sits above normal map events but below modals.
@@ -17797,6 +17803,7 @@ class App:
             self.mob_dialog.draw(self.screen)      # modal — always on top
             self.conditions_dialog.draw(self.screen)  # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost
+            self.spell_grid_menu.draw(self.screen) # multi-column spell grid — topmost popup
             self._element_dialog.draw(self.screen) # cast-time element picker — topmost modal
             self._grid_span_dialog.draw(self.screen) # grid-span picker — topmost modal
             self.team_dialog.draw(self.screen)     # team picker — topmost modal
