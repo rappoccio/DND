@@ -10633,11 +10633,11 @@ class App:
         count, min_room = smallest room side in cells, margin = wall padding around
         each room)."""
         sw, sh = self.screen.get_size()
-        W, H = min(460, sw - 80), min(340, sh - 80)
+        W, H = min(500, sw - 80), min(400, sh - 80)
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         lx = box.x + 20
-        fx = box.right - 150       # field column
-        fw = 130
+        fx = box.right - 200       # field column
+        fw = 180
         row_h = 40
         y0 = box.y + 60
 
@@ -10648,13 +10648,19 @@ class App:
         # Floors > 1 builds a stacked multi-floor dungeon (each floor a fresh layout,
         # linked by ladders) instead of carving the single active map.
         floors_step = IntStepper(pygame.Rect(fx, y0 + 4 * row_h, fw, 30), 1, 1, 8, font=self.font_md)
+        # "Each floor: N×M" — each floor is tiled with N (across) by M (down) maps,
+        # laid out edge-to-edge and reachable via the map-paging HUD (both 1 = single map).
+        nm_y = y0 + 5 * row_h
+        mapsx_step = IntStepper(pygame.Rect(fx,          nm_y, 82, 30), 1, 1, 4, font=self.font_md)
+        mapsy_step = IntStepper(pygame.Rect(fx + fw - 82, nm_y, 82, 30), 1, 1, 4, font=self.font_md)
 
         gen    = Button(pygame.Rect(box.right - 220, box.bottom - 46, 95, 32), "Generate",
                         (60, 110, 70), (80, 140, 90), font=self.font_md)
         cancel = Button(pygame.Rect(box.right - 115, box.bottom - 46, 95, 32), "Cancel",
                         (110, 60, 60), (150, 80, 80), font=self.font_md)
 
-        labels = ["Room count", "Min room side", "Wall margin", "Seed", "Floors"]
+        labels = ["Room count", "Min room side", "Wall margin", "Seed", "Floors",
+                  "Each floor (N×M)"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -10668,6 +10674,8 @@ class App:
                 margin_step.handle(event)
                 seed_inp.handle(event)
                 floors_step.handle(event)
+                mapsx_step.handle(event)
+                mapsy_step.handle(event)
                 if cancel.clicked(event):
                     return None
                 if gen.clicked(event):
@@ -10680,7 +10688,8 @@ class App:
                             seed = None
                     return {"rooms": rooms_step.value, "min_room": room_step.value,
                             "margin": margin_step.value, "seed": seed,
-                            "floors": floors_step.value}
+                            "floors": floors_step.value,
+                            "maps_x": mapsx_step.value, "maps_y": mapsy_step.value}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
@@ -10689,7 +10698,11 @@ class App:
             for i, lab in enumerate(labels):
                 self.screen.blit(self.font_md.render(lab, True, (185, 185, 200)),
                                  (lx, y0 + i * row_h + 6))
-            for w in (rooms_step, room_step, margin_step, seed_inp, floors_step, gen, cancel):
+            # "×" separator between the two N×M steppers.
+            xt = self.font_md.render("×", True, (185, 185, 200))
+            self.screen.blit(xt, (fx + fw // 2 - xt.get_width() // 2, nm_y + 6))
+            for w in (rooms_step, room_step, margin_step, seed_inp, floors_step,
+                      mapsx_step, mapsy_step, gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
@@ -10777,17 +10790,26 @@ class App:
                 return rng.choice(cells)
         return None
 
-    def _generate_multifloor(self, num_floors, terrain_params, encounter_params, base):
+    def _generate_multifloor(self, num_floors, terrain_params, encounter_params, base,
+                             maps_x=1, maps_y=1):
         """Generate an ``num_floors``-floor dungeon on the current map's PNG, each floor
         a freshly carved random layout (plus a populated encounter when
         ``encounter_params`` is given), wired into a ``<base>.dungeon.json`` with
         inter-floor ladders, then activate the entry floor.
 
-        All pages share the active PNG and grid (Decision: "use simplemap.png for now").
-        Floors stack on the global Z axis at the same origin, so a ladder up from local
-        (c,r) lands at the same (c,r) one floor higher — that cell is force-opened to
-        FLOOR on the upper page so the climb never ends in rock. Returns a summary list
-        of strings; raises ValueError if a floor can't be carved."""
+        Each floor is tiled with ``maps_x`` × ``maps_y`` maps laid out edge-to-edge on
+        the global grid: the tile at grid position (mx, my) takes origin
+        ``[mx*cols, my*rows, z]``, so the same-floor paging HUD (West/North/South/East)
+        walks between abutting tiles. The (0, 0) tile of every floor is the "spine" that
+        carries the inter-floor ladders.
+
+        All pages share the active PNG and grid. Floors stack on the global Z axis, so a
+        ladder up from the spine's local (c,r) lands at the same (c,r) one floor higher —
+        that cell is force-opened to FLOOR on the upper spine so the climb never ends in
+        rock. Returns a summary list of strings; raises ValueError if a tile can't be
+        carved."""
+        maps_x = max(1, min(4, int(maps_x)))
+        maps_y = max(1, min(4, int(maps_y)))
         cols = int(getattr(self.bm, "grid_cols", 0) or 0)
         rows = int(getattr(self.bm, "grid_rows", 0) or 0)
         raw_v = list(self.bm.v_line_positions)
@@ -10813,87 +10835,102 @@ class App:
         base_seed = seed0 if seed0 is not None else random.randrange(1 << 30)
 
         pages = []
-        down_cell = None      # cell this floor's DOWN-ladder occupies (set by floor below)
+        down_cell = None      # spine cell this floor's DOWN-ladder occupies (set by floor below)
         total_mobs = 0
         for z in range(num_floors):
-            force = [down_cell] if down_cell is not None else None
-            # Retry with a bumped seed if a floor's layout is too tight to carve, so one
-            # unlucky RNG doesn't abort the whole dungeon. The rng that succeeds is reused
-            # for that floor's ladder pick + encounter, keeping the floor deterministic.
-            rng = None
-            regions = rooms_meta = door_cells = None
-            for attempt in range(6):
-                rng = random.Random(base_seed + z * 7919 + attempt * 131)
-                try:
-                    regions, rooms_meta, door_cells = self._carve_dungeon_layout(
-                        dfp, cols, rows, raw_v, raw_h, blocked, terrain_params, rng,
-                        force_floor=force)
-                    break
-                except ValueError:
-                    regions = None
-            if regions is None:
-                raise ValueError(f"Floor {z}: could not carve a layout after 6 tries. "
-                                 "Try fewer/smaller rooms.")
+            up_cell = None    # spine cell this floor's UP-ladder occupies (picked below)
+            for my in range(maps_y):
+                for mx in range(maps_x):
+                    is_spine = (mx == 0 and my == 0)   # (0,0) tile carries the ladders
+                    # Only the spine force-opens the down-ladder landing; other tiles carve free.
+                    tile_force = [down_cell] if (is_spine and down_cell is not None) else None
+                    tile_idx = my * maps_x + mx
+                    # Retry with a bumped seed if a tile's layout is too tight to carve, so one
+                    # unlucky RNG doesn't abort the whole dungeon. The rng that succeeds is reused
+                    # for that tile's ladder pick + encounter, keeping it deterministic.
+                    rng = None
+                    regions = rooms_meta = door_cells = None
+                    for attempt in range(6):
+                        rng = random.Random(base_seed + z * 7919 + tile_idx * 104729 + attempt * 131)
+                        try:
+                            regions, rooms_meta, door_cells = self._carve_dungeon_layout(
+                                dfp, cols, rows, raw_v, raw_h, blocked, terrain_params, rng,
+                                force_floor=tile_force)
+                            break
+                        except ValueError:
+                            regions = None
+                    if regions is None:
+                        raise ValueError(f"Floor {z} map ({mx},{my}): could not carve a layout "
+                                         "after 6 tries. Try fewer/smaller rooms.")
 
-            ladders = []
-            if down_cell is not None:                     # link back down to floor z-1
-                dc, dr = down_cell
-                ladders.append({"cells": [[dc, dr]], "target": [dc, dr, z - 1]})
-            up_cell = None
-            if z < num_floors - 1:                        # link up to floor z+1
-                up_cell = self._pick_room_cell(rooms_meta, rng, avoid=[down_cell] if down_cell else None)
-                if up_cell is not None:
-                    uc, ur = up_cell
-                    ladders.append({"cells": [[uc, ur]], "target": [uc, ur, z + 1]})
+                    ladders = []
+                    if is_spine:
+                        if down_cell is not None:             # link back down to floor z-1
+                            dc, dr = down_cell
+                            ladders.append({"cells": [[dc, dr]], "target": [dc, dr, z - 1]})
+                        if z < num_floors - 1:                # link up to floor z+1
+                            up_cell = self._pick_room_cell(
+                                rooms_meta, rng, avoid=[down_cell] if down_cell else None)
+                            if up_cell is not None:
+                                uc, ur = up_cell
+                                ladders.append({"cells": [[uc, ur]], "target": [uc, ur, z + 1]})
 
-            # Populate this floor's rooms (optional). Placement reads bm.is_blocked, so
-            # apply the carved walls to the engine first (mirrors Generate Terrain →
-            # Generate Dungeon). The live scene is transient; we reload floor 0 at the end.
-            agents = []
-            staging_cells = None
-            if encounter_params is not None:
-                self._terrain_regions = regions
-                self._walls_enabled = False
-                self._apply_terrain_to_battle_map()
-                self.bm.clear_walls()
-                ordered_rooms, results, _ = eg.build_dungeon(
-                    self.bm, rpg, {"rooms": rooms_meta}, bestiary,
-                    cr=encounter_params["cr"],
-                    difficulty_start=encounter_params["start"],
-                    difficulty_end=encounter_params["end"],
-                    min_room=encounter_params["min_room"],
-                    boss=encounter_params["boss"] and z == num_floors - 1,
-                    entrance=None, automation_level=1, rng=rng, place=True,
-                    filter_types=encounter_params.get("types"),
-                    filter_languages=encounter_params.get("languages"))
-                # Leave floor 0's entrance (room 0, walk-order first) empty so the party
-                # has a clear staging room to Load PCs into. build_dungeon returns results
-                # in room order, so results[0] is that entrance room; ordered_rooms[0] is
-                # its exact (post-filter) floor cells — recorded so Load PCs matches it.
-                keep = results[1:] if (z == 0 and len(results) > 1) else results
-                if z == 0 and ordered_rooms:
-                    staging_cells = ordered_rooms[0]
-                agents = [a for res in keep for a in res["agents"]]
-                total_mobs += len(agents)
+                    # Populate this tile's rooms (optional). Placement reads bm.is_blocked, so
+                    # apply the carved walls to the engine first (mirrors Generate Terrain →
+                    # Generate Dungeon). The live scene is transient; we reload floor 0 at the end.
+                    agents = []
+                    staging_cells = None
+                    if encounter_params is not None:
+                        self._terrain_regions = regions
+                        self._walls_enabled = False
+                        self._apply_terrain_to_battle_map()
+                        self.bm.clear_walls()
+                        # The boss finale goes in the top floor's spine tile.
+                        is_boss_tile = (z == num_floors - 1 and is_spine)
+                        ordered_rooms, results, _ = eg.build_dungeon(
+                            self.bm, rpg, {"rooms": rooms_meta}, bestiary,
+                            cr=encounter_params["cr"],
+                            difficulty_start=encounter_params["start"],
+                            difficulty_end=encounter_params["end"],
+                            min_room=encounter_params["min_room"],
+                            boss=encounter_params["boss"] and is_boss_tile,
+                            entrance=None, automation_level=1, rng=rng, place=True,
+                            filter_types=encounter_params.get("types"),
+                            filter_languages=encounter_params.get("languages"))
+                        # Leave the ENTRY tile's entrance (floor 0 spine, room 0) empty so the
+                        # party has a clear staging room to Load PCs into. build_dungeon returns
+                        # results in room order, so results[0] is that entrance room;
+                        # ordered_rooms[0] is its exact (post-filter) cells — recorded so Load
+                        # PCs matches it. Every other tile is fully populated.
+                        is_entry = (z == 0 and is_spine)
+                        keep = results[1:] if (is_entry and len(results) > 1) else results
+                        if is_entry and ordered_rooms:
+                            staging_cells = ordered_rooms[0]
+                        agents = [a for res in keep for a in res["agents"]]
+                        total_mobs += len(agents)
 
-            page_base = os.path.join(self._map_dir, f"{base}_f{z}")
-            ter_path = page_base + "_terrain.json"
-            agt_path = page_base + "_agents.json"
-            self._write_generated_terrain(ter_path, regions, rooms_meta, door_cells, ladders,
-                                          staging_cells=staging_cells)
-            if encounter_params is not None:
-                eg.write_agents_file(
-                    agt_path, agents, difficulty=encounter_params["end"],
-                    target_cr=encounter_params["cr"],
-                    generator_meta={"mode": "multifloor-gui", "floor": z, "seed": base_seed})
-            else:
-                # Terrain-only floor: an empty roster so the page loads cleanly.
-                with open(agt_path, "w") as f:
-                    json.dump({"agents": [], "map_items": []}, f, indent=2)
+                    suffix = "" if is_spine else f"_{mx}_{my}"
+                    page_base = os.path.join(self._map_dir, f"{base}_f{z}{suffix}")
+                    ter_path = page_base + "_terrain.json"
+                    agt_path = page_base + "_agents.json"
+                    self._write_generated_terrain(ter_path, regions, rooms_meta, door_cells,
+                                                  ladders, staging_cells=staging_cells)
+                    if encounter_params is not None:
+                        eg.write_agents_file(
+                            agt_path, agents, difficulty=encounter_params["end"],
+                            target_cr=encounter_params["cr"],
+                            generator_meta={"mode": "multifloor-gui", "floor": z,
+                                            "map": [mx, my], "seed": base_seed})
+                    else:
+                        # Terrain-only tile: an empty roster so the page loads cleanly.
+                        with open(agt_path, "w") as f:
+                            json.dump({"agents": [], "map_items": []}, f, indent=2)
 
-            pages.append(MapPage(id=f"floor{z}", png=png_name,
-                                 encounter_base=os.path.basename(agt_path),
-                                 origin=[0, 0, z], cols=cols, rows=rows))
+                    page_id = f"floor{z}" if is_spine else f"floor{z}_{mx}_{my}"
+                    pages.append(MapPage(id=page_id, png=png_name,
+                                         encounter_base=os.path.basename(agt_path),
+                                         origin=[mx * cols, my * rows, z],
+                                         cols=cols, rows=rows))
             down_cell = up_cell   # the next floor gets a down-ladder where we climbed up
 
         dungeon = Dungeon(pages=pages, entry_page_id="floor0")
@@ -10907,12 +10944,16 @@ class App:
         self.dungeon_page = None
         self._switch_to_page(dungeon.entry_page(), force=True)
 
-        summary = [f"Dungeon generated: {num_floors} floors on {png_name}"]
+        per_floor = maps_x * maps_y
+        layout = f"{maps_x}×{maps_y} maps/floor" if per_floor > 1 else "1 map/floor"
+        summary = [f"Dungeon generated: {num_floors} floors, {layout} on {png_name}"]
         if encounter_params is not None:
             summary.append(f"{total_mobs} mobs total; ladders link every floor")
         else:
             summary.append("terrain only; ladders link every floor")
         summary.append(f"Saved manifest: {os.path.basename(manifest)}")
+        if per_floor > 1:
+            summary.append("Page between same-floor maps with West/North/South/East (top-left).")
         summary.append("Use Floor +/- (top-left) or a ladder to move between floors.")
         return summary
 
@@ -10949,12 +10990,14 @@ class App:
             self._modal_message(["Generate Terrain failed", f"Could not load carver: {e}"])
             return
 
-        # Multi-floor: hand off to the stacked-dungeon generator (terrain only, no mobs).
-        if params.get("floors", 1) > 1:
-            self._modal_message(["Generating floors…"], blocking=False)
+        # Multi-floor or multi-map-per-floor: hand off to the stacked/tiled dungeon
+        # generator (terrain only, no mobs).
+        if params.get("floors", 1) > 1 or params.get("maps_x", 1) > 1 or params.get("maps_y", 1) > 1:
+            self._modal_message(["Generating maps…"], blocking=False)
             try:
                 summary = self._generate_multifloor(
-                    params["floors"], params, encounter_params=None, base=self._generated_base())
+                    params["floors"], params, encounter_params=None, base=self._generated_base(),
+                    maps_x=params.get("maps_x", 1), maps_y=params.get("maps_y", 1))
             except ValueError as e:
                 self._modal_message(["Generate Terrain failed", str(e),
                                      "Try fewer/smaller rooms or a bigger grid."])
@@ -11132,11 +11175,11 @@ class App:
             all_languages = []
 
         sw, sh = self.screen.get_size()
-        W, H = min(500, sw - 80), min(600, sh - 80)
+        W, H = min(500, sw - 80), min(640, sh - 80)
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         lx = box.x + 20
-        fx = box.right - 150       # field column
-        fw = 130
+        fx = box.right - 200       # field column
+        fw = 180
         row_h = 40
         y0 = box.y + 60
 
@@ -11147,6 +11190,11 @@ class App:
         # floor, linked by ladders); Rooms/floor is the carver's per-floor room count.
         floors_step = IntStepper(pygame.Rect(fx, y0 + 8 * row_h, fw, 30), 1, 1, 8, font=self.font_md)
         roomsfloor_step = IntStepper(pygame.Rect(fx, y0 + 9 * row_h, fw, 30), 4, 3, 12, font=self.font_md)
+        # "Each floor: N×M" — tile each floor with N (across) by M (down) maps, laid out
+        # edge-to-edge and reachable via the map-paging HUD (both 1 = single map/floor).
+        nm_y = y0 + 10 * row_h
+        mapsx_step = IntStepper(pygame.Rect(fx,           nm_y, 82, 30), 1, 1, 4, font=self.font_md)
+        mapsy_step = IntStepper(pygame.Rect(fx + fw - 82, nm_y, 82, 30), 1, 1, 4, font=self.font_md)
         start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
         type_selection, lang_selection = set(), set()  # multi-select for both
 
@@ -11169,7 +11217,7 @@ class App:
 
         labels = ["Target CR", "Min room cells", "Start difficulty",
                   "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages",
-                  "Floors", "Rooms/floor"]
+                  "Floors", "Rooms/floor", "Each floor (N×M)"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -11183,6 +11231,8 @@ class App:
                 seed_inp.handle(event)
                 floors_step.handle(event)
                 roomsfloor_step.handle(event)
+                mapsx_step.handle(event)
+                mapsy_step.handle(event)
                 if btn_start.clicked(event):
                     start_i[0] = (start_i[0] + 1) % len(DIFFS)
                     btn_start.text = DIFFS[start_i[0]]
@@ -11228,7 +11278,8 @@ class App:
                             "types": list(type_selection) if type_selection else None,
                             "languages": list(lang_selection) if lang_selection else None,
                             "floors": floors_step.value,
-                            "rooms_per_floor": roomsfloor_step.value}
+                            "rooms_per_floor": roomsfloor_step.value,
+                            "maps_x": mapsx_step.value, "maps_y": mapsy_step.value}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
@@ -11237,8 +11288,12 @@ class App:
             for i, lab in enumerate(labels):
                 self.screen.blit(self.font_md.render(lab, True, (185, 185, 200)),
                                  (lx, y0 + i * row_h + 6))
+            # "×" separator between the two N×M steppers.
+            xt = self.font_md.render("×", True, (185, 185, 200))
+            self.screen.blit(xt, (fx + fw // 2 - xt.get_width() // 2, nm_y + 6))
             for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
-                      btn_lang, floors_step, roomsfloor_step, gen, cancel):
+                      btn_lang, floors_step, roomsfloor_step, mapsx_step, mapsy_step,
+                      gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
@@ -11267,20 +11322,22 @@ class App:
             self._modal_message(["Generate Dungeon failed", f"Could not load generator: {e}"])
             return
 
-        # Multi-floor: carve + populate a fresh layout per floor and wire up the manifest.
-        # Terrain params for the carver are derived from the dungeon modal (Rooms/floor +
-        # a min room side inferred from "Min room cells"); floors stack with ladders.
-        if params.get("floors", 1) > 1:
+        # Multi-floor or multi-map-per-floor: carve + populate a fresh layout per tile and
+        # wire up the manifest. Terrain params for the carver are derived from the dungeon
+        # modal (Rooms/floor + a min room side inferred from "Min room cells"); floors stack
+        # with ladders and each floor tiles into maps_x × maps_y maps.
+        if params.get("floors", 1) > 1 or params.get("maps_x", 1) > 1 or params.get("maps_y", 1) > 1:
             terrain_params = {
                 "rooms": params["rooms_per_floor"],
                 "min_room": max(2, int(round(params["min_room"] ** 0.5))),
                 "margin": 1, "seed": params["seed"], "floors": params["floors"],
             }
-            self._modal_message(["Generating floors…"], blocking=False)
+            self._modal_message(["Generating maps…"], blocking=False)
             try:
                 summary = self._generate_multifloor(
                     params["floors"], terrain_params, encounter_params=params,
-                    base=self._generated_base())
+                    base=self._generated_base(),
+                    maps_x=params.get("maps_x", 1), maps_y=params.get("maps_y", 1))
             except ValueError as e:
                 self._modal_message(["Generate Dungeon failed", str(e),
                                      "Try fewer/smaller rooms or a bigger grid."])
