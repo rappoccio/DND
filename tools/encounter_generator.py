@@ -173,8 +173,18 @@ class Bestiary:
     # ── candidate predicates ────────────────────────────────────────────────
     @staticmethod
     def has_ranged(rec: dict) -> bool:
-        rng = rec.get("weapons", {}).get("ranged")
-        return isinstance(rng, dict) and bool(rng.get("name"))
+        """True if the record carries a ranged weapon, keyed off ``type == "ranged"``.
+        Handles both bestiary weapon shapes: the legacy dict ({"melee": {...},
+        "ranged": {...}}) and the newer multiattack list ([{"type": "ranged", ...}, ...]).
+        A melee-only record stores "" (not a dict) in its "ranged" slot, so the isinstance
+        guard keeps that out."""
+        w = rec.get("weapons")
+        if isinstance(w, dict):
+            rng = w.get("ranged")
+            return isinstance(rng, dict) and rng.get("type") == "ranged"
+        if isinstance(w, list):
+            return any(isinstance(x, dict) and x.get("type") == "ranged" for x in w)
+        return False
 
     def has_aoe(self, rec: dict) -> bool:
         if rec.get("npc_spell_recharge"):        # a recharge breath weapon
@@ -605,11 +615,21 @@ def order_rooms_by_distance(rooms: list[list[tuple[int, int]]], bm,
 
 
 def order_dungeon_rooms(bm, rpg, terrain: dict, min_room: int,
-                        entrance: tuple[int, int] | None
+                        entrance: tuple[int, int] | None, rng=None
                         ) -> tuple[list[list[tuple[int, int]]], str]:
-    """Return (ordered_rooms, human description of how they were ordered)."""
+    """Return (ordered_rooms, human description of how they were ordered).
+
+    With room metadata we default to dungeon_from_png's walk order (path_index 0 =
+    top-left). Passing ``rng`` (and no explicit ``entrance``) instead picks a RANDOM
+    entrance room and orders the rest by distance from it, so the party's staging room
+    — ``results[0]``, which the generator leaves empty — isn't always the top-left one,
+    while the difficulty ramp still radiates coherently outward from that entrance."""
     meta_rooms = rooms_from_metadata(bm, rpg, terrain, min_room)
     if meta_rooms is not None:
+        if entrance is None and rng is not None and len(meta_rooms) > 1:
+            ex, ey = _room_centroid(rng.choice(meta_rooms))
+            return order_rooms_by_distance(meta_rooms, bm, (ex, ey)), \
+                "random entrance + distance ramp"
         return meta_rooms, "terrain room metadata (corridor-chain walk order)"
     rooms = detect_rooms(bm, rpg, min_room)
     if not rooms:
@@ -649,7 +669,7 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
     With place=True the rng also drives placement; pass place=False for a preview
     that leaves the layout untouched. Reusable directly from a GUI/DM-mode caller.
     If filter_types or filter_languages are set, all encounters will use those filters."""
-    rooms, order_note = order_dungeon_rooms(bm, rpg, terrain, min_room, entrance)
+    rooms, order_note = order_dungeon_rooms(bm, rpg, terrain, min_room, entrance, rng=rng)
     start_row = DIFFICULTY_WEIGHTS[difficulty_start]
     end_row = DIFFICULTY_WEIGHTS[difficulty_end]
     n = len(rooms)

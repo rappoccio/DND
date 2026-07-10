@@ -461,9 +461,17 @@ class App:
         # dungeon_page is the MapPage currently loaded into the engine.
         self.dungeon: Dungeon | None = None
         self.dungeon_page: MapPage | None = None
-        # Clickable rects for the on-map paging overlay, rebuilt each draw:
+        # Clickable rects for the Floor-nav block, rebuilt each draw:
         #   {"left"/"right"/"up"/"down"/"floor_up"/"floor_down": pygame.Rect}
+        # The block is docked in the right-side config panel (not over the map).
         self._dungeon_nav_rects: dict = {}
+        # Vertical scroll of the setup/config panel (pixels; 0 = top). The panel can
+        # grow taller than the window (esp. with the Floor-nav block), so it scrolls.
+        self.panel_scroll     = 0
+        self._panel_max_scroll = 0
+        self._panel_floor_nav_h   = 0
+        self._panel_floor_nav_top = None
+        self._panel_stats_y       = 0
 
         # Load terrain, spell effects, and lighting data if they exist
         self._load_terrain()
@@ -959,46 +967,69 @@ class App:
         self.pending_mob_stats: list[dict | None] = []  # Parallel list of mob stats for each config
 
     def _reposition_panel(self):
-        """Re-anchor all widgets after a window resize."""
+        """Re-anchor all setup-panel widgets. Buttons flow top-down; every y is shifted
+        by ``-self.panel_scroll`` so the panel scrolls when its content is taller than the
+        window, and by ``+shift`` to make room for the Floor-nav block that docks at the
+        top in dungeon mode. Combat-panel button y-positions are owned by
+        _draw_combat_panel and are never scrolled (only their x is refreshed here)."""
         px, W, _, r0, b0, b1 = self._panel_layout()
         SW  = W // 2 - 2
+        B, G = self._BTN_H, self._BTN_GAP
 
-        self.btn_select_mob.rect.update(px, r0, SW, self._WIDGET_H)
-        self.btn_select_pc.rect.update(px + SW + 4, r0, SW, self._WIDGET_H)
-        self.btn_clear.rect.update(px, b0, W, self._BTN_H)
-        self.btn_save.rect.update(px,        b1, SW, self._BTN_H)
-        self.btn_load.rect.update(px + SW+4, b1, SW, self._BTN_H)
-        imp_y = b1 + self._BTN_H + self._BTN_GAP
-        self.btn_import_ddb.rect.update(px, imp_y, SW, self._BTN_H)
-        self.btn_load_pcs.rect.update(px + SW + 4, imp_y, SW, self._BTN_H)
-        lr_y = imp_y + self._BTN_H + self._BTN_GAP
-        self.btn_long_rest.rect.update(px, lr_y, SW, self._BTN_H)
-        self.btn_short_rest.rect.update(px + SW + 4, lr_y, SW, self._BTN_H)
-        bc_y = lr_y + self._BTN_H + self._BTN_GAP + 8
-        self.btn_begin_combat.rect.update(px, bc_y, W, self._BTN_H)
-        ter_y = bc_y + self._BTN_H + self._BTN_GAP
-        self.btn_edit_terrain.rect.update(px, ter_y, W, self._BTN_H)
-        show_ter_y = ter_y + self._BTN_H + self._BTN_GAP
-        self.btn_show_terrain.rect.update(px, show_ter_y, W, self._BTN_H)
-        save_ter_y = show_ter_y + self._BTN_H + self._BTN_GAP
-        self.btn_save_terrain.rect.update(px, save_ter_y, SW, self._BTN_H)
-        self.btn_load_terrain.rect.update(px + SW + 4, save_ter_y, SW, self._BTN_H)
-        gen_y = save_ter_y + self._BTN_H + self._BTN_GAP
-        self.btn_generate_terrain.rect.update(px, gen_y, SW, self._BTN_H)
-        self.btn_generate_dungeon.rect.update(px + SW + 4, gen_y, SW, self._BTN_H)
-        light_y = gen_y + self._BTN_H + self._BTN_GAP
-        self.btn_edit_lighting.rect.update(px, light_y, SW, self._BTN_H)
-        self.btn_load_lighting.rect.update(px + SW + 4, light_y, SW, self._BTN_H)
-        toggle_light_y = light_y + self._BTN_H + self._BTN_GAP
-        self.btn_toggle_lighting.rect.update(px, toggle_light_y, W, self._BTN_H)
-        toggle_walls_y = toggle_light_y + self._BTN_H + self._BTN_GAP
-        self.btn_toggle_walls.rect.update(px, toggle_walls_y, W, self._BTN_H)
-        toggle_fog_y = toggle_walls_y + self._BTN_H + self._BTN_GAP
-        self.btn_toggle_fog.rect.update(px, toggle_fog_y, W, self._BTN_H)
-        set_grid_y = toggle_fog_y + self._BTN_H + self._BTN_GAP
-        self.btn_set_grid.rect.update(px, set_grid_y, W, self._BTN_H)
-        quit_y = set_grid_y + self._BTN_H + self._BTN_GAP
-        self.btn_quit.rect.update(px, quit_y, W, self._BTN_H)
+        # ── Base (top-anchored, scroll-independent) y for each row ──
+        imp_y          = b1             + B + G
+        lr_y           = imp_y         + B + G
+        bc_y           = lr_y          + B + G + 8
+        ter_y          = bc_y          + B + G
+        show_ter_y     = ter_y         + B + G
+        save_ter_y     = show_ter_y    + B + G
+        gen_y          = save_ter_y    + B + G
+        light_y        = gen_y         + B + G
+        toggle_light_y = light_y       + B + G
+        toggle_walls_y = toggle_light_y + B + G
+        toggle_fog_y   = toggle_walls_y + B + G
+        set_grid_y     = toggle_fog_y  + B + G
+        quit_y         = set_grid_y    + B + G
+        stats_y        = quit_y        + B + 14
+
+        # ── Floor-nav block: docks in the first slot (dungeon mode), pushing the
+        #    config rows down by its height. Cached for _draw_panel to render. ──
+        self._panel_floor_nav_h = self._floor_nav_height() if self._panel_has_floor_nav() else 0
+        shift = (self._panel_floor_nav_h + G) if self._panel_floor_nav_h else 0
+
+        # ── Clamp scroll to the actual overflow (content vs. visible window) ──
+        content_h = stats_y + shift + 54            # + 3-line grid-stats footer
+        visible_h = self.screen.get_height() - 22   # minus the fixed cursor-info strip
+        self._panel_max_scroll = max(0, content_h - visible_h)
+        self.panel_scroll = min(max(0, self.panel_scroll), self._panel_max_scroll)
+
+        off = shift - self.panel_scroll
+        self._panel_floor_nav_top = (r0 - self.panel_scroll) if self._panel_floor_nav_h else None
+        self._panel_stats_y = stats_y + off
+
+        self.btn_select_mob.rect.update(px, r0 + off, SW, self._WIDGET_H)
+        self.btn_select_pc.rect.update(px + SW + 4, r0 + off, SW, self._WIDGET_H)
+        self.btn_clear.rect.update(px, b0 + off, W, B)
+        self.btn_save.rect.update(px,        b1 + off, SW, B)
+        self.btn_load.rect.update(px + SW+4, b1 + off, SW, B)
+        self.btn_import_ddb.rect.update(px, imp_y + off, SW, B)
+        self.btn_load_pcs.rect.update(px + SW + 4, imp_y + off, SW, B)
+        self.btn_long_rest.rect.update(px, lr_y + off, SW, B)
+        self.btn_short_rest.rect.update(px + SW + 4, lr_y + off, SW, B)
+        self.btn_begin_combat.rect.update(px, bc_y + off, W, B)
+        self.btn_edit_terrain.rect.update(px, ter_y + off, W, B)
+        self.btn_show_terrain.rect.update(px, show_ter_y + off, W, B)
+        self.btn_save_terrain.rect.update(px, save_ter_y + off, SW, B)
+        self.btn_load_terrain.rect.update(px + SW + 4, save_ter_y + off, SW, B)
+        self.btn_generate_terrain.rect.update(px, gen_y + off, SW, B)
+        self.btn_generate_dungeon.rect.update(px + SW + 4, gen_y + off, SW, B)
+        self.btn_edit_lighting.rect.update(px, light_y + off, SW, B)
+        self.btn_load_lighting.rect.update(px + SW + 4, light_y + off, SW, B)
+        self.btn_toggle_lighting.rect.update(px, toggle_light_y + off, W, B)
+        self.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
+        self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, W, B)
+        self.btn_set_grid.rect.update(px, set_grid_y + off, W, B)
+        self.btn_quit.rect.update(px, quit_y + off, W, B)
         # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
         HW2 = W // 2 - 2
         TW3 = (W - 8) // 3
@@ -2079,21 +2110,22 @@ class App:
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
 
-        # If the scene has carved walk-order rooms (from Generate Terrain/Dungeon), drop
-        # the PCs into room 0 (the walk-order entrance, left empty by the generator). We
-        # read the LIVE `_terrain_rooms` attribute rather than the saved agents doc:
-        # _save_agents() writes only {agents, map_items} and drops any `generator` block,
-        # so by the time we re-read `doc` above the room metadata is already gone.
-        # `_terrain_rooms` is loaded from the terrain sidecar and each entry carries its
-        # floor "cells" as [c, r] pairs.
-        # The generator leaves the WALK-ORDER entrance empty (results[0]); build_dungeon
-        # orders rooms by path_index, so match that here rather than trusting file order.
-        room0_cells = None
-        terrain_rooms = getattr(self, "_terrain_rooms", None) or []
-        dict_rooms = [m for m in terrain_rooms if isinstance(m, dict)]
-        if dict_rooms:
-            entrance = min(dict_rooms, key=lambda m: m.get("path_index", 0))
-            room0_cells = entrance.get("cells")
+        # Drop the PCs into the room the generator left empty. The authoritative source is
+        # `_staging_cells` — the exact (post-filter) cells of results[0] recorded by Generate
+        # Dungeon. It comes from the terrain sidecar; the current page's terrain (incl. floor
+        # 0 after the switch above) is already loaded, so this is the staging room for here.
+        #
+        # We must NOT re-derive "room 0" as min(path_index): build_dungeon filters rooms with
+        # too few placeable cells before choosing results[0], so raw path_index 0 can be a
+        # DIFFERENT (e.g. top-left) room than the one actually left empty. `_staging_cells`
+        # sidesteps that. Fall back to the path_index heuristic only for older saves.
+        room0_cells = getattr(self, "_staging_cells", None)
+        if not room0_cells:
+            terrain_rooms = getattr(self, "_terrain_rooms", None) or []
+            dict_rooms = [m for m in terrain_rooms if isinstance(m, dict)]
+            if dict_rooms:
+                entrance = min(dict_rooms, key=lambda m: m.get("path_index", 0))
+                room0_cells = entrance.get("cells")
 
         reserved: set[tuple[int, int]] = set()
         added = dropped = 0
@@ -10702,12 +10734,16 @@ class App:
         ]
         return regions, rooms_meta, doors
 
-    def _write_generated_terrain(self, path, regions, rooms_meta, door_cells, ladders):
+    def _write_generated_terrain(self, path, regions, rooms_meta, door_cells, ladders,
+                                 staging_cells=None):
         """Write a page's ``_terrain.json`` directly (bypassing the live-scene
         serializer) for the multi-floor generator. Mirrors ``_save_terrain``'s schema:
         carved Wall regions, walk-order room metadata, closed inter-room doors, and
         vertical ``ladders`` (global targets). Walls are explicit, so ``walls_enabled``
-        is False (no auto-detect). No ``explored`` key ⇒ the floor starts fully fogged."""
+        is False (no auto-detect). No ``explored`` key ⇒ the floor starts fully fogged.
+
+        ``staging_cells`` (floor 0 only) records the exact room the generator left empty
+        so Load PCs drops the party into that same room, not a re-derived 'room 0'."""
         data = {
             "regions": regions,
             "walls_enabled": False,
@@ -10719,6 +10755,8 @@ class App:
             ],
             "ladders": ladders,
         }
+        if staging_cells:
+            data["staging_cells"] = [[int(c), int(r)] for (c, r) in staging_cells]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
         with open(path, "w") as f:
@@ -10812,12 +10850,13 @@ class App:
             # apply the carved walls to the engine first (mirrors Generate Terrain →
             # Generate Dungeon). The live scene is transient; we reload floor 0 at the end.
             agents = []
+            staging_cells = None
             if encounter_params is not None:
                 self._terrain_regions = regions
                 self._walls_enabled = False
                 self._apply_terrain_to_battle_map()
                 self.bm.clear_walls()
-                _, results, _ = eg.build_dungeon(
+                ordered_rooms, results, _ = eg.build_dungeon(
                     self.bm, rpg, {"rooms": rooms_meta}, bestiary,
                     cr=encounter_params["cr"],
                     difficulty_start=encounter_params["start"],
@@ -10829,15 +10868,19 @@ class App:
                     filter_languages=encounter_params.get("languages"))
                 # Leave floor 0's entrance (room 0, walk-order first) empty so the party
                 # has a clear staging room to Load PCs into. build_dungeon returns results
-                # in room order, so results[0] is that entrance room.
+                # in room order, so results[0] is that entrance room; ordered_rooms[0] is
+                # its exact (post-filter) floor cells — recorded so Load PCs matches it.
                 keep = results[1:] if (z == 0 and len(results) > 1) else results
+                if z == 0 and ordered_rooms:
+                    staging_cells = ordered_rooms[0]
                 agents = [a for res in keep for a in res["agents"]]
                 total_mobs += len(agents)
 
             page_base = os.path.join(self._map_dir, f"{base}_f{z}")
             ter_path = page_base + "_terrain.json"
             agt_path = page_base + "_agents.json"
-            self._write_generated_terrain(ter_path, regions, rooms_meta, door_cells, ladders)
+            self._write_generated_terrain(ter_path, regions, rooms_meta, door_cells, ladders,
+                                          staging_cells=staging_cells)
             if encounter_params is not None:
                 eg.write_agents_file(
                     agt_path, agents, difficulty=encounter_params["end"],
@@ -11275,6 +11318,11 @@ class App:
             self._modal_message(["Generate Dungeon",
                                  "Rooms were too small to place any mobs."])
             return
+        # Record the exact (post-filter) room the generator left empty — rooms[0], matching
+        # results[0] — so Load PCs drops the party there rather than re-deriving "room 0".
+        # Persist it into the terrain sidecar so it survives the _load_agents reload below.
+        self._staging_cells = [[int(c), int(r)] for (c, r) in rooms[0]] if rooms else None
+        self._save_terrain()
 
         # Write an encounter file next to the map, make it the active base, and load it
         # through the normal path (reuses all agent-instantiation logic).
@@ -11688,6 +11736,10 @@ class App:
         path = path or self._terrain_path
         self._terrain_regions = []
         self._terrain_rooms = []       # dungeon_from_png walk-order room metadata (if any)
+        # Exact floor cells of the room the dungeon generator left empty for the party
+        # (results[0] after the min-cells filter). Load PCs drops the party here, so it
+        # must match the generator's choice rather than re-deriving "room 0". None ⇒ none.
+        self._staging_cells = None
         self._walls_enabled = True
         self._manual_grid = None
         self.bm.reset_terrain_multipliers()
@@ -11721,6 +11773,7 @@ class App:
                         self._manual_grid = None
                 self._terrain_regions = data.get("regions", [])
                 self._terrain_rooms = data.get("rooms", [])
+                self._staging_cells = data.get("staging_cells")  # None if absent
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 doors_data = data.get("doors", [])
                 self._ladders = self._normalize_ladders(data.get("ladders", []))
@@ -11823,6 +11876,9 @@ class App:
         ]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
+        # Staging room the dungeon generator left empty for the party (Load PCs targets it).
+        if getattr(self, "_staging_cells", None):
+            data["staging_cells"] = [[int(c), int(r)] for (c, r) in self._staging_cells]
         # Fog of war: persist the PC-party explored mask so a room seen once stays
         # revealed across save/reload. Compact [col, row] pairs; absent → fully fogged.
         data["explored"] = [[c.col, c.row] for c in self.bm.explored_cells()]
@@ -15139,6 +15195,9 @@ class App:
 
 
     def _draw_panel(self):
+        # Rebuilt every frame by the setup panel's Floor-nav block; cleared here so a
+        # stale rect can't capture clicks when the block isn't drawn (e.g. in combat).
+        self._dungeon_nav_rects = {}
         if self.combat_active:
             self._draw_combat_panel()
             return
@@ -15176,10 +15235,18 @@ class App:
             self.screen.blit(status, (lx, 50))
             return
 
+        # ── Re-flow all widgets for the current scroll offset + Floor-nav block, then
+        #    clip drawing to the scroll viewport (above the fixed cursor-info strip). ──
+        self._reposition_panel()
+        self.screen.set_clip(pygame.Rect(px, 0, PANEL_W, sh - 22))
+
+        # ── Floor-nav block (docked at the top in dungeon mode) ────────────
+        self._draw_panel_floor_nav(px, lx, W=PANEL_W - self._PANEL_PAD * 2)
+
         # ── Title ─────────────────────────────────────────────────────────
         _, _, title_y, *_ = self._panel_layout()
         title = self.font_lg.render("⚔  Agent Config", True, COL_TEXT)
-        self.screen.blit(title, (lx, title_y))
+        self.screen.blit(title, (lx, title_y - self.panel_scroll))
 
         # ── Field labels (sit loff px above their widget) ──────────────
         def label(text, x, widget_y):
@@ -15245,13 +15312,13 @@ class App:
         # ── Quit button ────────────────────────────────────────────────────
         self.btn_quit.draw(self.screen)
 
-        # ── Grid / map stats (bottom of panel) ───────────────────────────
+        # ── Grid / map stats (flow with content, below Quit) ──────────────
         def text(txt, x, y, color=COL_LABEL):
             """Plain text blit with no offset (unlike label() which is for widgets)."""
             t = self.font_sm.render(txt, True, color)
             self.screen.blit(t, (x, y))
 
-        info_y = sh - 72
+        info_y = self._panel_stats_y
         text(f"Grid: {self.bm.grid_cols}×{self.bm.grid_rows}  "
              f"cell={self.bm.cell_pixel_size}px  scale={self.map_scale:.2f}",
              lx, info_y)
@@ -15262,6 +15329,18 @@ class App:
         # Transient confirmation (e.g. "Terrain saved: …")
         if self._status_msg and pygame.time.get_ticks() < self._status_msg_until:
             text(self._status_msg, lx, info_y - 20, (120, 220, 140))
+
+        # ── End scroll viewport; draw the scrollbar over the (unclipped) panel ──
+        self.screen.set_clip(None)
+        if self._panel_max_scroll > 0:
+            visible_h = sh - 22
+            track_h   = visible_h - 4
+            span      = visible_h + self._panel_max_scroll
+            thumb_h   = max(28, int(track_h * visible_h / span))
+            thumb_y   = 2 + int((track_h - thumb_h)
+                                * self.panel_scroll / self._panel_max_scroll)
+            bar = pygame.Rect(px + PANEL_W - 6, thumb_y, 4, thumb_h)
+            pygame.draw.rect(self.screen, (90, 92, 110), bar, border_radius=2)
 
     def _draw_cursor_cell_info(self):
         """Debug readout of the grid cell under the mouse, drawn at the bottom of the
@@ -15388,8 +15467,25 @@ class App:
                     max_scroll = max(0, len(self.initiative_order) - 8)
                     self.initiative_scroll_offset = min(self.initiative_scroll_offset + 1, max_scroll)
 
-            # ── Mouse wheel for map panning ───────────────────────────────
-            if map_input_allowed and not over_initiative and event.type == pygame.MOUSEBUTTONDOWN:
+            # ── Mouse wheel over the setup panel: scroll the panel (not the map) ──
+            over_panel = (mouse_pos[0] >= self._panel_x()
+                          and not self.combat_active
+                          and not self._pc_name_input
+                          and not self.placement_mode_active)
+            if over_panel and self._panel_max_scroll > 0 and not over_initiative:
+                d = None
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+                    d = -30 if event.button == 4 else 30
+                elif hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+                    d = -event.y * 30
+                if d is not None:
+                    self.panel_scroll = min(max(0, self.panel_scroll + d),
+                                            self._panel_max_scroll)
+                    continue
+
+            # ── Mouse wheel for map panning (suppressed while hovering the panel) ──
+            if (map_input_allowed and not over_initiative and not over_panel
+                    and event.type == pygame.MOUSEBUTTONDOWN):
                 if event.button == 4:  # Scroll up
                     if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                         self.pan_x += 30
@@ -15401,7 +15497,8 @@ class App:
                     else:
                         self.pan_y -= 30
             # Newer pygame versions use MOUSEWHEEL event
-            elif map_input_allowed and not over_initiative and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+            elif (map_input_allowed and not over_initiative and not over_panel
+                    and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL):
                 if pygame.key.get_mods() & pygame.KMOD_SHIFT:
                     self.pan_x += event.x * 30
                 else:
@@ -17322,47 +17419,45 @@ class App:
         return True
 
     # ─────────────────────────────────────────────────────────────────────
-    #  Dungeon paging HUD (Phase 3) — drawn over the map in dungeon mode
+    #  Floor-nav block (docked in the config panel, not over the map)
     # ─────────────────────────────────────────────────────────────────────
-    def _draw_dungeon_nav(self):
-        """Compact top-left HUD for multi-map dungeons: page between abutting maps on
-        the current floor (West/North/South/East) and change floors (Floor ±). Buttons
-        with no neighbour / no floor are greyed and inert. Rects are cached in
-        ``self._dungeon_nav_rects`` for the event handler."""
-        self._dungeon_nav_rects = {}
-        if self.dungeon is None or self.dungeon_page is None:
+    _FLOOR_NAV_HDR   = 16   # header ("Floor z — id") line height
+    _FLOOR_NAV_BH    = 24   # nav button height
+    _FLOOR_NAV_VGAP  = 4    # vertical gap between header/rows
+
+    def _panel_has_floor_nav(self) -> bool:
+        """The Floor-nav block only appears for a live multi-map dungeon in the setup
+        panel (floors aren't changed mid-combat)."""
+        return (self.dungeon is not None and self.dungeon_page is not None
+                and not self.combat_active)
+
+    def _floor_nav_height(self) -> int:
+        """Total pixel height of the Floor-nav block: header + two button rows."""
+        return (self._FLOOR_NAV_HDR + self._FLOOR_NAV_VGAP
+                + self._FLOOR_NAV_BH + self._FLOOR_NAV_VGAP + self._FLOOR_NAV_BH)
+
+    def _draw_panel_floor_nav(self, px, lx, W):
+        """Render the Floor-nav block inside the config panel at the cached scroll-adjusted
+        top. Row 1 pages between abutting maps (West/North/South/East); row 2 changes floors
+        (Floor ±). Inert buttons (no neighbour / no floor) are greyed. Clickable rects are
+        cached in ``self._dungeon_nav_rects`` for the shared event handler."""
+        top = self._panel_floor_nav_top
+        if top is None or self.dungeon_page is None:
             return
         page   = self.dungeon_page
         floors = self.dungeon.floors()
-        specs = [
-            ("West",  "left",       self.dungeon.neighbor(page, "left")  is not None),
-            ("North", "up",         self.dungeon.neighbor(page, "up")    is not None),
-            ("South", "down",       self.dungeon.neighbor(page, "down")  is not None),
-            ("East",  "right",      self.dungeon.neighbor(page, "right") is not None),
-            ("Floor+", "floor_up",   (page.z + 1) in floors),
-            ("Floor-", "floor_down", (page.z - 1) in floors),
-        ]
 
-        pad, gap = 8, 4
-        bw, bh   = 62, 24
-        bx, by   = 10, 10
-        label    = f"Floor {page.z} — {page.id}"
-        lbl_surf = self.font_sm.render(label, True, (222, 222, 236))
-        strip_w  = max(pad * 2 + len(specs) * bw + (len(specs) - 1) * gap,
-                       lbl_surf.get_width() + pad * 2)
-        strip_h  = pad * 2 + lbl_surf.get_height() + 4 + bh
+        # Header
+        lbl = self.font_sm.render(f"Floor {page.z} — {page.id}", True, (222, 222, 236))
+        self.screen.blit(lbl, (lx, top))
 
-        bg = pygame.Surface((strip_w, strip_h), pygame.SRCALPHA)
-        bg.fill((20, 22, 32, 205))
-        self.screen.blit(bg, (bx, by))
-        pygame.draw.rect(self.screen, (95, 95, 120),
-                         pygame.Rect(bx, by, strip_w, strip_h), 1, border_radius=6)
-        self.screen.blit(lbl_surf, (bx + pad, by + pad))
+        gap = 4
+        bh  = self._FLOOR_NAV_BH
+        row1_y = top + self._FLOOR_NAV_HDR + self._FLOOR_NAV_VGAP
+        row2_y = row1_y + bh + self._FLOOR_NAV_VGAP
 
-        row_y = by + pad + lbl_surf.get_height() + 4
-        x = bx + pad
-        for text, key, enabled in specs:
-            rect = pygame.Rect(x, row_y, bw, bh)
+        def button(text, key, enabled, x, y, w):
+            rect = pygame.Rect(x, y, w, bh)
             fill = (58, 82, 116) if enabled else (44, 46, 56)
             tcol = (236, 236, 246) if enabled else (108, 108, 120)
             pygame.draw.rect(self.screen, fill, rect, border_radius=5)
@@ -17372,7 +17467,22 @@ class App:
                                  rect.centery - t.get_height() // 2))
             if enabled:
                 self._dungeon_nav_rects[key] = rect
-            x += bw + gap
+
+        # Row 1: paging (4 columns)
+        row1 = [
+            ("West",  "left",  self.dungeon.neighbor(page, "left")  is not None),
+            ("North", "up",    self.dungeon.neighbor(page, "up")    is not None),
+            ("South", "down",  self.dungeon.neighbor(page, "down")  is not None),
+            ("East",  "right", self.dungeon.neighbor(page, "right") is not None),
+        ]
+        bw4 = (W - 3 * gap) // 4
+        for i, (text, key, enabled) in enumerate(row1):
+            button(text, key, enabled, lx + i * (bw4 + gap), row1_y, bw4)
+
+        # Row 2: floors (2 columns)
+        bw2 = (W - gap) // 2
+        button("Floor +", "floor_up",   (page.z + 1) in floors, lx,               row2_y, bw2)
+        button("Floor -", "floor_down", (page.z - 1) in floors, lx + bw2 + gap,   row2_y, bw2)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Main loop
@@ -17390,8 +17500,7 @@ class App:
             self._draw_floating_texts()                     # transient outcome flashes above tokens
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
-            self._draw_dungeon_nav()                        # multi-map paging HUD (dungeon mode only)
-            self._draw_panel()
+            self._draw_panel()                              # config panel (hosts the Floor-nav block)
             self._draw_cursor_cell_info()                   # debug: cell under cursor
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
