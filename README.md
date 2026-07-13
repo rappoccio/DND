@@ -58,6 +58,55 @@ The suite lives in `gui/test_*.py` (run via `run_all_tests.py`):
 - Terrain, lighting/darkness, obscurement, factions, summoning, and
   concentration handled by the engine.
 - Encounter and dungeon generators; D&D Beyond character import.
+- Multi-map dungeons: several map images on one floor plus stacked floors,
+  joined by ladders and doorways (see below).
+
+## Multi-Map Dungeons (floors & pages)
+
+A dungeon is several map PNGs ("pages") placed on one shared global `(X, Y, Z)`
+grid: `Z` is the floor, `(X, Y)` a cell on that floor. Each page keeps its own
+encounter sidecars (`*_agents.json`, `*_terrain.json`, …); a `<name>.dungeon.json`
+manifest records where each page sits on the grid and which one is the entry.
+Opening an encounter whose folder holds a matching `.dungeon.json` enters dungeon
+mode automatically.
+
+**Build one by hand** (right panel → **Dungeon…**):
+
+1. **New Dungeon (this map)** — makes the current map + encounter page 1 at
+   origin `(0, 0, 0)` and writes the manifest. (The map needs a grid — use
+   **Set Grid…** first if it has none.)
+2. **Add Page…** — pick another PNG. It is placed east of the floor's rightmost
+   page with a fresh empty encounter, and becomes the active page.
+3. **Pages / Overview…** — the floor map and page list. Select a page (in the
+   list or on the map) to set its global **origin** (X/Y/Z), make it the entry
+   page (★), jump to it, or remove it. Pages that abut on the grid become each
+   other's West/North/South/East neighbours.
+4. **Save Dungeon** — writes the manifest plus the active page's scene.
+
+**Generate one**: *Generate Dungeon* with **Floors > 1** (and/or *Each floor
+N×M*) carves every floor/tile, populates it, links the floors with ladders, and
+writes the manifest for you.
+
+**Moving around:** the panel's Floor-nav block pages between abutting maps
+(West/North/South/East) and changes floors (Floor ±). In play, a creature uses a
+**ladder** (terrain editor type **[6]**) to change floor, or an **open door
+linked to a neighbouring map** (terrain editor **[K]**) to cross to it; both are
+explicit actions on the creature's menu, and both carry that creature to the
+target page.
+
+### Known limitations
+
+- **One page is simulated at a time.** A ladder or linked door is a discrete
+  transition: the current scene is saved, the target page is loaded, and the
+  crossing creature is placed on it. Monsters on other pages are frozen on disk.
+- **No cross-boundary combat or pursuit** — you cannot see, move, or attack
+  across a portal, and initiative does not follow you to another page.
+- **Portals are out-of-combat only** (as is paging/changing floors); crossing
+  during a fight is refused until cross-page combat exists.
+- **Pages must share a cell size** for their global coordinates to line up; use
+  **Set Grid…** on each page.
+- Only the acting creature crosses a portal — the rest of the party does not
+  follow automatically.
 
 ## License
 

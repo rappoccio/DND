@@ -488,6 +488,8 @@ class App:
         # dungeon_page is the MapPage currently loaded into the engine.
         self.dungeon: Dungeon | None = None
         self.dungeon_page: MapPage | None = None
+        # Where the active manifest lives on disk (Save Dungeon rewrites it).
+        self._dungeon_manifest_path: str | None = None
         # Clickable rects for the Floor-nav block, rebuilt each draw:
         #   {"left"/"right"/"up"/"down"/"floor_up"/"floor_down": pygame.Rect}
         # The block is docked in the right-side config panel (not over the map).
@@ -975,7 +977,12 @@ class App:
                                            (70, 100, 90), (95, 135, 120), font=self.font_md)
         self.btn_generate_dungeon = Button(pygame.Rect(px + HW + 4, gen_y, HW, B), "Generate Dungeon",
                                            (110, 85, 60), (150, 115, 80), font=self.font_md)
-        light_y = gen_y + B + self._BTN_GAP
+        # Multi-map dungeons (FLOORS_IMPLEMENTATION_PLAN.md Phase 6): New/Open/Save a
+        # .dungeon.json manifest, add/remove pages, place pages on the global grid.
+        dung_y = gen_y + B + self._BTN_GAP
+        self.btn_dungeon = Button(pygame.Rect(px, dung_y, W, B), "Dungeon…",
+                                  (95, 80, 115), (130, 110, 155), font=self.font_md)
+        light_y = dung_y + B + self._BTN_GAP
         self.btn_edit_lighting = Button(pygame.Rect(px, light_y, HW, B),
                                         "Edit Lighting",
                                         (120, 100, 80), (160, 130, 110), font=self.font_md)
@@ -1024,7 +1031,8 @@ class App:
         show_ter_y     = ter_y         + B + G
         save_ter_y     = show_ter_y    + B + G
         gen_y          = save_ter_y    + B + G
-        light_y        = gen_y         + B + G
+        dung_y         = gen_y         + B + G
+        light_y        = dung_y        + B + G
         toggle_light_y = light_y       + B + G
         toggle_walls_y = toggle_light_y + B + G
         toggle_fog_y   = toggle_walls_y + B + G
@@ -1063,6 +1071,7 @@ class App:
         self.btn_load_terrain.rect.update(px + SW + 4, save_ter_y + off, SW, B)
         self.btn_generate_terrain.rect.update(px, gen_y + off, SW, B)
         self.btn_generate_dungeon.rect.update(px + SW + 4, gen_y + off, SW, B)
+        self.btn_dungeon.rect.update(px, dung_y + off, W, B)
         self.btn_edit_lighting.rect.update(px, light_y + off, SW, B)
         self.btn_load_lighting.rect.update(px + SW + 4, light_y + off, SW, B)
         self.btn_toggle_lighting.rect.update(px, toggle_light_y + off, W, B)
@@ -1817,7 +1826,11 @@ class App:
         self._dungeon_manifest_path = manifest
         # Load the entry page fresh (its PNG may differ from the CLI map). No carry:
         # this is the initial load, not a portal crossing.
-        self._switch_to_page(entry, force=True)
+        if not self._switch_to_page(entry, force=True):
+            # Entry page unusable (its PNG is gone) — stay in single-map mode on the
+            # CLI map rather than half-entering a dungeon we can't render.
+            self.dungeon = None
+            self._dungeon_manifest_path = None
 
     def _apply_page_origin(self, page: MapPage):
         """Stamp the engine map's global placement from ``page`` (Phase 1 fields).
@@ -1850,6 +1863,19 @@ class App:
 
         already_here = (self.dungeon_page is not None and page.id == self.dungeon_page.id)
 
+        # Manifest paths may be relative (portability); resolve against the manifest's
+        # folder (where its PNGs and encounters live) so the engine gets valid paths.
+        base_dir = self._dungeon_dir()
+
+        def _resolve(p):
+            return p if (not p or os.path.isabs(p)) else os.path.join(base_dir, p)
+
+        # A page whose PNG has been moved/renamed would take the app down inside
+        # _load_map_png — refuse the switch (nothing has changed yet) and say so.
+        if not already_here and not os.path.exists(_resolve(page.png)):
+            self._flash_status(f"Page '{page.id}': map image not found ({page.png})")
+            return False
+
         # ── 1. Serialize carried agents, then persist the current scene ────────
         carried_records = self._read_agent_records(carry) if carry else []
         if self.dungeon_page is not None and not already_here:
@@ -1858,11 +1884,6 @@ class App:
             self._save_terrain()
             # Lighting / effects have no GUI re-serializer; they were written when
             # last edited and travel with their encounter base, so nothing to do.
-
-        # Manifest paths may be relative (portability); resolve against the map dir
-        # (where the .dungeon.json and its PNGs live) so the engine gets valid paths.
-        def _resolve(p):
-            return p if (not p or os.path.isabs(p)) else os.path.join(self._map_dir, p)
 
         # ── 2. Swap the PNG + engine map (skip if we're re-entering the same page) ─
         if not already_here:
@@ -1977,6 +1998,418 @@ class App:
             return
         if self._switch_to_page(below):
             self._flash_status(f"Floor {target_z}: {below.id}")
+
+    # ─────────────────────────────────────────────────────────────────────
+    #  Dungeon manifest management (Phase 6): New / Open / Save / Add Page,
+    #  plus the Pages overview that places pages on the global grid.
+    #  The manifest is placement-only; each page's scene lives in its own
+    #  encounter sidecars (agents/terrain/lighting/effects).
+    # ─────────────────────────────────────────────────────────────────────
+    def _show_dungeon_menu(self):
+        """Popup for the "Dungeon…" panel button. The item set depends on whether a
+        manifest is currently open."""
+        if self.dungeon is None:
+            items = [
+                ("New Dungeon (this map)", self._dungeon_new),
+                ("Open Dungeon…",          self._dungeon_open_browser),
+            ]
+        else:
+            items = [
+                ("Pages / Overview…", self._dungeon_pages_overview),
+                ("Add Page…",         self._dungeon_add_page_browser),
+                ("Save Dungeon",      self._dungeon_save),
+                ("Open Dungeon…",     self._dungeon_open_browser),
+                ("Close Dungeon",     self._dungeon_close),
+            ]
+        self.context_menu.show((self.btn_dungeon.rect.x, self.btn_dungeon.rect.y),
+                               items, self.screen.get_size())
+
+    def _dungeon_dir(self) -> str:
+        """The folder a page's relative ``png`` / ``encounter_base`` resolves against: the
+        manifest's own folder (so a dungeon and its files travel together), falling back to
+        the map dir before a manifest exists."""
+        if self._dungeon_manifest_path:
+            return os.path.dirname(os.path.abspath(self._dungeon_manifest_path)) or self._map_dir
+        return self._map_dir
+
+    def _dungeon_path_ref(self, path: str) -> str:
+        """How a page references a file in the manifest: a bare basename when the file sits
+        beside the manifest (portable), else an absolute path. ``_switch_to_page`` resolves
+        both."""
+        if not path:
+            return ""
+        ap = os.path.abspath(path)
+        if os.path.dirname(ap) == os.path.abspath(self._dungeon_dir()):
+            return os.path.basename(ap)
+        return ap
+
+    def _dungeon_stem(self) -> str:
+        """The manifest's name without the ``.dungeon.json`` suffix — the prefix new
+        pages' encounter files are named after."""
+        path = self._dungeon_manifest_path or self._save_path
+        fn = os.path.basename(path)
+        for suffix in (".dungeon.json", "_agents.json", ".json"):
+            if fn.endswith(suffix):
+                return fn[: -len(suffix)]
+        return os.path.splitext(fn)[0]
+
+    def _unique_page_id(self, seed: str) -> str:
+        """``seed``, suffixed with a counter until it is unused in the manifest."""
+        seed = re.sub(r"[^\w.-]+", "_", seed).strip("_") or "page"
+        cand, n = seed, 2
+        while self.dungeon is not None and self.dungeon.page_by_id(cand) is not None:
+            cand, n = f"{seed}_{n}", n + 1
+        return cand
+
+    def _dungeon_new(self):
+        """Start a manifest with the CURRENT map + encounter as its (entry) first page,
+        at global origin (0, 0, 0). Further pages come from Add Page…."""
+        if self.combat_active:
+            self._flash_status("Finish combat before starting a dungeon.")
+            return
+        cols = int(getattr(self.bm, "grid_cols", 0) or 0)
+        rows = int(getattr(self.bm, "grid_rows", 0) or 0)
+        if not cols or not rows:
+            self._modal_message(["New Dungeon",
+                                 "This map has no grid — Set Grid… first, so the page",
+                                 "has a footprint on the global (X, Y, Z) grid."])
+            return
+        # Set the manifest path first: page refs are stored relative to its folder.
+        self._dungeon_manifest_path = dungeon_path_for(self._save_path)
+        page = MapPage(id=self._unique_page_id(self._dungeon_stem()),
+                       png=self._dungeon_path_ref(self._map_path),
+                       encounter_base=self._dungeon_path_ref(self._save_path),
+                       origin=[0, 0, 0], cols=cols, rows=rows)
+        self.dungeon = Dungeon(pages=[page], entry_page_id=page.id)
+        self.dungeon_page = page          # already loaded — no page switch needed
+        self._apply_page_origin(page)
+        self._dungeon_save()
+
+    def _dungeon_save(self):
+        """Write the manifest, plus the active page's scene (agents + terrain) so the
+        dungeon on disk matches what's on screen."""
+        if self.dungeon is None:
+            self._flash_status("No dungeon open — New Dungeon first.")
+            return
+        path = self._dungeon_manifest_path or dungeon_path_for(self._save_path)
+        try:
+            self.dungeon.save(path)
+        except OSError as e:                          # noqa: BLE001 — report, don't crash
+            self._flash_status(f"Could not save dungeon: {e}")
+            return
+        self._dungeon_manifest_path = path
+        self._save_agents()
+        self._save_terrain()
+        self._flash_status(f"Saved {os.path.basename(path)} ({len(self.dungeon.pages)} pages)")
+
+    def _dungeon_open_browser(self):
+        start = os.path.dirname(self._dungeon_manifest_path or self._save_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_open_dungeon_chosen,
+            save_mode=False,
+            extensions=JSON_EXTS,
+            name_pattern=".dungeon.json",
+        )
+
+    def _on_open_dungeon_chosen(self, path: str):
+        """Open a ``.dungeon.json`` and load its entry page."""
+        if self.combat_active:
+            self._flash_status("Finish combat before opening a dungeon.")
+            return
+        try:
+            dungeon = Dungeon.load(path)
+        except Exception as e:                       # noqa: BLE001 — bad file ⇒ keep the scene
+            self._flash_status(f"Not a dungeon manifest: {os.path.basename(path)} ({e})")
+            return
+        entry = dungeon.entry_page()
+        if entry is None:
+            self._flash_status("Dungeon manifest has no pages.")
+            return
+        self.dungeon = dungeon
+        self._dungeon_manifest_path = path
+        self.dungeon_page = None      # initial load: don't write the outgoing scene back
+        if not self._switch_to_page(entry, force=True):
+            # Entry page unusable (its PNG is gone) — stay where we were.
+            self.dungeon = None
+            self._dungeon_manifest_path = None
+            return
+        self._flash_status(f"Dungeon: {os.path.basename(path)} — {entry.id}")
+
+    def _dungeon_close(self):
+        """Leave dungeon mode. The manifest stays on disk; the active page's map and
+        encounter stay loaded as an ordinary single map."""
+        if self.dungeon is None:
+            return
+        if self.combat_active:
+            self._flash_status("Finish combat before closing the dungeon.")
+            return
+        self._save_agents()
+        self._save_terrain()
+        self.dungeon = None
+        self.dungeon_page = None
+        self._dungeon_manifest_path = None
+        self._flash_status("Dungeon closed — single-map mode.")
+
+    def _dungeon_add_page_browser(self):
+        if self.dungeon is None:
+            self._flash_status("No dungeon open — New Dungeon first.")
+            return
+        self.file_browser.open(
+            self._dungeon_dir(), self._on_add_page_png_chosen,
+            save_mode=False,
+            extensions=IMAGE_EXTS,
+        )
+
+    def _on_add_page_png_chosen(self, png_path: str):
+        """Add ``png_path`` as a new page, east of the current floor's rightmost page,
+        with a fresh empty encounter, and switch to it. The page's footprint
+        (cols × rows) is only known once its grid is analyzed, so it is recorded after
+        the switch; the origin can then be moved in the Pages overview."""
+        if self.dungeon is None:
+            return
+        if self.combat_active:
+            self._flash_status("Finish combat before adding a page.")
+            return
+        cur = self.dungeon_page
+        z  = cur.z  if cur else 0
+        gy = cur.gy if cur else 0
+        on_floor = self.dungeon.pages_on_floor(z)
+        gx = max((p.gx + p.cols for p in on_floor), default=0)
+
+        page_id = self._unique_page_id(os.path.splitext(os.path.basename(png_path))[0])
+        # Each page owns its own encounter sidecars: <manifest stem>_<page id>_agents.json,
+        # written beside the manifest.
+        agents_path = os.path.join(self._dungeon_dir(),
+                                   f"{self._dungeon_stem()}_{page_id}_agents.json")
+        if not os.path.exists(agents_path):
+            try:
+                with open(agents_path, "w") as f:
+                    json.dump({"agents": [], "map_items": []}, f, indent=2)
+            except OSError as e:                     # noqa: BLE001
+                self._flash_status(f"Could not create {os.path.basename(agents_path)}: {e}")
+                return
+
+        page = MapPage(id=page_id, png=self._dungeon_path_ref(png_path),
+                       encounter_base=self._dungeon_path_ref(agents_path),
+                       origin=[gx, gy, z], cols=0, rows=0)
+        self.dungeon.add_page(page)
+        if not self._switch_to_page(page):
+            self.dungeon.remove_page(page_id)        # switch refused — don't keep a page we can't open
+            return
+        page.cols = int(getattr(self.bm, "grid_cols", 0) or 0)
+        page.rows = int(getattr(self.bm, "grid_rows", 0) or 0)
+        self._apply_page_origin(page)
+        self._dungeon_save()
+        if not page.cols or not page.rows:
+            self._modal_message(["Page added — but it has no grid",
+                                 f"'{page_id}' has no detected grid, so it has no footprint",
+                                 "on the global map. Use Set Grid…, then re-save the dungeon",
+                                 "(Dungeon… → Save Dungeon) to record its size."])
+        else:
+            self._flash_status(f"Added page '{page_id}' at ({gx}, {gy}, {z})")
+
+    def _dungeon_pages_overview(self):
+        """Run the Pages overview modal, then apply what it asked for: persist the
+        manifest, re-stamp the engine's origin if the ACTIVE page moved, and switch
+        pages on a Go To (done out here — a page switch resizes the window, so it must
+        not happen inside the modal's own draw loop)."""
+        if self.dungeon is None:
+            self._flash_status("No dungeon open — New Dungeon first.")
+            return
+        goto = self._modal_dungeon_pages()
+        # The overview edits the manifest in place (origins / entry / removals), so it is
+        # always written back on exit.
+        self._dungeon_save()
+        if self.dungeon_page is not None and self.dungeon.page_by_id(self.dungeon_page.id) is None:
+            # The active page was removed — fall back to the entry page.
+            entry = self.dungeon.entry_page()
+            self.dungeon_page = None
+            if entry is None:
+                self._flash_status("Dungeon has no pages left.")
+                return
+            self._switch_to_page(entry, force=True)
+            return
+        if goto is not None and (self.dungeon_page is None or goto.id != self.dungeon_page.id):
+            if self._switch_to_page(goto):
+                self._flash_status(f"Page: {goto.id} (floor {goto.z})")
+            return
+        if self.dungeon_page is not None:
+            self._apply_page_origin(self.dungeon_page)   # its origin may have moved
+
+    def _modal_dungeon_pages(self) -> "MapPage | None":
+        """Blocking Pages / Overview dialog: the manifest's page list, a map of the
+        selected page's floor (drawn from the origins), and the selected page's global
+        origin (X/Y/Z steppers). Edits apply to the manifest immediately; the caller
+        persists them. Returns the page to switch to (Go To), else None."""
+        dung = self.dungeon
+        sw, sh = self.screen.get_size()
+        W, H = min(820, sw - 60), min(560, sh - 60)
+        box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
+        lx  = box.x + 20
+        list_w = 300
+        list_rect = pygame.Rect(lx, box.y + 56, list_w, H - 160)
+        ov_rect   = pygame.Rect(list_rect.right + 16, list_rect.y,
+                                box.right - 20 - (list_rect.right + 16), list_rect.h - 46)
+        ROW_H = 22
+
+        sel = dung.page_by_id(self.dungeon_page.id) if self.dungeon_page else dung.entry_page()
+        sel_id = sel.id if sel else None
+
+        # Origin steppers for the selected page (re-seeded whenever the selection changes).
+        st_y = ov_rect.bottom + 12
+        sx = IntStepper(pygame.Rect(ov_rect.x + 26,       st_y, 92, 30), 0, -999, 999, font=self.font_sm)
+        sy = IntStepper(pygame.Rect(ov_rect.x + 26 + 108, st_y, 92, 30), 0, -999, 999, font=self.font_sm)
+        sz = IntStepper(pygame.Rect(ov_rect.x + 26 + 216, st_y, 92, 30), 0, -99,   99, font=self.font_sm)
+
+        def seed_steppers():
+            p = dung.page_by_id(sel_id)
+            if p is None:
+                return
+            sx.value, sy.value, sz.value = p.gx, p.gy, p.z
+
+        seed_steppers()
+
+        by = box.bottom - 46
+        btn_entry  = Button(pygame.Rect(lx,             by, 96, 32), "Set Entry",
+                            (70, 90, 120), (95, 115, 150), font=self.font_sm)
+        btn_goto   = Button(pygame.Rect(lx + 104,       by, 96, 32), "Go To Page",
+                            (60, 110, 70), (80, 140, 90), font=self.font_sm)
+        btn_remove = Button(pygame.Rect(lx + 208,       by, 96, 32), "Remove",
+                            (110, 60, 60), (150, 80, 80), font=self.font_sm)
+        btn_close  = Button(pygame.Rect(box.right - 115, by, 95, 32), "Close",
+                            (70, 80, 100), (95, 105, 130), font=self.font_sm)
+
+        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        ov_hits: dict = {}          # page id → rect, rebuilt by the overview each frame
+
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                    return None
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Pick a page from the list…
+                    if list_rect.collidepoint(event.pos):
+                        idx = (event.pos[1] - list_rect.y - 4) // ROW_H
+                        if 0 <= idx < len(dung.pages):
+                            sel_id = dung.pages[idx].id
+                            seed_steppers()
+                    # …or straight off the floor map.
+                    for pid, r in ov_hits.items():
+                        if r.collidepoint(event.pos):
+                            sel_id = pid
+                            seed_steppers()
+                            break
+                sx.handle(event)
+                sy.handle(event)
+                sz.handle(event)
+                if btn_close.clicked(event):
+                    return None
+                p = dung.page_by_id(sel_id)
+                if btn_entry.clicked(event) and p is not None:
+                    dung.entry_page_id = p.id
+                if btn_goto.clicked(event) and p is not None:
+                    return p
+                if btn_remove.clicked(event) and p is not None:
+                    dung.remove_page(p.id)
+                    nxt = dung.entry_page()
+                    sel_id = nxt.id if nxt else None
+                    seed_steppers()
+
+            # Live-apply the steppers to the selected page so the overview shows the move
+            # as it happens (the caller writes the manifest when the dialog closes).
+            p = dung.page_by_id(sel_id)
+            if p is not None:
+                p.origin = [sx.value, sy.value, sz.value]
+
+            # ── Render ─────────────────────────────────────────────────────
+            self.screen.blit(overlay, (0, 0))
+            pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
+            pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
+            name = os.path.basename(self._dungeon_manifest_path or "dungeon.json")
+            self.screen.blit(self.font_lg.render(f"Dungeon — {name}", True, (235, 235, 245)),
+                             (lx, box.y + 16))
+
+            # Page list: ★ = entry page, ● = the page loaded in the engine.
+            pygame.draw.rect(self.screen, (24, 24, 36), list_rect, border_radius=6)
+            pygame.draw.rect(self.screen, (90, 90, 115), list_rect, 1, border_radius=6)
+            for i, pg in enumerate(dung.pages):
+                ry = list_rect.y + 4 + i * ROW_H
+                if ry + ROW_H > list_rect.bottom:
+                    break
+                row = pygame.Rect(list_rect.x + 2, ry, list_rect.w - 4, ROW_H - 2)
+                if pg.id == sel_id:
+                    pygame.draw.rect(self.screen, (55, 75, 120), row, border_radius=3)
+                marks = ("★" if pg.id == dung.entry_page_id else " ") + \
+                        ("●" if (self.dungeon_page and pg.id == self.dungeon_page.id) else " ")
+                txt = f"{marks} {pg.id}  z={pg.z} ({pg.gx},{pg.gy}) {pg.cols}×{pg.rows}"
+                self.screen.blit(self.font_sm.render(txt, True, (222, 222, 236)),
+                                 (row.x + 6, row.y + 3))
+
+            # Floor map of the selected page's floor.
+            floor_z = p.z if p is not None else 0
+            ov_hits = self._draw_floor_overview(ov_rect, floor_z, sel_id)
+
+            # Origin row.
+            self.screen.blit(self.font_sm.render(f"Origin of '{sel_id or '—'}' (global cells)",
+                                                 True, (185, 185, 200)),
+                             (ov_rect.x, st_y - 16))
+            for label, st in (("X", sx), ("Y", sy), ("Z", sz)):
+                self.screen.blit(self.font_sm.render(label, True, (185, 185, 200)),
+                                 (st.rect.x - 16, st.rect.y + 8))
+                st.draw(self.screen)
+
+            btn_entry.draw(self.screen)
+            btn_goto.draw(self.screen)
+            btn_remove.draw(self.screen)
+            btn_close.draw(self.screen)
+            pygame.display.flip()
+            self.clock.tick(60)
+
+    def _draw_floor_overview(self, rect: pygame.Rect, z: int, sel_id=None) -> dict:
+        """Draw floor ``z``'s page layout (straight from the manifest origins) inside
+        ``rect``: one box per page, scaled to fit, gold = the page loaded in the engine,
+        white outline = ``sel_id``. Returns {page id: rect} for hit-testing."""
+        pygame.draw.rect(self.screen, (24, 24, 36), rect, border_radius=6)
+        pygame.draw.rect(self.screen, (90, 90, 115), rect, 1, border_radius=6)
+        hits: dict = {}
+        if self.dungeon is None:
+            return hits
+        # A page with no grid has no footprint — it can't be drawn on the global map.
+        pages = [p for p in self.dungeon.pages_on_floor(z) if p.cols > 0 and p.rows > 0]
+        if not pages:
+            self.screen.blit(self.font_sm.render(f"No sized pages on floor {z}", True, (140, 140, 160)),
+                             (rect.x + 12, rect.y + 12))
+            return hits
+
+        min_x = min(p.gx for p in pages)
+        min_y = min(p.gy for p in pages)
+        span_x = max(1, max(p.gx + p.cols for p in pages) - min_x)
+        span_y = max(1, max(p.gy + p.rows for p in pages) - min_y)
+        pad = 12
+        s = min((rect.w - 2 * pad) / span_x, (rect.h - 2 * pad) / span_y)
+        ox = rect.x + pad + ((rect.w - 2 * pad) - span_x * s) / 2
+        oy = rect.y + pad + ((rect.h - 2 * pad) - span_y * s) / 2
+
+        self.screen.blit(self.font_sm.render(f"Floor {z}", True, (170, 170, 190)),
+                         (rect.x + 8, rect.y + 4))
+        for p in pages:
+            r = pygame.Rect(int(ox + (p.gx - min_x) * s), int(oy + (p.gy - min_y) * s),
+                            max(6, int(p.cols * s)), max(6, int(p.rows * s)))
+            active = self.dungeon_page is not None and p.id == self.dungeon_page.id
+            pygame.draw.rect(self.screen, (86, 72, 42) if active else (44, 50, 66), r, border_radius=3)
+            if p.id == sel_id:
+                pygame.draw.rect(self.screen, (240, 240, 250), r, 2, border_radius=3)
+            else:
+                pygame.draw.rect(self.screen, (110, 110, 140), r, 1, border_radius=3)
+            tag = ("★ " if p.id == self.dungeon.entry_page_id else "") + p.id
+            t = self.font_sm.render(tag, True, (230, 230, 240))
+            if t.get_width() <= r.w - 6 and t.get_height() <= r.h - 4:
+                self.screen.blit(t, (r.centerx - t.get_width() // 2, r.centery - t.get_height() // 2))
+            hits[p.id] = r
+        return hits
 
     def _flash_status(self, msg: str, secs: float = 2.5):
         """Show a transient confirmation message in the panel for `secs` seconds."""
@@ -15756,6 +16189,10 @@ class App:
         self.btn_generate_terrain.draw(self.screen)
         self.btn_generate_dungeon.draw(self.screen)
 
+        # ── Dungeon manifest menu (New / Open / Save / pages) ───────────────
+        self.btn_dungeon.text = ("Dungeon: " + self.dungeon_page.id) if self.dungeon_page else "Dungeon…"
+        self.btn_dungeon.draw(self.screen)
+
         # ── Edit Lighting button ───────────────────────────────────────────
         self.btn_edit_lighting.draw(self.screen)
         self.btn_load_lighting.draw(self.screen)
@@ -17051,6 +17488,10 @@ class App:
                 # Generate Dungeon — fill the map's rooms with a progressive encounter
                 if self.btn_generate_dungeon.clicked(event):
                     self._on_generate_dungeon()
+
+                # Dungeon… — New / Open / Save a multi-map dungeon manifest, edit pages
+                if self.btn_dungeon.clicked(event):
+                    self._show_dungeon_menu()
 
                 # Edit Lighting
                 if self.btn_edit_lighting.clicked(event):

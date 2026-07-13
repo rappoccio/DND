@@ -79,6 +79,10 @@ class IntStepper:
         self.font        = font
         self._active     = False   # True while the text field has keyboard focus
         self._raw        = str(value)   # what the user has typed so far
+        # Last committed number. A field cleared for typing holds no number of its own; it
+        # reads back as this rather than as `lo`, so clearing a field and clicking away
+        # can't silently snap it to the minimum.
+        self._last       = max(lo, min(hi, value))
 
         bw = self.BW
         self.btn_dec  = pygame.Rect(rect.x,          rect.y, bw, rect.h)
@@ -92,11 +96,12 @@ class IntStepper:
         try:
             return max(self.lo, min(self.hi, int(self._raw)))
         except ValueError:
-            return self.lo
+            return self._last
 
     @value.setter
     def value(self, v: int):
-        self._raw = str(max(self.lo, min(self.hi, v)))
+        self._last = max(self.lo, min(self.hi, v))
+        self._raw  = str(self._last)
 
     # ── event handling ────────────────────────────────────────────────────────
     def handle(self, event):
@@ -128,8 +133,10 @@ class IntStepper:
                 self._raw += event.unicode
 
     def _commit(self):
-        """Clamp whatever the user typed and store it."""
-        self._raw = str(self.value)   # value property already clamps
+        """Clamp whatever the user typed and store it (an empty field keeps its last
+        committed value rather than collapsing to `lo`)."""
+        self._last = self.value       # value property already clamps / falls back
+        self._raw  = str(self._last)
 
     # ── drawing ───────────────────────────────────────────────────────────────
     def draw(self, surf: pygame.Surface):
