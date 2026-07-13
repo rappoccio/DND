@@ -726,6 +726,142 @@ def test_twinned_single_target_hits_two():
     print("✅ test_twinned_single_target_hits_two passed")
 
 
+def _incarnate_sorcerer(level=7, cha=16):
+    """A Sorcerer + two 200-HP targets, for the two-option (Sorcery Incarnate) casts."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    sorc = add_agent_to_battle(engine, bm, create_test_agent("Sorcerer", 5, 5))
+    t1 = add_agent_to_battle(engine, bm, create_test_agent("T1", 6, 5), hp=200)
+    t2 = add_agent_to_battle(engine, bm, create_test_agent("T2", 7, 5), hp=200)
+    _sorcerer(engine, bm, sorc, level, cha=cha)
+    # Automatic damage (no save/attack roll) so every kept target deterministically takes damage.
+    engine.set_agent_spells(bm, sorc, [_auto_spell(num_dice=4, die_size=6)])
+    return bm, engine, sorc, t1, t2
+
+
+def test_sorcery_incarnate_predicate():
+    """Sorcery Incarnate is Sorcerer L7+ AND Innate Sorcery currently active."""
+    bm, engine, sorc, _ = _setup(6)
+    assert not rpg.CombatEngine.sorcery_incarnate_active(engine.get_agent_stats(bm, sorc)), \
+        "inactive Innate Sorcery is not Sorcery Incarnate"
+    engine.activate_innate_sorcery(bm, sorc)
+    assert not rpg.CombatEngine.sorcery_incarnate_active(engine.get_agent_stats(bm, sorc)), \
+        "Sorcery Incarnate needs level 7 (L6 with Innate Sorcery active does not qualify)"
+
+    bm, engine, sorc, _ = _setup(7)
+    assert not rpg.CombatEngine.sorcery_incarnate_active(engine.get_agent_stats(bm, sorc)), \
+        "a L7 Sorcerer without Innate Sorcery running is not incarnate"
+    engine.activate_innate_sorcery(bm, sorc)
+    assert rpg.CombatEngine.sorcery_incarnate_active(engine.get_agent_stats(bm, sorc)), \
+        "L7 + Innate Sorcery active = Sorcery Incarnate"
+    print("✅ test_sorcery_incarnate_predicate passed")
+
+
+def test_sorcery_incarnate_two_options():
+    """Sorcery Incarnate: BOTH Metamagic options apply to one cast, each paying its own SP."""
+    bm, engine, sorc, t1, t2 = _incarnate_sorcerer(7)
+    engine.activate_innate_sorcery(bm, sorc)       # free use — spends no SP
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [t1, t2]
+    action.metamagic = rpg.MetamagicOption.Quickened   # 2 SP
+    action.metamagic2 = rpg.MetamagicOption.Twinned    # 1 SP
+    res = engine.execute_spell(bm, action)
+
+    assert res.valid, "the two-option spell should cast"
+    assert res.cast_as_bonus_action, "Quickened (slot 1) should flag the cast as a Bonus Action"
+    hp1 = engine.get_agent_stats(bm, t1).hp_cur
+    hp2 = engine.get_agent_stats(bm, t2).hp_cur
+    assert hp1 < 200 and hp2 < 200, \
+        f"Twinned (slot 2) should give the Single-geometry spell a 2nd target (got {hp1}, {hp2})"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "both options should be paid for: 7 SP - 2 (Quickened) - 1 (Twinned) = 4"
+    print("✅ test_sorcery_incarnate_two_options passed")
+
+
+def test_sorcery_incarnate_gates_second_option():
+    """Without Sorcery Incarnate, the 2nd option is dropped — unapplied AND unpaid."""
+    bm, engine, sorc, t1, t2 = _incarnate_sorcerer(7)   # L7, but Innate Sorcery NOT active
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [t1, t2]
+    action.metamagic = rpg.MetamagicOption.Quickened   # 2 SP — still applies
+    action.metamagic2 = rpg.MetamagicOption.Twinned    # dropped: no Sorcery Incarnate
+    res = engine.execute_spell(bm, action)
+
+    assert res.cast_as_bonus_action, "the first option still applies"
+    hp2 = engine.get_agent_stats(bm, t2).hp_cur
+    assert hp2 == 200, "the dropped Twinned must not grant an extra target"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
+        "only the first option is paid for: 7 SP - 2 (Quickened) = 5"
+    print("✅ test_sorcery_incarnate_gates_second_option passed")
+
+
+def test_metamagic_seeking_stacks_without_incarnate():
+    """Seeking is the standing exception: it rides along with one other option at any level,
+    with no Innate Sorcery needed (SRD p.66)."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_attack_spell()])   # Seeking needs a spell-attack roll
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Quickened   # 2 SP
+    action.metamagic2 = rpg.MetamagicOption.Seeking    # 1 SP — stacks
+    res = engine.execute_spell(bm, action)
+
+    assert res.cast_as_bonus_action, "Quickened should still apply alongside Seeking"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 2, \
+        "both should be paid for even without Sorcery Incarnate: 5 - 2 (Quickened) - 1 (Seeking) = 2"
+    print("✅ test_metamagic_seeking_stacks_without_incarnate passed")
+
+
+def test_metamagic_duplicate_option_charged_once():
+    """The same option in both slots is applied (and paid for) exactly once."""
+    bm, engine, sorc, tgt = _setup(5)
+    engine.set_agent_spells(bm, sorc, [_save_spell()])
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.metamagic = rpg.MetamagicOption.Quickened
+    action.metamagic2 = rpg.MetamagicOption.Quickened
+    res = engine.execute_spell(bm, action)
+
+    assert res.cast_as_bonus_action
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 3, \
+        "a duplicated option must be charged once (5 - 2 = 3)"
+    print("✅ test_metamagic_duplicate_option_charged_once passed")
+
+
+def test_innate_sorcery_sp_fallback_at_l7():
+    """Sorcery Incarnate (L7): with the uses spent, 2 SP activate Innate Sorcery. Below L7 it
+    just fails."""
+    for level, expect_ok in ((6, False), (7, True)):
+        bm, engine, sorc, _ = _setup(level)
+        s = engine.get_agent_stats(bm, sorc)
+        innate = s.get_resource("Innate Sorcery")
+        innate.current = 0
+        s.resources["Innate Sorcery"] = innate
+        engine.set_agent_stats(bm, sorc, s)
+
+        ok = engine.activate_innate_sorcery(bm, sorc)
+        after = engine.get_agent_stats(bm, sorc)
+        assert ok == expect_ok, f"L{level} with no uses left: expected activation {expect_ok}"
+        assert after.innate_sorcery_turns == (10 if expect_ok else 0), \
+            f"L{level}: buff should {'run' if expect_ok else 'not run'}"
+        # SP = level; the L7 fallback costs 2 of them, the L6 failure costs none.
+        assert after.get_resource("Sorcery Points").current == (level - 2 if expect_ok else level), \
+            f"L{level}: the 2-SP fallback should only be charged when it activates"
+    print("✅ test_innate_sorcery_sp_fallback_at_l7 passed")
+
+
 def test_twinned_gating():
     """Twinned on an area spell (not single-target) is rejected before spending any SP."""
     bm, engine, sorc, tgt = _setup(5)
@@ -2459,6 +2595,13 @@ if __name__ == "__main__":
     test_twinned_num_targets_helper()
     test_twinned_single_target_hits_two()
     test_twinned_gating()
+    # Metamagic Phase 4: Sorcery Incarnate (L7) — two options on one cast
+    test_sorcery_incarnate_predicate()
+    test_sorcery_incarnate_two_options()
+    test_sorcery_incarnate_gates_second_option()
+    test_metamagic_seeking_stacks_without_incarnate()
+    test_metamagic_duplicate_option_charged_once()
+    test_innate_sorcery_sp_fallback_at_l7()
     # Phase 1: learned-options picker round-trip + known-count cap
     test_metamagic_learn_roundtrip()
     test_metamagic_known_count_cap()

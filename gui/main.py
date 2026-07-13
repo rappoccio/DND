@@ -519,7 +519,11 @@ class App:
         # arming one clears the others — except Seeking, the one option that stacks (SRD p.65),
         # tracked independently. Transmuted's replacement damage type is chosen at arm time.
         # Persistent (stays armed until manually toggled), mirroring Overchannel.
+        # Phase 4 (Sorcery Incarnate, L7 + Innate Sorcery active): a SECOND non-Seeking option may
+        # be armed at the same time; armed_metamagic2 holds it. Outside Sorcery Incarnate the
+        # sidebar refuses to fill that slot and the engine would drop it unpaid anyway.
         self.armed_metamagic = rpg.MetamagicOption.NONE
+        self.armed_metamagic2 = rpg.MetamagicOption.NONE
         self.armed_seeking = False
         self.pending_metamagic_transmute_type = -1
 
@@ -1384,6 +1388,12 @@ class App:
         self.btn_cbt_draconic_resistance = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Draconic Resistance (1 SP)",
                                           (60, 130, 80), (90, 160, 110), self.font_md)
+        # Sorcerer Innate Sorcery (L1, Bonus Action): +1 spell save DC and advantage on spell
+        # attacks for 1 minute. At L7 (Sorcery Incarnate) it also unlocks two-option Metamagic
+        # casts, and can be paid for with 2 SP once its uses are gone.
+        self.btn_cbt_innate_sorcery = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Innate Sorcery",
+                                          (150, 60, 150), (185, 95, 185), self.font_md)
         # Sorcerer Metamagic arm-toggles (Phases 2–3): one button per working option, including
         # Twinned (Phase 3). Keyed by int(MetamagicOption); positioned/gated each draw.
         self.btn_cbt_metamagic = {}
@@ -8199,7 +8209,7 @@ class App:
                 # Twinned Spell (Sorcerer Metamagic): a Single-geometry spell gets one ADDITIONAL
                 # target. Collect two clicks (like Multiple geometry). The engine still validates
                 # affordability and only actually hits the 2nd target if it pays the SP.
-                if self._twinned_single_armed(sp_):
+                if self._twinned_single_armed(sp_, idx):
                     self.pending_spell_num_targets = 2
                     hint = "click 2 targets (0/2) — Twinned"
                 else:
@@ -9544,28 +9554,54 @@ class App:
                 out.append(i)
         return out
 
-    def _twinned_single_armed(self, sp) -> bool:
+    def _sorcery_incarnate_active(self, idx: int) -> bool:
+        """Sorcery Incarnate (Sorcerer L7): while Innate Sorcery is running, this caster may put
+        TWO Metamagic options on one spell. Single source of truth is the engine predicate."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return False
+        return rpg.CombatEngine.sorcery_incarnate_active(self.combat.get_agent_stats(self.bm, idx))
+
+    def _armed_metamagic_options(self, caster_idx: int) -> list:
+        """The Metamagic options the sidebar currently has armed for this caster, in the order the
+        engine should apply them (at most 2 — the engine's slot count). The radio option leads;
+        a second option rides along only under Sorcery Incarnate; Seeking (the one option that
+        stacks with another, SRD p.66) fills a free slot without needing Sorcery Incarnate."""
+        opts = []
+        if self.armed_metamagic != rpg.MetamagicOption.NONE:
+            opts.append(self.armed_metamagic)
+        if (self.armed_metamagic2 != rpg.MetamagicOption.NONE and
+                self.armed_metamagic2 not in opts and
+                self._sorcery_incarnate_active(caster_idx)):
+            opts.append(self.armed_metamagic2)
+        if self.armed_seeking and rpg.MetamagicOption.Seeking not in opts:
+            opts.append(rpg.MetamagicOption.Seeking)
+        return opts[:2]
+
+    def _twinned_single_armed(self, sp, caster_idx: int) -> bool:
         """True when Twinned Spell is armed for a Single-geometry (single-target) spell, so the
         cast should collect one extra target. Twinned only augments spells that otherwise hit a
         single creature; AoE/Multiple geometries manage their own target counts. Affordability is
         re-checked by the engine at cast time — a short-on-SP Twinned simply drops the 2nd target."""
-        return (self.armed_metamagic == rpg.MetamagicOption.Twinned and
+        return (rpg.MetamagicOption.Twinned in self._armed_metamagic_options(caster_idx) and
                 sp.geometry == rpg.SpellGeometry.Single)
 
     def _apply_armed_metamagic(self, action, caster_idx: int) -> None:
-        """Fold the sidebar-armed Metamagic option into a player SpellAction. The engine
+        """Fold the sidebar-armed Metamagic option(s) into a player SpellAction. The engine
         validates applicability BEFORE spending Sorcery Points and no-ops (logged) on a
-        mismatch, so a wrong armed toggle costs nothing. A single radio option wins when
-        armed; otherwise Seeking (the one stacking option, SRD p.65) rides alone. Two
-        options on one cast = Phase 4 (Sorcery Incarnate)."""
-        if self.armed_metamagic != rpg.MetamagicOption.NONE:
-            action.metamagic = self.armed_metamagic
-            if self.armed_metamagic == rpg.MetamagicOption.Transmuted:
-                action.transmuted_damage_type = self.pending_metamagic_transmute_type
-            elif self.armed_metamagic == rpg.MetamagicOption.Careful:
-                action.careful_targets = self._careful_ally_targets(caster_idx)
-        elif self.armed_seeking:
-            action.metamagic = rpg.MetamagicOption.Seeking
+        mismatch, so a wrong armed toggle costs nothing. Up to two options ride along — the
+        engine gates the second on Seeking (which stacks) or Sorcery Incarnate (L7 + Innate
+        Sorcery active), and drops it unpaid otherwise."""
+        opts = self._armed_metamagic_options(caster_idx)
+        if not opts:
+            return
+        action.metamagic = opts[0]
+        if len(opts) > 1:
+            action.metamagic2 = opts[1]
+        # Parameter data is per-option, not per-slot: fill it if the option rides in EITHER slot.
+        if rpg.MetamagicOption.Transmuted in opts:
+            action.transmuted_damage_type = self.pending_metamagic_transmute_type
+        if rpg.MetamagicOption.Careful in opts:
+            action.careful_targets = self._careful_ally_targets(caster_idx)
 
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
@@ -9579,7 +9615,7 @@ class App:
         # Multiple-geometry spells (and a Twinned Single-geometry spell) collect several targets
         # across successive clicks before the cast resolves.
         multi_target = (sp.geometry == rpg.SpellGeometry.Multiple or
-                        self._twinned_single_armed(sp))
+                        self._twinned_single_armed(sp, caster_idx))
         if multi_target:
             self.pending_spell_targets.append(target_idx)
 
@@ -14727,9 +14763,30 @@ class App:
                         self.btn_cbt_tides_of_chaos.draw(self.screen)
                         y += B + gap
 
+            # Sorcerer Innate Sorcery (L1+, Bonus Action): shown while it is not already running
+            # and the caster can pay for it — a free use, or (Sorcery Incarnate, L7+) 2 SP.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.innate_sorcery_turns == 0):
+                    innate = stats.get_resource("Innate Sorcery")
+                    sp_res = stats.get_resource("Sorcery Points")
+                    free_use = bool(innate and innate.current > 0)
+                    sp_use = bool(stats.char_level >= 7 and sp_res and sp_res.current >= 2)
+                    if free_use or sp_use:
+                        self.btn_cbt_innate_sorcery.text = (
+                            "Innate Sorcery" if free_use else "Innate Sorcery (2 SP)")
+                        self.btn_cbt_innate_sorcery.rect.x = lx
+                        self.btn_cbt_innate_sorcery.rect.y = y
+                        self.btn_cbt_innate_sorcery.rect.w = W
+                        self.btn_cbt_innate_sorcery.draw(self.screen)
+                        y += B + gap
+
             # Sorcerer Metamagic arm-toggles (Phase 2): one button per LEARNED + AFFORDABLE
             # option (any subclass, L2+). The armed option is highlighted; arming modifies the
             # next player cast (_apply_armed_metamagic). Seeking is an independent stacking toggle.
+            # Sorcery Incarnate (L7, Phase 4): while Innate Sorcery runs, a SECOND option can be
+            # armed alongside the first — flagged by the caption below.
             if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
                 if (stats.character_class == rpg.CharacterClass.Sorcerer and
@@ -14737,6 +14794,12 @@ class App:
                     sp_res = stats.get_resource("Sorcery Points")
                     sp_have = sp_res.current if sp_res else 0
                     learned = list(stats.metamagic_options)
+                    incarnate = rpg.CombatEngine.sorcery_incarnate_active(stats)
+                    if incarnate:
+                        cap = self.font_sm.render(
+                            "Sorcery Incarnate: 2 options per spell", True, (210, 190, 255))
+                        self.screen.blit(cap, (lx, y))
+                        y += cap.get_height() + 2
                     for mm_val, mm_name, mm_sp, mm_note in METAMAGIC_OPTIONS:
                         key = int(mm_val)
                         btn = self.btn_cbt_metamagic.get(key)
@@ -14745,8 +14808,11 @@ class App:
                         cost = rpg.CombatEngine.metamagic_sp_cost(mm_val)
                         if not metamagic_offered(mm_val, learned, sp_have, cost):
                             continue
-                        armed = (self.armed_seeking if mm_val == rpg.MetamagicOption.Seeking
-                                 else self.armed_metamagic == mm_val)
+                        if mm_val == rpg.MetamagicOption.Seeking:
+                            armed = self.armed_seeking
+                        else:
+                            armed = (self.armed_metamagic == mm_val or
+                                     (incarnate and self.armed_metamagic2 == mm_val))
                         btn.text = f"{'✓ ' if armed else ''}✨ {mm_name} ({cost} SP)"
                         btn.color = (120, 95, 190) if armed else (80, 62, 135)
                         btn.rect.x = lx
@@ -17690,25 +17756,57 @@ class App:
                                 self._combat_log_add("Tides of Chaos: not available (no use left / wrong subclass/level)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
+                    # Sorcerer Innate Sorcery (Bonus Action). At L7 (Sorcery Incarnate) a caster
+                    # out of uses can still pay 2 SP for it — the engine picks the payment.
+                    if self.btn_cbt_innate_sorcery.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.activate_innate_sorcery(self.bm, idx):
+                                self.bonus_used = True  # Innate Sorcery costs a Bonus Action
+                                self._flush_combat_log()
+                            else:
+                                self._combat_log_add(
+                                    "Innate Sorcery: not available (no use left / not enough SP / wrong class)")
+                                self._flush_combat_log()
+                            self._update_attack_overlay()
                     # Sorcerer Metamagic arm-toggles: radio-select (arming one clears the others;
                     # clicking the armed one disarms). Seeking toggles independently (it stacks).
+                    # Under Sorcery Incarnate (L7 + Innate Sorcery active) the caster gets a SECOND
+                    # slot: arming a new option while one is already armed fills slot 2 instead of
+                    # replacing slot 1, so two options ride the next cast.
                     for _mm_key, _mm_btn in self.btn_cbt_metamagic.items():
                         if not _mm_btn.clicked(event):
                             continue
                         opt = rpg.MetamagicOption(_mm_key)
                         name = METAMAGIC_NAME_BY_VALUE.get(_mm_key, "Metamagic")
                         cost = rpg.CombatEngine.metamagic_sp_cost(opt)
+                        incarnate = self._sorcery_incarnate_active(self._current_agent_idx())
+                        if not incarnate:
+                            self.armed_metamagic2 = rpg.MetamagicOption.NONE
                         if opt == rpg.MetamagicOption.Seeking:
                             self.armed_seeking = not self.armed_seeking
                             self._combat_log_add(
                                 f"Metamagic {name} {'ARMED' if self.armed_seeking else 'disarmed'} "
                                 f"({cost} SP on next cast).")
                         elif self.armed_metamagic == opt:
-                            self.armed_metamagic = rpg.MetamagicOption.NONE
+                            # Disarming slot 1 promotes slot 2 (if any) so the armed set stays packed.
+                            self.armed_metamagic = self.armed_metamagic2
+                            self.armed_metamagic2 = rpg.MetamagicOption.NONE
+                            self._combat_log_add(f"Metamagic {name} disarmed.")
+                        elif incarnate and self.armed_metamagic2 == opt:
+                            self.armed_metamagic2 = rpg.MetamagicOption.NONE
                             self._combat_log_add(f"Metamagic {name} disarmed.")
                         else:
-                            self.armed_metamagic = opt
-                            self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
+                            if incarnate and self.armed_metamagic != rpg.MetamagicOption.NONE:
+                                # Sorcery Incarnate: keep the first option, add this one alongside it
+                                # (a third click replaces slot 2 — the engine takes at most two).
+                                self.armed_metamagic2 = opt
+                                self._combat_log_add(
+                                    f"Metamagic {name} ARMED as the 2nd option ({cost} SP on next "
+                                    f"cast — Sorcery Incarnate).")
+                            else:
+                                self.armed_metamagic = opt
+                                self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
                             # Transmuted needs a replacement damage type chosen at arm time.
                             if opt == rpg.MetamagicOption.Transmuted:
                                 def _on_mm_transmute(chosen):

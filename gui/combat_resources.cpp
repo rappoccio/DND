@@ -1951,17 +1951,35 @@ bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
     Agent::Stats stats = bm.getAgentStats(idx);
     if (stats.character_class != CharacterClass::Sorcerer) return false;
 
-    // Requires an available Innate Sorcery use (Bonus Action; 2 uses per long rest).
+    // Normally requires an available Innate Sorcery use (Bonus Action; 2 uses per long rest).
+    // Sorcery Incarnate (L7): with the uses spent, 2 Sorcery Points buy an activation instead.
+    // Both resources are spent on this local `stats` copy (not via spendResource) so the single
+    // setAgentStats below writes the spend AND the duration — a bm-side spend would be clobbered.
     Resource* innate = stats.getResource("Innate Sorcery");
-    if (!innate || innate->current <= 0) return false;
+    bool paid_with_sp = false;
+    if (innate && innate->current > 0) {
+        innate->spend(1);
+    } else if (stats.char_level >= 7) {
+        Resource* sp = stats.getResource("Sorcery Points");
+        if (!sp || sp->current < 2) return false;
+        sp->spend(2);
+        paid_with_sp = true;
+    } else {
+        return false;
+    }
 
-    innate->spend(1);
     stats.innate_sorcery_turns = 10;  // 1 minute = 10 rounds
     bm.setAgentStats(idx, stats);
 
-    log_("{} activates Innate Sorcery: +1 spell save DC and advantage on spell attacks for 1 minute",
-         agentName(bm, idx));
+    log_("{} activates Innate Sorcery{}: +1 spell save DC and advantage on spell attacks for 1 minute",
+         agentName(bm, idx), paid_with_sp ? " (Sorcery Incarnate — 2 SP)" : "");
     return true;
+}
+
+bool CombatEngine::sorceryIncarnateActive(const Agent::Stats& s) noexcept
+{
+    return s.character_class == CharacterClass::Sorcerer &&
+           s.char_level >= 7 && s.innate_sorcery_turns > 0;
 }
 
 bool CombatEngine::activateDragonWings(BattleMap& bm, int idx) noexcept

@@ -410,6 +410,24 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     return ss;
 }
 
+// Display name for a Metamagic option (combat-log messages only).
+static const char* metamagicName(MetamagicOption opt) noexcept
+{
+    switch (opt) {
+        case MetamagicCareful:    return "Careful Spell";
+        case MetamagicDistant:    return "Distant Spell";
+        case MetamagicEmpowered:  return "Empowered Spell";
+        case MetamagicExtended:   return "Extended Spell";
+        case MetamagicHeightened: return "Heightened Spell";
+        case MetamagicQuickened:  return "Quickened Spell";
+        case MetamagicSeeking:    return "Seeking Spell";
+        case MetamagicSubtle:     return "Subtle Spell";
+        case MetamagicTransmuted: return "Transmuted Spell";
+        case MetamagicTwinned:    return "Twinned Spell";
+        default:                  return "Metamagic";
+    }
+}
+
 SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 {
     SpellResult result;
@@ -516,10 +534,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // Validate applicability, then deduct Sorcery Points up front and apply the
     // option by temporarily mutating the local `sp` copy (Distant/Extended/Quickened/
     // Transmuted) or, for Careful, building a per-cast safe-target set used in the AoE
-    // exclusion below. Heightened/Seeking are resolved per target in the AttackRoll/
-    // Save branches via applied_metamagic. Empowered is deferred and Subtle is flavor
-    // only — both log and spend no SP. See known_limitations.md.
-    MetamagicOption applied_metamagic = MetamagicNone;
+    // exclusion below. Heightened/Seeking/Empowered are resolved per target in the
+    // AttackRoll/Save/damage branches via mmApplied(). Subtle is flavor only — it logs
+    // and spends no SP. See known_limitations.md.
+    //
+    // A cast carries up to TWO options (action.metamagic + action.metamagic2). The second is only
+    // honored when either of the pair is Seeking (the option that stacks with another, SRD p.66) or
+    // the caster has Sorcery Incarnate (Sorcerer L7 with Innate Sorcery active); otherwise it is
+    // dropped with a log and costs nothing. Each option is gated and paid for independently, so a
+    // second option that doesn't fit the spell (or that the caster can't afford) wastes no SP.
+    std::vector<MetamagicOption> applied_mm;   // options actually paid for and applied to this cast
+    auto mmApplied = [&applied_mm](MetamagicOption opt) noexcept {
+        return std::find(applied_mm.begin(), applied_mm.end(), opt) != applied_mm.end();
+    };
     std::vector<int> careful_set;          // Careful: allies excluded from this spell's area (capped at CHA mod)
     const int cha_mod = abilityMod(caster_stats.cha);
 
@@ -527,13 +554,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         return t == Acid || t == Cold || t == Fire || t == Lightning || t == Poison || t == Thunder;
     };
 
-    if (action.metamagic == MetamagicSubtle) {
-        log_("Metamagic not applied: Subtle Spell has no effect in the combat engine");
-    } else if (action.metamagic != MetamagicNone) {
+    auto applyMetamagicOption = [&](MetamagicOption opt) {
+        if (opt == MetamagicSubtle) {
+            log_("Metamagic not applied: Subtle Spell has no effect in the combat engine");
+            return;
+        }
         // Decide whether the option is applicable to THIS spell before spending SP.
         bool applicable = true;
         std::string why;
-        switch (action.metamagic) {
+        switch (opt) {
             case MetamagicEmpowered:
                 if (sp.magic_damage_rolls.empty() && sp.physical_damage_rolls.empty()) {
                     applicable = false; why = "Empowered needs a spell that rolls damage dice";
@@ -556,6 +585,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 if (sp.duration < 2) { applicable = false; why = "Extended needs a lasting (non-instantaneous) spell"; }
                 break;
             case MetamagicQuickened:
+                // Checked against the (possibly already-mutated) local copy, so a second Quickened
+                // on a spell an earlier option already made a Bonus Action is correctly rejected.
                 if (sp.casting_time != Spell::Action) { applicable = false; why = "Quickened needs an Action-cast spell"; }
                 break;
             case MetamagicTwinned:
@@ -571,60 +602,84 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         if (!applicable) {
             log_("Metamagic not applied: {}", why);
-        } else if (!spendResource(bm, action.caster_idx, "Sorcery Points", metamagicSpCost(action.metamagic))) {
-            log_("Metamagic not applied: not enough Sorcery Points");
-        } else {
-            const int cost = metamagicSpCost(action.metamagic);
-            applied_metamagic = action.metamagic;
-            switch (action.metamagic) {
-                case MetamagicCareful:
-                    // Same effect as the Evoker's safe targets: chosen allies are excluded from the area.
-                    for (int t : action.careful_targets) {
-                        if (static_cast<int>(careful_set.size()) >= std::max(1, cha_mod)) break;
-                        careful_set.push_back(t);
-                    }
-                    log_("Metamagic: Careful Spell ({} SP) — {} creature(s) shielded from the area", cost, careful_set.size());
-                    break;
-                case MetamagicDistant:
-                    sp.range = (sp.range >= 5) ? sp.range * 2 : 30;
-                    log_("Metamagic: Distant Spell ({} SP) — range now {} ft", cost, sp.range);
-                    break;
-                case MetamagicExtended:
-                    sp.duration *= 2;
-                    log_("Metamagic: Extended Spell ({} SP) — duration now {} rounds", cost, sp.duration);
-                    break;
-                case MetamagicEmpowered:
-                    log_("Metamagic: Empowered Spell ({} SP) — reroll up to {} damage die(s) this cast",
-                         cost, std::max(1, cha_mod));
-                    break;
-                case MetamagicHeightened:
-                    log_("Metamagic: Heightened Spell ({} SP)", cost);
-                    break;
-                case MetamagicQuickened:
-                    sp.casting_time = Spell::BonusAction;
-                    result.cast_as_bonus_action = true;
-                    log_("Metamagic: Quickened Spell ({} SP) — cast as a Bonus Action", cost);
-                    break;
-                case MetamagicSeeking:
-                    log_("Metamagic: Seeking Spell ({} SP)", cost);
-                    break;
-                case MetamagicTransmuted: {
-                    auto new_type = static_cast<MagicDamage_t>(action.transmuted_damage_type);
-                    for (auto& r : sp.magic_damage_rolls)
-                        if (isElemental(r.type)) r.type = new_type;
-                    log_("Metamagic: Transmuted Spell ({} SP) — elemental damage changed type", cost);
-                    break;
-                }
-                case MetamagicTwinned:
-                    // The extra target is granted at target-resolution time via
-                    // getNumTargetsForSpell(..., twinned=true) — which trims/expands the target
-                    // list for BOTH Single (→2) and Multiple (+1) geometry. Nothing to mutate on
-                    // the spell here; applied_metamagic == MetamagicTwinned drives the cap below.
-                    log_("Metamagic: Twinned Spell ({} SP) — one additional target this cast", cost);
-                    break;
-                default: break;
-            }
+            return;
         }
+        if (!spendResource(bm, action.caster_idx, "Sorcery Points", metamagicSpCost(opt))) {
+            log_("Metamagic not applied: not enough Sorcery Points");
+            return;
+        }
+        const int cost = metamagicSpCost(opt);
+        applied_mm.push_back(opt);
+        switch (opt) {
+            case MetamagicCareful:
+                // Same effect as the Evoker's safe targets: chosen allies are excluded from the area.
+                for (int t : action.careful_targets) {
+                    if (static_cast<int>(careful_set.size()) >= std::max(1, cha_mod)) break;
+                    careful_set.push_back(t);
+                }
+                log_("Metamagic: Careful Spell ({} SP) — {} creature(s) shielded from the area", cost, careful_set.size());
+                break;
+            case MetamagicDistant:
+                sp.range = (sp.range >= 5) ? sp.range * 2 : 30;
+                log_("Metamagic: Distant Spell ({} SP) — range now {} ft", cost, sp.range);
+                break;
+            case MetamagicExtended:
+                sp.duration *= 2;
+                log_("Metamagic: Extended Spell ({} SP) — duration now {} rounds", cost, sp.duration);
+                break;
+            case MetamagicEmpowered:
+                log_("Metamagic: Empowered Spell ({} SP) — reroll up to {} damage die(s) this cast",
+                     cost, std::max(1, cha_mod));
+                break;
+            case MetamagicHeightened:
+                log_("Metamagic: Heightened Spell ({} SP)", cost);
+                break;
+            case MetamagicQuickened:
+                sp.casting_time = Spell::BonusAction;
+                result.cast_as_bonus_action = true;
+                log_("Metamagic: Quickened Spell ({} SP) — cast as a Bonus Action", cost);
+                break;
+            case MetamagicSeeking:
+                log_("Metamagic: Seeking Spell ({} SP)", cost);
+                break;
+            case MetamagicTransmuted: {
+                auto new_type = static_cast<MagicDamage_t>(action.transmuted_damage_type);
+                for (auto& r : sp.magic_damage_rolls)
+                    if (isElemental(r.type)) r.type = new_type;
+                log_("Metamagic: Transmuted Spell ({} SP) — elemental damage changed type", cost);
+                break;
+            }
+            case MetamagicTwinned:
+                // The extra target is granted at target-resolution time via
+                // getNumTargetsForSpell(..., twinned=true) — which trims/expands the target
+                // list for BOTH Single (→2) and Multiple (+1) geometry. Nothing to mutate on
+                // the spell here; mmApplied(MetamagicTwinned) drives the cap below.
+                log_("Metamagic: Twinned Spell ({} SP) — one additional target this cast", cost);
+                break;
+            default: break;
+        }
+    };
+
+    {
+        // The options this cast asks for. A metamagic2 that repeats metamagic is dropped so the
+        // same option is never gated (or paid for) twice.
+        std::vector<MetamagicOption> requested;
+        if (action.metamagic  != MetamagicNone) requested.push_back(action.metamagic);
+        if (action.metamagic2 != MetamagicNone && action.metamagic2 != action.metamagic)
+            requested.push_back(action.metamagic2);
+
+        // Sorcery Incarnate (L7 + Innate Sorcery active) is what licenses two options on one spell;
+        // Seeking is the standing exception that stacks with one other option without it.
+        if (requested.size() == 2 &&
+            requested[0] != MetamagicSeeking && requested[1] != MetamagicSeeking &&
+            !sorceryIncarnateActive(caster_stats)) {
+            log_("Metamagic: only one option per spell — {} ignored (two options need Sorcery "
+                 "Incarnate: a level-7 Sorcerer with Innate Sorcery active)",
+                 metamagicName(requested[1]));
+            requested.pop_back();
+        }
+
+        for (MetamagicOption opt : requested) applyMetamagicOption(opt);
     }
 
     // Upcast damage/healing scaling: a spell cast from a slot above its base level rolls extra dice
@@ -683,10 +738,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // an applied Twinned raises it to 2. The GUI hands over the creatures the player clicked; the
     // engine trims to the allowed count so the target-count rule lives in exactly one place
     // (getNumTargetsForSpell) and the per-target effect loop below applies to each kept target
-    // identically. If Twinned couldn't be paid for (SP short), applied_metamagic stays None and the
+    // identically. If Twinned couldn't be paid for (SP short), it never lands in applied_mm and the
     // extra clicked target is dropped here — so a failed Twinned costs nothing and hits only one.
     if (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple) {
-        const bool twinned = (applied_metamagic == MetamagicTwinned);
+        const bool twinned = mmApplied(MetamagicTwinned);
         int allowed = getNumTargetsForSpell(sp, action.slot_level, caster_stats.char_level, twinned);
         if (allowed >= 0 && static_cast<int>(targets.size()) > allowed)
             targets.resize(static_cast<std::size_t>(allowed));
@@ -717,7 +772,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         // Careful Spell always spares the caster from their OWN area (a Careful caster never
         // catches themselves in the blast). This is separate from the CHA-mod-capped set of
         // chosen allies (careful_set) — protecting yourself doesn't consume one of those slots.
-        if (applied_metamagic == MetamagicCareful)
+        if (mmApplied(MetamagicCareful))
             safe.push_back(action.caster_idx);
         // Faction rule 2 — "creatures of your choosing" harmful spells (e.g. Radiance of the
         // Dawn) intrinsically spare the caster's allies (same faction + claimed neutrals).
@@ -836,7 +891,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     std::vector<int> shared_magic_base;  // base damage per magic_damage_rolls entry (pre-mult/halving)
     std::vector<int> shared_phys_base;   // base damage per physical_damage_rolls entry
     if (shared_damage_roll) {
-        int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
+        int empower_budget = mmApplied(MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
         for (const auto& roll_info : sp.magic_damage_rolls) {
             int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
                                                   roll_info.die_size, shared_dice, true, &empower_budget);
@@ -929,7 +984,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 tgt_idx == topCast().preroll_target) {
                 th = topCast().preroll;
             } else {
-                th = rollSpellAttack(bm, action, tgt_idx, applied_metamagic);
+                // rollSpellAttack only reads Seeking, so hand it the applied Seeking (if any) —
+                // with two options in play, Seeking can sit in either slot.
+                th = rollSpellAttack(bm, action, tgt_idx,
+                                     mmApplied(MetamagicSeeking) ? MetamagicSeeking : MetamagicNone);
                 if (maybeDefenderShieldInlineSpell(bm, action, tgt_idx, th))
                     tgt_stats = bm.getAgentStats(tgt_idx);   // Shield mutated the target's slot/AC
             }
@@ -944,7 +1002,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 std::vector<int> dice;
                 int dmg = 0;
                 // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
-                int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
+                int empower_budget = mmApplied(MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
                 if (sp.type == Spell::Heal) {
                     // Healing spell: roll healing_type dice + add spellcasting ability modifier
@@ -1161,7 +1219,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 for (const auto& p : topCast().save_prerolls)
                     if (p.target_idx == tgt_idx) { ss = p; break; }
             }
-            if (ss.target_idx < 0) ss = rollSpellSave(bm, action, tgt_idx, applied_metamagic);
+            // rollSpellSave only reads Heightened, so hand it the applied Heightened (if any) —
+            // with two options in play, Heightened can sit in either slot.
+            if (ss.target_idx < 0)
+                ss = rollSpellSave(bm, action, tgt_idx,
+                                   mmApplied(MetamagicHeightened) ? MetamagicHeightened : MetamagicNone);
             tr.save_d20 = ss.d20;
             tr.save_mod = ss.save_mod + ss.bonus;   // ability + prof + auras (+ any reaction bonus)
             tr.save_dc  = ss.dc;
@@ -1170,7 +1232,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             std::vector<int> dice;
             int dmg = 0;
             // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
-            int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
+            int empower_budget = mmApplied(MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
             if (sp.type == Spell::Heal) {
                 // Healing spell: roll healing_type dice + add spellcasting ability modifier
@@ -1440,7 +1502,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             std::vector<int> dice;
             int total = 0;
             // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
-            int empower_budget = (applied_metamagic == MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
+            int empower_budget = mmApplied(MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
             if (sp.type == Spell::Heal) {
                 // Healing spell: roll healing_type dice + add spellcasting ability modifier
@@ -4121,8 +4183,14 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
             }
         }
         if (is_save_spell) {
+            // rollSpellSave only reads Heightened, and a cast may carry it in either Metamagic slot
+            // (Sorcery Incarnate / the Seeking pairing). The SP for it are spent inside executeSpell,
+            // which consumes these prerolls — so the requested option drives the preroll.
+            const MetamagicOption pre_mm =
+                (c.action.metamagic  == MetamagicHeightened ||
+                 c.action.metamagic2 == MetamagicHeightened) ? MetamagicHeightened : MetamagicNone;
             for (int tgt : c.action.target_indices)
-                c.save_prerolls.push_back(rollSpellSave(bm, c.action, tgt, c.action.metamagic));
+                c.save_prerolls.push_back(rollSpellSave(bm, c.action, tgt, pre_mm));
             c.has_save_preroll = true;                              // executeSpell consumes these
             for (const SpellSave& ss : c.save_prerolls)
                 for (int reactor : saveFailReactors(bm, c.action, ss))

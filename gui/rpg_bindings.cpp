@@ -1442,8 +1442,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Endpoint row for oriented Rectangle 'wall' spells (-1 = unset).")
         .def_readwrite("metamagic",      &SpellAction::metamagic,
              "Sorcerer Metamagic applied to this cast (MetamagicOption; NONE = none).\n"
-             "SP cost is deducted in execute_spell. Applied: Careful, Distant, Extended,\n"
-             "Heightened, Quickened, Seeking, Transmuted, Twinned. Deferred: Empowered.")
+             "SP cost is deducted in execute_spell. Applied: Careful, Distant, Empowered,\n"
+             "Extended, Heightened, Quickened, Seeking, Transmuted, Twinned. Subtle = flavor only.")
+        .def_readwrite("metamagic2",     &SpellAction::metamagic2,
+             "Second Metamagic option on the same cast (MetamagicOption; NONE = none). Honored only\n"
+             "when one of the pair is Seeking (the option that stacks) or the caster has Sorcery\n"
+             "Incarnate (Sorcerer L7 with Innate Sorcery active); otherwise execute_spell logs and\n"
+             "ignores it, spending no SP. A duplicate of `metamagic` is ignored (never paid twice).")
         .def_readwrite("careful_targets", &SpellAction::careful_targets,
              "Careful Spell: allies excluded from this spell's area (up to the caster's CHA mod).")
         .def_readwrite("transmuted_damage_type", &SpellAction::transmuted_damage_type,
@@ -2090,8 +2095,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::activateInnateSorcery,
              py::arg("battle_map"), py::arg("idx"),
              "Sorcerer Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save\n"
-             "DC and advantage on spell attack rolls for 1 minute (10 rounds). Returns True if\n"
-             "activated, False otherwise (not a Sorcerer, or no uses left).")
+             "DC and advantage on spell attack rolls for 1 minute (10 rounds). Sorcery Incarnate\n"
+             "(L7): with no uses left, 2 Sorcery Points activate it instead. Returns True if\n"
+             "activated, False otherwise (not a Sorcerer, or no use / no 2 SP fallback).")
+        .def_static("sorcery_incarnate_active",
+                    &CombatEngine::sorceryIncarnateActive,
+                    py::arg("stats"),
+                    "Sorcery Incarnate (Sorcerer L7): True while a level-7+ Sorcerer has Innate\n"
+                    "Sorcery running. While it is, a cast may carry TWO Metamagic options\n"
+                    "(SpellAction.metamagic + .metamagic2).")
         .def("activate_dragon_wings",
              &CombatEngine::activateDragonWings,
              py::arg("battle_map"), py::arg("idx"),

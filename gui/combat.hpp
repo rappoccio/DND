@@ -143,9 +143,15 @@ struct SpellAction {
     int  aoe_col2 = -1;
     int  aoe_row2 = -1;
     // Sorcerer Metamagic applied to this cast (MetamagicNone = none). The SP cost is
-    // deducted in executeSpell. Implemented: Careful, Distant, Extended, Heightened,
-    // Quickened, Seeking, Transmuted, Twinned. Deferred: Empowered. Subtle = flavor only.
+    // deducted in executeSpell. Implemented: Careful, Distant, Empowered, Extended, Heightened,
+    // Quickened, Seeking, Transmuted, Twinned. Subtle = flavor only.
     MetamagicOption metamagic = MetamagicNone;
+    // Second Metamagic option on the same cast. Only honored when the caster may use two options:
+    // either one of the pair is Seeking (the option that stacks with another, SRD p.66) or the
+    // caster has Sorcery Incarnate (Sorcerer L7 with Innate Sorcery active — see
+    // sorceryIncarnateActive). Otherwise executeSpell logs and ignores it (no SP spent). A duplicate
+    // of `metamagic` is ignored too, so an option is never paid for twice.
+    MetamagicOption metamagic2 = MetamagicNone;
     // Metamagic parameter data — only read for the matching option:
     std::vector<int> careful_targets;     // Careful: allies excluded from this spell's area, Sculpt-style
                                           // (honored up to the caster's CHA modifier).
@@ -875,7 +881,13 @@ public:
     // Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save DC and
     // advantage on spell attack rolls for 1 minute (10 rounds). Returns true if
     // activated, false otherwise (not a Sorcerer / no uses left).
+    // Sorcery Incarnate (L7): with no uses left, 2 Sorcery Points activate it instead.
     bool activateInnateSorcery(BattleMap& bm, int idx) noexcept;
+
+    // Sorcery Incarnate (L7): true while a Sorcerer of level 7+ has Innate Sorcery running. While
+    // it is, the caster may put TWO Metamagic options on one spell (SpellAction::metamagic +
+    // metamagic2) — the GUI gates its second arm-slot on this, and executeSpell enforces it.
+    [[nodiscard]] static bool sorceryIncarnateActive(const Agent::Stats& s) noexcept;
 
     // Font of Magic (L2): convert a remaining spell slot of slot_level (1-9) into
     // slot_level Sorcery Points (capped at max). Returns new SP total, or -1 if it
