@@ -3443,10 +3443,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("get_num_targets_for_spell",
              &CombatEngine::getNumTargetsForSpell,
              py::arg("spell"), py::arg("slot_level"), py::arg("caster_level") = -1,
+             py::arg("twinned") = false,
              "Calculate the number of targets for a Multiple geometry spell when cast at given slot level.\n"
              "Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level\n"
-             "For Single geometry: returns 1. For AoE: returns 0.\n"
-             "caster_level: character level for special cases like Eldritch Blast (default -1 uses slot level formula)")
+             "For Single geometry: returns 1 (2 if twinned). For AoE: returns 0.\n"
+             "caster_level: character level for special cases like Eldritch Blast (default -1 uses slot level formula)\n"
+             "twinned: Twinned Spell (Sorcerer Metamagic) grants one additional target this cast")
         .def("effective_spell_range",
              &CombatEngine::effectiveSpellRange,
              py::arg("battle_map"), py::arg("caster_idx"), py::arg("spell"),

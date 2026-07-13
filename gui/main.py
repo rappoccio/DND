@@ -53,7 +53,7 @@ from helpers import (
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, METAMAGIC_OPTIONS, metamagic_offered
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -147,6 +147,13 @@ ELEMENT_CHOICE_SPELLS = {
     "Chromatic Orb":   [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Thunder", 9)],
     "Sorcerous Burst": [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Psychic", 7), ("Thunder", 9)],
 }
+
+# Transmuted Spell (Sorcerer Metamagic): the six elemental damage types a spell's damage may be
+# rewritten to (label, MagicDamage_t int). Matches the engine's isElemental set (Acid/Cold/Fire/
+# Lightning/Poison/Thunder). Reused via the ElementPickerDialog at arm-time.
+METAMAGIC_TRANSMUTE_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Thunder", 9)]
+# MetamagicOption int value → display name, for combat-log messages.
+METAMAGIC_NAME_BY_VALUE = {int(v): n for v, n, sp, note in METAMAGIC_OPTIONS}
 
 # Monk Warrior of the Elements — the five legal elements for Elemental Attunement / Elemental Burst,
 # as (label, MagicDamage_t int). Reused via the ElementPickerDialog. (Acid=0, Cold=1, Fire=2,
@@ -435,7 +442,12 @@ class App:
         # XP awards: cumulative party XP this session, and the set of enemy agent
         # indices already counted (so repeated / phased End-Combat tallies never
         # double-award the same corpse). Reset when a new scene loads.
-        self.party_xp_total: int = 0
+        # The tracker begins at the party's current level (the XP already required
+        # to reach it) and adds XP earned from defeated enemies on top — see
+        # _ensure_xp_baseline / _party_xp_total. `party_xp_baseline` is locked once
+        # a party is known; `party_xp_earned` is the running combat tally.
+        self.party_xp_baseline: int | None = None
+        self.party_xp_earned: int = 0
         self._xp_awarded_agents: set[int] = set()
 
         self._map_dir  = os.path.dirname(os.path.abspath(map_path)) or "/"
@@ -501,6 +513,15 @@ class App:
         # is cast at maximum damage. Armed/disarmed from the Evoker's right-click menu. Persistent
         # (stays on until disarmed) since the escalating self-damage is handled by the engine.
         self.overchannel_armed = False
+
+        # Sorcerer Metamagic (Phase 2): the sidebar-armed option modifies the NEXT player
+        # spell cast (folded in by _apply_armed_metamagic at both cast sites). Radio-style —
+        # arming one clears the others — except Seeking, the one option that stacks (SRD p.65),
+        # tracked independently. Transmuted's replacement damage type is chosen at arm time.
+        # Persistent (stays armed until manually toggled), mirroring Overchannel.
+        self.armed_metamagic = rpg.MetamagicOption.NONE
+        self.armed_seeking = False
+        self.pending_metamagic_transmute_type = -1
 
         # ── Drag-and-drop state ───────────────────────────────────────────
         self.drag_idx     = -1         # index of agent being dragged
@@ -1363,6 +1384,13 @@ class App:
         self.btn_cbt_draconic_resistance = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Draconic Resistance (1 SP)",
                                           (60, 130, 80), (90, 160, 110), self.font_md)
+        # Sorcerer Metamagic arm-toggles (Phases 2–3): one button per working option, including
+        # Twinned (Phase 3). Keyed by int(MetamagicOption); positioned/gated each draw.
+        self.btn_cbt_metamagic = {}
+        for _mm_val, _mm_name, _mm_sp, _mm_note in METAMAGIC_OPTIONS:
+            self.btn_cbt_metamagic[int(_mm_val)] = Button(
+                pygame.Rect(px, dummy_y, W, B), _mm_name,
+                (80, 62, 135), (120, 100, 185), self.font_md)
         self.btn_cbt_bend_luck = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Bend Luck (1 SP)",
                                           (100, 60, 180), (130, 90, 210), self.font_md)
@@ -2409,7 +2437,7 @@ class App:
         for n in names:
             stats.add_feat(n)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -2518,6 +2546,11 @@ class App:
         # Draconic L6: persist the chosen ancestry element (-1 = none/not yet set).
         if class_name == "Sorcerer" and subclass_name == "Draconic":
             stats.draconic_affinity_type = int(draconic_affinity_type)
+        # Sorcerer Metamagic: the learned options (assign the whole list via the property
+        # setter — metamagic_options is a bound std::vector<MetamagicOption>; do not mutate
+        # elements in place, cf. pybind11_array_copy_gotcha). Cleared for non-Sorcerers.
+        stats.metamagic_options = ([rpg.MetamagicOption(int(v)) for v in (metamagic_options or [])]
+                                   if class_name == "Sorcerer" else [])
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
@@ -2937,16 +2970,42 @@ class App:
 
         if not newly_crs:
             return
-        old_total = self.party_xp_total
+        old_total = self._party_xp_total()
         result = compute_encounter_xp(newly_crs)
-        self.party_xp_total += result["total_xp"]
+        self.party_xp_earned += result["total_xp"]
+        new_total = self._party_xp_total()
         mult = result["multiplier"]
         mult_str = "" if abs(mult - 1.0) < 1e-6 else f" ×{mult:g}"
         self._combat_log_add(
             f"⚔ XP earned: {result['total_xp']} "
             f"({result['count']} defeated, {result['base_xp']} base{mult_str}) "
-            f"— party total {self.party_xp_total}")
-        self._announce_level_ups(old_total, self.party_xp_total)
+            f"— party total {new_total}")
+        self._announce_level_ups(old_total, new_total)
+
+    def _ensure_xp_baseline(self) -> int:
+        """Lock the XP tracker's starting point to the party's current level the
+        first time a party is known, so the running total begins at the characters'
+        level — the XP already required to reach it — rather than 0. Frozen once
+        set, so later manual level-ups don't re-inflate it. Uses the lowest PC
+        level so no member is overstated and no spurious level-up is announced for
+        a higher-level member."""
+        if self.party_xp_baseline is None:
+            levels = []
+            for i, pt in enumerate(self.bm.placed_agents):
+                if pt.faction != PC_FACTION:
+                    continue
+                stats = self.combat.get_agent_stats(self.bm, i)
+                if getattr(stats, "is_npc", False):
+                    continue        # PC-faction summons/pets are not characters
+                levels.append(stats.char_level)
+            if levels:
+                self.party_xp_baseline = xp_for_level(min(levels))
+        return self.party_xp_baseline or 0
+
+    def _party_xp_total(self) -> int:
+        """Cumulative party XP shown by the tracker: the level-baseline (the party's
+        starting level) plus XP earned from enemies defeated this session."""
+        return self._ensure_xp_baseline() + self.party_xp_earned
 
     def _announce_level_ups(self, old_total: int, new_total: int):
         """If the party's cumulative XP just crossed one or more Character
@@ -8137,7 +8196,15 @@ class App:
             if sp_.geometry == rpg.SpellGeometry.Single:
                 self.pending_spell_is_aoe = False
                 self.pending_spell_targets = []
-                hint = "click a target"
+                # Twinned Spell (Sorcerer Metamagic): a Single-geometry spell gets one ADDITIONAL
+                # target. Collect two clicks (like Multiple geometry). The engine still validates
+                # affordability and only actually hits the 2nd target if it pays the SP.
+                if self._twinned_single_armed(sp_):
+                    self.pending_spell_num_targets = 2
+                    hint = "click 2 targets (0/2) — Twinned"
+                else:
+                    self.pending_spell_num_targets = 0
+                    hint = "click a target"
             elif sp_.geometry == rpg.SpellGeometry.Multiple:
                 # Multiple geometry: collect N independent targets
                 caster_level_ = self.combat.get_agent_stats(self.bm, idx).char_level
@@ -9465,6 +9532,41 @@ class App:
         self.spell_hover_cell          = None
         self._combat_log_add("Chromatic Orb cancelled.")
 
+    def _careful_ally_targets(self, caster_idx: int) -> list:
+        """Living party allies of the caster, to shield from a Careful Spell's area.
+        The engine caps the shielded set at the caster's CHA modifier and only excludes
+        those actually in the area, so passing all living allies is safe."""
+        out = []
+        for i in range(len(self.bm.placed_agents)):
+            if i == caster_idx or not self._are_allies(caster_idx, i):
+                continue
+            if self.combat.get_agent_stats(self.bm, i).hp_cur > 0:
+                out.append(i)
+        return out
+
+    def _twinned_single_armed(self, sp) -> bool:
+        """True when Twinned Spell is armed for a Single-geometry (single-target) spell, so the
+        cast should collect one extra target. Twinned only augments spells that otherwise hit a
+        single creature; AoE/Multiple geometries manage their own target counts. Affordability is
+        re-checked by the engine at cast time — a short-on-SP Twinned simply drops the 2nd target."""
+        return (self.armed_metamagic == rpg.MetamagicOption.Twinned and
+                sp.geometry == rpg.SpellGeometry.Single)
+
+    def _apply_armed_metamagic(self, action, caster_idx: int) -> None:
+        """Fold the sidebar-armed Metamagic option into a player SpellAction. The engine
+        validates applicability BEFORE spending Sorcery Points and no-ops (logged) on a
+        mismatch, so a wrong armed toggle costs nothing. A single radio option wins when
+        armed; otherwise Seeking (the one stacking option, SRD p.65) rides alone. Two
+        options on one cast = Phase 4 (Sorcery Incarnate)."""
+        if self.armed_metamagic != rpg.MetamagicOption.NONE:
+            action.metamagic = self.armed_metamagic
+            if self.armed_metamagic == rpg.MetamagicOption.Transmuted:
+                action.transmuted_damage_type = self.pending_metamagic_transmute_type
+            elif self.armed_metamagic == rpg.MetamagicOption.Careful:
+                action.careful_targets = self._careful_ally_targets(caster_idx)
+        elif self.armed_seeking:
+            action.metamagic = rpg.MetamagicOption.Seeking
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -9474,8 +9576,11 @@ class App:
         spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells_orig[self.pending_spell_idx]
 
-        # For Multiple geometry spells, collect targets until we have enough
-        if sp.geometry == rpg.SpellGeometry.Multiple:
+        # Multiple-geometry spells (and a Twinned Single-geometry spell) collect several targets
+        # across successive clicks before the cast resolves.
+        multi_target = (sp.geometry == rpg.SpellGeometry.Multiple or
+                        self._twinned_single_armed(sp))
+        if multi_target:
             self.pending_spell_targets.append(target_idx)
 
             targets_collected = len(self.pending_spell_targets)
@@ -9491,7 +9596,7 @@ class App:
         action.caster_idx     = caster_idx
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
-        action.target_indices = self.pending_spell_targets if sp.geometry == rpg.SpellGeometry.Multiple else [target_idx]
+        action.target_indices = self.pending_spell_targets if multi_target else [target_idx]
         action.damage_type_override = self.pending_spell_damage_type  # cast-time element choice (-1 = none)
         # Mantle of Majesty: free Command cast (no slot) + the chosen Command word.
         action.free_cast      = self.pending_spell_free_cast
@@ -9500,6 +9605,7 @@ class App:
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         action.overchannel   = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
+        self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
         self._apply_pact_slot_level(caster_idx, sp, action)
 
         # Cast through the OnDeclareCast window (begin_cast): a targeted creature may react before the
@@ -9853,6 +9959,7 @@ class App:
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = []
         action.overchannel    = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
+        self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
         if sp.geometry == rpg.SpellGeometry.Rectangle and self.spell_anchor_cell is not None:
             # Oriented wall: anchor is the first click, `cell` is the endpoint.
             action.aoe_col  = self.spell_anchor_cell.col
@@ -10393,6 +10500,7 @@ class App:
                     "feats": list(s.feats),
                     "stolen_spell_names": list(s.stolen_spell_names),
                     "elemental_adept_types": list(s.elemental_adept_types),
+                    "metamagic_options": [int(m) for m in s.metamagic_options],
                     "draconic_hp_applied": s.draconic_hp_applied,
                     "draconic_affinity_type": s.draconic_affinity_type,
                     "draconic_affinity_used_this_turn": s.draconic_affinity_used_this_turn,
@@ -14619,6 +14727,36 @@ class App:
                         self.btn_cbt_tides_of_chaos.draw(self.screen)
                         y += B + gap
 
+            # Sorcerer Metamagic arm-toggles (Phase 2): one button per LEARNED + AFFORDABLE
+            # option (any subclass, L2+). The armed option is highlighted; arming modifies the
+            # next player cast (_apply_armed_metamagic). Seeking is an independent stacking toggle.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                        stats.char_level >= 2 and len(stats.metamagic_options) > 0):
+                    sp_res = stats.get_resource("Sorcery Points")
+                    sp_have = sp_res.current if sp_res else 0
+                    learned = list(stats.metamagic_options)
+                    for mm_val, mm_name, mm_sp, mm_note in METAMAGIC_OPTIONS:
+                        key = int(mm_val)
+                        btn = self.btn_cbt_metamagic.get(key)
+                        if btn is None:  # defensive: every option now has a button
+                            continue
+                        cost = rpg.CombatEngine.metamagic_sp_cost(mm_val)
+                        if not metamagic_offered(mm_val, learned, sp_have, cost):
+                            continue
+                        armed = (self.armed_seeking if mm_val == rpg.MetamagicOption.Seeking
+                                 else self.armed_metamagic == mm_val)
+                        btn.text = f"{'✓ ' if armed else ''}✨ {mm_name} ({cost} SP)"
+                        btn.color = (120, 95, 190) if armed else (80, 62, 135)
+                        btn.rect.x = lx
+                        btn.rect.y = y
+                        btn.rect.w = W
+                        btn.draw(self.screen)
+                        if armed:
+                            pygame.draw.rect(self.screen, (210, 190, 255), btn.rect, 2, border_radius=4)
+                        y += B + gap
+
             # Clockwork Sorcerer L14+ Trance of Order (Bonus Action): for 1 minute, attacks against
             # you lose Advantage and you floor your own d20s to 10. Free 1/long rest or 5 SP. Shown
             # while not already active and a use (free or 5 SP) is available, with a bonus action free.
@@ -15608,7 +15746,8 @@ class App:
         up by _award_encounter_xp() — is always visible. See xp.py."""
         px = self._panel_x()
         sh = self.screen.get_height()
-        label = f"★ XP  {self.party_xp_total:,}  (Lv {level_for_xp(self.party_xp_total)})"
+        total = self._party_xp_total()
+        label = f"★ XP  {total:,}  (Lv {level_for_xp(total)})"
         surf  = self.font_md.render(label, True, (245, 215, 90))   # gold
         pad   = 6
         w     = surf.get_width() + pad * 2
@@ -17551,6 +17690,38 @@ class App:
                                 self._combat_log_add("Tides of Chaos: not available (no use left / wrong subclass/level)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
+                    # Sorcerer Metamagic arm-toggles: radio-select (arming one clears the others;
+                    # clicking the armed one disarms). Seeking toggles independently (it stacks).
+                    for _mm_key, _mm_btn in self.btn_cbt_metamagic.items():
+                        if not _mm_btn.clicked(event):
+                            continue
+                        opt = rpg.MetamagicOption(_mm_key)
+                        name = METAMAGIC_NAME_BY_VALUE.get(_mm_key, "Metamagic")
+                        cost = rpg.CombatEngine.metamagic_sp_cost(opt)
+                        if opt == rpg.MetamagicOption.Seeking:
+                            self.armed_seeking = not self.armed_seeking
+                            self._combat_log_add(
+                                f"Metamagic {name} {'ARMED' if self.armed_seeking else 'disarmed'} "
+                                f"({cost} SP on next cast).")
+                        elif self.armed_metamagic == opt:
+                            self.armed_metamagic = rpg.MetamagicOption.NONE
+                            self._combat_log_add(f"Metamagic {name} disarmed.")
+                        else:
+                            self.armed_metamagic = opt
+                            self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
+                            # Transmuted needs a replacement damage type chosen at arm time.
+                            if opt == rpg.MetamagicOption.Transmuted:
+                                def _on_mm_transmute(chosen):
+                                    self.pending_metamagic_transmute_type = chosen[0] if chosen else -1
+                                    tname = _DAMAGE_TYPE_NAMES.get(self.pending_metamagic_transmute_type, "?")
+                                    self._combat_log_add(f"Transmuted Spell → {tname} damage.")
+                                    self._flush_combat_log()
+                                self._element_dialog.show(
+                                    _on_mm_transmute, METAMAGIC_TRANSMUTE_OPTIONS,
+                                    current_values=None, multi=False,
+                                    title="Transmuted Spell — new damage type")
+                        self._flush_combat_log()
+                        break
                     if self.btn_cbt_trance_of_order.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

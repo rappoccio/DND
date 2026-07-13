@@ -2938,16 +2938,40 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     }
 
     // ── Rogue Sneak Attack / Cunning Strike eligibility ───────────────────
-    // Once per turn, a hit with a Finesse or Ranged weapon while having advantage qualifies for
-    // Sneak Attack. Like Brutal Strike, the dice and any Cunning Strike rider are applied out of
-    // band via applyCunningStrikeEffect() AFTER this attack fully resolves — so a rider that sets a
-    // condition (e.g. Knock Out) can never leak into this attack's own post-resolution logic. Here
-    // we only flag availability. (The "ally within 5 ft" trigger is deferred — needs a faction system.)
+    // Once per turn, a hit with a Finesse or Ranged weapon qualifies for Sneak Attack when the
+    // rogue lacks Disadvantage AND either (a) has Advantage, or (b) RAW: an ally of the rogue (an
+    // enemy of the target) is within 5 ft of the target and isn't Incapacitated. Trigger (b) grants
+    // NO advantage on the roll — it is only an alternative Sneak Attack qualifier. Like Brutal
+    // Strike, the dice and any Cunning Strike rider are applied out of band via
+    // applyCunningStrikeEffect() AFTER this attack fully resolves — so a rider that sets a condition
+    // (e.g. Knock Out) can never leak into this attack's own post-resolution logic. Here we only
+    // flag availability. (areAllies now provides the faction check the original TODO lacked.)
     if (r.hit && atk_stats.character_class == CharacterClass::Rogue &&
         (w.finesse || w.type == WeaponType::Ranged) &&
-        adv && !dis && !atk_cond.sneak_attack_used) {
-        updated_atk_cond.cunning_strike_available = true;
-        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        !dis && !atk_cond.sneak_attack_used) {
+        bool qualifies = adv;
+        if (!qualifies) {
+            const int na = static_cast<int>(agents.size());
+            for (int i = 0; i < na; ++i) {
+                if (i == action.attacker_idx || i == action.target_idx) continue;
+                const PlacedAgent& ally = agents[static_cast<std::size_t>(i)];
+                if (ally.removed_from_play) continue;
+                if (!areAllies(bm, action.attacker_idx, i)) continue;   // must be the rogue's ally
+                const Agent::Conditions& ac = ally.agent->getConditions();
+                if (ac.dead || ac.unconscious || ac.incapacitated) continue;  // can't threaten
+                if (footprintDistance(ally.origin, ally.agent->getSize(),
+                                      tgt_pt.origin, tgt_sz) <= 1) {
+                    qualifies = true;
+                    log_("Sneak Attack enabled: {} is within 5 ft of the target",
+                         agentName(bm, i));
+                    break;
+                }
+            }
+        }
+        if (qualifies) {
+            updated_atk_cond.cunning_strike_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
     }
 
     // ── Monk Stunning Strike eligibility ────────────────────────────────────

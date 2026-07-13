@@ -2376,8 +2376,9 @@ public:
     // Formula: spell.num_targets + (slot_level - spell.level) * spell.targets_per_upcast_level
     // For non-Multiple geometries, returns 1 (Single geometry) or 0 (AoE spells).
     // caster_level: character level for special cases like Eldritch Blast (default -1 means use normal formula)
+    // twinned: Twinned Spell (Sorcerer Metamagic) grants one extra target (Single → 2, Multiple → +1).
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level,
-                                            int caster_level = -1) const noexcept;
+                                            int caster_level = -1, bool twinned = false) const noexcept;
 
     // Effective casting range (ft) for a spell as cast by a specific agent, after
     // range-extending invocations. Eldritch Spear (code 2): the chosen damage cantrip's

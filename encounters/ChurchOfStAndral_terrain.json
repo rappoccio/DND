@@ -131,11 +131,13 @@
   ],
   "walls_enabled": false,
   "doors": [],
+  "ladders": [],
   "manual_grid": {
     "cell_px": 50,
     "anchor": [
       57,
       89
     ]
-  }
+  },
+  "explored": []
 }

@@ -75,6 +75,8 @@ def dict_to_stats(stats_dict):
     # long rest). Persisted so an in-progress steal survives save/reload.
     stats.stolen_spell_names = list(stats_dict.get("stolen_spell_names", []))
     stats.elemental_adept_types = [int(t) for t in stats_dict.get("elemental_adept_types", [])]
+    # Sorcerer Metamagic: learned options (list of MetamagicOption enum values).
+    stats.metamagic_options = [rpg.MetamagicOption(int(v)) for v in stats_dict.get("metamagic_options", [])]
     # Sorcerer subclass feature state (round-trip so flags survive save/reload)
     stats.draconic_hp_applied = bool(stats_dict.get("draconic_hp_applied", False))
     stats.draconic_affinity_type = int(stats_dict.get("draconic_affinity_type", -1))

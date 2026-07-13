@@ -558,7 +558,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             case MetamagicQuickened:
                 if (sp.casting_time != Spell::Action) { applicable = false; why = "Quickened needs an Action-cast spell"; }
                 break;
-            default: break;  // Distant / Heightened / Seeking / Twinned always apply
+            case MetamagicTwinned:
+                // Twinned only augments a spell that targets exactly one creature (Single geometry).
+                // Area spells and spells that already hit several creatures (Multiple geometry, e.g.
+                // Magic Missile / Scorching Ray) can't be twinned — reject before spending any SP.
+                if (sp.geometry != Spell::Single) {
+                    applicable = false; why = "Twinned only affects a spell that targets a single creature";
+                }
+                break;
+            default: break;  // Distant / Heightened / Seeking always apply
         }
 
         if (!applicable) {
@@ -608,8 +616,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     break;
                 }
                 case MetamagicTwinned:
-                    sp.targets_per_upcast_level += 1;
-                    log_("Metamagic: Twinned Spell ({} SP) — +1 target per upcast level", cost);
+                    // The extra target is granted at target-resolution time via
+                    // getNumTargetsForSpell(..., twinned=true) — which trims/expands the target
+                    // list for BOTH Single (→2) and Multiple (+1) geometry. Nothing to mutate on
+                    // the spell here; applied_metamagic == MetamagicTwinned drives the cap below.
+                    log_("Metamagic: Twinned Spell ({} SP) — one additional target this cast", cost);
                     break;
                 default: break;
             }
@@ -666,13 +677,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         : resolveAoeTargets(agents, sp, action.caster_idx, center_col, center_row,
                             action.aoe_col2, action.aoe_row2);
 
-    // Multiple-geometry spells (e.g. Command) are authoritatively capped to the engine's
-    // upcast target budget — num_targets + (slot_level - level) * targets_per_upcast_level.
-    // The GUI hands over the creatures the player clicked; the engine trims to the allowed
-    // count so the target-count rule lives in exactly one place (getNumTargetsForSpell) and
-    // the per-target effect loop below applies to each kept target identically.
-    if (sp.geometry == Spell::Multiple) {
-        int allowed = getNumTargetsForSpell(sp, action.slot_level, caster_stats.char_level);
+    // Single- and Multiple-geometry directly-targeted spells are authoritatively capped to the
+    // engine's target budget — num_targets + (slot_level - level) * targets_per_upcast_level,
+    // plus +1 when Twinned Spell was actually applied above. Single geometry normally caps to 1;
+    // an applied Twinned raises it to 2. The GUI hands over the creatures the player clicked; the
+    // engine trims to the allowed count so the target-count rule lives in exactly one place
+    // (getNumTargetsForSpell) and the per-target effect loop below applies to each kept target
+    // identically. If Twinned couldn't be paid for (SP short), applied_metamagic stays None and the
+    // extra clicked target is dropped here — so a failed Twinned costs nothing and hits only one.
+    if (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple) {
+        const bool twinned = (applied_metamagic == MetamagicTwinned);
+        int allowed = getNumTargetsForSpell(sp, action.slot_level, caster_stats.char_level, twinned);
         if (allowed >= 0 && static_cast<int>(targets.size()) > allowed)
             targets.resize(static_cast<std::size_t>(allowed));
     }
@@ -699,6 +714,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         auto it = safeTargets_.find(action.caster_idx);
         std::vector<int> safe = (it != safeTargets_.end()) ? it->second : std::vector<int>{};
         safe.insert(safe.end(), careful_set.begin(), careful_set.end());
+        // Careful Spell always spares the caster from their OWN area (a Careful caster never
+        // catches themselves in the blast). This is separate from the CHA-mod-capped set of
+        // chosen allies (careful_set) — protecting yourself doesn't consume one of those slots.
+        if (applied_metamagic == MetamagicCareful)
+            safe.push_back(action.caster_idx);
         // Faction rule 2 — "creatures of your choosing" harmful spells (e.g. Radiance of the
         // Dawn) intrinsically spare the caster's allies (same faction + claimed neutrals).
         // Ordinary AoEs (Fireball) leave selective_targeting false → friendly fire stays ON.
@@ -2257,7 +2277,7 @@ std::vector<int> CombatEngine::availableCastableSpells(
 }
 
 int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level,
-                                        int caster_level) const noexcept
+                                        int caster_level, bool twinned) const noexcept
 {
     // Eldritch Blast beams scale with CHARACTER level (cantrip), not slot level.
     if (sp.name == "Eldritch Blast" && caster_level >= 0) {
@@ -2270,7 +2290,13 @@ int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level,
 
     // For Multiple geometry spells, calculate targets based on upcast level
     if (sp.geometry != Spell::Multiple) {
-        return (sp.geometry == Spell::Single) ? 1 : 0;
+        // Single geometry normally targets exactly one creature. Twinned Spell (Sorcerer
+        // Metamagic, SRD p.66) grants one ADDITIONAL target for a spell that can otherwise
+        // hit only one creature — the classic case (Charm Person, Haste, Ray of Frost). The
+        // bump is scoped to target COUNT only; it does NOT raise the slot's upcast damage.
+        if (sp.geometry == Spell::Single)
+            return twinned ? 2 : 1;
+        return 0;  // AoE geometries are never "single-target" and can't be twinned.
     }
 
     // Multiple geometry: num_targets + (slot_level - spell.level) * targets_per_upcast_level
@@ -2278,6 +2304,7 @@ int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level,
     if (slot_level > 0 && slot_level > sp.level) {
         num_targets += (slot_level - sp.level) * sp.targets_per_upcast_level;
     }
+    if (twinned) num_targets += 1;  // Twinned Spell: one extra creature this cast.
     return std::max(1, num_targets);  // Always at least 1 target
 }
 

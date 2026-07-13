@@ -632,6 +632,241 @@ class InvocationDialog:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Sorcerer Metamagic (SRD_CC_v5.2 p.65-66). A Sorcerer learns a limited number of
+#  options and applies one to a spell at cast time (see METAMAGIC_IMPLEMENTATION_PLAN.md).
+#  Subtle Spell is intentionally omitted — it is a deliberate no-op in this combat sim
+#  (V/S/M components aren't simulated), so offering it would be a dead pick.
+#  Rows: (MetamagicOption value, display name, SP cost, note).
+# ─────────────────────────────────────────────────────────────────────────────
+METAMAGIC_OPTIONS = [
+    (rpg.MetamagicOption.Careful,    "Careful Spell",    1, "Allies auto-excluded from your AoE saves"),
+    (rpg.MetamagicOption.Distant,    "Distant Spell",    1, "Double the spell's range (touch → 30 ft)"),
+    (rpg.MetamagicOption.Empowered,  "Empowered Spell",  1, "Reroll up to CHA-mod low damage dice"),
+    (rpg.MetamagicOption.Extended,   "Extended Spell",   1, "Double the duration (needs ≥ 2 rounds)"),
+    (rpg.MetamagicOption.Heightened, "Heightened Spell", 2, "One target has Disadvantage on its save"),
+    (rpg.MetamagicOption.Quickened,  "Quickened Spell",  2, "Cast a 1-action spell as a Bonus Action"),
+    (rpg.MetamagicOption.Seeking,    "Seeking Spell",    1, "Reroll a missed spell attack (stacks)"),
+    (rpg.MetamagicOption.Transmuted, "Transmuted Spell", 1, "Change the spell's damage type"),
+    (rpg.MetamagicOption.Twinned,    "Twinned Spell",    1, "Target one additional creature"),
+]
+
+
+def metamagic_offered(option, learned_values, sp_available: int, sp_cost: int) -> bool:
+    """Combat-sidebar gate for a Metamagic arm-toggle: offer it only when the option
+    is LEARNED (in the caster's metamagic_options) and the caster can currently AFFORD
+    its Sorcery-Point cost. Factored out as a pure predicate so it can be tested and
+    reused by the sidebar draw pass (Phase 2)."""
+    learned = {int(v) for v in (learned_values or [])}
+    return int(option) in learned and sp_available >= sp_cost
+
+
+def metamagic_known_count(level: int) -> int:
+    """How many Metamagic options a Sorcerer knows at a given level (SRD p.65):
+    2 at L2, +2 at L10, +2 at L17 (max 6). Below L2 the class has none."""
+    if level >= 17:
+        return 6
+    if level >= 10:
+        return 4
+    if level >= 2:
+        return 2
+    return 0
+
+
+class MetamagicDialog:
+    """Scrollable multi-select picker for Sorcerer Metamagic options. A Sorcerer
+    knows a level-capped number of options (see metamagic_known_count); once the cap
+    is reached, un-selected rows render greyed and can't be toggled on (an already-
+    selected row can always be toggled OFF so a now-illegal pick is removable).
+    Commits the chosen MetamagicOption int values to the callback on dismiss."""
+    ITEM_H = 34
+    PAD    = 12
+    HDR_H  = 36
+    BTN_H  = 28
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self._selected = set()       # int enum values currently chosen
+        self._eff_level = 1          # live Sorcerer level for the cap
+        self._callback = None        # called with sorted list of int values on dismiss
+        self._done_rect = None
+        self._frames_since_show = 0
+
+    def show(self, callback, current_values, eff_level):
+        self.visible = True
+        self._callback = callback
+        self._selected = set(int(v) for v in (current_values or []))
+        self._eff_level = eff_level
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self._frames_since_show = 0
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w, dlg_h = 460, 480
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    @property
+    def _cap(self):
+        return metamagic_known_count(self._eff_level)
+
+    def _commit_and_dismiss(self):
+        if self._callback:
+            self._callback(sorted(self._selected))
+        self.visible = False
+
+    def _row_enabled(self, value):
+        """A row can be toggled ON only at L2+ and while under the known-count cap.
+        A selected row can always be toggled OFF."""
+        v = int(value)
+        if v in self._selected:
+            return True
+        return self._eff_level >= 2 and len(self._selected) < self._cap
+
+    def _list_geom(self):
+        list_y = self.rect.y + self.HDR_H
+        list_h = self.rect.h - self.HDR_H - self.BTN_H - self.PAD * 2
+        return list_y, list_h
+
+    def _max_scroll(self, list_h):
+        return max(0, len(METAMAGIC_OPTIONS) * self.ITEM_H - list_h)
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+
+        # Ignore the very click that opened us (same frame as show()).
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self._commit_and_dismiss()
+                return True
+
+        elif event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            _list_y, list_h = self._list_geom()
+            self.scroll_y = max(0, min(self.scroll_y - event.y * 30, self._max_scroll(list_h)))
+            return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            list_y, list_h = self._list_geom()
+            self._hover_idx = -1
+            for i in range(len(METAMAGIC_OPTIONS)):
+                iy = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= iy < list_y + list_h:
+                    r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if r.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._done_rect and self._done_rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()
+                return True
+            if not self.rect.collidepoint(*event.pos):
+                self._commit_and_dismiss()   # click outside = accept current
+                return True
+            list_y, list_h = self._list_geom()
+            for i, (value, name, sp, note) in enumerate(METAMAGIC_OPTIONS):
+                iy = list_y + i * self.ITEM_H - self.scroll_y
+                if not (list_y <= iy < list_y + list_h):
+                    continue
+                r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if r.collidepoint(*event.pos) and self._row_enabled(value):
+                    v = int(value)
+                    if v in self._selected:
+                        self._selected.discard(v)
+                    else:
+                        self._selected.add(v)
+                    return True
+            return True
+
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+
+        pygame.draw.rect(surf, (40, 40, 54), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+
+        title = self.font_md.render(
+            f"Metamagic  (Lv {self._eff_level}  —  {len(self._selected)}/{self._cap} known)",
+            True, (220, 220, 235))
+        surf.blit(title, (self.rect.x + self.PAD, self.rect.y + 9))
+
+        list_y, list_h = self._list_geom()
+        list_rect = pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h)
+        prev_clip = surf.get_clip()
+        surf.set_clip(list_rect)
+        cb = 14
+        at_cap = len(self._selected) >= self._cap
+        for i, (value, name, sp, note) in enumerate(METAMAGIC_OPTIONS):
+            iy = list_y + i * self.ITEM_H - self.scroll_y
+            if iy + self.ITEM_H < list_y or iy > list_y + list_h:
+                continue
+            row = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+            selected = int(value) in self._selected
+            enabled  = self._row_enabled(value)
+            if i == self._hover_idx and enabled:
+                pygame.draw.rect(surf, (62, 62, 84), row)
+
+            # Checkbox
+            cb_r = pygame.Rect(row.x + 4, row.y + (self.ITEM_H - cb) // 2, cb, cb)
+            box_col = (45, 110, 55) if selected else (50, 50, 66)
+            bdr_col = (80, 200, 90) if selected else (90, 90, 120)
+            if not enabled and not selected:
+                box_col = (38, 38, 48)
+            pygame.draw.rect(surf, box_col, cb_r, border_radius=2)
+            pygame.draw.rect(surf, bdr_col, cb_r, 1, border_radius=2)
+            if selected:
+                pts = [(cb_r.x + 2, cb_r.centery), (cb_r.centerx - 1, cb_r.bottom - 2), (cb_r.right - 2, cb_r.y + 2)]
+                pygame.draw.lines(surf, (120, 240, 120), False, pts, 2)
+
+            name_col = (225, 225, 240) if enabled or selected else (120, 120, 140)
+            nm = self.font_sm.render(name, True, name_col)
+            surf.blit(nm, (cb_r.right + 8, row.y + 3))
+            note_col = (140, 140, 165) if enabled or selected else (95, 95, 115)
+            nt = self.font_sm.render(note, True, note_col)
+            surf.blit(nt, (cb_r.right + 8, row.y + 17))
+
+            # Right-side SP-cost tag
+            tag = f"{sp} SP"
+            tcol = (170, 200, 240) if enabled or selected else (95, 95, 115)
+            ts = self.font_sm.render(tag, True, tcol)
+            surf.blit(ts, (row.right - ts.get_width() - 6, row.y + (self.ITEM_H - ts.get_height()) // 2))
+        surf.set_clip(prev_clip)
+
+        # Scrollbar
+        max_scroll = self._max_scroll(list_h)
+        if max_scroll > 0:
+            track = pygame.Rect(list_rect.right - 6, list_y, 6, list_h)
+            pygame.draw.rect(surf, (30, 30, 42), track)
+            frac = list_h / (len(METAMAGIC_OPTIONS) * self.ITEM_H)
+            th_h = max(20, int(list_h * frac))
+            th_y = list_y + int((list_h - th_h) * (self.scroll_y / max_scroll))
+            pygame.draw.rect(surf, (110, 110, 150), pygame.Rect(track.x, th_y, track.w, th_h))
+
+        # Done button
+        self._done_rect = pygame.Rect(self.rect.right - 90 - self.PAD,
+                                      self.rect.bottom - self.BTN_H - self.PAD, 90, self.BTN_H)
+        hov = self._done_rect.collidepoint(*pygame.mouse.get_pos())
+        pygame.draw.rect(surf, (50, 125, 65) if hov else (35, 90, 45), self._done_rect, border_radius=4)
+        pygame.draw.rect(surf, (90, 90, 120), self._done_rect, 1, border_radius=4)
+        dt = self.font_md.render(f"Done ({len(self._selected)})", True, (220, 220, 220))
+        surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  General feats (2024 PHB). A PC may take several (unlike the single origin feat).
 #  status: "in"   = combat effect wired into the engine now
 #          "soon" = planned combat effect, not yet implemented
@@ -1430,6 +1665,9 @@ class StatsDialog:
         self._elemental_adept_types = []   # MagicDamage_t indices chosen for Elemental Adept
         self._draconic_affinity_type = -1  # Draconic L6: chosen ancestry element (-1 = not set)
         self._draconic_affinity_btn_rect = None  # "Dragon Ancestry" button rect in draw()
+        self._metamagic_options    = []    # Sorcerer Metamagic (list of int MetamagicOption values)
+        self._metamagic_dialog     = None  # scrollable picker (Sorcerer L2+)
+        self._metamagic_btn_rect   = None  # "Metamagic..." launch button
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE", hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE"):
@@ -1447,6 +1685,7 @@ class StatsDialog:
         self._npc_spell_groups  = dict(npc_spell_groups) if npc_spell_groups else {}
         self._armor_list        = armor_list or []
         self._eldritch_invocations = list(stats.eldritch_invocations) if hasattr(stats, 'eldritch_invocations') else []
+        self._metamagic_options = [int(m) for m in stats.metamagic_options] if hasattr(stats, 'metamagic_options') else []
         # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
@@ -1457,6 +1696,7 @@ class StatsDialog:
         self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
+        self._metamagic_dialog = MetamagicDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
 
     def _get_available_subclasses(self, class_name: str) -> list[str]:
@@ -1571,6 +1811,11 @@ class StatsDialog:
             self._invocation_dialog.handle(event)
             return True
 
+        # Metamagic picker is modal-on-top too.
+        if self._metamagic_dialog and self._metamagic_dialog.visible:
+            self._metamagic_dialog.handle(event)
+            return True
+
         # General Feats picker is modal-on-top too.
         if self._feat_dialog and self._feat_dialog.visible:
             self._feat_dialog.handle(event)
@@ -1606,6 +1851,14 @@ class StatsDialog:
                     eff_level = self._char_level_stepper.value if self._char_level_stepper else self._char_level
                     self._invocation_dialog.show(self._on_invocations_chosen,
                                                  self._eldritch_invocations, eff_level)
+                return True
+
+            # Metamagic "Choose..." button → open the scrollable picker (Sorcerer L2+).
+            if self._metamagic_btn_rect and self._metamagic_btn_rect.collidepoint(event.pos):
+                if self._metamagic_dialog:
+                    eff_level = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+                    self._metamagic_dialog.show(self._on_metamagic_chosen,
+                                                self._metamagic_options, eff_level)
                 return True
 
             # General Feats "Choose..." button → open the multi-select picker.
@@ -1767,6 +2020,10 @@ class StatsDialog:
         """Callback from InvocationDialog: store the chosen invocation codes."""
         self._eldritch_invocations = list(codes)
 
+    def _on_metamagic_chosen(self, values):
+        """Callback from MetamagicDialog: store the chosen MetamagicOption int values."""
+        self._metamagic_options = list(values)
+
     def _on_feats_chosen(self, names):
         """Callback from FeatDialog: store the chosen general-feat names.
 
@@ -1800,7 +2057,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options))
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -2103,6 +2360,26 @@ class StatsDialog:
             screen.blit(btn_txt, btn_txt.get_rect(center=self._invocation_btn_rect.center))
             npc_checkbox_y = inv_y + 24
 
+        # ── Sorcerer Metamagic ────────────────────────────────────────────
+        # Learned options round-trip through _metamagic_options; the actual arm/cast
+        # happens on the combat sidebar. Gated on Sorcerer L2+ (SRD p.65). Flows at the
+        # running npc_checkbox_y cursor so it sits below the subclass / Dragon Ancestry row.
+        self._metamagic_btn_rect = None
+        if self._class_name == "Sorcerer":
+            eff_lvl = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+            if eff_lvl >= 2:
+                mm_y = npc_checkbox_y
+                mm_lbl = self.font_sm.render("Metamagic:", True, self.C_LABEL)
+                screen.blit(mm_lbl, (dlg.x + self.PAD, mm_y))
+                n_mm = len(self._metamagic_options)
+                self._metamagic_btn_rect = pygame.Rect(dlg.x + self.PAD + 80, mm_y - 2, 150, 18)
+                hov = self._metamagic_btn_rect.collidepoint(pygame.mouse.get_pos())
+                pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._metamagic_btn_rect, border_radius=3)
+                pygame.draw.rect(screen, (120, 150, 180), self._metamagic_btn_rect, 1, border_radius=3)
+                mm_txt = self.font_sm.render(f"Choose... ({n_mm} selected)", True, (210, 220, 240))
+                screen.blit(mm_txt, mm_txt.get_rect(center=self._metamagic_btn_rect.center))
+                npc_checkbox_y = mm_y + 24
+
         # ── Origin Feat (PCs only): one origin feat per character ──────────
         self._origin_feat_rects = {}
         if self._char_level_stepper and not self._is_npc:
@@ -2222,6 +2499,9 @@ class StatsDialog:
         # Invocation picker draws last so it overlays the whole stats dialog.
         if self._invocation_dialog:
             self._invocation_dialog.draw(screen)
+        # Metamagic picker overlays on top as well.
+        if self._metamagic_dialog:
+            self._metamagic_dialog.draw(screen)
         # General Feats picker overlays on top as well.
         if self._feat_dialog:
             self._feat_dialog.draw(screen)

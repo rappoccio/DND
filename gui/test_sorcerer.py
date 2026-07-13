@@ -630,6 +630,124 @@ def test_metamagic_careful_shields_ally():
     print("✅ test_metamagic_careful_shields_ally passed")
 
 
+def test_metamagic_careful_shields_caster():
+    """Careful Spell spares the CASTER from their own area, even standing in the blast.
+    (A Careful caster never catches themselves — separate from the CHA-mod-capped ally set.)"""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    sorc = add_agent_to_battle(engine, bm, create_test_agent("Sorcerer", 5, 5), hp=100)
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Enemy", 6, 5), hp=100)
+    _sorcerer(engine, bm, sorc, 5)
+
+    spell = rpg.Spell()
+    spell.name = "Fireball"
+    spell.level = 0
+    spell.attack_type = rpg.SpellAttack.Save
+    spell.save_ability = rpg.SaveAbility.Dexterity
+    spell.geometry = rpg.SpellGeometry.Sphere
+    spell.radius = 20
+    spell.range = 120
+    roll = rpg.MagicDamageRoll()
+    roll.type = rpg.MagicDamage.Fire
+    roll.num_dice = 8
+    roll.die_size = 6
+    spell.magic_damage_rolls = [roll]
+    engine.set_agent_spells(bm, sorc, [spell])
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.aoe_col = 5   # centered on the caster's OWN cell
+    action.aoe_row = 5
+    action.metamagic = rpg.MetamagicOption.Careful
+    # NB: no careful_targets passed — caster protection is independent of the chosen-ally set.
+    res = engine.execute_spell(bm, action)
+    hit = {tr.target_idx for tr in res.target_results}
+    assert sorc not in hit, "Careful should spare the caster from their own AoE"
+    assert engine.get_agent_stats(bm, sorc).hp_cur == 100, "the caster should take no damage"
+    assert enemy in hit, "enemies are still caught in the area"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Careful should spend 1 SP (5 -> 4)"
+    print("✅ test_metamagic_careful_shields_caster passed")
+
+
+# ── Metamagic Phase 3: Twinned Spell (the one engine change) ─────────────────
+
+def test_twinned_num_targets_helper():
+    """getNumTargetsForSpell honors the twinned flag: Single 1->2, and it is the single
+    source of truth for the extra-target math (target COUNT only, no upcast damage change)."""
+    bm, engine, sorc, tgt = _setup(5)
+    single = _save_spell()
+    assert engine.get_num_targets_for_spell(single, 0, 5, False) == 1, \
+        "a Single-geometry spell targets one creature normally"
+    assert engine.get_num_targets_for_spell(single, 0, 5, True) == 2, \
+        "Twinned gives a Single-geometry spell one additional target"
+    print("✅ test_twinned_num_targets_helper passed")
+
+
+def test_twinned_single_target_hits_two():
+    """Twinned Spell on a Single-geometry spell applies to BOTH clicked targets and spends 1 SP.
+    Without Twinned, the engine authoritatively caps a Single spell to its first target."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    sorc = add_agent_to_battle(engine, bm, create_test_agent("Sorcerer", 5, 5))
+    t1 = add_agent_to_battle(engine, bm, create_test_agent("T1", 6, 5), hp=200)
+    t2 = add_agent_to_battle(engine, bm, create_test_agent("T2", 7, 5), hp=200)
+    _sorcerer(engine, bm, sorc, 5, cha=16)
+    # Automatic damage (no save/attack roll) so both targets deterministically take damage.
+    engine.set_agent_spells(bm, sorc, [_auto_spell(num_dice=4, die_size=6)])
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [t1, t2]
+    action.metamagic = rpg.MetamagicOption.Twinned
+    res = engine.execute_spell(bm, action)
+    assert res.valid, "the twinned spell should cast"
+    hp1 = engine.get_agent_stats(bm, t1).hp_cur
+    hp2 = engine.get_agent_stats(bm, t2).hp_cur
+    assert hp1 < 200 and hp2 < 200, f"both twin targets should be damaged (got {hp1}, {hp2})"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 4, \
+        "Twinned should spend 1 SP (5 -> 4)"
+
+    # Same two targets passed WITHOUT Twinned: the engine trims to one (Single geometry).
+    for t in (t1, t2):
+        st = engine.get_agent_stats(bm, t); st.hp_cur = 200
+        engine.set_agent_stats(bm, t, st)
+    plain = rpg.SpellAction()
+    plain.caster_idx = sorc
+    plain.spell_idx = 0
+    plain.target_indices = [t1, t2]
+    engine.execute_spell(bm, plain)
+    hp1b = engine.get_agent_stats(bm, t1).hp_cur
+    hp2b = engine.get_agent_stats(bm, t2).hp_cur
+    assert hp1b < 200 and hp2b == 200, \
+        f"without Twinned only the first target is hit (got {hp1b}, {hp2b})"
+    print("✅ test_twinned_single_target_hits_two passed")
+
+
+def test_twinned_gating():
+    """Twinned on an area spell (not single-target) is rejected before spending any SP."""
+    bm, engine, sorc, tgt = _setup(5)
+    aoe = _auto_spell(num_dice=2, die_size=6, name="Twinned Area Test")
+    aoe.geometry = rpg.SpellGeometry.Sphere
+    aoe.radius = 20
+    engine.set_agent_spells(bm, sorc, [aoe])
+
+    action = rpg.SpellAction()
+    action.caster_idx = sorc
+    action.spell_idx = 0
+    action.target_indices = [tgt]
+    action.aoe_col = 6
+    action.aoe_row = 5
+    action.metamagic = rpg.MetamagicOption.Twinned
+    res = engine.execute_spell(bm, action)
+    assert res.valid, "the spell should still cast without the (inapplicable) metamagic"
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 5, \
+        "Twinned must not spend SP on an area spell that can't be twinned"
+    print("✅ test_twinned_gating passed")
+
+
 # ── Phase 3: subclass features (combat-core slice) ───────────────────────────
 
 def test_draconic_resilience_ac():
@@ -880,6 +998,57 @@ def test_wild_magic_surge_gating():
     res = engine.roll_wild_magic_surge(bm, idx)
     assert res.effect == 0 and res.d100_roll == 0, "pre-L3 → no surge"
     print("✅ test_wild_magic_surge_gating passed")
+
+
+def test_metamagic_learn_roundtrip():
+    """Learned Metamagic options survive the save-dict → dict_to_stats reload cycle.
+    (Save side mirrors main.py's stats block; load side is agent_loader.dict_to_stats.)"""
+    from agent_loader import dict_to_stats
+    chosen = [rpg.MetamagicOption.Careful, rpg.MetamagicOption.Twinned, rpg.MetamagicOption.Heightened]
+    s = rpg.Stats()
+    s.metamagic_options = chosen
+    # Serialize exactly as main.py's save block does, then reload.
+    stats_dict = {"metamagic_options": [int(m) for m in s.metamagic_options]}
+    restored = dict_to_stats(stats_dict)
+    got = [rpg.MetamagicOption(int(v)) for v in restored.metamagic_options]
+    assert got == chosen, f"metamagic options changed across save/reload: {got} != {chosen}"
+    # An empty/absent list must round-trip to empty, not error.
+    assert list(dict_to_stats({}).metamagic_options) == [], "missing key should yield no options"
+    print("✅ test_metamagic_learn_roundtrip passed")
+
+
+def test_metamagic_known_count_cap():
+    """SRD p.65 known-count rule: 0 below L2, 2 at L2, 4 at L10, 6 at L17 (max 6)."""
+    from dialogs import metamagic_known_count
+    assert metamagic_known_count(1) == 0
+    assert metamagic_known_count(2) == 2
+    assert metamagic_known_count(9) == 2
+    assert metamagic_known_count(10) == 4
+    assert metamagic_known_count(16) == 4
+    assert metamagic_known_count(17) == 6
+    assert metamagic_known_count(20) == 6
+    print("✅ test_metamagic_known_count_cap passed")
+
+
+def test_metamagic_offered_gate():
+    """Sidebar gate (Phase 2): an option is offered only when LEARNED and AFFORDABLE.
+    Not learned → hidden; learned but too few SP → hidden; learned + affordable → shown."""
+    from dialogs import metamagic_offered
+    learned = [rpg.MetamagicOption.Distant, rpg.MetamagicOption.Heightened]
+    dist, heit = rpg.MetamagicOption.Distant, rpg.MetamagicOption.Heightened
+    quick = rpg.MetamagicOption.Quickened  # not learned
+    cost_dist = rpg.CombatEngine.metamagic_sp_cost(dist)   # 1
+    cost_heit = rpg.CombatEngine.metamagic_sp_cost(heit)   # 2
+    # Not learned → never offered, even with plenty of SP.
+    assert not metamagic_offered(quick, learned, 5, rpg.CombatEngine.metamagic_sp_cost(quick))
+    # Learned + affordable → offered.
+    assert metamagic_offered(dist, learned, 1, cost_dist)
+    assert metamagic_offered(heit, learned, 2, cost_heit)
+    # Learned but can't afford → hidden (Heightened costs 2, only 1 SP).
+    assert not metamagic_offered(heit, learned, 1, cost_heit)
+    # Empty learned set → nothing offered.
+    assert not metamagic_offered(dist, [], 5, cost_dist)
+    print("✅ test_metamagic_offered_gate passed")
 
 
 def test_sorcerer_subclass_save_load_roundtrip():
@@ -2285,6 +2454,16 @@ if __name__ == "__main__":
     test_metamagic_transmuted_changes_damage_type()
     test_metamagic_transmuted_non_elemental_no_spend()
     test_metamagic_careful_shields_ally()
+    test_metamagic_careful_shields_caster()
+    # Metamagic Phase 3: Twinned Spell (engine grants a real extra target)
+    test_twinned_num_targets_helper()
+    test_twinned_single_target_hits_two()
+    test_twinned_gating()
+    # Phase 1: learned-options picker round-trip + known-count cap
+    test_metamagic_learn_roundtrip()
+    test_metamagic_known_count_cap()
+    # Phase 2: sidebar arm-toggle gate predicate
+    test_metamagic_offered_gate()
     test_draconic_resilience_ac()
     test_bend_luck_bonus_and_penalty()
     test_bend_luck_gating()
