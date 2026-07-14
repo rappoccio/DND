@@ -49,11 +49,12 @@ from helpers import (
     _DEFAULT_ARMOR, _armor_to_dict, _dict_to_armor,
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
+    _item_to_dict, _dict_to_item,
     _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ArmorDialog, WeaponsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, METAMAGIC_OPTIONS, metamagic_offered
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, METAMAGIC_OPTIONS, metamagic_offered
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -380,6 +381,35 @@ class App:
         # Create armor lookup: armor_name -> armor_dict
         self.armor_name_to_dict = {a.get("name"): a for a in self.all_armor}
 
+        # ── Load items from items.json ──────────────────────────────────────
+        # Carried consumables (healing potions today). Same data-driven pattern as
+        # spells.json: the catalog is authored here, _dict_to_item builds the C++ Item.
+        self.all_items = []  # list of item dicts from items.json
+        possible_item_paths = [
+            os.path.join(script_dir, "items.json"),
+            os.path.join(script_dir, "..", "items.json"),
+            os.path.join(map_dir, "items.json"),
+            "items.json",
+        ]
+        items_loaded_from = None
+        for items_path in possible_item_paths:
+            if os.path.exists(items_path):
+                try:
+                    with open(items_path) as f:
+                        self.all_items = json.load(f)
+                    items_loaded_from = items_path
+                    break
+                except (json.JSONDecodeError, IOError):
+                    continue
+
+        if self.all_items:
+            print(f"✓ Loaded {len(self.all_items)} items from {items_loaded_from}")
+        else:
+            print("⚠ WARNING: No items loaded.")
+
+        # Create item lookup: item_name -> item_dict
+        self.item_name_to_dict = {i.get("name"): i for i in self.all_items}
+
         # Selected mob's stats (loaded when a mob is selected from dropdown)
         self.selected_mob_stats = None
         self.current_mob_grid_size = 1  # Grid size for current mob (1-4)
@@ -413,8 +443,10 @@ class App:
         self.spell_selection_dialog = SpellSelectionDialog(self.all_spells, self.font_sm, self.font_md)
         self.armor_selection_dialog = ArmorSelectionDialog(list(self.armor_name_to_dict.values()), self.font_sm, self.font_md)
         self.weapon_selection_dialog = WeaponSelectionDialog(list(self.weapon_name_to_dict.values()), self.font_sm, self.font_md)
+        self.item_selection_dialog = ItemSelectionDialog(self.all_items, self.font_sm, self.font_md)
         self.armor_dialog = ArmorDialog(self.font_sm, self.font_md)
         self.weapons_dialog = WeaponsDialog(self.font_sm, self.font_md)
+        self.items_dialog = ItemsDialog(self.font_sm, self.font_md)
         mob_names = sorted(self.all_mobs.keys())
         self.mob_dialog = MobSelectionDialog(mob_names, self.font_sm, self.font_md)
         self.terrain_editor = TerrainEditorDialog(self.font_sm, self.font_md)
@@ -498,6 +530,11 @@ class App:
         # grow taller than the window (esp. with the Floor-nav block), so it scrolls.
         self.panel_scroll     = 0
         self._panel_max_scroll = 0
+        # Same, for the COMBAT panel — its content (initiative + on-deck + every
+        # class/subclass action button for the current agent + the log) routinely runs
+        # taller than the window, so it scrolls independently of the setup panel.
+        self.combat_panel_scroll      = 0
+        self._combat_panel_max_scroll = 0
         self._panel_floor_nav_h   = 0
         self._panel_floor_nav_top = None
         self._panel_stats_y       = 0
@@ -568,8 +605,9 @@ class App:
         # trigger has marked the mask stale since the last _refresh_fog().
         self._fog_dirty = True   # force one reveal on first frame
         # Render toggle for the grey "never seen" overlay + enemy-token hiding. Default
-        # OFF so a freshly opened map (terrain authoring / dungeon gen) isn't a wall of
-        # grey; the DM flips "Fog: ON" (btn_toggle_fog) when running a party through.
+        # OFF so a freshly opened map (terrain authoring) isn't a wall of grey; the DM
+        # flips "Fog: ON" (btn_toggle_fog) when running a party through. Generate Dungeon
+        # turns it on for you (_set_fog) since a generated dungeon is meant to be explored.
         self.show_fog = False
 
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
@@ -658,6 +696,7 @@ class App:
         self.pending_bastion_of_law    = False # Clockwork Sorcerer Bastion of Law: awaiting ward target click
         self.pending_bastion_sp        = 0     # SP chosen for the pending Bastion of Law ward (1-5)
         self.pending_hand_of_healing   = False # Monk Warrior of Mercy Hand of Healing: awaiting target click
+        self.pending_use_item          = -1    # inventory slot chosen from the Use Item menu: awaiting target click (-1 = none)
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
@@ -1148,6 +1187,11 @@ class App:
         self.btn_cbt_hand_of_healing = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Hand of Healing",
                                           (150, 200, 160), (180, 230, 190), self.font_md)
+        # Use Item (bonus action): drink a carried potion, or administer one to an
+        # adjacent creature. Shown whenever the actor has anything in its pack.
+        self.btn_cbt_use_item    = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🧪 Use Item",
+                                          (110, 160, 130), (140, 190, 160), self.font_md)
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
@@ -2691,6 +2735,7 @@ class App:
             "stats":      self.combat.get_agent_stats(self.bm, idx),
             "weapons":    list(self.combat.get_agent_weapons(self.bm, idx)),
             "spells":     list(self.combat.get_agent_spells(self.bm, idx)),
+            "items":      list(self.combat.get_agent_items(self.bm, idx)),
             "armor":      list(self.combat.get_agent_armor(self.bm, idx)),
             "meta":       dict(self._agent_meta.get(idx, {})),
             # Spell rendering metadata for this agent, keyed by spell index.
@@ -2739,6 +2784,7 @@ class App:
         self.combat.set_agent_stats(self.bm, new_idx, st)
         self.combat.set_agent_weapons(self.bm, new_idx, clip["weapons"])
         self.combat.set_agent_spells(self.bm, new_idx, clip["spells"])
+        self.combat.set_agent_items(self.bm, new_idx, clip.get("items", []))
         self.combat.set_agent_armor(self.bm, new_idx, clip["armor"])
 
         # NPC innate-spell groups, so a copied NPC caster can still cast.
@@ -3307,6 +3353,7 @@ class App:
         self.turn_idx            = 0
         self.round_num           = 0
         self.initiative_scroll_offset = 0  # reset initiative scroll when combat starts
+        self.combat_panel_scroll = 0       # combat panel opens at the top
         self._initiative_autopaged_turn = -1  # re-arm auto-paging for the new combat
         # Thief's Reflexes (Rogue Thief L17): a second turn during the first round at Initiative-10.
         self._apply_thief_reflexes()
@@ -3496,6 +3543,7 @@ class App:
         self.combat_paused         = False
         self.initiative_order    = []
         self.initiative_scroll_offset = 0  # reset scroll when combat ends
+        self.combat_panel_scroll = 0
         self.turn_idx            = 0
         self.round_num           = 0
         self.action_used          = False
@@ -3667,6 +3715,9 @@ class App:
         if not self.initiative_order:
             return
         self._mark_fog_dirty()   # lights tick + positions settle at each turn boundary
+        # The new combatant's action buttons are at the top of the panel, and their panel
+        # may be far shorter than the outgoing one — start each turn at the top.
+        self.combat_panel_scroll = 0
         n = len(self.initiative_order)
         prev_turn_idx = self.turn_idx
         prev_idx = self._current_agent_idx()
@@ -7821,6 +7872,61 @@ class App:
         self.bonus_used = True
         self._update_attack_overlay()
 
+    def _show_use_item_menu(self, pos):
+        """Pop the current actor's inventory: pick which carried item to use, then click a target."""
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        items = self.combat.get_agent_items(self.bm, idx)
+        if not items:
+            self._combat_log_add(f"{self.bm.placed_agents[idx].name} is carrying no items.")
+            return
+
+        def _arm(slot):
+            self.pending_use_item = slot
+            it = items[slot]
+            where = "yourself" if it.range <= 0 else f"yourself or a creature within {it.range} ft"
+            self.hint = f"Click {where} to use {it.name}"
+
+        opts = []
+        for slot, it in enumerate(items):
+            dice = f"{it.healing.num_dice}d{it.healing.die_size}+{it.healing.bonus}"
+            opts.append((f"{it.name} (x{it.quantity}, {dice})",
+                         (lambda s=slot: _arm(s))))
+        self.context_menu.show(pos, opts, self.screen.get_size())
+
+    def _resolve_use_item(self, target_idx: int):
+        """Use the armed inventory slot on the clicked target (which may be the user itself).
+        The engine owns the rules — range, action economy, the heal roll, and spending the
+        charge — so a rejected use (out of reach, no bonus action left) costs nothing."""
+        slot = self.pending_use_item
+        self.pending_use_item = -1
+        user_idx = self._current_agent_idx()
+        if not (0 <= user_idx < len(self.bm.placed_agents)):
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+
+        res = self.combat.use_item(self.bm, user_idx, slot, target_idx)
+        if not res.valid:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[user_idx].name}: can't use that item "
+                f"(out of reach, no bonus action left, or none carried).")
+            self._update_attack_overlay()
+            return
+
+        user_name = self.bm.placed_agents[user_idx].name
+        tgt_name  = self.bm.placed_agents[target_idx].name
+        if target_idx == user_idx:
+            msg = f"{user_name} drinks {res.item_name} and regains {res.amount_healed} HP"
+        else:
+            msg = (f"{user_name} administers {res.item_name} to {tgt_name}, "
+                   f"who regains {res.amount_healed} HP")
+        self._combat_log_add(msg + ("  (last one used)." if res.consumed else "."))
+        self._flush_combat_log()
+        self.bonus_used = True
+        self._update_attack_overlay()
+
     def _resolve_grant_inspiration(self, target_idx: int):
         """Bard Grant Inspiration (bonus action): spend a Bardic Inspiration use to give
         an ally a Bardic Inspiration die of the bard's current size."""
@@ -11038,6 +11144,10 @@ class App:
                 },
                 "spell_indices": [s.name
                                   for s in self.combat.get_agent_spells(self.bm, i)],
+                # Carried consumables. Full dicts (not just names) so the quantity left mid-campaign
+                # and any hand-tuned dice survive the round-trip without re-reading items.json.
+                "items": [_item_to_dict(it)
+                          for it in self.combat.get_agent_items(self.bm, i)],
                 "agent_class":      s.character_class.name,
                 "agent_char_level": s.char_level,
                 "agent_barbarian_subclass": s.barbarian_subclass.name,
@@ -11384,8 +11494,12 @@ class App:
     def _carve_dungeon_layout(self, dfp, cols, rows, raw_v, raw_h, blocked, params, rng,
                               force_floor=None):
         """Carve one BSP layout on the current grid and return
-        ``(regions, rooms_meta, door_cells)``:
+        ``(grid, regions, rooms_meta, door_cells)``:
 
+        - ``grid``       the carver's FLOOR/WALL cell grid. Callers may open further
+                         cells in it (the multi-floor generator tunnels cross-map
+                         doorways through it) and then rebuild ``regions`` with
+                         ``_regions_from_grid``.
         - ``regions``    pixel-space Wall rects for the terrain JSON / engine.
         - ``rooms_meta`` walk-order room records (with exact ``cells``) that
                          Generate Dungeon populates.
@@ -11401,6 +11515,19 @@ class App:
             if 0 <= r < len(grid) and 0 <= c < len(grid[0]):
                 grid[r][c] = dfp.FLOOR
 
+        regions = self._regions_from_grid(dfp, grid, raw_v, raw_h)
+        rooms_meta = [
+            {"path_index": i, "c": rm["c"], "r": rm["r"], "w": rm["w"], "h": rm["h"],
+             "cells": [[c, r] for (c, r) in rm["cells"]]}
+            for i, rm in enumerate(rooms)
+        ]
+        return grid, regions, rooms_meta, doors
+
+    @staticmethod
+    def _regions_from_grid(dfp, grid, raw_v, raw_h):
+        """The carve grid's WALL cells as pixel-space Wall terrain rects. Recomputed
+        whenever the grid is reopened (e.g. after tunnelling a cross-map doorway), so
+        the terrain the engine sees always matches the grid."""
         def cell_to_px(c, r, w, h):
             c2 = min(c + w, len(raw_v) - 1)
             r2 = min(r + h, len(raw_h) - 1)
@@ -11414,15 +11541,94 @@ class App:
                 continue
             regions.append({"type": "Wall", "x": x, "y": y,
                             "width": pw, "height": ph, "multiplier": 0.0})
-        rooms_meta = [
-            {"path_index": i, "c": rm["c"], "r": rm["r"], "w": rm["w"], "h": rm["h"],
-             "cells": [[c, r] for (c, r) in rm["cells"]]}
-            for i, rm in enumerate(rooms)
-        ]
-        return regions, rooms_meta, doors
+        return regions
+
+    def _staple_floor_tiles(self, dfp, tiles, maps_x, maps_y, cols, rows, z, rng):
+        """Punch a **linked doorway** through every shared edge between abutting tiles on
+        one floor, so a generated multi-map floor is walkable — not just page-able.
+
+        For each abutting pair this picks the crossing line (a row for a left/right pair,
+        a column for a top/bottom pair) that needs the least tunnelling, opens the carve
+        grids from the first floor cell out to the edge on both sides, and returns one
+        door per tile facing the other. Each door's ``link_target`` is the cell **one step
+        inside** the neighbour, past its own edge door — targeting the neighbour's door
+        cell itself would drop the traveller onto a closed door (i.e. into Wall terrain).
+
+        Mutates the tiles' grids in place (callers must rebuild their regions with
+        ``_regions_from_grid`` afterwards). Returns {(mx, my): [door records]}."""
+        links = {key: [] for key in tiles}
+        if cols < 3 or rows < 3:
+            return links      # no room for an edge cell plus a landing cell
+
+        def first_floor(grid, line, axis, from_far_edge):
+            """Depth (in cells) from the tile's edge inward to the first FLOOR cell on
+            ``line``, or None if that line is solid rock all the way across."""
+            n = cols if axis == "h" else rows
+            for d in range(n):
+                i = (n - 1 - d) if from_far_edge else d
+                cell = grid[line][i] if axis == "h" else grid[i][line]
+                if cell == dfp.FLOOR:
+                    return d
+            return None
+
+        def open_to_edge(grid, line, axis, from_far_edge, depth):
+            """Carve FLOOR from the first floor cell out to the edge, plus the cell just
+            inside the edge — that is where a creature arriving from the other page lands,
+            so it must be open even when the edge cell was already floor."""
+            n = cols if axis == "h" else rows
+            for d in range(max(depth, 1) + 1):
+                i = (n - 1 - d) if from_far_edge else d
+                if axis == "h":
+                    grid[line][i] = dfp.FLOOR
+                else:
+                    grid[i][line] = dfp.FLOOR
+
+        def staple(a_key, b_key, axis):
+            ga, gb = tiles[a_key]["grid"], tiles[b_key]["grid"]
+            span = rows if axis == "h" else cols
+            best, best_cost = [], None
+            for line in range(span):
+                da = first_floor(ga, line, axis, from_far_edge=True)    # A's far edge
+                db = first_floor(gb, line, axis, from_far_edge=False)   # B's near edge
+                if da is None or db is None:
+                    continue
+                cost = da + db
+                if best_cost is None or cost < best_cost:
+                    best, best_cost = [line], cost
+                elif cost == best_cost:
+                    best.append(line)
+            if not best:
+                return            # nothing walkable on either side of this edge
+            line = rng.choice(best)
+            da = first_floor(ga, line, axis, from_far_edge=True)
+            db = first_floor(gb, line, axis, from_far_edge=False)
+            open_to_edge(ga, line, axis, True, da)
+            open_to_edge(gb, line, axis, False, db)
+
+            (amx, amy), (bmx, bmy) = a_key, b_key
+            a_ox, a_oy = amx * cols, amy * rows      # tiles tessellate: origin = index × size
+            b_ox, b_oy = bmx * cols, bmy * rows
+            if axis == "h":
+                a_cell, b_cell = (cols - 1, line), (0, line)
+                a_target = [b_ox + 1,        b_oy + line, z]   # one step into B
+                b_target = [a_ox + cols - 2, a_oy + line, z]   # one step back into A
+            else:
+                a_cell, b_cell = (line, rows - 1), (line, 0)
+                a_target = [b_ox + line, b_oy + 1,        z]
+                b_target = [a_ox + line, a_oy + rows - 2, z]
+            links[a_key].append({"cell": a_cell, "target": a_target})
+            links[b_key].append({"cell": b_cell, "target": b_target})
+
+        for my in range(maps_y):
+            for mx in range(maps_x):
+                if mx + 1 < maps_x:
+                    staple((mx, my), (mx + 1, my), "h")
+                if my + 1 < maps_y:
+                    staple((mx, my), (mx, my + 1), "v")
+        return links
 
     def _write_generated_terrain(self, path, regions, rooms_meta, door_cells, ladders,
-                                 staging_cells=None):
+                                 staging_cells=None, linked_doors=None):
         """Write a page's ``_terrain.json`` directly (bypassing the live-scene
         serializer) for the multi-floor generator. Mirrors ``_save_terrain``'s schema:
         carved Wall regions, walk-order room metadata, closed inter-room doors, and
@@ -11430,16 +11636,31 @@ class App:
         is False (no auto-detect). No ``explored`` key ⇒ the floor starts fully fogged.
 
         ``staging_cells`` (floor 0 only) records the exact room the generator left empty
-        so Load PCs drops the party into that same room, not a re-derived 'room 0'."""
+        so Load PCs drops the party into that same room, not a re-derived 'room 0'.
+
+        ``linked_doors`` are the cross-map staples on this page's edges ({"cell", "target"}
+        from _staple_floor_tiles); they are written as ordinary closed doors carrying a
+        ``link_target``, and win over any interior door the carver happened to punch in the
+        same cell."""
+        linked_doors = list(linked_doors or ())
+        linked_cells = {tuple(ld["cell"]) for ld in linked_doors}
+        doors = [
+            {"cells": [[c, r]], "cell": [c, r], "open": False, "locked": False,
+             "lock_dc": 15, "arcane_lock": False, "link_target": None}
+            for (c, r) in door_cells if (c, r) not in linked_cells
+        ]
+        doors += [
+            {"cells": [[ld["cell"][0], ld["cell"][1]]],
+             "cell": [ld["cell"][0], ld["cell"][1]],
+             "open": False, "locked": False, "lock_dc": 15, "arcane_lock": False,
+             "link_target": [int(v) for v in ld["target"]]}
+            for ld in linked_doors
+        ]
         data = {
             "regions": regions,
             "walls_enabled": False,
             "rooms": rooms_meta,
-            "doors": [
-                {"cells": [[c, r]], "cell": [c, r], "open": False, "locked": False,
-                 "lock_dc": 15, "arcane_lock": False, "link_target": None}
-                for (c, r) in door_cells
-            ],
+            "doors": doors,
             "ladders": ladders,
         }
         if staging_cells:
@@ -11511,8 +11732,14 @@ class App:
         pages = []
         down_cell = None      # spine cell this floor's DOWN-ladder occupies (set by floor below)
         total_mobs = 0
+        total_staples = 0
         for z in range(num_floors):
             up_cell = None    # spine cell this floor's UP-ladder occupies (picked below)
+
+            # ── Pass 1: carve every tile of this floor ─────────────────────────────
+            # All of them must exist before they can be stapled together, since a
+            # cross-map doorway is tunnelled through BOTH abutting grids at once.
+            tiles = {}
             for my in range(maps_y):
                 for mx in range(maps_x):
                     is_spine = (mx == 0 and my == 0)   # (0,0) tile carries the ladders
@@ -11523,31 +11750,50 @@ class App:
                     # unlucky RNG doesn't abort the whole dungeon. The rng that succeeds is reused
                     # for that tile's ladder pick + encounter, keeping it deterministic.
                     rng = None
-                    regions = rooms_meta = door_cells = None
+                    grid = rooms_meta = door_cells = None
                     for attempt in range(6):
                         rng = random.Random(base_seed + z * 7919 + tile_idx * 104729 + attempt * 131)
                         try:
-                            regions, rooms_meta, door_cells = self._carve_dungeon_layout(
+                            grid, _regions, rooms_meta, door_cells = self._carve_dungeon_layout(
                                 dfp, cols, rows, raw_v, raw_h, blocked, terrain_params, rng,
                                 force_floor=tile_force)
                             break
                         except ValueError:
-                            regions = None
-                    if regions is None:
+                            grid = None
+                    if grid is None:
                         raise ValueError(f"Floor {z} map ({mx},{my}): could not carve a layout "
                                          "after 6 tries. Try fewer/smaller rooms.")
+                    tiles[(mx, my)] = {"grid": grid, "rooms": rooms_meta,
+                                       "doors": door_cells, "rng": rng, "is_spine": is_spine}
 
-                    ladders = []
-                    if is_spine:
-                        if down_cell is not None:             # link back down to floor z-1
-                            dc, dr = down_cell
-                            ladders.append({"cells": [[dc, dr]], "target": [dc, dr, z - 1]})
-                        if z < num_floors - 1:                # link up to floor z+1
-                            up_cell = self._pick_room_cell(
-                                rooms_meta, rng, avoid=[down_cell] if down_cell else None)
-                            if up_cell is not None:
-                                uc, ur = up_cell
-                                ladders.append({"cells": [[uc, ur]], "target": [uc, ur, z + 1]})
+            # ── Ladders: the spine tile (0,0) carries the inter-floor links ────────
+            spine = tiles[(0, 0)]
+            ladders_of = {key: [] for key in tiles}
+            if down_cell is not None:                 # link back down to floor z-1
+                dc, dr = down_cell
+                ladders_of[(0, 0)].append({"cells": [[dc, dr]], "target": [dc, dr, z - 1]})
+            if z < num_floors - 1:                    # link up to floor z+1
+                up_cell = self._pick_room_cell(spine["rooms"], spine["rng"],
+                                               avoid=[down_cell] if down_cell else None)
+                if up_cell is not None:
+                    uc, ur = up_cell
+                    ladders_of[(0, 0)].append({"cells": [[uc, ur]], "target": [uc, ur, z + 1]})
+
+            # ── Staple abutting tiles: a linked door through each shared edge, tunnelled
+            #    into both grids (so the floor is walkable, not just page-able) ───────
+            links_of = self._staple_floor_tiles(
+                dfp, tiles, maps_x, maps_y, cols, rows, z,
+                random.Random(base_seed + z * 31337))
+            total_staples += sum(len(v) for v in links_of.values()) // 2
+
+            # ── Pass 2: regions (now including the tunnels), encounter, files ──────
+            for my in range(maps_y):
+                for mx in range(maps_x):
+                    t = tiles[(mx, my)]
+                    is_spine, rng, rooms_meta = t["is_spine"], t["rng"], t["rooms"]
+                    # Rebuild the wall rects from the stapled grid, so the doorways the
+                    # staples tunnelled are open terrain in both the engine and the file.
+                    regions = self._regions_from_grid(dfp, t["grid"], raw_v, raw_h)
 
                     # Populate this tile's rooms (optional). Placement reads bm.is_blocked, so
                     # apply the carved walls to the engine first (mirrors Generate Terrain →
@@ -11587,8 +11833,10 @@ class App:
                     page_base = os.path.join(self._map_dir, f"{base}_f{z}{suffix}")
                     ter_path = page_base + "_terrain.json"
                     agt_path = page_base + "_agents.json"
-                    self._write_generated_terrain(ter_path, regions, rooms_meta, door_cells,
-                                                  ladders, staging_cells=staging_cells)
+                    self._write_generated_terrain(ter_path, regions, rooms_meta, t["doors"],
+                                                  ladders_of[(mx, my)],
+                                                  staging_cells=staging_cells,
+                                                  linked_doors=links_of.get((mx, my)))
                     if encounter_params is not None:
                         eg.write_agents_file(
                             agt_path, agents, difficulty=encounter_params["end"],
@@ -11627,7 +11875,9 @@ class App:
             summary.append("terrain only; ladders link every floor")
         summary.append(f"Saved manifest: {os.path.basename(manifest)}")
         if per_floor > 1:
-            summary.append("Page between same-floor maps with West/North/South/East (top-left).")
+            summary.append(f"{total_staples} linked doors join the abutting maps on each floor.")
+            summary.append("Open one and 'Go through door' to walk to the next map "
+                           "(or page the view with West/North/South/East).")
         summary.append("Use Floor +/- (top-left) or a ladder to move between floors.")
         return summary
 
@@ -11686,7 +11936,7 @@ class App:
 
         rng = random.Random(params["seed"])
         try:
-            regions, rooms_meta, doors = self._carve_dungeon_layout(
+            _grid, regions, rooms_meta, doors = self._carve_dungeon_layout(
                 dfp, cols, rows, raw_v, raw_h, blocked, params, rng)
         except ValueError as e:
             self._modal_message(["Generate Terrain failed", str(e),
@@ -11984,6 +12234,9 @@ class App:
         params = self._modal_generate_dungeon()
         if not params:
             return
+        # A generated dungeon is meant to be explored, so fog starts ON (both the
+        # single-map and multi-floor paths below). The DM can still flip it off.
+        self._set_fog(True)
 
         # Lazy import: repo/tools is not on sys.path for the GUI process.
         gui_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12277,6 +12530,16 @@ class App:
                 self.combat.set_agent_stats(self.bm, i, stats)
 
             self.combat.set_agent_weapons(self.bm, i, cpp_weapons)
+
+        # Restore carried items (potions). Saves written before items existed simply have no
+        # "items" key and load with an empty pack.
+        for i, t in enumerate(agent_data):
+            if i >= len(self.bm.placed_agents):
+                break
+            item_data = t.get("items", [])
+            if item_data:
+                self.combat.set_agent_items(
+                    self.bm, i, [_dict_to_item(d) for d in item_data])
 
         # Restore spells — load from spell_indices or legacy "spells" field.
         # Class features (Channel Divinity options like Divine Spark / Radiance of the Dawn) live in
@@ -12872,6 +13135,15 @@ class App:
             "Sunlight": rpg.VisibilityLevel.Sunlight,
         }
         return mapping.get(s, rpg.VisibilityLevel.Clear)
+
+    def _set_fog(self, on: bool):
+        """Turn the fog-of-war render toggle on/off, keeping the button label in sync.
+
+        Single entry point for anything that flips fog programmatically (Generate
+        Dungeon turns it on) as well as the btn_toggle_fog click handler."""
+        self.show_fog = on
+        self.btn_toggle_fog.text = "Fog: ON" if on else "Fog: OFF"
+        self._mark_fog_dirty()   # ensure the mask is current the moment fog turns on
 
     def _mark_fog_dirty(self):
         """Flag the fog-of-war explored mask as stale.
@@ -14375,7 +14647,15 @@ class App:
             surf = (fnt or self.font_sm).render(s, True, col)
             self.screen.blit(surf, (x, y))
 
-        y = 10
+        # ── Scroll viewport ────────────────────────────────────────────────
+        # Everything below flows from a single `y` cursor, so the whole panel scrolls by
+        # starting that cursor above the top. Button rects are (re)positioned from `y` as
+        # they are drawn, so clicks follow the scrolled layout for free. Drawing is clipped
+        # to the panel above the fixed cursor-info strip; the content height and the
+        # scrollbar are computed at the bottom, once `y` has flowed to the end.
+        self.screen.set_clip(pygame.Rect(px, 0, PANEL_W, sh - 22))
+
+        y = 10 - self.combat_panel_scroll
 
         # ── Title ──────────────────────────────────────────────────────────
         txt("⚔  Combat", lx, y, COL_INITIATIVE_CUR, self.font_lg)
@@ -14991,6 +15271,16 @@ class App:
                         self.btn_cbt_hand_of_healing.rect.w = W
                         self.btn_cbt_hand_of_healing.draw(self.screen)
                         y += B + gap
+
+            # Use Item button — any actor carrying a consumable (potions are a Bonus Action:
+            # drink it yourself or administer it to a creature within 5 ft).
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                if self.combat.get_agent_items(self.bm, cur_idx):
+                    self.btn_cbt_use_item.rect.x = lx
+                    self.btn_cbt_use_item.rect.y = y
+                    self.btn_cbt_use_item.rect.w = W
+                    self.btn_cbt_use_item.draw(self.screen)
+                    y += B + gap
 
             # Rage button - only if agent is Barbarian, not raging, and has uses
             if 0 <= cur_idx < len(agents):
@@ -16060,12 +16350,14 @@ class App:
         max_log_w = W - 2
 
         def _wrap_draw(s, x, start_y, max_w, fnt, line_h=15):
-            """Draw s word-wrapped within max_w pixels; return the new y after last line."""
+            """Draw s word-wrapped within max_w pixels; return the new y after last line.
+
+            Lines past the bottom of the window are still laid out (the clip rect drops
+            them) — the panel scrolls, so they must count towards the content height or
+            the user could never scroll down to them."""
             y_pos = start_y
             remaining = s
             while remaining:
-                if y_pos + line_h > sh:
-                    break
                 if fnt.size(remaining)[0] <= max_w:
                     txt(remaining, x, y_pos)
                     y_pos += line_h
@@ -16089,6 +16381,25 @@ class App:
         for msg in self.combat_log[:5]:
             y = _wrap_draw(msg, lx, y, max_log_w, self.font_sm)
 
+        # ── End scroll viewport; measure content and draw the scrollbar ─────
+        # `y` is in scrolled coordinates, so add the offset back to get the true content
+        # height. Clamping here (not just on the wheel event) keeps the panel from being
+        # left scrolled past the end when the content shrinks — e.g. the turn passes to an
+        # agent with far fewer action buttons.
+        self.screen.set_clip(None)
+        content_h = y + self.combat_panel_scroll + 10
+        visible_h = sh - 22                      # minus the fixed cursor-info strip
+        self._combat_panel_max_scroll = max(0, content_h - visible_h)
+        self.combat_panel_scroll = min(max(0, self.combat_panel_scroll),
+                                       self._combat_panel_max_scroll)
+        if self._combat_panel_max_scroll > 0:
+            track_h = visible_h - 4
+            span    = visible_h + self._combat_panel_max_scroll
+            thumb_h = max(28, int(track_h * visible_h / span))
+            thumb_y = 2 + int((track_h - thumb_h)
+                              * self.combat_panel_scroll / self._combat_panel_max_scroll)
+            bar = pygame.Rect(px + PANEL_W - 6, thumb_y, 4, thumb_h)
+            pygame.draw.rect(self.screen, (90, 92, 110), bar, border_radius=2)
 
     def _draw_panel(self):
         # Rebuilt every frame by the setup panel's Floor-nav block; cleared here so a
@@ -16321,6 +16632,7 @@ class App:
                 self.weapon_selection_dialog.visible or
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
+                self.item_selection_dialog.visible or self.items_dialog.active or
                 self.mob_dialog.visible or self.context_menu.visible or
                 self.spell_grid_menu.visible or
                 self._grid_span_dialog.visible or self.name_prompt.visible or
@@ -16388,20 +16700,26 @@ class App:
                     max_scroll = max(0, len(self.initiative_order) - 8)
                     self.initiative_scroll_offset = min(self.initiative_scroll_offset + 1, max_scroll)
 
-            # ── Mouse wheel over the setup panel: scroll the panel (not the map) ──
+            # ── Mouse wheel over the right panel: scroll the panel (not the map) ──
+            # Applies to both panels; in combat it drives combat_panel_scroll, out of
+            # combat panel_scroll. The initiative list keeps its own wheel region.
             over_panel = (mouse_pos[0] >= self._panel_x()
-                          and not self.combat_active
                           and not self._pc_name_input
                           and not self.placement_mode_active)
-            if over_panel and self._panel_max_scroll > 0 and not over_initiative:
+            panel_max = (self._combat_panel_max_scroll if self.combat_active
+                         else self._panel_max_scroll)
+            if over_panel and panel_max > 0 and not over_initiative:
                 d = None
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
                     d = -30 if event.button == 4 else 30
                 elif hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
                     d = -event.y * 30
                 if d is not None:
-                    self.panel_scroll = min(max(0, self.panel_scroll + d),
-                                            self._panel_max_scroll)
+                    if self.combat_active:
+                        self.combat_panel_scroll = min(max(0, self.combat_panel_scroll + d),
+                                                       panel_max)
+                    else:
+                        self.panel_scroll = min(max(0, self.panel_scroll + d), panel_max)
                     continue
 
             # ── Mouse wheel for map panning (suppressed while hovering the panel) ──
@@ -16512,6 +16830,9 @@ class App:
             if self.spell_selection_dialog.visible:
                 if self.spell_selection_dialog.handle(event):
                     continue
+            if self.item_selection_dialog.visible:
+                if self.item_selection_dialog.handle(event):
+                    continue
 
             # Parent dialogs
             if self.weapon_dialog.active:
@@ -16522,6 +16843,9 @@ class App:
                 continue
             if self.weapons_dialog.active:
                 self.weapons_dialog.handle(event, self.screen)
+                continue
+            if self.items_dialog.active:
+                self.items_dialog.handle(event, self.screen)
                 continue
             if self.spell_dialog.active:
                 self.spell_dialog.handle(event, self.screen)
@@ -16865,6 +17189,16 @@ class App:
                                 self.combat.set_agent_armor(self.bm, h, cpp_armor)
                             self.armor_dialog.open(self.screen, h, pt2.name, armor_array,
                                                   self.armor_selection_dialog, _on_armor_done)
+                        def _open_items(h=hit):
+                            pt2 = self.bm.placed_agents[h]
+                            item_array = self.combat.get_agent_items(self.bm, h)
+                            def _on_items_done():
+                                self.combat.set_agent_items(
+                                    self.bm, h,
+                                    [_dict_to_item(d) for d in self.items_dialog.current_items
+                                     if d.get("name")])
+                            self.items_dialog.open(self.screen, h, pt2.name, item_array,
+                                                   self.item_selection_dialog, _on_items_done)
                         def _edit_safe_targets(h=hit):
                             self.safe_target_edit_idx = h
                             self._combat_log_add(
@@ -16900,6 +17234,7 @@ class App:
                                       ("Edit Weapons", _open_weapons),
                                       ("Edit Armor",   _open_armor),
                                       ("Edit Spells",  _open_spells),
+                                      ("Edit Items",   _open_items),
                                       ("Set Teams…",   self._open_team_picker),
                                       (_on_deck_label, _toggle_on_deck)]
                         # Evoker Wizards only: manage the set of creatures safe from their AoEs.
@@ -17163,6 +17498,8 @@ class App:
                             self._resolve_bastion_of_law(hit)
                         elif self.pending_hand_of_healing and hit >= 0:
                             self._resolve_hand_of_healing(hit)
+                        elif self.pending_use_item >= 0 and hit >= 0:
+                            self._resolve_use_item(hit)
                         elif self.pending_grant_inspiration and hit >= 0:
                             self._resolve_grant_inspiration(hit)
                         elif self.pending_telekinetic and hit >= 0:
@@ -17481,17 +17818,29 @@ class App:
                         extensions=JSON_EXTS,
                     )
 
-                # Generate Terrain — carve BSP rooms/walls into the live terrain
+                # Generate Terrain — carve BSP rooms/walls into the live terrain.
+                # `continue`: this handler blocks in a modal and can re-anchor every panel
+                # rect (_reposition_panel), so the click is spent — see Generate Dungeon below.
                 if self.btn_generate_terrain.clicked(event):
                     self._on_generate_terrain()
+                    continue
 
-                # Generate Dungeon — fill the map's rooms with a progressive encounter
+                # Generate Dungeon — fill the map's rooms with a progressive encounter.
+                # `continue` is load-bearing: this blocks for the whole generation, and a
+                # multi-floor run ends in _switch_to_page → _load_map_png → _reposition_panel,
+                # which MOVES every panel button (the Floor-nav block appears and pushes the
+                # config rows down). Without it, the same MOUSEBUTTONDOWN kept being matched
+                # against the buttons below against their NEW rects — so one click on Generate
+                # Dungeon also fired whatever had slid under the cursor (e.g. Load Lighting,
+                # opening the file browser).
                 if self.btn_generate_dungeon.clicked(event):
                     self._on_generate_dungeon()
+                    continue
 
                 # Dungeon… — New / Open / Save a multi-map dungeon manifest, edit pages
                 if self.btn_dungeon.clicked(event):
                     self._show_dungeon_menu()
+                    continue
 
                 # Edit Lighting
                 if self.btn_edit_lighting.clicked(event):
@@ -17555,9 +17904,7 @@ class App:
 
                 # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
                 if self.btn_toggle_fog.clicked(event):
-                    self.show_fog = not self.show_fog
-                    self.btn_toggle_fog.text = "Fog: ON" if self.show_fog else "Fog: OFF"
-                    self._mark_fog_dirty()   # ensure the mask is current the moment fog turns on
+                    self._set_fog(not self.show_fog)
 
                 # Set Grid (sample a tile to define a uniform grid)
                 if self.btn_set_grid.clicked(event):
@@ -17750,6 +18097,8 @@ class App:
                     if self.btn_cbt_hand_of_healing.clicked(event):
                         self.pending_hand_of_healing = True
                         self.hint = "Click target for Hand of Healing"
+                    if self.btn_cbt_use_item.clicked(event):
+                        self._show_use_item_menu(event.pos)
                     if self.btn_cbt_rage.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -18506,10 +18855,12 @@ class App:
             self.weapon_dialog.draw(self.screen)   # modal — always on top
             self.armor_dialog.draw(self.screen)    # modal — always on top
             self.weapons_dialog.draw(self.screen)  # modal — always on top
+            self.items_dialog.draw(self.screen)    # modal — always on top
             self.spell_dialog.draw(self.screen)    # modal — always on top
             self.spell_selection_dialog.draw(self.screen)  # modal — always on top
             self.armor_selection_dialog.draw(self.screen)  # modal — always on top
             self.weapon_selection_dialog.draw(self.screen)  # modal — always on top
+            self.item_selection_dialog.draw(self.screen)   # modal — always on top (over ItemsDialog)
             self.mob_dialog.draw(self.screen)      # modal — always on top
             self.conditions_dialog.draw(self.screen)  # modal — always on top
             self.context_menu.draw(self.screen)    # popup — topmost

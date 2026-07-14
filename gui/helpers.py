@@ -957,3 +957,58 @@ def _dict_to_spell(d: dict):
     s.casting_time = getattr(rpg.CastingTime, casting_time_str, rpg.CastingTime.Action)
 
     return s
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Item serialization helpers (carried consumables — items.json)
+# ─────────────────────────────────────────────────────────────────────────────
+#  Mirrors the spell path: items.json is the authored catalog, _dict_to_item is
+#  the single place a record becomes an rpg.Item, and _item_to_dict is the single
+#  place one goes back to JSON (saves). New Item fields must be added to BOTH or
+#  they silently reset on save/reload.
+
+
+def _dict_to_item(d: dict):
+    """Convert an item dict (from items.json or a save) into a C++ rpg.Item."""
+    it = rpg.Item()
+    it.name = d.get("name", "Unnamed Item")
+    it.description = d.get("description", "")
+
+    it.type = getattr(rpg.ItemType, d.get("type", "Heal"), rpg.ItemType.Heal)
+    it.action_type = getattr(rpg.ItemAction, d.get("action_type", "BonusAction"),
+                             rpg.ItemAction.BonusAction)
+
+    # Reach for administering the item to someone else; 0 = self only.
+    it.range = int(d.get("range", 5))
+
+    healing_raw = d.get("healing_type")
+    if isinstance(healing_raw, dict):
+        h = rpg.HealingRoll()
+        h.num_dice = int(healing_raw.get("num_dice", 0))
+        h.die_size = int(healing_raw.get("die_size", 4))
+        h.bonus    = int(healing_raw.get("bonus", 0))
+        it.healing = h
+
+    it.quantity = int(d.get("quantity", 1))
+    it.consumable = bool(d.get("consumable", True))
+    it.sprite_path = d.get("sprite_path", "") or ""
+    return it
+
+
+def _item_to_dict(it) -> dict:
+    """Convert an rpg.Item to a plain dict (save / dialog display)."""
+    return {
+        "name": it.name,
+        "description": it.description,
+        "type": it.type.name,
+        "action_type": it.action_type.name,
+        "range": it.range,
+        "healing_type": {
+            "num_dice": it.healing.num_dice,
+            "die_size": it.healing.die_size,
+            "bonus":    it.healing.bonus,
+        },
+        "quantity": it.quantity,
+        "consumable": it.consumable,
+        "sprite_path": it.sprite_path,
+    }

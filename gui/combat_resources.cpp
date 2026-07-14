@@ -113,6 +113,69 @@ int CombatEngine::healAgent(BattleMap& bm, int idx, int amount) noexcept
     return s.hp_cur;
 }
 
+UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, int target_idx) noexcept
+{
+    UseItemResult res;
+    const auto& agents = bm.placedAgents();
+    if (user_idx   < 0 || user_idx   >= static_cast<int>(agents.size())) return res;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return res;
+
+    std::vector<Item> inv = bm.getAgentItems(user_idx);
+    if (item_slot < 0 || item_slot >= static_cast<int>(inv.size())) return res;
+    const Item item = inv[static_cast<std::size_t>(item_slot)];   // by value: the row may be erased below
+    if (item.quantity <= 0) return res;
+
+    // The user has to be able to act: no rummaging through your pack while dead or Incapacitated
+    // (which covers Unconscious/Paralyzed/Stunned — see applyIncapacitated).
+    const Agent::Conditions uc = bm.getAgentConditions(user_idx);
+    if (uc.dead || uc.unconscious || uc.incapacitated) return res;
+    // …and there is no point pouring a potion down a corpse's throat (a *downed* ally is fine —
+    // healAgent revives it).
+    if (bm.getAgentConditions(target_idx).dead) return res;
+
+    // Range. 0 ⇒ self only; otherwise the target must be within `range` feet.
+    if (target_idx != user_idx) {
+        if (item.range <= 0) return res;
+        const PlacedAgent& upa = agents[static_cast<std::size_t>(user_idx)];
+        const PlacedAgent& tpa = agents[static_cast<std::size_t>(target_idx)];
+        if (footprintDistance(upa.origin, upa.agent->getSize(),
+                              tpa.origin, tpa.agent->getSize()) * 5 > item.range) return res;
+    }
+
+    // Action economy. (An Action-cost item is gated by the GUI's action budget, as spellcasting is;
+    // only the Bonus Action has an engine-side budget to spend.)
+    if (item.action_type == Item::BonusAction && !hasBonusAction(bm, user_idx)) return res;
+
+    res.valid     = true;
+    res.item_name = item.name;
+
+    if (item.type == Item::Heal) {
+        int amount = item.healing.bonus;
+        for (int i = 0; i < item.healing.num_dice; ++i) amount += roll(item.healing.die_size);
+        const int before = bm.getAgentStats(target_idx).hp_cur;
+        healAgent(bm, target_idx, amount);
+        res.amount_healed = bm.getAgentStats(target_idx).hp_cur - before;
+        if (target_idx == user_idx)
+            log_("{} drinks {} and regains {} HP.", agentName(bm, user_idx), item.name, res.amount_healed);
+        else
+            log_("{} administers {} to {}, who regains {} HP.", agentName(bm, user_idx), item.name,
+                 agentName(bm, target_idx), res.amount_healed);
+    }
+
+    // Spend the charge.
+    if (item.consumable) {
+        Item& row = inv[static_cast<std::size_t>(item_slot)];
+        if (--row.quantity <= 0) {
+            inv.erase(inv.begin() + item_slot);
+            res.consumed = true;
+        }
+        bm.setAgentItems(user_idx, inv);
+    }
+
+    if (item.action_type == Item::BonusAction) spendBonusAction(bm, user_idx);
+    return res;
+}
+
 bool CombatEngine::applyOneWithShadows(BattleMap& bm, int idx) noexcept
 {
     const auto& agents = bm.placedAgents();

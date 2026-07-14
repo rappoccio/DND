@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Potion of Healing",
+    "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 2d4 + 2 Hit Points.",
+    "type": "Heal",
+    "action_type": "BonusAction",
+    "rarity": "Common",
+    "range": 5,
+    "healing_type": {
+      "num_dice": 2,
+      "die_size": 4,
+      "bonus": 2
+    },
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
+    "name": "Greater Potion of Healing",
+    "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 4d4 + 4 Hit Points.",
+    "type": "Heal",
+    "action_type": "BonusAction",
+    "rarity": "Uncommon",
+    "range": 5,
+    "healing_type": {
+      "num_dice": 4,
+      "die_size": 4,
+      "bonus": 4
+    },
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
+    "name": "Superior Potion of Healing",
+    "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 8d4 + 8 Hit Points.",
+    "type": "Heal",
+    "action_type": "BonusAction",
+    "rarity": "Rare",
+    "range": 5,
+    "healing_type": {
+      "num_dice": 8,
+      "die_size": 4,
+      "bonus": 8
+    },
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
+    "name": "Supreme Potion of Healing",
+    "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 10d4 + 20 Hit Points.",
+    "type": "Heal",
+    "action_type": "BonusAction",
+    "rarity": "Very Rare",
+    "range": 5,
+    "healing_type": {
+      "num_dice": 10,
+      "die_size": 4,
+      "bonus": 20
+    },
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  }
+]

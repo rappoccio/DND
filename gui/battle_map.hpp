@@ -234,6 +234,7 @@ struct PlacedAgent {
     // weapons[0]=Main Hand, [1]=Off Hand, [2]=Ranged stays valid; monsters may add more (Attack 4+).
     std::vector<Weapon>    weapons = std::vector<Weapon>(3);
     std::vector<Spell>     spells;        // known spells (may be empty)
+    std::vector<Item>      items;         // carried consumables — potions etc. (may be empty)
     std::array<Armor, 6>   armor;         // [Helmet, Chest, Leggings, Boots, Gloves, Cloak]
     // ── Summoning ──────────────────────────────────────────────────────────
     int         summoner_idx      = -1;    // index of the summoner; -1 = not a summon
@@ -434,6 +435,14 @@ public:
     void setAgentSpells(int idx, std::vector<Spell> spells) noexcept;
     void addSpellToAgent(int idx, Spell s) noexcept;
     void removeSpellFromAgent(int idx, int spell_idx) noexcept;
+
+    // Inventory accessors (by index into placedAgents()). Carried consumables — see item.hpp.
+    // addItemToAgent stacks by name: adding an item the agent already carries bumps its
+    // quantity instead of appending a second row.
+    [[nodiscard]] std::vector<Item> getAgentItems(int idx) const noexcept;
+    void setAgentItems(int idx, std::vector<Item> items) noexcept;
+    void addItemToAgent(int idx, Item it) noexcept;
+    void removeItemFromAgent(int idx, int item_idx) noexcept;
 
     // Movement reach
     // Returns every grid origin an agent of the given size can reach from

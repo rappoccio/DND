@@ -3912,3 +3912,354 @@ class WeaponsDialog:
         pygame.draw.rect(surf, self.C_ADD, add_rect, border_radius=4)
         add_txt = self.font_sm.render("＋ Add Attack", True, (220, 240, 220))
         surf.blit(add_txt, add_txt.get_rect(center=add_rect.center))
+
+
+class ItemSelectionDialog:
+    """Modal dialog for selecting a consumable from items.json."""
+    ITEM_H = 24
+    PAD = 12
+    SEARCH_H = 32
+
+    def __init__(self, items: list, font_sm=None, font_md=None):
+        self.all_items = items
+        self.filtered_items = items
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.selected_callback = None
+        self.search_text = ""
+        self._frames_since_show = 0
+
+    def show(self, callback):
+        self.visible = True
+        self.selected_callback = callback
+        self.scroll_y = 0
+        self._hover_idx = -1
+        self.search_text = ""
+        self._frames_since_show = 0
+        self.filtered_items = self.all_items[:]
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        dlg_w = 460
+        dlg_h = 500
+        self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
+
+    def dismiss(self):
+        self.visible = False
+
+    def _update_filtered_items(self):
+        search_lower = self.search_text.lower()
+        self.filtered_items = [i for i in self.all_items if search_lower in i.get("name", "").lower()]
+        self.scroll_y = 0
+        self._hover_idx = -1
+
+    @staticmethod
+    def _row_text(item: dict) -> str:
+        """'Potion of Healing  (2d4+2)' — the dice are what the DM is actually picking by."""
+        h = item.get("healing_type") or {}
+        n, d, b = h.get("num_dice", 0), h.get("die_size", 0), h.get("bonus", 0)
+        dice = f"{n}d{d}+{b}" if n else ""
+        return f"{item.get('name', 'Unknown')}   ({dice})" if dice else item.get("name", "Unknown")
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.dismiss()
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                self.search_text = self.search_text[:-1]
+                self._update_filtered_items()
+                return True
+            elif event.key == pygame.K_RETURN:
+                if len(self.filtered_items) == 1:
+                    if self.selected_callback:
+                        self.selected_callback(self.filtered_items[0])
+                    self.dismiss()
+                    return True
+            elif event.unicode.isprintable():
+                self.search_text += event.unicode
+                self._update_filtered_items()
+                return True
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(*event.pos):
+                search_y = self.rect.y + 35
+                search_box_rect = pygame.Rect(self.rect.x + self.PAD, search_y,
+                                              self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+                if search_box_rect.collidepoint(*event.pos):
+                    return True
+
+                list_y = search_y + self.SEARCH_H
+                list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+                for i, item in enumerate(self.filtered_items):
+                    item_y = list_y + i * self.ITEM_H - self.scroll_y
+                    if list_y <= item_y < list_y + list_h:
+                        item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                                self.rect.w - self.PAD * 2, self.ITEM_H)
+                        if item_rect.collidepoint(*event.pos):
+                            if self.selected_callback:
+                                self.selected_callback(item)
+                            self.dismiss()
+                            return True
+            else:
+                self.dismiss()
+            return True
+        elif event.type == pygame.MOUSEMOTION and self.visible:
+            search_y = self.rect.y + 35
+            list_y = search_y + self.SEARCH_H
+            list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+            self._hover_idx = -1
+            for i, item in enumerate(self.filtered_items):
+                item_y = list_y + i * self.ITEM_H - self.scroll_y
+                if list_y <= item_y < list_y + list_h:
+                    item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
+                                            self.rect.w - self.PAD * 2, self.ITEM_H)
+                    if item_rect.collidepoint(*event.pos):
+                        self._hover_idx = i
+                        break
+        elif event.type == pygame.MOUSEWHEEL and self.visible and self.rect.collidepoint(*pygame.mouse.get_pos()):
+            self.scroll_y = max(0, self.scroll_y - event.y * 30)
+            max_scroll = max(0, len(self.filtered_items) * self.ITEM_H - (self.rect.h - self.SEARCH_H - 20))
+            self.scroll_y = min(self.scroll_y, max_scroll)
+            return True
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.visible or not self.rect:
+            return
+
+        self._frames_since_show += 1
+
+        overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))
+        surf.blit(overlay, (0, 0))
+
+        pygame.draw.rect(surf, (50, 50, 60), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
+
+        title = self.font_md.render("Select Item", True, (220, 220, 235))
+        surf.blit(title, title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 8))
+
+        search_y = self.rect.y + 35
+        search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
+        pygame.draw.rect(surf, (30, 30, 40), search_box)
+        pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
+        search_label = self.font_sm.render(f"Search: {self.search_text}_", True, (200, 200, 200))
+        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+
+        list_y = search_y + self.SEARCH_H
+        list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
+        pygame.draw.rect(surf, (30, 30, 40),
+                         pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h))
+
+        for i, item in enumerate(self.filtered_items):
+            item_y = list_y + i * self.ITEM_H - self.scroll_y
+            if list_y <= item_y < list_y + list_h:
+                item_rect = pygame.Rect(self.rect.x + self.PAD, item_y, self.rect.w - self.PAD * 2, self.ITEM_H)
+                if i == self._hover_idx:
+                    pygame.draw.rect(surf, (70, 70, 90), item_rect)
+                text = self.font_sm.render(self._row_text(item), True, (200, 200, 220))
+                surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
+
+
+class ItemsDialog:
+    """Dialog for managing an agent's inventory of carried consumables.
+
+    One row per item stack: name, quantity with [−]/[+], and [✕] to drop the stack.
+    ＋ Add Item opens the ItemSelectionDialog (items.json catalog). Adding an item the
+    agent already carries bumps that stack's quantity rather than adding a second row —
+    matching BattleMap::addItemToAgent."""
+    DLG_W = 560
+    PAD = 15
+    ITEM_H = 32
+    ROW_GAP = 5
+    BTN_H = 28
+
+    C_BG = (35, 35, 50)
+    C_BORDER = (120, 120, 160)
+    C_LABEL = (180, 180, 200)
+    C_SLOT_BG = (25, 25, 40)
+    C_SLOT_BORDER = (80, 80, 120)
+    C_BUTTON = (70, 70, 100)
+    C_BUTTON_H = (90, 90, 130)
+    C_REMOVE = (150, 70, 70)
+    C_ADD = (70, 120, 90)
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.active = False
+        self.rect = None
+        self.agent_idx = -1
+        self.agent_name = ""
+        self.current_items = []   # list of item dicts (items.json shape + quantity)
+        self.callback = None
+        self._hover_slot = -1
+        self.item_selection_dialog = None
+
+    def _recompute_rect(self, screen):
+        n = max(1, len(self.current_items))
+        body = 45 + n * (self.ITEM_H + self.ROW_GAP) + self.BTN_H + self.PAD * 2
+        h = max(body, 160)
+        sw, sh = screen.get_size()
+        self.rect = pygame.Rect((sw - self.DLG_W) // 2, max(20, (sh - h) // 2), self.DLG_W, h)
+
+    def open(self, screen, agent_idx: int, agent_name: str, item_array, item_selection_dialog, callback):
+        from helpers import _item_to_dict
+        self.active = True
+        self.agent_idx = agent_idx
+        self.agent_name = agent_name
+        self.callback = callback
+        self.item_selection_dialog = item_selection_dialog
+        self.current_items = [_item_to_dict(i) for i in item_array]
+        self._hover_slot = -1
+        self._recompute_rect(screen)
+
+    def dismiss(self):
+        self.active = False
+        if self.callback:
+            self.callback()
+
+    def _slot_rect(self, slot_idx: int) -> pygame.Rect:
+        y = self.rect.y + 45 + slot_idx * (self.ITEM_H + self.ROW_GAP)
+        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2 - 150, self.ITEM_H)
+
+    def _minus_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(sr.right + 6, sr.y, 28, self.ITEM_H)
+
+    def _plus_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(sr.right + 76, sr.y, 28, self.ITEM_H)
+
+    def _qty_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(sr.right + 36, sr.y, 38, self.ITEM_H)
+
+    def _remove_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(self.rect.right - self.PAD - 28, sr.y, 28, self.ITEM_H)
+
+    def _add_rect(self) -> pygame.Rect:
+        n = max(1, len(self.current_items))
+        y = self.rect.y + 45 + n * (self.ITEM_H + self.ROW_GAP)
+        return pygame.Rect(self.rect.x + self.PAD, y, 140, self.BTN_H)
+
+    def handle(self, event, screen) -> bool:
+        if not self.active or not self.rect:
+            return False
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.dismiss()
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # The catalog picker is modal on top of us — let it have the click.
+            if self.item_selection_dialog and self.item_selection_dialog.visible:
+                return False
+
+            if self.rect.collidepoint(*event.pos):
+                close_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+                if close_rect.collidepoint(*event.pos):
+                    self.dismiss()
+                    return True
+
+                if self._add_rect().collidepoint(*event.pos):
+                    def _on_item_selected(item_dict):
+                        for row in self.current_items:
+                            if row.get("name") == item_dict.get("name"):
+                                row["quantity"] = int(row.get("quantity", 1)) + 1
+                                return
+                        new_row = dict(item_dict)
+                        new_row["quantity"] = int(new_row.get("quantity", 1))
+                        self.current_items.append(new_row)
+                        self._recompute_rect(screen)
+                    self.item_selection_dialog.show(_on_item_selected)
+                    return True
+
+                for i in range(len(self.current_items)):
+                    if self._remove_rect(i).collidepoint(*event.pos):
+                        del self.current_items[i]
+                        self._recompute_rect(screen)
+                        return True
+                    if self._minus_rect(i).collidepoint(*event.pos):
+                        q = int(self.current_items[i].get("quantity", 1)) - 1
+                        if q <= 0:
+                            del self.current_items[i]
+                            self._recompute_rect(screen)
+                        else:
+                            self.current_items[i]["quantity"] = q
+                        return True
+                    if self._plus_rect(i).collidepoint(*event.pos):
+                        self.current_items[i]["quantity"] = int(self.current_items[i].get("quantity", 1)) + 1
+                        return True
+            else:
+                self.dismiss()
+            return True
+
+        if event.type == pygame.MOUSEMOTION and self.active:
+            self._hover_slot = -1
+            for i in range(len(self.current_items)):
+                if self._slot_rect(i).collidepoint(*event.pos):
+                    self._hover_slot = i
+                    break
+
+        return False
+
+    def draw(self, surf: pygame.Surface):
+        if not self.active or not self.rect:
+            return
+
+        pygame.draw.rect(surf, self.C_BG, self.rect, border_radius=8)
+        pygame.draw.rect(surf, self.C_BORDER, self.rect, 2, border_radius=8)
+
+        title = self.font_md.render(f"Items - {self.agent_name}", True, self.C_LABEL)
+        surf.blit(title, title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 10))
+
+        close_rect = pygame.Rect(self.rect.right - 30, self.rect.y + 10, 20, 20)
+        pygame.draw.rect(surf, self.C_BUTTON, close_rect)
+        close_text = self.font_sm.render("✕", True, (220, 220, 220))
+        surf.blit(close_text, close_text.get_rect(center=close_rect.center))
+
+        if not self.current_items:
+            empty_rect = self._slot_rect(0)
+            pygame.draw.rect(surf, self.C_SLOT_BG, empty_rect, border_radius=4)
+            pygame.draw.rect(surf, self.C_SLOT_BORDER, empty_rect, 1, border_radius=4)
+            txt = self.font_sm.render("(no items carried)", True, (140, 140, 160))
+            surf.blit(txt, (empty_rect.x + 8, empty_rect.y + 6))
+
+        for i, item in enumerate(self.current_items):
+            slot_rect = self._slot_rect(i)
+            color = self.C_BUTTON_H if i == self._hover_slot else self.C_SLOT_BG
+            pygame.draw.rect(surf, color, slot_rect, border_radius=4)
+            pygame.draw.rect(surf, self.C_SLOT_BORDER, slot_rect, 1, border_radius=4)
+
+            h = item.get("healing_type") or {}
+            dice = f"{h.get('num_dice', 0)}d{h.get('die_size', 0)}+{h.get('bonus', 0)}"
+            label = f"{item.get('name', '—')}   ({dice})"
+            surf.blit(self.font_sm.render(label, True, (200, 200, 220)), (slot_rect.x + 8, slot_rect.y + 6))
+
+            for rect, glyph, col in ((self._minus_rect(i), "−", self.C_BUTTON),
+                                     (self._plus_rect(i),  "＋", self.C_BUTTON),
+                                     (self._remove_rect(i), "✕", self.C_REMOVE)):
+                pygame.draw.rect(surf, col, rect, border_radius=4)
+                g = self.font_sm.render(glyph, True, (230, 230, 230))
+                surf.blit(g, g.get_rect(center=rect.center))
+
+            qty_rect = self._qty_rect(i)
+            q = self.font_md.render(f"x{int(item.get('quantity', 1))}", True, (230, 230, 240))
+            surf.blit(q, q.get_rect(center=qty_rect.center))
+
+        add_rect = self._add_rect()
+        pygame.draw.rect(surf, self.C_ADD, add_rect, border_radius=4)
+        add_txt = self.font_sm.render("＋ Add Item", True, (220, 240, 220))
+        surf.blit(add_txt, add_txt.get_rect(center=add_rect.center))

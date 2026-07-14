@@ -186,6 +186,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
             [](const PlacedAgent& p) { return std::vector<Weapon>(p.weapons.begin(), p.weapons.end()); })
         .def_property_readonly("spells",
             [](const PlacedAgent& p) -> std::vector<Spell> { return p.spells; })
+        .def_property_readonly("items",
+            [](const PlacedAgent& p) -> std::vector<Item> { return p.items; })
         .def_property_readonly("stats",
             [](PlacedAgent& p) -> Agent::Stats { return p.agent->getStats(); })
         .def("set_advantage", [](PlacedAgent& p, bool adv){ p.agent->setAdvantage(adv); },
@@ -1329,6 +1331,36 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("bonus", &HealingRoll::bonus,
              "Fixed healing bonus added after rolling dice (e.g., 1d4+1 has bonus=1)");
 
+    // ── Item (a carried consumable — potions; catalog in items.json) ──────────
+    py::enum_<Item::ItemType_t>(m, "ItemType")
+        .value("Heal", Item::Heal)
+        .export_values();
+
+    py::enum_<Item::ItemAction_t>(m, "ItemAction")
+        .value("Action",      Item::Action)
+        .value("BonusAction", Item::BonusAction)
+        .value("NoAction",    Item::NoAction)
+        .export_values();
+
+    py::class_<Item>(m, "Item")
+        .def(py::init<>())
+        .def_readwrite("name",        &Item::name)
+        .def_readwrite("description", &Item::description)
+        .def_readwrite("type",        &Item::type)
+        .def_readwrite("action_type", &Item::action_type)
+        .def_readwrite("range",       &Item::range,
+             "Reach in feet for administering the item to another creature (0 = self only).")
+        .def_readwrite("healing",     &Item::healing,
+             "HealingRoll (num_dice/die_size/bonus) restored by a Heal item.")
+        .def_readwrite("quantity",    &Item::quantity)
+        .def_readwrite("consumable",  &Item::consumable)
+        .def_readwrite("sprite_path", &Item::sprite_path)
+        .def("__repr__", [](const Item& it){
+            return "<Item '" + it.name + "' x" + std::to_string(it.quantity)
+                 + " " + std::to_string(it.healing.num_dice) + "d"
+                 + std::to_string(it.healing.die_size) + "+"
+                 + std::to_string(it.healing.bonus) + ">"; });
+
     // ── Spell ─────────────────────────────────────────────────────────────────
     py::class_<Spell>(m, "Spell")
         .def(py::init<>())
@@ -1597,6 +1629,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("amount_healed",     &HandOfHealingResult::amount_healed)
         .def_readonly("condition_cleared", &HandOfHealingResult::condition_cleared)
         .def_readonly("cleared_condition", &HandOfHealingResult::cleared_condition);
+
+    // ── UseItemResult (CombatEngine::use_item) ───────────────────────────────
+    py::class_<UseItemResult>(m, "UseItemResult")
+        .def_readonly("valid",         &UseItemResult::valid)
+        .def_readonly("amount_healed", &UseItemResult::amount_healed)
+        .def_readonly("item_name",     &UseItemResult::item_name)
+        .def_readonly("consumed",      &UseItemResult::consumed);
 
     // ── FlurryResult (Monk Flurry of Blows) ──────────────────────────────────
     py::class_<FlurryResult>(m, "FlurryResult")
@@ -3557,6 +3596,34 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Set is_npc=true on agent and initialize uses_max/uses_remaining from spell groups.\n"
              "groups: dict mapping N (uses/day) -> list of spell names in that group.\n"
              "Call once after set_agent_spells().")
+
+        // ── Inventory (carried consumables — see items.json) ────────────────
+        .def("get_agent_items",
+             &CombatEngine::getAgentItems,
+             py::arg("battle_map"), py::arg("idx"),
+             "Return a copy of the carried-item list (inventory) for agent[idx].")
+        .def("set_agent_items",
+             &CombatEngine::setAgentItems,
+             py::arg("battle_map"), py::arg("idx"), py::arg("items"),
+             "Replace the carried-item list for agent[idx].")
+        .def("add_item_to_agent",
+             &CombatEngine::addItemToAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("item"),
+             "Add an item to agent[idx]'s inventory. Stacks by name: if the agent already carries\n"
+             "an item with that name, its quantity is increased instead of adding a second row.")
+        .def("remove_item_from_agent",
+             &CombatEngine::removeItemFromAgent,
+             py::arg("battle_map"), py::arg("idx"), py::arg("item_idx"),
+             "Remove the inventory row at item_idx from agent[idx] (the whole stack).")
+        .def("use_item",
+             &CombatEngine::useItem,
+             py::arg("battle_map"), py::arg("user_idx"), py::arg("item_slot"), py::arg("target_idx"),
+             "Use the carried item in inventory slot item_slot on target_idx (may be user_idx itself).\n"
+             "Enforces the item's range (0 = self only), that the user can act, and its action cost\n"
+             "(a BonusAction item spends the user's Bonus Action). A Heal item rolls its dice and heals\n"
+             "through heal_agent, so a potion given to a downed ally revives it. Spends one charge and\n"
+             "drops the row when the last one is used. Returns a UseItemResult (valid=False = nothing\n"
+             "happened and nothing was spent).")
 
         // ── Agent condition management ──────────────────────────────────────
         .def("add_agent_condition",

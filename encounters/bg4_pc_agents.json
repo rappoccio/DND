@@ -4,8 +4,8 @@
       "name": "Karlach",
       "sprite_path": "",
       "size": 1,
-      "col": 0,
-      "row": 9,
+      "col": 6,
+      "row": 5,
       "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
@@ -219,6 +219,23 @@
         "Darkness",
         "Thaumaturgy"
       ],
+      "items": [
+        {
+          "name": "Superior Potion of Healing",
+          "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 8d4 + 8 Hit Points.",
+          "type": "Heal",
+          "action_type": "BonusAction",
+          "range": 5,
+          "healing_type": {
+            "num_dice": 8,
+            "die_size": 4,
+            "bonus": 8
+          },
+          "quantity": 5,
+          "consumable": true,
+          "sprite_path": ""
+        }
+      ],
       "agent_class": "Barbarian",
       "agent_char_level": 14,
       "agent_barbarian_subclass": "Berserker",
@@ -273,8 +290,8 @@
       "name": "Wyll",
       "sprite_path": "",
       "size": 1,
-      "col": 0,
-      "row": 10,
+      "col": 4,
+      "row": 1,
       "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
@@ -401,6 +418,23 @@
         "Dominate Person",
         "Telekinesis"
       ],
+      "items": [
+        {
+          "name": "Superior Potion of Healing",
+          "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 8d4 + 8 Hit Points.",
+          "type": "Heal",
+          "action_type": "BonusAction",
+          "range": 5,
+          "healing_type": {
+            "num_dice": 8,
+            "die_size": 4,
+            "bonus": 8
+          },
+          "quantity": 5,
+          "consumable": true,
+          "sprite_path": ""
+        }
+      ],
       "agent_class": "Sorcerer",
       "agent_char_level": 14,
       "agent_barbarian_subclass": "NONE",
@@ -455,8 +489,8 @@
       "name": "Astarion",
       "sprite_path": "",
       "size": 1,
-      "col": 1,
-      "row": 6,
+      "col": 4,
+      "row": 5,
       "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
@@ -495,7 +529,7 @@
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": true,
-        "has_offhand_attack": false,
+        "has_offhand_attack": true,
         "has_sentinel": false,
         "has_branches_of_the_tree": false,
         "spellcasting_ability": "cha",
@@ -542,81 +576,81 @@
       },
       "weapons": [
         {
-          "name": "PsychicBlade",
+          "name": "Dagger +3",
           "type": "melee",
           "reach_ft": 5,
-          "normal_range_ft": 80,
-          "long_range_ft": 320,
+          "normal_range_ft": 20,
+          "long_range_ft": 60,
           "finesse": true,
           "thrown": true,
           "pact_weapon": false,
-          "psychic_blade": true,
-          "proficient": true,
-          "off_hand": false,
-          "two_handed": false,
-          "heavy": false,
-          "light": false,
-          "is_shield": false,
-          "auto_hit_if_grappled": false,
-          "save_for_damage": false,
-          "save_for_damage_ability": "Constitution",
-          "auto_use_when_grappling": false,
-          "permanently_armed": false,
-          "mastery": "Vex",
-          "bonus_hit": 0,
-          "bonus_damage": 0,
-          "ac_bonus": 0,
-          "uses_max": 0,
-          "uses_remaining": 0,
-          "recharge_min": 0,
-          "expended": false,
-          "physical_damage_types": [],
-          "magic_damage_types": [
-            {
-              "type": "Psychic",
-              "num_dice": 1,
-              "die_size": 6
-            }
-          ],
-          "conditions": []
-        },
-        {
-          "name": "PsychicBlade",
-          "type": "melee",
-          "reach_ft": 5,
-          "normal_range_ft": 80,
-          "long_range_ft": 320,
-          "finesse": true,
-          "thrown": true,
-          "pact_weapon": false,
-          "psychic_blade": true,
+          "psychic_blade": false,
           "proficient": true,
           "off_hand": true,
           "two_handed": false,
           "heavy": false,
-          "light": false,
+          "light": true,
           "is_shield": false,
           "auto_hit_if_grappled": false,
           "save_for_damage": false,
           "save_for_damage_ability": "Constitution",
           "auto_use_when_grappling": false,
           "permanently_armed": false,
-          "mastery": "Vex",
-          "bonus_hit": 0,
-          "bonus_damage": 0,
+          "mastery": "Nick",
+          "bonus_hit": 3,
+          "bonus_damage": 3,
           "ac_bonus": 0,
           "uses_max": 0,
           "uses_remaining": 0,
           "recharge_min": 0,
           "expended": false,
-          "physical_damage_types": [],
-          "magic_damage_types": [
+          "physical_damage_types": [
             {
-              "type": "Psychic",
+              "type": "Piercing",
               "num_dice": 1,
               "die_size": 4
             }
           ],
+          "magic_damage_types": [],
+          "conditions": []
+        },
+        {
+          "name": "Dagger +3",
+          "type": "melee",
+          "reach_ft": 5,
+          "normal_range_ft": 20,
+          "long_range_ft": 60,
+          "finesse": true,
+          "thrown": true,
+          "pact_weapon": false,
+          "psychic_blade": false,
+          "proficient": true,
+          "off_hand": true,
+          "two_handed": false,
+          "heavy": false,
+          "light": true,
+          "is_shield": false,
+          "auto_hit_if_grappled": false,
+          "save_for_damage": false,
+          "save_for_damage_ability": "Constitution",
+          "auto_use_when_grappling": false,
+          "permanently_armed": false,
+          "mastery": "Nick",
+          "bonus_hit": 3,
+          "bonus_damage": 3,
+          "ac_bonus": 0,
+          "uses_max": 0,
+          "uses_remaining": 0,
+          "recharge_min": 0,
+          "expended": false,
+          "physical_damage_types": [
+            {
+              "type": "Piercing",
+              "num_dice": 1,
+              "die_size": 4
+            }
+          ],
+          "magic_damage_types": [],
           "conditions": []
         },
         {
@@ -671,6 +705,23 @@
         "Detect Magic",
         "Misty Step",
         "Mage Hand"
+      ],
+      "items": [
+        {
+          "name": "Superior Potion of Healing",
+          "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 8d4 + 8 Hit Points.",
+          "type": "Heal",
+          "action_type": "BonusAction",
+          "range": 5,
+          "healing_type": {
+            "num_dice": 8,
+            "die_size": 4,
+            "bonus": 8
+          },
+          "quantity": 5,
+          "consumable": true,
+          "sprite_path": ""
+        }
       ],
       "agent_class": "Rogue",
       "agent_char_level": 14,
@@ -727,7 +778,7 @@
       "sprite_path": "",
       "size": 1,
       "col": 1,
-      "row": 5,
+      "row": 3,
       "faction": 2,
       "on_deck": false,
       "is_npc_automated": false,
@@ -971,6 +1022,23 @@
         "Divine Spark (Harm)",
         "Divine Spark (Heal)",
         "Radiance of the Dawn"
+      ],
+      "items": [
+        {
+          "name": "Superior Potion of Healing",
+          "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 8d4 + 8 Hit Points.",
+          "type": "Heal",
+          "action_type": "BonusAction",
+          "range": 5,
+          "healing_type": {
+            "num_dice": 8,
+            "die_size": 4,
+            "bonus": 8
+          },
+          "quantity": 5,
+          "consumable": true,
+          "sprite_path": ""
+        }
       ],
       "agent_class": "Cleric",
       "agent_char_level": 14,

@@ -28,6 +28,7 @@
 #include "weapon.hpp"
 #include "spell.hpp"
 #include "armor.hpp"
+#include "item.hpp"           // Item — carried consumables (useItem / getAgentItems)
 #include "agent.hpp"
 #include "cell.hpp"            // Cell — stored by value in the reaction-system structs below
 #include "message_logger.hpp"
@@ -293,6 +294,16 @@ struct HandOfHealingResult {
     int  amount_healed = 0;             // HP actually restored to the target
     bool condition_cleared = false;     // L6 Physician's Touch: a condition was also ended
     std::string cleared_condition = {}; // name of the condition ended (empty if none)
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of using a carried Item (potion, …) — see CombatEngine::useItem
+// ─────────────────────────────────────────────────────────────────────────────
+struct UseItemResult {
+    bool valid = false;         // gate passed (item in the pack, target in range, action available)
+    int  amount_healed = 0;     // HP actually restored (Heal items)
+    std::string item_name = {}; // what was used (the row may be gone by the time we return)
+    bool consumed = false;      // the last charge went — the item left the inventory
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1333,6 +1344,19 @@ public:
     void setAgentSpells(BattleMap& bm, int idx, std::vector<Spell> spells) noexcept;
     void addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept;
     void removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept;
+
+    [[nodiscard]] std::vector<Item> getAgentItems(const BattleMap& bm, int idx) const noexcept;
+    void setAgentItems(BattleMap& bm, int idx, std::vector<Item> items) noexcept;
+    void addItemToAgent(BattleMap& bm, int idx, Item it) noexcept;
+    void removeItemFromAgent(BattleMap& bm, int idx, int item_idx) noexcept;
+
+    // Use the carried item in inventory slot `item_slot` on `target_idx` (which may be the user
+    // itself). Enforces the item's range (0 ⇒ self only), the user's ability to act, the item's
+    // action-economy cost (a BonusAction item spends the Bonus Action), rolls the effect, and
+    // decrements/removes the consumed charge. A Heal item restores HP through healAgent, so a
+    // potion poured into a downed ally revives it. Returns a UseItemResult (valid=false ⇒ nothing
+    // happened and nothing was spent).
+    UseItemResult useItem(BattleMap& bm, int user_idx, int item_slot, int target_idx) noexcept;
 
     // Return agent name for logging; "agent[idx]" if idx is out of range.
     [[nodiscard]] std::string agentName(const BattleMap& bm, int idx) const noexcept;

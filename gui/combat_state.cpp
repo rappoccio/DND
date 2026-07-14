@@ -125,6 +125,26 @@ void CombatEngine::removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) n
     bm.removeSpellFromAgent(idx, spell_idx);
 }
 
+std::vector<Item> CombatEngine::getAgentItems(const BattleMap& bm, int idx) const noexcept
+{
+    return bm.getAgentItems(idx);
+}
+
+void CombatEngine::setAgentItems(BattleMap& bm, int idx, std::vector<Item> items) noexcept
+{
+    bm.setAgentItems(idx, items);
+}
+
+void CombatEngine::addItemToAgent(BattleMap& bm, int idx, Item it) noexcept
+{
+    bm.addItemToAgent(idx, it);
+}
+
+void CombatEngine::removeItemFromAgent(BattleMap& bm, int idx, int item_idx) noexcept
+{
+    bm.removeItemFromAgent(idx, item_idx);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Turn counters
 // ─────────────────────────────────────────────────────────────────────────────

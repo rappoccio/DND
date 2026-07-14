@@ -84,8 +84,9 @@ mode automatically.
 4. **Save Dungeon** — writes the manifest plus the active page's scene.
 
 **Generate one**: *Generate Dungeon* with **Floors > 1** (and/or *Each floor
-N×M*) carves every floor/tile, populates it, links the floors with ladders, and
-writes the manifest for you.
+N×M*) carves every floor/tile, populates it, links the floors with **ladders** and
+the abutting maps on each floor with **linked doors** (one per shared edge,
+tunnelled to the nearest room on both sides), and writes the manifest for you.
 
 **Moving around:** the panel's Floor-nav block pages between abutting maps
 (West/North/South/East) and changes floors (Floor ±). In play, a creature uses a

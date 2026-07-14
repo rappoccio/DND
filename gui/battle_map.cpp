@@ -351,7 +351,14 @@ void BattleMap::applyAgentConfigs()
         }
         auto tok = std::make_shared<ConfiguredAgent>(
             cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-        placedAgents_.push_back({std::move(tok), origin, std::vector<Weapon>(3), {}, {}, -1, false, {}});
+        // Default-construct, then set the two fields we know: every other member keeps its
+        // default member initializer (weapons padded to 3, empty spells/items/armor,
+        // summoner_idx -1). Do NOT go back to positional aggregate init — it silently shifted
+        // every field's value onto its neighbour whenever PlacedAgent grew a member.
+        PlacedAgent pa;
+        pa.agent  = std::move(tok);
+        pa.origin = origin;
+        placedAgents_.push_back(std::move(pa));
     }
     std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
 }
@@ -377,7 +384,10 @@ int BattleMap::spawnAgent(const AgentConfig& cfg)
     }
     auto tok = std::make_shared<ConfiguredAgent>(
         cfg.name, cfg.startCol, cfg.startRow, cfg.size, cfg.spritePath);
-    placedAgents_.push_back({std::move(tok), origin, std::vector<Weapon>(3), {}, {}, -1, false, {}});
+    PlacedAgent pa;
+    pa.agent  = std::move(tok);
+    pa.origin = origin;
+    placedAgents_.push_back(std::move(pa));
     return static_cast<int>(placedAgents_.size()) - 1;
 }
 
@@ -1023,6 +1033,44 @@ void BattleMap::removeSpellFromAgent(int idx, int spell_idx) noexcept
     auto& sv = placedAgents_[static_cast<std::size_t>(idx)].spells;
     if (spell_idx < 0 || spell_idx >= static_cast<int>(sv.size())) return;
     sv.erase(sv.begin() + spell_idx);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Inventory accessors (carried consumables)
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::vector<Item> BattleMap::getAgentItems(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return {};
+    return placedAgents_[static_cast<std::size_t>(idx)].items;
+}
+
+void BattleMap::setAgentItems(int idx, std::vector<Item> items) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].items = std::move(items);
+}
+
+void BattleMap::addItemToAgent(int idx, Item it) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    auto& iv = placedAgents_[static_cast<std::size_t>(idx)].items;
+    // Stack identical items rather than growing a row per potion.
+    for (auto& have : iv) {
+        if (have.name == it.name) {
+            have.quantity += std::max(1, it.quantity);
+            return;
+        }
+    }
+    iv.push_back(std::move(it));
+}
+
+void BattleMap::removeItemFromAgent(int idx, int item_idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    auto& iv = placedAgents_[static_cast<std::size_t>(idx)].items;
+    if (item_idx < 0 || item_idx >= static_cast<int>(iv.size())) return;
+    iv.erase(iv.begin() + item_idx);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
