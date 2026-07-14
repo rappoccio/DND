@@ -76,7 +76,11 @@ class FileBrowser:
              save_mode: bool = False,
              extensions=None,
              default_filename: str = "",
-             name_pattern: str = ""):
+             name_pattern: str = "",
+             title: str = ""):
+        """`title` names the job the browser is doing ("Load Terrain", "Select Sprite", …).
+        The browser serves seven different callers, so leaving it blank — which falls back
+        to the generic heading — makes the heading lie about what is being picked."""
         if not os.path.isdir(start_dir):
             start_dir = os.path.dirname(start_dir) or "/"
         self.cwd        = os.path.abspath(start_dir)
@@ -86,7 +90,8 @@ class FileBrowser:
         self.extensions = extensions if extensions is not None else (
             JSON_EXTS if save_mode else IMAGE_EXTS)
         self.name_pattern = name_pattern
-        self._title     = "Save Layout As" if save_mode else "Open Layout / Select Sprite"
+        self._title     = title or (
+            "Save Layout As" if save_mode else "Open Layout / Select Sprite")
         self._filename  = default_filename
         self._fn_active = save_mode   # auto-focus filename in save mode
         self.scroll     = 0

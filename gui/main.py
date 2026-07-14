@@ -2153,6 +2153,7 @@ class App:
             save_mode=False,
             extensions=JSON_EXTS,
             name_pattern=".dungeon.json",
+            title="Open Dungeon",
         )
 
     def _on_open_dungeon_chosen(self, path: str):
@@ -2202,6 +2203,7 @@ class App:
             self._dungeon_dir(), self._on_add_page_png_chosen,
             save_mode=False,
             extensions=IMAGE_EXTS,
+            title="Add Page — Select Map Image",
         )
 
     def _on_add_page_png_chosen(self, png_path: str):
@@ -17219,7 +17221,8 @@ class App:
                                     f"{self.bm.placed_agents[hh].name}: sprite set to "
                                     f"{os.path.basename(path)}.")
                             start = self.sprites_dir if os.path.isdir(self.sprites_dir) else "."
-                            self.file_browser.open(start, _commit)
+                            self.file_browser.open(start, _commit,
+                                                   title="Select Sprite")
                         def _toggle_on_deck(h=hit):
                             now_reserve = not self.bm.is_agent_on_deck(h)
                             self.bm.set_agent_on_deck(h, now_reserve)
@@ -17708,19 +17711,35 @@ class App:
                     pass  # Event was consumed by dialog
 
                 # ── Panel widgets ─────────────────────────────────────────────
+                # First match wins: a click belongs to exactly one panel widget.
+                # Several handlers block in a modal and then re-anchor every panel rect
+                # (_on_generate_dungeon → _switch_to_page → _load_map_png →
+                # _reposition_panel), so without this latch the same MOUSEBUTTONDOWN
+                # would keep being tested against the buttons below at their NEW
+                # positions — that is how one click on Generate Dungeon also fired
+                # Load Lighting and opened the file browser.
+                _claimed = False
+
+                def _hit(btn) -> bool:
+                    nonlocal _claimed
+                    if _claimed or not btn.clicked(event):
+                        return False
+                    _claimed = True
+                    return True
+
                 # Select Mob button
-                if self.btn_select_mob.clicked(event):
+                if _hit(self.btn_select_mob):
                     self.mob_dialog.show(lambda mob: self._on_mob_selected(mob))
 
                 # Select PC
-                if self.btn_select_pc.clicked(event):
+                if _hit(self.btn_select_pc):
                     pc_classes = ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
                     options = [(cls, lambda c=cls: self._on_pc_class_selected(c)) for cls in pc_classes]
                     px_popup = self._panel_x() + self._PANEL_PAD
                     self.context_menu.show((px_popup, 100), options, self.screen.get_size())
 
                 # Clear All
-                if self.btn_clear.clicked(event):
+                if _hit(self.btn_clear):
                     self.bm.clear_agents()
                     self.bm.clear_terrain_effects()
                     self.bm.clear_items()
@@ -17731,50 +17750,54 @@ class App:
                     self._attack_cells_rlong = []
 
                 # Save — open browser in save mode
-                if self.btn_save.clicked(event):
+                if _hit(self.btn_save):
                     start = os.path.dirname(self._save_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_save_path_chosen,
                         save_mode=True,
                         extensions=JSON_EXTS,
                         default_filename=os.path.basename(self._save_path),
-                        name_pattern="_agents.json"
+                        name_pattern="_agents.json",
+                        title="Save Encounter As",
                     )
 
                 # Load — open browser in load mode. No name_pattern: show ALL .json so
                 # encounters saved with custom names (not just *_agents.json) are visible.
-                if self.btn_load.clicked(event):
+                if _hit(self.btn_load):
                     start = os.path.dirname(self._save_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_load_path_chosen,
                         save_mode=False,
                         extensions=JSON_EXTS,
+                        title="Load Encounter",
                     )
 
                 # Import a D&D Beyond character into the current encounter
-                if self.btn_import_ddb.clicked(event):
+                if _hit(self.btn_import_ddb):
                     self._import_ddb_character()
 
                 # Load PCs — merge a party (*_pc_agents.json) onto the current scene
-                if self.btn_load_pcs.clicked(event):
+                if _hit(self.btn_load_pcs):
                     start = os.path.dirname(self._save_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_load_pcs_chosen,
                         save_mode=False,
                         extensions=JSON_EXTS,
                         name_pattern="_pc_agents.json",
+                        title="Load PCs",
                     )
 
                 # Long Rest — reset all spell slots
-                if self.btn_long_rest.clicked(event):
+                if _hit(self.btn_long_rest):
                     self._on_long_rest()
 
                 # Short Rest — restore short-rest resources (Warlock pact slots, Monk Focus Points, …)
-                if self.btn_short_rest.clicked(event):
+                if _hit(self.btn_short_rest):
                     self._on_short_rest()
 
-                # Remove pending agent by clicking ✕
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Remove pending agent by clicking ✕ (rect-based, so it takes the same
+                # first-match-wins latch as the buttons)
+                if not _claimed and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     list_y = self.btn_clear.rect.bottom + 20 + 18
                     px_rm = self._panel_x()
                     for i in range(len(self.pending_configs)):
@@ -17782,68 +17805,59 @@ class App:
                         rb = pygame.Rect(rx, list_y + i*18 - 1, 16, 16)
                         if rb.collidepoint(event.pos):
                             self.pending_configs.pop(i)
+                            _claimed = True
                             break
 
                 # Begin Combat
-                if self.btn_begin_combat.clicked(event):
+                if _hit(self.btn_begin_combat):
                     self._start_combat()
 
                 # Edit Terrain
-                if self.btn_edit_terrain.clicked(event):
+                if _hit(self.btn_edit_terrain):
                     self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
                                              ladders=self._ladders, door_links=self._door_links)
 
                 # Show/Hide Terrain (same toggle as in combat)
-                if self.btn_show_terrain.clicked(event):
+                if _hit(self.btn_show_terrain):
                     self.show_terrain = not self.show_terrain
 
                 # Save Terrain — open browser in save mode
-                if self.btn_save_terrain.clicked(event):
+                if _hit(self.btn_save_terrain):
                     start = os.path.dirname(self._terrain_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_save_terrain_chosen,
                         save_mode=True,
                         extensions=JSON_EXTS,
                         default_filename=os.path.basename(self._terrain_path),
-                        name_pattern="_terrain.json"
+                        name_pattern="_terrain.json",
+                        title="Save Terrain As",
                     )
 
                 # Load Terrain — open browser in load mode. No name_pattern: show ALL
                 # .json so terrain saved with custom names (not just *_terrain.json) shows.
-                if self.btn_load_terrain.clicked(event):
+                if _hit(self.btn_load_terrain):
                     start = os.path.dirname(self._terrain_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_load_terrain_chosen,
                         save_mode=False,
                         extensions=JSON_EXTS,
+                        title="Load Terrain",
                     )
 
-                # Generate Terrain — carve BSP rooms/walls into the live terrain.
-                # `continue`: this handler blocks in a modal and can re-anchor every panel
-                # rect (_reposition_panel), so the click is spent — see Generate Dungeon below.
-                if self.btn_generate_terrain.clicked(event):
+                # Generate Terrain — carve BSP rooms/walls into the live terrain
+                if _hit(self.btn_generate_terrain):
                     self._on_generate_terrain()
-                    continue
 
-                # Generate Dungeon — fill the map's rooms with a progressive encounter.
-                # `continue` is load-bearing: this blocks for the whole generation, and a
-                # multi-floor run ends in _switch_to_page → _load_map_png → _reposition_panel,
-                # which MOVES every panel button (the Floor-nav block appears and pushes the
-                # config rows down). Without it, the same MOUSEBUTTONDOWN kept being matched
-                # against the buttons below against their NEW rects — so one click on Generate
-                # Dungeon also fired whatever had slid under the cursor (e.g. Load Lighting,
-                # opening the file browser).
-                if self.btn_generate_dungeon.clicked(event):
+                # Generate Dungeon — fill the map's rooms with a progressive encounter
+                if _hit(self.btn_generate_dungeon):
                     self._on_generate_dungeon()
-                    continue
 
                 # Dungeon… — New / Open / Save a multi-map dungeon manifest, edit pages
-                if self.btn_dungeon.clicked(event):
+                if _hit(self.btn_dungeon):
                     self._show_dungeon_menu()
-                    continue
 
                 # Edit Lighting
-                if self.btn_edit_lighting.clicked(event):
+                if _hit(self.btn_edit_lighting):
                     light_sources = []
                     default_light = rpg.VisibilityLevel.Clear
                     if os.path.exists(self._lighting_path):
@@ -17885,33 +17899,34 @@ class App:
                     self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
 
                 # Load Lighting
-                if self.btn_load_lighting.clicked(event):
+                if _hit(self.btn_load_lighting):
                     start = os.path.dirname(self._lighting_path) or self._map_dir
                     self.file_browser.open(
                         start, self._on_load_lighting_chosen,
                         save_mode=False,
                         extensions=JSON_EXTS,
+                        title="Load Lighting",
                     )
 
                 # Toggle Lighting Overlay
-                if self.btn_toggle_lighting.clicked(event):
+                if _hit(self.btn_toggle_lighting):
                     self.show_lighting_overlay = not self.show_lighting_overlay
                     self.btn_toggle_lighting.text = "Lighting: ON" if self.show_lighting_overlay else "Lighting: OFF"
 
                 # Toggle Wall Auto-Detection
-                if self.btn_toggle_walls.clicked(event):
+                if _hit(self.btn_toggle_walls):
                     self._toggle_walls()
 
                 # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
-                if self.btn_toggle_fog.clicked(event):
+                if _hit(self.btn_toggle_fog):
                     self._set_fog(not self.show_fog)
 
                 # Set Grid (sample a tile to define a uniform grid)
-                if self.btn_set_grid.clicked(event):
+                if _hit(self.btn_set_grid):
                     self._toggle_grid_sample_mode()
 
                 # Quit
-                if self.btn_quit.clicked(event):
+                if _hit(self.btn_quit):
                     return False
 
             else:
