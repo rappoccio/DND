@@ -462,6 +462,50 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         return result;   // valid == false → no effect
     }
 
+    // An area of effect needs a clear path to its point of origin: you can't drop a Fireball's
+    // center in the next room, because Total Cover blocks the path to the point you chose. Only
+    // a *placed* area is at risk — a Cone/Line/Emanation originates on the caster's own footprint
+    // (areaOrigin returns size > 1 for those) and always passes. Checked here, before Metamagic
+    // spends Sorcery Points and before the slot is deducted, so a blocked cast costs nothing.
+    // This is deliberately not gated on spell.requires_los: that flag is inferred from the spell's
+    // text ("a point you can see") and is false for most of spells.json, but NO area of effect
+    // reaches through a wall regardless of what its description says.
+    // An Emanation ignores the aim point entirely (it re-centers on the caster below), so a stale
+    // or unset action.aoe_col/row must never block it — hence the moves_with_caster exclusion.
+    const bool emanation = (sp.geometry == Spell::Sphere && sp.moves_with_caster);
+    const bool aimed_area = sp.geometry != Spell::Single && sp.geometry != Spell::Multiple && !emanation;
+    if (aimed_area &&
+        action.aoe_col >= 0 && action.aoe_col < bm.gridCols() &&
+        action.aoe_row >= 0 && action.aoe_row < bm.gridRows()) {
+        const Cell center{action.aoe_col, action.aoe_row};
+        const int  caster_sz = caster_pa.agent->getSize();
+        const AreaOrigin ao = BattleMap::areaOrigin(sp, caster_pa.origin, caster_sz, center);
+        // ao.size > 1 ⇒ the area originates on the caster's own footprint (Cone/Line): nothing to check.
+        if (ao.size == 1 && !bm.hasLineOfSight(caster_pa.origin, caster_sz, center, 1)) {
+            log_("{} can't cast {} there — the point is behind total cover",
+                 agentName(bm, action.caster_idx), sp.name);
+            return result;   // valid == false → nothing spent
+        }
+    }
+
+    // The same rule for a directly-targeted spell: "to target something you must have a clear path
+    // to it, so it can't be behind Total Cover" — Fire Bolt, Hold Person, a cross-room heal, all of
+    // it. The GUI already refuses to aim through a wall, but NPC casts and scripted actions come
+    // straight here, so the engine has to be the one that says no. Refused before any cost, same as
+    // the area gate above. (Targeting yourself is always fine: LOS to your own footprint is trivial.)
+    if (!aimed_area && !emanation) {
+        for (int t : action.target_indices) {
+            if (t < 0 || t >= static_cast<int>(agents.size()) || t == action.caster_idx) continue;
+            const PlacedAgent& tpa = agents[static_cast<std::size_t>(t)];
+            if (!bm.hasLineOfSight(caster_pa.origin, caster_pa.agent->getSize(),
+                                   tpa.origin, tpa.agent->getSize())) {
+                log_("{} can't target {} with {} — behind total cover",
+                     agentName(bm, action.caster_idx), agentName(bm, t), sp.name);
+                return result;   // valid == false → nothing spent
+            }
+        }
+    }
+
     // Cast-time element choice (Chromatic Orb, Sorcerous Burst): the caster picks the
     // damage type per cast. Rewrite every magic-damage roll's type on this local copy
     // only — the stored spell keeps its placeholder type. Applied before Metamagic so
@@ -718,7 +762,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
     // Moving Sphere (Emanation): the area is centered on the caster, not an aimed point.
-    const bool moving_sphere = (sp.geometry == Spell::Sphere && sp.moves_with_caster);
+    const bool moving_sphere = emanation;
     int center_col = action.aoe_col;
     int center_row = action.aoe_row;
     if (moving_sphere) {
@@ -729,7 +773,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     std::vector<int> targets =
         (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple)
         ? action.target_indices
-        : resolveAoeTargets(agents, sp, action.caster_idx, center_col, center_row,
+        : resolveAoeTargets(bm, sp, action.caster_idx, center_col, center_row,
                             action.aoe_col2, action.aoe_row2);
 
     // Single- and Multiple-geometry directly-targeted spells are authoritatively capped to the
@@ -2060,6 +2104,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             }
         }
 
+        // The zone is blocked by Total Cover: keep only the cells its point of origin can
+        // actually reach, so a persistent area (Spirit Guardians, Cloudkill, Wall of Fire)
+        // stops at a wall instead of leaking through it. Every membership test downstream —
+        // begin/end of turn, entering the zone mid-move, an Emanation sweeping onto someone,
+        // and the GUI overlay — reads effect.cells, so pruning here fixes all of them at once.
+        effect_cells = bm.pruneBlockedCells(
+            BattleMap::areaOrigin(sp, caster_pa.origin, caster_pa.agent->getSize(),
+                                  Cell{center_col, center_row}),
+            effect_cells);
+
         // Create ActiveSpellEffect if we have cells
         if (!effect_cells.empty()) {
             ActiveSpellEffect effect;
@@ -2085,7 +2139,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         std::vector<Cell> terrain_cells;
         int anchor_idx = -1, anchor_radius = 0;
         if (moving_sphere) {
-            terrain_cells = sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius);
+            // Blocked by Total Cover like any area (filterSpellCells does this for the aimed
+            // shapes below; an Emanation prunes against the caster's own footprint).
+            terrain_cells = bm.pruneBlockedCells(
+                AreaOrigin{caster_origin, caster_size},
+                sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius));
             anchor_idx    = action.caster_idx;
             anchor_radius = sp.radius;
         } else {
@@ -2141,7 +2199,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         // other shapes place static light at the aim.
         std::vector<Cell> light_cells;
         if (moving_sphere) {
-            light_cells = sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius);
+            light_cells = bm.pruneBlockedCells(
+                AreaOrigin{caster_origin, caster_size},
+                sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius));
         } else {
             Cell endpoint = Cell{action.aoe_col2, action.aoe_row2};
             auto raw_cells = bm.aoeCells(center, sp, caster_origin, endpoint, caster_size);
@@ -2580,6 +2640,16 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return;
     const Cell origin = agents[static_cast<std::size_t>(agent_idx)].origin;
+    const int  size   = agents[static_cast<std::size_t>(agent_idx)].agent->getSize();
+
+    // An Emanation is re-traced from wherever the caster now stands, so its Total-Cover
+    // pruning has to be redone too: walking behind a pillar shrinks the zone, stepping back
+    // out restores it. Same origin for the spell, terrain and light footprints below.
+    const AreaOrigin area_origin{origin, size};
+    auto emanationCells = [&](int radius_ft) {
+        return bm.pruneBlockedCells(area_origin,
+                                    sphereCellsAround(origin.col, origin.row, radius_ft));
+    };
 
     std::vector<std::pair<int, int>> to_update;  // (effect_id, radius_ft)
     for (const auto& eff : bm.activeSpellEffects())
@@ -2587,7 +2657,7 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
             to_update.emplace_back(eff.effect_id, eff.spell.radius);
 
     for (const auto& [id, radius] : to_update)
-        bm.setSpellEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
+        bm.setSpellEffectCells(id, emanationCells(radius));
 
     // The Emanation's difficult-terrain footprint (e.g. Spirit Guardians' halved Speed) is a
     // separate anchored terrain effect — re-center it on the caster too.
@@ -2597,7 +2667,7 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
             terrain_to_update.emplace_back(te.id, te.anchor_radius_ft);
 
     for (const auto& [id, radius] : terrain_to_update)
-        bm.setTerrainEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
+        bm.setTerrainEffectCells(id, emanationCells(radius));
 
     // A light-emitting Emanation (e.g. DaylightEmanation's Sunlight) anchored to this agent
     // follows them the same way — re-center its footprint on the caster.
@@ -2607,7 +2677,7 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
             light_to_update.emplace_back(le.id, le.anchor_radius_ft);
 
     for (const auto& [id, radius] : light_to_update)
-        bm.setLightEffectCells(id, sphereCellsAround(origin.col, origin.row, radius));
+        bm.setLightEffectCells(id, emanationCells(radius));
 }
 
 void CombatEngine::tickEffects(BattleMap& bm)
@@ -3220,7 +3290,11 @@ bool CombatEngine::applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect)
 
     if (effect == 1) {  // "Plant Growth sprouts around your feet" — cast Plant Growth on the caster.
         Cell origin = agents[static_cast<std::size_t>(idx)].origin;
-        auto cells = sphereCellsAround(origin.col, origin.row, 10);  // 10-ft radius sphere
+        const int size = agents[static_cast<std::size_t>(idx)].agent->getSize();
+        // 10-ft radius Sphere centered on the caster, pruned to what that point can reach —
+        // Total Cover blocks it like any other area.
+        auto cells = bm.pruneBlockedCells(AreaOrigin{origin, size},
+                                          sphereCellsAround(origin.col, origin.row, 10));
         [[maybe_unused]] int id = bm.placeTerrainEffect(
             "Plant Growth (Wild Magic Surge)", cells,
             TerrainDifficulty::Quartered, 10 /* rounds ≈ 1 minute */, idx);

@@ -10969,6 +10969,11 @@ class App:
                 return
             cells = self.bm.wall_cells(self.spell_anchor_cell, self.spell_hover_cell,
                                        sp.width, sp.length)
+            # wall_cells is raw geometry; the engine drops whatever the wall's anchor can't
+            # see (Total Cover), so prune the preview the same way or it over-promises.
+            caster = self.bm.placed_agents[caster_idx]
+            cells = self.bm.prune_blocked_cells(cells, sp, caster.origin, caster.size,
+                                                self.spell_anchor_cell)
         else:
             aoe_cells = self._aoe_cells(self.spell_hover_cell, sp)
             # Filter by spell range and line of sight

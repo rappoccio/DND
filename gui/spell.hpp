@@ -61,8 +61,13 @@ namespace rpg {
       // Sphere whose center follows the caster (D&D 2024 "Emanation"). The persistent
       // effect re-centers on the caster each turn / whenever the caster moves.
       bool moves_with_caster{false};
-      bool requires_los{false};            // Spell requires line of sight to target/area
-      bool check_los_on_center{true};      // If true, only the spell center needs LOS (user configurable)
+      // NOTE: neither flag is what makes a spell respect walls. Every area of effect is blocked by
+      // Total Cover unconditionally — the engine refuses to place an aimed area behind a wall, and
+      // prunes each area to the cells its point of origin can actually reach (BattleMap::areaOrigin
+      // / pruneBlockedCells). These two flags are inferred from spell text and are false for most of
+      // spells.json, so nothing load-bearing may depend on them.
+      bool requires_los{false};            // Spell text explicitly demands a visible target ("one creature you can see")
+      bool check_los_on_center{true};      // Legacy/no-op: wall pruning is now per-cell and unconditional
       bool requires_sight{false};          // Spell requires target to be visible (not blocked/heavily obscured)
       // "Creatures of your choosing" — a Harm AoE that intrinsically spares chosen creatures
       // (e.g. Radiance of the Dawn). When true, the caster's allies (same faction + claimed

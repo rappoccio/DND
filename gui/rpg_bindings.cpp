@@ -4117,9 +4117,25 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &BattleMap::filterSpellCells,
              py::arg("cells"), py::arg("caster_origin"), py::arg("caster_size"),
              py::arg("spell"), py::arg("center_cell"),
-             "Filter spell cells by range and line-of-sight requirements.\n"
-             "Respects spell.requires_los and spell.check_los_on_center flags.\n"
-             "If check_los_on_center, only the center cell needs LOS (D&D 5e standard).")
+             "Filter spell cells by range and Total Cover.\n"
+             "Drops cells out of the caster's range, and every cell a wall hides from the\n"
+             "area's point of origin (see prune_blocked_cells) — no area of effect reaches\n"
+             "through Total Cover. spell.requires_los additionally demands a clear path from\n"
+             "the caster to center_cell; without one, nothing is affected at all.")
+
+        .def("prune_blocked_cells",
+             [](const BattleMap& bm, const std::vector<Cell>& cells, const Spell& spell,
+                Cell caster_origin, int caster_size, Cell center_cell) {
+                 return bm.pruneBlockedCells(
+                     BattleMap::areaOrigin(spell, caster_origin, caster_size, center_cell), cells);
+             },
+             py::arg("cells"), py::arg("spell"),
+             py::arg("caster_origin"), py::arg("caster_size"), py::arg("center_cell"),
+             "Drop every cell a wall (or closed door) hides from the area's point of origin —\n"
+             "an area of effect is blocked by Total Cover and never bends around a corner.\n"
+             "The origin is the caster's footprint for a Cone/Line/Emanation, else center_cell.\n"
+             "The engine prunes every area this way; call it on a hand-built cell list (e.g. a\n"
+             "wall_cells preview) so the GUI shows exactly the cells the spell will affect.")
 
         .def("aoe_cells", &BattleMap::aoeCells,
              py::arg("center"), py::arg("spell"), py::arg("caster_origin"),

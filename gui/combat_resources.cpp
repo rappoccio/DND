@@ -604,7 +604,11 @@ int CombatEngine::shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int
         return -1;
     }
 
-    std::vector<Cell> cells = sphereCellsAround(target_col, target_row, 15);
+    // The Sphere is blocked by Total Cover: the darkness pools where the target point can see,
+    // and doesn't seep through a wall into the next room.
+    std::vector<Cell> cells = bm.pruneBlockedCells(
+        AreaOrigin{Cell{target_col, target_row}, 1},
+        sphereCellsAround(target_col, target_row, 15));
     int light_id = bm.placeLightEffect("Shadow Arts: Darkness", cells,
                                        VisibilityLevel::MagicalDark, 10, idx, /*see_through=*/idx);
     if (light_id < 0) {
@@ -728,7 +732,10 @@ bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int ta
     log_("{}: Elemental Burst — a 20 ft Sphere of {} erupts (DC {} DEX save, {}d8)",
          agentName(bm, idx), elementName(mt), dc, num);
 
-    std::vector<Cell> cells = sphereCellsAround(target_col, target_row, 20);
+    // Blocked by Total Cover, like every other Sphere — a creature behind a wall is spared.
+    std::vector<Cell> cells = bm.pruneBlockedCells(
+        AreaOrigin{Cell{target_col, target_row}, 1},
+        sphereCellsAround(target_col, target_row, 20));
     for (int t = 0; t < static_cast<int>(agents.size()); ++t) {
         if (t == idx) continue;                              // the caster is never in their own burst
         if (areAllies(bm, idx, t)) continue;                 // faction-aware: spare allies
@@ -1429,6 +1436,11 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
 
         if (dist_ft > static_cast<float>(radius_ft)) continue;  // Out of range
 
+        // Blocked by Total Cover like any Emanation — a creature behind a wall isn't cowed.
+        if (!bm.hasLineOfSight(barbarian_pa.origin, barbarian_pa.agent->getSize(),
+                               target_pa.origin, target_pa.agent->getSize()))
+            continue;
+
         if (areAllies(bm, idx, target_idx)) continue;  // Skip allies (enemies only)
 
         // Roll WIS save for the target
@@ -1674,6 +1686,11 @@ bool CombatEngine::useZealousPresence(BattleMap& bm, int idx) noexcept
         const float dist_ft = std::sqrt(dx * dx + dy * dy) * 5.0f;
 
         if (dist_ft > static_cast<float>(radius_ft)) continue;  // Out of range
+
+        // Blocked by Total Cover like any Emanation — an ally behind a wall isn't inspired.
+        if (!bm.hasLineOfSight(zealot_pa.origin, zealot_pa.agent->getSize(),
+                               target_pa.origin, target_pa.agent->getSize()))
+            continue;
 
         if (targets_buffed >= max_targets) break;  // Hit cap
 
@@ -2597,6 +2614,7 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
     log_("{} uses Turn Undead (DC {})", agentName(bm, caster_idx), result.save_dc);
 
     const Cell c_origin = agents[static_cast<std::size_t>(caster_idx)].origin;
+    const int  c_size   = agents[static_cast<std::size_t>(caster_idx)].agent->getSize();
 
     for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
         if (i == caster_idx) continue;
@@ -2607,6 +2625,10 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
         const Cell o = agents[static_cast<std::size_t>(i)].origin;
         const double dx = o.col - c_origin.col, dy = o.row - c_origin.row;
         if (std::sqrt(dx * dx + dy * dy) * 5.0 > 30.0) continue;
+
+        // The Emanation is blocked by Total Cover: an undead behind a wall is untouched.
+        if (!bm.hasLineOfSight(c_origin, c_size, o, agents[static_cast<std::size_t>(i)].agent->getSize()))
+            continue;
 
         int mod = (tgt.wis - 10) / 2;
         if (tgt.wis < 10 && (tgt.wis - 10) % 2 != 0) --mod;

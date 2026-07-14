@@ -216,11 +216,15 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             if (pc.unconscious || pc.incapacitated) continue;
             if (areAllies(bm, p, agent_idx)) continue;
             const int radius_ft = (ps.char_level >= 18) ? 30 : 10;
-            const int d = footprintDistance(agents[static_cast<std::size_t>(p)].origin,
-                                            agents[static_cast<std::size_t>(p)].agent->getSize(),
-                                            agents[static_cast<std::size_t>(agent_idx)].origin,
-                                            agents[static_cast<std::size_t>(agent_idx)].agent->getSize());
+            const PlacedAgent& pal_pa = agents[static_cast<std::size_t>(p)];
+            const PlacedAgent& vic_pa = agents[static_cast<std::size_t>(agent_idx)];
+            const int d = footprintDistance(pal_pa.origin, pal_pa.agent->getSize(),
+                                            vic_pa.origin, vic_pa.agent->getSize());
             if (d * 5 > radius_ft) continue;
+            // The aura is an Emanation — blocked by Total Cover (matches bestPaladinAura).
+            if (!bm.hasLineOfSight(pal_pa.origin, pal_pa.agent->getSize(),
+                                   vic_pa.origin, vic_pa.agent->getSize()))
+                continue;
             const int save_dc  = spellSaveDcFromAbility(ps, SaveCha);
             const int save_mod = saveModFor(bm, agent_idx, SaveWis);
             const int save_d20 = roll(20);
@@ -2141,7 +2145,7 @@ NpcAoePlan CombatEngine::npcPlanAoeCast(const BattleMap& bm, int agent_idx) cons
             if (!bm.hasLineOfSight(casterOrigin, casterSize, aim, 1)) continue;
 
             // Count the catchment with the SAME resolver executeSpell uses — geometry is single-sourced.
-            const std::vector<int> hit = resolveAoeTargets(agents, sp, agent_idx, aim.col, aim.row);
+            const std::vector<int> hit = resolveAoeTargets(bm, sp, agent_idx, aim.col, aim.row);
             int enemiesHit = 0, alliesHit = 0;
             for (int t : hit) {
                 if (npcAttackable(bm, agent_idx, t)) { ++enemiesHit; continue; }   // living enemy in play

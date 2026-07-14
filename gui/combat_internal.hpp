@@ -192,19 +192,25 @@ inline void appendAgentBlock(std::vector<float>& obs,
 //  Spell AoE target resolution
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Every creature whose footprint overlaps this spell's area. The area is blocked by Total
+// Cover (D&D 2024 "Areas of Effect"): a cell only counts if an unblocked straight line runs
+// to it from the area's point of origin, so no area spell — aimed (Fireball) or emanating
+// (Spirit Guardians, Radiance of the Dawn) — reaches through a wall or bends around a corner.
 inline std::vector<int> resolveAoeTargets(
-    std::span<const PlacedAgent> agents,
+    const BattleMap& bm,
     const Spell& sp,
     int caster_idx,
     int aoe_col, int aoe_row,
     int aoe_col2 = -1, int aoe_row2 = -1)
 {
     std::vector<int> targets;
+    const std::span<const PlacedAgent> agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
 
     const PlacedAgent& caster_pa = agents[static_cast<std::size_t>(caster_idx)];
     const Cell& cc = caster_pa.origin;
     const int   cs = caster_pa.agent ? caster_pa.agent->getSize() : 1;
+    const AreaOrigin origin = BattleMap::areaOrigin(sp, cc, cs, Cell{aoe_col, aoe_row});
     // Cone/Line apex: the cell on the caster's NxN footprint nearest the aimed
     // point, so a Large+ creature emanates from the edge facing the target
     // instead of always from its top-left origin cell.
@@ -301,12 +307,15 @@ inline std::vector<int> resolveAoeTargets(
         const Cell& tc = tpa.origin;
         const int   ts = tpa.agent ? tpa.agent->getSize() : 1;
 
-        // A target is in the area if ANY cell of its footprint overlaps it.
+        // A target is in the area if ANY cell of its footprint is both inside the geometry and
+        // reachable from the point of origin — a creature behind a wall (Total Cover) is spared
+        // even though the raw geometry covers its square.
         bool in_area = false;
         for (int dc = 0; dc < ts && !in_area; ++dc) {
             for (int dr = 0; dr < ts && !in_area; ++dr) {
-                in_area = cellInArea(static_cast<float>(tc.col + dc),
-                                     static_cast<float>(tc.row + dr));
+                const Cell cell{tc.col + dc, tc.row + dr};
+                in_area = cellInArea(static_cast<float>(cell.col), static_cast<float>(cell.row))
+                       && bm.hasLineOfSight(origin.cell, origin.size, cell, 1);
             }
         }
 

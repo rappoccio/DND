@@ -232,6 +232,11 @@ int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_le
         const int d = footprintDistance(self_pa.origin, self_size,
                                         ppa.origin, ppa.agent->getSize());
         if (d * 5 > radius_ft) continue;
+        // An aura is an Emanation, and an Emanation is blocked by Total Cover: standing on the
+        // far side of a wall from the Paladin puts you outside the aura even when you're close.
+        if (p != agent_idx &&
+            !bm.hasLineOfSight(ppa.origin, ppa.agent->getSize(), self_pa.origin, self_size))
+            continue;
         best = std::max(best, std::max(1, dndMod(ps.cha)));
     }
     return best;
@@ -286,7 +291,13 @@ bool CombatEngine::hasAdvantageAura(const BattleMap& bm, int agent_idx) const no
         const int dx = self_pa.origin.col - src_pa.origin.col;
         const int dy = self_pa.origin.row - src_pa.origin.row;
         const int dist_sq_ft = (dx * dx + dy * dy) * 25;     // (cells*5)^2 = cells^2 * 25
-        if (dist_sq_ft <= eff.spell.radius * eff.spell.radius) return true;
+        if (dist_sq_ft > eff.spell.radius * eff.spell.radius) continue;
+        // Blocked by Total Cover, like every other Emanation.
+        if (agent_idx != src &&
+            !bm.hasLineOfSight(src_pa.origin, src_pa.agent->getSize(),
+                               self_pa.origin, self_pa.agent->getSize()))
+            continue;
+        return true;
     }
     return false;
 }

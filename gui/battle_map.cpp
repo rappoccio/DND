@@ -1331,47 +1331,65 @@ std::vector<Cell> BattleMap::aoeCells(Cell center, const Spell& spell,
     return cells;
 }
 
+AreaOrigin BattleMap::areaOrigin(const Spell& spell, Cell casterOrigin, int casterSize,
+                                 Cell centerCell) noexcept
+{
+    const int cs = std::max(1, casterSize);
+
+    // A Cone/Line emanates from the caster: its origin is the cell of the caster's footprint
+    // nearest the aim point. An area *placed* at a point (Sphere/Square/Rectangle) originates
+    // at that point — unless the point lies on the caster (an Emanation such as Spirit Guardians
+    // re-centers on the caster, so its origin is the caster itself).
+    const bool from_caster =
+        spell.geometry == Spell::Cone || spell.geometry == Spell::Line ||
+        (centerCell.col >= casterOrigin.col && centerCell.col < casterOrigin.col + cs &&
+         centerCell.row >= casterOrigin.row && centerCell.row < casterOrigin.row + cs);
+
+    // Tracing from the caster's whole footprint (rather than one cell of it) is what keeps a
+    // Large+ caster's own body from blocking its spell — hasLineOfSight excludes both endpoint
+    // footprints from the wall test.
+    if (from_caster) return AreaOrigin{casterOrigin, cs};
+    return AreaOrigin{centerCell, 1};
+}
+
+std::vector<Cell> BattleMap::pruneBlockedCells(AreaOrigin origin,
+                                               const std::vector<Cell>& cells) const
+{
+    std::vector<Cell> result;
+    result.reserve(cells.size());
+    for (const Cell& cell : cells)
+        if (hasLineOfSight(origin.cell, origin.size, cell, 1))
+            result.push_back(cell);
+    return result;
+}
+
 std::vector<Cell> BattleMap::filterSpellCells(const std::vector<Cell>& cells,
                                               Cell casterOrigin, int casterSize,
                                               const Spell& spell, Cell centerCell) const
 {
-    std::vector<Cell> result;
+    // A spell that needs a clear path to its target point gets nothing at all when that point
+    // is behind Total Cover. (spell.check_los_on_center no longer gates the per-cell wall test
+    // below — an area is blocked by a wall whether or not the caster needed to see the center.)
+    if (spell.requires_los && !hasLineOfSight(casterOrigin, casterSize, centerCell, 1))
+        return {};
+
     const int rangeCells = spell.range / 5;
-
-    // Check if centerCell has LOS (if required)
-    if (spell.requires_los && spell.check_los_on_center) {
-        if (!hasLineOfSight(casterOrigin, casterSize, centerCell, 1)) {
-            return result;  // Center blocked, no cells can be affected
-        }
-    }
-
+    std::vector<Cell> in_range;
+    in_range.reserve(cells.size());
     for (const auto& cell : cells) {
-        // Check distance (Chebyshev from caster edge to target cell)
-        int dc = std::max({casterOrigin.col - cell.col,
-                          cell.col - (casterOrigin.col + casterSize - 1),
-                          0});
-        int dr = std::max({casterOrigin.row - cell.row,
-                          cell.row - (casterOrigin.row + casterSize - 1),
-                          0});
-        int dist = std::max(dc, dr);
-
-        if (dist > rangeCells)
-            continue;  // Out of range
-
-        // If check_los_on_center, we already validated center above, so include all range cells
-        if (spell.check_los_on_center && spell.requires_los) {
-            result.push_back(cell);
-        } else if (spell.requires_los) {
-            // Check LOS for each individual cell (rare case)
-            if (hasLineOfSight(casterOrigin, casterSize, cell, 1)) {
-                result.push_back(cell);
-            }
-        } else {
-            // No LOS requirement, just add it
-            result.push_back(cell);
-        }
+        // Chebyshev distance from the caster's nearest edge to the cell.
+        const int dc = std::max({casterOrigin.col - cell.col,
+                                 cell.col - (casterOrigin.col + casterSize - 1),
+                                 0});
+        const int dr = std::max({casterOrigin.row - cell.row,
+                                 cell.row - (casterOrigin.row + casterSize - 1),
+                                 0});
+        if (std::max(dc, dr) <= rangeCells)
+            in_range.push_back(cell);
     }
-    return result;
+
+    // The area itself can't reach through a wall, so drop whatever its point of origin can't see.
+    return pruneBlockedCells(areaOrigin(spell, casterOrigin, casterSize, centerCell), in_range);
 }
 
 // ── Terrain multipliers ────────────────────────────────────────────────────

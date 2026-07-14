@@ -14,6 +14,7 @@ test_scripts = [
     "test_combat.py",
     "test_helpers.py",
     "test_spells.py",
+    "test_total_cover.py",
     "test_chromatic_orb.py",
     "test_items.py",
     "test_thrown_weapons.py",

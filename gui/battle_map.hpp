@@ -110,6 +110,18 @@ enum class VisibilityLevel {
     HeavilyObscured
 };
 
+// ── Point of origin of an area of effect ───────────────────────────────────
+// Every area of effect is blocked by Total Cover: a point is only inside the area if an
+// unblocked straight line runs to it from the area's point of origin. `cell`/`size` is the
+// footprint those lines are traced from — a single aimed cell for a placed area (Fireball),
+// or the caster's whole footprint for an area that emanates from the caster (a Cone, a Line,
+// or an Emanation like Spirit Guardians), so a Large caster never blocks its own spell.
+// Produced by BattleMap::areaOrigin(); consumed by BattleMap::pruneBlockedCells().
+struct AreaOrigin {
+    Cell cell{0, 0};
+    int  size{1};
+};
+
 // ── Active temporary terrain effect ────────────────────────────────────────
 struct ActiveTerrainEffect {
     int                 id;               // unique, returned to Python on add
@@ -471,10 +483,28 @@ public:
     [[nodiscard]] std::vector<Cell> attackTargetCells(Cell origin, int agentSize,
                                                       int rangeFt) const;
 
-    // Filter spell cells by range and LOS requirements.
-    // If spell.requires_los is false, only filters by range.
-    // If spell.check_los_on_center is true, only the centerCell needs LOS (standard D&D 5e).
-    // If spell.check_los_on_center is false, all cells need LOS (rare case).
+    // The point an area of effect radiates from, plus the footprint the Total-Cover
+    // lines are traced from. A Cone/Line — and any area centered on the caster (an
+    // Emanation such as Spirit Guardians) — radiates from the caster's own footprint,
+    // so the caster's body never blocks its own spell; an aimed area (Fireball) radiates
+    // from the single center cell it was aimed at.
+    [[nodiscard]] static AreaOrigin areaOrigin(const Spell& spell,
+                                               Cell casterOrigin, int casterSize,
+                                               Cell centerCell) noexcept;
+
+    // Drop every cell a wall (or closed door) hides from the area's point of origin.
+    // An area of effect is blocked by Total Cover: a point is only in the area if an
+    // unblocked straight line runs to it from the origin, so the area never bends around
+    // a corner or leaks through a wall. This is the single gate every area footprint —
+    // spell zones, difficult terrain, light — passes through.
+    [[nodiscard]] std::vector<Cell> pruneBlockedCells(AreaOrigin origin,
+                                                      const std::vector<Cell>& cells) const;
+
+    // Filter spell cells by range and Total Cover.
+    // Cells out of the caster's range are dropped, as is every cell a wall hides from the
+    // area's point of origin (pruneBlockedCells) — that wall pruning is unconditional, since
+    // no area of effect reaches through Total Cover. spell.requires_los additionally demands a
+    // clear path from the caster to centerCell: without one, nothing is affected at all.
     [[nodiscard]] std::vector<Cell> filterSpellCells(const std::vector<Cell>& cells,
                                                      Cell casterOrigin, int casterSize,
                                                      const Spell& spell, Cell centerCell) const;
