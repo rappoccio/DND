@@ -62,5 +62,76 @@
     "quantity": 1,
     "consumable": true,
     "sprite_path": ""
+  },
+  {
+    "name": "Acid",
+    "description": "When you take the Attack action, you can replace one of your attacks with throwing a vial of Acid. Target one creature or object you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 2d6 Acid damage.",
+    "type": "Thrown",
+    "action_type": "AttackReplacement",
+    "rarity": "Common",
+    "range": 20,
+    "save_ability": "SaveDex",
+    "damage_type": {
+      "type": "Acid",
+      "num_dice": 2,
+      "die_size": 6,
+      "bonus": 0
+    },
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
+    "name": "Alchemist's Fire",
+    "description": "When you take the Attack action, you can replace one of your attacks with throwing a flask of Alchemist's Fire. Target one creature or object you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 1d4 Fire damage and start Burning (1d4 Fire at the start of each of its turns; an action to drop Prone and roll it out).",
+    "type": "Thrown",
+    "action_type": "AttackReplacement",
+    "rarity": "Common",
+    "range": 20,
+    "save_ability": "SaveDex",
+    "damage_type": {
+      "type": "Fire",
+      "num_dice": 1,
+      "die_size": 4,
+      "bonus": 0
+    },
+    "condition_applied": "Burning",
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
+    "name": "Holy Water",
+    "description": "When you take the Attack action, you can replace one of your attacks with throwing a flask of Holy Water. Target one creature you can see within 20 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or take 2d8 Radiant damage if it is a Fiend or an Undead.",
+    "type": "Thrown",
+    "action_type": "AttackReplacement",
+    "rarity": "Common",
+    "range": 20,
+    "save_ability": "SaveDex",
+    "damage_type": {
+      "type": "Radiant",
+      "num_dice": 2,
+      "die_size": 8,
+      "bonus": 0
+    },
+    "only_vs_fiend_undead": true,
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
+    "name": "Net",
+    "description": "When you take the Attack action, you can replace one of your attacks with throwing a Net. Target a creature you can see within 15 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or have the Restrained condition until it escapes. The target succeeds automatically if it is Huge or larger. To escape, the target or a creature within 5 feet of it must take an action to make a DC 10 Strength (Athletics) check.",
+    "type": "Thrown",
+    "action_type": "AttackReplacement",
+    "rarity": "Common",
+    "range": 15,
+    "save_ability": "SaveDex",
+    "condition_applied": "Restrained",
+    "max_target_size": 2,
+    "escape_dc": 10,
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
   }
 ]

@@ -16,6 +16,7 @@ test_scripts = [
     "test_spells.py",
     "test_chromatic_orb.py",
     "test_items.py",
+    "test_thrown_weapons.py",
     "test_movement.py",
     "test_teleportation.py",
     "test_floors.py",

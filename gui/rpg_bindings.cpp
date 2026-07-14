@@ -659,6 +659,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("frightened",    &Agent::Conditions::frightened)
         .def_readwrite("slipped_this_turn", &Agent::Conditions::slipped_this_turn)
         .def_readwrite("restrained",    &Agent::Conditions::restrained)
+        .def_readwrite("netted",        &Agent::Conditions::netted,
+             "Restrained by a thrown Net: lasts until escape_net succeeds (no duration).")
+        .def_readwrite("net_escape_dc", &Agent::Conditions::net_escape_dc,
+             "DC of the STR (Athletics) check to break out of the Net (10 for a standard Net).")
+        .def_readwrite("burning",       &Agent::Conditions::burning,
+             "Burning [Hazard]: 1d4 Fire at the start of each of its turns until extinguish_burning.")
         .def_readwrite("poisoned",      &Agent::Conditions::poisoned)
         .def_readwrite("petrified",     &Agent::Conditions::petrified)
         .def_readwrite("gaseous_form",  &Agent::Conditions::gaseous_form)
@@ -884,6 +890,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("long_range_ft",    &Weapon::long_range_ft)
         .def_readwrite("finesse",          &Weapon::finesse)
         .def_readwrite("thrown",           &Weapon::thrown)
+        .def_readwrite("quantity",         &Weapon::quantity,
+                       "Copies of this weapon carried (javelins/daggers/darts come in bundles). "
+                       "Each THROW spends one and lays it on the ground; 0 = all thrown away.")
+        .def_readwrite("sprite_path",      &Weapon::sprite_path,
+                       "Icon drawn when this weapon lies on the map as a MapItem.")
+        .def_readwrite("returns_after_throw", &Weapon::returns_after_throw,
+                       "Thrown, but comes straight back: never spent, never lands on the ground "
+                       "(Soulknife Psychic Blade, returning magic weapons).")
         .def_readwrite("pact_weapon",      &Weapon::pact_weapon)
         .def_readwrite("psychic_blade",    &Weapon::psychic_blade)
         .def_readwrite("proficient",       &Weapon::proficient)
@@ -1331,15 +1345,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("bonus", &HealingRoll::bonus,
              "Fixed healing bonus added after rolling dice (e.g., 1d4+1 has bonus=1)");
 
-    // ── Item (a carried consumable — potions; catalog in items.json) ──────────
+    // ── Item (a carried consumable — potions + thrown flasks; catalog in items.json) ──
     py::enum_<Item::ItemType_t>(m, "ItemType")
-        .value("Heal", Item::Heal)
+        .value("Heal",   Item::Heal)
+        .value("Thrown", Item::Thrown)
         .export_values();
 
     py::enum_<Item::ItemAction_t>(m, "ItemAction")
-        .value("Action",      Item::Action)
-        .value("BonusAction", Item::BonusAction)
-        .value("NoAction",    Item::NoAction)
+        .value("Action",            Item::Action)
+        .value("BonusAction",       Item::BonusAction)
+        .value("NoAction",          Item::NoAction)
+        .value("AttackReplacement", Item::AttackReplacement)
         .export_values();
 
     py::class_<Item>(m, "Item")
@@ -1349,17 +1365,33 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("type",        &Item::type)
         .def_readwrite("action_type", &Item::action_type)
         .def_readwrite("range",       &Item::range,
-             "Reach in feet for administering the item to another creature (0 = self only).")
+             "Reach in feet for administering a Heal item to another creature (0 = self only); "
+             "the throwing range for a Thrown item.")
         .def_readwrite("healing",     &Item::healing,
              "HealingRoll (num_dice/die_size/bonus) restored by a Heal item.")
+        .def_readwrite("damage",      &Item::damage,
+             "MagicDamageRoll thrown by a Thrown item (num_dice 0 = no damage, e.g. a Net).")
+        .def_readwrite("save_ability", &Item::save_ability,
+             "Ability the target saves with vs a Thrown item (DEX for all four SRD items).")
+        .def_readwrite("condition_applied", &Item::condition_applied,
+             "Condition applied on a failed save: 'Burning' or 'Restrained' ('' = none).")
+        .def_readwrite("only_vs_fiend_undead", &Item::only_vs_fiend_undead,
+             "Holy Water: no effect on anything but a Fiend or an Undead.")
+        .def_readwrite("max_target_size", &Item::max_target_size,
+             "Net: largest size (footprint in cells) it can catch; bigger creatures auto-succeed. 0 = no limit.")
+        .def_readwrite("escape_dc",   &Item::escape_dc,
+             "Net: DC of the STR (Athletics) check to break free.")
         .def_readwrite("quantity",    &Item::quantity)
         .def_readwrite("consumable",  &Item::consumable)
         .def_readwrite("sprite_path", &Item::sprite_path)
         .def("__repr__", [](const Item& it){
+            const bool thrown = (it.type == Item::Thrown);
+            const int n  = thrown ? it.damage.num_dice : it.healing.num_dice;
+            const int d  = thrown ? it.damage.die_size : it.healing.die_size;
+            const int b  = thrown ? it.damage.bonus    : it.healing.bonus;
             return "<Item '" + it.name + "' x" + std::to_string(it.quantity)
-                 + " " + std::to_string(it.healing.num_dice) + "d"
-                 + std::to_string(it.healing.die_size) + "+"
-                 + std::to_string(it.healing.bonus) + ">"; });
+                 + " " + std::to_string(n) + "d" + std::to_string(d) + "+"
+                 + std::to_string(b) + ">"; });
 
     // ── Spell ─────────────────────────────────────────────────────────────────
     py::class_<Spell>(m, "Spell")
@@ -1635,7 +1667,23 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("valid",         &UseItemResult::valid)
         .def_readonly("amount_healed", &UseItemResult::amount_healed)
         .def_readonly("item_name",     &UseItemResult::item_name)
-        .def_readonly("consumed",      &UseItemResult::consumed);
+        .def_readonly("consumed",      &UseItemResult::consumed)
+        .def_readonly("save_dc",       &UseItemResult::save_dc)
+        .def_readonly("save_roll",     &UseItemResult::save_roll)
+        .def_readonly("saved",         &UseItemResult::saved,
+             "Thrown item: the target made its save (or auto-succeeded). The flask is spent either way.")
+        .def_readonly("damage_dealt",  &UseItemResult::damage_dealt)
+        .def_readonly("no_effect",     &UseItemResult::no_effect,
+             "Thrown item: splashed harmlessly (Holy Water on a creature that is neither Fiend nor Undead).")
+        .def_readonly("condition_applied", &UseItemResult::condition_applied);
+
+    // ── EscapeNetResult (CombatEngine::escape_net) ───────────────────────────
+    py::class_<EscapeNetResult>(m, "EscapeNetResult")
+        .def_readonly("valid", &EscapeNetResult::valid)
+        .def_readonly("dc",    &EscapeNetResult::dc)
+        .def_readonly("d20",   &EscapeNetResult::d20)
+        .def_readonly("total", &EscapeNetResult::total)
+        .def_readonly("freed", &EscapeNetResult::freed);
 
     // ── FlurryResult (Monk Flurry of Blows) ──────────────────────────────────
     py::class_<FlurryResult>(m, "FlurryResult")
@@ -1944,6 +1992,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("hp_after",     &AttackResult::hp_after)
         .def_readonly("target_down",  &AttackResult::target_down)
         .def_readonly("push_ft_applied", &AttackResult::push_ft_applied)
+        .def_readonly("weapon_thrown",   &AttackResult::weapon_thrown,
+                      "The weapon was THROWN: it is out of the thrower's hand (hit or miss).")
+        .def_readonly("thrown_item_id",  &AttackResult::thrown_item_id,
+                      "MapItem id the thrown weapon became on the ground (-1 = none).")
         .def("__repr__", [](const AttackResult& r){
             if (!r.valid) return std::string("<AttackResult invalid>");
             std::string s = "<AttackResult d20=" + std::to_string(r.d20)
@@ -1982,11 +2034,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("no_ability_damage", &Attack::no_ability_damage)
         .def_readwrite("attack_slot",  &Attack::attack_slot)
         .def_readwrite("opportunity",  &Attack::opportunity)
+        .def_readwrite("thrown",       &Attack::thrown,
+                       "THROW this weapon (needs Weapon.thrown): the attack reaches long_range_ft, "
+                       "and the weapon leaves the thrower's hand to land on the ground as a MapItem.")
         .def("__repr__", [](const Attack& a){
             std::string s = "<Attack atk=" + std::to_string(a.attacker_idx)
                  + " tgt=" + std::to_string(a.target_idx)
                  + " wpn=" + std::to_string(a.weapon_idx);
             if (a.is_offhand) s += " offhand";
+            if (a.thrown)     s += " thrown";
             return s + ">"; });
 
     // ── TurnActions ───────────────────────────────────────────────────────────
@@ -2056,13 +2112,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
                     py::arg("weapon"), py::arg("battle_map"),
                     py::arg("atk_origin"), py::arg("atk_size"),
                     py::arg("tgt_origin"), py::arg("tgt_size"),
-                    "True iff weapon can reach target with LoS.")
+                    py::arg("as_throw") = false,
+                    "True iff weapon can reach target with LoS. as_throw: hurl a Thrown weapon "
+                    "(reaches long_range_ft instead of reach_ft).")
         .def_static("has_disadvantage",
                     &CombatEngine::hasDisadvantage,
                     py::arg("weapon"), py::arg("battle_map"),
                     py::arg("atk_origin"), py::arg("atk_size"),
                     py::arg("tgt_origin"), py::arg("tgt_size"),
-                    "True iff the attack should be rolled at disadvantage.")
+                    py::arg("as_throw") = false,
+                    "True iff the attack should be rolled at disadvantage (long range).")
         .def("damage_agent",
                     &CombatEngine::damageAgent,
                     py::arg("battle_map"), py::arg("idx"), py::arg("amount"),
@@ -3623,7 +3682,25 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "(a BonusAction item spends the user's Bonus Action). A Heal item rolls its dice and heals\n"
              "through heal_agent, so a potion given to a downed ally revives it. Spends one charge and\n"
              "drops the row when the last one is used. Returns a UseItemResult (valid=False = nothing\n"
-             "happened and nothing was spent).")
+             "happened and nothing was spent).\n"
+             "A Thrown item (Acid, Alchemist's Fire, Holy Water, Net) instead makes the target roll a\n"
+             "DEX save vs 8 + the thrower's DEX modifier + PB; on a failure it deals its damage and/or\n"
+             "applies its condition. The flask is spent whether or not the target saves, and the caller\n"
+             "pays for it out of the Attack action (action_type == AttackReplacement).")
+        .def("apply_burning",
+             &CombatEngine::applyBurning,
+             py::arg("battle_map"), py::arg("idx"),
+             "Set a creature alight (Burning [Hazard]): 1d4 Fire at the start of each of its turns.")
+        .def("extinguish_burning",
+             &CombatEngine::extinguishBurning,
+             py::arg("battle_map"), py::arg("idx"),
+             "Put out a Burning creature by dropping it Prone and rolling on the ground (an action).\n"
+             "Returns False if it was not burning.")
+        .def("escape_net",
+             &CombatEngine::escapeNet,
+             py::arg("battle_map"), py::arg("actor_idx"), py::arg("target_idx"),
+             "Free a netted creature with a DC 10 STR (Athletics) check (an action). actor_idx is the\n"
+             "netted creature itself or a creature within 5 ft of it. Returns an EscapeNetResult.")
 
         // ── Agent condition management ──────────────────────────────────────
         .def("add_agent_condition",

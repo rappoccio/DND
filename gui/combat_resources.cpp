@@ -142,8 +142,9 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
                               tpa.origin, tpa.agent->getSize()) * 5 > item.range) return res;
     }
 
-    // Action economy. (An Action-cost item is gated by the GUI's action budget, as spellcasting is;
-    // only the Bonus Action has an engine-side budget to spend.)
+    // Action economy. (An Action-cost item is gated by the GUI's action budget, as spellcasting is,
+    // and an AttackReplacement item is paid for out of the Attack action's swing budget — only the
+    // Bonus Action has an engine-side budget to spend.)
     if (item.action_type == Item::BonusAction && !hasBonusAction(bm, user_idx)) return res;
 
     res.valid     = true;
@@ -160,6 +161,8 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
         else
             log_("{} administers {} to {}, who regains {} HP.", agentName(bm, user_idx), item.name,
                  agentName(bm, target_idx), res.amount_healed);
+    } else if (item.type == Item::Thrown) {
+        resolveThrownItem(bm, user_idx, target_idx, item, res);
     }
 
     // Spend the charge.
@@ -174,6 +177,112 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
 
     if (item.action_type == Item::BonusAction) spendBonusAction(bm, user_idx);
     return res;
+}
+
+void CombatEngine::resolveThrownItem(BattleMap& bm, int user_idx, int target_idx,
+                                     const Item& item, UseItemResult& res) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const Agent::Stats user_stats   = bm.getAgentStats(user_idx);
+    const Agent::Stats target_stats = bm.getAgentStats(target_idx);
+    const Agent::Conditions tc      = bm.getAgentConditions(target_idx);
+    const std::string user_name = agentName(bm, user_idx);
+    const std::string tgt_name  = agentName(bm, target_idx);
+
+    // Holy Water: "…or take 2d8 Radiant damage IF IT IS a Fiend or an Undead." Everything else is
+    // just splashed with water — no save, no damage, but the flask is still gone.
+    if (item.only_vs_fiend_undead && !target_stats.is_fiend && !target_stats.is_undead) {
+        res.no_effect = true;
+        log_("{} throws {} at {} — no effect (not a Fiend or an Undead).", user_name, item.name, tgt_name);
+        return;
+    }
+
+    // DC 8 + the THROWER's ability modifier + Proficiency Bonus. Computed here rather than through
+    // spellSaveDcFromAbility, which folds in caster-only buffs (Innate Sorcery) that have no
+    // business raising the DC of a hurled flask.
+    const int score = (item.save_ability == SaveStr) ? user_stats.str
+                    : (item.save_ability == SaveCon) ? user_stats.con
+                    : (item.save_ability == SaveInt) ? user_stats.intel
+                    : (item.save_ability == SaveWis) ? user_stats.wis
+                    : (item.save_ability == SaveCha) ? user_stats.cha
+                                                     : user_stats.dex;
+    int throw_mod = (score - 10) / 2;
+    if (score < 10 && (score - 10) % 2 != 0) --throw_mod;   // floor for odd scores below 10
+    res.save_dc = 8 + user_stats.prof_bonus + throw_mod;
+
+    // Net: "The target succeeds automatically if it is Huge or larger." Size is the agent footprint
+    // in cells (1 = Medium/Small, 2 = Large, 3 = Huge).
+    const int target_size = agents[static_cast<std::size_t>(target_idx)].agent->getSize();
+    if (item.max_target_size > 0 && target_size > item.max_target_size) {
+        res.saved = true;
+        log_("{} throws {} at {}, but it is too big to be caught — the {} slides off.",
+             user_name, item.name, tgt_name, item.name);
+        return;
+    }
+
+    // The target's DEX save. Paralyzed/Stunned/Unconscious creatures auto-fail STR and DEX saves,
+    // and a Restrained creature has Disadvantage on DEX saves — the same rules the spell-save and
+    // zone-tick paths apply.
+    const bool auto_fail = (tc.paralyzed || tc.stunned || tc.unconscious) &&
+                           (item.save_ability == SaveStr || item.save_ability == SaveDex);
+    const Agent& tgt = *agents[static_cast<std::size_t>(target_idx)].agent;
+    bool adv = tgt.hasAdvantage();
+    bool dis = tgt.hasDisadvantage();
+    if (item.save_ability == SaveDex && tc.restrained) dis = true;
+
+    int save_d20;
+    if (auto_fail)       save_d20 = 1;
+    else if (adv && dis) save_d20 = roll(20);
+    else if (adv)        save_d20 = rollAdvantage(20);
+    else if (dis)        save_d20 = rollDisadvantage(20);
+    else                 save_d20 = roll(20);
+
+    const int save_mod = saveModFor(bm, target_idx, item.save_ability);
+    res.save_roll = save_d20 + save_mod;
+    res.saved     = !auto_fail && (res.save_roll >= res.save_dc);
+
+    log_("{} throws {} at {} — save {} + {} = {} vs DC {} ({})",
+         user_name, item.name, tgt_name, save_d20, save_mod, res.save_roll, res.save_dc,
+         auto_fail ? "AUTO-FAIL" : (res.saved ? "PASSED" : "FAILED"));
+
+    if (res.saved) return;   // these items have no half-damage-on-a-save: a made save is a clean miss
+
+    // Damage (after the target's Resistance/Immunity multiplier). num_dice == 0 for a Net.
+    if (item.damage.num_dice > 0) {
+        int raw = item.damage.bonus;
+        for (int i = 0; i < item.damage.num_dice; ++i) raw += roll(item.damage.die_size);
+        const float mult = effectiveMagicDamageMult(user_stats, target_stats, item.damage.type,
+                                                    false, &bm, target_idx);
+        res.damage_dealt = static_cast<int>(static_cast<float>(raw) * mult);
+        damageAgent(bm, target_idx, res.damage_dealt);
+        processDamageTaken(bm, target_idx, res.damage_dealt,
+                           1u << static_cast<unsigned>(item.damage.type));
+        checkConcentrationOnDamage(bm, target_idx, res.damage_dealt, user_idx);
+        log_("{} takes {} damage from {}.", tgt_name, res.damage_dealt, item.name);
+        // A thrown flask has no post-hit resolution step of its own (unlike an attack), so mark a
+        // creature it killed here — otherwise an NPC dropped by Acid is never flagged dead and its
+        // corpse lingers on the map.
+        if (bm.getAgentStats(target_idx).hp_cur <= 0) {
+            const Agent::Conditions dc = bm.getAgentConditions(target_idx);
+            if (!dc.unconscious && !dc.dead) applyUnconscious(bm, target_idx);
+            return;   // don't set a creature it just killed on fire / tangle its corpse in a Net
+        }
+    }
+
+    // Condition rider on the failed save.
+    if (item.condition_applied == "Burning") {
+        applyBurning(bm, target_idx);
+        res.condition_applied = "Burning";
+    } else if (item.condition_applied == "Restrained") {
+        Agent::Conditions nc = bm.getAgentConditions(target_idx);
+        nc.restrained    = true;
+        nc.netted        = true;
+        nc.net_escape_dc = (item.escape_dc > 0) ? item.escape_dc : 10;
+        bm.setAgentConditions(target_idx, nc);
+        res.condition_applied = "Restrained";
+        log_("{} is caught in the {} — Restrained until it escapes (DC {} STR check).",
+             tgt_name, item.name, nc.net_escape_dc);
+    }
 }
 
 bool CombatEngine::applyOneWithShadows(BattleMap& bm, int idx) noexcept

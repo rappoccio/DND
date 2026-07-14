@@ -45,7 +45,23 @@ struct Weapon {
 
     // ── Attack-roll modifier rules ─────────────────────────────────────────
     bool         finesse         = false;       // use STR or DEX (whichever is higher)
-    bool         thrown          = false;       // ranged but uses STR
+    bool         thrown          = false;       // Thrown property: this weapon may be hurled to make a
+                                                // ranged attack (out to long_range_ft) using the same
+                                                // ability modifier as a melee attack with it (so STR,
+                                                // or DEX when finesse). See Attack::thrown.
+
+    // ── Thrown-weapon bundle ──────────────────────────────────────────────
+    // How many copies of this weapon the wielder is carrying — javelins, daggers, darts are
+    // carried in bundles. A THROW spends one copy and lays it on the ground as a MapItem (a
+    // thrown WEAPON is not destroyed, unlike a thrown Item — a flask — which is consumed); the
+    // slot is emptied when the last copy is thrown. A melee swing never spends a copy.
+    // Always >= 1 for a weapon actually in hand; 0 means every copy has been thrown away.
+    int          quantity        = 1;
+
+    // This weapon comes straight back after it is thrown: it is never spent and never lands on
+    // the ground. A Soulknife's Psychic Blade ("the blade vanishes after it hits or misses" — and
+    // is re-manifested for free), a conjured/pact weapon, a returning magic weapon.
+    bool         returns_after_throw = false;
     bool         pact_weapon     = false;       // Warlock Pact of the Blade: may use CHA for attack/damage
     bool         psychic_blade   = false;       // Soulknife Rogue: identifies the Psychic Blade for Homing Strikes / Rend Mind
                                                 // (and identifies the pact weapon for Thirsting Blade /
@@ -106,6 +122,11 @@ struct Weapon {
     // ── Conditions applied on hit ─────────────────────────────────────────────
     std::vector<AttackCondition> conditions;  // conditions applied when attack hits
     std::string condition_rider = "";         // simple condition name from beast form (e.g., "Poisoned")
+
+    // Icon used when this weapon is lying on the map as a MapItem (authored in weapons.json).
+    // Carried on the Weapon so any code path that drops one — a THROW, the GUI's manual drop —
+    // lands it with the right sprite. Empty ⇒ the GUI draws its amber fallback box.
+    std::string sprite_path = "";
 
 };
 

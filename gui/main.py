@@ -697,6 +697,7 @@ class App:
         self.pending_bastion_sp        = 0     # SP chosen for the pending Bastion of Law ward (1-5)
         self.pending_hand_of_healing   = False # Monk Warrior of Mercy Hand of Healing: awaiting target click
         self.pending_use_item          = -1    # inventory slot chosen from the Use Item menu: awaiting target click (-1 = none)
+        self.pending_escape_net        = False # "Free from Net": awaiting the click on the netted creature to cut loose
         self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
         self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
@@ -1187,11 +1188,20 @@ class App:
         self.btn_cbt_hand_of_healing = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Hand of Healing",
                                           (150, 200, 160), (180, 230, 190), self.font_md)
-        # Use Item (bonus action): drink a carried potion, or administer one to an
-        # adjacent creature. Shown whenever the actor has anything in its pack.
+        # Use Item: drink a carried potion / administer one to an adjacent creature (a Bonus
+        # Action), or throw a flask or a Net (replacing one attack of the Attack action). Shown
+        # whenever the actor has anything in its pack it can still pay for.
         self.btn_cbt_use_item    = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🧪 Use Item",
                                           (110, 160, 130), (140, 190, 160), self.font_md)
+        # Burning [Hazard] (Alchemist's Fire): an action to drop Prone and roll the flames out.
+        self.btn_cbt_extinguish  = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🔥 Extinguish (Prone)",
+                                          (200, 130, 80), (230, 160, 110), self.font_md)
+        # Net: an action to make a DC 10 STR check freeing yourself — or a creature within 5 ft.
+        self.btn_cbt_escape_net  = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🕸 Free from Net",
+                                          (150, 160, 120), (180, 190, 150), self.font_md)
         self.btn_cbt_atk_bonus   = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "⚔ Bonus Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
@@ -3152,6 +3162,17 @@ class App:
                 for c in self.bm.attack_target_cells(
                         pt.origin, pt.size, w.reach_ft):
                     melee_cells.add((c.col, c.row))
+                # A Thrown melee weapon (javelin, handaxe, dagger) also reaches everything a
+                # ranged weapon would: targeting past its reach hurls it (see _attack_is_a_throw),
+                # so paint the throw's normal/long bands or the DM can't see where it can land.
+                if w.thrown and w.quantity > 0:
+                    for c in self.bm.attack_target_cells(
+                            pt.origin, pt.size, w.normal_range_ft):
+                        rnorm_cells.add((c.col, c.row))
+                    for c in self.bm.attack_target_cells(
+                            pt.origin, pt.size, w.long_range_ft):
+                        if (c.col, c.row) not in rnorm_cells:
+                            rlongx_cells.add((c.col, c.row))
             else:  # Ranged
                 for c in self.bm.attack_target_cells(
                         pt.origin, pt.size, w.normal_range_ft):
@@ -4185,9 +4206,10 @@ class App:
         if weapon.permanently_armed:
             self._combat_log_add(f"{self.bm.placed_agents[cur_idx].name} can't drop {weapon.name}.")
             return
-        # Get sprite_path from weapons.json if available
+        # Sprite: the Weapon now carries its own (so an engine-side drop — a THROW — lands with the
+        # right icon too); fall back to the weapons.json catalog for one built before that field.
         wdict = self.weapon_name_to_dict.get(weapon.name, {})
-        sprite_path = wdict.get("sprite_path", "")
+        sprite_path = weapon.sprite_path or wdict.get("sprite_path", "")
         # Place item at agent's current cell
         agent = self.bm.placed_agents[cur_idx]
         print(f"[_drop_weapon] Dropping {weapon.name} from slot {slot_idx} for agent {agent.name} at ({agent.origin.col},{agent.origin.row})")
@@ -4213,25 +4235,28 @@ class App:
         if menu_items:
             self.context_menu.show(pos, menu_items, self.screen.get_size())
 
-    # FLAG: Move to C++
     def _pickup_item(self, item, agent_idx: int):
-        """Assign item weapon to agent slot and remove item from map."""
+        """Take a weapon off the ground: pick the slot here, let the engine do the assignment.
+
+        BattleMap::pickUpItem owns what happens to the weapon list — in particular, retrieving a
+        thrown weapon you are still carrying re-joins the BUNDLE (pick up one of the javelins you
+        threw and you hold 4 again, not two stacks) rather than consuming the slot we suggest. That
+        rule lives in exactly one place; don't re-implement it here."""
         weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
         agent = self.bm.placed_agents[agent_idx]
-
-        print(f"[_pickup_item DEBUG] Agent {agent.name} (idx {agent_idx}) trying to pick up '{item.weapon.name}'")
-        print(f"[_pickup_item DEBUG] Current weapons: slot0='{weapons[0].name}' (perm_armed={weapons[0].permanently_armed}), slot1='{weapons[1].name}' (perm_armed={weapons[1].permanently_armed}), slot2='{weapons[2].name}' (perm_armed={weapons[2].permanently_armed})")
-        print(f"[_pickup_item DEBUG] Item weapon: type={item.weapon.type}, name='{item.weapon.name}', permanently_armed={item.weapon.permanently_armed}")
+        name = item.weapon.name or "weapon"
 
         slot = self._find_pickup_slot(item.weapon, weapons)
-        print(f"[_pickup_item DEBUG] _find_pickup_slot returned: {slot}")
-        if slot >= len(weapons):
-            weapons.append(item.weapon)     # no free slot: append a new attack slot
+        if not self.bm.pick_up_item(item.id, agent_idx, slot):
+            self._combat_log_add(f"{agent.name} can't pick up {name}.")
+            return
+
+        held = next((w.quantity for w in self.combat.get_agent_weapons(self.bm, agent_idx)
+                     if w.name == item.weapon.name and w.thrown), 0)
+        if held > 1:
+            self._combat_log_add(f"{agent.name} picks up {name} ({held} in hand).")
         else:
-            weapons[slot] = item.weapon
-        self.combat.set_agent_weapons(self.bm, agent_idx, weapons)
-        self.bm.remove_item(item.id)
-        self._combat_log_add(f"{agent.name} picks up {item.weapon.name}.")
+            self._combat_log_add(f"{agent.name} picks up {name}.")
 
     # FLAG: Move to C++
     def _show_item_context_menu(self, cell, items, pos):
@@ -4471,7 +4496,11 @@ class App:
         """Auto-assign weapon to the best available slot. With the variable-length
         weapon list there is always room: an empty compatible slot is reused, else
         the first empty interior slot, else a new appended slot (== len(weapons))."""
-        EMPTY = lambda w: not w.name or "Unarmed" in w.name or w.name == "Unnamed"
+        # A slot is empty when it holds the blank-slot sentinel — an empty name, or the bare
+        # "Unarmed"/"Unnamed" default (helpers._weapon_slot_is_empty, and what a dropped or
+        # fully-thrown slot is reset to). Match it EXACTLY: "MonkUnarmed" is a real weapon, and a
+        # substring test let a picked-up longsword overwrite a Monk's unarmed strike.
+        EMPTY = lambda w: (not w.name) or w.name in ("Unarmed", "Unnamed")
         # Ranged weapon → prefer the ranged slot (index 2) if empty
         if weapon.type == rpg.WeaponType.Ranged and len(weapons) > 2 and EMPTY(weapons[2]):
             return 2
@@ -4851,6 +4880,26 @@ class App:
         px, py = self._agent_screen_pos(target_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
+    def _attack_is_a_throw(self, atk_idx: int, target_idx: int, weapon_idx: int) -> bool:
+        """Is this attack a THROW — i.e. does the weapon leave the attacker's hand?
+
+        A Thrown weapon is hurled when the DM targets something the attacker cannot reach with it:
+        that attack is otherwise simply illegal (the engine's canAttack rejects it), so reading it
+        as a throw adds the throw without ever turning an ordinary melee swing into one. A Ranged
+        weapon with the Thrown property (a Dart) is thrown at any distance — throwing IS how it is
+        used. The engine spends the copy and lands it on the ground (applyAttackResult); a weapon
+        with no copies left is refused there, so no check for that is needed here."""
+        weapons = self.combat.get_agent_weapons(self.bm, atk_idx)
+        if not (0 <= weapon_idx < len(weapons)):
+            return False
+        w = weapons[weapon_idx]
+        if not w.thrown:
+            return False
+        if w.type == rpg.WeaponType.Ranged:
+            return True
+        dist_ft = self._footprint_dist_ft(atk_idx, target_idx)
+        return dist_ft > w.reach_ft
+
     def _resolve_combat_attack(self, target_idx: int):
         """Resolve the pending attack against target_idx.
 
@@ -4866,6 +4915,7 @@ class App:
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
         action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
+        action.thrown = self._attack_is_a_throw(atk_idx, target_idx, self.pending_weapon_idx)
 
         # Stash what _finish_attack needs (the self.pending_* attrs stay set across the suspend) and
         # arm it as the reaction continuation, then begin the attack.
@@ -6818,16 +6868,24 @@ class App:
     def _create_psychic_blade_weapon(self, die_size=6, off_hand=False):
         """Soulknife Psychic Blade — a Simple Melee finesse/thrown blade dealing die_size Psychic +
         the attack ability mod, with the Vex mastery. The bonus second blade uses a d4. psychic_blade
-        identifies it for Homing Strikes / Rend Mind."""
+        identifies it for Homing Strikes / Rend Mind.
+
+        Thrown at 60/120 ft, and it "vanishes after it hits or misses" — i.e. it comes right back
+        (returns_after_throw), so throwing it never spends it or leaves it lying on the floor."""
         blade = rpg.Weapon()
         blade.name = "PsychicBlade"
         blade.type = rpg.WeaponType.Melee
         blade.proficient = True
         blade.finesse = True
         blade.thrown = True
+        blade.returns_after_throw = True
         blade.psychic_blade = True
         blade.off_hand = off_hand
         blade.reach_ft = 5
+        # The engine reads normal_range_ft/long_range_ft for range; range_short/long_feet are the
+        # test-only convenience fields, so set both or a thrown blade would use the 80/320 defaults.
+        blade.normal_range_ft = 60
+        blade.long_range_ft = 120
         blade.range_short_feet = 60
         blade.range_long_feet = 120
         blade.mastery = rpg.WeaponMastery.Vex
@@ -7874,8 +7932,55 @@ class App:
         self.bonus_used = True
         self._update_attack_overlay()
 
+    @staticmethod
+    def _item_menu_dice(it) -> str:
+        """'2d4+2' for a potion, '2d6 Acid' for a thrown flask, 'Restrained' for a Net —
+        whatever the DM is actually picking the item by."""
+        if it.type == rpg.ItemType.Thrown:
+            if it.damage.num_dice > 0:
+                dice = f"{it.damage.num_dice}d{it.damage.die_size} {it.damage.type.name}"
+                return f"{dice}, {it.condition_applied}" if it.condition_applied else dice
+            return it.condition_applied or "no damage"
+        return f"{it.healing.num_dice}d{it.healing.die_size}+{it.healing.bonus}"
+
+    def _can_replace_attack(self, idx: int) -> bool:
+        """True if this actor still has a weapon attack a thrown item could replace — either one
+        left in an Attack action already under way, or an unspent Attack action to start."""
+        if self._attack_sequence_slot == "bonus":
+            return False                      # finish the bonus-action attacks first
+        if self._attack_sequence_slot == "action" and self.attacks_remaining > 0:
+            return True
+        return not self.action_used
+
+    def _consume_attack_replacement(self, user_idx: int):
+        """Charge a thrown item to the Attack action: it "replaces one of your attacks", so it
+        spends one swing out of the attack budget — seeding a fresh Attack action if the actor had
+        not started one. Mirrors _consume_cast_slot's War Magic branch, including the disarm that
+        lets the player move between attacks and resume with the standing "⚔ Attack (N)" button."""
+        if self._attack_sequence_slot != "action" or self.attacks_remaining <= 0:
+            stats = self.combat.get_agent_stats(self.bm, user_idx)
+            self.attacks_remaining     = max(1, stats.num_attacks)
+            self._attack_sequence_slot = "action"
+
+        # The Attack action itself is spent the moment it is taken — exactly as _finish_attack marks
+        # it on the first swing. Any swings still owed stay live through mid_sequence_action, which
+        # keeps the standing "⚔ Attack (N)" button (and its handler) working while action_used is set.
+        self.attacks_remaining -= 1
+        self.action_used = True
+        if self.attacks_remaining > 0:
+            self.pending_attack_slot = ""
+            rem = self.attacks_remaining
+            nm  = self.bm.placed_agents[user_idx].name
+            self._combat_log_add(
+                f"{nm}: {rem} attack{'s' if rem != 1 else ''} remaining — "
+                f"move if you wish, then click Attack to continue.")
+        else:
+            self._attack_sequence_slot = ""
+
     def _show_use_item_menu(self, pos):
-        """Pop the current actor's inventory: pick which carried item to use, then click a target."""
+        """Pop the current actor's inventory: pick which carried item to use, then click a target.
+        Items the actor can no longer pay for this turn (the Bonus Action is gone, or there is no
+        attack left for a thrown flask to replace) are left out of the menu."""
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)):
             return
@@ -7884,29 +7989,63 @@ class App:
             self._combat_log_add(f"{self.bm.placed_agents[idx].name} is carrying no items.")
             return
 
+        def _affordable(it) -> bool:
+            if it.action_type == rpg.ItemAction.AttackReplacement:
+                return self._can_replace_attack(idx)
+            if it.action_type == rpg.ItemAction.BonusAction:
+                return not self.bonus_used
+            if it.action_type == rpg.ItemAction.Action:
+                return not self.action_used
+            return True
+
         def _arm(slot):
             self.pending_use_item = slot
             it = items[slot]
-            where = "yourself" if it.range <= 0 else f"yourself or a creature within {it.range} ft"
-            self.hint = f"Click {where} to use {it.name}"
+            if it.type == rpg.ItemType.Thrown:
+                self.hint = f"Click a creature within {it.range} ft to throw {it.name}"
+            else:
+                where = "yourself" if it.range <= 0 else f"yourself or a creature within {it.range} ft"
+                self.hint = f"Click {where} to use {it.name}"
 
         opts = []
         for slot, it in enumerate(items):
-            dice = f"{it.healing.num_dice}d{it.healing.die_size}+{it.healing.bonus}"
-            opts.append((f"{it.name} (x{it.quantity}, {dice})",
+            if not _affordable(it):
+                continue
+            cost = " — replaces an attack" if it.action_type == rpg.ItemAction.AttackReplacement else ""
+            opts.append((f"{it.name} (x{it.quantity}, {self._item_menu_dice(it)}){cost}",
                          (lambda s=slot: _arm(s))))
+        if not opts:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[idx].name} has nothing left to spend on an item this turn.")
+            return
         self.context_menu.show(pos, opts, self.screen.get_size())
 
     def _resolve_use_item(self, target_idx: int):
         """Use the armed inventory slot on the clicked target (which may be the user itself).
-        The engine owns the rules — range, action economy, the heal roll, and spending the
-        charge — so a rejected use (out of reach, no bonus action left) costs nothing."""
+        The engine owns the rules — range, the heal/save rolls, the condition riders, and spending
+        the charge — so a rejected use (out of reach, no bonus action left) costs nothing. The
+        action economy is charged here, on the GUI's budgets."""
         slot = self.pending_use_item
         self.pending_use_item = -1
         user_idx = self._current_agent_idx()
         if not (0 <= user_idx < len(self.bm.placed_agents)):
             return
         if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+
+        items = self.combat.get_agent_items(self.bm, user_idx)
+        if not (0 <= slot < len(items)):
+            return
+        item     = items[slot]
+        is_throw = (item.action_type == rpg.ItemAction.AttackReplacement)
+
+        # A thrown flask replaces one of the Attack action's swings, so make sure there IS one to
+        # replace before the engine spends the flask.
+        if is_throw and not self._can_replace_attack(user_idx):
+            self._combat_log_add(
+                f"{self.bm.placed_agents[user_idx].name}: no attack left to replace "
+                f"(a thrown {item.name} costs one attack of the Attack action).")
+            self._update_attack_overlay()
             return
 
         res = self.combat.use_item(self.bm, user_idx, slot, target_idx)
@@ -7919,14 +8058,100 @@ class App:
 
         user_name = self.bm.placed_agents[user_idx].name
         tgt_name  = self.bm.placed_agents[target_idx].name
-        if target_idx == user_idx:
+        if item.type == rpg.ItemType.Thrown:
+            if res.no_effect:
+                msg = (f"{user_name} throws {res.item_name} at {tgt_name} — no effect "
+                       f"(not a Fiend or an Undead)")
+            elif res.saved:
+                msg = (f"{user_name} throws {res.item_name} at {tgt_name} — DEX save "
+                       f"{res.save_roll} vs DC {res.save_dc}: no effect")
+            else:
+                bits = []
+                if res.damage_dealt:
+                    bits.append(f"{res.damage_dealt} damage")
+                if res.condition_applied:
+                    bits.append(res.condition_applied)
+                msg = (f"{user_name} throws {res.item_name} at {tgt_name} — DEX save "
+                       f"{res.save_roll} vs DC {res.save_dc}: {' + '.join(bits) or 'no effect'}")
+        elif target_idx == user_idx:
             msg = f"{user_name} drinks {res.item_name} and regains {res.amount_healed} HP"
         else:
             msg = (f"{user_name} administers {res.item_name} to {tgt_name}, "
                    f"who regains {res.amount_healed} HP")
         self._combat_log_add(msg + ("  (last one used)." if res.consumed else "."))
         self._flush_combat_log()
-        self.bonus_used = True
+
+        if is_throw:
+            self._consume_attack_replacement(user_idx)
+        elif item.action_type == rpg.ItemAction.Action:
+            self.action_used = True
+        elif item.action_type == rpg.ItemAction.BonusAction:
+            self.bonus_used = True
+        self._update_attack_overlay()
+
+    def _resolve_extinguish(self):
+        """Put out a Burning actor: an action to drop Prone and roll on the ground."""
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        if not self.combat.extinguish_burning(self.bm, idx):
+            return
+        self._combat_log_add(
+            f"{self.bm.placed_agents[idx].name} drops and rolls, putting out the flames "
+            f"(now Prone, no longer Burning).")
+        self._flush_combat_log()
+        self.action_used = True
+        self._update_attack_overlay()
+
+    def _netted_within_reach(self, actor_idx: int) -> list:
+        """Netted creatures this actor could cut loose: itself, plus anything within 5 ft."""
+        out = []
+        for i in range(len(self.bm.placed_agents)):
+            if not self.combat.get_agent_conditions(self.bm, i).netted:
+                continue
+            if i == actor_idx or 0 <= self._footprint_dist_ft(actor_idx, i) <= 5:
+                out.append(i)
+        return out
+
+    def _begin_escape_net(self):
+        """Free from Net: cut yourself loose right away, or arm a click for a netted neighbour."""
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        freeable = self._netted_within_reach(idx)
+        if not freeable:
+            return                       # nothing tangled here (a stale button rect)
+        if idx in freeable:
+            self._resolve_escape_net(idx)          # cut yourself loose
+        elif len(freeable) == 1:
+            self._resolve_escape_net(freeable[0])  # only one neighbour to free — no click needed
+        else:
+            self.pending_escape_net = True
+            self.hint = "Click the netted creature to free (within 5 ft)"
+
+    def _resolve_escape_net(self, target_idx: int):
+        """Free a netted creature (self, or one within 5 ft) with a DC 10 STR check — an action."""
+        self.pending_escape_net = False
+        actor_idx = self._current_agent_idx()
+        if not (0 <= actor_idx < len(self.bm.placed_agents)):
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+
+        res = self.combat.escape_net(self.bm, actor_idx, target_idx)
+        if not res.valid:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[actor_idx].name}: can't free that creature "
+                f"(it is not netted, or it is out of reach).")
+            self._update_attack_overlay()
+            return
+
+        who = "itself" if target_idx == actor_idx else self.bm.placed_agents[target_idx].name
+        self._combat_log_add(
+            f"{self.bm.placed_agents[actor_idx].name}: STR check {res.total} vs DC {res.dc} to free "
+            f"{who} from the Net — {'FREED' if res.freed else 'still tangled'}.")
+        self._flush_combat_log()
+        self.action_used = True
         self._update_attack_overlay()
 
     def _resolve_grant_inspiration(self, target_idx: int):
@@ -13879,6 +14104,18 @@ class App:
             self.screen.blit(mist_badge, (badge_x, badge_y))
             cond_labels.append(("Gaseous Form", (170, 210, 230)))
 
+        # Burning indicator (orange "BURN" badge) — Alchemist's Fire
+        if getattr(pt.conditions, "burning", False):
+            burn_badge = self.font_sm.render("BURN", True, (240, 140, 60))  # Orange
+            self.screen.blit(burn_badge, (int(screen_x + 4), int(screen_y + 58)))
+            cond_labels.append(("Burning", (240, 140, 60)))
+
+        # Netted indicator (olive "NET" badge) — Restrained until a DC 10 STR check frees it
+        if getattr(pt.conditions, "netted", False):
+            net_badge = self.font_sm.render("NET", True, (190, 200, 140))  # Olive
+            self.screen.blit(net_badge, (int(screen_x + 4), int(screen_y + 76)))
+            cond_labels.append(("Netted", (190, 200, 140)))
+
         # Hidden indicator (eye-slash symbol)
         if pt.conditions.hidden:
             # Draw an eye-slash symbol in the top-right corner
@@ -15234,6 +15471,42 @@ class App:
                 self.btn_cbt_grapple_drop.draw(self.screen)
                 y += B + gap
 
+        # Use Item — any actor carrying something it can still pay for. A potion is a Bonus Action
+        # (drink it, or administer it to a creature within 5 ft); a thrown flask or Net replaces one
+        # attack of the Attack action. So this button is NOT gated on the bonus action alone.
+        if not _is_incapacitated and 0 <= cur_idx < len(agents):
+            _items = self.combat.get_agent_items(self.bm, cur_idx)
+            _usable = any(
+                self._can_replace_attack(cur_idx) if it.action_type == rpg.ItemAction.AttackReplacement
+                else (not self.bonus_used) if it.action_type == rpg.ItemAction.BonusAction
+                else (not self.action_used) if it.action_type == rpg.ItemAction.Action
+                else True
+                for it in _items)
+            if _usable:
+                self.btn_cbt_use_item.rect.x = lx
+                self.btn_cbt_use_item.rect.y = y
+                self.btn_cbt_use_item.rect.w = W
+                self.btn_cbt_use_item.draw(self.screen)
+                y += B + gap
+
+        # Extinguish (Burning) and Free from Net — both cost an Action.
+        if not _is_incapacitated and not self.action_used and 0 <= cur_idx < len(agents):
+            if cur_cond and getattr(cur_cond, "burning", False):
+                self.btn_cbt_extinguish.rect.x = lx
+                self.btn_cbt_extinguish.rect.y = y
+                self.btn_cbt_extinguish.rect.w = W
+                self.btn_cbt_extinguish.draw(self.screen)
+                y += B + gap
+
+            # Shown when this actor is netted, or is standing within 5 ft of a netted creature it
+            # could cut loose (the target is then chosen with a click).
+            if self._netted_within_reach(cur_idx):
+                self.btn_cbt_escape_net.rect.x = lx
+                self.btn_cbt_escape_net.rect.y = y
+                self.btn_cbt_escape_net.rect.w = W
+                self.btn_cbt_escape_net.draw(self.screen)
+                y += B + gap
+
         if not _is_incapacitated and not self.bonus_used:
             # Patient Defense (Dodge) button - Monk (L1+) with Focus Points, bonus action
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
@@ -15273,16 +15546,6 @@ class App:
                         self.btn_cbt_hand_of_healing.rect.w = W
                         self.btn_cbt_hand_of_healing.draw(self.screen)
                         y += B + gap
-
-            # Use Item button — any actor carrying a consumable (potions are a Bonus Action:
-            # drink it yourself or administer it to a creature within 5 ft).
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                if self.combat.get_agent_items(self.bm, cur_idx):
-                    self.btn_cbt_use_item.rect.x = lx
-                    self.btn_cbt_use_item.rect.y = y
-                    self.btn_cbt_use_item.rect.w = W
-                    self.btn_cbt_use_item.draw(self.screen)
-                    y += B + gap
 
             # Rage button - only if agent is Barbarian, not raging, and has uses
             if 0 <= cur_idx < len(agents):
@@ -17503,6 +17766,8 @@ class App:
                             self._resolve_hand_of_healing(hit)
                         elif self.pending_use_item >= 0 and hit >= 0:
                             self._resolve_use_item(hit)
+                        elif self.pending_escape_net and hit >= 0:
+                            self._resolve_escape_net(hit)
                         elif self.pending_grant_inspiration and hit >= 0:
                             self._resolve_grant_inspiration(hit)
                         elif self.pending_telekinetic and hit >= 0:
@@ -18041,6 +18306,14 @@ class App:
                     self._show_portent_dice_menu()
                 if self.btn_cbt_grapple_drop.clicked(event):
                     self._execute_grapple_drop()
+                # Use Item is NOT gated on the bonus action: a potion is a Bonus Action, but a
+                # thrown flask or Net replaces one attack of the Attack action instead.
+                if self.btn_cbt_use_item.clicked(event):
+                    self._show_use_item_menu(event.pos)
+                if not self.action_used and self.btn_cbt_extinguish.clicked(event):
+                    self._resolve_extinguish()
+                if not self.action_used and self.btn_cbt_escape_net.clicked(event):
+                    self._begin_escape_net()
                 if not self.bonus_used:
                     if _has_offhand and self.btn_cbt_atk_bonus.clicked(event):
                         self._start_attack("bonus")
@@ -18112,8 +18385,6 @@ class App:
                     if self.btn_cbt_hand_of_healing.clicked(event):
                         self.pending_hand_of_healing = True
                         self.hint = "Click target for Hand of Healing"
-                    if self.btn_cbt_use_item.clicked(event):
-                        self._show_use_item_menu(event.pos)
                     if self.btn_cbt_rage.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

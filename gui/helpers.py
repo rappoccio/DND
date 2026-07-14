@@ -307,7 +307,8 @@ _DEFAULT_WEAPON: dict = {
     "normal_range_ft": 80,         # ranged: normal range in feet
     "long_range_ft":   320,        # ranged: long range in feet
     "finesse":         False,
-    "thrown":          False,
+    "thrown":          False,      # Thrown property: may be hurled as a ranged attack
+    "quantity":        1,          # copies carried; a THROW spends one (javelins come in bundles)
     "proficient":      True,
     "off_hand":        False,      # designated off-hand weapon (TWF)
     "two_handed":      False,      # prevents off-hand weapon when in main hand
@@ -328,6 +329,11 @@ def _weapon_to_dict(w) -> dict:
         "long_range_ft":    w.long_range_ft,
         "finesse":          w.finesse,
         "thrown":           w.thrown,
+        # Thrown-weapon bundle + ground icon. quantity MUST round-trip or a character who saved
+        # mid-fight with 2 javelins left reloads holding a fresh full bundle.
+        "quantity":         w.quantity,
+        "sprite_path":      w.sprite_path,
+        "returns_after_throw": w.returns_after_throw,
         # Synthetic-weapon identity flags — MUST be serialized or they vanish on save/reload:
         # the weapon keeps its name ("PactBlade"/"PsychicBlade") so the re-conjure guard skips it,
         # leaving pact_weapon/psychic_blade False (no CHA attack/damage, no Soulknife riders).
@@ -389,6 +395,11 @@ def _dict_to_weapon(d: dict):
     w.long_range_ft   = int(d.get("long_range_ft",   320))
     w.finesse         = bool(d.get("finesse",         False))
     w.thrown          = bool(d.get("thrown",          False))
+    # A weapon in hand is one weapon: default 1, never 0, or nothing loaded from weapons.json
+    # (which does not author a quantity) could ever be thrown.
+    w.quantity        = int(d.get("quantity",         1))
+    w.sprite_path     = d.get("sprite_path", "") or ""
+    w.returns_after_throw = bool(d.get("returns_after_throw", False))
     w.pact_weapon     = bool(d.get("pact_weapon",     False))
     w.psychic_blade   = bool(d.get("psychic_blade",   False))
     w.proficient      = bool(d.get("proficient",      True))
@@ -978,7 +989,8 @@ def _dict_to_item(d: dict):
     it.action_type = getattr(rpg.ItemAction, d.get("action_type", "BonusAction"),
                              rpg.ItemAction.BonusAction)
 
-    # Reach for administering the item to someone else; 0 = self only.
+    # Reach for administering a potion to someone else (0 = self only); the throwing
+    # range for a Thrown item (20 ft for the flasks, 15 ft for a Net).
     it.range = int(d.get("range", 5))
 
     healing_raw = d.get("healing_type")
@@ -988,6 +1000,25 @@ def _dict_to_item(d: dict):
         h.die_size = int(healing_raw.get("die_size", 4))
         h.bonus    = int(healing_raw.get("bonus", 0))
         it.healing = h
+
+    # ── Thrown items (Acid, Alchemist's Fire, Holy Water, Net) ───────────────
+    # The save DC is derived from the thrower (8 + DEX mod + PB), so it is never authored.
+    # A Net has no damage_type block at all: it deals no damage, it just tangles.
+    damage_raw = d.get("damage_type")
+    if isinstance(damage_raw, dict):
+        dmg = rpg.MagicDamageRoll()
+        dmg.type     = getattr(rpg.MagicDamage, damage_raw.get("type", "Acid"), rpg.MagicDamage.Acid)
+        dmg.num_dice = int(damage_raw.get("num_dice", 0))
+        dmg.die_size = int(damage_raw.get("die_size", 6))
+        dmg.bonus    = int(damage_raw.get("bonus", 0))
+        it.damage = dmg
+
+    it.save_ability = getattr(rpg.SaveAbility, d.get("save_ability", "SaveDex"),
+                              rpg.SaveAbility.SaveDex)
+    it.condition_applied    = d.get("condition_applied", "") or ""
+    it.only_vs_fiend_undead = bool(d.get("only_vs_fiend_undead", False))
+    it.max_target_size      = int(d.get("max_target_size", 0))
+    it.escape_dc            = int(d.get("escape_dc", 0))
 
     it.quantity = int(d.get("quantity", 1))
     it.consumable = bool(d.get("consumable", True))
@@ -1008,6 +1039,17 @@ def _item_to_dict(it) -> dict:
             "die_size": it.healing.die_size,
             "bonus":    it.healing.bonus,
         },
+        "damage_type": {
+            "type":     it.damage.type.name,
+            "num_dice": it.damage.num_dice,
+            "die_size": it.damage.die_size,
+            "bonus":    it.damage.bonus,
+        },
+        "save_ability":         it.save_ability.name,
+        "condition_applied":    it.condition_applied,
+        "only_vs_fiend_undead": it.only_vs_fiend_undead,
+        "max_target_size":      it.max_target_size,
+        "escape_dc":            it.escape_dc,
         "quantity": it.quantity,
         "consumable": it.consumable,
         "sprite_path": it.sprite_path,

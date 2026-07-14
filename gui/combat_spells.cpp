@@ -2924,7 +2924,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; }
     else if (n == "Charmed")       { ac.charmed = false; ac.charmed_by = -1; }
     else if (n == "Frightened")    { ac.frightened = false; }
-    else if (n == "Restrained")    { ac.restrained = false; }
+    else if (n == "Restrained")    { if (!ac.netted) ac.restrained = false; }  // a Net lasts "until it escapes" — see escapeNet
     else if (n == "Deafened")      { ac.deafened = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
     else if (n == "Prone")         { ac.prone = false; }

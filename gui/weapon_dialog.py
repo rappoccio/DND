@@ -127,7 +127,8 @@ class WeaponDialog:
                 elif event.unicode and event.unicode.isprintable():
                     self._f[af] = self._f.get(af, "") + event.unicode
                 return True
-            if af and (af in ("normal_range_ft", "long_range_ft", "bonus_hit", "bonus_damage") or
+            if af and (af in ("normal_range_ft", "long_range_ft", "bonus_hit", "bonus_damage",
+                              "quantity") or
                       af.startswith("phys_") or af.startswith("mag_")):
                 # Handle per-type dice fields (phys_num_dice_X, phys_die_size_X, mag_num_dice_X, mag_die_size_X)
                 if af.startswith("phys_") or af.startswith("mag_"):
@@ -220,7 +221,7 @@ class WeaponDialog:
                     return True
 
             # Text / numeric input fields (includes per-type dice)
-            numeric_keys = ["name", "normal_range_ft", "long_range_ft"]
+            numeric_keys = ["name", "normal_range_ft", "long_range_ft", "quantity"]
             numeric_keys += [k for k in self._rects.keys() if k.startswith("phys_") or k.startswith("mag_")]
             for field_key in numeric_keys:
                 if field_key in self._rects and \
@@ -453,6 +454,16 @@ class WeaponDialog:
                     self._rects[f"reach_{ft}"] = rect
                 cy += FH + PAD
 
+                # A Thrown melee weapon (javelin, handaxe) is hurled out to these ranges — it needs
+                # them just as much as a bow does, so show them once Thrown is checked.
+                if self._f.get("thrown"):
+                    label("Throw: normal (ft)", lx, cy)
+                    label("Throw: long (ft)", lx + RW // 2 + 6, cy)
+                    cy += 14
+                    text_field("normal_range_ft", lx,               cy, RW // 2 - 4)
+                    text_field("long_range_ft",   lx + RW // 2 + 4, cy, RW // 2 - 4)
+                    cy += FH + PAD
+
             else:
                 # ── Ranged distances ──────────────────────────────────────
                 label("Normal range (ft)", lx, cy)
@@ -471,6 +482,16 @@ class WeaponDialog:
             checkbox("proficient",lx + CB_STRIDE * 2,cy, "Proficient")
             checkbox("off_hand",  lx + CB_STRIDE * 3,cy, "Off-hand")
             cy += 24 + PAD
+
+            # ── Quantity (thrown bundles) ──────────────────────────────────
+            # How many of this weapon are carried. Each THROW spends one and leaves it on the
+            # ground; at 0 the slot is empty. Only a Thrown weapon is ever spent, so only it needs
+            # a bundle — 5 javelins, 20 darts.
+            if self._f.get("thrown"):
+                label("Quantity (thrown: each throw spends one)", lx, cy)
+                cy += 14
+                text_field("quantity", lx, cy, RW // 2 - 4)
+                cy += FH + PAD
 
             # ── Bonuses ────────────────────────────────────────────────────
             label("Bonuses", lx, cy)

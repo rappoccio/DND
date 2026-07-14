@@ -2343,20 +2343,46 @@ bool BattleMap::pickUpItem(int item_id, int agent_idx, int slot_idx) noexcept {
     // Get agent's current weapons
     auto weapons = getAgentWeapons(agent_idx);
 
+    // Picking up a thrown weapon you are still carrying re-joins the BUNDLE rather than taking a
+    // slot of its own: retrieve one of the javelins you threw and you hold 4 again, not two stacks
+    // of javelins. Checked before any slot logic — a stack always merges, whatever slot was asked
+    // for. (This is why a thrown weapon is worth retrieving at all: it was never destroyed.)
+    if (item_it->weapon.thrown) {
+        for (auto& w : weapons) {
+            if (w.thrown && w.name == item_it->weapon.name) {
+                w.quantity += std::max(1, item_it->weapon.quantity);
+                setAgentWeapons(agent_idx, weapons);
+                removeItem(item_id);
+                return true;
+            }
+        }
+    }
+
+    // A slot is FREE when it holds no weapon: an empty name, or the bare "Unarmed" default that is
+    // this codebase's blank-slot sentinel (helpers._weapon_slot_is_empty; also what a weapon slot
+    // is reset to when it is dropped, or when the last copy of a bundle is thrown). "MonkUnarmed"
+    // is a real weapon and is deliberately NOT matched here.
+    const auto slot_is_free = [](const Weapon& w) {
+        return w.name.empty() || w.name == "Unarmed";
+    };
+
     int target_slot = slot_idx;
-    // If no slot specified, find the first empty one
     if (target_slot < 0) {
-        for (int i = 0; i < 3; ++i) {
-            if (weapons[i].name.empty()) {
-                target_slot = i;
+        for (std::size_t i = 0; i < weapons.size(); ++i) {
+            if (slot_is_free(weapons[i])) {
+                target_slot = static_cast<int>(i);
                 break;
             }
         }
     }
-    if (target_slot < 0 || target_slot >= 3) return false;  // No valid slot
 
-    // Assign the weapon to the target slot (replaces any weapon there)
-    weapons[target_slot] = item_it->weapon;
+    if (target_slot < 0) {
+        weapons.push_back(item_it->weapon);            // no free slot: append a new attack slot
+    } else {
+        if (target_slot >= static_cast<int>(weapons.size()))
+            weapons.resize(static_cast<std::size_t>(target_slot) + 1);
+        weapons[static_cast<std::size_t>(target_slot)] = item_it->weapon;  // replaces what was there
+    }
     setAgentWeapons(agent_idx, weapons);
 
     // Remove the item from the map

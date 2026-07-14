@@ -409,6 +409,225 @@ def test_item_dict_round_trip():
     print("✅ Item save round-trip (_item_to_dict → _dict_to_item)")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Thrown items — Acid, Alchemist's Fire, Holy Water, Net
+#
+#  All four are "when you take the Attack action, you can replace one of your attacks
+#  with throwing this"; the target rolls a DEX save vs 8 + the thrower's DEX mod + PB.
+#  The flask is spent whether it lands or not, so a made save is a *successful throw
+#  that did nothing* (res.valid == True, res.saved == True) — not a rejected action.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _paralyze(engine, bm, idx):
+    """Paralyzed creatures auto-fail DEX saves — the deterministic way to land a flask."""
+    c = engine.get_agent_conditions(bm, idx)
+    c.paralyzed = True
+    engine.set_agent_conditions(bm, idx, c)
+
+
+def test_thrown_catalog_parses():
+    """The four SRD thrown items parse out of items.json with the right dice/range/riders."""
+    acid = _catalog_item("Acid")
+    assert acid.type == rpg.ItemType.Thrown
+    assert acid.action_type == rpg.ItemAction.AttackReplacement
+    assert acid.range == 20
+    assert (acid.damage.num_dice, acid.damage.die_size) == (2, 6)
+    assert acid.damage.type == rpg.MagicDamage.Acid
+
+    fire = _catalog_item("Alchemist's Fire")
+    assert (fire.damage.num_dice, fire.damage.die_size) == (1, 4)
+    assert fire.damage.type == rpg.MagicDamage.Fire
+    assert fire.condition_applied == "Burning"
+
+    holy = _catalog_item("Holy Water")
+    assert (holy.damage.num_dice, holy.damage.die_size) == (2, 8)
+    assert holy.damage.type == rpg.MagicDamage.Radiant
+    assert holy.only_vs_fiend_undead
+
+    net = _catalog_item("Net")
+    assert net.range == 15
+    assert net.damage.num_dice == 0, "a Net deals no damage"
+    assert net.condition_applied == "Restrained"
+    assert net.max_target_size == 2, "Huge (size 3) and larger succeed automatically"
+    assert net.escape_dc == 10
+    print("✅ items.json thrown items parse (Acid 2d6 / Fire 1d4+Burning / Holy 2d8 / Net)")
+
+
+def test_acid_damages_on_failed_save():
+    """A vial of Acid: 2d6 Acid on a failed DEX save, and the vial is spent."""
+    bm, engine, user, target = _setup_two(hp=30, gap=2)   # 10 ft — inside the 20 ft throw
+    engine.set_agent_items(bm, user, [_catalog_item("Acid")])
+    _paralyze(engine, bm, target)
+
+    res = engine.use_item(bm, user, 0, target)
+    assert res.valid and not res.saved, "a paralyzed target auto-fails the DEX save"
+    assert 2 <= res.damage_dealt <= 12, f"2d6 is 2..12, got {res.damage_dealt}"
+    assert engine.get_agent_stats(bm, target).hp_cur == 30 - res.damage_dealt
+    assert res.consumed and engine.get_agent_items(bm, user) == []
+    print("✅ Acid: 2d6 on a failed save, vial consumed")
+
+
+def test_thrown_save_still_spends_the_flask():
+    """A made save means no damage — but the flask is gone: you threw it."""
+    bm, engine, user, target = _setup_two(hp=30, gap=2)
+    engine.set_agent_items(bm, user, [_catalog_item("Acid")])
+
+    # DEX 30 (+10) vs a DC 8 + 0 + 2 = 10 thrower: the target cannot roll under the DC.
+    s = engine.get_agent_stats(bm, target)
+    s.dex = 30
+    engine.set_agent_stats(bm, target, s)
+
+    res = engine.use_item(bm, user, 0, target)
+    assert res.valid and res.saved, f"DEX +10 vs DC {res.save_dc} cannot fail"
+    assert res.damage_dealt == 0 and engine.get_agent_stats(bm, target).hp_cur == 30
+    assert res.consumed, "the vial is spent whether or not it lands"
+    print("✅ Thrown item: a made save deals nothing but still costs the flask")
+
+
+def test_thrown_out_of_range_costs_nothing():
+    """Beyond the throwing range the use is rejected and the flask survives."""
+    bm, engine, user, target = _setup_two(hp=30, gap=5)   # 25 ft > the 20 ft range
+    engine.set_agent_items(bm, user, [_catalog_item("Acid")])
+
+    res = engine.use_item(bm, user, 0, target)
+    assert not res.valid, "25 ft is outside Acid's 20 ft throwing range"
+    assert engine.get_agent_stats(bm, target).hp_cur == 30
+    assert engine.get_agent_items(bm, user)[0].quantity == 1, "the vial must not be spent"
+    print("✅ Out-of-range throw is rejected and costs nothing")
+
+
+def test_holy_water_only_harms_fiends_and_undead():
+    """Holy Water: 2d8 Radiant to a Fiend or Undead, a harmless splash on anything else."""
+    bm, engine, user, target = _setup_two(hp=30, gap=2)
+    engine.set_agent_items(bm, user, [_catalog_item("Holy Water")])
+    _paralyze(engine, bm, target)
+
+    res = engine.use_item(bm, user, 0, target)
+    assert res.valid and res.no_effect, "a living mortal is just splashed with water"
+    assert res.damage_dealt == 0 and engine.get_agent_stats(bm, target).hp_cur == 30
+    assert res.consumed, "the flask is thrown either way"
+
+    # Same throw at an Undead.
+    bm, engine, user, target = _setup_two(hp=30, gap=2)
+    engine.set_agent_items(bm, user, [_catalog_item("Holy Water")])
+    _paralyze(engine, bm, target)
+    s = engine.get_agent_stats(bm, target)
+    s.is_undead = True
+    engine.set_agent_stats(bm, target, s)
+
+    res = engine.use_item(bm, user, 0, target)
+    assert res.valid and not res.saved and not res.no_effect
+    assert 2 <= res.damage_dealt <= 16, f"2d8 is 2..16, got {res.damage_dealt}"
+    assert engine.get_agent_stats(bm, target).hp_cur == 30 - res.damage_dealt
+    print("✅ Holy Water: 2d8 Radiant vs Undead/Fiend, no effect on anything else")
+
+
+def test_alchemists_fire_sets_the_target_burning():
+    """Alchemist's Fire: 1d4 Fire + Burning, which then ticks 1d4 at the start of each turn."""
+    bm, engine, user, target = _setup_two(hp=30, gap=2)
+    engine.set_agent_items(bm, user, [_catalog_item("Alchemist's Fire")])
+    _paralyze(engine, bm, target)
+
+    res = engine.use_item(bm, user, 0, target)
+    assert res.valid and not res.saved
+    assert 1 <= res.damage_dealt <= 4, f"1d4 is 1..4, got {res.damage_dealt}"
+    assert res.condition_applied == "Burning"
+    assert engine.get_agent_conditions(bm, target).burning, "the target should be alight"
+
+    hp_after_throw = engine.get_agent_stats(bm, target).hp_cur
+    engine.begin_turn(bm, target)
+    hp_after_tick = engine.get_agent_stats(bm, target).hp_cur
+    burned = hp_after_throw - hp_after_tick
+    assert 1 <= burned <= 4, f"Burning should tick 1d4 Fire at turn start, took {burned}"
+    assert engine.get_agent_conditions(bm, target).burning, "the fire keeps burning"
+    print("✅ Alchemist's Fire: 1d4 on the hit, then 1d4 Burning at the start of each turn")
+
+
+def test_extinguish_burning_drops_prone():
+    """Putting the fire out costs an action: you drop Prone and roll on the ground."""
+    bm, engine, user, target = _setup_two(hp=30, gap=2)
+    engine.apply_burning(bm, target)
+    assert engine.get_agent_conditions(bm, target).burning
+
+    assert engine.extinguish_burning(bm, target), "a burning creature can roll the flames out"
+    c = engine.get_agent_conditions(bm, target)
+    assert not c.burning, "the fire should be out"
+    assert c.prone, "rolling on the ground leaves you Prone"
+
+    hp = engine.get_agent_stats(bm, target).hp_cur
+    engine.begin_turn(bm, target)
+    assert engine.get_agent_stats(bm, target).hp_cur == hp, "an extinguished fire deals no damage"
+    assert not engine.extinguish_burning(bm, target), "nothing to put out the second time"
+    print("✅ Extinguish: drop Prone, the fire goes out, and the turn-start tick stops")
+
+
+def test_net_restrains_until_escaped():
+    """A Net Restrains on a failed save, and only a DC 10 STR check cuts the target loose."""
+    bm, engine, user, target = _setup_two(hp=30, gap=2)   # 10 ft — inside the Net's 15 ft
+    engine.set_agent_items(bm, user, [_catalog_item("Net")])
+    _paralyze(engine, bm, target)
+
+    res = engine.use_item(bm, user, 0, target)
+    assert res.valid and not res.saved
+    assert res.damage_dealt == 0, "a Net deals no damage"
+    assert res.condition_applied == "Restrained"
+    c = engine.get_agent_conditions(bm, target)
+    assert c.restrained and c.netted and c.net_escape_dc == 10
+
+    # A Net has no duration: ticking the clock must not free the target.
+    engine.tick_agent_conditions(bm)
+    assert engine.get_agent_conditions(bm, target).restrained, "a Net lasts until it is escaped"
+
+    # STR 30 (+10) cannot roll under DC 10.
+    s = engine.get_agent_stats(bm, target)
+    s.str = 30
+    engine.set_agent_stats(bm, target, s)
+    esc = engine.escape_net(bm, target, target)
+    assert esc.valid and esc.freed, f"STR +10 vs DC {esc.dc} cannot fail"
+    c = engine.get_agent_conditions(bm, target)
+    assert not c.restrained and not c.netted, "cutting free ends the Restrained condition"
+    print("✅ Net: Restrained until a DC 10 STR check frees the target")
+
+
+def test_net_auto_succeeds_against_huge():
+    """"The target succeeds automatically if it is Huge or larger" — the Net just slides off."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    user = add_agent_to_battle(engine, bm, create_test_agent("Thrower", 5, 5, hp=30), hp=30)
+    huge_cfg = create_test_agent("Giant", 8, 5, hp=30)
+    huge_cfg.size = 3                       # Huge: a 3×3 footprint
+    huge = add_agent_to_battle(engine, bm, huge_cfg, hp=30)
+
+    engine.set_agent_items(bm, user, [_catalog_item("Net")])
+    _paralyze(engine, bm, huge)             # even auto-failing the save, it is too big to catch
+
+    res = engine.use_item(bm, user, 0, huge)
+    assert res.valid and res.saved, "a Huge creature automatically succeeds"
+    c = engine.get_agent_conditions(bm, huge)
+    assert not c.restrained and not c.netted, "the Net should not tangle a Huge creature"
+    assert res.consumed, "the Net is still thrown away"
+    print("✅ Net: a Huge target automatically succeeds")
+
+
+def test_thrown_item_dict_round_trip():
+    """The Thrown fields survive the save round-trip (new Item fields need BOTH serializers)."""
+    for name in ("Acid", "Alchemist's Fire", "Holy Water", "Net"):
+        it = _catalog_item(name)
+        back = _dict_to_item(_item_to_dict(it))
+        assert back.type == it.type == rpg.ItemType.Thrown
+        assert back.action_type == it.action_type
+        assert back.range == it.range
+        assert back.save_ability == it.save_ability
+        assert (back.damage.type, back.damage.num_dice, back.damage.die_size, back.damage.bonus) == \
+               (it.damage.type, it.damage.num_dice, it.damage.die_size, it.damage.bonus), \
+               f"{name}: damage did not survive the round-trip"
+        assert back.condition_applied == it.condition_applied
+        assert back.only_vs_fiend_undead == it.only_vs_fiend_undead
+        assert back.max_target_size == it.max_target_size
+        assert back.escape_dc == it.escape_dc
+    print("✅ Thrown-item save round-trip (damage / condition / fiend-undead / size / escape DC)")
+
+
 def run_tests():
     """Run all item tests."""
     print("\n" + "="*50)
@@ -435,6 +654,17 @@ def run_tests():
         test_potion_stack_decrements,
         test_add_item_to_agent_stacks_by_name,
         test_item_dict_round_trip,
+        # Thrown items (Acid, Alchemist's Fire, Holy Water, Net)
+        test_thrown_catalog_parses,
+        test_acid_damages_on_failed_save,
+        test_thrown_save_still_spends_the_flask,
+        test_thrown_out_of_range_costs_nothing,
+        test_holy_water_only_harms_fiends_and_undead,
+        test_alchemists_fire_sets_the_target_burning,
+        test_extinguish_burning_drops_prone,
+        test_net_restrains_until_escaped,
+        test_net_auto_succeeds_against_huge,
+        test_thrown_item_dict_round_trip,
     ]
 
     passed = 0

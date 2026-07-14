@@ -485,6 +485,33 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         }
     }
 
+    // Burning [Hazard] (Alchemist's Fire): "A burning creature or object takes 1d4 Fire damage at
+    // the start of each of its turns." Runs BEFORE Regeneration on purpose: the Fire damage goes
+    // through processDamageTaken, so a creature whose regeneration is interrupted by fire (a Troll)
+    // has regen_suppressed set in time for the regen block below to consume it this same turn.
+    if (bm.getAgentConditions(agent_idx).burning && stats.hp_cur > 0) {
+        const int raw = roll(4);
+        // No "caster" — the flames are on their own now, so no one's resistance-bypass feats apply.
+        const Agent::Stats no_source{};
+        const float mult = effectiveMagicDamageMult(no_source, stats, MagicDamage_t::Fire, false,
+                                                    &bm, agent_idx);
+        const int dmg = static_cast<int>(static_cast<float>(raw) * mult);
+        damageAgent(bm, agent_idx, dmg);
+        processDamageTaken(bm, agent_idx, dmg, 1u << static_cast<unsigned>(MagicDamage_t::Fire));
+        checkConcentrationOnDamage(bm, agent_idx, dmg);
+        // damageAgent wrote the new HP; re-sync the local copy or the blocks below (which write
+        // `stats` back wholesale) would restore the pre-burn HP.
+        stats = bm.getAgentStats(agent_idx);
+        log_("{} is Burning: takes {} Fire damage → {}/{}", agent_name, dmg,
+             stats.hp_cur, stats.effectiveMaxHp());
+        if (stats.hp_cur <= 0) {
+            const Agent::Conditions bc = bm.getAgentConditions(agent_idx);
+            if (!bc.unconscious && !bc.dead) applyUnconscious(bm, agent_idx);
+            result.save_roll_message = "Burning: burned to death";
+            return result;   // the creature is down — nothing else happens on its turn
+        }
+    }
+
     // Regeneration (Troll, Vampire, Hydra, …): regain regeneration_amount HP at the start of the
     // turn, capped at effectiveMaxHp(), provided the creature still has ≥1 HP. Regeneration is
     // suppressed for this one check if regen_suppressed is set — either by an interrupting damage

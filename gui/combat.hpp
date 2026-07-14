@@ -107,6 +107,14 @@ struct AttackResult {
 
     // ── Forced movement (push/knockback) ──────────────────────────────────
     int  push_ft_applied = 0;   // feet the target was actually pushed
+
+    // ── Thrown weapon (Attack::thrown) ────────────────────────────────────
+    // This attack was resolved as a THROW. Set on a hit AND a miss — a thrown weapon leaves the
+    // hand either way. thrown_item_id is the MapItem the weapon became where it landed; it stays
+    // -1 for a weapon that comes back (Weapon::returns_after_throw — a Psychic Blade), which is
+    // also the one case where no copy is spent.
+    bool weapon_thrown  = false;
+    int  thrown_item_id = -1;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +130,13 @@ struct Attack {
     std::string attack_slot = "";   // "action" or "bonus" — set by Python to indicate attack type
     bool opportunity = false;       // this attack is an Opportunity Attack (set on the OA path) —
                                     // a Speedy target imposes Disadvantage on it
+    // THROW this weapon instead of swinging it (requires Weapon::thrown). The attack reaches
+    // long_range_ft rather than reach_ft, and the weapon LEAVES THE THROWER'S HAND: one copy is
+    // spent and lands on the ground as a MapItem at the target's cell (applyAttackResult), where
+    // anyone may pick it up. Set by the GUI when the DM targets beyond the weapon's melee reach —
+    // an attack that would otherwise be illegal, so a normal melee swing is never turned into a
+    // throw by accident. NPC automation leaves this false, so no monster throws its weapon away.
+    bool thrown = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -297,13 +312,34 @@ struct HandOfHealingResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Result of using a carried Item (potion, …) — see CombatEngine::useItem
+//  Result of using a carried Item (potion, thrown flask, Net) — CombatEngine::useItem
 // ─────────────────────────────────────────────────────────────────────────────
 struct UseItemResult {
     bool valid = false;         // gate passed (item in the pack, target in range, action available)
     int  amount_healed = 0;     // HP actually restored (Heal items)
     std::string item_name = {}; // what was used (the row may be gone by the time we return)
     bool consumed = false;      // the last charge went — the item left the inventory
+
+    // ── Thrown items (Acid, Alchemist's Fire, Holy Water, Net) ───────────────
+    // The flask is spent whether it lands or not, so a thrown use with valid == true and
+    // saved == true is a *successful throw that did nothing* — not a rejected action.
+    int  save_dc     = 0;       // 8 + thrower's DEX modifier + Proficiency Bonus
+    int  save_roll   = 0;       // target's DEX save total (0 when no save was rolled)
+    bool saved       = false;   // target made the save (or auto-succeeded — a Huge+ creature vs a Net)
+    int  damage_dealt = 0;      // damage after the target's Resistance/Immunity multiplier
+    bool no_effect   = false;   // splashed harmlessly: Holy Water on anything but a Fiend/Undead
+    std::string condition_applied = {};  // "Burning" / "Restrained", when the save failed
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Result of a Net escape attempt — see CombatEngine::escapeNet
+// ─────────────────────────────────────────────────────────────────────────────
+struct EscapeNetResult {
+    bool valid   = false;   // gate passed (target is netted, actor is the target or within 5 ft)
+    int  dc      = 0;       // DC 10 for a standard Net (Conditions::net_escape_dc)
+    int  d20     = 0;       // raw die
+    int  total   = 0;       // d20 + STR modifier
+    bool freed   = false;   // check succeeded — the Net is cut away and Restrained ends
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -680,6 +716,10 @@ struct InFlightAttack {
     bool attacker_was_hidden{false};
     int  atk_sz{1};
     int  tgt_sz{1};
+    // This attack is a THROW (Attack::thrown AND the resolved weapon really has the Thrown property —
+    // a Disarmed attacker swinging an improvised Unarmed Strike throws nothing). Decided in
+    // determineAdvantage; applyAttackResult spends the copy and lays it on the ground.
+    bool was_thrown{false};
 };
 
 // Resumable state for one in-flight TURN START that may open the OnTurnStartNearby window
@@ -810,17 +850,24 @@ public:
 
     // True iff the weapon can reach at least one cell of the target's footprint
     // AND that cell has line-of-sight from the attacker.
+    //
+    // as_throw (Attack::thrown) hurls a Thrown weapon instead of swinging it: a MELEE weapon with
+    // the Thrown property then reaches long_range_ft instead of reach_ft. Ignored for a weapon
+    // without Weapon::thrown (you can't throw a longsword), and it never SHORTENS a weapon's reach.
     [[nodiscard]] static bool canAttack(const Weapon& w,
                                          const BattleMap& bm,
                                          Cell atk_origin, int atk_size,
-                                         Cell tgt_origin, int tgt_size) noexcept;
+                                         Cell tgt_origin, int tgt_size,
+                                         bool as_throw = false) noexcept;
 
     // True iff the attack should be made at disadvantage.
-    // Currently: ranged (non-thrown) attacks beyond normal_range_ft.
+    // Currently: any attack made AT RANGE — a ranged weapon, or a thrown weapon hurled (as_throw) —
+    // beyond normal_range_ft (i.e. at long range).
     [[nodiscard]] static bool hasDisadvantage(const Weapon& w,
                                                const BattleMap& bm,
                                                Cell atk_origin, int atk_size,
-                                               Cell tgt_origin, int tgt_size) noexcept;
+                                               Cell tgt_origin, int tgt_size,
+                                               bool as_throw = false) noexcept;
 
     // HP modifiers — clamp hp_cur to [0, hp_max] and write back to the map.
     // Return the resulting hp_cur, or 0 for an out-of-range idx.
@@ -1352,11 +1399,27 @@ public:
 
     // Use the carried item in inventory slot `item_slot` on `target_idx` (which may be the user
     // itself). Enforces the item's range (0 ⇒ self only), the user's ability to act, the item's
-    // action-economy cost (a BonusAction item spends the Bonus Action), rolls the effect, and
+    // action-economy cost (a BonusAction item spends the Bonus Action; an AttackReplacement item
+    // is paid for by the caller out of the Attack action's swing budget), rolls the effect, and
     // decrements/removes the consumed charge. A Heal item restores HP through healAgent, so a
-    // potion poured into a downed ally revives it. Returns a UseItemResult (valid=false ⇒ nothing
-    // happened and nothing was spent).
+    // potion poured into a downed ally revives it; a Thrown item makes the target roll a DEX save
+    // vs 8 + the thrower's DEX modifier + PB and, on a failure, deals its damage and/or applies its
+    // condition. Returns a UseItemResult (valid=false ⇒ nothing happened and nothing was spent).
     UseItemResult useItem(BattleMap& bm, int user_idx, int item_slot, int target_idx) noexcept;
+
+    // Burning [Hazard] (Alchemist's Fire). applyBurning is the single entry point — the flame is
+    // then ticked for 1d4 Fire at the start of each of the burning creature's turns (beginTurn).
+    // extinguishBurning is the SRD's put-it-out action: "you can extinguish fire on yourself by
+    // giving yourself the Prone condition and rolling on the ground" — so it drops the creature
+    // Prone and clears the flame. Returns false if the creature was not burning.
+    void applyBurning(BattleMap& bm, int idx) noexcept;
+    bool extinguishBurning(BattleMap& bm, int idx) noexcept;
+
+    // Net escape: "the target or a creature within 5 feet of it must take an action to make a DC 10
+    // Strength (Athletics) check, freeing the Restrained creature on a success." `actor_idx` is who
+    // makes the check (the netted creature itself, or a helper within 5 ft); `target_idx` is the
+    // netted creature. The action cost is the caller's to charge.
+    EscapeNetResult escapeNet(BattleMap& bm, int actor_idx, int target_idx) noexcept;
 
     // Return agent name for logging; "agent[idx]" if idx is out of range.
     [[nodiscard]] std::string agentName(const BattleMap& bm, int idx) const noexcept;
@@ -2850,6 +2913,14 @@ private:
     [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;
     [[nodiscard]] static int spellSaveDc(const Agent::Stats& s) noexcept;
     [[nodiscard]] static int spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept;
+
+    // ── Item helpers ──────────────────────────────────────────────────────
+    // The save-and-effect half of a Thrown item (useItem has already validated the throw and is
+    // about to spend the flask). Rolls the target's save vs 8 + the thrower's ability mod + PB and,
+    // on a failure, deals the item's damage and applies its condition; fills the Thrown fields of
+    // `res`. Split out of useItem to keep the two item kinds' rules side by side rather than nested.
+    void resolveThrownItem(BattleMap& bm, int user_idx, int target_idx,
+                           const Item& item, UseItemResult& res) noexcept;
 
     // Apply a persistent spell effect (damage) to a target agent.
     void applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept;

@@ -712,6 +712,9 @@ namespace rpg {
       bool frightened{false};    // disadvantage on attacks/checks when source in LOS; cannot move closer to source
       bool slipped_this_turn{false}; // slipped on ice/grease this turn; cannot use action/bonus action
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
+      bool netted{false};         // Restrained by a thrown Net: no duration — it lasts "until it escapes" (CombatEngine::escapeNet, a DC net_escape_dc STR check by the target or a creature within 5 ft). Kept alongside `restrained` so an unrelated Restrained effect expiring cannot free a netted creature.
+      int  net_escape_dc{10};     // DC of the STR (Athletics) check to cut/wriggle free of the Net
+      bool burning{false};        // Burning [Hazard] (Alchemist's Fire): 1d4 Fire at the start of each of its turns until extinguished (CombatEngine::extinguishBurning — an action: drop Prone and roll on the ground)
       bool poisoned{false};      // disadvantage on attack rolls and ability checks
       bool petrified{false};     // incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, advantage on attacks
       bool gaseous_form{false};  // Gaseous Form / vampire Misty Escape: fly-only (Speed 20), can't attack or cast, Resistance to Bludgeoning/Piercing/Slashing (Immunity if is_vampire), immune to Prone. Session-only transient; endGaseousForm restores the pre-cast speeds + physical multipliers snapshotted in gaseousSnapshots_.

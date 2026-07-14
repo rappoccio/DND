@@ -3782,6 +3782,23 @@ class WeaponsDialog:
         sr = self._slot_rect(slot_idx)
         return pygame.Rect(self.rect.right - self.PAD - 28, sr.y, 28, self.ITEM_H)
 
+    def _is_thrown(self, slot_idx: int) -> bool:
+        """Only a Thrown weapon is carried as a bundle — each throw spends one and leaves it lying
+        on the ground — so only it needs a count (5 javelins, 20 darts)."""
+        return bool(self.current_weapons[slot_idx].get("thrown", False))
+
+    def _qty(self, slot_idx: int) -> int:
+        # weapons.json authors no quantity, and a weapon in hand is one weapon: never 0.
+        return max(1, int(self.current_weapons[slot_idx].get("quantity", 1) or 1))
+
+    def _qty_rects(self, slot_idx: int):
+        """(minus, plus) steppers, tucked into the right end of the name area."""
+        sr = self._slot_rect(slot_idx)
+        y = sr.y + 4
+        h = self.ITEM_H - 8
+        return (pygame.Rect(sr.right - 82, y, 20, h),
+                pygame.Rect(sr.right - 28, y, 20, h))
+
     def _add_rect(self) -> pygame.Rect:
         n = len(self.current_weapons)
         y = self.rect.y + 45 + n * (self.ITEM_H + self.ROW_GAP)
@@ -3827,6 +3844,16 @@ class WeaponsDialog:
                         cur = bool(self.current_weapons[i].get("off_hand", False))
                         self.current_weapons[i]["off_hand"] = not cur
                         return True
+                    # Quantity steppers for a thrown weapon (a bundle of javelins/darts). Checked
+                    # BEFORE the name area they sit inside, or the click would open the picker.
+                    if self._is_thrown(i):
+                        minus_r, plus_r = self._qty_rects(i)
+                        if minus_r.collidepoint(*event.pos):
+                            self.current_weapons[i]["quantity"] = max(1, self._qty(i) - 1)
+                            return True
+                        if plus_r.collidepoint(*event.pos):
+                            self.current_weapons[i]["quantity"] = min(99, self._qty(i) + 1)
+                            return True
                     # Name area → weapon selection
                     if self._slot_rect(i).collidepoint(*event.pos):
                         if i == 1 and self.current_weapons[0].get("two_handed", False):
@@ -3897,6 +3924,18 @@ class WeaponsDialog:
             weapon_text = self.font_sm.render(weapon_name if weapon_name else "—", True, (200, 200, 220))
             surf.blit(weapon_text, (slot_rect.x + 160, slot_rect.y + 4))
 
+            # Quantity stepper — thrown weapons only (how many javelins are in the bundle).
+            if self._is_thrown(i) and not disabled:
+                minus_r, plus_r = self._qty_rects(i)
+                for r, glyph in ((minus_r, "−"), (plus_r, "+")):
+                    pygame.draw.rect(surf, self.C_BUTTON, r, border_radius=3)
+                    pygame.draw.rect(surf, self.C_SLOT_BORDER, r, 1, border_radius=3)
+                    g = self.font_sm.render(glyph, True, (220, 220, 235))
+                    surf.blit(g, g.get_rect(center=r.center))
+                qty = self.font_sm.render(f"x{self._qty(i)}", True, (230, 210, 150))
+                surf.blit(qty, qty.get_rect(center=((minus_r.right + plus_r.x) // 2,
+                                                    minus_r.centery)))
+
             # Off-hand toggle
             off_rect = self._offhand_rect(i)
             is_off = bool(self.current_weapons[i].get("off_hand", False))
@@ -3962,11 +4001,20 @@ class ItemSelectionDialog:
 
     @staticmethod
     def _row_text(item: dict) -> str:
-        """'Potion of Healing  (2d4+2)' — the dice are what the DM is actually picking by."""
+        """'Potion of Healing  (2d4+2)', 'Acid  (2d6 Acid)', 'Net  (Restrained)' — whatever the
+        DM is actually picking the item by."""
+        name = item.get("name", "Unknown")
+        if item.get("type") == "Thrown":
+            dmg = item.get("damage_type") or {}
+            n, d = dmg.get("num_dice", 0), dmg.get("die_size", 0)
+            bits = [f"{n}d{d} {dmg.get('type', '')}".strip()] if n else []
+            if item.get("condition_applied"):
+                bits.append(item["condition_applied"])
+            return f"{name}   ({', '.join(bits)})" if bits else name
         h = item.get("healing_type") or {}
         n, d, b = h.get("num_dice", 0), h.get("die_size", 0), h.get("bonus", 0)
         dice = f"{n}d{d}+{b}" if n else ""
-        return f"{item.get('name', 'Unknown')}   ({dice})" if dice else item.get("name", "Unknown")
+        return f"{name}   ({dice})" if dice else name
 
     def handle(self, event) -> bool:
         if not self.visible or not self.rect:

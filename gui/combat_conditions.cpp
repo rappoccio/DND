@@ -223,6 +223,87 @@ void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
     log_("Agent is now prone: movement costs doubled (triple in difficult terrain), disadvantage on attack rolls");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Burning [Hazard] and the Net — the two conditions carried by thrown items
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::applyBurning(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (cond.burning) return;   // already alight — a second flask does not stack a second fire
+    cond.burning = true;
+    bm.setAgentConditions(idx, cond);
+    log_("{} is Burning: 1d4 Fire damage at the start of each of its turns until the fire is put out",
+         agentName(bm, idx));
+}
+
+bool CombatEngine::extinguishBurning(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Conditions cond = bm.getAgentConditions(idx);
+    if (!cond.burning) return false;
+
+    // "As an action, you can extinguish fire on yourself by giving yourself the Prone condition and
+    // rolling on the ground." Note applyProne re-reads the conditions, so clear the flame afterwards
+    // rather than in one write — and go through applyProne so the Prone rules (gaseous-form immunity)
+    // stay in one place.
+    applyProne(bm, idx);
+    cond = bm.getAgentConditions(idx);
+    cond.burning = false;
+    bm.setAgentConditions(idx, cond);
+    log_("{} drops and rolls, putting out the flames (no longer Burning)", agentName(bm, idx));
+    return true;
+}
+
+EscapeNetResult CombatEngine::escapeNet(BattleMap& bm, int actor_idx, int target_idx) noexcept
+{
+    EscapeNetResult res;
+    const auto& agents = bm.placedAgents();
+    if (actor_idx  < 0 || actor_idx  >= static_cast<int>(agents.size())) return res;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return res;
+
+    Agent::Conditions tc = bm.getAgentConditions(target_idx);
+    if (!tc.netted) return res;
+
+    // The actor has to be able to act, and be the netted creature or a creature within 5 ft of it.
+    const Agent::Conditions ac = bm.getAgentConditions(actor_idx);
+    if (ac.dead || ac.unconscious || ac.incapacitated) return res;
+    if (actor_idx != target_idx) {
+        const PlacedAgent& apa = agents[static_cast<std::size_t>(actor_idx)];
+        const PlacedAgent& tpa = agents[static_cast<std::size_t>(target_idx)];
+        if (footprintDistance(apa.origin, apa.agent->getSize(),
+                              tpa.origin, tpa.agent->getSize()) * 5 > 5) return res;
+    }
+
+    // DC 10 Strength (Athletics) check. Skill proficiency is not modeled, so this is d20 + STR mod —
+    // the same shape as the grapple-escape check.
+    const Agent::Stats as = bm.getAgentStats(actor_idx);
+    int str_mod = (as.str - 10) / 2;
+    if (as.str < 10 && (as.str - 10) % 2 != 0) --str_mod;
+
+    res.valid = true;
+    res.dc    = tc.net_escape_dc;
+    res.d20   = roll(20);
+    res.total = res.d20 + str_mod;
+    res.freed = (res.total >= res.dc);
+
+    if (res.freed) {
+        tc.netted     = false;
+        tc.restrained = false;
+        bm.setAgentConditions(target_idx, tc);
+    }
+    log_("{} makes a DC {} STR check to free {} from the Net: {} + {} = {} ({})",
+         agentName(bm, actor_idx), res.dc,
+         (actor_idx == target_idx) ? "itself" : agentName(bm, target_idx),
+         res.d20, str_mod, res.total, res.freed ? "FREED" : "FAILED");
+    return res;
+}
+
 int CombatEngine::applyPush(BattleMap& bm, int attacker_idx, int target_idx) noexcept
 {
     const auto& agents = bm.placedAgents();
@@ -825,7 +906,9 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
                     } else if (cond.condition_name == "Restrained") {
-                        agent_cond.restrained = false;
+                        // A tangling Net has no duration of its own ("until it escapes"), so a
+                        // *different* Restrained effect timing out must not cut the creature free.
+                        if (!agent_cond.netted) agent_cond.restrained = false;
                     } else if (cond.condition_name == "Poisoned") {
                         agent_cond.poisoned = false;
                     } else if (cond.condition_name == "Unconscious") {
@@ -908,7 +991,9 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
                     } else if (cond.condition_name == "Frightened") {
                         agent_cond.frightened = false;
                     } else if (cond.condition_name == "Restrained") {
-                        agent_cond.restrained = false;
+                        // A tangling Net has no duration of its own ("until it escapes"), so a
+                        // *different* Restrained effect timing out must not cut the creature free.
+                        if (!agent_cond.netted) agent_cond.restrained = false;
                     } else if (cond.condition_name == "Poisoned") {
                         agent_cond.poisoned = false;
                     } else if (cond.condition_name == "Unconscious") {

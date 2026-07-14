@@ -95,10 +95,16 @@ void CombatEngine::grantDarkOnesBlessing(BattleMap& bm, int victim_idx, int kill
 bool CombatEngine::canAttack(const Weapon& w,
                                const BattleMap& bm,
                                Cell atk_origin, int atk_size,
-                               Cell tgt_origin, int tgt_size) noexcept
+                               Cell tgt_origin, int tgt_size,
+                               bool as_throw) noexcept
 {
-    const int range_ft    = (w.type == WeaponType::Melee) ? w.reach_ft
-                                                           : w.long_range_ft;
+    // A THROWN weapon that is actually being hurled reaches long_range_ft even if it is a Melee
+    // weapon (a hurled javelin is a ranged attack). std::max so a reach weapon with the Thrown
+    // property never has its reach shortened by being thrown.
+    const bool throwing = as_throw && w.thrown;
+    const int range_ft    = (w.type == WeaponType::Melee)
+                              ? (throwing ? std::max(w.reach_ft, w.long_range_ft) : w.reach_ft)
+                              : w.long_range_ft;
     const int range_cells = range_ft / 5;
 
     // Check every cell of the target's footprint: if any is within range
@@ -117,10 +123,14 @@ bool CombatEngine::canAttack(const Weapon& w,
 bool CombatEngine::hasDisadvantage(const Weapon& w,
                                     const BattleMap& /*bm*/,
                                     Cell atk_origin, int atk_size,
-                                    Cell tgt_origin, int tgt_size) noexcept
+                                    Cell tgt_origin, int tgt_size,
+                                    bool as_throw) noexcept
 {
-    // Ranged (not thrown) weapons have disadvantage beyond normal_range_ft.
-    if (w.type == WeaponType::Ranged && !w.thrown && w.normal_range_ft > 0) {
+    // Long range ⇒ Disadvantage, for every attack made at range: a ranged weapon, or a Thrown
+    // weapon actually being hurled (as_throw). A thrown weapon used as a melee swing is not an
+    // attack at range, so it takes no long-range penalty.
+    const bool at_range = (w.type == WeaponType::Ranged) || (as_throw && w.thrown);
+    if (at_range && w.normal_range_ft > 0) {
         int min_dist_cells = std::numeric_limits<int>::max();
         for (int tr = tgt_origin.row; tr < tgt_origin.row + tgt_size; ++tr) {
             for (int tc = tgt_origin.col; tc < tgt_origin.col + tgt_size; ++tc) {
@@ -2234,6 +2244,20 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("{} has no uses of {} remaining", agentName(bm, action.attacker_idx), w.name);
         return false;
     }
+    // Throwing it (Attack::thrown). Only a weapon with the Thrown property can be hurled, and only
+    // while a copy is still in hand — every javelin in the bundle may be thrown, but no more than
+    // that. The copy is spent in applyAttackResult once the attack commits.
+    if (action.thrown) {
+        if (!w.thrown) {
+            log_("{} can't throw {} — it has no Thrown property",
+                 agentName(bm, action.attacker_idx), w.name);
+            return false;
+        }
+        if (w.quantity <= 0) {
+            log_("{} has no {} left to throw", agentName(bm, action.attacker_idx), w.name);
+            return false;
+        }
+    }
     // Note: an off-hand (Two-Weapon Fighting) attack uses the same attack roll as any other —
     // proficiency to-hit DOES apply (RAW). The only off-hand penalty is on damage (no positive
     // ability mod unless the Two-Weapon Fighting style), handled in rollDamage via w.off_hand.
@@ -2264,7 +2288,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         w.reach_ft += 10;
     }
 
-    if (!canAttack(w, bm, atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz))
+    // Is this a real throw? Only now, AFTER the Disarmed substitution above: a Disarmed attacker
+    // swings an improvised Unarmed Strike (thrown == false), so it hurls nothing even if the DM
+    // declared a throw. applyAttackResult reads this to spend the copy and drop it on the ground.
+    s.was_thrown = action.thrown && w.thrown;
+
+    if (!canAttack(w, bm, atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz, s.was_thrown))
         return false;
 
 
@@ -2272,10 +2301,10 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
 
     // beginning of determination of advantage / disadvantage
-    
+
     bool disadv = hasDisadvantage(w, bm,
                                    atk_pt.origin, atk_sz,
-                                   tgt_pt.origin, tgt_sz);
+                                   tgt_pt.origin, tgt_sz, s.was_thrown);
 
     // Sharpshooter (general feat) — Long Range: attacking at long range imposes no
     // Disadvantage. hasDisadvantage returns only the long-range penalty here, so clearing
@@ -2285,8 +2314,10 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Sharpshooter: no Disadvantage at long range");
     }
 
-    // Apply engagement disadvantage: ranged attacks suffer disadvantage if engaged
-    bool is_ranged = (w.type == WeaponType::Ranged);
+    // Apply engagement disadvantage: ranged attacks suffer disadvantage if engaged. Hurling a
+    // Thrown weapon IS a ranged attack, so a thrown javelin is just as awkward with an enemy in
+    // your face as a fired bow.
+    bool is_ranged = (w.type == WeaponType::Ranged) || s.was_thrown;
     if (is_ranged && isThreatened(bm, action.attacker_idx)) {
         // Firing in Melee — Sharpshooter (any ranged weapon) and Crossbow Expert (Crossbows
         // only) negate the within-5-ft Disadvantage from a nearby enemy.
@@ -2854,6 +2885,47 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             }
             if (uw.recharge_min > 0) { uw.expended = true; changed = true; }
             if (changed) bm.setAgentWeapons(action.attacker_idx, used_weapons);
+        }
+    }
+
+    // ── Spend a THROWN weapon: it leaves the hand and lands on the ground ────────────────
+    // Like the limited-use spend above, this is unconditional once the attack commits: a javelin
+    // is out of your hand whether it hits or misses. Unlike a thrown Item (a flask), a thrown
+    // WEAPON is not destroyed — it becomes a MapItem on the target's cell, and anyone standing
+    // there can pick it up again (BattleMap::pickUpItem). One copy is spent; when the last copy
+    // of a bundle is thrown the slot is emptied (the same blank-slot sentinel the GUI's manual
+    // "drop weapon" uses), so no attack is offered with a weapon that is no longer held. The slot
+    // itself is kept so weapon indices stay stable for the rest of the turn (multiattack, Nick).
+    if (s.was_thrown) {
+        r.weapon_thrown = true;
+        auto thrower_weapons = bm.getAgentWeapons(action.attacker_idx);
+        if (action.weapon_idx >= 0 &&
+            action.weapon_idx < static_cast<int>(thrower_weapons.size())) {
+            Weapon& tw = thrower_weapons[static_cast<std::size_t>(action.weapon_idx)];
+
+            if (tw.returns_after_throw) {
+                // A Psychic Blade / returning weapon is back in hand before the throw is over:
+                // nothing is spent and nothing hits the floor.
+                log_("{} throws {} — it returns to their hand",
+                     agentName(bm, action.attacker_idx), tw.name);
+            } else {
+                Weapon landed = tw;   // the copy that left the hand: one weapon, not the bundle
+                landed.quantity = 1;
+                r.thrown_item_id = bm.placeItem(tgt_pt.origin, landed, tw.sprite_path);
+
+                tw.quantity = std::max(0, tw.quantity - 1);
+                if (tw.quantity <= 0) {
+                    log_("{} throws {} — their last one, and it now lies at {}'s feet",
+                         agentName(bm, action.attacker_idx), tw.name,
+                         agentName(bm, action.target_idx));
+                    tw = Weapon{};    // blank slot: nothing left to swing or throw
+                } else {
+                    log_("{} throws {} — it lands at {}'s feet ({} left)",
+                         agentName(bm, action.attacker_idx), tw.name,
+                         agentName(bm, action.target_idx), tw.quantity);
+                }
+                bm.setAgentWeapons(action.attacker_idx, thrower_weapons);
+            }
         }
     }
 
