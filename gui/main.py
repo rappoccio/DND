@@ -8002,10 +8002,14 @@ class App:
             self.pending_use_item = slot
             it = items[slot]
             if it.type == rpg.ItemType.Thrown:
-                self.hint = f"Click a creature within {it.range} ft to throw {it.name}"
+                prompt = f"Click a creature within {it.range} ft to throw {it.name}"
             else:
                 where = "yourself" if it.range <= 0 else f"yourself or a creature within {it.range} ft"
-                self.hint = f"Click {where} to use {it.name}"
+                prompt = f"Click {where} to use {it.name}"
+            # self.hint is never rendered anywhere, so the target prompt has to go to the combat
+            # log or the player is left with no direction at all after picking an item.
+            self.hint = prompt
+            self._combat_log_add(prompt + ".")
 
         opts = []
         for slot, it in enumerate(items):
@@ -8048,6 +8052,18 @@ class App:
             self._update_attack_overlay()
             return
 
+        # Healing is clamped to the target's max HP, so a potion drunk at full health rolls its
+        # dice, restores nothing, and still burns the charge and the Bonus Action. Refuse it here
+        # rather than let the engine silently eat it ("regains 0 HP").
+        if item.type == rpg.ItemType.Heal:
+            tgt = self.combat.get_agent_stats(self.bm, target_idx)
+            if tgt.hp_cur >= tgt.hp_max - tgt.available_hit_points:
+                self._combat_log_add(
+                    f"{self.bm.placed_agents[target_idx].name} is already at full HP — "
+                    f"{item.name} not used.")
+                self._update_attack_overlay()
+                return
+
         res = self.combat.use_item(self.bm, user_idx, slot, target_idx)
         if not res.valid:
             self._combat_log_add(
@@ -8056,30 +8072,13 @@ class App:
             self._update_attack_overlay()
             return
 
-        user_name = self.bm.placed_agents[user_idx].name
-        tgt_name  = self.bm.placed_agents[target_idx].name
-        if item.type == rpg.ItemType.Thrown:
-            if res.no_effect:
-                msg = (f"{user_name} throws {res.item_name} at {tgt_name} — no effect "
-                       f"(not a Fiend or an Undead)")
-            elif res.saved:
-                msg = (f"{user_name} throws {res.item_name} at {tgt_name} — DEX save "
-                       f"{res.save_roll} vs DC {res.save_dc}: no effect")
-            else:
-                bits = []
-                if res.damage_dealt:
-                    bits.append(f"{res.damage_dealt} damage")
-                if res.condition_applied:
-                    bits.append(res.condition_applied)
-                msg = (f"{user_name} throws {res.item_name} at {tgt_name} — DEX save "
-                       f"{res.save_roll} vs DC {res.save_dc}: {' + '.join(bits) or 'no effect'}")
-        elif target_idx == user_idx:
-            msg = f"{user_name} drinks {res.item_name} and regains {res.amount_healed} HP"
-        else:
-            msg = (f"{user_name} administers {res.item_name} to {tgt_name}, "
-                   f"who regains {res.amount_healed} HP")
-        self._combat_log_add(msg + ("  (last one used)." if res.consumed else "."))
+        # The engine already narrates the use (the drink and the HP regained; a throw's save roll,
+        # damage and condition), so just flush its lines — re-stating them here printed every use
+        # twice. Only the charge count is the GUI's to report.
         self._flush_combat_log()
+        if res.consumed:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[user_idx].name}: that was the last {res.item_name}.")
 
         if is_throw:
             self._consume_attack_replacement(user_idx)
@@ -11393,6 +11392,7 @@ class App:
                 "agent_warlock_subclass": s.warlock_subclass.name,
                 "agent_rogue_subclass": s.rogue_subclass.name,
                 "agent_cleric_subclass": s.cleric_subclass.name,
+                "agent_blessed_strike": s.blessed_strike.name,
                 "agent_bard_subclass": s.bard_subclass.name,
                 "agent_sorcerer_subclass": s.sorcerer_subclass.name,
                 "agent_ranger_subclass": s.ranger_subclass.name,
