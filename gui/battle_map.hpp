@@ -134,6 +134,7 @@ struct ActiveTerrainEffect {
     int                 slip_save_dc{10};        // DC for DEX save (default 10)
     int                 slip_distance_feet{5};  // Feet moved before requiring save (default 5)
     int                 spell_idx{-1};                  // caster's spell index (-1 = none)
+    int                 cast_level{0};                  // slot level the spell was cast at (for Dispel Magic)
     bool                requires_concentration{false};  // terrain ends when caster drops concentration
     // Moving emanation (e.g. Spirit Guardians): the difficult-terrain footprint follows this
     // agent. -1 = static placement. anchor_radius_ft is the Sphere radius used to re-center.
@@ -167,6 +168,7 @@ struct ActiveSpellEffect {
     int          turns_remaining = 0;      // decremented per turn; effect expires when 0
     int          effect_id      = -1;      // unique ID for removal
     int          anchor_agent_idx = -1;    // if >=0, cells re-center on this agent (moving Sphere)
+    int          cast_level      = 0;      // slot level the spell was cast at (for Dispel Magic)
 };
 
 // ── Active spell-applied condition on an agent ──────────────────────────────
@@ -181,6 +183,7 @@ struct ActiveAgentCondition {
     int              save_dc              = 0;    // DC for saving throws (must be set when condition created)
     int              save_repeat_turns    = 1;    // repeat save check every N turns (1 = every turn)
     int              condition_id         = -1;   // unique ID for tracking/removal
+    int              cast_level           = 0;    // slot level the spell was cast at (for Dispel Magic / Aid)
     OnDamage_t       on_damage            = OnDamage_t::None;  // End / RepeatSave on taking damage
 
     // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──────
@@ -584,6 +587,7 @@ public:
                                          int slip_save_dc = 10,
                                          int slip_distance_feet = 5,
                                          int spell_idx = -1,
+                                         int cast_level = 0,
                                          bool requires_concentration = false,
                                          int anchor_agent_idx = -1,
                                          int anchor_radius_ft = 0,

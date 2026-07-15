@@ -272,6 +272,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_prof_intel", &Agent::Stats::save_prof_intel)
         .def_readwrite("save_prof_wis",   &Agent::Stats::save_prof_wis)
         .def_readwrite("save_prof_cha",   &Agent::Stats::save_prof_cha)
+        // Scoped saving-throw Advantage bitmask (Phase 0.3): bit (1<<SaveAbility_t) => Advantage on
+        // that ability's saves. Set/cleared by "Advantage on X saves" buffs like Haste.
+        .def_readwrite("save_advantage_mask", &Agent::Stats::save_advantage_mask)
+        .def_readwrite("blessed", &Agent::Stats::blessed)   // Bless: +1d4 to attacks & saves
         // Skill proficiency flags
         .def_readwrite("stealth_prof",    &Agent::Stats::stealth_prof)
         .def_readwrite("perception_prof", &Agent::Stats::perception_prof)
@@ -1855,6 +1859,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("cells",           &ActiveSpellEffect::cells)
         .def_readwrite("turns_remaining", &ActiveSpellEffect::turns_remaining)
         .def_readwrite("effect_id",       &ActiveSpellEffect::effect_id)
+        .def_readwrite("cast_level",      &ActiveSpellEffect::cast_level)
         .def("__repr__", [](const ActiveSpellEffect& e){
             return "<ActiveSpellEffect '" + e.spell.name
                  + "' caster=" + std::to_string(e.caster_idx)
@@ -1912,6 +1917,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_dc",         &ActiveAgentCondition::save_dc)
         .def_readwrite("save_repeat_turns", &ActiveAgentCondition::save_repeat_turns)
         .def_readwrite("condition_id",    &ActiveAgentCondition::condition_id)
+        .def_readwrite("cast_level",      &ActiveAgentCondition::cast_level)
         .def_readwrite("on_damage",       &ActiveAgentCondition::on_damage)
         // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──
         .def_readwrite("delayed_trigger",      &ActiveAgentCondition::delayed_trigger)
@@ -3733,6 +3739,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("save_ability"),
              "True when agent_idx is under a Vistani Curse of Weakness imposing Disadvantage on\n"
              "saving throws tied to the given SaveAbility.")
+        .def("save_advantage_for",
+             &CombatEngine::saveAdvantageFor,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("save_ability"),
+             "True when agent_idx has a scoped save-Advantage buff (e.g. Haste's DEX save) for the\n"
+             "given SaveAbility, per Stats::save_advantage_mask.")
         .def("cure_curses",
              &CombatEngine::cureCurses,
              py::arg("battle_map"), py::arg("target_idx"),
@@ -3909,6 +3920,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("turns_remaining",   &ActiveTerrainEffect::turns_remaining)
         .def_readonly("source_agent_idx",  &ActiveTerrainEffect::source_agent_idx)
         .def_readonly("spell_idx",         &ActiveTerrainEffect::spell_idx)
+        .def_readonly("cast_level",        &ActiveTerrainEffect::cast_level)
         .def_readonly("requires_concentration", &ActiveTerrainEffect::requires_concentration)
         .def_readonly("anchor_agent_idx",  &ActiveTerrainEffect::anchor_agent_idx)
         .def_readonly("anchor_radius_ft",  &ActiveTerrainEffect::anchor_radius_ft)
@@ -4263,7 +4275,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("name"), py::arg("cells"), py::arg("difficulty"),
              py::arg("turns_remaining"), py::arg("source_agent_idx"),
              py::arg("slip_save_dc") = 10, py::arg("slip_distance_feet") = 5,
-             py::arg("spell_idx") = -1, py::arg("requires_concentration") = false,
+             py::arg("spell_idx") = -1, py::arg("cast_level") = 0,
+             py::arg("requires_concentration") = false,
              py::arg("anchor_agent_idx") = -1, py::arg("anchor_radius_ft") = 0,
              py::arg("spares_source_allies") = false,
              "Place a temporary terrain effect covering the given cells.\n"

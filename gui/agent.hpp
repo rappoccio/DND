@@ -103,6 +103,22 @@ namespace rpg {
       bool save_prof_wis{false};
       bool save_prof_cha{false};
 
+      // ── Scoped saving-throw Advantage (Phase 0.3) ─────────────────────
+      // Bitmask over SaveAbility_t ordinals: bit (1<<ab) set ⇒ Advantage on
+      // that ability's saving throws. Data-driven so any "Advantage on X
+      // saves" effect (Haste's DEX, future buffs) sets/clears a bit and is
+      // read uniformly by CombatEngine::saveAdvantageFor. Kept a plain int
+      // here because agent.hpp does not include condition.hpp (SaveAbility_t).
+      int save_advantage_mask{0};
+
+      // ── Bless (Phase 1) ───────────────────────────────────────────────
+      // While set, the creature adds 1d4 to every attack roll and saving
+      // throw (rolled fresh per roll). Lives on Stats (not Conditions) so it
+      // reaches rollToHit/rollSpellAttack (which take const Agent::Stats&) and
+      // saveModFor (the single source of truth for save modifiers). Set in
+      // addAgentCondition("Blessed"), cleared in clearSpellConditionEffect.
+      bool blessed{false};
+
       // ── Skill proficiency flags ────────────────────────────────────────
       bool stealth_prof{false};     // proficiency in Stealth (DEX-based)
       bool perception_prof{false};  // proficiency in Perception (WIS-based)

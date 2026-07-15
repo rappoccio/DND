@@ -142,6 +142,9 @@ test_scripts = [
 
     # Vampire Misty Escape (Gaseous Form self-buff: physical immunity, fly-only, attack/cast lockout)
     "test_misty_escape.py",
+
+    # Bless (SPELLS_TO_WIRE Phase 1: +1d4 to attacks & saves, dies with concentration)
+    "test_bless.py",
 ]
 
 def run_tests():

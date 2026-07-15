@@ -57,6 +57,8 @@ def dict_to_stats(stats_dict):
     stats.save_prof_intel = bool(stats_dict.get("save_prof_intel", False))
     stats.save_prof_wis = bool(stats_dict.get("save_prof_wis", False))
     stats.save_prof_cha = bool(stats_dict.get("save_prof_cha", False))
+    stats.save_advantage_mask = int(stats_dict.get("save_advantage_mask", 0))
+    stats.blessed = bool(stats_dict.get("blessed", False))
     stats.sleight_of_hand_prof = bool(stats_dict.get("sleight_of_hand_prof", False))
     stats.sleight_of_hand_expertise = bool(stats_dict.get("sleight_of_hand_expertise", False))
     if "spellcasting_ability" in stats_dict:

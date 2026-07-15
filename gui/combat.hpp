@@ -1486,7 +1486,8 @@ public:
     [[nodiscard]] bool hasAdvantageAura(const BattleMap& bm, int agent_idx) const noexcept;
     // Canonical saving-throw modifier for agent_idx vs ability `ab`: ability modifier +
     // proficiency (if proficient) + aura bonuses. Single source of truth for every save site.
-    [[nodiscard]] int saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
+    // Not const: rolls Bless's 1d4 (mutates rng_) when the saver is blessed. See the definition.
+    [[nodiscard]] int saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) noexcept;
     // Indomitable Might (Barbarian L18): a STR saving throw total can't be lower than the
     // Barbarian's STR score. Returns the (possibly raised) total.
     [[nodiscard]] int applyIndomitableMight(const BattleMap& bm, int saver_idx, SaveAbility_t ab, int total) const noexcept;
@@ -1494,6 +1495,11 @@ public:
     // Vistani Curse of Weakness: true when agent_idx is under a curse imposing Disadvantage on
     // saving throws tied to ability `ab`. Consulted at the combat-relevant save-roll sites.
     [[nodiscard]] bool curseSaveDisadvantage(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
+
+    // Ability-scoped save Advantage (Phase 0.3): true when agent_idx has Advantage on saving throws
+    // tied to ability `ab` (Stats::save_advantage_mask). Symmetric to curseSaveDisadvantage; consulted
+    // at the same save-roll sites. Data-driven so future "Advantage on X saves" buffs reuse it.
+    [[nodiscard]] bool saveAdvantageFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept;
 
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
@@ -2951,6 +2957,7 @@ private:
     void processDamageTaken(BattleMap& bm, int idx, int amount, unsigned magic_type_mask = 0u) noexcept;
 
     // Clear the Agent::Conditions flag(s) that a spell-applied condition set (Charmed, Stunned, …).
+    // Private helper of the onConditionEnded chokepoint — call onConditionEnded, not this directly.
     void clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
 
     // Check for slipping terrain (ice/grease) and trigger saves/prone as needed.
@@ -2961,11 +2968,14 @@ private:
     // Returns the damage dealt.
     int resolveDelayedEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
 
-    // Fire a condition's caster "kickback" (Vistani Curse) when it ends by ANY path: rolls
-    // kickback_dice × d(kickback_die_size) of kickback_damage_type onto the CASTER (no save).
-    // No-op unless cond.kickback_dice > 0; suppressed when the cursed target has died. Called
-    // from removeAgentCondition (save-success / concentration-drop / detonate) and from both
-    // tick loops on natural duration expiry (deferred, to keep the container stable).
+    // THE single end-of-condition chokepoint (in the spirit of applyUnconscious / applyIncapacitated).
+    // Runs on EVERY end path: (1) reverses the condition's base flags via clearSpellConditionEffect
+    // (Charmed/Stunned/Invisible/Gaseous/…), then (2) restores a Vistani curse's vulnerability
+    // multiplier, then (3) fires the caster "kickback" — kickback_dice × d(kickback_die_size) of
+    // kickback_damage_type onto the CASTER (no save; no-op unless kickback_dice > 0; suppressed when
+    // the cursed target has died). Called from removeAgentCondition (save-success / concentration-drop
+    // / Dispel / death cleanup / detonate) and from both tick loops on natural duration expiry
+    // (deferred, to keep the container stable — the teardown may add a condition or cascade).
     void onConditionEnded(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
 };
 

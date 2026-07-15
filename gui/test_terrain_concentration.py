@@ -48,7 +48,7 @@ def test_tick_keeps_concentration_until_expiry():
     idx = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
     eid = bm.place_terrain_effect("Spike Growth", [rpg.Cell(5, 5)],
                                   rpg.TerrainDifficulty.Quartered, 2, idx,
-                                  10, 5, 0, True)
+                                  10, 5, 0, requires_concentration=True)
     assert eid >= 0
     _set_concentrating(engine, bm, idx, "Spike Growth")
 
@@ -66,7 +66,7 @@ def test_tick_clears_concentration_on_expiry():
     idx = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
     eid = bm.place_terrain_effect("Spike Growth", [rpg.Cell(5, 5), rpg.Cell(6, 5)],
                                   rpg.TerrainDifficulty.Quartered, 1, idx,
-                                  10, 5, 0, True)
+                                  10, 5, 0, requires_concentration=True)
     assert eid >= 0
     _set_concentrating(engine, bm, idx, "Spike Growth")
 
@@ -86,7 +86,7 @@ def test_tick_nonconcentration_terrain_keeps_concentration():
     # Non-concentration timed terrain (e.g. Grease) sourced by the same agent.
     eid = bm.place_terrain_effect("Grease", [rpg.Cell(5, 5)],
                                   rpg.TerrainDifficulty.Slipping, 1, idx,
-                                  10, 5, 0, False)
+                                  10, 5, 0, requires_concentration=False)
     assert eid >= 0
     _set_concentrating(engine, bm, idx, "Some Other Spell")
 
@@ -104,10 +104,10 @@ def test_drop_concentration_leaves_nonconcentration_terrain():
     idx = add_agent_to_battle(engine, bm, create_test_agent("Caster", 5, 5))
     eid_conc = bm.place_terrain_effect("Spike Growth", [rpg.Cell(5, 5)],
                                        rpg.TerrainDifficulty.Quartered, 5, idx,
-                                       10, 5, 0, True)
+                                       10, 5, 0, requires_concentration=True)
     eid_noconc = bm.place_terrain_effect("Grease", [rpg.Cell(7, 7)],
                                          rpg.TerrainDifficulty.Slipping, 5, idx,
-                                         10, 5, 0, False)
+                                         10, 5, 0, requires_concentration=False)
     assert eid_conc >= 0 and eid_noconc >= 0
     _set_concentrating(engine, bm, idx, "Spike Growth")
 
@@ -194,7 +194,8 @@ def test_clear_all_concentration():
     a = add_agent_to_battle(engine, bm, create_test_agent("CasterA", 5, 5))
     b = add_agent_to_battle(engine, bm, create_test_agent("CasterB", 7, 7))
     for idx, name, cell in [(a, "Spike Growth", rpg.Cell(5, 5)), (b, "Web", rpg.Cell(7, 7))]:
-        bm.place_terrain_effect(name, [cell], rpg.TerrainDifficulty.Quartered, 5, idx, 10, 5, 0, True)
+        bm.place_terrain_effect(name, [cell], rpg.TerrainDifficulty.Quartered, 5, idx, 10, 5, 0,
+                                requires_concentration=True)
         c = engine.get_agent_conditions(bm, idx)
         c.concentrating = True
         c.concentrating_on = name

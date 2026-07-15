@@ -225,6 +225,9 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     // Paladin Oath of Devotion — Sacred Weapon: while active, add the stored CHA bonus to weapon attack rolls.
     if (attacker.character_class == CharacterClass::Paladin && attacker.sacred_weapon_turns > 0)
         r.attack_mod += attacker.sacred_weapon_bonus;
+    // Bless — a blessed creature adds 1d4 to every attack roll (rolled fresh each attack).
+    // Folded into total_roll (not attack_mod) so it shows as its own piece on the to-hit line.
+    int bless_d4 = attacker.blessed ? roll(4) : 0;
     r.target_ac    = target_ac;
 
     // Check if portent die is pending (need to apply after advantage/disadvantage logic)
@@ -286,7 +289,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 
     r.critical   = (r.d20 >= attacker.crit_threshold);
     r.fumble     = (r.d20 == 1);
-    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus;
+    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus + bless_d4;
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
 
     // Always surface the full to-hit math on one line: the natural d20 (with the adv/dis dice
@@ -294,6 +297,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     // also fold into the total — so total_roll always reconciles with the pieces shown.
     std::string extra;
     if (roll_bonus)       extra += std::format(" {:+}(bonus)", roll_bonus);
+    if (bless_d4)         extra += std::format(" {:+}(bless)", bless_d4);
     if (exhaustion_level) extra += std::format(" {:+}(exhaustion)", -2 * exhaustion_level);
     const char* outcome = r.critical ? "CRITICAL HIT"
                         : r.fumble    ? "MISS (nat 1)"
@@ -649,7 +653,6 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount, unsign
         if (cond.agent_idx != idx) continue;
 
         if (cond.on_damage == OnDamage_t::End) {
-            clearSpellConditionEffect(bm, cond);
             to_remove.push_back(cond.condition_id);
             log_("{} takes damage — {} ends.", agentName(bm, idx), cond.condition_name);
         } else if (cond.on_damage == OnDamage_t::RepeatSave) {
@@ -657,7 +660,6 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount, unsign
             int total = rollAdvantage(20, saveModFor(bm, idx, cond.save_ability));
             total = applyIndomitableMight(bm, idx, cond.save_ability, total);
             if (total >= cond.save_dc) {
-                clearSpellConditionEffect(bm, cond);
                 to_remove.push_back(cond.condition_id);
                 log_("{} shakes off {} after taking damage ({} vs DC {}).",
                      agentName(bm, idx), cond.condition_name, total, cond.save_dc);

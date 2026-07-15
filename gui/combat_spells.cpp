@@ -205,6 +205,13 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         d20_val = roll(20);
     }
     int mod     = spellAttackMod(caster_stats);
+    // Bless — a blessed caster adds 1d4 to spell attack rolls (folded into the mod so the
+    // Seeking-reroll total below carries it too).
+    if (caster_stats.blessed) {
+        int bless_d4 = roll(4);
+        mod += bless_d4;
+        log_("Bless: +{} to spell attack", bless_d4);
+    }
     int total   = d20_val + mod;
     th.d20        = d20_val;
     th.attack_mod = mod;
@@ -375,6 +382,12 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     if (hasAdvantageAura(bm, tgt_idx)) {
         target_adv = true;
         log_("Advantage on the save: {} is inside an advantage aura", agentName(bm, tgt_idx));
+    }
+
+    // Ability-scoped save Advantage (Phase 0.3): e.g. Haste grants Advantage on DEX saves.
+    if (saveAdvantageFor(bm, tgt_idx, sp.save_ability)) {
+        target_adv = true;
+        log_("Advantage on the save: {} (scoped save advantage)", agentName(bm, tgt_idx));
     }
 
     int save_d20;
@@ -1784,7 +1797,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                              spell_cond.condition_name == "Frightened");
                         // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed
                         // ability (cancels the Fey/Aberrant Advantage when both apply).
-                        const bool cond_adv = (fey_twist || aberrant_defense);
+                        const bool cond_adv = (fey_twist || aberrant_defense) ||
+                                              saveAdvantageFor(bm, tgt_idx, spell_cond.save_ability);
                         const bool cond_dis = curseSaveDisadvantage(bm, tgt_idx, spell_cond.save_ability);
                         int save_d20 = (cond_adv == cond_dis) ? roll(20)
                                      : cond_adv               ? rollAdvantage(20)
@@ -1824,6 +1838,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     cond.agent_idx   = tgt_idx;
                     cond.caster_idx  = action.caster_idx;
                     cond.spell_idx   = action.spell_idx;
+                    cond.cast_level  = std::max(action.slot_level, sp.level);
                     cond.condition_name = spell_cond.condition_name;
                     cond.save_ability = spell_cond.save_ability;
                     cond.on_damage = spell_cond.on_damage;
@@ -2119,6 +2134,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             ActiveSpellEffect effect;
             effect.caster_idx = action.caster_idx;
             effect.spell_idx = action.spell_idx;
+            effect.cast_level = std::max(action.slot_level, sp.level);
             effect.spell = sp;
             effect.cells = effect_cells;
             effect.turns_remaining = sp.duration;
@@ -2157,7 +2173,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 sp.name, terrain_cells, sp.terrain_difficulty,
                 sp.duration, action.caster_idx,
                 sp.slip_save_dc, sp.slip_distance_feet,
-                action.spell_idx, sp.requires_concentration,
+                action.spell_idx, std::max(action.slot_level, sp.level),
+                sp.requires_concentration,
                 anchor_idx, anchor_radius, sp.selective_targeting);
 
             if (terrain_id >= 0) {
@@ -2898,18 +2915,16 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     // 2a. Remove this caster's concentration light effects (Darkness, Fog Cloud, etc.)
     [[maybe_unused]] auto removed_light_ids = bm.removeLightEffectsBySource(agent_idx);
 
-    // 3. Remove conditions applied by this agent's concentration spells.
-    //    clearSpellConditionEffect REVERSES the condition's effect on the target
-    //    (clears incapacitated/charmed/etc. flags so speed/actions are restored);
-    //    removeAgentCondition only erases the tracking entry. Both are required —
-    //    otherwise e.g. Hypnotic Pattern targets stay Incapacitated with speed 0
-    //    after the caster's concentration drops.
+    // 3. Remove conditions applied by this agent's concentration spells. removeAgentCondition fires
+    //    onConditionEnded, the single teardown chokepoint, which REVERSES the condition's effect on
+    //    the target (clears incapacitated/charmed/etc. flags so speed/actions are restored) — without
+    //    it, e.g. Hypnotic Pattern targets would stay Incapacitated with speed 0 after concentration
+    //    drops. Collect first, then remove, so the list isn't mutated mid-iteration.
     const auto& spells = bm.getAgentSpells(agent_idx);
     for (const auto& ac : activeAgentConditions_) {
         if (ac.caster_idx == agent_idx &&
             ac.spell_idx >= 0 && ac.spell_idx < static_cast<int>(spells.size()) &&
             spells[static_cast<std::size_t>(ac.spell_idx)].requires_concentration) {
-            clearSpellConditionEffect(bm, ac);
             result.removed_condition_ids.push_back(ac.condition_id);
         }
     }
@@ -2986,8 +3001,16 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
 {
     const auto& agents = bm.placedAgents();
     if (cond.agent_idx < 0 || cond.agent_idx >= static_cast<int>(agents.size())) return;
-    Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
     const std::string& n = cond.condition_name;
+    // Bless (Phase 1) — buff flag lives on Stats, not Conditions. Clear it on every end path
+    // (concentration drop, duration expiry, Dispel Magic, death) so the +1d4 never lingers.
+    if (n == "Blessed") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.blessed = false;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
     if      (n == "Paralyzed")     { ac.paralyzed = false; ac.incapacitated = false; }
     else if (n == "Blinded")       { ac.blinded = false; }
     else if (n == "Incapacitated") { ac.incapacitated = false; }
@@ -2996,8 +3019,11 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Frightened")    { ac.frightened = false; }
     else if (n == "Restrained")    { if (!ac.netted) ac.restrained = false; }  // a Net lasts "until it escapes" — see escapeNet
     else if (n == "Deafened")      { ac.deafened = false; }
-    else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }
+    else if (n == "Poisoned")      { ac.poisoned = false; }
+    else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }  // remain Prone per RAW
     else if (n == "Prone")         { ac.prone = false; }
+    else if (n == "Invisible" || n == "GreaterInvisible") { ac.invisible = false; ac.invisible_persists_on_action = false; }
+    else if (n == "Sanctuary")     { ac.sanctuary_active = false; ac.sanctuary_dc = 0; }
     else if (n == "Gaseous")       { endGaseousForm(bm, cond.agent_idx); return; }  // restores speeds/multipliers + clears the flag
     bm.setAgentConditions(cond.agent_idx, ac);
 }
@@ -3024,11 +3050,11 @@ int CombatEngine::cureCurses(BattleMap& bm, int target_idx) noexcept
                            || ac.curse_disadv_ability >= 0
                            || ac.kickback_dice > 0;
         if (!is_curse) continue;
-        clearSpellConditionEffect(bm, ac);   // reverse any base flag the curse set (Blinded/Deafened)
         curse_ids.push_back(ac.condition_id);
     }
-    // Ending each curse fires onConditionEnded: restores the vulnerability multiplier and rebounds
-    // the caster kickback (the Vistani curse punishes its caster when the victim is freed).
+    // Ending each curse fires onConditionEnded: reverses any base flag the curse set (Blinded/Deafened),
+    // restores the vulnerability multiplier, and rebounds the caster kickback (the Vistani curse
+    // punishes its caster when the victim is freed).
     for (int cid : curse_ids)
         removeAgentCondition(bm, cid);
 
@@ -3087,10 +3113,9 @@ bool CombatEngine::greaterRestoration(BattleMap& bm, int target_idx) noexcept
     std::vector<int> end_ids;
     for (const auto& ac : activeAgentConditions_) {
         if (ac.agent_idx != target_idx) continue;
-        if (ac.condition_name == "Charmed") {
-            clearSpellConditionEffect(bm, ac);
-            end_ids.push_back(ac.condition_id);
-        } else if (ac.condition_name == "Petrified") {
+        if (ac.condition_name == "Charmed" || ac.condition_name == "Petrified") {
+            // removeAgentCondition → onConditionEnded clears the Charmed flag; Petrified needs
+            // curePetrified below to restore speeds/multipliers, which the generic teardown skips.
             end_ids.push_back(ac.condition_id);
         }
     }

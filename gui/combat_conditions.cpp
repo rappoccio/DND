@@ -635,9 +635,9 @@ void CombatEngine::releaseAgentInfluence(BattleMap& bm, int agent_idx) noexcept
     for (const auto& ac : activeAgentConditions_) {
         if (ac.caster_idx != agent_idx) continue;
         if (ac.agent_idx == agent_idx) continue;   // a self-condition is not "influence over others"
-        clearSpellConditionEffect(bm, ac);          // reverse the flag it set (restores speed/actions)
         imposed_ids.push_back(ac.condition_id);
     }
+    // removeAgentCondition → onConditionEnded reverses each imposed flag (restores speed/actions).
     for (int cid : imposed_ids)
         removeAgentCondition(bm, cid);
 
@@ -833,6 +833,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 // is intrinsic to being a vampire rather than keyed off the spell name.
                 const bool physical_immune = bm.getAgentStats(cond.agent_idx).is_vampire;
                 applyGaseousForm(bm, cond.agent_idx, physical_immune);
+            } else if (cond.condition_name == "Blessed") {
+                // Bless (Phase 1) — flag lives on Stats so it reaches rollToHit/rollSpellAttack
+                // (const Agent::Stats&) and saveModFor. Cleared via clearSpellConditionEffect.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.blessed = true;
+                bm.setAgentStats(cond.agent_idx, st);
             }
             log_("Applied condition '{}' to {} for {} turns",
                  cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);
@@ -869,69 +875,24 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
     // loop: resolveDelayedEffect can drop a creature unconscious → dropConcentration, which mutates
     // activeAgentConditions_ and would invalidate the iterators below. Copy them out and fire later.
     std::vector<ActiveAgentCondition> auto_detonate;
-    // Curse "kickbacks" (Vistani) are likewise deferred: onConditionEnded may damage the caster and
-    // cascade into dropConcentration, mutating activeAgentConditions_ mid-loop. Fire after rebuild.
-    std::vector<ActiveAgentCondition> ended_kickbacks;
+    // Every ended condition is torn down AFTER the list is rebuilt, through the onConditionEnded
+    // chokepoint (flags + curse teardown + kickback). Deferred because that teardown may ADD a new
+    // condition (Haste lethargy) or cascade into dropConcentration (curse kickback) — either would
+    // invalidate the iterators below if fired mid-loop.
+    std::vector<ActiveAgentCondition> ended;
 
     for (auto& cond : activeAgentConditions_) {
         --cond.turns_remaining;
         if (cond.turns_remaining <= 0) {
             removed_ids.push_back(cond.condition_id);
-
             // Owner-triggered effects (Quivering Palm) leave delay_auto_on_expire false and simply
             // fade harmlessly when the duration runs out.
             if (cond.delayed_trigger && cond.delay_auto_on_expire)
                 auto_detonate.push_back(cond);
-            if (cond.kickback_dice > 0)
-                ended_kickbacks.push_back(cond);
-
-            // Remove the condition from the agent
-            if (cond.agent_idx >= 0) {
-                auto agents = bm.placedAgents();
-                if (cond.agent_idx < static_cast<int>(agents.size())) {
-                    auto agent_cond = bm.getAgentConditions(cond.agent_idx);
-                    if (cond.condition_name == "Paralyzed") {
-                        agent_cond.paralyzed = false;
-                        agent_cond.incapacitated = false;
-                    } else if (cond.condition_name == "Blinded") {
-                        agent_cond.blinded = false;
-                    } else if (cond.condition_name == "Incapacitated") {
-                        agent_cond.incapacitated = false;
-                    } else if (cond.condition_name == "Stunned") {
-                        agent_cond.stunned = false;
-                        agent_cond.incapacitated = false;
-                    } else if (cond.condition_name == "Charmed") {
-                        agent_cond.charmed = false;
-                        agent_cond.charmed_by = -1;
-                    } else if (cond.condition_name == "Frightened") {
-                        agent_cond.frightened = false;
-                    } else if (cond.condition_name == "Restrained") {
-                        // A tangling Net has no duration of its own ("until it escapes"), so a
-                        // *different* Restrained effect timing out must not cut the creature free.
-                        if (!agent_cond.netted) agent_cond.restrained = false;
-                    } else if (cond.condition_name == "Poisoned") {
-                        agent_cond.poisoned = false;
-                    } else if (cond.condition_name == "Unconscious") {
-                        agent_cond.unconscious = false;
-                        agent_cond.incapacitated = false;
-                        // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
-                    } else if (cond.condition_name == "Invisible" || cond.condition_name == "GreaterInvisible") {
-                        agent_cond.invisible = false;
-                        agent_cond.invisible_persists_on_action = false;
-                    } else if (cond.condition_name == "Sanctuary") {
-                        agent_cond.sanctuary_active = false;
-                        agent_cond.sanctuary_dc     = 0;
-                    } else if (cond.condition_name == "Gaseous") {
-                        // endGaseousForm restores speeds/multipliers AND clears the flag via its own
-                        // setAgentConditions; re-fetch so the unconditional write below stays consistent.
-                        endGaseousForm(bm, cond.agent_idx);
-                        agent_cond = bm.getAgentConditions(cond.agent_idx);
-                    }
-                    bm.setAgentConditions(cond.agent_idx, agent_cond);
-                    log_("Condition '{}' expired for {}",
-                         cond.condition_name, agentName(bm, cond.agent_idx));
-                }
-            }
+            ended.push_back(cond);
+            if (cond.agent_idx >= 0 && cond.agent_idx < static_cast<int>(bm.placedAgents().size()))
+                log_("Condition '{}' expired for {}",
+                     cond.condition_name, agentName(bm, cond.agent_idx));
         }
     }
 
@@ -944,11 +905,11 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
     }
     activeAgentConditions_ = remaining;
 
-    // Now that the condition list is stable again, fire any auto-detonations (Delayed Blast Fireball).
+    // List is stable again — fire auto-detonations first (Delayed Blast Fireball), then run the
+    // single-chokepoint teardown for every ended condition.
     for (const auto& cond : auto_detonate)
         (void)resolveDelayedEffect(bm, cond);
-    // ...and any curse kickbacks whose duration ran out (Vistani Curse).
-    for (const auto& cond : ended_kickbacks)
+    for (const auto& cond : ended)
         onConditionEnded(bm, cond);
 
     return removed_ids;
@@ -957,8 +918,10 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
 std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept
 {
     std::vector<int> removed_ids;
-    // Deferred curse kickbacks (Vistani) — same iterator-stability rationale as tickAgentConditions.
-    std::vector<ActiveAgentCondition> ended_kickbacks;
+    // Every ended condition is torn down after the rebuild through the onConditionEnded chokepoint —
+    // same iterator-stability rationale as tickAgentConditions (teardown may add a condition or
+    // cascade into dropConcentration).
+    std::vector<ActiveAgentCondition> ended;
 
     for (auto& cond : activeAgentConditions_) {
         // Only tick conditions cast by this caster
@@ -967,53 +930,10 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
         --cond.turns_remaining;
         if (cond.turns_remaining <= 0) {
             removed_ids.push_back(cond.condition_id);
-            if (cond.kickback_dice > 0)
-                ended_kickbacks.push_back(cond);
-
-            // Remove the condition from the agent
-            if (cond.agent_idx >= 0) {
-                auto agents = bm.placedAgents();
-                if (cond.agent_idx < static_cast<int>(agents.size())) {
-                    auto agent_cond = bm.getAgentConditions(cond.agent_idx);
-                    if (cond.condition_name == "Paralyzed") {
-                        agent_cond.paralyzed = false;
-                        agent_cond.incapacitated = false;
-                    } else if (cond.condition_name == "Blinded") {
-                        agent_cond.blinded = false;
-                    } else if (cond.condition_name == "Incapacitated") {
-                        agent_cond.incapacitated = false;
-                    } else if (cond.condition_name == "Stunned") {
-                        agent_cond.stunned = false;
-                        agent_cond.incapacitated = false;
-                    } else if (cond.condition_name == "Charmed") {
-                        agent_cond.charmed = false;
-                        agent_cond.charmed_by = -1;
-                    } else if (cond.condition_name == "Frightened") {
-                        agent_cond.frightened = false;
-                    } else if (cond.condition_name == "Restrained") {
-                        // A tangling Net has no duration of its own ("until it escapes"), so a
-                        // *different* Restrained effect timing out must not cut the creature free.
-                        if (!agent_cond.netted) agent_cond.restrained = false;
-                    } else if (cond.condition_name == "Poisoned") {
-                        agent_cond.poisoned = false;
-                    } else if (cond.condition_name == "Unconscious") {
-                        agent_cond.unconscious = false;
-                        agent_cond.incapacitated = false;
-                        // Keep prone=true per 5e rule: "When this condition ends, you remain Prone"
-                    } else if (cond.condition_name == "Sanctuary") {
-                        agent_cond.sanctuary_active = false;
-                        agent_cond.sanctuary_dc     = 0;
-                    } else if (cond.condition_name == "Gaseous") {
-                        // endGaseousForm restores speeds/multipliers AND clears the flag via its own
-                        // setAgentConditions; re-fetch so the unconditional write below stays consistent.
-                        endGaseousForm(bm, cond.agent_idx);
-                        agent_cond = bm.getAgentConditions(cond.agent_idx);
-                    }
-                    bm.setAgentConditions(cond.agent_idx, agent_cond);
-                    log_("Condition '{}' expired for {} (spell duration ended)",
-                         cond.condition_name, agentName(bm, cond.agent_idx));
-                }
-            }
+            ended.push_back(cond);
+            if (cond.agent_idx >= 0 && cond.agent_idx < static_cast<int>(bm.placedAgents().size()))
+                log_("Condition '{}' expired for {} (spell duration ended)",
+                     cond.condition_name, agentName(bm, cond.agent_idx));
         }
     }
 
@@ -1026,8 +946,8 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
     }
     activeAgentConditions_ = remaining;
 
-    // Container is stable again — fire any curse kickbacks (Vistani Curse).
-    for (const auto& cond : ended_kickbacks)
+    // Container is stable again — run the single-chokepoint teardown for every ended condition.
+    for (const auto& cond : ended)
         onConditionEnded(bm, cond);
 
     return removed_ids;
@@ -1113,6 +1033,13 @@ int CombatEngine::resolveDelayedEffect(BattleMap& bm, const ActiveAgentCondition
 void CombatEngine::onConditionEnded(BattleMap& bm, const ActiveAgentCondition& cond) noexcept
 {
     const auto& agents = bm.placedAgents();
+
+    // ── Base-flag teardown (THE single chokepoint) ──────────────────────────────
+    // Reverse the condition's base-flag effect (paralyzed/charmed/invisible/gaseous/…) so speed,
+    // actions, and visibility are restored on EVERY end path — save success, duration expiry,
+    // concentration drop, Dispel Magic, and death cleanup all funnel through here. Buff-spell
+    // teardowns (Bless/Haste/Aid) will hang off this call site too.
+    clearSpellConditionEffect(bm, cond);
 
     // ── Vistani Curse of Vulnerability teardown ─────────────────────────────────
     // Restore the target's prior damage multiplier for the cursed type. Done on EVERY

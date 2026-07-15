@@ -520,6 +520,7 @@ def _condition_to_dict(c) -> dict:
         "save_dc":           c.save_dc,
         "save_repeat_turns": c.save_repeat_turns,
         "condition_id":      c.condition_id,
+        "cast_level":        c.cast_level,
         "on_damage":         c.on_damage.name,
         # Delayed / stored effect (Quivering Palm, Delayed Blast Fireball).
         "delayed_trigger":      c.delayed_trigger,
@@ -563,6 +564,7 @@ def _dict_to_condition(d: dict):
     c.save_dc           = int(d.get("save_dc",           0))
     c.save_repeat_turns = int(d.get("save_repeat_turns", 1))
     c.condition_id      = int(d.get("condition_id",     -1))
+    c.cast_level        = int(d.get("cast_level",        0))
     try:
         c.on_damage     = getattr(rpg.OnDamage, d.get("on_damage", "None"))
     except AttributeError:

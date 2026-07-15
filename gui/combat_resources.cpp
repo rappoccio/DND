@@ -2368,9 +2368,9 @@ int CombatEngine::clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept
         std::vector<int> to_remove;
         for (const auto& cond : activeAgentConditions_) {
             if (cond.agent_idx != tgt_idx) continue;
-            clearSpellConditionEffect(bm, cond);
             to_remove.push_back(cond.condition_id);
         }
+        // removeAgentCondition → onConditionEnded reverses each condition's base flag.
         for (int cid : to_remove) removeAgentCondition(bm, cid);
         if (!to_remove.empty())
             log_("Clockwork Cavalcade ends {} spell effect(s) on {}",

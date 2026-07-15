@@ -302,7 +302,10 @@ bool CombatEngine::hasAdvantageAura(const BattleMap& bm, int agent_idx) const no
     return false;
 }
 
-int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept
+// Not const: a blessed creature adds a fresh 1d4 to each save (roll() mutates rng_). Every
+// call site is a live save resolution in a non-const method, so dropping const is clean —
+// preferable to a mutable rng_ that would hide a die roll inside a const method.
+int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) noexcept
 {
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return 0;
@@ -317,6 +320,12 @@ int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t a
         default:      score = s.cha;   prof = s.save_prof_cha;   break;
     }
     int m = dndMod(score) + (prof ? s.prof_bonus : 0);
+    // Bless — add 1d4 to the saving throw (rolled fresh per save).
+    if (s.blessed) {
+        int bless_d4 = roll(4);
+        m += bless_d4;
+        log_("Bless: +{} to {} save", bless_d4, agentName(bm, agent_idx));
+    }
     return m + auraSaveBonus(bm, agent_idx);
 }
 
@@ -342,6 +351,18 @@ bool CombatEngine::curseSaveDisadvantage(const BattleMap& bm, int agent_idx, Sav
             return true;
     }
     return false;
+}
+
+// Ability-scoped save Advantage (Phase 0.3) — the symmetric counterpart to
+// curseSaveDisadvantage. Data-driven off Stats::save_advantage_mask so any
+// "Advantage on X saves" buff (Haste's DEX save, future effects) is honored
+// at every save site without a per-feature branch.
+bool CombatEngine::saveAdvantageFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return false;
+    const Agent::Stats& s = agents[static_cast<std::size_t>(agent_idx)].agent->getStats();
+    return (s.save_advantage_mask & (1 << static_cast<int>(ab))) != 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

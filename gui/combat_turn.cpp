@@ -759,9 +759,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         // Save modifier (ability + proficiency + Aura of Protection).
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
-        // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
-        int save_d20 = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability)
-                           ? rollDisadvantage(20) : roll(20);
+        // Advantage (scoped save buff, Phase 0.3) / Disadvantage (Vistani Curse of Weakness) on
+        // saves tied to this ability; they cancel when both apply.
+        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability);
+        bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
+        int save_d20 = (save_adv == save_dis) ? roll(20)
+                     : save_adv               ? rollAdvantage(20)
+                                              : rollDisadvantage(20);
         int save_total = save_d20 + save_mod;
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
@@ -778,36 +782,23 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         };
 
         if (save_total >= save_dc) {
-            // Save succeeded, remove condition
-            removeAgentCondition(bm, active_cond.condition_id);
-
-            // Handle condition-specific cleanup
-            if (active_cond.condition_name == "Paralyzed") {
-                cond = bm.getAgentConditions(agent_idx);
-                cond.paralyzed = false;
-                cond.incapacitated = false;
-                bm.setAgentConditions(agent_idx, cond);
-            } else if (active_cond.condition_name == "Incapacitated") {
-                cond = bm.getAgentConditions(agent_idx);
-                cond.incapacitated = false;
-                bm.setAgentConditions(agent_idx, cond);
-            } else if (active_cond.condition_name == "Stunned") {
-                cond = bm.getAgentConditions(agent_idx);
-                cond.stunned = false;
-                cond.incapacitated = false;
-                bm.setAgentConditions(agent_idx, cond);
-            }
+            // Copy the fields we still need — removeAgentCondition erases active_cond from the list
+            // (and its onConditionEnded teardown may cascade), so its reference must not be read after.
+            ActiveAgentCondition ended = active_cond;
+            // Save succeeded — end the condition. onConditionEnded clears the base flags
+            // (paralyzed/stunned/incapacitated/…) through the single chokepoint, so no by-hand cleanup.
+            removeAgentCondition(bm, ended.condition_id);
 
             // Drop the caster's concentration ONLY if this was the last affected target from that spell
-            if (active_cond.caster_idx >= 0 && active_cond.caster_idx < static_cast<int>(agents.size())) {
-                Agent::Conditions caster_cond = bm.getAgentConditions(active_cond.caster_idx);
+            if (ended.caster_idx >= 0 && ended.caster_idx < static_cast<int>(agents.size())) {
+                Agent::Conditions caster_cond = bm.getAgentConditions(ended.caster_idx);
                 if (caster_cond.concentrating) {
                     // Check if there are any remaining conditions from this spell
                     bool spell_still_affects_targets = false;
                     for (const auto& other_cond : activeAgentConditions_) {
-                        if (other_cond.caster_idx == active_cond.caster_idx &&
-                            other_cond.spell_idx == active_cond.spell_idx &&
-                            other_cond.condition_id != active_cond.condition_id) {
+                        if (other_cond.caster_idx == ended.caster_idx &&
+                            other_cond.spell_idx == ended.spell_idx &&
+                            other_cond.condition_id != ended.condition_id) {
                             spell_still_affects_targets = true;
                             break;
                         }
@@ -817,18 +808,18 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                     if (!spell_still_affects_targets) {
                         caster_cond.concentrating = false;
                         caster_cond.concentrating_on = "";
-                        bm.setAgentConditions(active_cond.caster_idx, caster_cond);
-                        log_("{} drops concentration on spell (no more affected targets)", agentName(bm, active_cond.caster_idx));
+                        bm.setAgentConditions(ended.caster_idx, caster_cond);
+                        log_("{} drops concentration on spell (no more affected targets)", agentName(bm, ended.caster_idx));
                     } else {
-                        log_("{} maintains concentration on spell (still {} other affected targets)", agentName(bm, active_cond.caster_idx), spell_still_affects_targets ? "has" : "no");
+                        log_("{} maintains concentration on spell (still has other affected targets)", agentName(bm, ended.caster_idx));
                     }
                 }
             }
 
-            result.save_roll_message = ability_name(active_cond.save_ability) + " save vs " + active_cond.condition_name +
-                                      " — SAVED! (" + active_cond.condition_name + " broken)";
+            result.save_roll_message = ability_name(ended.save_ability) + " save vs " + ended.condition_name +
+                                      " — SAVED! (" + ended.condition_name + " broken)";
             log_("{} save vs {} — rolled {} + {} = {} vs DC {} — SAVED!",
-                 ability_name(active_cond.save_ability), active_cond.condition_name,
+                 ability_name(ended.save_ability), ended.condition_name,
                  save_d20, save_mod, save_total, save_dc);
         } else {
             // Save failed, skip this turn (only for incapacitating conditions)
@@ -898,9 +889,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         // Save modifier (ability + proficiency + Aura of Protection).
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
-        // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
-        int save_d20 = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability)
-                           ? rollDisadvantage(20) : roll(20);
+        // Advantage (scoped save buff, Phase 0.3) / Disadvantage (Vistani Curse of Weakness) on
+        // saves tied to this ability; they cancel when both apply.
+        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability);
+        bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
+        int save_d20 = (save_adv == save_dis) ? roll(20)
+                     : save_adv               ? rollAdvantage(20)
+                                              : rollDisadvantage(20);
         int save_total = save_d20 + save_mod - (2 * agent_cond.exhaustion_level);
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
@@ -917,10 +912,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         };
 
         if (save_total >= save_dc) {
-            // Save succeeded, remove condition
-            removeAgentCondition(bm, active_cond.condition_id);
+            // Save succeeded — end the condition through the chokepoint (onConditionEnded now clears
+            // the base flag too; the old code here removed the tracker but left the flag set). Copy the
+            // fields first: removeAgentCondition erases active_cond and its teardown may cascade.
+            ActiveAgentCondition ended = active_cond;
+            removeAgentCondition(bm, ended.condition_id);
             log_("{} save vs {} — rolled {} + {} = {} vs DC {} — SAVED!",
-                 ability_name(active_cond.save_ability), active_cond.condition_name,
+                 ability_name(ended.save_ability), ended.condition_name,
                  save_d20, save_mod, save_total, save_dc);
         } else {
             // Save failed, reset next save time (use save_repeat_turns-1 so first decrement

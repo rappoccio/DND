@@ -11270,6 +11270,8 @@ class App:
                     "save_prof_intel": s.save_prof_intel,
                     "save_prof_wis":   s.save_prof_wis,
                     "save_prof_cha":      s.save_prof_cha,
+                    "save_advantage_mask": s.save_advantage_mask,
+                    "blessed":            s.blessed,
                     "sleight_of_hand_prof":      s.sleight_of_hand_prof,
                     "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
                     "num_attacks":        s.num_attacks,
