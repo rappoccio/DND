@@ -41,6 +41,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -924,6 +925,17 @@ struct WildMagicSurgeOffer {
     bool tides_expended  = false;  // pass back to resolveWildMagicSurge so it recharges Tides
 };
 
+// Central reaction-eligibility predicate: true iff this creature may still spend its Reaction right
+// now. Unifies the three blockers scattered across ~40 gate sites — the reaction is spent
+// (reaction_used), the creature is Incapacitated, or its reactions have been denied outright (Balor
+// Lightning Blade → reactions_denied, which unlike reaction_used survives the target's own turn
+// reset). A namespace-scope free function so both CombatEngine members and the file-local reaction
+// helpers (d20ReactorBase, …) can call it. New reaction windows must gate through this so
+// DenyReactions blocks them too.
+[[nodiscard]] inline bool canTakeReaction(const Agent::Conditions& c) noexcept {
+    return !c.reaction_used && !c.incapacitated && !c.reactions_denied;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1457,6 +1469,12 @@ public:
     void applyGrappled(BattleMap& bm, int target_idx, int grappler_idx, int escape_dc) noexcept;
     void applyHidden(BattleMap& bm, int idx) noexcept;  // set hidden condition
     void applyUnconscious(BattleMap& bm, int idx) noexcept;  // incapacitated, prone, speed 0, auto-fail STR/DEX saves
+    // Death Burst: if the dying creature has Stats.death_burst_spell set, detonate that spell centered
+    // on it (Balor Death Throes and any "explodes on death" monster). Reuses the shared AoE resolver
+    // (walls block via Total Cover) + applySpellEffect (per-target save-for-half, resistances, downs the
+    // killed). Hits allies AND enemies; never self-damages the source. Fires once per creature — a
+    // burst that kills another burster chains through applyUnconscious and terminates naturally.
+    void resolveDeathBurst(BattleMap& bm, int idx) noexcept;
     // Inverse of going down: a creature that regains HP from 0 returns to consciousness
     // and resets its death saves (D&D 5e). No-op unless the agent is currently downed and
     // not truly dead. Call after any healing so a healed creature isn't skipped in initiative.
@@ -3195,6 +3213,11 @@ private:
     // zoneAppliedTurn_ maps (effect_id, agent_idx) -> the turnCounter_ value when last applied.
     int turnCounter_{0};
     std::unordered_map<int64_t, int> zoneAppliedTurn_;
+
+    // Death Burst re-entrancy guard: agent indices whose death burst has already detonated. Ensures a
+    // creature explodes at most once even if applyUnconscious runs again, and lets a burst-kills-burster
+    // chain terminate. Session-only (per-encounter agent indices).
+    std::unordered_set<int> deathBurstFired_;
 
     // Emit a message to the logger (if attached).
     template<typename... Args>

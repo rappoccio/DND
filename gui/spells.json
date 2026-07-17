@@ -519,6 +519,41 @@
     "selective_targeting": false
   },
   {
+    "name": "BalorDeathThroes",
+    "description": "When the balor dies, it explodes, and each creature in a 30-foot Emanation originating from the balor makes a DC 22 Dexterity saving throw, taking 9d6 Fire damage plus 9d6 Force damage on a failed save, or half as much on a success.",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Save",
+    "save_ability": "SaveDex",
+    "casting_time": "Special",
+    "range": 0,
+    "radius": 30,
+    "width": 0,
+    "length": 0,
+    "duration": 0,
+    "magic_damage_types": [
+      {
+        "type": "Fire",
+        "num_dice": 9,
+        "die_size": 6
+      },
+      {
+        "type": "Force",
+        "num_dice": 9,
+        "die_size": 6
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "conjuration",
+    "moves_with_caster": false,
+    "selective_targeting": false
+  },
+  {
     "name": "Bane",
     "description": "Up to three creatures of your choice that you can see within range must each make a Charisma saving throw. Whenever a target that fails this save makes an attack roll or a saving throw before the spell ends, the target must subtract 1d4 from the attack roll or save.",
     "type": "Harm",
@@ -4175,6 +4210,8 @@
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 5,
+    "num_targets": 1,
+    "targets_per_upcast_level": 1,      
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
     "requires_los": true,

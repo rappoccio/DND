@@ -570,7 +570,7 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
         for (std::size_t z = 0; z < agents.size(); ++z) {
             const PlacedAgent& zp = agents[z];
             const Agent::Conditions& zc = zp.agent->getConditions();
-            if (!zc.rage_of_gods_active || zc.reaction_used || zc.dead) continue;
+            if (!zc.rage_of_gods_active || !canTakeReaction(zc) || zc.dead) continue;
             const Agent::Stats& zs = zp.agent->getStats();
             auto rage_it = zs.resources.find("Rage");
             if (rage_it == zs.resources.end() || rage_it->second.current <= 0) continue;
@@ -741,7 +741,7 @@ bool CombatEngine::canUncannyDodge(const BattleMap& bm, int target_idx) const
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
     if (bm.isAgentOnDeck(target_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(target_idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
     if (s.hp_cur <= 0) return false;
     return s.character_class == CharacterClass::Rogue && s.char_level >= 5;
@@ -768,7 +768,7 @@ bool CombatEngine::canBeguilingDefenses(const BattleMap& bm, int target_idx) con
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
     if (bm.isAgentOnDeck(target_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(target_idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
     if (s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Warlock ||
@@ -851,7 +851,7 @@ bool CombatEngine::canSuperiorHunterDefense(const BattleMap& bm, int target_idx)
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return false;
     if (bm.isAgentOnDeck(target_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(target_idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
     if (s.hp_cur <= 0) return false;
     return s.character_class == CharacterClass::Ranger &&
@@ -879,7 +879,7 @@ bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
     if (defender_idx < 0 || defender_idx >= static_cast<int>(agents.size())) return false;
     if (bm.isAgentOnDeck(defender_idx)) return false;     // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
     if (s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Fighter || s.fighter_subclass != BattleMasterPath) return false;
@@ -923,7 +923,7 @@ bool CombatEngine::canGloriousDefense(const BattleMap& bm, const Attack& action,
     if (ps.character_class != CharacterClass::Paladin || ps.paladin_oath != OathOfGloryPath ||
         ps.char_level < 15 || ps.hp_cur <= 0) return false;
     const Agent::Conditions pc = bm.getAgentConditions(pal_idx);
-    if (pc.reaction_used || pc.incapacitated) return false;
+    if (!canTakeReaction(pc)) return false;
     const Resource* gd = ps.getResource("Glorious Defense");
     if (!gd || gd->current <= 0) return false;
     // The +CHA (min 1) AC boost must actually turn this hit into a miss to be worth offering.
@@ -1013,7 +1013,7 @@ bool CombatEngine::canDeflectAttacks(const BattleMap& bm, int defender_idx) cons
     if (defender_idx < 0 || defender_idx >= static_cast<int>(agents.size())) return false;
     if (bm.isAgentOnDeck(defender_idx)) return false;     // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
     if (s.hp_cur <= 0) return false;
     return s.character_class == CharacterClass::Monk && s.char_level >= 3;
@@ -1054,7 +1054,7 @@ bool CombatEngine::canDefensiveDuelist(const BattleMap& bm, const Attack& action
     if (!ts.hasFeat("Defensive Duelist")) return false;
     if (ts.hp_cur <= 0) return false;
     const Agent::Conditions tc = bm.getAgentConditions(tgt);
-    if (tc.reaction_used || tc.incapacitated) return false;
+    if (!canTakeReaction(tc)) return false;
     // Adding PB to AC must actually flip the hit to a miss (else the reaction is wasted).
     if (r.total_roll >= r.target_ac + ts.prof_bonus) return false;
     // RAW: the triggering attack must be a MELEE attack, and the defender must wield a Finesse melee weapon.
@@ -1076,7 +1076,7 @@ bool CombatEngine::applyDefensiveDuelist(BattleMap& bm, int reactor_idx) noexcep
     const auto& agents = bm.placedAgents();
     if (reactor_idx < 0 || reactor_idx >= static_cast<int>(agents.size())) return false;
     Agent::Conditions c = bm.getAgentConditions(reactor_idx);
-    if (c.reaction_used) return false;
+    if (!canTakeReaction(c)) return false;
     c.reaction_used = true;
     bm.setAgentConditions(reactor_idx, c);
     log_("{} uses Defensive Duelist (+{} AC) — the attack misses!",
@@ -1095,7 +1095,7 @@ bool CombatEngine::canCombatInspirationAC(const BattleMap& bm, const Attack& act
     if (ts.bardic_inspiration_die <= 0) return false;  // must hold a Bardic Inspiration die
     if (ts.hp_cur <= 0) return false;
     const Agent::Conditions tc = bm.getAgentConditions(tgt);
-    if (tc.reaction_used || tc.incapacitated) return false;
+    if (!canTakeReaction(tc)) return false;
     // Check if rolling the die + adding it to AC would flip the hit to a miss. The die value
     // is uncertain, so we optimistically check if the die's MAXIMUM could flip the hit.
     if (r.total_roll >= r.target_ac + ts.bardic_inspiration_die) return false;
@@ -1112,7 +1112,7 @@ int CombatEngine::applyCombatInspirationAC(BattleMap& bm, int reactor_idx) noexc
     if (d <= 0) return -1;
 
     Agent::Conditions c = bm.getAgentConditions(reactor_idx);
-    if (c.reaction_used) return -1;
+    if (!canTakeReaction(c)) return -1;
 
     int rolled_value = roll(d);
     // Consume the die
@@ -1258,7 +1258,7 @@ bool CombatEngine::canRiposte(const BattleMap& bm, int defender_idx, int attacke
     if (defender_idx == attacker_idx) return false;
     if (bm.isAgentOnDeck(defender_idx)) return false;     // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
     if (s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Fighter || s.fighter_subclass != BattleMasterPath) return false;
@@ -1320,7 +1320,7 @@ bool CombatEngine::canSentinelGuard(const BattleMap& bm, const Attack& action, i
     const Agent::Stats ss = bm.getAgentStats(sentinel_idx);
     if (!ss.has_sentinel || ss.hp_cur <= 0) return false;
     const Agent::Conditions sc = bm.getAgentConditions(sentinel_idx);
-    if (sc.reaction_used || sc.incapacitated) return false;
+    if (!canTakeReaction(sc)) return false;
     if (tgt >= 0 && tgt < n && bm.getAgentStats(tgt).has_sentinel) return false;  // RAW: target must not have the feat
     if (riposteWeaponIdx(bm, sentinel_idx) < 0) return false;       // needs a melee weapon to strike back
     // The attacking creature must be within the Sentinel's 5 ft reach (1 cell; reach weapons deferred).
@@ -1345,7 +1345,7 @@ bool CombatEngine::canIntercept(const BattleMap& bm, const Attack& action,
     const Agent::Stats is = bm.getAgentStats(interceptor_idx);
     if (!is.hasFeat("Interception") || is.hp_cur <= 0) return false;
     const Agent::Conditions ic = bm.getAgentConditions(interceptor_idx);
-    if (ic.reaction_used || ic.incapacitated) return false;
+    if (!canTakeReaction(ic)) return false;
 
     // v1 heal-back model: cannot rescue a target already dropped to 0 by the hit (see known_limitations).
     if (bm.getAgentStats(tgt).hp_cur <= 0) return false;
@@ -1416,7 +1416,7 @@ bool CombatEngine::canSoulOfVengeance(const BattleMap& bm, const Attack& action,
     // The attacker must be this paladin's currently-sworn foe.
     if (ps.vow_of_enmity_turns <= 0 || ps.vow_of_enmity_target != atk) return false;
     const Agent::Conditions pc = bm.getAgentConditions(pal_idx);
-    if (pc.reaction_used || pc.incapacitated) return false;
+    if (!canTakeReaction(pc)) return false;
     if (riposteWeaponIdx(bm, pal_idx) < 0) return false;  // needs a melee weapon to strike back
     // "if it's within range": the sworn foe must be within the paladin's 5 ft melee reach (1 cell).
     const auto threats = threateningAgents(bm, pal_idx, 1);
@@ -1490,7 +1490,7 @@ bool CombatEngine::canGuidedStrike(const BattleMap& bm, const Attack& action, in
     const Resource* cd = cs.getResource("Channel Divinity");
     if (!cd || cd->current <= 0) return false;
     if (cleric_idx == atk) return true;                       // self-guide: no reaction needed
-    if (bm.getAgentConditions(cleric_idx).reaction_used) return false;
+    if (!canTakeReaction(bm.getAgentConditions(cleric_idx))) return false;
     const Cell co = agents[static_cast<std::size_t>(cleric_idx)].origin;
     const Cell ao = agents[static_cast<std::size_t>(atk)].origin;
     const double dx = co.col - ao.col, dy = co.row - ao.row;
@@ -1540,7 +1540,7 @@ static bool d20ReactorBase(const BattleMap& bm, int reactor, int roller)
     if (reactor < 0 || reactor >= n || roller < 0 || roller >= n || reactor == roller) return false;
     if (bm.isAgentOnDeck(reactor)) return false;          // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     if (bm.getAgentStats(reactor).hp_cur <= 0) return false;
     const PlacedAgent& rpa = agents[static_cast<std::size_t>(reactor)];
     const PlacedAgent& opa = agents[static_cast<std::size_t>(roller)];
@@ -1749,7 +1749,7 @@ bool CombatEngine::applyBendLuckToAttack(BattleMap& bm, int reactor, AttackResul
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Sorcerer ||
         s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.char_level < 6) return false;
     Resource* sp = s.getResource("Sorcery Points");
@@ -1774,7 +1774,7 @@ bool CombatEngine::applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackR
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Bard ||
         s.bard_subclass != BardCollege::LorePath || s.char_level < 3) return false;
     Resource* bi = s.getResource("Bardic Inspiration");
@@ -1799,7 +1799,7 @@ bool CombatEngine::applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackR
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     int slot = -1;                                         // spend the lowest available L1+ slot
     for (int i = 0; i < 9; ++i)
         if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) { slot = i; break; }
@@ -1828,7 +1828,7 @@ bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackR
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Cleric ||
         s.cleric_subclass != LightDomain || s.char_level < 3) return false;
     Resource* wf = s.getResource("Warding Flare");
@@ -1858,7 +1858,7 @@ bool CombatEngine::applyRestoreBalanceToAttack(BattleMap& bm, int reactor, Attac
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Sorcerer ||
         s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
     Resource* rb = s.getResource("Restore Balance");
@@ -1905,7 +1905,7 @@ bool CombatEngine::applyRestoreBalanceMissToAttack(BattleMap& bm, const Attack& 
     if (reactor < 0 || reactor >= n) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Sorcerer ||
         s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
     if (!r.disadvantage) return false;                    // safety: only cancels Disadvantage
@@ -3168,7 +3168,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         tgt_stats.character_class == CharacterClass::Barbarian &&
         tgt_stats.barbarian_subclass == BerserkerPath &&
         tgt_stats.char_level >= 10 &&
-        !tgt_cond.reaction_used && !tgt_cond.retaliation_available &&
+        canTakeReaction(tgt_cond) && !tgt_cond.retaliation_available &&
         footprintDistance(atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz) <= 1 &&
         riposteWeaponIdx(bm, action.target_idx) >= 0) {
         Agent::Conditions tdef = bm.getAgentConditions(action.target_idx);

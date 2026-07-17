@@ -45,6 +45,7 @@ def dict_to_stats(stats_dict):
     stats.is_undead = bool(stats_dict.get("is_undead", False))
     stats.is_fiend = bool(stats_dict.get("is_fiend", False))
     stats.is_vampire = bool(stats_dict.get("is_vampire", False))
+    stats.death_burst_spell = str(stats_dict.get("death_burst_spell", ""))
     stats.regeneration_amount = int(stats_dict.get("regeneration_amount", 0))
     # Assign a whole list (pybind returns a copy on read, so in-place append wouldn't stick).
     stats.regen_interrupt_damage_types = [int(t) for t in stats_dict.get("regen_interrupt_damage_types", [])]

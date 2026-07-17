@@ -566,7 +566,7 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
         if (ra.on_deck) continue;                    // a reserve held On Deck makes no opportunity attacks
         if (ra.agent->getConditions().incapacitated) continue;
         if (ra.agent->getStats().hp_cur <= 0) continue;
-        if (bm.getAgentConditions(r).reaction_used) continue;
+        if (!canTakeReaction(bm.getAgentConditions(r))) continue;
         if (!canAgentMove(bm, r)) continue;  // Speed 0 cannot make an OA
         // Disengage suppresses the OA for an ordinary threatener, but a Sentinel-feated one still provokes.
         if (disengaging && !ra.agent->getStats().has_sentinel) continue;
@@ -717,8 +717,7 @@ CombatEngine::advanceMove(BattleMap& bm)
         const ProvokeEvent ev = m.provokes[m.cursor];
         // The reactor may have lost eligibility since detection (downed/used by a prior OA).
         if (ev.reactor < 0 ||
-            bm.getAgentConditions(ev.reactor).reaction_used ||
-            bm.getAgentConditions(ev.reactor).incapacitated ||
+            !canTakeReaction(bm.getAgentConditions(ev.reactor)) ||
             bm.getAgentStats(ev.reactor).hp_cur <= 0) {
             ++m.cursor;
             continue;

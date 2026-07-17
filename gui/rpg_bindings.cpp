@@ -574,6 +574,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
         .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
              "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
+        .def_readwrite("death_burst_spell", &Agent::Stats::death_burst_spell,
+             "Name of a spell in this creature's own list that detonates centered on it when it "
+             "drops to 0 HP (Balor Death Throes). Empty = no burst.")
         .def_readwrite("regeneration_amount", &Agent::Stats::regeneration_amount,
              "Regeneration: HP regained at the start of each turn (0 = none). Capped at effective max HP.")
         .def_readwrite("regen_interrupt_damage_types", &Agent::Stats::regen_interrupt_damage_types,
@@ -650,6 +653,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("dodging",       &Agent::Conditions::dodging)
         .def_readwrite("disengaging",   &Agent::Conditions::disengaging)
         .def_readwrite("reaction_used", &Agent::Conditions::reaction_used)
+        .def_readwrite("reactions_denied", &Agent::Conditions::reactions_denied,
+             "Balor Lightning Blade: the creature can take NO reaction (incl. opportunity attacks) "
+             "until the source's next turn. Distinct from reaction_used so the target's own beginTurn "
+             "reset can't restore reactions early. Session-only; cleared via the DenyReactions teardown.")
         .def_readwrite("battle_magic_available", &Agent::Conditions::battle_magic_available,
              "Battle Magic (Valor Bard L14+): set after casting a Bard spell via the Magic action; "
              "enables a bonus-action weapon attack. Reset at the start of the agent's turn.")

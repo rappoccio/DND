@@ -516,6 +516,13 @@ namespace rpg {
       bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
       bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
 
+      // ── Death Burst (Balor Death Throes, and any "explodes on death" monster) ──
+      // Name of a spell in this creature's OWN spell list that detonates, centered on the creature,
+      // when it drops to 0 HP (resolveDeathBurst, fired from the applyUnconscious death chokepoint).
+      // Empty = no burst. The burst reuses the shared AoE resolver (walls block via Total Cover) and
+      // hits allies AND enemies indiscriminately; the dying creature never damages itself.
+      std::string death_burst_spell{};
+
       // ── Regeneration (Troll, Vampire, Hydra, …) ──────────────────────────────
       // The creature regains regeneration_amount HP at the start of each of its turns (capped at
       // effectiveMaxHp()), provided it still has at least 1 HP. Regeneration is suppressed for one
@@ -728,6 +735,7 @@ namespace rpg {
       bool dodging{false};       // attacks against have disadvantage, advantage on DEX saves
       bool disengaging{false};   // does not provoke opportunity attacks
       bool reaction_used{false}; // reaction already used this turn
+      bool reactions_denied{false}; // cannot take ANY reaction (incl. opportunity attacks) until the source's next turn (Balor Lightning Blade). Session-only; keyed to the source via a caster-ticked condition. Distinct from reaction_used so the target's own beginTurn reset can't restore reactions early.
       bool hidden{false};        // enemies cannot detect; attacks from hiding have advantage
       bool invisible{false};     // enemies cannot see this agent (pierced by Truesight/Blindsight)
       bool invisible_persists_on_action{false}; // Greater Invisibility: does NOT end on attack/cast (else Invisibility ends after the actor attacks/deals damage/casts)

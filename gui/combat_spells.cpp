@@ -3365,6 +3365,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Charmed")       { ac.charmed = false; ac.charmed_by = -1; }
     else if (n == "Frightened")    { ac.frightened = false; }
     else if (n == "Restrained")    { if (!ac.netted) ac.restrained = false; }  // a Net lasts "until it escapes" — see escapeNet
+    else if (n == "DenyReactions") { ac.reactions_denied = false; }  // Balor Lightning Blade lock lifts at the source's next turn (or on death cleanup — so a revived creature isn't stuck reaction-locked)
     else if (n == "Deafened")      { ac.deafened = false; }
     else if (n == "Poisoned")      { ac.poisoned = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }  // remain Prone per RAW
@@ -3894,7 +3895,7 @@ static bool saveReactorBase(const BattleMap& bm, int reactor, int save_target,
     if (bm.isAgentOnDeck(reactor)) return false;          // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (cond.incapacitated) return false;
-    if (require_reaction && cond.reaction_used) return false;
+    if (require_reaction && (cond.reaction_used || cond.reactions_denied)) return false;
     if (bm.getAgentStats(reactor).hp_cur <= 0) return false;
     if (reactor == save_target) return true;                      // self — no range/LoS needed
     const PlacedAgent& rpa = agents[static_cast<std::size_t>(reactor)];
@@ -3959,7 +3960,7 @@ bool CombatEngine::applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Bard || s.char_level < 7) return false;
 
     cond.reaction_used = true;                                    // Countercharm costs the bard's reaction
@@ -4004,7 +4005,7 @@ bool CombatEngine::applyLivingLegendRerollToSave(BattleMap& bm, int reactor, Spe
     if (s.character_class != CharacterClass::Paladin || s.paladin_oath != OathOfGloryPath ||
         s.char_level < 20 || s.living_legend_turns <= 0) return false;
     Agent::Conditions c = bm.getAgentConditions(reactor);
-    if (c.reaction_used) return false;
+    if (!canTakeReaction(c)) return false;
     c.reaction_used = true;                                       // Living Legend's reroll costs the Reaction
     bm.setAgentConditions(reactor, c);
     const int old_d20 = ss.d20;
@@ -4069,7 +4070,7 @@ bool CombatEngine::canWarGodsBlessing(const BattleMap& bm, int reactor, int save
     // Costs the cleric's reaction even when aiding its own save (unlike Indomitable/Legendary Resistance),
     // so re-check reaction_used directly (saveReactorBase skips that test for reactor == save_target).
     if (!saveReactorBase(bm, reactor, save_target, 60, /*require_reaction=*/true)) return false;
-    if (bm.getAgentConditions(reactor).reaction_used) return false;
+    if (!canTakeReaction(bm.getAgentConditions(reactor))) return false;
     if (reactor != save_target && !areAllies(bm, reactor, save_target)) return false;   // only aid yourself/allies
     const Agent::Stats s = bm.getAgentStats(reactor);
     if (s.character_class != CharacterClass::Cleric ||
@@ -4084,7 +4085,7 @@ bool CombatEngine::applyWarGodsBlessingToSave(BattleMap& bm, int reactor, SpellS
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
-    if (cond.reaction_used || cond.incapacitated || s.hp_cur <= 0) return false;
+    if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
     if (s.character_class != CharacterClass::Cleric ||
         s.cleric_subclass != WarDomain || s.char_level < 6) return false;
     Resource* cd = s.getResource("Channel Divinity");
@@ -4177,7 +4178,7 @@ bool CombatEngine::canCastShield(const BattleMap& bm, int idx) const
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     if (bm.isAgentOnDeck(idx)) return false;              // On Deck reserves take no reactions until deployed
     const Agent::Conditions cond = bm.getAgentConditions(idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_cur <= 0) return false;
     bool has_slot = false;
@@ -4198,7 +4199,7 @@ bool CombatEngine::canCastCounterspell(const BattleMap& bm, int idx, int caster_
     if (bm.isAgentOnDeck(idx)) return false;                      // On Deck reserves take no reactions until deployed
     if (areAllies(bm, idx, caster_idx)) return false;             // never counter a teammate's spell
     const Agent::Conditions cond = bm.getAgentConditions(idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_cur <= 0) return false;
     // Must know Counterspell and be able to pay for it. NPC innate casters pay an N/day use of the
@@ -4241,7 +4242,7 @@ bool CombatEngine::canSpellThief(const BattleMap& bm, int idx, int caster_idx) c
         s.rogue_subclass != ArcaneTricksterPath || s.char_level < 17) return false;
     if (s.hp_cur <= 0) return false;
     const Agent::Conditions cond = bm.getAgentConditions(idx);
-    if (cond.reaction_used || cond.incapacitated) return false;
+    if (!canTakeReaction(cond)) return false;
     // "when you see a creature within 60 feet casting a spell": LOS + 60 ft to the caster (mirrors
     // canCastCounterspell). Spell Thief is a class feature, so no slot/known-spell requirement.
     const PlacedAgent& rpa = agents[static_cast<std::size_t>(idx)];

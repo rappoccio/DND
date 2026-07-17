@@ -6165,6 +6165,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "death_burst_spell": "BalorDeathThroes",
       "magic_resistances": [
         "Cold",
         "Lightning"
@@ -6191,41 +6192,67 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Force)",
+        "name": "Flame Whip",
         "type": "melee",
         "reach_ft": 30,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 8,
         "physical_damage_types": [],
         "magic_damage_types": [
           {
             "type": "Force",
+            "num_dice": 3,
+            "die_size": 6
+          },
+          {
+            "type": "Fire",
             "num_dice": 5,
-            "die_size": 10
+            "die_size": 6
           }
         ],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Pull",
+            "push_ft": 25
+          },
+          {
+            "condition_name": "Prone",
+            "requires_save": false
+          }
+        ],
         "mastery": "None"
       },
       "off_hand": {
-        "name": "Melee (Force)",
+        "name": "Lightning Blade",
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
-        "bonus_damage": 0,
+        "bonus_damage": 8,
         "physical_damage_types": [],
         "magic_damage_types": [
           {
             "type": "Force",
-            "num_dice": 10,
-            "die_size": 6
+            "num_dice": 3,
+            "die_size": 8
+          },
+          {
+            "type": "Lightning",
+            "num_dice": 4,
+            "die_size": 10
           }
         ],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "DenyReactions",
+            "requires_save": false,
+            "condition_duration": 1,
+            "save_repeat_turns": -1
+          }
+        ],
         "mastery": "None",
         "off_hand": true
       },
@@ -6270,7 +6297,8 @@
       }
     },
     "spell_indices": [
-      "BalorEmanation"
+      "BalorEmanation",
+      "BalorDeathThroes"
     ],
     "npc_spell_groups": {
       "99": [

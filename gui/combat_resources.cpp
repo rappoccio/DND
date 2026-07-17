@@ -421,7 +421,7 @@ bool CombatEngine::stepsOfTheFey(BattleMap& bm, int idx, int target_col, int tar
     // Timing: normally a Bonus Action; Misty Escape spends the Reaction instead.
     Agent::Conditions rc = bm.getAgentConditions(idx);
     if (as_reaction) {
-        if (rc.reaction_used || rc.incapacitated) {
+        if (!canTakeReaction(rc)) {
             log_("{} has no reaction available for Misty Escape", agentName(bm, idx));
             return false;
         }

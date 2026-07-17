@@ -403,6 +403,10 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     cond.unconscious = true;
     cond.incapacitated = true;
     cond.prone = true;
+    // Clear any "reactions denied" lock on death cleanup so a later revived/aided creature isn't stuck
+    // reaction-locked (the DenyReactions tracker keyed to the SOURCE still expires normally at the
+    // source's next turn; this is the defensive belt-and-suspenders the Balor plan calls for).
+    cond.reactions_denied = false;
 
     // NPCs do not make death saves: they die outright at 0 HP. Only player
     // characters fall unconscious and roll death saves on their turns.
@@ -410,12 +414,57 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
         cond.dead = true;
         bm.setAgentConditions(idx, cond);
         log_("{} drops to 0 HP and dies (NPC — no death saves)", agents[static_cast<std::size_t>(idx)].agent->name());
+        resolveDeathBurst(bm, idx);   // detonate on-death AoE after the death is announced (Balor Death Throes)
         return;
     }
 
     bm.setAgentConditions(idx, cond);
 
     log_("Agent is Unconscious: incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft");
+    resolveDeathBurst(bm, idx);   // a PC "explodes on death" creature would burst here too (empty spell = no-op)
+}
+
+void CombatEngine::resolveDeathBurst(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || static_cast<std::size_t>(idx) >= agents.size()) return;
+
+    const std::string burst_name = bm.getAgentStats(idx).death_burst_spell;
+    if (burst_name.empty()) return;
+
+    // Fire each creature's burst at most once. This is what makes a "burst kills another burster"
+    // chain terminate: every link runs through applyUnconscious → resolveDeathBurst exactly once.
+    if (!deathBurstFired_.insert(idx).second) return;
+
+    // The burst spell lives in the dying creature's OWN spell list (authored on its stat block).
+    const std::vector<Spell> spells = bm.getAgentSpells(idx);
+    const Spell* burst = nullptr;
+    for (const Spell& s : spells)
+        if (s.name == burst_name) { burst = &s; break; }
+    if (!burst) {
+        log_("{} has no '{}' spell for its death burst", agentName(bm, idx), burst_name);
+        return;
+    }
+
+    // Center the blast on the dying creature and let the shared AoE resolver pick the targets — it
+    // prunes cells hidden by Total Cover, so a wall between blocks the blast (the same path every
+    // Sphere uses). A one-shot ActiveSpellEffect carries the spell + source for applySpellEffect,
+    // which rolls the per-target save (half on success, using the standard spell save DC), applies
+    // resistances/immunities (a Fire-immune demon takes only the Force half), and downs anyone
+    // reduced to 0 (recursing here for their own burst, if any). The burst is indiscriminate:
+    // resolveAoeTargets returns allies AND enemies, and we spare only the dead source itself.
+    const Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+    const std::vector<int> targets = resolveAoeTargets(bm, *burst, idx, origin.col, origin.row);
+
+    ActiveSpellEffect burst_fx;
+    burst_fx.caster_idx = idx;
+    burst_fx.spell      = *burst;
+
+    log_("{} erupts in death throes ({})!", agentName(bm, idx), burst->name);
+    for (int t : targets) {
+        if (t == idx) continue;   // the dead source is never caught in its own blast
+        applySpellEffect(bm, burst_fx, t);
+    }
 }
 
 void CombatEngine::reviveOnHeal(BattleMap& bm, int idx) noexcept
@@ -807,6 +856,21 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 auto ac = bm.getAgentConditions(cond.agent_idx);
                 ac.restrained = true;
                 bm.setAgentConditions(cond.agent_idx, ac);
+            } else if (cond.condition_name == "DenyReactions") {
+                // Balor Lightning Blade — the target can't take ANY Reaction (opportunity attacks,
+                // Shield, Uncanny Dodge, …) until the SOURCE's next turn. The flag is distinct from
+                // reaction_used precisely so the target's own beginTurn reset can't restore it early;
+                // the duration is keyed to the caster (see the DenyReactions rider setup) so it clears
+                // via tickAgentConditionsForCaster at the start of the balor's next turn.
+                auto ac = bm.getAgentConditions(cond.agent_idx);
+                ac.reactions_denied = true;
+                bm.setAgentConditions(cond.agent_idx, ac);
+            } else if (cond.condition_name == "Prone") {
+                // Balor Flame Whip — automatic Prone on hit (no save). Distinct from the Topple/
+                // knockdown mastery path, which forces a STR save first; here the generic weapon-
+                // condition path applies Prone directly. Routes through applyProne so the Prone
+                // rules (gaseous-form immunity) still apply and end-of-prone teardown is unchanged.
+                applyProne(bm, cond.agent_idx);
             } else if (cond.condition_name == "Unconscious") {
                 applyUnconscious(bm, cond.agent_idx);
             } else if (cond.condition_name == "Poisoned") {

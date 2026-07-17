@@ -11870,6 +11870,9 @@ class App:
                     "is_undead":  s.is_undead,
                     "is_fiend":   s.is_fiend,
                     "is_vampire": s.is_vampire,
+                    # On-death AoE (Balor Death Throes): names a spell in this creature's own list.
+                    # Must round-trip or a reloaded exploder stops detonating. dict_to_stats reads it back.
+                    "death_burst_spell": s.death_burst_spell,
                     # Regeneration (Troll/Vampire/…): amount + interrupting damage types must round-trip
                     # or a reloaded regenerator stops healing / becomes unkillable. (regen_suppressed is
                     # transient combat state and is intentionally NOT saved.)

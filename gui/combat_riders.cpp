@@ -1253,7 +1253,7 @@ void CombatEngine::applyGuidedStrike(BattleMap& bm, const Attack& action, int cl
     // An ally cleric (not the attacker) also spends a Reaction and must be within 30 ft.
     if (cleric_idx != atk) {
         Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
-        if (cc.reaction_used) return;
+        if (!canTakeReaction(cc)) return;
         const Cell co = agents[static_cast<std::size_t>(cleric_idx)].origin;
         const Cell ao = agents[static_cast<std::size_t>(atk)].origin;
         const double dx = co.col - ao.col, dy = co.row - ao.row;
@@ -1385,7 +1385,7 @@ AttackResult CombatEngine::applySentinelGuard(BattleMap& bm, int sentinel_idx,
     if (sentinel_idx < 0 || sentinel_idx >= n || attacker_idx < 0 || attacker_idx >= n)
         return AttackResult{};
     Agent::Conditions sc = bm.getAgentConditions(sentinel_idx);
-    if (sc.reaction_used) return AttackResult{};          // re-validate (canSentinelGuard checked, but be safe)
+    if (!canTakeReaction(sc)) return AttackResult{};      // re-validate (canSentinelGuard checked, but be safe)
 
     log_("Sentinel Guardian: {} reacts — melee attack vs {}",
          agentName(bm, sentinel_idx), agentName(bm, attacker_idx));
@@ -1411,7 +1411,7 @@ AttackResult CombatEngine::applySoulOfVengeance(BattleMap& bm, int paladin_idx,
     if (paladin_idx < 0 || paladin_idx >= n || attacker_idx < 0 || attacker_idx >= n)
         return AttackResult{};
     Agent::Conditions pc = bm.getAgentConditions(paladin_idx);
-    if (pc.reaction_used) return AttackResult{};          // re-validate (canSoulOfVengeance checked, but be safe)
+    if (!canTakeReaction(pc)) return AttackResult{};      // re-validate (canSoulOfVengeance checked, but be safe)
 
     log_("Soul of Vengeance: {} reacts — melee attack vs its sworn foe {}",
          agentName(bm, paladin_idx), agentName(bm, attacker_idx));
@@ -1612,7 +1612,7 @@ int CombatEngine::applyProtectiveField(BattleMap& bm, int defender_idx, int dama
         stats.fighter_subclass != PsiWarriorPath || stats.char_level < 3) return -1;
 
     Agent::Conditions cond = bm.getAgentConditions(defender_idx);
-    if (cond.reaction_used || cond.incapacitated) return -1;
+    if (!canTakeReaction(cond)) return -1;
 
     const Resource* ped = stats.getResource("Psionic Energy");
     if (!ped || ped->current <= 0) return -1;
@@ -1645,7 +1645,7 @@ int CombatEngine::applyInterception(BattleMap& bm, int interceptor_idx, int targ
     if (!istats.hasFeat("Interception")) return -1;
 
     Agent::Conditions ic = bm.getAgentConditions(interceptor_idx);
-    if (ic.reaction_used || ic.incapacitated) return -1;       // re-validate (canIntercept checked; be safe)
+    if (!canTakeReaction(ic)) return -1;                       // re-validate (canIntercept checked; be safe)
 
     // Reduction = 1d10 + the interceptor's Proficiency Bonus; never restore more than the hit cost.
     int reduction = roll(10) + istats.prof_bonus;
@@ -2116,7 +2116,7 @@ bool CombatEngine::canBranchesOfTree(const BattleMap& bm, int reactor, int sourc
     if (!s.has_branches_of_the_tree) return false;
     if (s.hp_cur <= 0) return false;
     const Agent::Conditions c = bm.getAgentConditions(reactor);
-    if (c.reaction_used || c.incapacitated) return false;
+    if (!canTakeReaction(c)) return false;
     if (!c.raging) return false;                                 // "While your Rage is active"
     if (!canPerceiveTarget(bm, reactor, source)) return false;   // "a creature you can see"
     // "starts its turn within 30 feet of you" — 30 ft = 6 cells (Chebyshev footprint distance).
