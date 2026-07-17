@@ -12,15 +12,15 @@
       "npc_automation_difficulty_level": 0,
       "npc_automation_strategy": 0,
       "stats": {
-        "str": 20,
+        "str": 25,
         "dex": 14,
-        "con": 16,
+        "con": 25,
         "intel": 8,
         "wis": 10,
         "cha": 8,
         "hp_max": 185,
         "hp_cur": 185,
-        "ac": 15,
+        "ac": 16,
         "speed_walk": 40,
         "speed_swim": 0,
         "speed_fly": 0,
@@ -47,6 +47,7 @@
         "is_undead": false,
         "is_fiend": false,
         "is_vampire": false,
+        "death_burst_spell": "",
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": false,
@@ -80,7 +81,7 @@
         "revelation_prior_truesight": 0,
         "luck_points": 0,
         "luck_points_max": 0,
-        "primal_champion_applied": false,
+        "primal_champion_applied": true,
         "relentless_rage_dc": 10,
         "legendary": {
           "resistance": 0,
@@ -290,7 +291,7 @@
         }
       ],
       "agent_class": "Barbarian",
-      "agent_char_level": 18,
+      "agent_char_level": 20,
       "agent_barbarian_subclass": "Berserker",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -358,8 +359,8 @@
         "intel": 9,
         "wis": 10,
         "cha": 22,
-        "hp_max": 128,
-        "hp_cur": 128,
+        "hp_max": 142,
+        "hp_cur": 142,
         "ac": 16,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -387,6 +388,7 @@
         "is_undead": false,
         "is_fiend": false,
         "is_vampire": false,
+        "death_burst_spell": "",
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": false,
@@ -513,7 +515,7 @@
         }
       ],
       "agent_class": "Sorcerer",
-      "agent_char_level": 18,
+      "agent_char_level": 20,
       "agent_barbarian_subclass": "NONE",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -547,8 +549,8 @@
         3,
         3,
         2,
-        1,
-        1,
+        2,
+        2,
         1
       ],
       "spell_slots_cur": [
@@ -558,8 +560,8 @@
         3,
         3,
         2,
-        1,
-        1,
+        2,
+        2,
         1
       ]
     },
@@ -581,8 +583,8 @@
         "intel": 14,
         "wis": 10,
         "cha": 11,
-        "hp_max": 147,
-        "hp_cur": 147,
+        "hp_max": 163,
+        "hp_cur": 163,
         "ac": 14,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -610,10 +612,11 @@
         "is_undead": false,
         "is_fiend": false,
         "is_vampire": false,
+        "death_burst_spell": "",
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": true,
-        "has_offhand_attack": false,
+        "has_offhand_attack": true,
         "has_sentinel": false,
         "has_branches_of_the_tree": false,
         "spellcasting_ability": "cha",
@@ -709,7 +712,7 @@
           "long_range_ft": 60,
           "finesse": true,
           "thrown": true,
-          "quantity": 5,
+          "quantity": 20,
           "sprite_path": "",
           "returns_after_throw": false,
           "pact_weapon": false,
@@ -744,11 +747,11 @@
           "conditions": []
         },
         {
-          "name": "Longbow +3",
+          "name": "Heavy Crossbow +3",
           "type": "ranged",
           "reach_ft": 5,
-          "normal_range_ft": 150,
-          "long_range_ft": 600,
+          "normal_range_ft": 100,
+          "long_range_ft": 400,
           "finesse": false,
           "thrown": false,
           "quantity": 1,
@@ -767,7 +770,7 @@
           "save_for_damage_ability": "Constitution",
           "auto_use_when_grappling": false,
           "permanently_armed": false,
-          "mastery": "Slow",
+          "mastery": "Push",
           "bonus_hit": 3,
           "bonus_damage": 3,
           "ac_bonus": 0,
@@ -779,7 +782,7 @@
             {
               "type": "Piercing",
               "num_dice": 1,
-              "die_size": 8
+              "die_size": 10
             }
           ],
           "magic_damage_types": [],
@@ -854,7 +857,7 @@
         }
       ],
       "agent_class": "Rogue",
-      "agent_char_level": 18,
+      "agent_char_level": 20,
       "agent_barbarian_subclass": "NONE",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -918,12 +921,12 @@
       "stats": {
         "str": 12,
         "dex": 14,
-        "con": 15,
+        "con": 16,
         "intel": 8,
-        "wis": 20,
+        "wis": 22,
         "cha": 8,
-        "hp_max": 183,
-        "hp_cur": 183,
+        "hp_max": 203,
+        "hp_cur": 203,
         "ac": 21,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -951,6 +954,7 @@
         "is_undead": false,
         "is_fiend": false,
         "is_vampire": false,
+        "death_burst_spell": "",
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": false,
@@ -1166,10 +1170,10 @@
         "Flame Strike",
         "Arcane Eye",
         "Scrying",
+        "Mass Heal",
         "Divine Spark (Harm)",
         "Divine Spark (Heal)",
-        "Radiance of the Dawn",
-        "Mass Heal"
+        "Radiance of the Dawn"
       ],
       "items": [
         {
@@ -1200,7 +1204,7 @@
         }
       ],
       "agent_class": "Cleric",
-      "agent_char_level": 18,
+      "agent_char_level": 20,
       "agent_barbarian_subclass": "NONE",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -1234,8 +1238,8 @@
         3,
         3,
         2,
-        1,
-        1,
+        2,
+        2,
         1
       ],
       "spell_slots_cur": [
@@ -1245,8 +1249,8 @@
         3,
         3,
         2,
-        1,
-        1,
+        2,
+        2,
         1
       ]
     }

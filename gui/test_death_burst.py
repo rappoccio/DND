@@ -172,6 +172,22 @@ def test_death_burst_spares_source_and_chains_finitely():
     print("✅ test_death_burst_spares_source_and_chains_finitely passed")
 
 
+def test_no_burst_when_unconscious_but_alive():
+    """applyUnconscious is dual-purpose (it also sets the Unconscious *condition* from Sleep, which
+    leaves HP intact). A full-HP creature routed through it must NOT explode — only a 0-HP death does."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+
+    balor = _make_burster(engine, bm, 1, 5, hp=287)   # full HP: a slept balor, not a dead one
+    tgt   = _victim(engine, bm, 3, 5)
+    _arm_burst(engine, bm, balor)
+
+    engine.apply_unconscious(bm, balor)   # e.g. Sleep — HP still 287
+
+    assert _hp(engine, bm, tgt) == 300, "a still-alive (0-HP-only) creature must not detonate its death burst"
+    print("✅ test_no_burst_when_unconscious_but_alive passed")
+
+
 def test_death_burst_json_and_serializer():
     """The shipped Balor record + BalorDeathThroes spell are wired, and death_burst_spell
     round-trips through dict_to_stats."""
@@ -202,5 +218,6 @@ if __name__ == "__main__":
     test_death_burst_full_damage_on_failed_save()
     test_death_burst_fire_immune_takes_force_only()
     test_death_burst_spares_source_and_chains_finitely()
+    test_no_burst_when_unconscious_but_alive()
     test_death_burst_json_and_serializer()
     print("\nAll Death Burst tests passed ✅")

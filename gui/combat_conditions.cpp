@@ -429,6 +429,11 @@ void CombatEngine::resolveDeathBurst(BattleMap& bm, int idx) noexcept
     const auto& agents = bm.placedAgents();
     if (idx < 0 || static_cast<std::size_t>(idx) >= agents.size()) return;
 
+    // Only a REAL death (0 HP) detonates. applyUnconscious is dual-purpose — it is also the setter
+    // for the *Unconscious condition* (Sleep, the "Unconscious" tick branch), which leaves the
+    // creature's HP intact. Without this gate a slept balor would immediately explode.
+    if (bm.getAgentStats(idx).hp_cur > 0) return;
+
     const std::string burst_name = bm.getAgentStats(idx).death_burst_spell;
     if (burst_name.empty()) return;
 
