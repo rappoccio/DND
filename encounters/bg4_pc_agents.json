@@ -18,8 +18,8 @@
         "intel": 8,
         "wis": 10,
         "cha": 8,
-        "hp_max": 165,
-        "hp_cur": 165,
+        "hp_max": 185,
+        "hp_cur": 185,
         "ac": 15,
         "speed_walk": 40,
         "speed_swim": 0,
@@ -42,7 +42,7 @@
         "sleight_of_hand_expertise": false,
         "num_attacks": 2,
         "multiattack": [],
-        "weapon_mastery": 0,
+        "weapon_mastery": 1,
         "is_npc": false,
         "is_undead": false,
         "is_fiend": false,
@@ -290,7 +290,7 @@
         }
       ],
       "agent_class": "Barbarian",
-      "agent_char_level": 16,
+      "agent_char_level": 18,
       "agent_barbarian_subclass": "Berserker",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -358,8 +358,8 @@
         "intel": 9,
         "wis": 10,
         "cha": 22,
-        "hp_max": 114,
-        "hp_cur": 114,
+        "hp_max": 128,
+        "hp_cur": 128,
         "ac": 16,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -478,7 +478,11 @@
         "Dominate Beast",
         "Dominate Person",
         "Telekinesis",
-        "Haste"
+        "Haste",
+        "Wish",
+        "Power Word Kill",
+        "Earthquake",
+        "Teleport"
       ],
       "items": [
         {
@@ -509,7 +513,7 @@
         }
       ],
       "agent_class": "Sorcerer",
-      "agent_char_level": 16,
+      "agent_char_level": 18,
       "agent_barbarian_subclass": "NONE",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -541,22 +545,22 @@
         3,
         3,
         3,
-        2,
+        3,
         2,
         1,
         1,
-        0
+        1
       ],
       "spell_slots_cur": [
         4,
         3,
         3,
         3,
-        2,
+        3,
         2,
         1,
         1,
-        0
+        1
       ]
     },
     {
@@ -577,8 +581,8 @@
         "intel": 14,
         "wis": 10,
         "cha": 11,
-        "hp_max": 123,
-        "hp_cur": 123,
+        "hp_max": 147,
+        "hp_cur": 147,
         "ac": 14,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -609,7 +613,7 @@
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": true,
-        "has_offhand_attack": true,
+        "has_offhand_attack": false,
         "has_sentinel": false,
         "has_branches_of_the_tree": false,
         "spellcasting_ability": "cha",
@@ -850,7 +854,7 @@
         }
       ],
       "agent_class": "Rogue",
-      "agent_char_level": 16,
+      "agent_char_level": 18,
       "agent_barbarian_subclass": "NONE",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -918,8 +922,8 @@
         "intel": 8,
         "wis": 20,
         "cha": 8,
-        "hp_max": 147,
-        "hp_cur": 147,
+        "hp_max": 183,
+        "hp_cur": 183,
         "ac": 21,
         "speed_walk": 30,
         "speed_swim": 0,
@@ -1164,7 +1168,8 @@
         "Scrying",
         "Divine Spark (Harm)",
         "Divine Spark (Heal)",
-        "Radiance of the Dawn"
+        "Radiance of the Dawn",
+        "Mass Heal"
       ],
       "items": [
         {
@@ -1195,7 +1200,7 @@
         }
       ],
       "agent_class": "Cleric",
-      "agent_char_level": 16,
+      "agent_char_level": 18,
       "agent_barbarian_subclass": "NONE",
       "agent_wild_heart_power": "NONE",
       "agent_rage_of_gods_used": false,
@@ -1227,22 +1232,22 @@
         3,
         3,
         3,
-        2,
+        3,
         2,
         1,
         1,
-        0
+        1
       ],
       "spell_slots_cur": [
         4,
         3,
         3,
         3,
-        2,
+        3,
         2,
         1,
         1,
-        0
+        1
       ]
     }
   ],

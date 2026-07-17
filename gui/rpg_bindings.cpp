@@ -3818,6 +3818,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::removeSpellFromAgent,
              py::arg("battle_map"), py::arg("idx"), py::arg("spell_idx"),
              "Remove spell at spell_idx from agent[idx]'s list.")
+        .def("spend_spell_slot",
+             &CombatEngine::spendSpellSlot,
+             py::arg("battle_map"), py::arg("idx"), py::arg("level"),
+             "Expend one player spell slot of `level` (1-9) for agent[idx], clamped at 0.\n"
+             "No-op (returns False) for NPCs or if no slot of that level remains. Used by the\n"
+             "GUI Wish flow to charge Wish's own 9th-level slot while the duplicated spell is\n"
+             "cast for free.")
         .def("init_npc_spell_groups",
              &CombatEngine::initNpcSpellGroups,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("groups"),

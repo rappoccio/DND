@@ -672,7 +672,13 @@ class App:
         self.pending_summon_slot_level = 0     # chosen slot level
         self.pending_summon_monster    = ""    # monster-JSON key to spawn
         self.pending_summon_spirit     = None  # scaling spirit block (summon_spirits.json) or None
+        self.pending_summon_free_cast  = False # Wish-duplicated summon: charge no slot of its own
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
+        # Wish: spells duplicated by Wish are injected into the caster's own spell list (the engine
+        # casts by index) and kept there permanently — indices stay stable so any concentration /
+        # dispel bookkeeping that re-reads spells[spell_idx] remains valid. Their indices are tracked
+        # here so the cast menu skips them (they must never be re-cast for free with a normal slot).
+        self._wish_temp_spells: set = set()
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
@@ -9300,6 +9306,214 @@ class App:
         sp.magic_damage_rolls = _rescale(sp.magic_damage_rolls, rpg.MagicDamageRoll)
         sp.physical_damage_rolls = _rescale(sp.physical_damage_rolls, rpg.PhysicalDamageRoll)
 
+    def _activate_spell(self, s, si_, slot_level_, idx, spells, stats, free_cast=False):
+        """Set up targeting for a chosen spell and dispatch by its special-case / geometry.
+
+        Shared by the normal cast menu (via the _activate wrapper in _start_cast_spell) and by
+        the Wish duplication flow (_on_wish_duplicate), which passes free_cast=True so the
+        duplicated spell consumes no slot of its own — Wish already charged its 9th-level slot.
+        ``idx`` is the caster, ``spells``/``stats`` its current spell list and stats."""
+        sp_ = spells[si_]
+        # Cleared for every fresh cast; only the element-choice branch below sets it. free_cast is
+        # normally False (a normal cast expends a slot); the Wish flow passes True.
+        self.pending_spell_damage_type = -1
+        self.pending_spell_free_cast    = free_cast
+        self.pending_spell_command_word = -1
+        self.pending_spell_curse_choice = -1
+        # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
+        # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
+        self.pending_chromatic_active  = False
+        self.pending_chromatic_primary = -1
+        self.pending_chromatic_chain   = []
+
+        # Wish (primary use): duplicate any spell of level ≤ 8. Open the spell picker; the chosen
+        # spell is cast for free (Wish pays its own slot). Guard on free_cast so a Wish DUPLICATED
+        # via another Wish can't recurse. See _on_wish_duplicate.
+        if sp_.name == "Wish" and not free_cast:
+            wish_slot = max(slot_level_, sp_.level)   # the slot Wish itself is cast from (9)
+            self.spell_selection_dialog.show(
+                lambda d, s=s, wl=wish_slot: self._on_wish_duplicate(idx, s, wl, d),
+                max_level=8,
+                title="Wish — duplicate a spell (≤ 8th level)")
+            self._combat_log_add("Wish — choose a spell of level 8 or lower to duplicate.")
+            return
+
+        # Cast-time element choice (Chromatic Orb, Sorcerous Burst): pick one damage type via
+        # the ElementPickerDialog, store it as the SpellAction override, then continue to the
+        # normal Single-target selection. Both spells are Single geometry, so the callback sets
+        # up single-target pending state directly.
+        elem_opts = ELEMENT_CHOICE_SPELLS.get(sp_.name)
+        if elem_opts is not None:
+            def _on_elem(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, elem_opts=elem_opts):
+                self.pending_spell_damage_type = chosen[0] if chosen else -1
+                self.pending_spell_is_aoe     = False
+                self.pending_spell_targets    = []
+                self.pending_spell_slot       = s
+                self.pending_spell_idx        = si_
+                self.pending_spell_slot_level = slot_level_
+                type_name = next((lbl for lbl, val in elem_opts
+                                  if val == self.pending_spell_damage_type), "?")
+                self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
+            self._element_dialog.show(_on_elem, elem_opts, current_values=None, multi=False,
+                                      title=f"{sp_.name}: damage type")
+            return
+
+        # Vistani Curse sub-choice (Curse of Vulnerability / Weakness / Affliction): pick the
+        # damage type / ability / blind-vs-deafen via the ElementPickerDialog, store it as
+        # SpellAction.curse_choice, then continue to Single-target selection (all curses are
+        # Single geometry). Mirrors the Chromatic Orb element-choice flow above.
+        curse_opts = CURSE_CHOICE_SPELLS.get(sp_.name)
+        if curse_opts is not None:
+            def _on_curse(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, curse_opts=curse_opts):
+                self.pending_spell_curse_choice = chosen[0] if chosen else -1
+                self.pending_spell_is_aoe     = False
+                self.pending_spell_targets    = []
+                self.pending_spell_slot       = s
+                self.pending_spell_idx        = si_
+                self.pending_spell_slot_level = slot_level_
+                choice_name = next((lbl for lbl, val in curse_opts
+                                    if val == self.pending_spell_curse_choice), "?")
+                self._combat_log_add(f"Casting {sp_.name} ({choice_name}) — click a target.")
+            self._element_dialog.show(_on_curse, curse_opts, current_values=None, multi=False,
+                                      title=f"{sp_.name}: choose")
+            return
+
+        # Cast-time word choice (Command): pick the command word via the ElementPickerDialog
+        # (same options Mantle of Majesty uses), store it as the SpellAction.command_word, then
+        # fall through to the SHARED engine-driven targeting dispatch. Command is Multiple
+        # geometry, so target count + upcast expansion are owned by the C++ engine (no
+        # Command-specific target math here).
+        if sp_.name == "Command":
+            def _on_word(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
+                word = chosen[0] if chosen else 3   # default Halt (matches applyCommandEffect)
+                self.pending_spell_command_word = word
+                word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
+                self._combat_log_add(f"Command word: {word_name}.")
+                self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
+            self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None,
+                                      multi=False, title="Command: choose a word")
+            return
+
+        # Summon spells: pick an empty cell within range to manifest the creature, rather than
+        # targeting a creature or placing an AoE. Routed here BEFORE the
+        # geometry branches because Summon Dragon is Single geometry ("click a target").
+        # Scaling spirits (summon_spirits.json) take precedence and first prompt for a FORM.
+        spirit_forms = SUMMON_SPELL_TO_SPIRIT.get(sp_.name)
+        monster      = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
+        if spirit_forms:
+            self.pending_summon_slot       = s
+            self.pending_summon_idx        = si_
+            self.pending_summon_slot_level = slot_level_
+            self.pending_summon_free_cast  = free_cast
+            self.pending_summon_monster    = ""
+            self.pending_summon_spirit     = None
+            items = [(f"✨ {form}",
+                      lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
+                     for form, block in spirit_forms.items()]
+            self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+            self._combat_log_add(f"Casting {sp_.name} — choose a form.")
+            return
+        if monster:
+            self.pending_summon_slot       = s
+            self.pending_summon_idx        = si_
+            self.pending_summon_slot_level = slot_level_
+            self.pending_summon_free_cast  = free_cast
+            self.pending_summon_monster    = monster
+            self.pending_summon_spirit     = None
+            self._combat_log_add(
+                f"Casting {sp_.name} — click an empty cell within range to place the {monster}.")
+            return
+
+        # Emanation (a moves_with_caster Sphere) is always centered on the caster,
+        # so there is no placement to choose — cast immediately on the caster's cell.
+        if getattr(sp_, "moves_with_caster", False) and sp_.geometry == rpg.SpellGeometry.Sphere:
+            self.pending_spell_slot       = s
+            self.pending_spell_idx        = si_
+            self.pending_spell_slot_level = slot_level_
+            ci = self._current_agent_idx()
+            origin = self.bm.placed_agents[ci].origin
+            self._combat_log_add(f"Casting {sp_.name} — centered on caster.")
+            self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
+            return
+
+        # Teleportation spells: select a destination, then optionally select additional targets
+        if getattr(sp_, "teleportation_spell", False):
+            self.pending_spell_is_aoe = True
+            self.pending_spell_slot       = s
+            self.pending_spell_idx        = si_
+            self.pending_spell_slot_level = slot_level_
+            self.pending_spell_targets    = []
+            hint = f"click a destination ({sp_.teleport_range_ft} ft away)"
+            self._combat_log_add(f"Casting {sp_.name} — {hint}.")
+            return
+
+        self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
+
+    def _dispatch_spell_geometry(self, s, si_, sp_, slot_level_, idx):
+        # Generic, engine-driven targeting setup shared by the normal cast path and by
+        # cast-time-choice spells (e.g. Command's word pick) that need to fall through here
+        # AFTER their choice. The target count for Multiple geometry comes from the C++
+        # engine (get_num_targets_for_spell), which is also the authority that caps the list
+        # at resolution — so no spell-specific target math lives here.
+        if sp_.geometry == rpg.SpellGeometry.Single:
+            self.pending_spell_is_aoe = False
+            self.pending_spell_targets = []
+            # Twinned Spell (Sorcerer Metamagic): a Single-geometry spell gets one ADDITIONAL
+            # target. Collect two clicks (like Multiple geometry). The engine still validates
+            # affordability and only actually hits the 2nd target if it pays the SP.
+            if self._twinned_single_armed(sp_, idx):
+                self.pending_spell_num_targets = 2
+                hint = "click 2 targets (0/2) — Twinned"
+            else:
+                self.pending_spell_num_targets = 0
+                hint = "click a target"
+        elif sp_.geometry == rpg.SpellGeometry.Multiple:
+            # Multiple geometry: collect N independent targets
+            caster_level_ = self.combat.get_agent_stats(self.bm, idx).char_level
+            num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_)
+            self.pending_spell_is_aoe = False
+            self.pending_spell_targets = []  # Will collect targets sequentially
+            self.pending_spell_num_targets = num_targets
+            hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
+        else:
+            # AoE (Line, Cone, Sphere, Square, Rectangle)
+            self.pending_spell_is_aoe = True
+            self.spell_anchor_cell    = None
+            if sp_.geometry == rpg.SpellGeometry.Rectangle:
+                # Oriented wall: click an anchor, then click again to set
+                # direction/length (up to the spell's max length).
+                hint = "click the wall's start point"
+            else:
+                hint = "click a map location"
+
+        self.pending_spell_slot       = s
+        self.pending_spell_idx        = si_
+        self.pending_spell_slot_level = slot_level_
+        self._combat_log_add(f"Casting {sp_.name} — {hint}.")
+
+    def _on_wish_duplicate(self, caster_idx: int, slot: str, wish_slot_level: int, spell_dict: dict):
+        """A spell was chosen from the Wish picker. Charge Wish's own slot, inject the duplicated
+        spell onto the caster (the engine casts by index), and run it through the normal dispatch
+        as a free cast at its base level. The injected spell is kept in the caster's list (its
+        index is remembered in _wish_temp_spells so the cast menu skips it) — never removed,
+        because ongoing concentration/dispel bookkeeping re-reads spells[spell_idx]."""
+        if caster_idx < 0:
+            return
+        # Charge Wish's own slot (normally 9th). If the caster somehow lacks it, abort cleanly.
+        if not self.combat.spend_spell_slot(self.bm, caster_idx, wish_slot_level):
+            self._combat_log_add("Wish fizzles — no spell slot to power it.")
+            return
+        spell = _dict_to_spell(spell_dict)
+        self.combat.add_spell_to_agent(self.bm, caster_idx, spell)
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        new_idx = len(spells) - 1
+        self._wish_temp_spells.add(new_idx)
+        stats = self.combat.get_agent_stats(self.bm, caster_idx)
+        self._combat_log_add(f"Wish duplicates {spell.name}!")
+        # Cast the duplicate at its base level, for free, through the full dispatch (element
+        # choice, summon placement, AoE, single-target — all handled as usual).
+        self._activate_spell(slot, new_idx, spell.level, caster_idx, spells, stats, free_cast=True)
+
     # FLAG: Move to C++
     def _start_cast_spell(self, slot: str):
         self.jump_overlay_active = False  # Close jump overlay when casting spell
@@ -9326,170 +9540,11 @@ class App:
         spells = self.combat.get_agent_spells(self.bm, idx)
         stats = self.combat.get_agent_stats(self.bm, idx)
 
+        # Thin wrapper so the menu builders below keep their simple (slot, spell_idx, level)
+        # signature. The real dispatch lives in _activate_spell so the Wish flow can reuse the
+        # full element/curse/summon/geometry handling for a duplicated spell.
         def _activate(s, si_, slot_level_=0):
-            sp_ = spells[si_]
-            # Cleared for every fresh cast; only the element-choice branch below sets it.
-            self.pending_spell_damage_type = -1
-            # Normal casts are never free / never carry a Command word (only Mantle of Majesty does).
-            self.pending_spell_free_cast    = False
-            self.pending_spell_command_word = -1
-            self.pending_spell_curse_choice = -1
-            # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
-            # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
-            self.pending_chromatic_active  = False
-            self.pending_chromatic_primary = -1
-            self.pending_chromatic_chain   = []
-
-            # Cast-time element choice (Chromatic Orb, Sorcerous Burst): pick one damage type via
-            # the ElementPickerDialog, store it as the SpellAction override, then continue to the
-            # normal Single-target selection. Both spells are Single geometry, so the callback sets
-            # up single-target pending state directly.
-            elem_opts = ELEMENT_CHOICE_SPELLS.get(sp_.name)
-            if elem_opts is not None:
-                def _on_elem(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, elem_opts=elem_opts):
-                    self.pending_spell_damage_type = chosen[0] if chosen else -1
-                    self.pending_spell_is_aoe     = False
-                    self.pending_spell_targets    = []
-                    self.pending_spell_slot       = s
-                    self.pending_spell_idx        = si_
-                    self.pending_spell_slot_level = slot_level_
-                    type_name = next((lbl for lbl, val in elem_opts
-                                      if val == self.pending_spell_damage_type), "?")
-                    self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
-                self._element_dialog.show(_on_elem, elem_opts, current_values=None, multi=False,
-                                          title=f"{sp_.name}: damage type")
-                return
-
-            # Vistani Curse sub-choice (Curse of Vulnerability / Weakness / Affliction): pick the
-            # damage type / ability / blind-vs-deafen via the ElementPickerDialog, store it as
-            # SpellAction.curse_choice, then continue to Single-target selection (all curses are
-            # Single geometry). Mirrors the Chromatic Orb element-choice flow above.
-            curse_opts = CURSE_CHOICE_SPELLS.get(sp_.name)
-            if curse_opts is not None:
-                def _on_curse(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, curse_opts=curse_opts):
-                    self.pending_spell_curse_choice = chosen[0] if chosen else -1
-                    self.pending_spell_is_aoe     = False
-                    self.pending_spell_targets    = []
-                    self.pending_spell_slot       = s
-                    self.pending_spell_idx        = si_
-                    self.pending_spell_slot_level = slot_level_
-                    choice_name = next((lbl for lbl, val in curse_opts
-                                        if val == self.pending_spell_curse_choice), "?")
-                    self._combat_log_add(f"Casting {sp_.name} ({choice_name}) — click a target.")
-                self._element_dialog.show(_on_curse, curse_opts, current_values=None, multi=False,
-                                          title=f"{sp_.name}: choose")
-                return
-
-            # Cast-time word choice (Command): pick the command word via the ElementPickerDialog
-            # (same options Mantle of Majesty uses), store it as the SpellAction.command_word, then
-            # fall through to the SHARED engine-driven targeting dispatch. Command is Multiple
-            # geometry, so target count + upcast expansion are owned by the C++ engine (no
-            # Command-specific target math here).
-            if sp_.name == "Command":
-                def _on_word(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
-                    word = chosen[0] if chosen else 3   # default Halt (matches applyCommandEffect)
-                    self.pending_spell_command_word = word
-                    word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
-                    self._combat_log_add(f"Command word: {word_name}.")
-                    _dispatch_geometry(s, si_, sp_, slot_level_)
-                self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None,
-                                          multi=False, title="Command: choose a word")
-                return
-
-            # Summon spells: pick an empty cell within range to manifest the creature, rather than
-            # targeting a creature or placing an AoE. Routed here BEFORE the
-            # geometry branches because Summon Dragon is Single geometry ("click a target").
-            # Scaling spirits (summon_spirits.json) take precedence and first prompt for a FORM.
-            spirit_forms = SUMMON_SPELL_TO_SPIRIT.get(sp_.name)
-            monster      = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
-            if spirit_forms:
-                self.pending_summon_slot       = s
-                self.pending_summon_idx        = si_
-                self.pending_summon_slot_level = slot_level_
-                self.pending_summon_monster    = ""
-                self.pending_summon_spirit     = None
-                items = [(f"✨ {form}",
-                          lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
-                         for form, block in spirit_forms.items()]
-                self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
-                self._combat_log_add(f"Casting {sp_.name} — choose a form.")
-                return
-            if monster:
-                self.pending_summon_slot       = s
-                self.pending_summon_idx        = si_
-                self.pending_summon_slot_level = slot_level_
-                self.pending_summon_monster    = monster
-                self.pending_summon_spirit     = None
-                self._combat_log_add(
-                    f"Casting {sp_.name} — click an empty cell within range to place the {monster}.")
-                return
-
-            # Emanation (a moves_with_caster Sphere) is always centered on the caster,
-            # so there is no placement to choose — cast immediately on the caster's cell.
-            if getattr(sp_, "moves_with_caster", False) and sp_.geometry == rpg.SpellGeometry.Sphere:
-                self.pending_spell_slot       = s
-                self.pending_spell_idx        = si_
-                self.pending_spell_slot_level = slot_level_
-                ci = self._current_agent_idx()
-                origin = self.bm.placed_agents[ci].origin
-                self._combat_log_add(f"Casting {sp_.name} — centered on caster.")
-                self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
-                return
-
-            # Teleportation spells: select a destination, then optionally select additional targets
-            if getattr(sp_, "teleportation_spell", False):
-                self.pending_spell_is_aoe = True
-                self.pending_spell_slot       = s
-                self.pending_spell_idx        = si_
-                self.pending_spell_slot_level = slot_level_
-                self.pending_spell_targets    = []
-                hint = f"click a destination ({sp_.teleport_range_ft} ft away)"
-                self._combat_log_add(f"Casting {sp_.name} — {hint}.")
-                return
-
-            _dispatch_geometry(s, si_, sp_, slot_level_)
-
-        def _dispatch_geometry(s, si_, sp_, slot_level_=0):
-            # Generic, engine-driven targeting setup shared by the normal cast path and by
-            # cast-time-choice spells (e.g. Command's word pick) that need to fall through here
-            # AFTER their choice. The target count for Multiple geometry comes from the C++
-            # engine (get_num_targets_for_spell), which is also the authority that caps the list
-            # at resolution — so no spell-specific target math lives here.
-            if sp_.geometry == rpg.SpellGeometry.Single:
-                self.pending_spell_is_aoe = False
-                self.pending_spell_targets = []
-                # Twinned Spell (Sorcerer Metamagic): a Single-geometry spell gets one ADDITIONAL
-                # target. Collect two clicks (like Multiple geometry). The engine still validates
-                # affordability and only actually hits the 2nd target if it pays the SP.
-                if self._twinned_single_armed(sp_, idx):
-                    self.pending_spell_num_targets = 2
-                    hint = "click 2 targets (0/2) — Twinned"
-                else:
-                    self.pending_spell_num_targets = 0
-                    hint = "click a target"
-            elif sp_.geometry == rpg.SpellGeometry.Multiple:
-                # Multiple geometry: collect N independent targets
-                caster_level_ = self.combat.get_agent_stats(self.bm, idx).char_level
-                num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_)
-                self.pending_spell_is_aoe = False
-                self.pending_spell_targets = []  # Will collect targets sequentially
-                self.pending_spell_num_targets = num_targets
-                hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
-            else:
-                # AoE (Line, Cone, Sphere, Square, Rectangle)
-                self.pending_spell_is_aoe = True
-                self.spell_anchor_cell    = None
-                if sp_.geometry == rpg.SpellGeometry.Rectangle:
-                    # Oriented wall: click an anchor, then click again to set
-                    # direction/length (up to the spell's max length).
-                    hint = "click the wall's start point"
-                else:
-                    hint = "click a map location"
-
-            self.pending_spell_slot       = s
-            self.pending_spell_idx        = si_
-            self.pending_spell_slot_level = slot_level_
-            self._combat_log_add(f"Casting {sp_.name} — {hint}.")
+            self._activate_spell(s, si_, slot_level_, idx, spells, stats)
 
         def _ordinal(n):
             return {1:"1st",2:"2nd",3:"3rd"}.get(n, f"{n}th")
@@ -9507,6 +9562,10 @@ class App:
         # pick the slot level, instead of flooding this list with one row per spell per level.
         options = []
         for si in available_indices:
+            # Spells injected by a past Wish live in the caster's list only so the engine can
+            # cast them by index; they must never reappear as normal, slot-castable options.
+            if si in self._wish_temp_spells:
+                continue
             sp = spells[si]
             sp_level = sp.level
 
@@ -10207,6 +10266,7 @@ class App:
         spirit     = self.pending_summon_spirit
         spell_idx  = self.pending_summon_idx
         slot_level = self.pending_summon_slot_level
+        free_summon = self.pending_summon_free_cast  # Wish-duplicated summon: charge no slot
         if caster_idx < 0 or not slot or not monster:
             return
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
@@ -10294,9 +10354,10 @@ class App:
             cond.concentrating_on = sp.name
             self.combat.set_agent_conditions(self.bm, caster_idx, cond)
 
-        # Spend the spell slot (PC slots only; NPC spell-group casting is out of scope here).
+        # Spend the spell slot (PC slots only; NPC spell-group casting is out of scope here). A
+        # Wish-duplicated summon is free (Wish already paid its 9th-level slot).
         cstats = self.combat.get_agent_stats(self.bm, caster_idx)
-        if not cstats.is_npc and slot_level >= 1:
+        if not cstats.is_npc and slot_level >= 1 and not self.pending_summon_free_cast:
             slots = list(cstats.spell_slots_remaining)
             if slots[slot_level - 1] > 0:
                 slots[slot_level - 1] -= 1
@@ -10324,11 +10385,13 @@ class App:
         self.pending_summon_slot_level = 0
         self.pending_summon_monster    = ""
         self.pending_summon_spirit     = None
+        self.pending_summon_free_cast  = False
         self.summon_hover_cell         = None
         self.sprites.clear()
         self._consume_cast_slot(slot, caster_idx)
-        # Wild Magic Surge: a summon spell cast with a spell slot triggers a surge.
-        if slot_level >= 1 and not cstats.is_npc:
+        # Wild Magic Surge: a summon spell cast with a spell slot triggers a surge (not a free
+        # Wish-duplicated summon — no slot was spent).
+        if slot_level >= 1 and not cstats.is_npc and not free_summon:
             self._maybe_wild_magic_surge(caster_idx)
 
     # ── Trickery Domain: Invoke Duplicity ───────────────────────────────────
@@ -11259,6 +11322,7 @@ class App:
         action.spell_idx      = self.pending_spell_idx
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = []
+        action.free_cast      = self.pending_spell_free_cast  # Wish-duplicated AoE: no slot of its own
         action.overchannel    = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
         self._apply_dispel_selection(action)  # Dispel Magic picker (cell-aimed dispel of an AoE)
         self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
@@ -11276,12 +11340,15 @@ class App:
         # Cast through the OnDeclareCast window (begin_cast) so a targeted creature can react before
         # the spell resolves; _finish_cast does the post-resolution logging (incl. AoE no-targets and
         # slip handling) whether the cast resolves inline or after a parked reaction.
-        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx, aoe=True)
+        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx,
+                               aoe=True, free_cast=action.free_cast,
+                               slot_level=self.pending_spell_slot_level)
         self._reaction_finish = self._finish_cast
 
         self.pending_spell_slot       = ""
         self.pending_spell_is_aoe     = False
         self.pending_spell_num_targets = 0
+        self.pending_spell_free_cast  = False
         self.spell_hover_cell         = None
         self.spell_anchor_cell        = None
 

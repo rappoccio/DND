@@ -1544,6 +1544,12 @@ public:
     void setAgentSpells(BattleMap& bm, int idx, std::vector<Spell> spells) noexcept;
     void addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept;
     void removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept;
+    // Expend one player spell slot of `level` (1-9) for agent[idx], clamped at 0.
+    // Used by the GUI Wish flow to charge Wish's own 9th-level slot while the
+    // duplicated spell is cast for free (SpellAction.free_cast). No-op for NPCs
+    // (they use the N/day system) or out-of-range levels. Returns true if a slot
+    // was actually decremented.
+    bool spendSpellSlot(BattleMap& bm, int idx, int level) noexcept;
 
     [[nodiscard]] std::vector<Item> getAgentItems(const BattleMap& bm, int idx) const noexcept;
     void setAgentItems(BattleMap& bm, int idx, std::vector<Item> items) noexcept;

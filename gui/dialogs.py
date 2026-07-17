@@ -3063,14 +3063,20 @@ class SpellSelectionDialog:
         self.active_level = None  # None == "All" tab
         self._tab_rects = []      # cached (rect, level) for hit-testing
         self._frames_since_show = 0  # Prevent immediate dismissal on show click
+        self.max_level = None     # None == no cap; else hide/filter spells above this level (Wish ≤ 8)
+        self.title = "Select a Spell"
 
-    def show(self, callback):
+    def show(self, callback, max_level=None, title=None):
+        """Open the picker. ``max_level`` (e.g. 8 for Wish) hides the higher-level
+        tabs and filters those spells out of the list; ``title`` overrides the header."""
         self.visible = True
         self.selected_callback = callback
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
         self.active_level = None
+        self.max_level = max_level
+        self.title = title or "Select a Spell"
         self._frames_since_show = 0  # Reset counter to prevent immediate dismissal
         self._update_filtered_spells()
         # Center dialog on screen
@@ -3097,6 +3103,12 @@ class SpellSelectionDialog:
         else:
             self.filtered_spells = [s for s in self.all_spells
                                     if s.get("level", 0) == self.active_level]
+        # Level cap (e.g. Wish duplicates only spells of level ≤ 8): applies across
+        # every branch — search, All, and a specific tab — so a capped spell can
+        # never be reached by any route.
+        if self.max_level is not None:
+            self.filtered_spells = [s for s in self.filtered_spells
+                                    if s.get("level", 0) <= self.max_level]
         self.scroll_y = 0
         self._hover_idx = -1
 
@@ -3204,18 +3216,20 @@ class SpellSelectionDialog:
         pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
 
         # Title
-        title = self.font_md.render("Select a Spell", True, (220, 220, 235))
+        title = self.font_md.render(self.title, True, (220, 220, 235))
         title_rect = title.get_rect(x=self.rect.x + self.PAD, y=self.rect.y + 8)
         surf.blit(title, title_rect)
 
         tabs_y, search_y, list_y, list_h = self._layout()
 
-        # Level tabs
+        # Level tabs — a max_level cap (Wish ≤ 8) drops the higher-level tabs entirely.
         searching = bool(self.search_text.strip())
+        visible_tabs = [t for t in self.TABS
+                        if self.max_level is None or t[1] is None or t[1] <= self.max_level]
         tab_area_w = self.rect.w - self.PAD * 2
-        tab_w = tab_area_w / len(self.TABS)
+        tab_w = tab_area_w / len(visible_tabs)
         self._tab_rects = []
-        for idx, (label, level) in enumerate(self.TABS):
+        for idx, (label, level) in enumerate(visible_tabs):
             tx = self.rect.x + self.PAD + int(idx * tab_w)
             tw = int((idx + 1) * tab_w) - int(idx * tab_w) - 2
             tab_rect = pygame.Rect(tx, tabs_y, tw, self.TAB_H)

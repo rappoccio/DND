@@ -125,6 +125,20 @@ void CombatEngine::removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) n
     bm.removeSpellFromAgent(idx, spell_idx);
 }
 
+bool CombatEngine::spendSpellSlot(BattleMap& bm, int idx, int level) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (level < 1 || level > 9) return false;
+    PlacedAgent& pa = bm.placedAgentMut(idx);
+    Agent::Stats& stats = pa.agent->getStats();
+    if (stats.is_npc) return false;   // NPCs use the N/day system, not slots
+    auto& slots = stats.spell_slots_remaining;
+    const std::size_t li = static_cast<std::size_t>(level - 1);
+    if (slots[li] <= 0) return false;
+    slots[li] -= 1;
+    return true;
+}
+
 std::vector<Item> CombatEngine::getAgentItems(const BattleMap& bm, int idx) const noexcept
 {
     return bm.getAgentItems(idx);

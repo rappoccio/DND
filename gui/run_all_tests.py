@@ -156,6 +156,9 @@ test_scripts = [
 
     # Dispel Magic (SPELLS_TO_WIRE Phase 4: auto-end level<=slot, else DC 10+level check; clears concentration)
     "test_dispel_magic.py",
+
+    # Wish (duplicate a spell ≤ 8: spend_spell_slot charges the 9th slot, duplicate is a free cast)
+    "test_wish.py",
 ]
 
 def run_tests():

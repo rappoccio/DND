@@ -489,6 +489,36 @@
     "school": "transmutation"
   },
   {
+    "name": "BalorEmanation",
+    "description": "At the end of each of the balor's turns, each creature in a 5-foot Emanation originating from the balor takes 3d8 Fire damage",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Automatic",
+    "save_ability": "SaveCon",
+    "casting_time": "BonusAction",
+    "range": 0,
+    "radius": 5,
+    "width": 0,
+    "length": 0,
+    "duration": 99,
+    "magic_damage_types": [
+      {
+        "type": "Fire",
+        "num_dice": 3,
+        "die_size": 8
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 1,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "conjuration",
+    "moves_with_caster": true,
+    "selective_targeting": false
+  },
+  {
     "name": "Bane",
     "description": "Up to three creatures of your choice that you can see within range must each make a Charisma saving throw. Whenever a target that fails this save makes an attack roll or a saving throw before the spell ends, the target must subtract 1d4 from the attack roll or save.",
     "type": "Harm",

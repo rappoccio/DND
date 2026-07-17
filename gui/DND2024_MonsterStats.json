@@ -6186,7 +6186,8 @@
           1,
           1
         ]
-      ]
+      ],
+      "spellcasting_ability": "cha"
     },
     "weapons": {
       "main_hand": {
@@ -6267,6 +6268,14 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "BalorEmanation"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "BalorEmanation"
+      ]
     }
   },
   "Bandit": {
