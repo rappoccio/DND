@@ -477,6 +477,75 @@ def test_aoe_falls_back_to_weapon_without_aoe_spell():
     print("✅ test_aoe_falls_back_to_weapon_without_aoe_spell passed")
 
 
+def _rect_blast(width_ft=5, length_ft=30, range_ft=120):
+    """A damaging Rectangle Harm spell (mini Wall of Fire). NPC casts aim it with the single-point form,
+    which resolveAoeTargets evaluates as a width×length box centered on the aim."""
+    s = rpg.Spell()
+    s.name = "Test Wall"
+    s.type = rpg.SpellType.Harm
+    s.geometry = rpg.SpellGeometry.Rectangle
+    s.attack_type = rpg.SpellAttack.Automatic
+    s.range = range_ft
+    s.width = width_ft
+    s.length = length_ft
+    s.level = 0
+    roll = rpg.MagicDamageRoll()
+    roll.type = rpg.MagicDamage.Fire
+    roll.num_dice = 2
+    roll.die_size = 6
+    s.magic_damage_rolls = [roll]
+    return s
+
+
+def test_aoe_includes_damaging_rectangle():
+    """ALL damaging area geometries are AoE blasts (not just Sphere/Cone/Line/Square): a PreferAOE NPC with
+    only a Rectangle wall spell (Wall of Fire-like) casts it onto the enemy line — both foes inside the
+    centered box take damage."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Efreeti", 1, 1))
+    a   = add_agent_to_battle(engine, bm, create_test_agent("FoeA", 6, 5), hp=30)
+    b   = add_agent_to_battle(engine, bm, create_test_agent("FoeB", 6, 7), hp=30)   # 10ft below FoeA
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(a, 2)
+    bm.set_agent_faction(b, 2)
+    engine.set_agent_spells(bm, npc, [_rect_blast()])   # 5ft × 30ft box → covers both when aimed at either
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferAOE)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _hp(engine, bm, a) < 30, "FoeA should be caught in the rectangle blast"
+    assert _hp(engine, bm, b) < 30, "FoeB should be caught in the rectangle blast"
+    print("✅ test_aoe_includes_damaging_rectangle passed")
+
+
+def test_aoe_skips_condition_only_area():
+    """An area spell with NO damage (a Hypnotic-Pattern-like Harm Sphere that only imposes a condition) is
+    NOT an AoE blast: a PreferAOE NPC skips it (control spells belong to PreferControl's priority list) and
+    falls back to a weapon attack instead of wasting the action on a zero-damage 'blast'."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    engine.set_agent_spells(bm, npc,
+        [_control_spell("Test Pattern", rpg.SpellGeometry.Sphere, "Incapacitated",
+                        radius_ft=10, concentration=False)])   # Harm Sphere, condition only, zero damage
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferAOE)
+
+    calls = []
+    engine.set_render_attack_hook(lambda at, t: calls.append((at, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, foe) in calls, "zero-damage area → weapon fallback, not a blast"
+    assert not _cond(engine, bm, foe).incapacitated, "the condition-only area must NOT have been cast"
+    print("✅ test_aoe_skips_condition_only_area passed")
+
+
 # ── Bucket D: rechargeable features (breath weapons) ─────────────────────────
 # A monster with an AVAILABLE recharge AoE feature spends it as often as it recharges, whatever its base
 # strategy — runNpcTurn routes through the AoE executor. An expended breath is not "available", so a
@@ -988,6 +1057,808 @@ def test_command_flee_overrides_strategy():
     print("✅ test_command_flee_overrides_strategy passed")
 
 
+# ── Steps 8–10 shared foundation — the caster executor ──────────────────────────
+# The three caster strategies (PreferControl/Heal/Support) share one executor (runCasterTurn) + one planner
+# each. The foundation ships the executor + plumbing with STUB planners (each step fills in its planner), so
+# until then a caster-strategy NPC simply falls back to a weapon turn via the shared executor. These tests
+# pin the enum round-trip, the resolveStrategy seam, and that fallback wiring.
+def test_caster_strategy_flags_round_trip():
+    """The three new caster strategies set/get through the accessors and resolve unchanged (Step 8-10
+    foundation: enum + binding + resolveStrategy seam)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5))
+    for strat in (rpg.NpcAutomationStrategy.PreferControl,
+                  rpg.NpcAutomationStrategy.PreferHeal,
+                  rpg.NpcAutomationStrategy.PreferSupport):
+        bm.set_agent_npc_automation_strategy(idx, strat)
+        assert bm.get_agent_npc_automation_strategy(idx) == strat
+        assert engine.resolve_strategy(bm, idx) == strat, "resolveStrategy passes caster strategies through"
+    print("✅ test_caster_strategy_flags_round_trip passed")
+
+
+def test_caster_strategies_fall_back_to_weapon():
+    """With the foundation's stub planners (spell_idx < 0, no approach target), a Control/Heal/Support NPC is
+    never idle: runCasterTurn falls back to the shared weapon turn, so the agent engages and attacks. Proves
+    the dispatch + weapon-fallback wiring before any real planner lands."""
+    for strat in (rpg.NpcAutomationStrategy.PreferControl,
+                  rpg.NpcAutomationStrategy.PreferHeal,
+                  rpg.NpcAutomationStrategy.PreferSupport):
+        bm = setup_battle_map(); engine = setup_combat_engine()
+        npc = add_agent_to_battle(engine, bm, create_test_agent("Acolyte", 5, 5))
+        foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+        bm.set_agent_faction(npc, 1)
+        bm.set_agent_faction(foe, 2)
+        _arm_melee(engine, bm, npc)
+        _make_caster(engine, bm, npc)          # a known spell, but no planner yet → stub returns "no cast"
+        _automate(bm, npc, strat)
+
+        calls = []
+        engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+        engine.begin_turn(bm, npc)
+        status = engine.run_npc_turn(bm, npc)
+
+        assert status == rpg.FlowStatus.Completed
+        assert (npc, foe) in calls, f"{strat}: stub planner → fall back to a weapon turn and still attack"
+    print("✅ test_caster_strategies_fall_back_to_weapon passed")
+
+
+# ── Step 8: PreferControl ────────────────────────────────────────────────────
+def _find_npc_config():
+    """The DM config, IF the engine can see it — probing the SAME relative paths npcLoadConfig tries, so
+    this test agrees with the loader regardless of the CWD the suite runs from (gui/ finds the file and
+    loads the DM-authored values; a build dir doesn't and the baked-in defaults rule)."""
+    import json
+    for p in ("npc_automation_config.json",
+              os.path.join("..", "gui", "npc_automation_config.json"),
+              os.path.join("gui", "npc_automation_config.json")):
+        if os.path.exists(p):
+            with open(p) as f:
+                return json.load(f)
+    return None
+
+
+def test_control_priority_config_loaded():
+    """The config loader (npcLoadConfig) exposes npc_automation_config.json read-only through the bindings.
+    When the JSON is visible from the CWD the loaded values must MATCH the file (the DM-authored config
+    actually drives the planners); with no file, the baked-in defaults back everything. Pins the config
+    contract the PreferControl (Step 8) / PreferHeal (Step 9) planners and the difficulty resolver read."""
+    engine = setup_combat_engine()
+    priority  = list(engine.npc_control_priority())
+    threshold = engine.npc_heal_threshold()
+    ignore    = set(engine.npc_classification_ignore())
+    assert priority and all(isinstance(nm, str) for nm in priority), "priority list loads non-empty"
+    assert 0.0 < threshold <= 1.0, threshold
+    assert ignore, "classification ignore list loads non-empty"
+
+    cfg = _find_npc_config()
+    if cfg is not None:
+        assert priority == cfg["control_priority"], \
+            "the loaded priority must be the DM-authored file order, verbatim"
+        assert threshold == cfg["heal_threshold_fraction"]
+        assert ignore == {nm.lower() for nm in cfg["classification_ignore_spells"]}, \
+            "the ignore list loads lowercased from the file"
+    else:
+        assert priority == ["Hold Monster", "Hold Person", "Hypnotic Pattern",
+                            "Slow", "Command", "Tasha's Hideous Laughter"], priority
+        assert threshold == 0.5
+    # present in BOTH the baked-in defaults and the shipped file — the names other tests rely on
+    assert "Hold Person" in priority and "Hypnotic Pattern" in priority
+    assert "speak with animals" in ignore
+    print("✅ test_control_priority_config_loaded passed")
+
+
+def _control_spell(name, geometry, condition, range_ft=60, radius_ft=10, concentration=True):
+    """A control spell that applies `condition` AUTOMATICALLY (requires_save=False) so a cast lands
+    deterministically in-test. Level 0 → always castable (no slot/use bookkeeping). Named exactly so it
+    matches an entry in the DM control_priority list the planner walks."""
+    s = rpg.Spell()
+    s.name = name
+    s.type = rpg.SpellType.Harm
+    s.geometry = geometry
+    s.attack_type = rpg.SpellAttack.Automatic
+    s.range = range_ft
+    s.radius = radius_ft
+    s.level = 0
+    s.requires_concentration = concentration
+    c = rpg.AttackCondition()
+    c.condition_name = condition
+    c.requires_save = False
+    c.condition_duration = 3
+    s.conditions = [c]
+    return s
+
+
+def test_control_casts_single_target_on_nearest():
+    """A PreferControl NPC casts its single-target control spell (Hold Person) on the nearest enemy, which
+    is paralyzed — and the render hook fires toward that target."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 1, 1))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 3, 3), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    engine.set_agent_spells(bm, npc, [_control_spell("Hold Person", rpg.SpellGeometry.Single, "Paralyzed")])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _cond(engine, bm, foe).paralyzed, "the single-target control spell should paralyze the enemy"
+    assert (npc, foe) in calls, "the control cast should fire the render hook toward the target"
+    print("✅ test_control_casts_single_target_on_nearest passed")
+
+
+def test_control_respects_priority_order():
+    """The planner walks control_priority IN ORDER: with both Hold Person (higher) and Slow (lower) castable,
+    it casts Hold Person — the enemy is paralyzed, NOT merely slowed."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 1, 1))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 3, 3), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    engine.set_agent_spells(bm, npc, [
+        _control_spell("Slow",        rpg.SpellGeometry.Single, "Slowed"),      # lower priority
+        _control_spell("Hold Person", rpg.SpellGeometry.Single, "Paralyzed"),   # higher priority
+    ])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _cond(engine, bm, foe).paralyzed, "the higher-priority Hold Person should be the cast"
+    assert not _cond(engine, bm, foe).slowed, "the lower-priority Slow must NOT have been cast"
+    print("✅ test_control_respects_priority_order passed")
+
+
+def test_control_area_targets_cluster():
+    """An area control spell (Hypnotic Pattern) lands on the enemy cluster: two adjacent foes are both
+    incapacitated by one cast."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 1, 1))
+    a   = add_agent_to_battle(engine, bm, create_test_agent("FoeA", 6, 5), hp=30)
+    b   = add_agent_to_battle(engine, bm, create_test_agent("FoeB", 6, 6), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(a, 2)
+    bm.set_agent_faction(b, 2)
+    engine.set_agent_spells(bm, npc,
+        [_control_spell("Hypnotic Pattern", rpg.SpellGeometry.Sphere, "Incapacitated", radius_ft=10)])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _cond(engine, bm, a).incapacitated, "FoeA should be caught in the area control"
+    assert _cond(engine, bm, b).incapacitated, "FoeB should be caught in the area control"
+    print("✅ test_control_area_targets_cluster passed")
+
+
+def test_control_moves_into_range_before_casting():
+    """A PreferControl NPC with a short-range control spell approaches an out-of-range enemy, then casts it
+    — it does NOT fall back to a melee swing just because it has one (control is prioritised, like AoE)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 9), hp=30)  # 4 cells = 20ft away
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)                            # HAS a melee weapon …
+    engine.set_agent_spells(bm, npc,
+        [_control_spell("Hold Person", rpg.SpellGeometry.Single, "Paralyzed", range_ft=5)])  # … 5ft control
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    engine.begin_turn(bm, npc)
+    start = (bm.placed_agents[npc].origin.col, bm.placed_agents[npc].origin.row)
+    status = engine.run_npc_turn(bm, npc)
+    end = (bm.placed_agents[npc].origin.col, bm.placed_agents[npc].origin.row)
+
+    assert status == rpg.FlowStatus.Completed
+    assert end != start, "the control caster should move to bring the enemy into range"
+    assert _cond(engine, bm, foe).paralyzed, "after closing distance it casts the control (not a melee attack)"
+    print("✅ test_control_moves_into_range_before_casting passed")
+
+
+def test_control_falls_back_to_weapon_without_control_spell():
+    """A PreferControl NPC whose spells are NOT in the control_priority list is not idle: it falls back to a
+    Simple weapon turn — engage the nearest enemy and attack."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    engine.set_agent_spells(bm, npc,
+        [_control_spell("Firebolt", rpg.SpellGeometry.Single, "Paralyzed")])  # not a control_priority name
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, foe) in calls, "no control spell → fall back to a weapon attack"
+    assert not _cond(engine, bm, foe).paralyzed, "a non-priority spell must not be cast as control"
+    print("✅ test_control_falls_back_to_weapon_without_control_spell passed")
+
+
+def test_control_skips_concentration_spell_when_already_concentrating():
+    """The concentration guard: a PreferControl NPC already concentrating on a spell does NOT drop it to
+    recast a concentration control spell — it falls back to a weapon turn instead (enemy stays un-paralyzed)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Mage", 1, 1))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 2, 2), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    engine.set_agent_spells(bm, npc,
+        [_control_spell("Hold Person", rpg.SpellGeometry.Single, "Paralyzed", concentration=True)])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    engine.begin_turn(bm, npc)
+    cond = engine.get_agent_conditions(bm, npc)          # mark the caster as already concentrating
+    cond.concentrating = True
+    engine.set_agent_conditions(bm, npc, cond)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert not _cond(engine, bm, foe).paralyzed, "must not drop live concentration to recast a control spell"
+    print("✅ test_control_skips_concentration_spell_when_already_concentrating passed")
+
+
+# ── Step 9: PreferHeal ───────────────────────────────────────────────────────
+def _heal_spell(name, geometry=None, num_dice=2, die_size=8, bonus=0, range_ft=60, num_targets=1):
+    """An HP-restoring Heal spell. Automatic (no attack roll), level 0 → always castable. healing_type dice
+    drive reviveOnHeal so a downed ally is brought back. Multiple geometry (Mass Healing Word) sets
+    num_targets so target_indices fills up to N."""
+    s = rpg.Spell()
+    s.name = name
+    s.type = rpg.SpellType.Heal
+    s.geometry = geometry if geometry is not None else rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.Automatic
+    s.range = range_ft
+    s.level = 0
+    s.num_targets = num_targets
+    h = rpg.HealingRoll()
+    h.num_dice = num_dice
+    h.die_size = die_size
+    h.bonus = bonus
+    s.healing_type = h
+    return s
+
+
+def _set_hp(engine, bm, idx, hp_cur):
+    s = engine.get_agent_stats(bm, idx); s.hp_cur = hp_cur; engine.set_agent_stats(bm, idx, s)
+
+
+def test_heal_targets_most_wounded_ally():
+    """A PreferHeal NPC casts a single-target heal on the most-wounded ally (below the 0.5 threshold), not on
+    a lightly-scratched one — and the render hook fires toward the healed ally."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    healer = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 1, 1), hp=30)
+    hurt   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 2, 2), hp=40)
+    fine   = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 3, 3), hp=40)
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Orc", 8, 8), hp=30)
+    for a in (healer, hurt, fine): bm.set_agent_faction(a, 1)
+    bm.set_agent_faction(foe, 2)
+    _set_hp(engine, bm, hurt, 8)    # 8/40 = 0.2 → below threshold
+    _set_hp(engine, bm, fine, 38)   # 38/40 → healthy, must be skipped
+    engine.set_agent_spells(bm, healer, [_heal_spell("Cure Wounds")])
+    _automate(bm, healer, rpg.NpcAutomationStrategy.PreferHeal)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, healer)
+    status = engine.run_npc_turn(bm, healer)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _hp(engine, bm, hurt) > 8, "the most-wounded ally should be healed"
+    assert _hp(engine, bm, fine) == 38, "a healthy ally must NOT be healed"
+    assert (healer, hurt) in calls, "the heal cast should fire the render hook toward the healed ally"
+    print("✅ test_heal_targets_most_wounded_ally passed")
+
+
+def test_heal_revives_downed_ally_first():
+    """A downed ally (hp 0) outranks a merely-wounded one: the heal lands on the downed ally, reviving it
+    (hp back above 0), even though another ally is also below threshold."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    healer = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 1, 1), hp=30)
+    downed = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 2, 2), hp=40)
+    hurt   = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 3, 3), hp=40)
+    for a in (healer, downed, hurt): bm.set_agent_faction(a, 1)
+    _set_hp(engine, bm, downed, 0)   # downed → highest priority
+    _set_hp(engine, bm, hurt, 10)    # wounded but conscious
+    engine.set_agent_spells(bm, healer, [_heal_spell("Healing Word", num_dice=2, die_size=4)])
+    _automate(bm, healer, rpg.NpcAutomationStrategy.PreferHeal)
+
+    engine.begin_turn(bm, healer)
+    status = engine.run_npc_turn(bm, healer)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _hp(engine, bm, downed) > 0, "the downed ally should be revived by the heal"
+    assert _hp(engine, bm, hurt) == 10, "the single-target heal must go to the downed ally, not the wounded one"
+    print("✅ test_heal_revives_downed_ally_first passed")
+
+
+def test_heal_multiple_fills_wounded_allies():
+    """A Multiple heal (Mass Healing Word) fills target_indices with several wounded allies — two hurt allies
+    are both healed by one cast."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    healer = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 1, 1), hp=30)
+    a      = add_agent_to_battle(engine, bm, create_test_agent("AllyA", 2, 2), hp=40)
+    b      = add_agent_to_battle(engine, bm, create_test_agent("AllyB", 3, 3), hp=40)
+    for x in (healer, a, b): bm.set_agent_faction(x, 1)
+    _set_hp(engine, bm, a, 8)
+    _set_hp(engine, bm, b, 12)
+    engine.set_agent_spells(bm, healer,
+        [_heal_spell("Mass Healing Word", geometry=rpg.SpellGeometry.Multiple, num_dice=2, die_size=4,
+                     num_targets=6)])
+    _automate(bm, healer, rpg.NpcAutomationStrategy.PreferHeal)
+
+    engine.begin_turn(bm, healer)
+    status = engine.run_npc_turn(bm, healer)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _hp(engine, bm, a) > 8, "AllyA should be healed by the Multiple heal"
+    assert _hp(engine, bm, b) > 12, "AllyB should also be healed by the same cast"
+    print("✅ test_heal_multiple_fills_wounded_allies passed")
+
+
+def test_heal_moves_into_range_before_casting():
+    """A PreferHeal NPC with a short-range heal approaches an out-of-range wounded ally, then heals it — it
+    does NOT idle or swing a weapon while an ally needs healing (heal is prioritised, like AoE/Control)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    healer = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    hurt   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 9), hp=40)  # 4 cells = 20ft away
+    bm.set_agent_faction(healer, 1); bm.set_agent_faction(hurt, 1)
+    _arm_melee(engine, bm, healer)                       # HAS a melee weapon …
+    _set_hp(engine, bm, hurt, 8)
+    engine.set_agent_spells(bm, healer, [_heal_spell("Cure Wounds", range_ft=5)])  # … 5ft heal
+    _automate(bm, healer, rpg.NpcAutomationStrategy.PreferHeal)
+
+    engine.begin_turn(bm, healer)
+    start = (bm.placed_agents[healer].origin.col, bm.placed_agents[healer].origin.row)
+    status = engine.run_npc_turn(bm, healer)
+    end = (bm.placed_agents[healer].origin.col, bm.placed_agents[healer].origin.row)
+
+    assert status == rpg.FlowStatus.Completed
+    assert end != start, "the healer should move to bring the wounded ally into range"
+    assert _hp(engine, bm, hurt) > 8, "after closing distance it heals the ally (not a melee attack)"
+    print("✅ test_heal_moves_into_range_before_casting passed")
+
+
+def test_heal_falls_back_to_weapon_when_allies_healthy():
+    """The threshold gate: with every ally healthy (above heal_threshold_fraction), a PreferHeal NPC does NOT
+    waste its heal — it falls back to a Simple weapon turn and attacks the nearest enemy."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    healer = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 4, 4), hp=40)  # full HP
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Orc", 6, 5), hp=30)
+    bm.set_agent_faction(healer, 1); bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, healer)
+    engine.set_agent_spells(bm, healer, [_heal_spell("Cure Wounds")])
+    _automate(bm, healer, rpg.NpcAutomationStrategy.PreferHeal)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, healer)
+    status = engine.run_npc_turn(bm, healer)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (healer, foe) in calls, "no ally worth healing → fall back to a weapon attack on the enemy"
+    print("✅ test_heal_falls_back_to_weapon_when_allies_healthy passed")
+
+
+# ── Step 10: PreferSupport ───────────────────────────────────────────────────
+def _buff_spell(name="Bless", condition="Blessed", geometry=None, range_ft=60, num_targets=1,
+                concentration=False):
+    """A Help buff spell that applies `condition` AUTOMATICALLY (requires_save=False). Uses the real
+    "Blessed" condition by default so the engine sets Stats.blessed on each target — the test can verify a
+    buff actually landed. Level 0 → always castable; duration > 1 so it persists. Multiple geometry
+    (num_targets > 1) lets target_indices fill several allies."""
+    s = rpg.Spell()
+    s.name = name
+    s.type = rpg.SpellType.Help
+    s.geometry = geometry if geometry is not None else rpg.SpellGeometry.Single
+    s.attack_type = rpg.SpellAttack.Automatic
+    s.range = range_ft
+    s.level = 0
+    s.duration = 10
+    s.num_targets = num_targets
+    s.requires_concentration = concentration
+    c = rpg.AttackCondition()
+    c.condition_name = condition
+    c.requires_save = False
+    c.condition_duration = 0   # 0 → inherit the spell's duration
+    s.conditions = [c]
+    return s
+
+
+def _plant_buff(engine, bm, ally, condition="Blessed"):
+    """Mark `ally` as already carrying `condition` (a live tracked ActiveAgentCondition) so the Support
+    planner treats it as already-buffed and skips it. save_repeat_turns = -1 so no begin_turn save strips it."""
+    c = rpg.ActiveAgentCondition()
+    c.agent_idx        = ally
+    c.condition_name   = condition
+    c.turns_remaining  = 10
+    c.save_repeat_turns = -1
+    engine.add_agent_condition(bm, c)
+
+
+def test_support_buffs_unbuffed_allies():
+    """A PreferSupport NPC casts a Help buff on an unbuffed ally (which becomes blessed), firing the render
+    hook toward it. The ally sits at a lower index than the caster so — with nobody engaged — it is picked
+    ahead of the self-buff."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 6), hp=40)  # index 0
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)   # index 1
+    bm.set_agent_faction(ally, 1); bm.set_agent_faction(caster, 1)
+    engine.set_agent_spells(bm, caster, [_buff_spell()])
+    _automate(bm, caster, rpg.NpcAutomationStrategy.PreferSupport)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, caster)
+    status = engine.run_npc_turn(bm, caster)
+
+    assert status == rpg.FlowStatus.Completed
+    assert engine.get_agent_stats(bm, ally).blessed, "the unbuffed ally should be buffed"
+    assert (caster, ally) in calls, "the buff cast should fire the render hook toward the buffed ally"
+    print("✅ test_support_buffs_unbuffed_allies passed")
+
+
+def test_support_skips_already_buffed_ally():
+    """The already-buffed check: with one ally already carrying the buff (and the caster self-buffed), the
+    Support planner buffs the OTHER, unbuffed ally — never re-buffing the one that already has it."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster   = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    buffed   = add_agent_to_battle(engine, bm, create_test_agent("AllyA", 5, 6), hp=40)
+    unbuffed = add_agent_to_battle(engine, bm, create_test_agent("AllyB", 5, 7), hp=40)
+    for a in (caster, buffed, unbuffed): bm.set_agent_faction(a, 1)
+    engine.set_agent_spells(bm, caster, [_buff_spell()])
+    _automate(bm, caster, rpg.NpcAutomationStrategy.PreferSupport)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, caster)
+    _plant_buff(engine, bm, caster)    # caster already blessed itself → excluded from candidates
+    _plant_buff(engine, bm, buffed)    # this ally already carries the buff → must be skipped
+    status = engine.run_npc_turn(bm, caster)
+
+    assert status == rpg.FlowStatus.Completed
+    assert engine.get_agent_stats(bm, unbuffed).blessed, "the unbuffed ally should be buffed"
+    assert (caster, unbuffed) in calls and (caster, buffed) not in calls, "must buff only the unbuffed ally"
+    print("✅ test_support_skips_already_buffed_ally passed")
+
+
+def test_support_multiple_fills_allies_preferring_engaged():
+    """A Multiple buff fills several allies in one cast, and among candidates it PREFERS allies engaged with
+    an enemy: the ally adjacent to a foe is the render representative (front of target_indices), and both
+    allies end up buffed."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster  = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    far     = add_agent_to_battle(engine, bm, create_test_agent("AllyFar", 5, 6), hp=40)   # not engaged
+    engaged = add_agent_to_battle(engine, bm, create_test_agent("AllyEng", 9, 9), hp=40)   # adjacent to a foe
+    foe     = add_agent_to_battle(engine, bm, create_test_agent("Orc", 9, 10), hp=30)
+    for a in (caster, far, engaged): bm.set_agent_faction(a, 1)
+    bm.set_agent_faction(foe, 2)
+    _plant_buff(engine, bm, caster)    # keep the focus on the two allies, not the self-buff
+    engine.set_agent_spells(bm, caster,
+        [_buff_spell("Bless", geometry=rpg.SpellGeometry.Multiple, num_targets=6, range_ft=120)])
+    _automate(bm, caster, rpg.NpcAutomationStrategy.PreferSupport)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, caster)
+    status = engine.run_npc_turn(bm, caster)
+
+    assert status == rpg.FlowStatus.Completed
+    assert engine.get_agent_stats(bm, engaged).blessed, "the engaged ally should be buffed"
+    assert engine.get_agent_stats(bm, far).blessed, "the Multiple buff should also fill the other ally"
+    assert (caster, engaged) in calls, "the engaged ally is preferred as the cast's representative target"
+    print("✅ test_support_multiple_fills_allies_preferring_engaged passed")
+
+
+def test_support_moves_into_range_before_casting():
+    """A PreferSupport NPC with a short-range buff approaches an out-of-range unbuffed ally, then buffs it —
+    it does NOT idle or swing a weapon (support is prioritised, like AoE/Control/Heal). The caster is already
+    self-buffed so the far ally is the only candidate driving the approach."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 9), hp=40)  # 4 cells = 20ft away
+    bm.set_agent_faction(caster, 1); bm.set_agent_faction(ally, 1)
+    _arm_melee(engine, bm, caster)                         # HAS a melee weapon …
+    engine.set_agent_spells(bm, caster, [_buff_spell(range_ft=5)])  # … 5ft buff
+    _automate(bm, caster, rpg.NpcAutomationStrategy.PreferSupport)
+
+    engine.begin_turn(bm, caster)
+    _plant_buff(engine, bm, caster)    # self already buffed → the far ally is the only candidate
+    start = (bm.placed_agents[caster].origin.col, bm.placed_agents[caster].origin.row)
+    status = engine.run_npc_turn(bm, caster)
+    end = (bm.placed_agents[caster].origin.col, bm.placed_agents[caster].origin.row)
+
+    assert status == rpg.FlowStatus.Completed
+    assert end != start, "the caster should move to bring the ally into range"
+    assert engine.get_agent_stats(bm, ally).blessed, "after closing distance it buffs the ally (not a melee attack)"
+    print("✅ test_support_moves_into_range_before_casting passed")
+
+
+def test_support_skips_concentration_buff_when_already_concentrating():
+    """The concentration guard: a PreferSupport NPC already concentrating does NOT drop it to recast a
+    concentration buff — it falls back to a weapon turn and attacks the enemy instead (ally stays unbuffed)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 6), hp=40)
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Orc", 6, 5), hp=30)
+    bm.set_agent_faction(caster, 1); bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, caster)
+    engine.set_agent_spells(bm, caster, [_buff_spell(concentration=True)])
+    _automate(bm, caster, rpg.NpcAutomationStrategy.PreferSupport)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, caster)
+    cond = engine.get_agent_conditions(bm, caster)       # mark the caster as already concentrating
+    cond.concentrating = True
+    engine.set_agent_conditions(bm, caster, cond)
+    status = engine.run_npc_turn(bm, caster)
+
+    assert status == rpg.FlowStatus.Completed
+    assert not engine.get_agent_stats(bm, ally).blessed, "must not drop live concentration to recast a buff"
+    assert (caster, foe) in calls, "with the buff guarded, fall back to a weapon attack on the enemy"
+    print("✅ test_support_skips_concentration_buff_when_already_concentrating passed")
+
+
+def test_support_falls_back_to_weapon_when_all_buffed():
+    """With every ally (and the caster) already buffed, a PreferSupport NPC does NOT waste its cast — it
+    falls back to a Simple weapon turn and attacks the nearest enemy."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 5, 5), hp=30)
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 6), hp=40)
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Orc", 6, 5), hp=30)
+    bm.set_agent_faction(caster, 1); bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, caster)
+    engine.set_agent_spells(bm, caster, [_buff_spell()])
+    _automate(bm, caster, rpg.NpcAutomationStrategy.PreferSupport)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, caster)
+    _plant_buff(engine, bm, caster); _plant_buff(engine, bm, ally)   # everyone already buffed
+    status = engine.run_npc_turn(bm, caster)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (caster, foe) in calls, "nobody left to buff → fall back to a weapon attack on the enemy"
+    print("✅ test_support_falls_back_to_weapon_when_all_buffed passed")
+
+
+# ── Difficulty resolver: level → role → strategy override ────────────────────────
+# resolveStrategy incorporates Steps 3-10 into the difficulty levels (NPC_AUTOMATION_PLAN.md
+# "Difficulty-level → strategy mapping"): L1 all Simple; L2 splits by role; L3 casters blast; L4 adds the
+# specialists (PreferHide for stealthy ranged, dynamic Heal→Control→Support planner-probing for casters);
+# L5/6 clamp to L4 until the NN policies exist. Level 0 keeps the per-agent strategy field (all earlier
+# tests run at level 0, pinning that the override changes nothing unless a level is dialed).
+
+def _flavor_spell(name="Speak with Animals"):
+    """A known spell that is combat-IRRELEVANT (on classification_ignore_spells): it must NOT make its
+    owner a caster."""
+    s = rpg.Spell()
+    s.name = name
+    return s
+
+
+def _set_difficulty(bm, idx, level):
+    bm.set_agent_npc_automation_difficulty(idx, level)
+
+
+def test_role_classification():
+    """npcClassifyRole: combat spells ⇒ Caster; else a ranged weapon ⇒ Ranged; else Melee."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    brute  = add_agent_to_battle(engine, bm, create_test_agent("Brute", 1, 1))
+    archer = add_agent_to_battle(engine, bm, create_test_agent("Archer", 3, 3))
+    mage   = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 5))
+    _arm_melee(engine, bm, brute)
+    _arm_ranged(engine, bm, archer)
+    _make_caster(engine, bm, mage)             # knows Firebolt (combat-relevant)
+    _arm_melee(engine, bm, mage)               # a caster with a dagger is still a Caster
+
+    assert engine.npc_classify_role(bm, brute)  == rpg.NpcRole.Melee
+    assert engine.npc_classify_role(bm, archer) == rpg.NpcRole.Ranged
+    assert engine.npc_classify_role(bm, mage)   == rpg.NpcRole.Caster
+    print("✅ test_role_classification passed")
+
+
+def test_classification_ignores_flavor_spells():
+    """The Centaur Warden case: an agent whose only spells are flavor/utility (Speak with Animals,
+    Thaumaturgy) is NOT a caster — its role falls through to its weapons. One combat spell added to the
+    same list flips it back to Caster. The loaded ignore list is queryable (lowercased)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    warden = add_agent_to_battle(engine, bm, create_test_agent("Centaur Warden", 1, 1))
+    _arm_melee(engine, bm, warden)
+    engine.set_agent_spells(bm, warden, [_flavor_spell("Speak with Animals"),
+                                         _flavor_spell("Thaumaturgy")])
+    assert engine.npc_classify_role(bm, warden) == rpg.NpcRole.Melee, \
+        "flavor-only spell list must not classify as Caster"
+
+    engine.set_agent_spells(bm, warden, [_flavor_spell("Speak with Animals"),
+                                         _heal_spell("Cure Wounds")])
+    assert engine.npc_classify_role(bm, warden) == rpg.NpcRole.Caster, \
+        "one combat-relevant spell among the flavor makes it a Caster"
+
+    ignore = engine.npc_classification_ignore()
+    assert "speak with animals" in ignore and "mage armor" in ignore, \
+        "the ignore list loads (lowercased) from config/baked-in defaults"
+    print("✅ test_classification_ignores_flavor_spells passed")
+
+
+def test_difficulty_level1_everyone_simple():
+    """Level 1 resolves Simple for every role and OVERRIDES the per-agent strategy field."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    brute  = add_agent_to_battle(engine, bm, create_test_agent("Brute", 1, 1))
+    archer = add_agent_to_battle(engine, bm, create_test_agent("Archer", 3, 3))
+    mage   = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 5))
+    _arm_melee(engine, bm, brute); _arm_ranged(engine, bm, archer); _make_caster(engine, bm, mage)
+    for idx in (brute, archer, mage):
+        bm.set_agent_npc_automation_strategy(idx, rpg.NpcAutomationStrategy.PreferAOE)  # must be ignored
+        _set_difficulty(bm, idx, 1)
+        assert engine.resolve_strategy(bm, idx) == rpg.NpcAutomationStrategy.Simple, \
+            "Level 1: everyone Simple, regardless of the per-agent strategy field"
+    print("✅ test_difficulty_level1_everyone_simple passed")
+
+
+def test_difficulty_level2_role_split():
+    """Level 2: melee stays Simple; ranged and casters kite (PreferRange)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    brute  = add_agent_to_battle(engine, bm, create_test_agent("Brute", 1, 1))
+    archer = add_agent_to_battle(engine, bm, create_test_agent("Archer", 3, 3))
+    mage   = add_agent_to_battle(engine, bm, create_test_agent("Mage", 5, 5))
+    _arm_melee(engine, bm, brute); _arm_ranged(engine, bm, archer); _make_caster(engine, bm, mage)
+    for idx in (brute, archer, mage):
+        _set_difficulty(bm, idx, 2)
+    assert engine.resolve_strategy(bm, brute)  == rpg.NpcAutomationStrategy.Simple
+    assert engine.resolve_strategy(bm, archer) == rpg.NpcAutomationStrategy.PreferRange
+    assert engine.resolve_strategy(bm, mage)   == rpg.NpcAutomationStrategy.PreferRange, \
+        "a caster with no AoE kites at Level 2"
+    print("✅ test_difficulty_level2_role_split passed")
+
+
+def test_difficulty_level3_caster_blasts():
+    """Level 3: a caster holding a castable AoE blast upgrades to PreferAOE (at Level 2 it still kites)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    mage = add_agent_to_battle(engine, bm, create_test_agent("Mage", 1, 1))
+    foe  = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 6), hp=30)
+    bm.set_agent_faction(mage, 1); bm.set_agent_faction(foe, 2)
+    engine.set_agent_spells(bm, mage, [_aoe_cantrip()])
+
+    _set_difficulty(bm, mage, 2)
+    assert engine.resolve_strategy(bm, mage) == rpg.NpcAutomationStrategy.PreferRange, \
+        "Level 2 casters don't blast yet"
+    _set_difficulty(bm, mage, 3)
+    assert engine.resolve_strategy(bm, mage) == rpg.NpcAutomationStrategy.PreferAOE, \
+        "Level 3 caster with a castable AoE → PreferAOE"
+
+    # Every damaging area geometry counts as an AoE blast — a wall-caster (Rectangle, Wall of Fire-like)
+    # resolves PreferAOE too.
+    waller = add_agent_to_battle(engine, bm, create_test_agent("Waller", 3, 1))
+    bm.set_agent_faction(waller, 1)
+    engine.set_agent_spells(bm, waller, [_rect_blast()])
+    _set_difficulty(bm, waller, 3)
+    assert engine.resolve_strategy(bm, waller) == rpg.NpcAutomationStrategy.PreferAOE, \
+        "a damaging Rectangle wall is an AoE blast for the resolver"
+    print("✅ test_difficulty_level3_caster_blasts passed")
+
+
+def test_difficulty_level4_ranged_stealth_hide():
+    """Level 4: a ranged agent WITH stealth tools (Cunning Action) becomes the ambusher (PreferHide);
+    a plain archer keeps kiting (PreferRange)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    rogue  = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 1, 1))
+    archer = add_agent_to_battle(engine, bm, create_test_agent("Archer", 3, 3))
+    _arm_ranged(engine, bm, rogue); _arm_ranged(engine, bm, archer)
+    s = engine.get_agent_stats(bm, rogue); s.has_cunning_action = True; engine.set_agent_stats(bm, rogue, s)
+    _set_difficulty(bm, rogue, 4); _set_difficulty(bm, archer, 4)
+
+    assert engine.resolve_strategy(bm, rogue)  == rpg.NpcAutomationStrategy.PreferHide, \
+        "Level 4 ranged + Cunning Action → PreferHide"
+    assert engine.resolve_strategy(bm, archer) == rpg.NpcAutomationStrategy.PreferRange, \
+        "Level 4 ranged without stealth tools stays PreferRange"
+    print("✅ test_difficulty_level4_ranged_stealth_hide passed")
+
+
+def test_difficulty_level4_caster_dynamic():
+    """Level 4 casters resolve DYNAMICALLY by probing the live planners (Heal → Control → Support → AoE):
+    the same cleric resolves PreferHeal while an ally is badly hurt, PreferSupport once everyone is healthy
+    but unbuffed, and falls through to PreferRange when there is nothing left to cast."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 1, 1), hp=30)
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 2, 2), hp=40)
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Orc", 8, 8), hp=30)
+    bm.set_agent_faction(cleric, 1); bm.set_agent_faction(ally, 1); bm.set_agent_faction(foe, 2)
+    engine.set_agent_spells(bm, cleric, [_heal_spell("Cure Wounds"), _buff_spell("Bless")])
+    _set_difficulty(bm, cleric, 4)
+
+    _set_hp(engine, bm, ally, 8)      # 8/40 → below the 0.5 heal threshold
+    assert engine.resolve_strategy(bm, cleric) == rpg.NpcAutomationStrategy.PreferHeal, \
+        "a badly-hurt ally makes the Heal planner actionable → PreferHeal wins"
+
+    _set_hp(engine, bm, ally, 40)     # everyone healthy → Heal not actionable, Support is (nobody Blessed)
+    assert engine.resolve_strategy(bm, cleric) == rpg.NpcAutomationStrategy.PreferSupport, \
+        "healthy allies + an unbuffed ally → PreferSupport"
+
+    _plant_buff(engine, bm, ally)     # everyone (incl. the cleric itself) carries the buff → nothing to cast
+    _plant_buff(engine, bm, cleric)
+    assert engine.resolve_strategy(bm, cleric) == rpg.NpcAutomationStrategy.PreferRange, \
+        "nothing to heal/control/support and no AoE → the L3/L2 caster fallback (kite)"
+    print("✅ test_difficulty_level4_caster_dynamic passed")
+
+
+def test_difficulty_level4_heal_outranks_control():
+    """The dynamic probe order is Heal → Control: a caster holding BOTH a control spell and a heal resolves
+    PreferHeal while an ally is down, and PreferControl once nobody needs healing."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    priest = add_agent_to_battle(engine, bm, create_test_agent("Priest", 1, 1), hp=30)
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 2, 2), hp=40)
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Hero", 4, 4), hp=30)
+    bm.set_agent_faction(priest, 1); bm.set_agent_faction(ally, 1); bm.set_agent_faction(foe, 2)
+    engine.set_agent_spells(bm, priest, [
+        _heal_spell("Cure Wounds"),
+        _control_spell("Hold Person", rpg.SpellGeometry.Single, "Paralyzed"),
+    ])
+    _set_difficulty(bm, priest, 4)
+
+    _set_hp(engine, bm, ally, 0)      # downed ally
+    assert engine.resolve_strategy(bm, priest) == rpg.NpcAutomationStrategy.PreferHeal, \
+        "a downed ally outranks the castable control spell"
+
+    _set_hp(engine, bm, ally, 40)
+    assert engine.resolve_strategy(bm, priest) == rpg.NpcAutomationStrategy.PreferControl, \
+        "nobody to heal → the control spell (on the priority list) resolves PreferControl"
+    print("✅ test_difficulty_level4_heal_outranks_control passed")
+
+
+def test_difficulty_level5_clamps_to_level4():
+    """Levels 5/6 (NN policies, Steps 11-13) are not trained yet: they resolve exactly as Level 4."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    rogue = add_agent_to_battle(engine, bm, create_test_agent("Rogue", 1, 1))
+    _arm_ranged(engine, bm, rogue)
+    s = engine.get_agent_stats(bm, rogue); s.has_cunning_action = True; engine.set_agent_stats(bm, rogue, s)
+    for level in (5, 6):
+        _set_difficulty(bm, rogue, level)
+        assert engine.resolve_strategy(bm, rogue) == rpg.NpcAutomationStrategy.PreferHide, \
+            f"Level {level} clamps to the Level-4 heuristics"
+    print("✅ test_difficulty_level5_clamps_to_level4 passed")
+
+
+def test_difficulty_level4_turn_actually_heals():
+    """End-to-end: an automated Level-4 cleric (strategy field left at Simple — the override drives) runs
+    its turn through run_npc_turn and HEALS the wounded ally instead of attacking."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    cleric = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 1, 1), hp=30)
+    hurt   = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 2, 2), hp=40)
+    foe    = add_agent_to_battle(engine, bm, create_test_agent("Orc", 3, 3), hp=30)
+    bm.set_agent_faction(cleric, 1); bm.set_agent_faction(hurt, 1); bm.set_agent_faction(foe, 2)
+    _set_hp(engine, bm, hurt, 8)
+    engine.set_agent_spells(bm, cleric, [_heal_spell("Cure Wounds")])
+    _arm_melee(engine, bm, cleric)                      # has a weapon, but the resolver must pick Heal
+    _automate(bm, cleric)                               # strategy field stays Simple
+    _set_difficulty(bm, cleric, 4)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, cleric)
+    status = engine.run_npc_turn(bm, cleric)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _hp(engine, bm, hurt) > 8, "the Level-4 override must drive a heal onto the wounded ally"
+    assert (cleric, hurt) in calls, "the render hook fires toward the healed ally, not the enemy"
+    print("✅ test_difficulty_level4_turn_actually_heals passed")
+
+
 def run_all():
     test_flags_round_trip()
     test_resolve_strategy_returns_agent_field()
@@ -1006,6 +1877,8 @@ def run_all():
     test_aoe_avoids_friendly_fire()
     test_aoe_moves_into_range_before_meleeing()
     test_aoe_falls_back_to_weapon_without_aoe_spell()
+    test_aoe_includes_damaging_rectangle()
+    test_aoe_skips_condition_only_area()
     test_recharge_breath_gating_respects_expended()
     test_recharge_breath_used_regardless_of_strategy()
     test_recharge_breath_on_cooldown_falls_back_to_weapon()
@@ -1022,7 +1895,37 @@ def run_all():
     test_hide_route_d_falls_back_to_kite()
     test_command_flee_runs_away_no_attack()
     test_command_flee_overrides_strategy()
-    print("\nAll NPC automation (Steps 1–7 + Bucket D) tests passed ✅")
+    test_caster_strategy_flags_round_trip()
+    test_caster_strategies_fall_back_to_weapon()
+    test_control_priority_config_loaded()
+    test_control_casts_single_target_on_nearest()
+    test_control_respects_priority_order()
+    test_control_area_targets_cluster()
+    test_control_moves_into_range_before_casting()
+    test_control_falls_back_to_weapon_without_control_spell()
+    test_control_skips_concentration_spell_when_already_concentrating()
+    test_heal_targets_most_wounded_ally()
+    test_heal_revives_downed_ally_first()
+    test_heal_multiple_fills_wounded_allies()
+    test_heal_moves_into_range_before_casting()
+    test_heal_falls_back_to_weapon_when_allies_healthy()
+    test_support_buffs_unbuffed_allies()
+    test_support_skips_already_buffed_ally()
+    test_support_multiple_fills_allies_preferring_engaged()
+    test_support_moves_into_range_before_casting()
+    test_support_skips_concentration_buff_when_already_concentrating()
+    test_support_falls_back_to_weapon_when_all_buffed()
+    test_role_classification()
+    test_classification_ignores_flavor_spells()
+    test_difficulty_level1_everyone_simple()
+    test_difficulty_level2_role_split()
+    test_difficulty_level3_caster_blasts()
+    test_difficulty_level4_ranged_stealth_hide()
+    test_difficulty_level4_caster_dynamic()
+    test_difficulty_level4_heal_outranks_control()
+    test_difficulty_level5_clamps_to_level4()
+    test_difficulty_level4_turn_actually_heals()
+    print("\nAll NPC automation (Steps 1–10 + Bucket D + difficulty resolver) tests passed ✅")
 
 
 if __name__ == "__main__":

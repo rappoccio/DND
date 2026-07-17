@@ -119,6 +119,27 @@ namespace rpg {
       // addAgentCondition("Blessed"), cleared in clearSpellConditionEffect.
       bool blessed{false};
 
+      // ── Haste (Phase 2) ───────────────────────────────────────────────
+      // While set, the creature has +2 AC (folded into ac_temporary_modifications),
+      // Advantage on DEX saves (a save_advantage_mask bit), doubled walk Speed, and
+      // one extra limited action per turn. Set in addAgentCondition("Hasted");
+      // reversed in clearSpellConditionEffect, which then inflicts the end-of-spell
+      // lethargy (a "HasteLethargy" condition: Incapacitated + Speed 0 for one turn).
+      //  · haste_speed_bonus     — walk speed Haste added, stored so the restore is
+      //    exact. Reused by the lethargy to hold the speed to give back when Speed 0 ends.
+      //  · haste_action_available — the extra action for this turn; refilled each
+      //    beginTurn while hasted, spent by the GUI (resets action_used).
+      bool hasted{false};
+      int  haste_speed_bonus{0};
+      bool haste_action_available{false};
+
+      // ── Aid (Phase 3) ─────────────────────────────────────────────────
+      // Aid raises both the current and maximum HP by 5 (+5 per slot level above
+      // 2). aid_hp_bonus records the exact amount granted so the teardown gives
+      // back precisely what it added, no matter what the caster's max HP is now.
+      // Set in addAgentCondition("Aided"), reversed in clearSpellConditionEffect.
+      int  aid_hp_bonus{0};
+
       // ── Skill proficiency flags ────────────────────────────────────────
       bool stealth_prof{false};     // proficiency in Stealth (DEX-based)
       bool perception_prof{false};  // proficiency in Perception (WIS-based)

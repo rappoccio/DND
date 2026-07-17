@@ -365,6 +365,30 @@ bool CombatEngine::saveAdvantageFor(const BattleMap& bm, int agent_idx, SaveAbil
     return (s.save_advantage_mask & (1 << static_cast<int>(ab))) != 0;
 }
 
+// NPC turn playback: record an Outcome event (flash text + animation-synced HP/death state).
+// Declared in combat.hpp next to the other recorders; lives here because it needs the full
+// BattleMap definition (the header only forward-declares it). No-op unless an automated NPC
+// turn is recording (npc_recording_).
+void CombatEngine::recordNpcOutcome(const BattleMap& bm, int target_idx, std::string text,
+                                    bool good, bool sync_hp)
+{
+    if (!npc_recording_) return;
+    NpcVisualEvent e;
+    e.kind = NpcVisualEvent::Outcome;
+    e.agent_idx = target_idx;
+    e.text = std::move(text);
+    e.good = good;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (sync_hp && target_idx >= 0 && target_idx < n) {
+        e.hp_after = bm.getAgentStats(target_idx).hp_cur;
+        // died gates the GUI's deferred corpse removal: NPC corpses clear via conditions.dead
+        // (PCs at 0 HP stay drawn — they roll death saves), mirroring _draw_agents' rules.
+        e.died = bm.getAgentConditions(target_idx).dead ||
+                 bm.placedAgents()[static_cast<std::size_t>(target_idx)].removed_from_play;
+    }
+    npc_visual_events_.push_back(std::move(e));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Armor Class
 // ─────────────────────────────────────────────────────────────────────────────

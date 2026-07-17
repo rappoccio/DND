@@ -48,6 +48,8 @@ test_scripts = [
     "test_legendary.py",
     "test_turn_start.py",
     "test_npc_automation.py",
+    "test_npc_analysis.py",
+    "test_npc_visual_events.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",
@@ -145,6 +147,15 @@ test_scripts = [
 
     # Bless (SPELLS_TO_WIRE Phase 1: +1d4 to attacks & saves, dies with concentration)
     "test_bless.py",
+
+    # Haste (SPELLS_TO_WIRE Phase 2: +2 AC, Adv DEX saves, doubled speed, extra action, end-lethargy)
+    "test_haste.py",
+
+    # Aid (SPELLS_TO_WIRE Phase 3: +5 current & max HP per target, +5/upcast level, revives downed)
+    "test_aid.py",
+
+    # Dispel Magic (SPELLS_TO_WIRE Phase 4: auto-end level<=slot, else DC 10+level check; clears concentration)
+    "test_dispel_magic.py",
 ]
 
 def run_tests():

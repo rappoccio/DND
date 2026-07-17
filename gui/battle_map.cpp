@@ -400,6 +400,7 @@ std::span<const PlacedAgent> BattleMap::placedAgents() const noexcept
 
 bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
 {
+    lastMovePath_.clear();   // only a successful move leaves a route behind (see lastMovePath())
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
     auto& pa = placedAgents_[idx];
 
@@ -432,6 +433,7 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
         }
 
         std::fprintf(stderr, "[C++ FLY] Move allowed\n");
+        lastMovePath_ = {pa.origin, newOrigin};   // straight segment — visually correct for flight
         pa.agent->flyTo(newOrigin.col, newOrigin.row);
         pa.origin = newOrigin;
         return true;
@@ -450,6 +452,7 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
     auto cmp = [](const PQItem& a, const PQItem& b) { return a.first > b.first; };
     std::priority_queue<PQItem, std::vector<PQItem>, decltype(cmp)> pq(cmp);
     std::unordered_map<Cell, int, CellHash> dist;
+    std::unordered_map<Cell, Cell, CellHash> prev;   // predecessor map → lastMovePath_ reconstruction
 
     dist[pa.origin] = 0;
     pq.push({0, pa.origin});
@@ -494,6 +497,7 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
 
                 if (!dist.count(next) || dist[next] > new_cost) {
                     dist[next] = new_cost;
+                    prev[next] = cell;
                     pq.push({new_cost, next});
                 }
             }
@@ -535,6 +539,17 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
         (type == MovementType::Swim ? -charge : 0),
         (type == MovementType::Burrow ? -charge : 0)
     );
+
+    // Reconstruct the actual cell route (origin → … → dest, inclusive) for lastMovePath().
+    // The GUI's NPC-turn playback animates the token along this route.
+    lastMovePath_.push_back(newOrigin);
+    for (Cell c = newOrigin; c != pa.origin; ) {
+        auto it = prev.find(c);
+        if (it == prev.end()) { lastMovePath_.clear(); break; }   // defensive: unreachable if cost resolved
+        c = it->second;
+        lastMovePath_.push_back(c);
+    }
+    std::reverse(lastMovePath_.begin(), lastMovePath_.end());
 
     pa.origin = newOrigin;
     return true;

@@ -839,6 +839,48 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 Agent::Stats st = bm.getAgentStats(cond.agent_idx);
                 st.blessed = true;
                 bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Hasted") {
+                // Haste (Phase 2) — +2 AC, Advantage on DEX saves, doubled walk Speed, and an
+                // extra limited action each turn (refilled in beginTurn). Idempotent: never stack
+                // the buff, so a re-cast can't double the AC/speed. The exact walk-speed bonus is
+                // recorded so clearSpellConditionEffect restores Speed precisely.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (!st.hasted) {
+                    st.ac_temporary_modifications += 2;
+                    st.haste_speed_bonus = st.speed_walk;
+                    st.speed_walk       += st.haste_speed_bonus;
+                    st.save_advantage_mask |= (1 << SaveDex);
+                    st.haste_action_available = true;
+                    st.hasted = true;
+                    bm.setAgentStats(cond.agent_idx, st);
+                }
+            } else if (cond.condition_name == "HasteLethargy") {
+                // Haste's end-of-spell lethargy — Incapacitated + Speed 0 until the end of the
+                // target's next turn. Route through applyIncapacitated for the shared side-effects
+                // (movement→0, grapples released, concentration broken), then zero the walk Speed
+                // itself so beginTurn's refill still yields 0. haste_speed_bonus (0 once Haste is
+                // fully torn down) holds the speed to give back when this condition ends.
+                applyIncapacitated(bm, cond.agent_idx);
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.haste_speed_bonus = st.speed_walk;
+                st.speed_walk = 0;
+                bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Aided") {
+                // Aid (Phase 3) — raise both maximum and current HP by 5, +5 per slot level above 2.
+                // cast_level (Phase 0.2) carries the actual slot used. Idempotent: never stack the
+                // bonus, so a re-cast can't permanently inflate hp_max. The granted amount is stashed
+                // in aid_hp_bonus so clearSpellConditionEffect gives back exactly what it added.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (st.aid_hp_bonus == 0) {
+                    const int bonus = 5 * (1 + std::max(0, cond.cast_level - 2));
+                    st.hp_max      += bonus;
+                    st.aid_hp_bonus = bonus;
+                    bm.setAgentStats(cond.agent_idx, st);
+                    // Route the current-HP gain through healAgent so a downed ally is revived and
+                    // rejoins initiative (the short-rest heal sets this precedent). Caps at the
+                    // freshly raised effectiveMaxHp.
+                    healAgent(bm, cond.agent_idx, bonus);
+                }
             }
             log_("Applied condition '{}' to {} for {} turns",
                  cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);

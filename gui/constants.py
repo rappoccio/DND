@@ -44,6 +44,14 @@ FLASH_GOOD = (120, 220, 140)   # green — Hit / Saved
 FLASH_BAD  = (220, 110, 110)   # red   — Miss / Failed
 FLASH_CRIT = (255, 215,   0)   # gold  — critical hit
 
+# ── NPC turn playback (animated automated turns) ─────────────────────────────
+# Timing knobs for replaying an automated NPC turn's visual event stream
+# (rpg.NpcVisualEvent, drained via combat.take_npc_visual_events).
+NPC_ANIM_CELLS_PER_SEC = 10.0   # token slide speed along a Move path (grid cells / second)
+NPC_TYPEWRITER_CPS     = 40.0   # announce text reveal speed (characters / second)
+NPC_ANNOUNCE_HOLD_MS   = 900    # announce text hold time after fully revealed
+NPC_OUTCOME_BEAT_MS    = 300    # pause after each outcome flash so multiattacks read clearly
+
 # ── Combat panel colours ──────────────────────────────────────────────────────
 COL_INITIATIVE_CUR  = (255, 210,  50)   # gold — current combatant row
 COL_HP_HIGH         = ( 60, 200,  80)   # green  – > 66 % HP

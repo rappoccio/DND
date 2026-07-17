@@ -59,6 +59,10 @@ def dict_to_stats(stats_dict):
     stats.save_prof_cha = bool(stats_dict.get("save_prof_cha", False))
     stats.save_advantage_mask = int(stats_dict.get("save_advantage_mask", 0))
     stats.blessed = bool(stats_dict.get("blessed", False))
+    stats.hasted = bool(stats_dict.get("hasted", False))
+    stats.haste_speed_bonus = int(stats_dict.get("haste_speed_bonus", 0))
+    stats.haste_action_available = bool(stats_dict.get("haste_action_available", False))
+    stats.aid_hp_bonus = int(stats_dict.get("aid_hp_bonus", 0))
     stats.sleight_of_hand_prof = bool(stats_dict.get("sleight_of_hand_prof", False))
     stats.sleight_of_hand_expertise = bool(stats_dict.get("sleight_of_hand_expertise", False))
     if "spellcasting_ability" in stats_dict:

@@ -108,6 +108,11 @@ namespace rpg {
       // by this flag, not by spell name. Suppresses Arcane Lock for a few turns.
       bool opens_doors{false};
 
+      // Dispel Magic: ends ongoing spells/conditions/effects on the target. Detected by
+      // this flag, not by spell name (mirrors opens_doors). Dispatched to
+      // CombatEngine::dispelMagic from executeSpell.
+      bool dispels_magic{false};
+
       // Teleportation spell (Misty Step, Dimension Door, Teleport)
       bool teleportation_spell{false};     // spell enables teleporting agents
       int max_teleport_targets{0};         // max number of agents (incl. caster) that can teleport (0 = not a teleport spell)

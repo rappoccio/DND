@@ -276,6 +276,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // that ability's saves. Set/cleared by "Advantage on X saves" buffs like Haste.
         .def_readwrite("save_advantage_mask", &Agent::Stats::save_advantage_mask)
         .def_readwrite("blessed", &Agent::Stats::blessed)   // Bless: +1d4 to attacks & saves
+        // Haste (Phase 2): +2 AC, Adv on DEX saves, doubled Speed, one extra limited action/turn.
+        .def_readwrite("hasted", &Agent::Stats::hasted)
+        .def_readwrite("haste_speed_bonus", &Agent::Stats::haste_speed_bonus)
+        .def_readwrite("haste_action_available", &Agent::Stats::haste_action_available)
+        // Aid (Phase 3): the +HP maximum currently granted (stored for an exact teardown).
+        .def_readwrite("aid_hp_bonus", &Agent::Stats::aid_hp_bonus)
         // Skill proficiency flags
         .def_readwrite("stealth_prof",    &Agent::Stats::stealth_prof)
         .def_readwrite("perception_prof", &Agent::Stats::perception_prof)
@@ -993,6 +999,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("Multiple",  Spell::Multiple)
         .export_values();
 
+    py::enum_<NpcRole>(m, "NpcRole")
+        .value("Melee",  NpcRole::Melee)
+        .value("Ranged", NpcRole::Ranged)
+        .value("Caster", NpcRole::Caster);
+
     py::enum_<NpcAutomationStrategy>(m, "NpcAutomationStrategy")
         .value("Simple",             NpcAutomationStrategy::Simple)
         .value("PreferTargetCaster", NpcAutomationStrategy::PreferTargetCaster)
@@ -1000,6 +1011,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("PreferRange",        NpcAutomationStrategy::PreferRange)
         .value("PreferHide",         NpcAutomationStrategy::PreferHide)
         .value("NoOp",               NpcAutomationStrategy::NoOp)
+        .value("PreferControl",      NpcAutomationStrategy::PreferControl)
+        .value("PreferHeal",         NpcAutomationStrategy::PreferHeal)
+        .value("PreferSupport",      NpcAutomationStrategy::PreferSupport)
         .export_values();
 
     py::enum_<NpcConcealRoute>(m, "NpcConcealRoute")
@@ -1008,6 +1022,36 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .value("RouteC", NpcConcealRoute::RouteC)
         .value("RouteD", NpcConcealRoute::RouteD)
         .export_values();
+
+    // NPC turn playback: one entry of the visual event stream an automated turn records
+    // (drained via CombatEngine.take_npc_visual_events, replayed by the GUI as an animation).
+    auto nve = py::class_<NpcVisualEvent>(m, "NpcVisualEvent",
+        "One visual event recorded during an automated NPC turn: a Move (token route), an\n"
+        "Announce (action text to scroll above the actor), or an Outcome (flash text +\n"
+        "hp_after/died for the animation-synced HP bar and corpse removal).");
+    py::enum_<NpcVisualEvent::Kind>(nve, "Kind")
+        .value("Move",     NpcVisualEvent::Move)
+        .value("Announce", NpcVisualEvent::Announce)
+        .value("Outcome",  NpcVisualEvent::Outcome)
+        .export_values();
+    nve.def_readonly("kind",       &NpcVisualEvent::kind,       "Kind as int: 0=Move, 1=Announce, 2=Outcome")
+       .def_readonly("agent_idx",  &NpcVisualEvent::agent_idx,  "Move/Announce: the actor; Outcome: the affected target (flash anchor)")
+       .def_readonly("target_idx", &NpcVisualEvent::target_idx, "Announce only: the action's target (-1 = none/area)")
+       .def_readonly("path",       &NpcVisualEvent::path,       "Move only: route actually taken (origin..dest cells, inclusive)")
+       .def_readonly("text",       &NpcVisualEvent::text,       "Announce: action sentence; Outcome: flash text (Hit (7)/Miss/Saved/Failed)")
+       .def_readonly("good",       &NpcVisualEvent::good,       "Outcome only: green flash (Hit/Saved) vs red (Miss/Failed), the FLASH_GOOD/BAD convention")
+       .def_readonly("hp_after",   &NpcVisualEvent::hp_after,   "Outcome only: target hp_cur after the action (-1 = no HP sync from this event)")
+       .def_readonly("died",       &NpcVisualEvent::died,       "Outcome only: target died/was removed by this action");
+
+    // NPC attack analysis: the pre-attack probability report an automated turn logs (and tests verify).
+    py::class_<NpcAttackAnalysis>(m, "NpcAttackAnalysis",
+        "Probability analysis for one NPC-automation weapon attack: chance to hit, chance a hit\n"
+        "drops the target to 0 HP, and the estimated advantage/disadvantage state used. An estimate:\n"
+        "core to-hit math + dominant condition-driven adv/dis; exotic feat riders are not modeled.")
+        .def_readonly("p_hit",            &NpcAttackAnalysis::p_hit,            "P(attack hits), crit auto-hit and nat-1 auto-miss included")
+        .def_readonly("p_drop_given_hit", &NpcAttackAnalysis::p_drop_given_hit, "P(target drops to 0 HP | hit), exact damage distribution vs hp_cur + temp_hp")
+        .def_readonly("advantage",        &NpcAttackAnalysis::advantage,        "estimated roll state: attack made at Advantage")
+        .def_readonly("disadvantage",     &NpcAttackAnalysis::disadvantage,     "estimated roll state: attack made at Disadvantage");
 
     py::enum_<Spell::SpellType_t>(m, "SpellType")
         .value("Harm", Spell::Harm)
@@ -1454,6 +1498,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("opens_doors", &Spell::opens_doors,
              "If true (Knock), casting at a door cell removes a mundane lock, suppresses an\n"
              "Arcane Lock, and opens the door. Detected by this flag, not the spell name.")
+        .def_readwrite("dispels_magic", &Spell::dispels_magic,
+             "If true (Dispel Magic), casting at a target ends ongoing spells/conditions on it\n"
+             "(auto for level <= slot; ability check vs DC 10+level otherwise). Flag, not name.")
         .def_readwrite("level", &Spell::level,
              "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
         .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
@@ -1542,10 +1589,37 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Overchannel (Evoker Wizard L14): request maximum damage on this cast. Honored only for\n"
              "an Evoker L14+ casting a damaging spell of effective level 1-5; first use per Long Rest\n"
              "is free, later uses inflict escalating Necrotic self-damage. Default false.")
+        .def_readwrite("dispel_condition_ids", &SpellAction::dispel_condition_ids,
+             "Dispel Magic picker selection: ActiveAgentCondition ids to end (see dispel_spell_effect_ids).")
+        .def_readwrite("dispel_spell_effect_ids", &SpellAction::dispel_spell_effect_ids,
+             "Dispel Magic picker selection: ActiveSpellEffect ids to end.")
+        .def_readwrite("dispel_terrain_ids", &SpellAction::dispel_terrain_ids,
+             "Dispel Magic picker selection: ActiveTerrainEffect ids to end. When any of these three\n"
+             "lists is non-empty, a dispels_magic cast ends ONLY the chosen effects (grouped by source\n"
+             "spell, one roll each) instead of everything on the aimed creature/cell.")
         .def("__repr__", [](const SpellAction& a){
             return "<SpellAction caster=" + std::to_string(a.caster_idx)
                  + " spell=" + std::to_string(a.spell_idx)
                  + " targets=" + std::to_string(a.target_indices.size()) + ">"; });
+
+    // ── DispelCandidate (Dispel Magic picker) ─────────────────────────────────
+    py::class_<DispelCandidate>(m, "DispelCandidate")
+        .def_readonly("label",            &DispelCandidate::label,
+             "Spell/condition name shown in the picker.")
+        .def_readonly("owner_idx",        &DispelCandidate::owner_idx,
+             "Agent index of the caster who created the effect (-1 = unknown).")
+        .def_readonly("level",            &DispelCandidate::level,
+             "Effective level: auto-ends if <= slot, else the check is DC 10 + level.")
+        .def_readonly("owner_is_ally",    &DispelCandidate::owner_is_ally,
+             "True if the effect's owner is an ally of the dispelling caster (buff-on-ally hint).")
+        .def_readonly("spell_key",        &DispelCandidate::spell_key,
+             "Grouping spell_idx for concentration cleanup (-1 = ungrouped).")
+        .def_readonly("condition_ids",    &DispelCandidate::condition_ids)
+        .def_readonly("spell_effect_ids", &DispelCandidate::spell_effect_ids)
+        .def_readonly("terrain_ids",      &DispelCandidate::terrain_ids)
+        .def("__repr__", [](const DispelCandidate& c){
+            return "<DispelCandidate '" + c.label + "' lvl=" + std::to_string(c.level)
+                 + (c.owner_is_ally ? " ally" : " enemy") + ">"; });
 
     // ── SpellTargetResult ─────────────────────────────────────────────────────
     py::class_<SpellTargetResult>(m, "SpellTargetResult")
@@ -2467,12 +2541,44 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "reach, make a full Attack action; if none is reachable, Dash and advance toward the nearest.\n"
              "Steps 4-5 add PreferTargetCaster (target enemy casters) and PreferRange (best bow, kite, focus\n"
              "fire the weakest). Step 6 adds PreferAOE: cast the available area spell + aim that catches the\n"
-             "most net enemies (friendly-fire aware), falling back to a Simple weapon turn with no good blast.")
+             "most net enemies (friendly-fire aware), falling back to a Simple weapon turn with no good blast.\n"
+             "Step 8 adds PreferControl: walk the DM-authored control_priority list (npc_automation_config.json)\n"
+             "and cast the first castable control spell on a valid enemy (single → nearest; area → best cluster),\n"
+             "approaching if out of range and falling back to a weapon turn with nothing castable. Step 9 adds\n"
+             "PreferHeal: heal the most-wounded ally (downed first, then most missing HP) with an HP-restoring\n"
+             "Heal spell when an ally is downed or below heal_threshold_fraction of max HP (Multiple heals fill\n"
+             "several allies), approaching an out-of-range ally and falling back to a weapon turn otherwise. Step\n"
+             "10 adds PreferSupport: apply a Help buff (Bless, Aid, ...) to allies that don't already carry it\n"
+             "(checked by named condition), preferring allies engaged with an enemy; Multiple buffs fill several\n"
+             "allies, approaching an out-of-range ally and falling back to a weapon turn once everyone is buffed.")
         .def("resolve_strategy",
              &CombatEngine::resolveStrategy,
              py::arg("battle_map"), py::arg("agent_idx"),
-             "Resolve which NpcAutomationStrategy an automated agent uses this turn. The single seam where\n"
-             "the later difficulty-level override will live; today returns the per-agent strategy field.")
+             "Resolve which NpcAutomationStrategy an automated agent uses this turn — the difficulty-level\n"
+             "override. Level 0 (manual) returns the per-agent strategy field. Levels 1+ resolve from the\n"
+             "agent's role (npc_classify_role) + level: L1 all Simple; L2 ranged/casters kite (PreferRange);\n"
+             "L3 casters with a castable AoE blast → PreferAOE; L4 ranged with stealth tools → PreferHide and\n"
+             "casters resolve dynamically by probing the live planners (Heal → Control → Support, first\n"
+             "actionable plan wins, else the L3 result); L5/6 clamp to L4 until the NN policies exist.")
+        .def("npc_classify_role",
+             &CombatEngine::npcClassifyRole,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Combat role the difficulty resolver maps to a strategy: Caster (knows a combat-relevant spell —\n"
+             "classification_ignore_spells filters flavor/utility like Speak with Animals), else Ranged (owns\n"
+             "a non-shield ranged weapon), else Melee.")
+        .def("npc_control_priority",
+             &CombatEngine::npcControlPriority,
+             "PreferControl (Step 8) config: the DM-authored control-spell priority order the planner walks,\n"
+             "loaded once from gui/npc_automation_config.json (baked-in defaults if the file is absent).")
+        .def("npc_heal_threshold",
+             &CombatEngine::npcHealThreshold,
+             "PreferHeal (Step 9) config: cast a heal when an ally is below this fraction of max HP (default\n"
+             "0.5), loaded once from gui/npc_automation_config.json.")
+        .def("npc_classification_ignore",
+             &CombatEngine::npcClassificationIgnore,
+             "Difficulty-resolver config: LOWERCASED spell names that do not make their owner a 'caster' for\n"
+             "role classification (flavor/utility spells), from classification_ignore_spells in\n"
+             "gui/npc_automation_config.json (baked-in defaults if the file is absent).")
         .def("npc_find_self_invis_spell",
              &CombatEngine::npcFindSelfInvisSpell,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("casting_time"),
@@ -2494,11 +2600,36 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("agent_idx"),
              "PreferHide (Step 7) helper: classify the conceal route (A/B/C/D) for agent[idx] from its\n"
              "current tools — bonus-invis (A), cunning action + cover (B), action-invis (C), else kite (D).")
+        .def("npc_analyze_attack",
+             &CombatEngine::npcAnalyzeAttack,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
+             "NPC attack analysis: NpcAttackAnalysis (p_hit, p_drop_given_hit, advantage, disadvantage)\n"
+             "for attacker[weapon] vs target, computed as pure probability over the engine's own to-hit\n"
+             "and damage math. No dice are rolled and nothing mutates. The automated executors log this\n"
+             "as an 'Analysis:' combat-log line right before each swing.")
+        .def("npc_save_chance",
+             &CombatEngine::npcSaveChance,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"), py::arg("spell"),
+             "NPC cast analysis: P(target SAVES) vs caster's spell save DC for a Save-type spell —\n"
+             "deterministic saveModFor pieces + Bless d4 by convolution, save adv/dis, and the\n"
+             "Paralyzed/Stunned/Unconscious STR/DEX auto-fail. Logged per target on automated casts.")
+        .def("npc_spell_hit_chance",
+             &CombatEngine::npcSpellHitChance,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"), py::arg("spell"),
+             "NPC cast analysis: P(hit) for an attack-roll spell — spellAttackMod (+Bless) vs\n"
+             "calculate_ac, with rollSpellAttack's advantage/disadvantage sources.")
         .def("set_render_attack_hook",
              &CombatEngine::setRenderAttackHook,
              py::arg("hook"),
              "Install a Python callable hook(attacker_idx, target_idx) the NPC driver calls when an\n"
              "automated action resolves, for GUI visualization (Step 2e seam). Headless leaves it unset.")
+        .def("take_npc_visual_events",
+             &CombatEngine::takeNpcVisualEvents,
+             "Drain the NPC-turn visual event stream (move-out-and-clear; a second drain returns []).\n"
+             "The GUI calls this after EVERY run_npc_turn return (Completed or parked) and plays the\n"
+             "events back — token slides along Move paths, Announce text scrolls above the actor,\n"
+             "Outcome flashes/HP-bar updates land in narrative order — before advancing the turn or\n"
+             "opening the parked reaction menu.")
         .def("can_branches_of_tree",
              &CombatEngine::canBranchesOfTree,
              py::arg("battle_map"), py::arg("reactor"), py::arg("source"),
@@ -2744,6 +2875,38 @@ PYBIND11_MODULE(rpg_battle_map, m)
              &CombatEngine::dropConcentration,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Drop concentration for agent: removes terrain, spell effects, conditions. Returns removed IDs.")
+        .def("dispel_magic",
+             &CombatEngine::dispelMagic,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"), py::arg("slot_level"),
+             "Dispel Magic: end ongoing spells/conditions on target_idx. Auto-ends effects of level\n"
+             "<= slot_level; otherwise rolls d20 + spellcasting mod vs DC 10 + level. Clears a now-empty\n"
+             "concentration on the source caster. Normally dispatched from execute_spell (dispels_magic).")
+        .def("dispel_magic_at_cell",
+             &CombatEngine::dispelMagicAtCell,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("col"), py::arg("row"), py::arg("slot_level"),
+             "Cell-aimed Dispel Magic: end ongoing area magic (persistent spell zones like Hunger of\n"
+             "Hadar / Cloudkill and spell-sourced difficult terrain like Web / Grease) whose footprint\n"
+             "covers (col, row). One roll per source spell; success clears its whole map footprint and a\n"
+             "now-empty concentration. Dispatched from execute_spell when dispels_magic has no creature target.")
+        .def("dispel_candidates_on_agent",
+             &CombatEngine::dispelCandidatesOnAgent,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"),
+             "Enumerate the dispellable ongoing spells on a creature (grouped one entry per spell) for\n"
+             "the GUI dispel picker. Read-only: rolls no dice and removes nothing. Returns [DispelCandidate].")
+        .def("dispel_candidates_at_cell",
+             &CombatEngine::dispelCandidatesAtCell,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("col"), py::arg("row"),
+             "Enumerate the dispellable area effects (zones + spell-sourced terrain) overlapping a cell,\n"
+             "grouped one entry per source spell, for the GUI dispel picker. Read-only. Returns [DispelCandidate].")
+        .def("dispel_selected",
+             &CombatEngine::dispelSelected,
+             py::arg("battle_map"), py::arg("caster_idx"),
+             py::arg("condition_ids"), py::arg("spell_effect_ids"), py::arg("terrain_ids"),
+             py::arg("slot_level"),
+             "Dispel exactly the chosen structures (the picker's selection): the ids are grouped by\n"
+             "source spell and each group gets one auto-end-or-check roll; success removes the group and\n"
+             "clears a now-empty concentration. Dispatched from execute_spell when a dispels_magic cast\n"
+             "carries a selection (SpellAction.dispel_*_ids).")
         .def("tick_terrain_for_turn",
              &CombatEngine::tickTerrainForTurn,
              py::arg("battle_map"), py::arg("agent_idx"),

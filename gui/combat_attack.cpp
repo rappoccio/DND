@@ -4281,6 +4281,13 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         bm.setAgentConditions(action.attacker_idx, uc);
     }
 
+    // NPC turn playback: applyAttackResult is THE phase-B finalizer for every weapon swing (including
+    // OAs fired mid-turn), so record the outcome here — a no-op unless an automated turn is recording.
+    if (r.valid)
+        recordNpcOutcome(bm, action.target_idx,
+                         r.hit ? std::format("Hit ({})", r.total_damage) : "Miss",
+                         /*good=*/r.hit);   // GUI convention: Hit/Saved → green, Miss/Failed → red
+
     return r;
 }
 

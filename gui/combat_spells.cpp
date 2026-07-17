@@ -420,6 +420,9 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     ss.total     = save_d20 + ss.save_mod;
     ss.total     = applyIndomitableMight(bm, tgt_idx, sp.save_ability, ss.total);
     ss.saved     = auto_fail ? false : (ss.total >= ss.dc);
+    // NPC turn playback: flash the save outcome above the target. No HP sync from this event —
+    // a failed save's damage applies later in the cast pipeline; the bar catches up at playback end.
+    recordNpcOutcome(bm, tgt_idx, ss.saved ? "Saved" : "Failed", /*good=*/ss.saved, /*sync_hp=*/false);
     return ss;
 }
 
@@ -581,6 +584,27 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             log_("{} casts {} — but there is no door there",
                  agentName(bm, action.caster_idx), sp.name);
         }
+    }
+
+    // Dispel Magic (Phase 4): a flagged spell ends ongoing magic on the aimed target. Detected by
+    // sp.dispels_magic, not by name (the opens_doors precedent). Does its work here and then falls
+    // through to the normal Help flow so the slot is spent once; the Help path applies no damage and
+    // no conditions (Dispel carries none), so nothing else lands.
+    if (sp.dispels_magic) {
+        const int slot_level = std::max(action.slot_level, sp.level);
+        const bool has_selection = !action.dispel_condition_ids.empty()
+                                 || !action.dispel_spell_effect_ids.empty()
+                                 || !action.dispel_terrain_ids.empty();
+        if (has_selection)
+            // The GUI's dispel picker chose specific effects (a buff on an ally vs a debuff on an
+            // enemy, one of several overlapping AoEs) — end only those.
+            dispelSelected(bm, action.caster_idx, action.dispel_condition_ids,
+                           action.dispel_spell_effect_ids, action.dispel_terrain_ids, slot_level);
+        else if (!action.target_indices.empty())
+            dispelMagic(bm, action.caster_idx, action.target_indices.front(), slot_level);
+        else
+            // Cell-aimed cast: end ongoing area magic (Hunger of Hadar, Web, …) at the aim point.
+            dispelMagicAtCell(bm, action.caster_idx, action.aoe_col, action.aoe_row, slot_level);
     }
 
     // Eldritch Spear invocation: extend the cantrip's range before any range-dependent
@@ -2989,6 +3013,274 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     return result;
 }
 
+namespace {
+// One dispellable structure before grouping — a creature condition, a persistent spell zone, or a
+// terrain footprint. Structures with the same (owner, spell_idx) collapse into one DispelCandidate.
+struct DispelRef {
+    enum Kind { Condition = 0, SpellEffect = 1, Terrain = 2 };
+    Kind        kind;
+    int         id;          // condition_id / effect_id / terrain id
+    int         owner;       // source caster (-1 = unknown / DM)
+    int         spell_idx;   // grouping key (-1 = ungroupable → its own candidate)
+    int         level;       // effective level for the dispel check
+    std::string label;       // display name
+};
+
+// Group refs into candidates, preserving first-seen order. Refs sharing (owner, spell_idx>=0)
+// merge; a ref with spell_idx<0 always becomes its own candidate. A group's level is the highest
+// among its refs (the hardest check gates the whole spell).
+std::vector<DispelCandidate> groupDispelRefs(
+    const CombatEngine& eng, const BattleMap& bm, int dispel_caster,
+    const std::vector<DispelRef>& refs)
+{
+    std::vector<DispelCandidate>    out;
+    std::vector<std::pair<int,int>> keys;   // parallel to out
+    int synthetic = -1;                     // unique key generator for ungroupable refs
+    for (const auto& r : refs) {
+        const std::pair<int,int> key = (r.spell_idx >= 0)
+            ? std::make_pair(r.owner, r.spell_idx)
+            : std::make_pair(r.owner, synthetic--);
+        int found = -1;
+        for (std::size_t i = 0; i < keys.size(); ++i)
+            if (keys[i] == key) { found = static_cast<int>(i); break; }
+        if (found < 0) {
+            DispelCandidate c;
+            c.label         = r.label;
+            c.owner_idx     = r.owner;
+            c.level         = r.level;
+            c.spell_key     = r.spell_idx;
+            c.owner_is_ally = (r.owner >= 0 && dispel_caster >= 0
+                               && eng.areAllies(bm, dispel_caster, r.owner));
+            keys.push_back(key);
+            out.push_back(std::move(c));
+            found = static_cast<int>(out.size()) - 1;
+        } else if (r.level > out[static_cast<std::size_t>(found)].level) {
+            out[static_cast<std::size_t>(found)].level = r.level;
+        }
+        DispelCandidate& c = out[static_cast<std::size_t>(found)];
+        if      (r.kind == DispelRef::Condition)   c.condition_ids.push_back(r.id);
+        else if (r.kind == DispelRef::SpellEffect) c.spell_effect_ids.push_back(r.id);
+        else                                       c.terrain_ids.push_back(r.id);
+    }
+    return out;
+}
+}  // namespace
+
+// Effective level of an effect for Dispel: its recorded cast_level ([[cast_level_tracking]]), else
+// the source caster's stored level for that spell (a base-level cast records cast_level 0).
+static int dispelEffectLevel(const BattleMap& bm, int src_caster, int src_spell, int recorded)
+{
+    if (recorded > 0) return recorded;
+    if (src_caster >= 0 && src_caster < static_cast<int>(bm.placedAgents().size()) && src_spell >= 0) {
+        const auto& sp_list = bm.getAgentSpells(src_caster);
+        if (src_spell < static_cast<int>(sp_list.size()))
+            return sp_list[static_cast<std::size_t>(src_spell)].level;
+    }
+    return 1;   // conservative floor when the source can't be resolved
+}
+
+std::vector<DispelCandidate>
+CombatEngine::dispelCandidatesOnAgent(BattleMap& bm, int caster_idx, int target_idx) noexcept
+{
+    std::vector<DispelRef> refs;
+    const auto& agents = bm.placedAgents();
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return {};
+
+    // Spell-applied conditions on the target (caster_idx>=0 → spell-applied, not innate).
+    for (const auto& ac : activeAgentConditions_) {
+        if (ac.agent_idx != target_idx || ac.caster_idx < 0) continue;
+        refs.push_back({DispelRef::Condition, ac.condition_id, ac.caster_idx, ac.spell_idx,
+                        dispelEffectLevel(bm, ac.caster_idx, ac.spell_idx, ac.cast_level),
+                        ac.condition_name});
+    }
+    // Persistent spell effects anchored to (moving with) the target — a buff Sphere on it.
+    for (const auto& eff : bm.activeSpellEffects()) {
+        if (eff.anchor_agent_idx != target_idx) continue;
+        refs.push_back({DispelRef::SpellEffect, eff.effect_id, eff.caster_idx, eff.spell_idx,
+                        eff.cast_level > 0 ? eff.cast_level : eff.spell.level, eff.spell.name});
+    }
+    return groupDispelRefs(*this, bm, caster_idx, refs);
+}
+
+std::vector<DispelCandidate>
+CombatEngine::dispelCandidatesAtCell(BattleMap& bm, int caster_idx, int col, int row) noexcept
+{
+    std::vector<DispelRef> refs;
+    const int flat = row * bm.gridCols() + col;
+
+    // Persistent AoE zones (Hunger of Hadar damage, Cloudkill, …) covering the cell.
+    for (const auto& eff : bm.activeSpellEffects()) {
+        if (eff.anchor_agent_idx >= 0) continue;   // a buff Sphere on a creature — dispel via the creature
+        bool over = false;
+        for (const auto& c : eff.cells) if (c.col == col && c.row == row) { over = true; break; }
+        if (!over) continue;
+        refs.push_back({DispelRef::SpellEffect, eff.effect_id, eff.caster_idx, eff.spell_idx,
+                        eff.cast_level > 0 ? eff.cast_level : eff.spell.level, eff.spell.name});
+    }
+    // Spell-sourced difficult terrain (Web, Grease, Spike Growth, the HoH sphere) over the cell.
+    for (const auto& te : bm.activeTerrainEffects()) {
+        if (te.source_agent_idx < 0 && te.spell_idx < 0) continue;  // DM-painted / mundane: not magic
+        if (te.anchor_agent_idx >= 0) continue;                     // moving emanation — dispel via its creature
+        if (std::find(te.cell_indices.begin(), te.cell_indices.end(), flat) == te.cell_indices.end())
+            continue;
+        refs.push_back({DispelRef::Terrain, te.id, te.source_agent_idx, te.spell_idx,
+                        dispelEffectLevel(bm, te.source_agent_idx, te.spell_idx, te.cast_level),
+                        te.name});
+    }
+    return groupDispelRefs(*this, bm, caster_idx, refs);
+}
+
+bool CombatEngine::applyDispelCandidate(BattleMap& bm, int caster_idx,
+                                        const DispelCandidate& c, int slot_level) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return false;
+
+    // Auto-end at level <= slot; else d20 + spellcasting ability mod vs DC 10 + level.
+    bool ok;
+    if (c.level <= slot_level) {
+        log_("{} dispels {} (level {} <= slot {})",
+             agentName(bm, caster_idx), c.label, c.level, slot_level);
+        ok = true;
+    } else {
+        const Agent::Stats& cs = bm.getAgentStats(caster_idx);
+        int abil_score = 10;
+        switch (cs.spellcasting_ability) {
+            case 0: abil_score = cs.str;   break;
+            case 1: abil_score = cs.dex;   break;
+            case 2: abil_score = cs.con;   break;
+            case 3: abil_score = cs.intel; break;
+            case 4: abil_score = cs.wis;   break;
+            case 5: abil_score = cs.cha;   break;
+            default: break;
+        }
+        const int abil_mod = abilityMod(abil_score);
+        const int dc    = 10 + c.level;
+        const int d     = roll(20);
+        const int total = d + abil_mod;
+        ok = total >= dc;
+        log_("{} attempts to dispel {}: d20({}) + mod({}) = {} vs DC {} — {}",
+             agentName(bm, caster_idx), c.label, d, abil_mod, total, dc, ok ? "success" : "failure");
+    }
+    if (!ok) return false;
+
+    // Snapshot-then-remove: removeAgentCondition mutates activeAgentConditions_ (a Haste teardown
+    // even ADDS the lethargy condition), so the id list must be captured before we start erasing.
+    for (int id : c.condition_ids)    removeAgentCondition(bm, id);   // routes onConditionEnded teardown
+    for (int id : c.spell_effect_ids) bm.removeSpellEffect(id);
+    for (int id : c.terrain_ids)      bm.removeTerrainEffect(id);
+
+    // Clear a now-empty concentration for the spell we just ended (guards spell_key<0 internally).
+    endDispelledConcentration(bm, {{c.owner_idx, c.spell_key}});
+    return true;
+}
+
+void CombatEngine::dispelSelected(BattleMap& bm, int caster_idx,
+                                  const std::vector<int>& condition_ids,
+                                  const std::vector<int>& spell_effect_ids,
+                                  const std::vector<int>& terrain_ids, int slot_level) noexcept
+{
+    // Resolve the chosen ids back to refs (dropping any that no longer exist), group by spell, roll.
+    std::vector<DispelRef> refs;
+    for (int id : condition_ids)
+        for (const auto& ac : activeAgentConditions_)
+            if (ac.condition_id == id && ac.caster_idx >= 0) {
+                refs.push_back({DispelRef::Condition, ac.condition_id, ac.caster_idx, ac.spell_idx,
+                                dispelEffectLevel(bm, ac.caster_idx, ac.spell_idx, ac.cast_level),
+                                ac.condition_name});
+                break;
+            }
+    for (int id : spell_effect_ids)
+        for (const auto& eff : bm.activeSpellEffects())
+            if (eff.effect_id == id) {
+                refs.push_back({DispelRef::SpellEffect, eff.effect_id, eff.caster_idx, eff.spell_idx,
+                                eff.cast_level > 0 ? eff.cast_level : eff.spell.level, eff.spell.name});
+                break;
+            }
+    for (int id : terrain_ids)
+        for (const auto& te : bm.activeTerrainEffects())
+            if (te.id == id) {
+                refs.push_back({DispelRef::Terrain, te.id, te.source_agent_idx, te.spell_idx,
+                                dispelEffectLevel(bm, te.source_agent_idx, te.spell_idx, te.cast_level),
+                                te.name});
+                break;
+            }
+
+    auto candidates = groupDispelRefs(*this, bm, caster_idx, refs);
+    if (candidates.empty()) {
+        log_("{} finds no magic to dispel", agentName(bm, caster_idx));
+        return;
+    }
+    for (const auto& c : candidates)
+        applyDispelCandidate(bm, caster_idx, c, slot_level);
+}
+
+void CombatEngine::dispelMagic(BattleMap& bm, int caster_idx, int target_idx, int slot_level) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return;
+    if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return;
+
+    const auto candidates = dispelCandidatesOnAgent(bm, caster_idx, target_idx);
+    if (candidates.empty()) {
+        log_("{} finds no magic to dispel on {}",
+             agentName(bm, caster_idx), agentName(bm, target_idx));
+        return;
+    }
+    for (const auto& c : candidates)
+        applyDispelCandidate(bm, caster_idx, c, slot_level);
+}
+
+void CombatEngine::endDispelledConcentration(
+    BattleMap& bm, const std::vector<std::pair<int,int>>& ended_owner_spell) noexcept
+{
+    // For each original caster whose concentration spell we ended, drop the flag only if NOTHING
+    // owned by (caster, spell_idx) remains anywhere on the map — a partial dispel (one of several
+    // Bless targets, or one cell of a larger zone) must leave that caster still concentrating.
+    const auto& agents = bm.placedAgents();
+    for (const auto& [owner, spell_idx] : ended_owner_spell) {
+        if (owner < 0 || owner >= static_cast<int>(agents.size()) || spell_idx < 0) continue;
+        const auto& sp_list = bm.getAgentSpells(owner);
+        if (spell_idx >= static_cast<int>(sp_list.size())) continue;
+        if (!sp_list[static_cast<std::size_t>(spell_idx)].requires_concentration) continue;
+
+        Agent::Conditions oc = bm.getAgentConditions(owner);
+        if (!oc.concentrating) continue;
+
+        bool remains = false;
+        for (const auto& ac : activeAgentConditions_)
+            if (ac.caster_idx == owner && ac.spell_idx == spell_idx) { remains = true; break; }
+        if (!remains)
+            for (const auto& eff : bm.activeSpellEffects())
+                if (eff.caster_idx == owner && eff.spell_idx == spell_idx) { remains = true; break; }
+        if (!remains)
+            for (const auto& te : bm.activeTerrainEffects())
+                if (te.source_agent_idx == owner && te.spell_idx == spell_idx) { remains = true; break; }
+
+        if (!remains) {
+            log_("{}'s concentration on {} ends (dispelled)",
+                 agentName(bm, owner), oc.concentrating_on);
+            oc.concentrating    = false;
+            oc.concentrating_on = {};
+            bm.setAgentConditions(owner, oc);
+        }
+    }
+}
+
+void CombatEngine::dispelMagicAtCell(BattleMap& bm, int caster_idx, int col, int row, int slot_level) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return;
+
+    const auto candidates = dispelCandidatesAtCell(bm, caster_idx, col, row);
+    if (candidates.empty()) {
+        log_("{} finds no magic to dispel at ({}, {})", agentName(bm, caster_idx), col, row);
+        return;
+    }
+    for (const auto& c : candidates)
+        applyDispelCandidate(bm, caster_idx, c, slot_level);
+}
+
 void CombatEngine::clearAllConcentration(BattleMap& bm)
 {
     for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {
@@ -3008,6 +3300,61 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
         Agent::Stats st = bm.getAgentStats(cond.agent_idx);
         st.blessed = false;
         bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    // Haste (Phase 2) teardown — reverse every buff exactly, then inflict the end-of-spell lethargy
+    // on EVERY end path (concentration drop, duration expiry, Dispel Magic, death). Adding a
+    // condition here is safe: onConditionEnded (this method's only caller) always runs deferred,
+    // after activeAgentConditions_ has been rebuilt. Suppress the lethargy when the target is
+    // already dead — the Vistani-kickback gate is the precedent.
+    if (n == "Hasted") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        if (st.hasted) {
+            st.ac_temporary_modifications -= 2;
+            st.speed_walk       -= st.haste_speed_bonus;
+            st.haste_speed_bonus = 0;
+            st.save_advantage_mask &= ~(1 << SaveDex);
+            st.hasted = false;
+            st.haste_action_available = false;
+            bm.setAgentStats(cond.agent_idx, st);
+
+            Agent::Conditions cc = bm.getAgentConditions(cond.agent_idx);
+            if (!cc.dead && st.hp_cur > 0) {
+                ActiveAgentCondition leth;
+                leth.agent_idx        = cond.agent_idx;
+                leth.caster_idx       = cond.agent_idx;  // self-inflicted → ticks on the target's turn
+                leth.condition_name   = "HasteLethargy";
+                leth.turns_remaining  = 1;               // "until the end of its next turn"
+                leth.save_repeat_turns = -1;             // no save; don't let beginTurn strip it early
+                leth.next_save_turn    = -1;
+                (void)addAgentCondition(bm, leth);
+            }
+        }
+        return;
+    }
+    // Aid (Phase 3) teardown — give back EXACTLY the HP maximum Aid granted (stored in aid_hp_bonus,
+    // not recomputed), on every end path (duration expiry, Dispel Magic, death). Current HP is only
+    // clamped down if it now exceeds the lowered maximum; a target that spent the bonus HP simply keeps
+    // its lower current total.
+    if (n == "Aided") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        if (st.aid_hp_bonus != 0) {
+            st.hp_max      -= st.aid_hp_bonus;
+            st.aid_hp_bonus = 0;
+            st.hp_cur       = std::min(st.hp_cur, st.effectiveMaxHp());
+            bm.setAgentStats(cond.agent_idx, st);
+        }
+        return;
+    }
+    // Haste's lethargy end — restore the walk Speed Haste's teardown stashed and clear Incapacitated.
+    if (n == "HasteLethargy") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.speed_walk = st.haste_speed_bonus;
+        st.haste_speed_bonus = 0;
+        bm.setAgentStats(cond.agent_idx, st);
+        Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
+        ac.incapacitated = false;
+        bm.setAgentConditions(cond.agent_idx, ac);
         return;
     }
     Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);

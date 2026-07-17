@@ -198,6 +198,10 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     if (!bm.moveAgent(idx, newOrigin, type))
         return false;
 
+    // NPC turn playback: record the route actually taken (no-op unless an automated turn is
+    // recording) so the GUI can slide the token along it instead of teleporting.
+    recordNpcMove(idx, bm.lastMovePath());
+
     // Check for spell effects along the path from old to new position. A creature that
     // enters a zone is affected at most once per turn (see applyZoneIfNewThisTurn).
     std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);

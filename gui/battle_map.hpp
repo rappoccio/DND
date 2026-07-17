@@ -240,6 +240,9 @@ enum class NpcAutomationStrategy {
     PreferRange = 3,        // Keep distance and favour ranged attacks
     PreferHide = 4,         // Favour stealth/hiding and ambush positioning
     NoOp = 5,               // Bystander: take no action and no movement — cower in place, end turn
+    PreferControl = 6,      // Crowd-control enemies with control spells (Hold Person, Hypnotic Pattern, …)
+    PreferHeal = 7,         // Heal the most-wounded ally (downed allies first)
+    PreferSupport = 8,      // Buff nearby allies (e.g. Bless) that don't already carry the buff
 };
 
 struct PlacedAgent {
@@ -370,6 +373,13 @@ public:
     // movement type.  Returns false if the agent lacks sufficient budget.
     bool moveAgent(int idx, Cell newOrigin,
                    MovementType type = MovementType::Walk) noexcept;
+
+    // The exact cell route (origin → … → destination, inclusive) taken by the most recent
+    // SUCCESSFUL moveAgent call. Walk/Swim/Burrow reconstruct the Dijkstra path; Fly is the
+    // straight segment {origin, dest}. Cleared on entry, so it is empty after a failed move.
+    // Read by the NPC-turn visual event stream so the GUI can animate a token along the
+    // route it actually walked (around walls), not a teleport.
+    [[nodiscard]] const std::vector<Cell>& lastMovePath() const noexcept { return lastMovePath_; }
 
     // Jump an agent to a new location (ignores walls, deducts from walk budget).
     // is_running: true for running jump (full strength), false for standing jump (half strength).
@@ -803,6 +813,7 @@ private:
     std::vector<uint8_t>          explored_;       // cols × rows fog-of-war "ever seen" mask (0 = fogged, 1 = revealed); reset on grid analysis
     std::vector<AgentConfig>  agentConfigs_;
     std::vector<PlacedAgent>  placedAgents_;
+    std::vector<Cell>         lastMovePath_;  // route of the most recent successful moveAgent (see lastMovePath())
 
     // Temporary terrain effects (spells, items, etc. with duration)
     std::vector<ActiveTerrainEffect> activeTerrainEffects_;

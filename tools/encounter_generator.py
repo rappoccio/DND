@@ -30,6 +30,13 @@ Encounter categories (x = target CR):
 
 Mob counts are drawn uniformly from the stated ranges.
 
+NOTE — the per-category strategies above only rule at --automation-level 0. At
+level 1+ (default 4) the engine's difficulty resolver OVERRIDES the strategy
+field per agent (role + level at turn time: casters dynamically pick
+Heal/Control/Support/AoE, stealthy ranged mobs hide, etc. — see
+NPC_AUTOMATION_PLAN.md "Difficulty-level → strategy mapping"). The strategy is
+still written so level-0 rosters keep the curated mix.
+
 Difficulty -> category weights (A:B:C:D:E):
 
   Easy    3:1:0:0:0
@@ -333,7 +340,7 @@ def make_agent(rec: dict, strategy: int, faction: int, automation_level: int) ->
 
 def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Random,
                     faction: int = ENEMY_FACTION,
-                    automation_level: int = 1,
+                    automation_level: int = 4,
                     filter_types: str | list[str] | None = None,
                     filter_languages: list[str] | None = None,
                     avoid: set[str] | None = None) -> tuple[list[dict], list[dict]]:
@@ -1075,9 +1082,11 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--seed", type=int, default=None, metavar="N",
                    help="RNG seed for a reproducible roll (monster picks + counts); "
                         "omit for a fresh random encounter each run")
-    e.add_argument("--automation-level", type=int, default=1, metavar="L",
-                   help="npc_automation_difficulty_level written on every mob "
-                        "(gates how aggressively NPC automation plays; default: 1)")
+    e.add_argument("--automation-level", type=int, default=4, metavar="L",
+                   help="npc_automation_difficulty_level written on every mob. Level 1+ "
+                        "hands the strategy to the engine's difficulty resolver (role + "
+                        "level at turn time; 4 = best heuristics). Level 0 keeps this "
+                        "generator's fixed per-category strategies (default: 4)")
     e.add_argument("--prefix", default="simplemap", metavar="STR",
                    help="filename prefix used when --out is not given "
                         "(default: simplemap)")
@@ -1137,9 +1146,10 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--seed", type=int, default=None, metavar="N",
                    help="RNG seed for a reproducible dungeon (category choice, "
                         "monster picks, and placement); omit for a fresh roll")
-    d.add_argument("--automation-level", type=int, default=1, metavar="L",
-                   help="npc_automation_difficulty_level written on every mob "
-                        "(default: 1)")
+    d.add_argument("--automation-level", type=int, default=4, metavar="L",
+                   help="npc_automation_difficulty_level written on every mob. Level 1+ "
+                        "hands the strategy to the engine's difficulty resolver; 0 keeps "
+                        "the fixed per-category strategies (default: 4)")
     d.add_argument("--prefix", default="simplemap", metavar="STR",
                    help="filename prefix used when --out is not given "
                         "(default: simplemap)")

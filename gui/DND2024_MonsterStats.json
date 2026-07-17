@@ -1,109 +1,4 @@
 {
-  "Vistani Seer": {
-    "name": "Vistani Seer",
-    "size": "Medium",
-    "stats": {
-      "str": 10,
-      "dex": 13,
-      "con": 12,
-      "intel": 12,
-      "wis": 14,
-      "cha": 16,
-      "hp_max": 44,
-      "hp_cur": 44,
-      "ac": 13,
-      "speed_walk": 30,
-      "speed_fly": 0,
-      "speed_swim": 0,
-      "speed_burrow": 0,
-      "prof_bonus": 2,
-      "num_attacks": 1,
-      "save_prof_str": false,
-      "save_prof_dex": false,
-      "save_prof_con": false,
-      "save_prof_intel": false,
-      "save_prof_wis": true,
-      "save_prof_cha": true,
-      "temp_hp": 0,
-      "is_npc": true,
-      "magic_resistances": [],
-      "physical_resistances": [],
-      "magic_immunities": [],
-      "physical_immunities": [],
-      "magic_vulnerabilities": [],
-      "physical_vulnerabilities": [],
-      "spellcasting_ability": "cha"
-    },
-    "weapons": {
-      "main_hand": {
-        "name": "Dagger",
-        "type": "melee",
-        "reach_ft": 5,
-        "normal_range_ft": 20,
-        "long_range_ft": 60,
-        "proficient": true,
-        "bonus_damage": 1,
-        "physical_damage_types": [
-          {
-            "type": "Piercing",
-            "num_dice": 1,
-            "die_size": 4
-          }
-        ],
-        "magic_damage_types": [],
-        "conditions": [],
-        "mastery": "None"
-      },
-      "off_hand": "",
-      "ranged": ""
-    },
-    "meta": {
-      "type": "Humanoid (Vistani)",
-      "cr": "2",
-      "alignment": "Neutral",
-      "source": "Van Richten's Guide to Ravenloft",
-      "traits": [],
-      "languages": [
-        "Common"
-      ],
-      "senses": {},
-      "passive_perception": 12,
-      "immunities_conditions": [],
-      "save_dc": 13,
-      "saving_throws": [
-        "Wisdom",
-        "Charisma"
-      ],
-      "action_notes": "Curse (Curse of Vulnerability / Weakness / Affliction): the Seer curses one creature within 30 ft; the curse rebounds Psychic damage on the Seer when it ends. Evil Eye (Charm Person / Hold Person): 1/rest.",
-      "bonus_action": null,
-      "reaction": null,
-      "legendary": {
-        "resistance": null,
-        "resistance_in_lair": null,
-        "actions": null,
-        "actions_in_lair": null,
-        "has_lair": false
-      }
-    },
-    "spell_indices": [
-      "Curse of Vulnerability",
-      "Curse of Weakness",
-      "Curse of Affliction",
-      "Charm Person",
-      "Hold Person"
-    ],
-    "npc_spell_groups": {
-      "99": [
-        "Curse of Vulnerability",
-        "Curse of Weakness",
-        "Curse of Affliction"
-      ],
-      "1": [
-        "Charm Person",
-        "Hold Person"
-      ]
-    }
-  },
   "Aarakocra Aeromancer": {
     "name": "Aarakocra Aeromancer",
     "size": "Medium",
@@ -6840,6 +6735,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Fire",
@@ -6926,8 +6822,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Barbed Devil": {
     "name": "Barbed Devil",
@@ -7865,6 +7760,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -7935,8 +7831,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Berserker": {
     "name": "Berserker",
@@ -9351,6 +9246,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -9432,8 +9328,7 @@
         "Detect Thoughts",
         "Lightning Bolt"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Boromar Smuggler": {
     "name": "Boromar Smuggler",
@@ -13258,6 +13153,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -13323,8 +13219,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Crocodile": {
     "name": "Crocodile",
@@ -15264,6 +15159,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -15352,7 +15248,6 @@
         "Dispel Magic"
       ]
     },
-    "is_undead": true,
     "npc_spell_recharge": {
       "BreathFireNecroticSphereHigh": 5
     }
@@ -15384,6 +15279,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -15469,7 +15365,6 @@
         "Dispel Magic"
       ]
     },
-    "is_undead": true,
     "npc_spell_recharge": {
       "BreathFireNecroticSphereMedium": 5
     }
@@ -15629,6 +15524,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -15701,8 +15597,7 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
-    },
-    "is_undead": true
+    }
   },
   "Deep Dragon Wyrmling": {
     "name": "Deep Dragon Wyrmling",
@@ -15915,6 +15810,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [
         "Bludgeoning",
@@ -16011,7 +15907,6 @@
         "has_lair": true
       }
     },
-    "is_undead": true,
     "spell_indices": [
       "BreathPsychicEmanationHigh"
     ],
@@ -17164,6 +17059,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -17275,7 +17171,6 @@
         "Finger of Death"
       ]
     },
-    "is_undead": true,
     "npc_spell_recharge": {
       "BreathNecroticConeHigh": 5
     }
@@ -21143,6 +21038,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -21247,8 +21143,7 @@
       "1": [
         "Fireball"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Flaming Skeleton": {
     "name": "Flaming Skeleton",
@@ -21277,6 +21172,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -21366,8 +21262,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Flesh Golem": {
     "name": "Flesh Golem",
@@ -22573,6 +22468,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic"
       ],
@@ -22662,8 +22558,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Ghast Gravecaller": {
     "name": "Ghast Gravecaller",
@@ -22692,6 +22587,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -22818,8 +22714,7 @@
       "99": [
         "Speak with Dead"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Ghost": {
     "name": "Ghost",
@@ -22848,6 +22743,7 @@
       "save_prof_cha": true,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -22933,8 +22829,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Ghoul": {
     "name": "Ghoul",
@@ -22963,6 +22858,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -23048,8 +22944,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Giant Ape": {
     "name": "Giant Ape",
@@ -28086,6 +27981,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic",
         "Psychic"
@@ -28161,8 +28057,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Gray Ooze": {
     "name": "Gray Ooze",
@@ -30045,6 +29940,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic",
         "Psychic"
@@ -30098,8 +29994,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Hawk": {
     "name": "Hawk",
@@ -34661,6 +34556,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Cold"
       ],
@@ -34757,8 +34653,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Lamia": {
     "name": "Lamia",
@@ -35076,6 +34971,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Cold",
         "Lightning"
@@ -35228,8 +35124,7 @@
         "Power Word Kill",
         "Scrying"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Lion": {
     "name": "Lion",
@@ -38679,6 +38574,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -38763,8 +38659,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Modron Duodrone": {
     "name": "Modron Duodrone",
@@ -39512,6 +39407,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -39588,8 +39484,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Mummy Lord": {
     "name": "Mummy Lord",
@@ -39618,6 +39513,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -39729,8 +39625,7 @@
         "Harm",
         "Insect Plague"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Myconid Adult": {
     "name": "Myconid Adult",
@@ -41874,8 +41769,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Ogrillon Ogre": {
     "name": "Ogrillon Ogre",
@@ -45297,6 +45191,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -45399,8 +45294,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Pony": {
     "name": "Pony",
@@ -47488,6 +47382,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic",
         "Psychic"
@@ -47566,8 +47461,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Rhinoceros": {
     "name": "Rhinoceros",
@@ -49254,6 +49148,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -49358,8 +49253,7 @@
         "Create Undead",
         "Power Word Kill"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Sammaster (Lich Form)": {
     "name": "Sammaster (Lich Form)",
@@ -49388,6 +49282,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -49543,8 +49438,7 @@
         "Disintegrate",
         "Power Word Kill"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Satyr": {
     "name": "Satyr",
@@ -50441,6 +50335,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -50521,8 +50416,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Shadow Demon": {
     "name": "Shadow Demon",
@@ -51499,6 +51393,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -51581,8 +51476,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Slaad Tadpole": {
     "name": "Slaad Tadpole",
@@ -52157,6 +52051,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -52240,8 +52135,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Sphinx of Lore": {
     "name": "Sphinx of Lore",
@@ -53768,6 +53662,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Fire",
         "Necrotic"
@@ -53779,7 +53674,6 @@
       "physical_vulnerabilities": [],
       "spellcasting_ability": "intel",
       "is_vampire": true,
-      "is_undead": true,
       "multiattack": [
         [
           0,
@@ -53939,8 +53833,7 @@
         "Greater Invisibility",
         "Polymorph"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Stirge": {
     "name": "Stirge",
@@ -54860,6 +54753,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [
         "Bludgeoning",
@@ -54937,8 +54831,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Swarm of Dretches": {
     "name": "Swarm of Dretches",
@@ -58384,6 +58277,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Cold",
         "Lightning"
@@ -58546,8 +58440,7 @@
         "Power Word Kill",
         "Scrying"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Vampire": {
     "name": "Vampire",
@@ -58576,6 +58469,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic"
       ],
@@ -58585,7 +58479,6 @@
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
       "is_vampire": true,
-      "is_undead": true,
       "multiattack": [
         [
           0,
@@ -58690,8 +58583,7 @@
         "actions_in_lair": 4,
         "has_lair": true
       }
-    },
-    "is_undead": true
+    }
   },
   "Vampire Familiar": {
     "name": "Vampire Familiar",
@@ -58837,6 +58729,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Fire",
         "Necrotic"
@@ -58848,7 +58741,6 @@
       "physical_vulnerabilities": [],
       "spellcasting_ability": "intel",
       "is_vampire": true,
-      "is_undead": true,
       "multiattack": [
         [
           0,
@@ -58979,8 +58871,7 @@
       "1": [
         "Wall of Fire"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Vampire Nightbringer": {
     "name": "Vampire Nightbringer",
@@ -59009,6 +58900,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -59019,7 +58911,6 @@
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
       "is_vampire": true,
-      "is_undead": true,
       "multiattack": [
         [
           0,
@@ -59120,8 +59011,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Vampire Spawn": {
     "name": "Vampire Spawn",
@@ -59160,6 +59050,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic"
       ],
@@ -59168,8 +59059,7 @@
       "physical_immunities": [],
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
-      "is_vampire": true,
-      "is_undead": true
+      "is_vampire": true
     },
     "weapons": {
       "main_hand": {
@@ -59261,8 +59151,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Vampire Umbral Lord": {
     "name": "Vampire Umbral Lord",
@@ -59291,6 +59180,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -59301,7 +59191,6 @@
       "magic_vulnerabilities": [],
       "physical_vulnerabilities": [],
       "is_vampire": true,
-      "is_undead": true,
       "multiattack": [
         [
           0,
@@ -59426,7 +59315,6 @@
         "has_lair": true
       }
     },
-    "is_undead": true,
     "spell_indices": [
       "Hunger of Hadar"
     ],
@@ -59461,6 +59349,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Necrotic"
       ],
@@ -59471,7 +59360,6 @@
       "physical_vulnerabilities": [],
       "spellcasting_ability": "cha",
       "is_vampire": true,
-      "is_undead": true,
       "multiattack": [
         [
           0,
@@ -59587,8 +59475,7 @@
       "99": [
         "Compulsion"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Venomous Snake": {
     "name": "Venomous Snake",
@@ -60186,6 +60073,111 @@
       ]
     }
   },
+  "Vistani Seer": {
+    "name": "Vistani Seer",
+    "size": "Medium",
+    "stats": {
+      "str": 10,
+      "dex": 13,
+      "con": 12,
+      "intel": 12,
+      "wis": 14,
+      "cha": 16,
+      "hp_max": 44,
+      "hp_cur": 44,
+      "ac": 13,
+      "speed_walk": 30,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 2,
+      "num_attacks": 1,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": true,
+      "save_prof_cha": true,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": [],
+      "spellcasting_ability": "cha"
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Dagger",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 20,
+        "long_range_ft": 60,
+        "proficient": true,
+        "bonus_damage": 1,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Humanoid (Vistani)",
+      "cr": "2",
+      "alignment": "Neutral",
+      "source": "Van Richten's Guide to Ravenloft",
+      "traits": [],
+      "languages": [
+        "Common"
+      ],
+      "senses": {},
+      "passive_perception": 12,
+      "immunities_conditions": [],
+      "save_dc": 13,
+      "saving_throws": [
+        "Wisdom",
+        "Charisma"
+      ],
+      "action_notes": "Curse (Curse of Vulnerability / Weakness / Affliction): the Seer curses one creature within 30 ft; the curse rebounds Psychic damage on the Seer when it ends. Evil Eye (Charm Person / Hold Person): 1/rest.",
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    },
+    "spell_indices": [
+      "Curse of Vulnerability",
+      "Curse of Weakness",
+      "Curse of Affliction",
+      "Charm Person",
+      "Hold Person"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Curse of Vulnerability",
+        "Curse of Weakness",
+        "Curse of Affliction"
+      ],
+      "1": [
+        "Charm Person",
+        "Hold Person"
+      ]
+    }
+  },
   "Vrock": {
     "name": "Vrock",
     "size": "Large",
@@ -60708,6 +60700,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [],
       "physical_resistances": [],
       "magic_immunities": [
@@ -60772,8 +60765,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Warrior Commander": {
     "name": "Warrior Commander",
@@ -62487,8 +62479,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Will-o’-Wisp": {
     "name": "Will-o’-Wisp",
@@ -62517,6 +62508,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -62600,8 +62592,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Winged Kobold": {
     "name": "Winged Kobold",
@@ -63002,6 +62993,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Acid",
         "Cold",
@@ -63083,8 +63075,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Wyvern": {
     "name": "Wyvern",
@@ -65718,6 +65709,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "magic_resistances": [
         "Lightning",
         "Necrotic"
@@ -65845,8 +65837,7 @@
         "Befuddlement",
         "Disintegrate"
       ]
-    },
-    "is_undead": true
+    }
   },
   "Zombie": {
     "name": "Zombie",
@@ -65940,8 +65931,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Zombie Clot": {
     "name": "Zombie Clot",
@@ -65970,6 +65960,7 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_undead": true,
       "spellcasting_ability": "con",
       "magic_resistances": [],
       "physical_resistances": [],
@@ -66048,8 +66039,7 @@
         "actions_in_lair": null,
         "has_lair": false
       }
-    },
-    "is_undead": true
+    }
   },
   "Izek Strazni": {
     "name": "Izek Strazni",

@@ -17,12 +17,16 @@
 #include "combat_internal.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <format>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 namespace rpg {
 
@@ -357,6 +361,13 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     if (stats.wild_magic_shield_turns > 0) {
         --stats.wild_magic_shield_turns;
         if (stats.wild_magic_shield_turns == 0) stats.ac_temporary_modifications -= 2;
+        bm.setAgentStats(agent_idx, stats);
+    }
+
+    // Haste (Phase 2): grant one fresh extra action at the start of each of the hasted creature's
+    // turns. The GUI's "⚡ Haste Action" button spends it (resets action_used).
+    if (stats.hasted) {
+        stats.haste_action_available = true;
         bm.setAgentStats(agent_idx, stats);
     }
 
@@ -744,7 +755,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.agent_idx != agent_idx) continue;
         if (active_cond.condition_name != "Paralyzed" &&
             active_cond.condition_name != "Incapacitated" &&
-            active_cond.condition_name != "Stunned") continue;
+            active_cond.condition_name != "Stunned" &&
+            active_cond.condition_name != "HasteLethargy") continue;  // Haste's end-of-spell lethargy skips the turn
 
         // If save_repeat_turns == -1, skip turn without attempt
         if (active_cond.save_repeat_turns == -1) {
@@ -863,7 +875,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (active_cond.agent_idx != agent_idx) continue;
         if (active_cond.condition_name == "Paralyzed" ||
             active_cond.condition_name == "Incapacitated" ||
-            active_cond.condition_name == "Stunned") continue;  // Skip incapacitating conditions
+            active_cond.condition_name == "Stunned" ||
+            active_cond.condition_name == "HasteLethargy") continue;  // Skip incapacitating conditions
 
         if (active_cond.save_repeat_turns == -1) continue;  // Never allows saves
         if (active_cond.next_save_turn > 0) { --active_cond.next_save_turn; continue; }  // Count down repeat timer
@@ -1212,12 +1225,64 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 }
 
 // ── NPC automation turn driver (NPC_AUTOMATION_PLAN.md Step 2) ────────────────
+// Lowercase a spell name for classification_ignore_spells membership tests, so hand-authored stat-block
+// capitalization ("Animal Friendship" vs "Animal friendship") can never miss the ignore list.
+static std::string npcLowerName(std::string s) noexcept
+{
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
 NpcAutomationStrategy CombatEngine::resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept
 {
-    // SINGLE place the later difficulty-level → role → strategy override will live. Today it returns the
-    // per-agent strategy unchanged; when difficulty levels arrive, this resolves a strategy from the
-    // agent's role + the team difficulty level instead, leaving runNpcTurn and the executors untouched.
-    return bm.getAgentNpcAutomationStrategy(agent_idx);
+    // The difficulty-level → role → strategy override (NPC_AUTOMATION_PLAN.md "Difficulty is an
+    // OVERRIDE"). Level 0 = manual: the per-agent strategy field rules. Levels 1+ IGNORE the field and
+    // resolve a strategy from npcClassifyRole + the level, leaving the executors untouched.
+    const int level = bm.getAgentNpcAutomationDifficulty(agent_idx);
+    if (level <= 0) return bm.getAgentNpcAutomationStrategy(agent_idx);
+
+    // Levels 5/6 are the NN policies (Steps 11-13) — not yet trained. Clamp to the best heuristic level
+    // and say so ONCE per engine so a DM who dialed 5 knows what is actually running.
+    int eff = level;
+    if (level > 4) {
+        eff = 4;
+        if (!npc_nn_level_warned_) {
+            npc_nn_level_warned_ = true;
+            log_("NPC automation: difficulty Level {} policy is not yet trained — using Level 4 heuristics.",
+                 level);
+        }
+    }
+
+    const NpcRole role = npcClassifyRole(bm, agent_idx);
+    if (eff <= 1 || role == NpcRole::Melee)     // L1: everyone Simple; melee stays Simple at every level
+        return NpcAutomationStrategy::Simple;
+
+    if (role == NpcRole::Ranged) {
+        // L4 upgrades a ranged agent that owns stealth tools to the ambusher; otherwise kite at range.
+        if (eff >= 4 && npcHasStealthTools(bm, agent_idx)) return NpcAutomationStrategy::PreferHide;
+        return NpcAutomationStrategy::PreferRange;
+    }
+
+    // Caster.
+    if (eff >= 4) {
+        // L4 resolves DYNAMICALLY: probe the LIVE planners in priority order Heal → Control → Support and
+        // pick the first with an actionable plan (castable right now, or worth approaching for). Probing
+        // the planners themselves — not a parallel capability heuristic — guarantees the resolved executor
+        // actually finds work, and a healer whose allies are all healthy flows on to Control/Support
+        // instead of dead-ending in the weapon fallback. State-dependent, so runNpcTurn stamps this
+        // resolution onto the parked turn and a resume reuses it (NpcTurnState::resolved_strategy) —
+        // a mid-park state change can never re-route the resume into the wrong executor.
+        const auto actionable = [](const NpcCastPlan& p) noexcept {
+            return p.spell_idx >= 0 || p.approach_target >= 0;
+        };
+        if (actionable(npcPlanHealCast(bm, agent_idx)))    return NpcAutomationStrategy::PreferHeal;
+        if (actionable(npcPlanControlCast(bm, agent_idx))) return NpcAutomationStrategy::PreferControl;
+        if (actionable(npcPlanSupportCast(bm, agent_idx))) return NpcAutomationStrategy::PreferSupport;
+        // Nothing to heal/control/support → fall through to the L3 rule (blast, else kite).
+    }
+    if (eff >= 3 && npcHasCastableAoeSpell(bm, agent_idx))   // L3+: blast when an AoE is castable now
+        return NpcAutomationStrategy::PreferAOE;
+    return NpcAutomationStrategy::PreferRange;               // L2 baseline caster behaviour
 }
 
 int CombatEngine::npcCommandFleeSource(int agent_idx) const noexcept
@@ -1236,7 +1301,7 @@ FlowStatus CombatEngine::runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx)
 
     NpcTurnState& st = npc_turn_;
     // Resume after a parked OA on the way out: the flee move already resolved during advanceMove, so just
-    // end the turn (Command Flee grants no action). Guarded on flee_move_launched (mirrors aoe_moving).
+    // end the turn (Command Flee grants no action). Guarded on flee_move_launched (mirrors cast_moving).
     if (st.active && st.agent_idx == agent_idx && st.flee_move_launched) {
         st = NpcTurnState{};
         return FlowStatus::Completed;
@@ -1282,6 +1347,8 @@ FlowStatus CombatEngine::runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx)
     }
 
     log_("Command (Flee): {} flees from {}", agentName(bm, agent_idx), agentName(bm, fear_idx));
+    recordNpcAnnounce(agent_idx, fear_idx,
+        std::format("{} flees from {}!", agentName(bm, agent_idx), agentName(bm, fear_idx)));
     st.flee_move_launched = true;   // set BEFORE beginMove so a park→resume ends the turn (no re-flee)
     if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
         return FlowStatus::AwaitingDecision;
@@ -1307,31 +1374,70 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
             bm.getAgentStats(agent_idx).hp_cur <= 0 || cond.dead || cond.unconscious) {
             if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
                 npc_turn_ = NpcTurnState{};
+            npc_recording_ = false;   // a parked turn's actor died mid-park — stop the event stream too
             return FlowStatus::Completed;
         }
     }
+
+    // Visual event stream (NpcVisualEvent): record everything this turn does so the GUI can play it
+    // back as an animation. A FRESH turn drops any undrained events (headless callers never drain, so
+    // the buffer stays bounded to one turn). Recording stays ON across a park — the parked action
+    // resolves inside submitDecision and must record its outcome — and is cleared on every Completed
+    // return below. The GUI drains via take_npc_visual_events() after every run_npc_turn return.
+    if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx))
+        npc_visual_events_.clear();
+    npc_recording_ = true;
 
     // Command (Flee) overrides all strategy: the creature spends its whole turn running away from the fear
     // source and takes no action (Command RAW). Intercept BEFORE the strategy dispatch so it applies to any
     // NPC regardless of role. On a park→resume the flee flag routes back here (the condition persists until
     // the caster's next turn), and runFleeTurn's flee_move_launched guard ends the turn without re-fleeing.
     const int fearIdx = npcCommandFleeSource(agent_idx);
-    if (fearIdx >= 0)
-        return runFleeTurn(bm, agent_idx, fearIdx);
+    if (fearIdx >= 0) {
+        const FlowStatus fs = runFleeTurn(bm, agent_idx, fearIdx);
+        if (fs == FlowStatus::Completed) npc_recording_ = false;
+        return fs;
+    }
 
-    // Resume routing (Bucket D + PreferAOE): if a parked NPC turn is mid-flight for this agent and it was
-    // launched as an AoE/recharge cast (or its approach move), it MUST re-enter runAoeTurn to finish. The
-    // recharge feature that triggered the AoE route below is expended once the cast launches, so the
-    // fresh-turn heuristic would mis-route the resume. A weapon-turn resume leaves both flags clear and
-    // falls through — runWeaponTurn/runAoeTurn detect it via npc_turn_.
+    // Load-or-resolve the strategy (NEVER the raw field — resolveStrategy is the single difficulty seam).
+    // A parked turn REUSES the strategy that launched it: the dynamic Level-4 resolution probes live game
+    // state, so re-resolving after that state changed mid-park (the heal landed, an enemy dropped) could
+    // route the resume into the wrong executor. Fresh turns resolve normally.
+    NpcAutomationStrategy strategy;
+    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx && npc_turn_.resolved_strategy >= 0)
+        strategy = static_cast<NpcAutomationStrategy>(npc_turn_.resolved_strategy);
+    else
+        strategy = resolveStrategy(bm, agent_idx);
+
+    const FlowStatus fs = dispatchNpcTurn(bm, agent_idx, strategy);
+
+    // Stamp the resolution onto a PARKED turn (stamped after dispatch because the executors reset
+    // npc_turn_ when a fresh turn starts, which would wipe a pre-stamp). A completed turn cleared
+    // npc_turn_, so nothing is stamped and the next turn re-resolves.
+    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
+        npc_turn_.resolved_strategy = static_cast<int>(strategy);
+    if (fs == FlowStatus::Completed) npc_recording_ = false;   // turn over → stop the visual event stream
+    return fs;
+}
+
+FlowStatus CombatEngine::dispatchNpcTurn(BattleMap& bm, int agent_idx, NpcAutomationStrategy strategy)
+{
+    // Resume routing (single-cast turns): if a parked NPC turn is mid-flight for this agent and it was
+    // launched as a spell cast (or its approach move), it MUST re-enter the SAME executor that launched it.
+    // The recharge feature / spell slot that triggered the cast is expended once it launches, so the
+    // fresh-turn heuristic would mis-route the resume. Route by strategy: the three caster strategies
+    // re-enter runCasterTurn; everything else (PreferAOE + any strategy that took the Bucket-D recharge
+    // route) re-enters runAoeTurn. A weapon-turn resume leaves both cast flags clear and falls through —
+    // runWeaponTurn/runCasterTurn detect it via npc_turn_.
     if (npc_turn_.active && npc_turn_.agent_idx == agent_idx &&
-        (npc_turn_.aoe_cast_launched || npc_turn_.aoe_moving))
-        return runAoeTurn(bm, agent_idx);
-
-    // Dispatch on the resolved strategy (NEVER the raw field — resolveStrategy is the single seam where a
-    // later difficulty-level override will swap the algorithm). Strategies are added per step; until a
-    // strategy has an executor it falls through to Simple (the always-defined baseline).
-    const NpcAutomationStrategy strategy = resolveStrategy(bm, agent_idx);
+        (npc_turn_.cast_launched || npc_turn_.cast_moving)) {
+        switch (strategy) {
+            case NpcAutomationStrategy::PreferControl: return runCasterTurn(bm, agent_idx, CasterIntent::Control);
+            case NpcAutomationStrategy::PreferHeal:    return runCasterTurn(bm, agent_idx, CasterIntent::Heal);
+            case NpcAutomationStrategy::PreferSupport: return runCasterTurn(bm, agent_idx, CasterIntent::Support);
+            default:                                   return runAoeTurn(bm, agent_idx);
+        }
+    }
 
     // No-op (bystander): take no action and no movement — cower in place and end the turn. Intercept
     // BEFORE the Bucket D recharge route so a cowering monster never fires a breath either. Clear any
@@ -1350,6 +1456,9 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // so a dragon on cooldown correctly bites instead. PreferAOE already routes to runAoeTurn below.
     if (strategy != NpcAutomationStrategy::PreferAOE &&
         strategy != NpcAutomationStrategy::PreferHide &&
+        strategy != NpcAutomationStrategy::PreferControl &&
+        strategy != NpcAutomationStrategy::PreferHeal &&
+        strategy != NpcAutomationStrategy::PreferSupport &&
         npcHasAvailableRechargeAoe(bm, agent_idx))
         return runAoeTurn(bm, agent_idx);
 
@@ -1380,6 +1489,15 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
             // turn — it has its own executor (and falls back to a Simple weapon turn when nothing is worth
             // blasting). Dispatch straight to it and skip the shared runWeaponTurn below.
             return runAoeTurn(bm, agent_idx);
+        case NpcAutomationStrategy::PreferControl:
+            // Step 8: crowd-control enemies. Caster turn — plan a control spell, cast once, weapon fallback.
+            return runCasterTurn(bm, agent_idx, CasterIntent::Control);
+        case NpcAutomationStrategy::PreferHeal:
+            // Step 9: heal the most-wounded ally (downed first). Caster turn with the Heal planner.
+            return runCasterTurn(bm, agent_idx, CasterIntent::Heal);
+        case NpcAutomationStrategy::PreferSupport:
+            // Step 10: buff allies that don't already carry the buff. Caster turn with the Support planner.
+            return runCasterTurn(bm, agent_idx, CasterIntent::Support);
         case NpcAutomationStrategy::Simple:
         default:
             break;   // Simple == "preferMelee" (NPC_AUTOMATION_PLAN.md Step 3)
@@ -1455,7 +1573,35 @@ bool CombatEngine::npcAttackable(const BattleMap& bm, int agent_idx, int target_
 
 bool CombatEngine::npcIsCaster(const BattleMap& bm, int idx) const noexcept
 {
-    return !bm.getAgentSpells(idx).empty();   // a spellcaster is any agent with a known spell
+    // A spellcaster is any agent with a COMBAT-RELEVANT known spell. The classification_ignore_spells
+    // config list filters flavor / out-of-combat utility (a Centaur Warden whose only spell is Speak with
+    // Animals is NOT a caster — neither for the difficulty resolver's role classification nor as a
+    // PreferTargetCaster priority target). Names compare lowercased so capitalization can't miss.
+    const std::set<std::string>& ignore = npcClassificationIgnore();
+    for (const Spell& sp : bm.getAgentSpells(idx))
+        if (!ignore.contains(npcLowerName(sp.name))) return true;
+    return false;
+}
+
+NpcRole CombatEngine::npcClassifyRole(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // Role drives the difficulty-level → strategy mapping (NPC_AUTOMATION_PLAN.md). Deliberately coarse
+    // (refinement is a planned follow-up): any combat-relevant spell ⇒ Caster; else any usable ranged
+    // weapon ⇒ Ranged; else Melee.
+    if (npcIsCaster(bm, agent_idx)) return NpcRole::Caster;
+    for (const Weapon& w : bm.getAgentWeapons(agent_idx))
+        if (!w.is_shield && w.type == WeaponType::Ranged) return NpcRole::Ranged;
+    return NpcRole::Melee;
+}
+
+bool CombatEngine::npcHasStealthTools(const BattleMap& bm, int agent_idx) const noexcept
+{
+    // The tools npcClassifyConceal routes A-C run on. Route B's cover-cell reachability is deliberately
+    // NOT probed here: it reads the live walk budget, which is unseeded at resolve time (the executor
+    // seeds it), and the conceal tail already copes with "no cover reachable" by ending the turn exposed.
+    return npcFindSelfInvisSpell(bm, agent_idx, Spell::BonusAction) >= 0
+        || npcFindSelfInvisSpell(bm, agent_idx, Spell::Action)      >= 0
+        || bm.getAgentStats(agent_idx).has_cunning_action;
 }
 
 int CombatEngine::npcSelectTarget(const BattleMap& bm, int agent_idx, bool prefer_caster,
@@ -1949,6 +2095,11 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
             a.attack_slot  = "action";
             --st.attacks_remaining;     // BEFORE beginAttack: a park→resume must not repeat this swing
             renderAttack(agent_idx, st.target_idx);
+            npcLogAttackAnalysis(bm, agent_idx, st.target_idx, st.weapon_idx);   // probability report
+            recordNpcAnnounce(agent_idx, st.target_idx,
+                std::format("{} attacks {} with {}!", agentName(bm, agent_idx),
+                            agentName(bm, st.target_idx),
+                            bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(st.weapon_idx)].name));
             if (beginAttack(bm, a) == FlowStatus::AwaitingDecision)
                 return FlowStatus::AwaitingDecision;
             // attack resolved inline → next swing
@@ -1980,7 +2131,9 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
             }
             if (!st.conceal_act_launched) {
                 st.conceal_act_launched = true;
-                (void)checkHide(bm, agent_idx, /*in_combat=*/true);   // Action Hide; no bonus/cunning action
+                const HideResult hr = checkHide(bm, agent_idx, /*in_combat=*/true);   // Action Hide; no bonus/cunning action
+                if (hr.valid)
+                    recordNpcAnnounce(agent_idx, -1, std::format("{} hides!", agentName(bm, agent_idx)));
             }
         } else if (route == NpcConcealRoute::RouteA) {
             // Route A (CP4) — best of both worlds: the attack already landed for full damage in the loop
@@ -2012,6 +2165,8 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                     cast.target_indices = { agent_idx };   // self-buff: apply Invisible to the caster
                     log_("NPC {} bonus-casts {} to vanish", agentName(bm, agent_idx),
                          bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name);
+                    recordNpcAnnounce(agent_idx, -1, std::format("{} casts {}!", agentName(bm, agent_idx),
+                        bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name));
                     if (beginCast(bm, cast) == FlowStatus::AwaitingDecision)
                         return FlowStatus::AwaitingDecision;
                 }
@@ -2031,6 +2186,8 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 cast.target_indices = { agent_idx };   // self-buff: apply Invisible to the caster
                 log_("NPC {} casts {} to vanish", agentName(bm, agent_idx),
                      bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name);
+                recordNpcAnnounce(agent_idx, -1, std::format("{} casts {}!", agentName(bm, agent_idx),
+                    bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name));
                 if (beginCast(bm, cast) == FlowStatus::AwaitingDecision)
                     return FlowStatus::AwaitingDecision;   // parked (OnDeclareCast/Counterspell); resume re-enters
             }
@@ -2063,7 +2220,10 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 st.conceal_act_launched = true;
                 if (hasBonusAction(bm, agent_idx)) {
                     const HideResult hr = checkHide(bm, agent_idx, /*in_combat=*/true);
-                    if (hr.valid) (void)spendBonusAction(bm, agent_idx);
+                    if (hr.valid) {
+                        (void)spendBonusAction(bm, agent_idx);
+                        recordNpcAnnounce(agent_idx, -1, std::format("{} hides!", agentName(bm, agent_idx)));
+                    }
                 }
             }
         }
@@ -2087,14 +2247,38 @@ static double npcSpellAvgDamage(const Spell& sp) noexcept
     return avg;
 }
 
-// An AoE blast spell for PreferAOE purposes: a damaging (Harm) area geometry. Single/Multiple are directly
-// targeted; Rectangle walls are control — neither is catchment-maximized here. Single-sourced so the plan
-// finder (npcPlanAoeCast) and the "does the agent even have an AoE?" gate (npcHasCastableAoeSpell) agree.
+// An AoE blast spell for PreferAOE purposes: a DAMAGING area. Every area geometry counts —
+// Single/Multiple are directly targeted, so they are the only exclusions — but the spell must actually
+// carry damage dice/bonuses: a Harm-typed area that only imposes conditions (Hypnotic Pattern) is a
+// control spell (PreferControl's priority list), and "blasting" with it would waste the action on zero
+// damage. Rectangle (Wall of Fire) is IN: an NPC cast aims it with the single-point form, which
+// resolveAoeTargets evaluates as a width×length box centered on the aim — so the planner's catchment
+// count and the actual cast agree exactly (oriented two-point wall placement is a future refinement).
+// Single-sourced so the plan finder (npcPlanAoeCast) and the "does the agent even have an AoE?" gate
+// (npcHasCastableAoeSpell) agree.
 static bool isAoeBlastSpell(const Spell& sp) noexcept
 {
-    const bool isArea = sp.geometry == Spell::Sphere || sp.geometry == Spell::Cone
-                      || sp.geometry == Spell::Line   || sp.geometry == Spell::Square;
-    return isArea && sp.type == Spell::Harm;
+    const bool isArea = sp.geometry != Spell::Single && sp.geometry != Spell::Multiple;
+    return isArea && sp.type == Spell::Harm && npcSpellAvgDamage(sp) > 0.0;
+}
+
+int CombatEngine::npcAreaNetEnemies(const BattleMap& bm, const Spell& sp, int agent_idx,
+                                    const Cell& aim) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    // Same resolver executeSpell uses, so a planner counts EXACTLY the creatures the cast would hit.
+    const std::vector<int> hit = resolveAoeTargets(bm, sp, agent_idx, aim.col, aim.row);
+    int enemiesHit = 0, alliesHit = 0;
+    for (int t : hit) {
+        if (npcAttackable(bm, agent_idx, t)) { ++enemiesHit; continue; }   // living enemy in play
+        if (t == agent_idx || areAllies(bm, agent_idx, t)) {              // friendly-fire candidate
+            const PlacedAgent& tp = agents[static_cast<std::size_t>(t)];
+            if (!tp.removed_from_play && !tp.on_deck && bm.getAgentStats(t).hp_cur > 0)
+                ++alliesHit;
+        }
+    }
+    // selective_targeting ("creatures of your choosing") intrinsically spares allies → no friendly-fire cost.
+    return enemiesHit - (sp.selective_targeting ? 0 : alliesHit);
 }
 
 NpcAoePlan CombatEngine::npcPlanAoeCast(const BattleMap& bm, int agent_idx) const noexcept
@@ -2122,12 +2306,13 @@ NpcAoePlan CombatEngine::npcPlanAoeCast(const BattleMap& bm, int agent_idx) cons
         // handled by other strategies). Catchment maximization is meaningful only for damaging Harm areas.
         if (!isAoeBlastSpell(sp)) continue;
 
-        // Sphere/Square are PLACED at an aim point (range + LoS gated). Cone/Line emanate from the caster,
-        // so the aim cell only sets direction — the geometry's own length bounds reach (LoS still required).
-        const bool   placedArea   = (sp.geometry == Spell::Sphere || sp.geometry == Spell::Square);
+        // Sphere/Square/Rectangle are PLACED at an aim point (range + LoS gated). Cone/Line emanate from
+        // the caster, so the aim cell only sets direction — the geometry's own length bounds reach (LoS
+        // still required).
+        const bool   placedArea   = (sp.geometry == Spell::Sphere || sp.geometry == Spell::Square
+                                     || sp.geometry == Spell::Rectangle);
         const int    rangeFt      = effectiveSpellRange(bm, agent_idx, sp);
         const double power        = npcSpellAvgDamage(sp);
-        const bool   sparesAllies = sp.selective_targeting;   // RAW "creatures of your choosing" → no FF
 
         for (int ai : enemies) {
             const Cell aim = agents[static_cast<std::size_t>(ai)].origin;
@@ -2142,18 +2327,9 @@ NpcAoePlan CombatEngine::npcPlanAoeCast(const BattleMap& bm, int agent_idx) cons
             }
             if (!bm.hasLineOfSight(casterOrigin, casterSize, aim, 1)) continue;
 
-            // Count the catchment with the SAME resolver executeSpell uses — geometry is single-sourced.
-            const std::vector<int> hit = resolveAoeTargets(bm, sp, agent_idx, aim.col, aim.row);
-            int enemiesHit = 0, alliesHit = 0;
-            for (int t : hit) {
-                if (npcAttackable(bm, agent_idx, t)) { ++enemiesHit; continue; }   // living enemy in play
-                if (t == agent_idx || areAllies(bm, agent_idx, t)) {              // friendly-fire candidate
-                    const PlacedAgent& tp = agents[static_cast<std::size_t>(t)];
-                    if (!tp.removed_from_play && !tp.on_deck && bm.getAgentStats(t).hp_cur > 0)
-                        ++alliesHit;
-                }
-            }
-            const int net = enemiesHit - (sparesAllies ? 0 : alliesHit);
+            // Count the catchment with the SAME resolver executeSpell uses — geometry is single-sourced
+            // (npcAreaNetEnemies applies the selective_targeting friendly-fire rule).
+            const int net = npcAreaNetEnemies(bm, sp, agent_idx, aim);
             if (net > plan.net_enemies || (net == plan.net_enemies && net > 0 && power > bestPower)) {
                 plan.spell_idx   = si;
                 plan.aim         = aim;
@@ -2193,7 +2369,8 @@ bool CombatEngine::npcHasAvailableRechargeAoe(const BattleMap& bm, int agent_idx
     return false;
 }
 
-bool CombatEngine::npcFindAoeApproachCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept
+bool CombatEngine::npcFindApproachCell(const BattleMap& bm, int agent_idx, int approach_target,
+                                       Cell& out) const noexcept
 {
     const auto agents = bm.placedAgents();
     const int  n = static_cast<int>(agents.size());
@@ -2202,8 +2379,8 @@ bool CombatEngine::npcFindAoeApproachCell(const BattleMap& bm, int agent_idx, Ce
     const Cell myOrigin = me.origin;
     const int  mySize   = me.agent ? me.agent->getSize() : 1;
 
-    const int tgt = npcSelectTarget(bm, agent_idx);   // nearest attackable enemy (default priority)
-    if (tgt < 0) return false;
+    const int tgt = approach_target;                  // ally (Heal/Support) or enemy (AoE/Control) to close on
+    if (tgt < 0 || tgt >= n) return false;
     const Cell tOrigin = agents[static_cast<std::size_t>(tgt)].origin;
     const int  tSize   = agents[static_cast<std::size_t>(tgt)].agent
                        ? agents[static_cast<std::size_t>(tgt)].agent->getSize() : 1;
@@ -2231,14 +2408,14 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
     NpcTurnState& st = npc_turn_;
     bool resuming_after_move = false;
     if (st.active && st.agent_idx == agent_idx) {        // resuming after a parked window
-        if (st.aoe_cast_launched) {                      // the single AoE cast already resolved → turn over
+        if (st.cast_launched) {                          // the single AoE cast already resolved → turn over
             st = NpcTurnState{};
             return FlowStatus::Completed;
         }
-        if (st.aoe_moving) {
+        if (st.cast_moving) {
             // The approach move (bringing enemies into AoE range) resolved after parking on an OA. Re-plan
             // and cast from the new cell — do NOT re-seed movement or approach a second time.
-            st.aoe_moving = false;
+            st.cast_moving = false;
             resuming_after_move = true;
         } else {
             // No AoE launched and not approaching → this turn fell back to a weapon turn. Resume it:
@@ -2265,18 +2442,19 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
         st.active    = true;
         st.agent_idx = agent_idx;
         st.phase     = NpcTurnState::Done;
-        st.aoe_moving = true;                            // resume-marker: re-plan + cast if the move parks
+        st.cast_moving = true;                           // resume-marker: re-plan + cast if the move parks
         const Agent::Stats s = bm.getAgentStats(agent_idx);
         bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
             s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
 
         Cell dest{};
-        if (npcFindAoeApproachCell(bm, agent_idx, dest) && dest != curOrigin()) {
+        const int approach = npcSelectTarget(bm, agent_idx);   // nearest attackable enemy (default priority)
+        if (npcFindApproachCell(bm, agent_idx, approach, dest) && dest != curOrigin()) {
             log_("NPC {} moves to bring enemies into AoE range", agentName(bm, agent_idx));
             if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
                 return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
         }
-        st.aoe_moving = false;
+        st.cast_moving = false;
         plan = npcPlanAoeCast(bm, agent_idx);            // re-plan from the new position
     }
 
@@ -2292,7 +2470,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
     st.active    = true;
     st.agent_idx = agent_idx;
     st.phase     = NpcTurnState::Done;       // an AoE turn is one action — no movement/attack phases
-    st.aoe_cast_launched = true;             // resume-guard: never re-cast (set BEFORE beginCast)
+    st.cast_launched = true;                 // resume-guard: never re-cast (set BEFORE beginCast)
 
     SpellAction action;
     action.caster_idx     = agent_idx;
@@ -2304,8 +2482,16 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
 
     log_("NPC {} casts {} (AoE) catching {} enemies", agentName(bm, agent_idx),
          bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)].name, plan.net_enemies);
+    // Probability report: per-creature save chances for the area's catchment (the SAME resolver
+    // executeSpell uses, so the reported set matches the creatures the cast will actually roll).
+    npcLogCastAnalysis(bm, agent_idx, plan.spell_idx,
+        resolveAoeTargets(bm, bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)],
+                          agent_idx, plan.aim.col, plan.aim.row));
     const int rt = npcSelectTarget(bm, agent_idx);           // visualize from the caster toward a hit enemy
     if (rt >= 0) renderAttack(agent_idx, rt);
+    recordNpcAnnounce(agent_idx, -1,
+        std::format("{} casts {}!", agentName(bm, agent_idx),
+                    bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)].name));
 
     if (beginCast(bm, action) == FlowStatus::AwaitingDecision)
         return FlowStatus::AwaitingDecision;  // parked for a human reaction; resume re-enters runAoeTurn
@@ -2313,6 +2499,866 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
     // Cast resolved inline (no reaction) → the turn is complete.
     st = NpcTurnState{};
     return FlowStatus::Completed;
+}
+
+// ── Caster turn (Steps 8-10 shared foundation) ───────────────────────────────
+// The three caster strategies (PreferControl/Heal/Support) share one executor + one planner each, exactly
+// as PreferAOE has runAoeTurn. runCasterTurn below is intent-agnostic; only npcPlanCasterCast differs.
+
+bool CombatEngine::npcHoldsConcentration(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+    return getAgentConditions(bm, agent_idx).concentrating;
+}
+
+NpcCastPlan CombatEngine::npcPlanCasterCast(const BattleMap& bm, int agent_idx,
+                                            CasterIntent intent) const noexcept
+{
+    switch (intent) {
+        case CasterIntent::Control: return npcPlanControlCast(bm, agent_idx);
+        case CasterIntent::Heal:    return npcPlanHealCast   (bm, agent_idx);
+        case CasterIntent::Support: return npcPlanSupportCast(bm, agent_idx);
+    }
+    return {};
+}
+
+// ── NPC-automation tuning config (gui/npc_automation_config.json) ─────────────
+// Loaded ONCE (lazy, on first planner use) into the mutable caches. The file is optional: if it is absent
+// or malformed, baked-in defaults keep the planners working. One home for all NPC-automation knobs so
+// difficulty tuning has somewhere to grow (control_priority + heal_threshold_fraction +
+// classification_ignore_spells).
+void CombatEngine::npcLoadConfig() const noexcept
+{
+    if (npc_config_loaded_) return;
+    npc_config_loaded_ = true;
+
+    // Baked-in default control priority (NPC_AUTOMATION_PLAN.md Step 8) — used if the JSON is missing.
+    npc_control_priority_ = {"Hold Monster", "Hold Person", "Hypnotic Pattern",
+                             "Slow", "Command", "Tasha's Hideous Laughter"};
+    npc_heal_threshold_fraction_ = 0.5;
+    // Baked-in classification ignore list (difficulty resolver): spells that do NOT make their owner a
+    // "caster" — flavor / out-of-combat utility, plus combat spells automation can't use (Mage Armor is
+    // pre-baked into stat-block AC; Phantom Steed needs mounts; Feather Fall needs a vertical axis).
+    // Stored LOWERCASED; membership tests lowercase the probe so stat-block capitalization can't miss.
+    npc_classification_ignore_ = {
+        "speak with animals", "elementalism", "detect thoughts", "mage hand",
+        "create or destroy water", "thaumaturgy", "mending", "druidcraft", "control weather",
+        "light", "scrying", "mage armor", "locate object", "legend lore", "arcane eye",
+        "detect magic", "tongues", "phantom steed", "minor illusion", "major image",
+        "disguise self", "shapechange", "commune", "wind walk", "creation", "levitate",
+        "dancing lights", "guidance", "animal messenger", "animal friendship",
+        "pass without trace", "hallucinatory terrain", "unseen servant",
+        "detect evil and good", "nondetection", "feather fall"};
+
+    const char* paths[] = {"npc_automation_config.json", "./npc_automation_config.json",
+                           "../gui/npc_automation_config.json", "gui/npc_automation_config.json"};
+    for (const char* p : paths) {
+        try {
+            std::ifstream f(p);
+            if (!f.is_open()) continue;
+            nlohmann::json j; f >> j;
+            if (j.contains("control_priority") && j["control_priority"].is_array()) {
+                std::vector<std::string> cp;
+                for (const auto& e : j["control_priority"])
+                    if (e.is_string()) cp.push_back(e.get<std::string>());
+                if (!cp.empty()) npc_control_priority_ = std::move(cp);
+            }
+            if (j.contains("heal_threshold_fraction") && j["heal_threshold_fraction"].is_number())
+                npc_heal_threshold_fraction_ = j["heal_threshold_fraction"].get<double>();
+            if (j.contains("classification_ignore_spells") && j["classification_ignore_spells"].is_array()) {
+                std::set<std::string> ig;
+                for (const auto& e : j["classification_ignore_spells"])
+                    if (e.is_string()) ig.insert(npcLowerName(e.get<std::string>()));
+                if (!ig.empty()) npc_classification_ignore_ = std::move(ig);
+            }
+            break;   // first readable config wins
+        } catch (...) { /* malformed → keep defaults */ }
+    }
+}
+
+const std::vector<std::string>& CombatEngine::npcControlPriority() const noexcept
+{
+    npcLoadConfig();
+    return npc_control_priority_;
+}
+
+double CombatEngine::npcHealThreshold() const noexcept
+{
+    npcLoadConfig();
+    return npc_heal_threshold_fraction_;
+}
+
+const std::set<std::string>& CombatEngine::npcClassificationIgnore() const noexcept
+{
+    npcLoadConfig();
+    return npc_classification_ignore_;
+}
+
+// PreferControl (Step 8): walk the DM-authored control_priority list IN ORDER and cast the FIRST entry that
+// is castable right now with a valid enemy target/aim. Single-target control (Hold Person, Command) lands on
+// the nearest attackable enemy (range + LoS gated); area control (Hypnotic Pattern, Slow) picks the aim that
+// maximizes net enemies caught (reusing npcAreaNetEnemies, selective_targeting-aware). Priority is ABSOLUTE —
+// the first list entry that yields a valid cast wins, so DM order dictates which control lands, not scoring.
+// Concentration guard: never spend the action on a concentration control spell while already concentrating
+// (don't drop a live effect for another). If a control spell is castable but no target is in range from the
+// current cell, return approach_target (nearest enemy) so runCasterTurn closes distance and re-plans. With no
+// castable control spell at all → empty plan → weapon-turn fallback.
+NpcCastPlan CombatEngine::npcPlanControlCast(const BattleMap& bm, int agent_idx) const noexcept
+{
+    NpcCastPlan plan;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return plan;
+
+    const PlacedAgent& caster = agents[static_cast<std::size_t>(agent_idx)];
+    const Cell casterOrigin = caster.origin;
+    const int  casterSize   = caster.agent ? caster.agent->getSize() : 1;
+    const bool concentrating = npcHoldsConcentration(bm, agent_idx);
+
+    const std::vector<int> castable = availableCastableSpells(bm, agent_idx);
+    bool haveControlSpell = false;   // some control spell is castable (may just be out of range) → approach
+
+    for (const std::string& wantName : npcControlPriority()) {
+        // Find the castable spell instance matching this priority name (slot / N-day / expended gating
+        // already applied by availableCastableSpells, so a match here is castable RIGHT NOW).
+        int si = -1;
+        for (int c : castable)
+            if (caster.spells[static_cast<std::size_t>(c)].name == wantName) { si = c; break; }
+        if (si < 0) continue;
+
+        const Spell& sp = caster.spells[static_cast<std::size_t>(si)];
+        // Never drop a live concentration control effect for another concentration spell.
+        if (concentrating && sp.requires_concentration) continue;
+
+        haveControlSpell = true;   // castable in principle — worth approaching for if out of range
+
+        const bool isArea = sp.geometry != Spell::Single && sp.geometry != Spell::Multiple;
+        const int  rangeFt = effectiveSpellRange(bm, agent_idx, sp);
+
+        if (isArea) {
+            // Area control: aim at the enemy cluster that catches the most net enemies (>0). Placed areas
+            // (Sphere/Square/Rectangle — a Rectangle aims with the single-point form, a centered box) are
+            // range-gated to the aim; self-origin Cone/Line need only LoS (mirrors AoE).
+            const bool placedArea = (sp.geometry == Spell::Sphere || sp.geometry == Spell::Square
+                                     || sp.geometry == Spell::Rectangle);
+            int  bestNet = 0;
+            Cell bestAim{};
+            for (int ai = 0; ai < n; ++ai) {
+                if (!npcAttackable(bm, agent_idx, ai)) continue;
+                const Cell aim = agents[static_cast<std::size_t>(ai)].origin;
+                if (placedArea) {
+                    const int dCells = std::max(std::abs(aim.col - casterOrigin.col),
+                                                std::abs(aim.row - casterOrigin.row));
+                    if (dCells * 5 > rangeFt) continue;
+                }
+                if (!bm.hasLineOfSight(casterOrigin, casterSize, aim, 1)) continue;
+                const int net = npcAreaNetEnemies(bm, sp, agent_idx, aim);
+                if (net > bestNet) { bestNet = net; bestAim = aim; }
+            }
+            if (bestNet > 0) {
+                plan.spell_idx      = si;
+                plan.aim            = bestAim;
+                plan.score          = bestNet;
+                plan.target_indices = {};   // engine computes the area's targets (resolveAoeTargets)
+                return plan;                // first priority entry with a valid cast wins
+            }
+        } else {
+            // Single-target control: nearest attackable enemy within range + LoS (ties → lowest HP).
+            int best = -1, bestDist = std::numeric_limits<int>::max(), bestHp = std::numeric_limits<int>::max();
+            for (int j = 0; j < n; ++j) {
+                if (!npcAttackable(bm, agent_idx, j)) continue;
+                const Cell tOrigin = agents[static_cast<std::size_t>(j)].origin;
+                const int  tSize   = agents[static_cast<std::size_t>(j)].agent
+                                   ? agents[static_cast<std::size_t>(j)].agent->getSize() : 1;
+                const int dCells = std::max(std::abs(tOrigin.col - casterOrigin.col),
+                                            std::abs(tOrigin.row - casterOrigin.row));
+                if (dCells * 5 > rangeFt) continue;                            // beyond casting range
+                if (!bm.hasLineOfSight(casterOrigin, casterSize, tOrigin, tSize)) continue;
+                const int d  = footprintDistance(casterOrigin, casterSize, tOrigin, tSize);
+                const int hp = bm.getAgentStats(j).hp_cur;
+                if (d < bestDist || (d == bestDist && hp < bestHp)) { best = j; bestDist = d; bestHp = hp; }
+            }
+            if (best >= 0) {
+                plan.spell_idx      = si;
+                plan.aim            = agents[static_cast<std::size_t>(best)].origin;
+                plan.score          = 1;
+                plan.target_indices = {best};
+                return plan;                // first priority entry with a valid cast wins
+            }
+        }
+    }
+
+    // No control spell was castable-with-a-target from here. If the agent HOLDS a castable control spell but
+    // no enemy is in range, close on the nearest enemy so runCasterTurn re-plans + casts after approaching.
+    if (haveControlSpell) plan.approach_target = npcSelectTarget(bm, agent_idx);
+    return plan;   // spell_idx stays -1 (approach_target set ⇒ move; -1 ⇒ weapon fallback)
+}
+
+// Average HP restored by a heal spell (dice expectation + flat bonus), ignoring the caster's ability mod
+// (unknown here and constant across the caster's own spells). Ranks candidate heals when several can cover
+// the same wounded allies — a big single heal beats a small one (mirror of npcSpellAvgDamage).
+static double npcSpellAvgHealing(const Spell& sp) noexcept
+{
+    const HealingRoll& h = sp.healing_type;
+    return h.num_dice * (h.die_size + 1) / 2.0 + h.bonus;
+}
+
+// A heal spell for PreferHeal purposes: type Heal that actually restores HP (has healing dice or a flat
+// bonus). Filters out Heal-typed spells that don't heal in the engine (Beacon of Hope, Mending, the unwired
+// mass/resurrection entries) so the planner never "casts a heal" that heals nobody.
+static bool isHpHealSpell(const Spell& sp) noexcept
+{
+    return sp.type == Spell::Heal && (sp.healing_type.num_dice > 0 || sp.healing_type.bonus > 0);
+}
+
+// PreferHeal (Step 9): keep allies up. Scan the caster's castable HP-restoring Heal spells and target the
+// most-wounded allies — DOWNED allies first (a heal revives them via reviveOnHeal and rejoins initiative),
+// then living allies by missing HP. Single heals (Cure Wounds, Healing Word, Heal) land on the single top-
+// priority needy ally; Multiple heals (Mass Healing Word) fill target_indices with the top-N needy allies up
+// to num_targets. Threshold gate: only cast when an ally is DOWNED or below heal_threshold_fraction of max HP
+// (config-tunable, default 0.5) — otherwise return an empty plan so runCasterTurn falls back to a weapon turn
+// (a healer with nobody to heal still fights). Range + LoS gated to each ally like npcPlanControlCast; if a
+// heal is castable but no needy ally is reachable from here, approach_target closes on the neediest ally so
+// runCasterTurn moves + re-plans. HP heals never require concentration, so no concentration guard is needed.
+NpcCastPlan CombatEngine::npcPlanHealCast(const BattleMap& bm, int agent_idx) const noexcept
+{
+    NpcCastPlan plan;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return plan;
+
+    const PlacedAgent& caster = agents[static_cast<std::size_t>(agent_idx)];
+    const Cell   casterOrigin = caster.origin;
+    const int    casterSize   = caster.agent ? caster.agent->getSize() : 1;
+    const double threshold    = npcHealThreshold();
+
+    // Gather healable allies (self included) worth a heal: DOWNED-but-living, or below the HP threshold.
+    // `missing` ranks them; downed allies sort ahead of every conscious-but-wounded ally (see comparator).
+    struct Needy { int idx; bool downed; int missing; };
+    std::vector<Needy> needy;
+    for (int j = 0; j < n; ++j) {
+        const PlacedAgent& a = agents[static_cast<std::size_t>(j)];
+        if (a.removed_from_play || a.on_deck) continue;
+        if (j != agent_idx && !areAllies(bm, agent_idx, j)) continue;   // self or an ally only
+        if (getAgentConditions(bm, j).dead) continue;                   // true-dead needs revival magic, not a heal
+        const Agent::Stats s = bm.getAgentStats(j);
+        if (s.hp_max <= 0) continue;
+        const bool downed = s.hp_cur <= 0;
+        if (!downed && s.hp_cur >= threshold * s.hp_max) continue;      // healthy enough → not worth a heal
+        needy.push_back({j, downed, s.hp_max - std::max(0, s.hp_cur)});
+    }
+    if (needy.empty()) return plan;   // nobody worth healing → weapon-turn fallback (spell_idx stays -1)
+
+    // Priority order: downed allies first, then most-missing HP; ties → lower index (stable, deterministic).
+    std::sort(needy.begin(), needy.end(), [](const Needy& a, const Needy& b) {
+        if (a.downed != b.downed) return a.downed;          // downed before conscious
+        if (a.missing != b.missing) return a.missing > b.missing;
+        return a.idx < b.idx;
+    });
+
+    // Choose the best castable heal FROM THE CURRENT CELL. Score = number of needy allies actually healed
+    // (a Multiple heal beats a Single one when 2+ are hurt), tie-broken by higher average healing (a big
+    // single heal like Heal/Cure Wounds beats Healing Word for one badly-hurt ally). Each target must be in
+    // range + LoS of the caster.
+    bool   haveHealSpell = false;    // some HP heal is castable (maybe only out of range) → approach if unfilled
+    double bestScore = 0.0;
+    for (int si : availableCastableSpells(bm, agent_idx)) {
+        const Spell& sp = caster.spells[static_cast<std::size_t>(si)];
+        if (!isHpHealSpell(sp)) continue;
+        haveHealSpell = true;
+
+        const int rangeFt = effectiveSpellRange(bm, agent_idx, sp);
+        auto reachable = [&](int t) -> bool {
+            const Cell tOrigin = agents[static_cast<std::size_t>(t)].origin;
+            const int  tSize   = agents[static_cast<std::size_t>(t)].agent
+                               ? agents[static_cast<std::size_t>(t)].agent->getSize() : 1;
+            const int dCells = std::max(std::abs(tOrigin.col - casterOrigin.col),
+                                        std::abs(tOrigin.row - casterOrigin.row));
+            if (dCells * 5 > rangeFt) return false;                     // beyond casting range
+            return bm.hasLineOfSight(casterOrigin, casterSize, tOrigin, tSize);
+        };
+
+        // How many creatures this spell can affect: Multiple heals hit up to num_targets, everything else one.
+        const int cap = (sp.geometry == Spell::Multiple) ? std::max(1, sp.num_targets) : 1;
+        std::vector<int> picks;
+        for (const Needy& nd : needy) {
+            if (static_cast<int>(picks.size()) >= cap) break;
+            if (reachable(nd.idx)) picks.push_back(nd.idx);
+        }
+        if (picks.empty()) continue;
+
+        const double score = static_cast<double>(picks.size()) * 1000.0 + npcSpellAvgHealing(sp);
+        if (score > bestScore) {
+            bestScore           = score;
+            plan.spell_idx      = si;
+            plan.target_indices = picks;
+            plan.aim            = agents[static_cast<std::size_t>(picks.front())].origin;
+            plan.score          = static_cast<double>(picks.size());
+        }
+    }
+
+    if (plan.spell_idx >= 0) return plan;   // casting a heal on 1+ needy allies this turn
+
+    // A heal is held but no needy ally is reachable from here → close on the neediest ally (front of the
+    // sorted list) so runCasterTurn moves + re-plans. No heal at all → empty plan → weapon-turn fallback.
+    if (haveHealSpell) plan.approach_target = needy.front().idx;
+    return plan;
+}
+
+// A support buff for PreferSupport purposes: a Help spell that applies at least one NAMED condition (e.g.
+// Bless → "Blessed", Aid → "Aided", Shield of Faith → the AC ward). The named condition is what lets the
+// planner tell whether an ally already carries the buff; a Help spell with no condition to check would be
+// re-cast every turn, so it is excluded here.
+static bool isSupportBuffSpell(const Spell& sp) noexcept
+{
+    return sp.type == Spell::Help && !sp.conditions.empty();
+}
+
+// PreferSupport (Step 10): keep the team buffed. Scan the caster's castable Help buff spells and apply them
+// to allies (self included) who do NOT already carry that buff — checked by name against the live
+// activeAgentConditions list, so a Blessed ally is never re-Blessed. Single buffs land on one unbuffed ally;
+// Multiple buffs (Bless) fill target_indices up to num_targets. Among candidate allies the planner PREFERS
+// those engaged with an enemy (adjacent, footprintDistance <= 1) so offensive buffs land where the fighting
+// is, filling any remaining slots with the rest. Score = number of allies actually buffed (a wider buff
+// beats a narrower one) tie-broken by higher spell level (a stronger buff). Concentration guard: a caster
+// already concentrating skips any requires_concentration buff (never drops a live effect to re-buff), but a
+// non-concentration buff still casts. Range + LoS gated to each ally like the other planners; if a buff is
+// castable but every unbuffed ally is out of range, approach_target closes on the nearest unbuffed ally so
+// runCasterTurn moves + re-plans. Once every reachable ally already carries a buff → empty plan → weapon
+// fallback (a support caster with nobody to buff still fights).
+NpcCastPlan CombatEngine::npcPlanSupportCast(const BattleMap& bm, int agent_idx) const noexcept
+{
+    NpcCastPlan plan;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return plan;
+
+    const PlacedAgent& caster = agents[static_cast<std::size_t>(agent_idx)];
+    const Cell   casterOrigin = caster.origin;
+    const int    casterSize   = caster.agent ? caster.agent->getSize() : 1;
+    const bool   concentrating = npcHoldsConcentration(bm, agent_idx);
+
+    // In-play allies (self included) that could receive a buff. Whether one NEEDS a given buff is decided
+    // per-spell below (an ally already carrying that spell's condition is skipped).
+    std::vector<int> allies;
+    for (int j = 0; j < n; ++j) {
+        const PlacedAgent& a = agents[static_cast<std::size_t>(j)];
+        if (a.removed_from_play || a.on_deck) continue;
+        if (j != agent_idx && !areAllies(bm, agent_idx, j)) continue;   // self or an ally only
+        const auto cond = bm.getAgentConditions(j);
+        if (cond.dead || cond.unconscious) continue;                    // a downed ally wants a heal, not a buff
+        if (bm.getAgentStats(j).hp_cur <= 0) continue;
+        allies.push_back(j);
+    }
+    if (allies.empty()) return plan;   // nobody to buff → weapon-turn fallback
+
+    // Engaged = an ally with an enemy adjacent (footprintDistance <= 1); offensive buffs (Bless) prefer these.
+    auto engaged = [&](int ally) -> bool {
+        const Cell aOrigin = agents[static_cast<std::size_t>(ally)].origin;
+        const int  aSize   = agents[static_cast<std::size_t>(ally)].agent
+                           ? agents[static_cast<std::size_t>(ally)].agent->getSize() : 1;
+        for (int k = 0; k < n; ++k) {
+            if (!npcAttackable(bm, agent_idx, k)) continue;             // living, in-play enemy of the caster
+            const Cell kOrigin = agents[static_cast<std::size_t>(k)].origin;
+            const int  kSize   = agents[static_cast<std::size_t>(k)].agent
+                               ? agents[static_cast<std::size_t>(k)].agent->getSize() : 1;
+            if (footprintDistance(aOrigin, aSize, kOrigin, kSize) <= 1) return true;
+        }
+        return false;
+    };
+
+    // An ally already carries this spell's buff if it holds any of the spell's named conditions.
+    auto alreadyBuffed = [&](int ally, const Spell& sp) -> bool {
+        for (const AttackCondition& ac : sp.conditions)
+            for (const ActiveAgentCondition& aac : activeAgentConditions())
+                if (aac.agent_idx == ally && aac.condition_name == ac.condition_name) return true;
+        return false;
+    };
+
+    bool   haveBuffSpell = false;                                       // some buff is castable (maybe out of range)
+    int    approachAlly  = -1, approachDist = std::numeric_limits<int>::max();
+    double bestScore = 0.0;
+    for (int si : availableCastableSpells(bm, agent_idx)) {
+        const Spell& sp = caster.spells[static_cast<std::size_t>(si)];
+        if (!isSupportBuffSpell(sp)) continue;
+        if (concentrating && sp.requires_concentration) continue;      // never drop a live concentration effect
+        haveBuffSpell = true;
+
+        const int rangeFt = effectiveSpellRange(bm, agent_idx, sp);
+        auto reachable = [&](int t) -> bool {
+            const Cell tOrigin = agents[static_cast<std::size_t>(t)].origin;
+            const int  tSize   = agents[static_cast<std::size_t>(t)].agent
+                               ? agents[static_cast<std::size_t>(t)].agent->getSize() : 1;
+            const int dCells = std::max(std::abs(tOrigin.col - casterOrigin.col),
+                                        std::abs(tOrigin.row - casterOrigin.row));
+            if (dCells * 5 > rangeFt) return false;                     // beyond casting range
+            return bm.hasLineOfSight(casterOrigin, casterSize, tOrigin, tSize);
+        };
+
+        // Candidate allies that lack THIS buff. Track the nearest unbuffed ally (in or out of range) so an
+        // out-of-range buff can drive an approach.
+        std::vector<int> candidates;
+        for (int a : allies) {
+            if (alreadyBuffed(a, sp)) continue;
+            const Cell aOrigin = agents[static_cast<std::size_t>(a)].origin;
+            const int  aSize   = agents[static_cast<std::size_t>(a)].agent
+                               ? agents[static_cast<std::size_t>(a)].agent->getSize() : 1;
+            const int d = footprintDistance(casterOrigin, casterSize, aOrigin, aSize);
+            if (d < approachDist) { approachDist = d; approachAlly = a; }
+            if (reachable(a)) candidates.push_back(a);
+        }
+        if (candidates.empty()) continue;
+
+        // Prefer allies engaged with an enemy; ties → lower index (stable, deterministic).
+        std::sort(candidates.begin(), candidates.end(), [&](int a, int b) {
+            const bool ea = engaged(a), eb = engaged(b);
+            if (ea != eb) return ea;
+            return a < b;
+        });
+
+        const int cap = (sp.geometry == Spell::Multiple) ? std::max(1, sp.num_targets) : 1;
+        std::vector<int> picks(candidates.begin(),
+                               candidates.begin() + std::min<std::size_t>(candidates.size(),
+                                                                          static_cast<std::size_t>(cap)));
+
+        const double score = static_cast<double>(picks.size()) * 1000.0 + sp.level;
+        if (score > bestScore) {
+            bestScore           = score;
+            plan.spell_idx      = si;
+            plan.target_indices = picks;
+            plan.aim            = agents[static_cast<std::size_t>(picks.front())].origin;
+            plan.score          = static_cast<double>(picks.size());
+        }
+    }
+
+    if (plan.spell_idx >= 0) return plan;   // buffing 1+ allies this turn
+
+    // A buff is held but no unbuffed ally is reachable from here → close on the nearest unbuffed ally so
+    // runCasterTurn moves + re-plans. No buff at all (or every ally already buffed) → weapon-turn fallback.
+    if (haveBuffSpell && approachAlly >= 0) plan.approach_target = approachAlly;
+    return plan;
+}
+
+FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterIntent intent)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
+
+    auto curOrigin = [&]() -> Cell {
+        return bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin;
+    };
+
+    NpcTurnState& st = npc_turn_;
+    bool resuming_after_move = false;
+    if (st.active && st.agent_idx == agent_idx) {        // resuming after a parked window
+        if (st.cast_launched) {                          // the single cast already resolved → turn over
+            st = NpcTurnState{};
+            return FlowStatus::Completed;
+        }
+        if (st.cast_moving) {
+            // The approach move (bringing the spell into range) resolved after parking on an OA. Re-plan
+            // and cast from the new cell — do NOT re-seed movement or approach a second time.
+            st.cast_moving = false;
+            resuming_after_move = true;
+        } else {
+            // No cast launched and not approaching → this turn fell back to a weapon turn. Resume it:
+            // runWeaponTurn owns npc_turn_ and detects the resume via (active && agent_idx match).
+            return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});
+        }
+    }
+
+    // Plan from the CURRENT position (fresh turn, or the cell we ended the approach move on).
+    NpcCastPlan plan = npcPlanCasterCast(bm, agent_idx, intent);
+
+    if (!resuming_after_move && plan.spell_idx < 0) {
+        // Nothing castable from here. Two very different situations (mirrors runAoeTurn):
+        //   · No relevant spell at all (approach_target < 0) → act like a Simple weapon attacker so the
+        //     caster is not idle (runWeaponTurn seeds npc_turn_ from scratch).
+        //   · A worthwhile spell IS held but its target is out of range (approach_target >= 0) → close the
+        //     distance to that ally/enemy, then re-plan and cast this turn if the approach reached range.
+        if (plan.approach_target < 0)
+            return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});   // st still inactive → fresh weapon turn
+
+        // Seed the agent's OWN movement budget (mirrors runWeaponTurn) so the approach can spend it.
+        st           = NpcTurnState{};
+        st.active    = true;
+        st.agent_idx = agent_idx;
+        st.phase     = NpcTurnState::Done;
+        st.cast_moving = true;                           // resume-marker: re-plan + cast if the move parks
+        const Agent::Stats s = bm.getAgentStats(agent_idx);
+        bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
+            s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+
+        Cell dest{};
+        if (npcFindApproachCell(bm, agent_idx, plan.approach_target, dest) && dest != curOrigin()) {
+            log_("NPC {} moves to bring a spell into range", agentName(bm, agent_idx));
+            if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
+        }
+        st.cast_moving = false;
+        plan = npcPlanCasterCast(bm, agent_idx, intent); // re-plan from the new position
+    }
+
+    if (plan.spell_idx < 0) {
+        // Still nothing to cast even after approaching → end the turn having closed distance (hold the spell
+        // for next round rather than swing a weapon, mirroring runAoeTurn's held-AoE behaviour).
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+
+    // Commit the cast turn state BEFORE beginCast so a parked OnDeclareCast window resumes without re-casting.
+    st           = NpcTurnState{};
+    st.active    = true;
+    st.agent_idx = agent_idx;
+    st.phase     = NpcTurnState::Done;       // a caster turn is one action — no movement/attack phases
+    st.cast_launched = true;                 // resume-guard: never re-cast (set BEFORE beginCast)
+
+    SpellAction action;
+    action.caster_idx     = agent_idx;
+    action.spell_idx      = plan.spell_idx;
+    action.slot_level     = 0;               // NPC mode: spends an N/day use or a cantrip, not a player slot
+    action.aoe_col        = plan.aim.col;
+    action.aoe_row        = plan.aim.row;
+    action.target_indices = plan.target_indices;   // explicit targets (Single/Multiple/Heal/Support)
+
+    log_("NPC {} casts {}", agentName(bm, agent_idx),
+         bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)].name);
+    // Probability report: save / spell-attack chance per explicit target (Heal/Support spells are
+    // Automatic and produce no lines).
+    npcLogCastAnalysis(bm, agent_idx, plan.spell_idx, plan.target_indices);
+    const int rt = plan.target_indices.empty() ? -1 : plan.target_indices.front();
+    if (rt >= 0) renderAttack(agent_idx, rt);        // visualize from the caster toward a representative target
+    recordNpcAnnounce(agent_idx, rt,
+        rt >= 0 ? std::format("{} casts {} on {}!", agentName(bm, agent_idx),
+                      bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)].name,
+                      agentName(bm, rt))
+                : std::format("{} casts {}!", agentName(bm, agent_idx),
+                      bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(plan.spell_idx)].name));
+
+    if (beginCast(bm, action) == FlowStatus::AwaitingDecision)
+        return FlowStatus::AwaitingDecision;  // parked for a human reaction; resume re-enters runCasterTurn
+
+    // Cast resolved inline (no reaction) → the turn is complete.
+    st = NpcTurnState{};
+    return FlowStatus::Completed;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  NPC attack analysis — pre-attack probability report (see NpcAttackAnalysis)
+//
+//  Pure probability math over the same pieces the resolution paths roll:
+//  rollToHit / rollDamage for weapons, rollSpellSave / rollSpellAttack for
+//  spells. No dice are rolled and nothing mutates — every input is read
+//  deterministically and random pieces (the d20, Bless's d4, damage dice) are
+//  folded in as exact distributions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Probability mass function over non-negative integer damage totals: pmf[v] = P(damage == v).
+using DamagePmf = std::vector<double>;
+
+// Distribution of `count` summed uniform dice with `size` faces (pmf[0] = 1 when count == 0).
+DamagePmf pmfDice(int count, int size)
+{
+    DamagePmf p{1.0};
+    if (size < 1) return p;
+    for (int i = 0; i < count; ++i) {
+        DamagePmf q(p.size() + static_cast<std::size_t>(size), 0.0);
+        for (std::size_t v = 0; v < p.size(); ++v) {
+            if (p[v] == 0.0) continue;
+            for (int f = 1; f <= size; ++f)
+                q[v + static_cast<std::size_t>(f)] += p[v] / static_cast<double>(size);
+        }
+        p = std::move(q);
+    }
+    return p;
+}
+
+// Map every value through a resist/vuln/immune multiplier exactly as rollDamage does:
+// modified = int(value * mult) — C truncation, not rounding.
+DamagePmf pmfScale(const DamagePmf& p, float mult)
+{
+    if (mult == 1.0f) return p;
+    DamagePmf q(1, 0.0);   // grown as mass lands
+    for (std::size_t v = 0; v < p.size(); ++v) {
+        if (p[v] == 0.0) continue;
+        const auto m = static_cast<std::size_t>(static_cast<float>(v) * mult);
+        if (q.size() <= m) q.resize(m + 1, 0.0);
+        q[m] += p[v];
+    }
+    return q;
+}
+
+// Distribution of the sum of two independent totals.
+DamagePmf pmfConvolve(const DamagePmf& a, const DamagePmf& b)
+{
+    DamagePmf q(a.size() + b.size() - 1, 0.0);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (a[i] == 0.0) continue;
+        for (std::size_t j = 0; j < b.size(); ++j) q[i + j] += a[i] * b[j];
+    }
+    return q;
+}
+
+// P(max(0, total + flat_mod) >= threshold) — the std::max(0, …) mirrors rollDamage's clamp.
+double pmfAtLeast(const DamagePmf& p, int flat_mod, int threshold)
+{
+    double s = 0.0;
+    for (std::size_t v = 0; v < p.size(); ++v)
+        if (std::max(0, static_cast<int>(v) + flat_mod) >= threshold) s += p[v];
+    return s;
+}
+
+// Fold a per-die success probability through advantage/disadvantage. Valid because every
+// success set on the kept d20 here is upward-closed (a higher die never turns a success
+// into a failure), so max/min of two dice compose as 1-(1-p)² / p².
+double advFold(double p, bool adv, bool dis)
+{
+    if (adv == dis) return p;
+    return adv ? 1.0 - (1.0 - p) * (1.0 - p) : p * p;
+}
+
+} // namespace
+
+NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attacker_idx,
+                                                 int target_idx, int weapon_idx) const noexcept
+{
+    NpcAttackAnalysis out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return out;
+    const PlacedAgent& ap = agents[static_cast<std::size_t>(attacker_idx)];
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    const Agent::Stats&      as = ap.agent->getStats();
+    const Agent::Stats&      ts = tp.agent->getStats();
+    const Agent::Conditions& ac = ap.agent->getConditions();
+    const Agent::Conditions& tc = tp.agent->getConditions();
+    const auto& weapons = bm.getAgentWeapons(attacker_idx);
+    if (weapon_idx < 0 || weapon_idx >= static_cast<int>(weapons.size())) return out;
+    const Weapon& w = weapons[static_cast<std::size_t>(weapon_idx)];
+
+    // ── Advantage/disadvantage estimate: the dominant condition-driven sources of performAttack ──
+    const int atk_sz = ap.agent->getSize(), tgt_sz = tp.agent->getSize();
+    bool adv = ap.agent->hasAdvantage();
+    bool dis = ap.agent->hasDisadvantage()
+            || hasDisadvantage(w, bm, ap.origin, atk_sz, tp.origin, tgt_sz);   // long range
+    const bool ranged = (w.type == WeaponType::Ranged);
+    if (ranged && isThreatened(bm, attacker_idx)) dis = true;                  // firing in melee
+    if (ac.blinded || ac.poisoned || ac.restrained) dis = true;
+    if (ac.frightened) dis = true;                       // estimate: assume the fear source is visible
+    if (ac.grappled && ac.grappler_idx != target_idx) dis = true;   // grappled: dis unless striking the grappler
+    if (ac.hidden) adv = true;
+    if (ac.invisible && !canPerceiveTarget(bm, target_idx, attacker_idx)) adv = true;
+    if (ac.reckless_attack && w.type == WeaponType::Melee) adv = true;
+    if (tc.paralyzed || tc.blinded || tc.stunned || tc.unconscious ||
+        tc.restrained || tc.reckless_attack) adv = true;
+    const int dist = footprintDistance(ap.origin, atk_sz, tp.origin, tgt_sz);
+    if (tc.prone) {
+        if (dist <= 1) adv = true;
+        else if (ranged) dis = true;
+    }
+    out.advantage = adv; out.disadvantage = dis;
+
+    // ── To-hit (mirrors rollToHit): attack mod + Sacred Weapon + exhaustion vs the target's AC ──
+    int attack_mod = attackModifier(w, as) + w.bonus_hit;
+    if (as.character_class == CharacterClass::Paladin && as.sacred_weapon_turns > 0)
+        attack_mod += as.sacred_weapon_bonus;
+    const int flat      = attack_mod - 2 * ac.exhaustion_level;
+    const int target_ac = ts.base_ac;   // resolveAttack rolls against base_ac
+
+    // Chance the kept d20 hits: crit values auto-hit, a natural 1 auto-misses, else total vs AC.
+    auto singleDieHit = [&](int bless) -> double {
+        int hits = 0;
+        for (int v = 1; v <= 20; ++v) {
+            const bool crit = v >= as.crit_threshold;
+            if (crit || (v != 1 && v + flat + bless >= target_ac)) ++hits;
+        }
+        return hits / 20.0;
+    };
+    double p_hit = 0.0;
+    if (as.blessed) {                                     // Bless: fresh 1d4 per attack — average over it
+        for (int b = 1; b <= 4; ++b) p_hit += 0.25 * advFold(singleDieHit(b), adv, dis);
+    } else {
+        p_hit = advFold(singleDieHit(0), adv, dis);
+    }
+    out.p_hit = p_hit;
+    if (p_hit <= 0.0) return out;
+
+    // ── Drop-if-hit: exact damage distribution vs hp_cur + temp_hp (temp HP absorbs first) ──
+    // Mirrors rollDamage's composition: per-type dice × the target's resist/vuln/immune multiplier
+    // (truncated), plus the flat mod (ability + weapon bonus) scaled by the primary type's
+    // multiplier, plus an unscaled Rage bonus. Crit doubles the dice and is weighted by its share
+    // of p_hit. Feat riders (GWF reroll, Tavern Brawler, …) are not modeled — this is an estimate.
+    auto damagePmf = [&](bool crit) -> DamagePmf {
+        DamagePmf total{1.0};
+        for (const auto& dr : w.physicalDamageRolls) {
+            const DamagePmf dice = pmfDice(crit ? dr.num_dice * 2 : dr.num_dice, dr.die_size);
+            total = pmfConvolve(total,
+                pmfScale(dice, ts.physical_damage_multipliers[static_cast<std::size_t>(dr.type)]));
+        }
+        for (const auto& dr : w.magicDamageRolls) {
+            const DamagePmf dice = pmfDice(crit ? dr.num_dice * 2 : dr.num_dice, dr.die_size);
+            total = pmfConvolve(total, pmfScale(dice, effectiveMagicDamageMult(as, ts, dr.type, false)));
+        }
+        return total;
+    };
+    int dmg_mod = damageAbilityMod(w, as);
+    if (w.off_hand && !as.hasFeat("Two-Weapon Fighting") && dmg_mod > 0) dmg_mod = 0;
+    dmg_mod += w.bonus_damage;
+    float mod_mult = 1.0f;   // the flat mod takes the primary damage type's multiplier (rollDamage)
+    if (!w.physicalDamageRolls.empty())
+        mod_mult = ts.physical_damage_multipliers[static_cast<std::size_t>(w.physicalDamageRolls.front().type)];
+    else if (!w.magicDamageRolls.empty())
+        mod_mult = effectiveMagicDamageMult(as, ts, w.magicDamageRolls.front().type, false);
+    else
+        mod_mult = ts.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)];
+    int flat_dmg = static_cast<int>(static_cast<float>(dmg_mod) * mod_mult);
+    if (ac.raging && as.character_class == CharacterClass::Barbarian &&
+        (w.type == WeaponType::Melee || w.thrown))
+        flat_dmg += getRageDamageBonus(as.char_level);    // added post-multiplier, like rollDamage
+
+    const int threshold = std::max(1, ts.hp_cur + std::max(0, ts.temp_hp));
+    const double p_crit  = advFold(std::clamp((21 - as.crit_threshold) / 20.0, 0.0, 1.0), adv, dis);
+    const double p_drop_crit = pmfAtLeast(damagePmf(true),  flat_dmg, threshold);
+    const double p_drop_norm = pmfAtLeast(damagePmf(false), flat_dmg, threshold);
+    out.p_drop_given_hit = (p_crit * p_drop_crit + std::max(0.0, p_hit - p_crit) * p_drop_norm) / p_hit;
+    return out;
+}
+
+double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int target_idx,
+                                   const Spell& sp) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (caster_idx < 0 || caster_idx >= n || target_idx < 0 || target_idx >= n) return 0.0;
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    const Agent::Stats&      cs = agents[static_cast<std::size_t>(caster_idx)].agent->getStats();
+    const Agent::Stats&      ts = tp.agent->getStats();
+    const Agent::Conditions& tc = tp.agent->getConditions();
+
+    // Paralyzed/Stunned/Unconscious auto-fail STR and DEX saves (mirrors rollSpellSave).
+    if ((tc.paralyzed || tc.stunned || tc.unconscious) &&
+        (sp.save_ability == SaveStr || sp.save_ability == SaveDex))
+        return 0.0;
+
+    const int dc = spellSaveDc(cs);
+    // Deterministic pieces of saveModFor (its Bless d4 is folded in by convolution below).
+    int score = 0; bool prof = false;
+    switch (sp.save_ability) {
+        case SaveStr: score = ts.str;   prof = ts.save_prof_str;   break;
+        case SaveDex: score = ts.dex;   prof = ts.save_prof_dex;   break;
+        case SaveCon: score = ts.con;   prof = ts.save_prof_con;   break;
+        case SaveInt: score = ts.intel; prof = ts.save_prof_intel; break;
+        case SaveWis: score = ts.wis;   prof = ts.save_prof_wis;   break;
+        default:      score = ts.cha;   prof = ts.save_prof_cha;   break;
+    }
+    const int mod = dndMod(score) + (prof ? ts.prof_bonus : 0) + auraSaveBonus(bm, target_idx);
+
+    const bool adv = tp.agent->hasAdvantage() || saveAdvantageFor(bm, target_idx, sp.save_ability);
+    const bool dis = tp.agent->hasDisadvantage() || curseSaveDisadvantage(bm, target_idx, sp.save_ability);
+
+    auto singleDieSave = [&](int bless) -> double {
+        int ok = 0;
+        for (int v = 1; v <= 20; ++v)
+            if (v + mod + bless >= dc) ++ok;
+        return ok / 20.0;
+    };
+    if (ts.blessed) {
+        double p = 0.0;
+        for (int b = 1; b <= 4; ++b) p += 0.25 * advFold(singleDieSave(b), adv, dis);
+        return p;
+    }
+    return advFold(singleDieSave(0), adv, dis);
+}
+
+double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int target_idx,
+                                       const Spell& sp) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (caster_idx < 0 || caster_idx >= n || target_idx < 0 || target_idx >= n) return 0.0;
+    const PlacedAgent& cp = agents[static_cast<std::size_t>(caster_idx)];
+    const Agent::Stats&      cs = cp.agent->getStats();
+    const Agent::Conditions& cc = cp.agent->getConditions();
+    const Agent::Conditions& tc = agents[static_cast<std::size_t>(target_idx)].agent->getConditions();
+
+    // Mirrors rollSpellAttack's advantage/disadvantage sources.
+    bool adv = cp.agent->hasAdvantage() || cs.innate_sorcery_turns > 0 || cc.invisible ||
+               tc.blinded || tc.stunned;
+    bool dis = cp.agent->hasDisadvantage() || cc.blinded;
+    if (cc.frightened) dis = true;                       // estimate: assume the fear source is visible
+    if (cc.grappled && cc.grappler_idx != target_idx) dis = true;
+    if (sp.range > 0 && isThreatened(bm, caster_idx) && !cs.hasFeat("Spell Sniper")) dis = true;
+
+    const int mod       = spellAttackMod(cs);
+    const int target_ac = calculateAC(bm, target_idx);   // rollSpellAttack rolls against calculateAC
+
+    auto singleDieHit = [&](int bless) -> double {
+        int hits = 0;
+        for (int v = 1; v <= 20; ++v) {
+            const bool crit = v >= cs.crit_threshold;
+            if (crit || (v != 1 && v + mod + bless >= target_ac)) ++hits;
+        }
+        return hits / 20.0;
+    };
+    if (cs.blessed) {
+        double p = 0.0;
+        for (int b = 1; b <= 4; ++b) p += 0.25 * advFold(singleDieHit(b), adv, dis);
+        return p;
+    }
+    return advFold(singleDieHit(0), adv, dis);
+}
+
+void CombatEngine::npcLogAttackAnalysis(const BattleMap& bm, int attacker_idx, int target_idx,
+                                        int weapon_idx)
+{
+    const auto& weapons = bm.getAgentWeapons(attacker_idx);
+    if (weapon_idx < 0 || weapon_idx >= static_cast<int>(weapons.size())) return;
+    const NpcAttackAnalysis a = npcAnalyzeAttack(bm, attacker_idx, target_idx, weapon_idx);
+    const char* roll_note = (a.advantage && !a.disadvantage)   ? " (Advantage)"
+                          : (!a.advantage && a.disadvantage)   ? " (Disadvantage)" : "";
+    log_("Analysis: {} → {} with {}: {:.0f}% to hit{}; if it hits, {:.0f}% to drop the target",
+         agentName(bm, attacker_idx), agentName(bm, target_idx),
+         weapons[static_cast<std::size_t>(weapon_idx)].name,
+         a.p_hit * 100.0, roll_note, a.p_drop_given_hit * 100.0);
+}
+
+void CombatEngine::npcLogCastAnalysis(const BattleMap& bm, int caster_idx, int spell_idx,
+                                      const std::vector<int>& target_indices)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (caster_idx < 0 || caster_idx >= n) return;
+    const auto& spells = bm.getAgentSpells(caster_idx);
+    if (spell_idx < 0 || spell_idx >= static_cast<int>(spells.size())) return;
+    const Spell& sp = spells[static_cast<std::size_t>(spell_idx)];
+
+    if (sp.attack_type == Spell::Save) {
+        auto ability_name = [](SaveAbility_t ab) -> const char* {
+            switch (ab) {
+                case SaveStr: return "STR";
+                case SaveDex: return "DEX";
+                case SaveCon: return "CON";
+                case SaveInt: return "INT";
+                case SaveWis: return "WIS";
+                default:      return "CHA";
+            }
+        };
+        const int dc = spellSaveDc(bm.getAgentStats(caster_idx));
+        for (int t : target_indices) {
+            if (t < 0 || t >= n || t == caster_idx) continue;
+            log_("Analysis: {} vs {} — {:.0f}% to save ({} save, DC {})",
+                 sp.name, agentName(bm, t), npcSaveChance(bm, caster_idx, t, sp) * 100.0,
+                 ability_name(sp.save_ability), dc);
+        }
+    } else if (sp.attack_type == Spell::AttackRoll) {
+        for (int t : target_indices) {
+            if (t < 0 || t >= n || t == caster_idx) continue;
+            log_("Analysis: {} vs {} — {:.0f}% to hit",
+                 sp.name, agentName(bm, t), npcSpellHitChance(bm, caster_idx, t, sp) * 100.0);
+        }
+    }
 }
 
 } // namespace rpg

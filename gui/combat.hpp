@@ -38,6 +38,7 @@
 #include <functional>
 #include <optional>
 #include <random>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -203,6 +204,32 @@ struct SpellAction {
     // it is ignored. The first use per Long Rest is free; each later use inflicts escalating
     // Necrotic damage on the caster (see executeSpell / Agent::Stats::overchannel_uses).
     bool overchannel = false;
+    // Dispel Magic selection (the GUI's dispel picker): when a dispels_magic cast should end only
+    // SPECIFIC ongoing effects the DM chose — rather than everything on the aimed creature/cell —
+    // these carry the chosen structure ids (ActiveAgentCondition::condition_id / ActiveSpellEffect::
+    // effect_id / ActiveTerrainEffect::id). All three empty = "dispel everything at the target" (the
+    // pre-picker behavior, still used by NPCs, RL and tests). See CombatEngine::dispelSelected.
+    std::vector<int> dispel_condition_ids;
+    std::vector<int> dispel_spell_effect_ids;
+    std::vector<int> dispel_terrain_ids;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Dispel Magic: one dispellable ongoing spell aimed at a creature or cell
+// ─────────────────────────────────────────────────────────────────────────────
+// Structures created by the same cast group into one candidate (Hunger of Hadar's damage zone +
+// its difficult terrain = one entry, one roll). The GUI enumerates these for its dispel picker so
+// the DM ends exactly the right effect (a buff on an ally vs a debuff on an enemy, or one of several
+// overlapping AoEs on a cell), then casts back the candidate's structure ids in SpellAction.
+struct DispelCandidate {
+    std::string      label;                 // spell/condition name shown in the picker
+    int              owner_idx     = -1;    // caster who created the effect (-1 = unknown)
+    int              level         = 1;     // effective level (auto-end if <= slot, else DC 10+level)
+    bool             owner_is_ally = false; // owner is an ally of the dispel caster (buff-on-ally hint)
+    int              spell_key     = -1;    // grouping spell_idx (for concentration cleanup); -1 = none
+    std::vector<int> condition_ids;         // ActiveAgentCondition ids this candidate covers
+    std::vector<int> spell_effect_ids;      // ActiveSpellEffect ids
+    std::vector<int> terrain_ids;           // ActiveTerrainEffect ids
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -751,28 +778,56 @@ struct NpcTurnState {
     int  attacks_remaining{0};   // swings left in the Attack action (decremented BEFORE beginAttack so a
                                  // park-then-resume never repeats the swing that already resolved)
     enum Phase { PickAndMove, Attacking, Conceal, Done } phase{PickAndMove};
-    // PreferAOE (Step 6): set TRUE immediately before the single beginCast so a park-then-resume of the
-    // OnDeclareCast window does NOT re-cast — submitDecision resolves the parked cast, then re-calls
-    // run_npc_turn, which sees this flag and simply ends the turn (the blast already resolved).
-    bool aoe_cast_launched{false};
-    // PreferAOE approach: TRUE while an AoE caster is MOVING to bring enemies into range before casting
-    // (an out-of-range AoE spell must never fall back to melee). If that approach move parks on an OA, the
-    // resume re-enters runAoeTurn, sees this flag, and re-plans + casts from the new cell (no second move).
-    bool aoe_moving{false};
+    // Single-cast turns (PreferAOE Step 6 + PreferControl/Heal/Support Steps 8-10): set TRUE immediately
+    // before the single beginCast so a park-then-resume of the OnDeclareCast window does NOT re-cast —
+    // submitDecision resolves the parked cast, then re-calls run_npc_turn, which sees this flag and simply
+    // ends the turn (the spell already resolved). Shared by runAoeTurn and runCasterTurn.
+    bool cast_launched{false};
+    // Cast-turn approach: TRUE while a caster is MOVING to bring its spell into range before casting (an
+    // out-of-range cast must never fall back to melee while a worthwhile spell is held). If that approach
+    // move parks on an OA, the resume re-enters the same executor, sees this flag, and re-plans + casts
+    // from the new cell (no second move). Shared by runAoeTurn (enemy approach) and runCasterTurn.
+    bool cast_moving{false};
     // Multiattack recipe segments pending AFTER the current (weapon_idx, attacks_remaining) one.
     // Each is (weapon_slot, count). Empty ⇒ legacy single-weapon multiattack.
     std::vector<std::pair<int,int>> pending_segments;
     // PreferHide (Step 7): the Conceal tail phase runs after the attack loop when policy.conceal is set.
     // These cache the chosen conceal route + spell and gate the parkable primitives on resume (mirrors
-    // aoe_cast_launched / aoe_moving) so a park→resume does not re-move or re-cast.
+    // cast_launched / cast_moving) so a park→resume does not re-move or re-cast.
     int  conceal_route{0};                // cached A/B/C/D route (NpcConcealRoute) so a resume is stable
     int  conceal_spell_idx{-1};           // chosen invis spell (route A bonus / route C action); -1 = none
     bool conceal_move_launched{false};    // post-attack cover move started (resume: don't re-move)
     bool conceal_act_launched{false};     // Hide/cast started (resume after Counterspell: don't re-cast)
     // Command (Flee): a commanded creature spends its whole turn running away by the fastest route and
     // takes no action. Set TRUE the moment the flee move is launched so a park→resume (an OA fired on the
-    // way out) simply ends the turn instead of re-fleeing. Mirrors aoe_moving / conceal_move_launched.
+    // way out) simply ends the turn instead of re-fleeing. Mirrors cast_moving / conceal_move_launched.
     bool flee_move_launched{false};
+    // Difficulty resolver park-safety: the strategy resolveStrategy chose when THIS turn launched, stamped
+    // by runNpcTurn whenever the turn parks. The dynamic Level-4 resolution is state-dependent (it probes
+    // the live planners), so a park→resume must reuse the strategy that launched the turn — re-resolving
+    // after the game state changed mid-park could route the resume into the wrong executor and re-cast.
+    // -1 = not stamped (fresh turn → resolve normally). Holds a NpcAutomationStrategy as int.
+    int resolved_strategy{-1};
+};
+
+// One entry in the NPC-turn visual event stream. While runNpcTurn drives an automated turn the
+// engine records what happens — moves with the actual route walked, action announcements, and
+// attack/save outcomes — so the GUI can PLAY the turn BACK as an animation: the token slides
+// along `path`, `text` typewriter-scrolls above the actor, and outcome flashes / HP-bar drops /
+// corpse removal land in narrative order instead of teleport-and-done. Headless callers never
+// drain the buffer (a fresh turn clears it, so it stays bounded). Drained — moved out and
+// cleared — via CombatEngine::takeNpcVisualEvents().
+struct NpcVisualEvent {
+    enum Kind { Move = 0, Announce = 1, Outcome = 2 };
+    int  kind{Move};
+    int  agent_idx{-1};      // Move/Announce: the acting agent; Outcome: the AFFECTED target (flash anchor)
+    int  target_idx{-1};     // Announce only: the action's target (-1 = none / area)
+    std::vector<Cell> path;  // Move only: the route actually taken (origin → … → dest, inclusive)
+    std::string text;        // Announce: "X attacks Y with Z!"; Outcome: "Hit (7)" / "Miss" / "Saved" / "Failed"
+    bool good{false};        // Outcome only: green flash (Hit/Saved) vs red (Miss/Failed) — the GUI's
+                             // established FLASH_GOOD/FLASH_BAD convention
+    int  hp_after{-1};       // Outcome only: target's hp_cur AFTER the action applied (synced HP-bar update)
+    bool died{false};        // Outcome only: target died/was removed by this action (corpse removal waits for this)
 };
 
 // How an NPC strategy ranks candidate targets (NPC_AUTOMATION_PLAN.md Steps 3-5).
@@ -787,6 +842,13 @@ enum class NpcTargetPriority {
 //   RouteC — action self-Invisibility (alternates cast/attack across rounds).
 //   RouteD — no stealth tools: plain PreferRange kite (never idle).
 enum class NpcConcealRoute { RouteA=0, RouteB, RouteC, RouteD };
+
+// Combat role an agent plays, derived from its weapons + spells (NPC_AUTOMATION_PLAN.md "Difficulty-level
+// → strategy mapping"). The difficulty resolver maps role + level → strategy. Caster = knows at least one
+// COMBAT-RELEVANT spell (the classification_ignore_spells config list filters out flavor/utility spells
+// like Speak with Animals so a Centaur Warden doesn't classify as a caster); else Ranged = owns a ranged
+// weapon; else Melee. Classification rules are deliberately coarse — refinement is a planned follow-up.
+enum class NpcRole { Melee = 0, Ranged, Caster };
 
 // The behavioural knobs that distinguish one NPC strategy from another, fed to the single shared
 // turn executor runWeaponTurn. Each runNpcTurn dispatch case builds one of these from a strategy enum
@@ -806,6 +868,39 @@ struct NpcAoePlan {
     int  spell_idx   = -1;   // index into the caster's spells list (== SpellAction.spell_idx)
     Cell aim{0, 0};          // aoe_col / aoe_row aim point
     int  net_enemies = 0;    // enemies caught minus allies caught (friendly-fire aware; 0 when spell_idx<0)
+};
+
+// Which family of caster turn is being driven (NPC_AUTOMATION_PLAN.md Steps 8-10). Selects the planner
+// runCasterTurn calls; the executor itself (approach + single parkable cast + weapon fallback) is intent-
+// agnostic, mirroring how NpcStrategyPolicy parameterizes the one shared runWeaponTurn.
+enum class CasterIntent { Control, Heal, Support };
+
+// Pre-attack probability analysis for one NPC-automation attack (reported to the combat log just
+// before the swing). An ESTIMATE mirroring the engine's core to-hit math (attackModifier + bonus_hit,
+// Sacred Weapon, exhaustion, Bless d4, crit threshold, nat-1 fumble, target base_ac) and the dominant
+// condition-driven advantage/disadvantage sources of performAttack; exotic feat/subclass riders
+// (Vex/Sap carries, Battle Master marks, flanking summons, …) are not folded in. Drop chance is the
+// exact damage distribution (dice ⊗ target resist/vuln/immune multipliers + scaled flat mod, crit
+// weighted) against hp_cur + temp_hp.
+struct NpcAttackAnalysis {
+    double p_hit{0.0};            // chance the attack hits (crit auto-hit and nat-1 auto-miss included)
+    double p_drop_given_hit{0.0}; // chance a HIT drops the target to 0 HP
+    bool   advantage{false};      // estimated roll state the probabilities were computed with
+    bool   disadvantage{false};
+};
+
+// The chosen spell cast for a caster turn (PreferControl/Heal/Support), generalizing NpcAoePlan. A planner
+// returns the best cast it can make FROM THE CURRENT CELL (range + LoS gated, like npcPlanAoeCast):
+//   · spell_idx >= 0            → cast spell_idx at target_indices / aim this turn.
+//   · spell_idx < 0, approach>=0 → nothing castable from here, but a worthwhile spell exists and could reach
+//                                  agent[approach_target] by closing distance → runCasterTurn moves + re-plans.
+//   · spell_idx < 0, approach<0  → no relevant spell at all → runCasterTurn falls back to a weapon turn.
+struct NpcCastPlan {
+    int  spell_idx = -1;              // index into the caster's spells list (== SpellAction.spell_idx)
+    std::vector<int> target_indices; // chosen targets (Single: one; Multiple: up to num_targets)
+    Cell aim{0, 0};                  // aoe_col / aoe_row aim point (area control spells; == target cell for Single)
+    double score = 0.0;              // planner ranking score (net enemies / missing HP / buff count); 0 when spell_idx<0
+    int  approach_target = -1;       // ally/enemy to close on when spell_idx<0 but a relevant spell is held; -1 = none
 };
 
 // ── Wild Magic Surge (College of Wild Magic) ─────────────────────────────────
@@ -1227,15 +1322,31 @@ public:
     // submit_decision(), then call run_npc_turn again to continue). The driver always returns/yields and
     // never blocks in a loop.
     //
-    // STEP 2 STUB: this currently no-ops (logs an auto-pass via resolveStrategy and spends nothing), then
-    // Completes. Steps 3+ replace the body with per-strategy decision logic dispatched on resolveStrategy.
+    // Gates actor liveness and Command (Flee), loads-or-resolves the strategy (resolveStrategy — a parked
+    // turn reuses the strategy that launched it via NpcTurnState::resolved_strategy), then hands off to
+    // dispatchNpcTurn (resume routing, NoOp, Bucket-D recharge, per-strategy executors).
     FlowStatus runNpcTurn(BattleMap& bm, int agent_idx);
 
-    // Resolve which decision algorithm an automated agent uses THIS turn. The single place the later
-    // difficulty-level → role → strategy override will live (NPC_AUTOMATION_PLAN.md "Difficulty is an
-    // OVERRIDE"). Today it returns the per-agent npc_automation_strategy field unchanged. runNpcTurn must
-    // always go through this, never read the raw field, so the executors stay decoupled from the resolver.
+    // Resolve which decision algorithm an automated agent uses THIS turn — the difficulty-level → role →
+    // strategy override (NPC_AUTOMATION_PLAN.md "Difficulty is an OVERRIDE"). Level 0 (manual) returns the
+    // per-agent npc_automation_strategy field unchanged. Levels 1+ resolve from npcClassifyRole + level:
+    //   L1  everyone Simple.
+    //   L2  Melee→Simple; Ranged/Caster→PreferRange.
+    //   L3  L2, but a caster holding a castable AoE blast → PreferAOE.
+    //   L4  L3 + the specialists: Ranged with stealth tools (self-invis spell or Cunning Action) →
+    //       PreferHide; Casters resolve DYNAMICALLY by probing the live planners in priority order
+    //       Heal → Control → Support (first actionable plan wins: it can cast now or approach to cast),
+    //       then AoE, else the L3 result. Planner-probing guarantees the resolved executor finds work.
+    //   L5/6 NN policies (Steps 11-13) — not yet trained; clamp to L4 (one-time log line).
+    // runNpcTurn must always go through this, never read the raw field, so the executors stay decoupled
+    // from the resolver. State-dependent (L4), so runNpcTurn stamps the resolution on NpcTurnState when a
+    // turn parks and reuses it on resume — never re-resolve mid-turn.
     [[nodiscard]] NpcAutomationStrategy resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // Classify the combat role (Melee/Ranged/Caster) the difficulty resolver maps to a strategy. Caster =
+    // knows any combat-relevant spell (npcClassificationIgnore filters flavor/utility spells); else Ranged
+    // = owns any non-shield ranged weapon; else Melee. Public (bound) so tests / the GUI can inspect it.
+    [[nodiscard]] NpcRole npcClassifyRole(const BattleMap& bm, int agent_idx) const noexcept;
 
     // ── PreferHide conceal helpers (Step 7, PREFER_HIDE_PLAN.md CP1) ───────────────────────────
     // Public so tests / the GUI can query them read-only (bound in rpg_bindings.cpp).
@@ -1248,15 +1359,57 @@ public:
     // "move to cover". Mirrors checkHide's enemy-LoS loop over reachableCells; geometry single-sourced.
     // `out` = the chosen cell; returns false when every reachable cell is exposed. Nearest = fewest steps.
     [[nodiscard]] bool npcFindCoverCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept;
+    // NPC-automation tuning knobs from gui/npc_automation_config.json (loaded ONCE, lazy). Public so tests /
+    // the GUI can query the loaded config read-only. control_priority = the DM order PreferControl walks
+    // (Step 8); heal_threshold = the missing-HP gate PreferHeal casts below (Step 9). Baked-in defaults back
+    // both when the file is absent.
+    [[nodiscard]] const std::vector<std::string>& npcControlPriority() const noexcept;  // Step 8 priority list
+    [[nodiscard]] double npcHealThreshold() const noexcept;                // Step 9 missing-HP cast gate
+    // Spell names (lowercased) that do NOT make their owner a "caster" for role classification — flavor /
+    // out-of-combat utility spells (Speak with Animals, Thaumaturgy, …) plus combat spells the engine
+    // can't use in automation (Mage Armor is pre-baked into stat-block AC; Phantom Steed needs mounts).
+    // classification_ignore_spells in npc_automation_config.json; baked-in defaults when the file is absent.
+    [[nodiscard]] const std::set<std::string>& npcClassificationIgnore() const noexcept;
     // Classify the conceal route (A/B/C/D per PREFER_HIDE_PLAN.md) for agent_idx from its current tools:
     // has_cunning_action, the two invis finders (bonus/action), and whether it is currently Invisible.
     [[nodiscard]] NpcConcealRoute npcClassifyConceal(const BattleMap& bm, int agent_idx) const noexcept;
+
+    // ── NPC attack analysis (probability report, NPC automation) ──────────────────────────────
+    // Pure probability queries — no dice are rolled and no state mutates. Public + bound so tests /
+    // the GUI can verify the math. See NpcAttackAnalysis for what is (and is not) modeled.
+    // P(hit) and P(drop | hit) for one weapon attack, exactly as the executors would swing it.
+    [[nodiscard]] NpcAttackAnalysis npcAnalyzeAttack(const BattleMap& bm, int attacker_idx,
+                                                     int target_idx, int weapon_idx) const noexcept;
+    // P(target SAVES) vs the caster's spell save DC for a Save-type spell: deterministic saveModFor
+    // pieces (ability mod + proficiency + Paladin aura) + Bless d4 by convolution, adv/dis from
+    // hasAdvantage/hasDisadvantage + saveAdvantageFor + curseSaveDisadvantage, and the
+    // Paralyzed/Stunned/Unconscious STR/DEX auto-fail. Mirrors rollSpellSave's core.
+    [[nodiscard]] double npcSaveChance(const BattleMap& bm, int caster_idx, int target_idx,
+                                       const Spell& sp) const noexcept;
+    // P(hit) for an attack-roll spell — mirrors rollSpellAttack's core (spellAttackMod + Bless,
+    // calculateAC, Innate Sorcery / blinded / threatened / target blinded+stunned adv-dis).
+    [[nodiscard]] double npcSpellHitChance(const BattleMap& bm, int caster_idx, int target_idx,
+                                           const Spell& sp) const noexcept;
+    // Log one "Analysis: …" line to the combat log for an imminent weapon attack / cast. Called by
+    // the NPC-automation executors right before the announce so the report lands with the action.
+    void npcLogAttackAnalysis(const BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx);
+    void npcLogCastAnalysis(const BattleMap& bm, int caster_idx, int spell_idx,
+                            const std::vector<int>& target_indices);
 
     // Visualization seam (NPC_AUTOMATION_PLAN.md Step 2e). runNpcTurn calls renderAttack(...) when an NPC
     // action resolves so the GUI can later animate it (highlight attacker + target, ranged arrow, AoE
     // blink-then-resolve). SEAM ONLY — no animation now; headless leaves the hook unset (a no-op). The
     // GUI installs a Python callable via set_render_attack_hook.
     void setRenderAttackHook(std::function<void(int, int)> hook) noexcept { render_attack_hook_ = std::move(hook); }
+
+    // NPC turn playback: drain the visual event stream (move-out-and-clear). The GUI calls this after
+    // EVERY run_npc_turn return (Completed or parked) and animates the events before advancing the
+    // turn / opening the parked reaction menu. Draining twice yields an empty vector.
+    [[nodiscard]] std::vector<NpcVisualEvent> takeNpcVisualEvents() noexcept {
+        std::vector<NpcVisualEvent> out = std::move(npc_visual_events_);
+        npc_visual_events_.clear();
+        return out;
+    }
 
     // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating).
     // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
@@ -2346,6 +2499,52 @@ public:
     // Drop concentration for the given agent: removes terrain, spell effects, conditions.
     [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
 
+    // Dispel Magic (Phase 4): end ongoing magical effects on target_idx. Each attached
+    // ActiveAgentCondition / ActiveSpellEffect (and terrain at the target's cell) is ended
+    // automatically if its cast level <= slot_level; otherwise the caster rolls d20 +
+    // spellcasting ability modifier vs DC 10 + the effect's level. Everything ended routes
+    // through the onConditionEnded / removeSpellEffect teardown so buffs (Aid HP, Haste AC,
+    // Haste lethargy) are reversed correctly. If a dispelled effect's original caster is left
+    // concentrating on a spell with no remaining footprint, that concentration flag is cleared.
+    // Dispatched from executeSpell when Spell::dispels_magic is set.
+    void dispelMagic(BattleMap& bm, int caster_idx, int target_idx, int slot_level) noexcept;
+
+    // Cell-aimed Dispel Magic: ends ongoing area magic (persistent spell zones like Hunger of
+    // Hadar / Cloudkill and spell-sourced difficult terrain like Web / Grease / Spike Growth)
+    // whose footprint covers (col, row). One dispel attempt per distinct source spell — success
+    // removes that spell's ENTIRE map footprint (both its zone and its terrain), not just the
+    // clicked cell — mirroring dispelMagic's auto-end-or-check rule and concentration cleanup.
+    // Dispatched from executeSpell when dispels_magic is set and no creature target was aimed.
+    void dispelMagicAtCell(BattleMap& bm, int caster_idx, int col, int row, int slot_level) noexcept;
+
+    // Dispel Magic candidate enumeration for the GUI picker — the dispellable ongoing spells on a
+    // creature (dispelCandidatesOnAgent) or overlapping a cell (dispelCandidatesAtCell), grouped so
+    // each entry is one spell (one roll). No dice rolled and nothing removed — read-only.
+    [[nodiscard]] std::vector<DispelCandidate>
+        dispelCandidatesOnAgent(BattleMap& bm, int caster_idx, int target_idx) noexcept;
+    [[nodiscard]] std::vector<DispelCandidate>
+        dispelCandidatesAtCell(BattleMap& bm, int caster_idx, int col, int row) noexcept;
+
+    // Dispel exactly the chosen structures (the picker's selection): the ids are looked up, grouped
+    // by source spell, and each group gets ONE auto-end-or-check roll; success removes the group's
+    // structures and clears a now-empty concentration. Handles both creature effects (conditions +
+    // anchored effects) and area effects (zones + terrain) uniformly. Dispatched from executeSpell
+    // when a dispels_magic cast carries a selection.
+    void dispelSelected(BattleMap& bm, int caster_idx,
+                        const std::vector<int>& condition_ids,
+                        const std::vector<int>& spell_effect_ids,
+                        const std::vector<int>& terrain_ids, int slot_level) noexcept;
+
+    // Apply one candidate: roll (auto-end at level<=slot, else d20 + spellcasting mod vs DC 10+level)
+    // and, on success, remove its structures and clear a now-empty concentration. Returns success.
+    bool applyDispelCandidate(BattleMap& bm, int caster_idx,
+                              const DispelCandidate& candidate, int slot_level) noexcept;
+
+    // Shared post-dispel cleanup: for each (owner, spell_idx) whose footprint a dispel just ended,
+    // clear that caster's concentration flag only if NOTHING owned by that pair remains anywhere.
+    void endDispelledConcentration(
+        BattleMap& bm, const std::vector<std::pair<int,int>>& ended_owner_spell) noexcept;
+
     // Drop concentration for every concentrating agent (e.g. on End Combat).
     void clearAllConcentration(BattleMap& bm);
 
@@ -2613,6 +2812,33 @@ private:
     std::function<void(int, int)> render_attack_hook_;
     // Notify the GUI (if a hook is installed) that an automated NPC's action from attacker→target
     // resolved, so it can animate. No-op when no hook is installed (headless / tests).
+    // ── NPC visual event stream (NPC turn playback) ──────────────────────────
+    // Recording is ON only while an automated NPC turn is in flight — set in runNpcTurn, kept on
+    // across a park (the parked action resolves inside submitDecision and must record too), and
+    // cleared when the turn completes. Every recorder is a no-op otherwise, so player-driven flows
+    // and headless RL/tests never accumulate events beyond one turn (fresh turns clear the buffer).
+    bool npc_recording_{false};
+    std::vector<NpcVisualEvent> npc_visual_events_;
+    void recordNpcMove(int agent_idx, const std::vector<Cell>& path) {
+        if (!npc_recording_ || path.size() < 2) return;
+        NpcVisualEvent e;
+        e.kind = NpcVisualEvent::Move; e.agent_idx = agent_idx; e.path = path;
+        npc_visual_events_.push_back(std::move(e));
+    }
+    void recordNpcAnnounce(int agent_idx, int target_idx, std::string text) {
+        if (!npc_recording_) return;
+        NpcVisualEvent e;
+        e.kind = NpcVisualEvent::Announce; e.agent_idx = agent_idx;
+        e.target_idx = target_idx; e.text = std::move(text);
+        npc_visual_events_.push_back(std::move(e));
+    }
+    // sync_hp=false records a flash-only outcome (hp_after stays -1): used where the roll is known
+    // but its damage applies later in the pipeline (spell saves / spell attack rolls) — the GUI's
+    // HP-bar override simply holds until playback ends and the live value shows.
+    // Defined in combat_core.cpp (needs the full BattleMap definition to read hp/conditions).
+    void recordNpcOutcome(const BattleMap& bm, int target_idx, std::string text, bool good,
+                          bool sync_hp = true);
+
     void renderAttack(int attacker_idx, int target_idx) const {
         if (render_attack_hook_) render_attack_hook_(attacker_idx, target_idx);
     }
@@ -2689,6 +2915,28 @@ private:
 
     // ── NPC automation internals (combat_turn.cpp, NPC_AUTOMATION_PLAN.md Step 3) ─────────────
     NpcTurnState npc_turn_{};   // resume point of an in-flight automated turn (parks at reaction windows)
+    // NPC-automation tuning knobs (gui/npc_automation_config.json), loaded ONCE and cached. Mutable so the
+    // const planners can lazy-load on first use. control_priority = DM-authored order PreferControl walks
+    // (Step 8); heal_threshold_fraction = the missing-HP gate PreferHeal casts below (Step 9). Falls back to
+    // baked-in defaults if the file is absent so the planners work without it.
+    mutable bool                     npc_config_loaded_ = false;
+    mutable std::vector<std::string> npc_control_priority_{};
+    mutable double                   npc_heal_threshold_fraction_ = 0.5;
+    mutable std::set<std::string>    npc_classification_ignore_{};  // lowercased names (role classification)
+    void npcLoadConfig() const noexcept;                                   // lazy JSON load into the caches above
+    // (npcControlPriority / npcHealThreshold / npcClassificationIgnore accessors are public above.)
+    // One-time "Level 5/6 clamps to Level 4" combat-log warning (NN policies not yet trained). Mutable:
+    // resolveStrategy is const.
+    mutable bool npc_nn_level_warned_ = false;
+    // Everything runNpcTurn does AFTER the strategy is known (resume routing, NoOp, Bucket-D recharge,
+    // policy dispatch). Split out so runNpcTurn can stamp the resolved strategy onto npc_turn_ when the
+    // dispatched turn parks — the resume then reuses it instead of re-resolving (see resolveStrategy).
+    FlowStatus dispatchNpcTurn(BattleMap& bm, int agent_idx, NpcAutomationStrategy strategy);
+    // True when the agent owns any stealth tool PreferHide's conceal routes A-C can use: a castable
+    // self-invisibility spell (bonus OR action) or Cunning Action. Gates the L4 Ranged→PreferHide upgrade.
+    // Deliberately ignores Route B's cover-cell reachability — that needs the live walk budget, which is
+    // unseeded at resolve time; the conceal tail itself copes with "no cover reachable" (ends exposed).
+    [[nodiscard]] bool npcHasStealthTools(const BattleMap& bm, int agent_idx) const noexcept;
     // Single shared NPC turn executor (Steps 3-5). It engages an enemy and makes a full Attack action,
     // with target selection, weapon choice, and positioning all driven by `policy` — so Simple (Step 3),
     // PreferTargetCaster (Step 4), and PreferRange (Step 5) are the SAME code with different policies.
@@ -2710,7 +2958,9 @@ private:
     // to the full enemy pool (so PreferTargetCaster degrades to its base priority when no caster is present).
     [[nodiscard]] int  npcSelectTarget(const BattleMap& bm, int agent_idx, bool prefer_caster = false,
                                        NpcTargetPriority priority = NpcTargetPriority::Nearest) const noexcept;
-    // True if target_idx is an enemy spellcaster (its known-spell list is non-empty). Drives Step 4 targeting.
+    // True if the agent knows any COMBAT-RELEVANT spell (npcClassificationIgnore filters flavor/utility
+    // spells, so a monster whose only spell is Speak with Animals is NOT a caster). Drives Step 4
+    // PreferTargetCaster targeting AND the difficulty resolver's role classification — one definition.
     [[nodiscard]] bool npcIsCaster(const BattleMap& bm, int idx) const noexcept;
     // True if target_idx is a currently-valid attack target for agent_idx (alive, in play, in initiative,
     // not an ally). Used to re-acquire mid-multiattack when the current target drops.
@@ -2733,6 +2983,12 @@ private:
     // counted with resolveAoeTargets — the SAME resolver executeSpell uses — so geometry is single-sourced.
     // Placed areas (Sphere/Square) are range+LoS gated to the aim; self-origin Cone/Line need only LoS.
     [[nodiscard]] NpcAoePlan npcPlanAoeCast(const BattleMap& bm, int agent_idx) const noexcept;
+    // Net enemies an area spell catches when aimed at `aim`: enemies in the resolveAoeTargets catchment minus
+    // friendly-fire allies (the caster + same-faction allies still in play), unless the spell spares allies
+    // (selective_targeting). Single-sources the catchment-scoring loop shared by npcPlanAoeCast (Step 6) and
+    // the area branch of npcPlanControlCast (Step 8) — resolveAoeTargets is the SAME resolver executeSpell uses.
+    [[nodiscard]] int npcAreaNetEnemies(const BattleMap& bm, const Spell& sp, int agent_idx,
+                                        const Cell& aim) const noexcept;
     // True if the agent has ANY currently-castable AoE blast spell (Sphere/Cone/Line/Square, Harm type),
     // regardless of whether an enemy is in range right now. Distinguishes "no AoE to cast → melee" from
     // "has an AoE but must first move into range" so PreferAOE never falls back to melee while it holds one.
@@ -2741,9 +2997,34 @@ private:
     // remaining/un-expended use, and an AoE blast shape). runNpcTurn routes any strategy through runAoeTurn
     // when this holds so a monster spends its breath weapon as often as it recharges — see MULTIATTACK_RECIPES_PLAN.md.
     [[nodiscard]] bool npcHasAvailableRechargeAoe(const BattleMap& bm, int agent_idx) const noexcept;
-    // The reachable cell that most reduces footprint distance to the nearest attackable enemy — an AoE
-    // caster's "close the gap so the blast can reach" move. Mirrors runWeaponTurn's approach finder.
-    [[nodiscard]] bool npcFindAoeApproachCell(const BattleMap& bm, int agent_idx, Cell& out) const noexcept;
+    // The reachable cell that most reduces footprint distance to agent[approach_target] — a caster's
+    // "close the gap so the spell can reach" move. Mirrors runWeaponTurn's approach finder. The approach
+    // target is a parameter (not always the nearest enemy) so Heal/Support can close on an ALLY (Steps
+    // 9-10) while AoE/Control close on an enemy (Steps 6/8). Single-sourced by runAoeTurn + runCasterTurn.
+    [[nodiscard]] bool npcFindApproachCell(const BattleMap& bm, int agent_idx, int approach_target,
+                                           Cell& out) const noexcept;
+
+    // ── Caster turn (NPC_AUTOMATION_PLAN.md Steps 8-10 shared foundation) ─────
+    // Structurally identical to runAoeTurn: plan a spell + target(s), approach if the plan is out of range,
+    // cast ONCE through the parkable beginCast, guard the resume via cast_launched/cast_moving, and fall
+    // back to a weapon turn when nothing is worth casting (spell_idx < 0 with no approach target). The
+    // intent selects which planner runs; the executor itself is intent-agnostic. Resumable via npc_turn_.
+    FlowStatus runCasterTurn(BattleMap& bm, int agent_idx, CasterIntent intent);
+    // Dispatch to the intent's planner. The single seam runCasterTurn plans through.
+    [[nodiscard]] NpcCastPlan npcPlanCasterCast(const BattleMap& bm, int agent_idx,
+                                                CasterIntent intent) const noexcept;
+    // Per-intent planners (each filled in by its own step; foundation ships them as no-cast stubs so a
+    // Control/Heal/Support NPC simply takes a weapon turn until its planner lands).
+    //   Control (Step 8): first castable control spell (DM control_priority order) on a valid enemy target.
+    //   Heal    (Step 9): a Heal spell on the most-wounded ally (downed first) below heal_threshold_fraction.
+    //   Support (Step 10): a Help buff on allies that don't already carry it.
+    [[nodiscard]] NpcCastPlan npcPlanControlCast(const BattleMap& bm, int agent_idx) const noexcept;
+    [[nodiscard]] NpcCastPlan npcPlanHealCast   (const BattleMap& bm, int agent_idx) const noexcept;
+    [[nodiscard]] NpcCastPlan npcPlanSupportCast(const BattleMap& bm, int agent_idx) const noexcept;
+    // Concentration guard (Control + Support, Steps 8/10): true if agent[agent_idx] already concentrates on
+    // a spell, so its planner should not spend an action re-casting a concentration effect it already holds
+    // (and never drop a live concentration effect for a weaker one). Reads Stats.concentrating.
+    [[nodiscard]] bool npcHoldsConcentration(const BattleMap& bm, int agent_idx) const noexcept;
 
     // ── Attack interrupt internals (combat_attack.cpp) ───────────────────────
     InFlightAttack in_flight_attack_{};      // resumable state of a begin_attack flow

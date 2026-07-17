@@ -748,7 +748,11 @@ _DEFAULT_SPELL: dict = {
 def _spell_to_dict(s) -> dict:
     geo = s.geometry.name
     uses_radius = geo in ("Sphere", "Cone")
-    uses_line   = geo == "Line"
+    # Line, Square and Rectangle all carry their extent in width/length. Dropping
+    # them for Square/Rectangle (as an over-narrow `geo == "Line"` test once did)
+    # made a saved Square reload with the width=5/length=30 defaults — i.e. a
+    # 1-cell-wide line (this is how Hypnotic Pattern silently became a line).
+    uses_line   = geo in ("Line", "Square", "Rectangle")
 
     # Convert magic_damage_types to new format with per-type dice
     magic_dmg = []
@@ -788,6 +792,7 @@ def _spell_to_dict(s) -> dict:
         "moves_with_caster":     s.moves_with_caster,
         "grants_advantage_aura": s.grants_advantage_aura,
         "opens_doors":           s.opens_doors,
+        "dispels_magic":         s.dispels_magic if hasattr(s, 'dispels_magic') else False,
         "light_level":           s.light_level,
         # N/day + Recharge (breath weapons / limited innate actions). uses_max==0
         # ⇒ unlimited; recharge_min==0 ⇒ no recharge. Mirrors the Weapon fields.
@@ -875,6 +880,8 @@ def _dict_to_spell(d: dict):
     s.requires_los = d.get("requires_los", False)
     s.check_los_on_center = d.get("check_los_on_center", True)
     s.opens_doors = d.get("opens_doors", False)
+    if hasattr(s, "dispels_magic"):
+        s.dispels_magic = d.get("dispels_magic", False)
     s.level = int(d.get("level", 0))
     s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
     s.num_targets = int(d.get("num_targets", 1))

@@ -539,10 +539,11 @@ class App:
         self._panel_floor_nav_top = None
         self._panel_stats_y       = 0
 
-        # Load terrain, spell effects, and lighting data if they exist
-        self._load_terrain()
-        self._load_spell_effects()
-        self._load_lighting()
+        # Start with a BLANK scene: the terrain/lighting/effects sidecars are read
+        # only when explicitly loaded (Terrain… / Lighting… menus, Agents… → Load),
+        # never auto-inherited from whatever encounter last touched this map.
+        # blank=True still resets all terrain state + wall detection to a clean slate.
+        self._load_terrain(blank=True)
 
         # Evoker "safe targets" editing: index of the Evoker whose safe set is being
         # edited via map clicks (-1 = not editing). Out-of-combat only.
@@ -654,6 +655,10 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
         self.pending_spell_targets     = []    # For Multiple geometry: collected targets
+        # Dispel Magic picker: the DM-chosen effect's structure ids (dict of three id lists) to end
+        # on the next cast, or None to dispel everything at the target (NPC/RL default). See
+        # _begin_dispel_pick / _cast_dispel_selection.
+        self.pending_dispel_selection  = None
         # Chromatic Orb leap chain: after the primary target is chosen, the player clicks the
         # orb's preferred leap path (each hop within 30 ft of the previous), then Enter to cast
         # / Esc to cancel. The chain rides on SpellAction.chromatic_leap_targets; unpicked hops
@@ -760,6 +765,8 @@ class App:
         self._status_msg_until       = 0     # pygame ticks (ms) when _status_msg expires
         self._floating_texts: list   = []    # transient on-map outcome flashes
                                              # {agent_idx, text, color, spawn_ms, dur_ms, rise}
+        self._npc_anim               = None  # in-flight NPC-turn playback (see _npc_anim_start);
+                                             # None = live rendering, no animation running
         self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
         self.show_visible_targets    = False # toggle for showing visible target debug info
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
@@ -773,8 +780,8 @@ class App:
         self.pending_spell_curse_choice: int = -1       # Vistani Curse sub-choice (see CURSE_CHOICE_SPELLS); -1 = n/a
 
         # ── Agent config GUI state ────────────────────────────────────────
-        # Combat panel first: it creates btn_show_terrain, which the config panel
-        # also lays out (the toggle is available before combat too).
+        # Combat panel first: it creates btn_show_terrain, the in-combat Show/Hide
+        # Terrain toggle (pre-combat, that toggle lives in the Terrain… menu).
         self._init_combat_panel()
         self._init_config_panel()
         self.scroll_y = 0         # scroll offset for agent list
@@ -787,11 +794,9 @@ class App:
 
         self.clock = pygame.time.Clock()
 
-        # If a dungeon manifest sits next to this map's encounter, enter dungeon
-        # mode and open its entry page (so paging controls appear). Deferred to the
-        # end of __init__ so _switch_to_page's _load_agents has the combat engine,
-        # sprite/spell catalogs and panels it depends on. Non-fatal.
-        self._load_dungeon_manifest_if_present()
+        # NOTE: dungeon manifests are opened explicitly (Dungeon Configuration →
+        # Open Dungeon…). Startup stays a blank single-map scene even when a
+        # <base>.dungeon.json sits beside this map's encounter.
 
     # ─────────────────────────────────────────────────────────────────────
     #  (Re)build the active battle map from a PNG (re-entrant map loading)
@@ -868,7 +873,7 @@ class App:
         # A mid-session swap to a differently sized map resizes the window, so the
         # right-side panel widgets (absolute rects) must be re-anchored. Guarded so
         # the first __init__ call — before the panel exists — is a no-op.
-        if hasattr(self, "btn_load"):
+        if hasattr(self, "btn_agents"):
             self._reposition_panel()
 
     # ─────────────────────────────────────────────────────────────────────
@@ -955,85 +960,52 @@ class App:
 
         # y of the INPUT/STEPPER for each row (label sits RS-_WIDGET_H-_ROW_GAP above it)
         title_y  = 10
-        row0_y   = title_y + self._TITLE_H + 10           # Mob dropdown
+        row0_y   = title_y + self._TITLE_H + 10           # Agents… menu button
         btn0_y   = row0_y  + self._WIDGET_H + self._ROW_GAP + 8   # Clear All
-        btn1_y   = btn0_y  + self._BTN_H + self._BTN_GAP + 4  # Save (half-width)
-        # btn2 (Load) is at same y as btn1, right half
+        btn1_y   = btn0_y  + self._BTN_H + self._BTN_GAP + 4  # Long/Short Rest (half-width)
 
         return px, W, title_y, row0_y, btn0_y, btn1_y
 
     def _init_config_panel(self):
         """Initialize config panel using layout from _panel_layout()."""
         px, W, title_y, r0, b0, b1 = self._panel_layout()
-        H   = self._WIDGET_H
         HW  = W // 2 - 2
         B   = self._BTN_H
 
-        self.btn_select_mob = Button(pygame.Rect(px, r0, HW, B), "Select Mob", font=self.font_md)
-        self.btn_select_pc = Button(pygame.Rect(px + HW + 4, r0, HW, B), "Select PC",
-                                   (80, 100, 140), (110, 130, 170), font=self.font_md)
+        # Grouped popup menus (Agents… / Terrain… / Lighting…) replace the old
+        # per-action button rows — each opens a ContextMenu with that group's
+        # actions (save/load/edit/generate/…).
+        self.btn_agents = Button(pygame.Rect(px, r0, W, B), "Agents…",
+                                 (80, 100, 140), (110, 130, 170), font=self.font_md)
         self.btn_clear = Button(pygame.Rect(px, b0, W, B), "Clear All",
                                COL_BTN_DANGER, (180, 70, 70), font=self.font_md)
-        SW = HW
-        self.btn_save = Button(pygame.Rect(px,        b1, SW, B), "Save",
-                              (50, 100, 60), (70, 130, 80), font=self.font_md)
-        self.btn_load = Button(pygame.Rect(px + SW+4, b1, SW, B), "Load",
-                              (50, 75, 120), (70, 100, 155), font=self.font_md)
-        imp_y = b1 + B + self._BTN_GAP
-        self.btn_import_ddb = Button(pygame.Rect(px, imp_y, HW, B), "Import DDB",
-                                     (95, 70, 120), (125, 95, 160), font=self.font_md)
-        # Load a party (*_pc_agents.json) ADDITIVELY onto the current scene, so the PCs
-        # drop onto an already-loaded dungeon without wiping its monsters.
-        self.btn_load_pcs = Button(pygame.Rect(px + HW + 4, imp_y, HW, B), "Load PCs",
-                                   (50, 75, 120), (70, 100, 155), font=self.font_md)
-        lr_y = imp_y + B + self._BTN_GAP
-        self.btn_long_rest = Button(pygame.Rect(px, lr_y, HW, B), "Long Rest",
+        self.btn_long_rest = Button(pygame.Rect(px, b1, HW, B), "Long Rest",
                                     (60, 100, 60), (80, 130, 80), font=self.font_md)
-        self.btn_short_rest = Button(pygame.Rect(px + HW + 4, lr_y, HW, B), "Short Rest",
+        self.btn_short_rest = Button(pygame.Rect(px + HW + 4, b1, HW, B), "Short Rest",
                                     (60, 90, 110), (80, 120, 150), font=self.font_md)
-        bc_y = lr_y + B + self._BTN_GAP + 8
+        bc_y = b1 + B + self._BTN_GAP + 8
         self.btn_begin_combat = Button(pygame.Rect(px, bc_y, W, B),
                                       "Begin Combat",
                                       COL_BTN_COMBAT, COL_BTN_COMBAT_HOV, font=self.font_md)
         ter_y = bc_y + B + self._BTN_GAP
-        self.btn_edit_terrain = Button(pygame.Rect(px, ter_y, W, B),
-                                       "Edit Terrain",
-                                       (80, 100, 120), (110, 130, 160), font=self.font_md)
-        # btn_show_terrain (created in _init_combat_panel) is laid out here too, in the
-        # reserved slot below Edit Terrain; _draw_panel positions/draws it each frame.
-        show_ter_y = ter_y + B + self._BTN_GAP
-        self.btn_show_terrain.rect.update(px, show_ter_y, W, B)
-        # Save / Load Terrain (file pickers — lets terrain be saved before combat and
-        # reused across maps/encounters, independent of the agents save).
-        save_ter_y = show_ter_y + B + self._BTN_GAP
-        self.btn_save_terrain = Button(pygame.Rect(px, save_ter_y, HW, B), "Save Terrain",
-                                       (50, 100, 60), (70, 130, 80), font=self.font_md)
-        self.btn_load_terrain = Button(pygame.Rect(px + HW + 4, save_ter_y, HW, B), "Load Terrain",
-                                       (50, 75, 120), (70, 100, 155), font=self.font_md)
-        # DM-mode: carve BSP rooms/walls into the terrain (Generate Terrain), then fill
-        # those rooms with a progressive-difficulty encounter (Generate Dungeon).
-        gen_y = save_ter_y + B + self._BTN_GAP
-        self.btn_generate_terrain = Button(pygame.Rect(px, gen_y, HW, B), "Generate Terrain",
-                                           (70, 100, 90), (95, 135, 120), font=self.font_md)
-        self.btn_generate_dungeon = Button(pygame.Rect(px + HW + 4, gen_y, HW, B), "Generate Dungeon",
+        self.btn_terrain = Button(pygame.Rect(px, ter_y, W, B), "Terrain…",
+                                  (80, 100, 120), (110, 130, 160), font=self.font_md)
+        light_y = ter_y + B + self._BTN_GAP
+        self.btn_lighting = Button(pygame.Rect(px, light_y, W, B), "Lighting…",
+                                   (120, 100, 80), (160, 130, 110), font=self.font_md)
+        # DM-mode: carve a fresh terrain floor plan AND fill its rooms with a
+        # progressive-difficulty encounter in one shot ("New terrain: OFF" in the
+        # dialog populates the existing terrain instead — the old two-step via
+        # Terrain… → Generate…, which still works for hand-made maps).
+        gen_y = light_y + B + self._BTN_GAP
+        self.btn_generate_dungeon = Button(pygame.Rect(px, gen_y, W, B), "Generate Dungeon",
                                            (110, 85, 60), (150, 115, 80), font=self.font_md)
         # Multi-map dungeons (FLOORS_IMPLEMENTATION_PLAN.md Phase 6): New/Open/Save a
         # .dungeon.json manifest, add/remove pages, place pages on the global grid.
         dung_y = gen_y + B + self._BTN_GAP
-        self.btn_dungeon = Button(pygame.Rect(px, dung_y, W, B), "Dungeon…",
+        self.btn_dungeon = Button(pygame.Rect(px, dung_y, W, B), "Dungeon Configuration",
                                   (95, 80, 115), (130, 110, 155), font=self.font_md)
-        light_y = dung_y + B + self._BTN_GAP
-        self.btn_edit_lighting = Button(pygame.Rect(px, light_y, HW, B),
-                                        "Edit Lighting",
-                                        (120, 100, 80), (160, 130, 110), font=self.font_md)
-        self.btn_load_lighting = Button(pygame.Rect(px + HW + 4, light_y, HW, B),
-                                        "Load Lighting",
-                                        (50, 75, 120), (70, 100, 155), font=self.font_md)
-        toggle_light_y = light_y + B + self._BTN_GAP
-        self.btn_toggle_lighting = Button(pygame.Rect(px, toggle_light_y, W, B),
-                                          "Lighting: OFF",
-                                          (80, 80, 120), (110, 110, 160), font=self.font_md)
-        toggle_walls_y = toggle_light_y + B + self._BTN_GAP
+        toggle_walls_y = dung_y + B + self._BTN_GAP
         self.btn_toggle_walls = Button(pygame.Rect(px, toggle_walls_y, W, B),
                                        "Walls: ON" if self._walls_enabled else "Walls: OFF",
                                        (90, 80, 110), (125, 110, 150), font=self.font_md)
@@ -1064,17 +1036,12 @@ class App:
         B, G = self._BTN_H, self._BTN_GAP
 
         # ── Base (top-anchored, scroll-independent) y for each row ──
-        imp_y          = b1             + B + G
-        lr_y           = imp_y         + B + G
-        bc_y           = lr_y          + B + G + 8
+        bc_y           = b1            + B + G + 8
         ter_y          = bc_y          + B + G
-        show_ter_y     = ter_y         + B + G
-        save_ter_y     = show_ter_y    + B + G
-        gen_y          = save_ter_y    + B + G
+        light_y        = ter_y         + B + G
+        gen_y          = light_y       + B + G
         dung_y         = gen_y         + B + G
-        light_y        = dung_y        + B + G
-        toggle_light_y = light_y       + B + G
-        toggle_walls_y = toggle_light_y + B + G
+        toggle_walls_y = dung_y        + B + G
         toggle_fog_y   = toggle_walls_y + B + G
         set_grid_y     = toggle_fog_y  + B + G
         quit_y         = set_grid_y    + B + G
@@ -1095,26 +1062,15 @@ class App:
         self._panel_floor_nav_top = (r0 - self.panel_scroll) if self._panel_floor_nav_h else None
         self._panel_stats_y = stats_y + off
 
-        self.btn_select_mob.rect.update(px, r0 + off, SW, self._WIDGET_H)
-        self.btn_select_pc.rect.update(px + SW + 4, r0 + off, SW, self._WIDGET_H)
+        self.btn_agents.rect.update(px, r0 + off, W, self._WIDGET_H)
         self.btn_clear.rect.update(px, b0 + off, W, B)
-        self.btn_save.rect.update(px,        b1 + off, SW, B)
-        self.btn_load.rect.update(px + SW+4, b1 + off, SW, B)
-        self.btn_import_ddb.rect.update(px, imp_y + off, SW, B)
-        self.btn_load_pcs.rect.update(px + SW + 4, imp_y + off, SW, B)
-        self.btn_long_rest.rect.update(px, lr_y + off, SW, B)
-        self.btn_short_rest.rect.update(px + SW + 4, lr_y + off, SW, B)
+        self.btn_long_rest.rect.update(px, b1 + off, SW, B)
+        self.btn_short_rest.rect.update(px + SW + 4, b1 + off, SW, B)
         self.btn_begin_combat.rect.update(px, bc_y + off, W, B)
-        self.btn_edit_terrain.rect.update(px, ter_y + off, W, B)
-        self.btn_show_terrain.rect.update(px, show_ter_y + off, W, B)
-        self.btn_save_terrain.rect.update(px, save_ter_y + off, SW, B)
-        self.btn_load_terrain.rect.update(px + SW + 4, save_ter_y + off, SW, B)
-        self.btn_generate_terrain.rect.update(px, gen_y + off, SW, B)
-        self.btn_generate_dungeon.rect.update(px + SW + 4, gen_y + off, SW, B)
+        self.btn_terrain.rect.update(px, ter_y + off, W, B)
+        self.btn_lighting.rect.update(px, light_y + off, W, B)
+        self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
         self.btn_dungeon.rect.update(px, dung_y + off, W, B)
-        self.btn_edit_lighting.rect.update(px, light_y + off, SW, B)
-        self.btn_load_lighting.rect.update(px + SW + 4, light_y + off, SW, B)
-        self.btn_toggle_lighting.rect.update(px, toggle_light_y + off, W, B)
         self.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
         self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, W, B)
         self.btn_set_grid.rect.update(px, set_grid_y + off, W, B)
@@ -1488,6 +1444,9 @@ class App:
         self.btn_cbt_wild_magic_extra_action = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Wild Magic: Extra Action",
                                           (180, 80, 180), (210, 110, 210), self.font_md)
+        self.btn_cbt_haste_action = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "⚡ Haste Action",
+                                          (70, 130, 180), (100, 160, 210), self.font_md)
         self.btn_cbt_wild_magic_bonus_cast = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Wild Magic: Cast as Bonus",
                                           (160, 70, 170), (195, 105, 205), self.font_md)
@@ -1775,6 +1734,22 @@ class App:
         raw_h = self.bm.h_line_positions
         return int(raw_v[col] * s + self.pan_x), int(raw_h[row] * s + self.pan_y)
 
+    def _cell_to_screen_f(self, col, row):
+        """_cell_to_screen for FRACTIONAL grid coordinates (NPC-turn playback: a token
+        mid-slide between two cells). Interpolates between adjacent grid-line positions."""
+        s     = self.map_scale
+        raw_v = self.bm.v_line_positions
+        raw_h = self.bm.h_line_positions
+
+        def lerp(lines, v):
+            i = max(0, min(int(v), len(lines) - 1))
+            f = v - i
+            if f <= 0 or i + 1 >= len(lines):
+                return lines[i]
+            return lines[i] + f * (lines[i + 1] - lines[i])
+
+        return int(lerp(raw_v, col) * s + self.pan_x), int(lerp(raw_h, row) * s + self.pan_y)
+
     def _agent_at(self, cell):
         """Return index of the placed agent whose footprint contains cell, or -1.
 
@@ -1861,31 +1836,6 @@ class App:
     #  FLOORS_IMPLEMENTATION_PLAN.md. The engine simulates one BattleMap at a
     #  time; a "page" is one PNG placed on a shared global (X, Y, Z) grid.
     # ─────────────────────────────────────────────────────────────────────
-    def _load_dungeon_manifest_if_present(self):
-        """Enter dungeon mode if a ``<base>.dungeon.json`` sits beside the current
-        encounter. The manifest's entry page is loaded into the engine so the paging
-        overlay lights up. Silent no-op when there is no manifest (single-map mode)."""
-        manifest = dungeon_path_for(self._save_path)
-        if not os.path.exists(manifest):
-            return
-        try:
-            dungeon = Dungeon.load(manifest)
-        except Exception as e:                       # noqa: BLE001 — bad manifest ⇒ stay single-map
-            print(f"Warning: could not load dungeon manifest {manifest}: {e}")
-            return
-        entry = dungeon.entry_page()
-        if entry is None:
-            return
-        self.dungeon = dungeon
-        self._dungeon_manifest_path = manifest
-        # Load the entry page fresh (its PNG may differ from the CLI map). No carry:
-        # this is the initial load, not a portal crossing.
-        if not self._switch_to_page(entry, force=True):
-            # Entry page unusable (its PNG is gone) — stay in single-map mode on the
-            # CLI map rather than half-entering a dungeon we can't render.
-            self.dungeon = None
-            self._dungeon_manifest_path = None
-
     def _apply_page_origin(self, page: MapPage):
         """Stamp the engine map's global placement from ``page`` (Phase 1 fields).
         Defensive: skips silently if the extension predates the origin/z_level
@@ -2054,14 +2004,243 @@ class App:
             self._flash_status(f"Floor {target_z}: {below.id}")
 
     # ─────────────────────────────────────────────────────────────────────
+    #  Grouped panel menus: the Agents… / Terrain… / Lighting… buttons each
+    #  pop a ContextMenu of that group's actions (replacing the old wall of
+    #  per-action buttons in the setup panel).
+    # ─────────────────────────────────────────────────────────────────────
+    def _show_agents_menu(self):
+        """Popup for the "Agents…" panel button: encounter save/load plus the ways
+        to add individual agents (Create Mob/PC replace the old Select Mob/PC)."""
+        items = [
+            ("Load…",       self._open_load_agents_browser),
+            ("Import DDB…", self._import_ddb_character),
+            ("Save…",       self._open_save_agents_browser),
+            ("Load PCs…",   self._open_load_pcs_browser),
+            ("Create Mob…", lambda: self.mob_dialog.show(
+                                lambda mob: self._on_mob_selected(mob))),
+            ("Create PC…",  self._show_pc_class_menu),
+            ("Clear",       self._clear_agents),
+        ]
+        self.context_menu.show((self.btn_agents.rect.x, self.btn_agents.rect.y),
+                               items, self.screen.get_size())
+
+    def _clear_agents(self):
+        """Remove every placed agent (plus their spell terrain effects and any
+        ground items) — the agent-scoped clear that used to be the Clear All
+        button. The panel's Clear All now wipes the whole scene via _clear_all."""
+        self.bm.clear_agents()
+        self.bm.clear_terrain_effects()
+        self.bm.clear_items()
+        self.pending_configs.clear()
+        self.pending_mob_stats.clear()
+        # Index-keyed per-agent metadata would bleed onto whatever agents land at
+        # those indices next (same gotcha as _load_agents) — drop it with them.
+        self._spell_metadata.clear()
+        self._agent_meta.clear()
+        self._xp_awarded_agents.clear()
+        self.selected_idx        = -1
+        self.drag_idx            = -1
+        self._attack_cells_melee = []
+        self._attack_cells_rnorm = []
+        self._attack_cells_rlong = []
+
+    def _clear_lighting(self):
+        """Remove all DM-placed light sources and reset the whole map to the
+        fully-lit default (mirrors _load_lighting's no-file branch)."""
+        for eff in list(self.bm.active_light_effects):
+            if eff.source_agent_idx == -1:  # DM-placed
+                self.bm.remove_light_effect(eff.id)
+        self.bm.apply_base_lighting(rpg.VisibilityLevel.Clear, [])
+
+    def _clear_all(self):
+        """Panel "Clear All": wipe the whole scene — agents, terrain AND lighting —
+        back to a blank map (same state as a fresh startup)."""
+        self._clear_agents()
+        self._clear_terrain()
+        self._clear_lighting()
+        self._flash_status("Cleared agents, terrain and lighting.")
+
+    def _open_load_agents_browser(self):
+        """Open the encounter Load browser. No name_pattern: show ALL .json so
+        encounters saved with custom names (not just *_agents.json) are visible."""
+        start = os.path.dirname(self._save_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_load_path_chosen,
+            save_mode=False,
+            extensions=JSON_EXTS,
+            title="Load Encounter",
+        )
+
+    def _open_save_agents_browser(self):
+        start = os.path.dirname(self._save_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_save_path_chosen,
+            save_mode=True,
+            extensions=JSON_EXTS,
+            default_filename=os.path.basename(self._save_path),
+            name_pattern="_agents.json",
+            title="Save Encounter As",
+        )
+
+    def _open_load_pcs_browser(self):
+        """Load a party (*_pc_agents.json) ADDITIVELY onto the current scene, so
+        the PCs drop onto an already-loaded dungeon without wiping its monsters."""
+        start = os.path.dirname(self._save_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_load_pcs_chosen,
+            save_mode=False,
+            extensions=JSON_EXTS,
+            name_pattern="_pc_agents.json",
+            title="Load PCs",
+        )
+
+    def _show_pc_class_menu(self):
+        pc_classes = ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk",
+                      "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
+        options = [(cls, lambda c=cls: self._on_pc_class_selected(c)) for cls in pc_classes]
+        px_popup = self._panel_x() + self._PANEL_PAD
+        self.context_menu.show((px_popup, 100), options, self.screen.get_size())
+
+    def _show_terrain_menu(self):
+        """Popup for the "Terrain…" panel button."""
+        items = [
+            ("Edit…",     self._open_terrain_editor),
+            ("Load…",     self._open_load_terrain_browser),
+            ("Save…",     self._open_save_terrain_browser),
+            ("Generate…", self._on_generate_terrain),
+            ("Hide" if self.show_terrain else "Show", self._toggle_show_terrain),
+            ("Clear",     self._clear_terrain),
+        ]
+        self.context_menu.show((self.btn_terrain.rect.x, self.btn_terrain.rect.y),
+                               items, self.screen.get_size())
+
+    def _open_terrain_editor(self):
+        self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
+                                 ladders=self._ladders, door_links=self._door_links)
+
+    def _toggle_show_terrain(self):
+        self.show_terrain = not self.show_terrain
+
+    def _open_save_terrain_browser(self):
+        """Save Terrain (file picker — lets terrain be saved before combat and
+        reused across maps/encounters, independent of the agents save)."""
+        start = os.path.dirname(self._terrain_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_save_terrain_chosen,
+            save_mode=True,
+            extensions=JSON_EXTS,
+            default_filename=os.path.basename(self._terrain_path),
+            name_pattern="_terrain.json",
+            title="Save Terrain As",
+        )
+
+    def _open_load_terrain_browser(self):
+        """Open the terrain Load browser. No name_pattern: show ALL .json so
+        terrain saved with custom names (not just *_terrain.json) shows."""
+        start = os.path.dirname(self._terrain_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_load_terrain_chosen,
+            save_mode=False,
+            extensions=JSON_EXTS,
+            title="Load Terrain",
+        )
+
+    def _clear_terrain(self):
+        """Reset the scene's terrain to a blank slate: painted regions, doors,
+        ladders, generator room metadata and engine terrain effects all go.
+        Auto-detected walls and the manual grid are left alone (the Walls toggle
+        and Set Grid… own those)."""
+        self._terrain_regions = []
+        self._terrain_rooms = []
+        self._staging_cells = None
+        self._ladders = []
+        self._door_links = {}
+        for d in list(self.bm.doors):
+            self.bm.remove_door(d.id)
+        self.bm.reset_terrain_multipliers()
+        self._apply_terrain_to_battle_map()   # reverts painted Wall/Chasm/Water cells
+        self.bm.clear_terrain_effects()
+        self._build_overlay()
+        self._mark_fog_dirty()
+        if self.selected_idx >= 0:
+            self._update_reach()
+            self._update_attack_overlay()
+        self._flash_status("Terrain cleared.")
+
+    def _show_lighting_menu(self):
+        """Popup for the "Lighting…" panel button."""
+        items = [
+            ("Edit…", self._open_lighting_editor),
+            ("Load…", self._open_load_lighting_browser),
+            ("Hide" if self.show_lighting_overlay else "Show",
+             self._toggle_lighting_overlay),
+        ]
+        self.context_menu.show((self.btn_lighting.rect.x, self.btn_lighting.rect.y),
+                               items, self.screen.get_size())
+
+    def _open_lighting_editor(self):
+        """Open the lighting editor primed with the encounter's saved lighting."""
+        light_sources = []
+        default_light = rpg.VisibilityLevel.Clear
+        if os.path.exists(self._lighting_path):
+            try:
+                with open(self._lighting_path, 'r') as f:
+                    data = json.load(f)
+                    # Convert saved format (with "light_level" string) to dialog format (with "level" enum)
+                    saved_sources = data.get("light_sources", [])
+                    for src in saved_sources:
+                        level_str = src.get("light_level", "Sunlight")
+
+                        # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
+                        if "col" in src and "row" in src:
+                            # New format: grid coordinates
+                            col = src.get("col", 0)
+                            row = src.get("row", 0)
+                        else:
+                            # Old format: pixel coordinates - convert to grid
+                            x = src.get("x", 0)
+                            y = src.get("y", 0)
+                            cell = self._pixel_to_cell(x, y)
+                            if not cell:
+                                continue
+                            col = cell.col
+                            row = cell.row
+
+                        light_sources.append({
+                            "name": src.get("name", "Light"),
+                            "col": col,
+                            "row": row,
+                            "level": self._parse_light_level(level_str),
+                            "radius": src.get("bright_radius", 5),
+                        })
+                    default_light_str = data.get("default_light", "BrightLight")
+                    default_light = self._parse_light_level(default_light_str)
+            except:
+                light_sources = []
+                default_light = rpg.VisibilityLevel.Clear
+        self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
+
+    def _open_load_lighting_browser(self):
+        start = os.path.dirname(self._lighting_path) or self._map_dir
+        self.file_browser.open(
+            start, self._on_load_lighting_chosen,
+            save_mode=False,
+            extensions=JSON_EXTS,
+            title="Load Lighting",
+        )
+
+    def _toggle_lighting_overlay(self):
+        self.show_lighting_overlay = not self.show_lighting_overlay
+
+    # ─────────────────────────────────────────────────────────────────────
     #  Dungeon manifest management (Phase 6): New / Open / Save / Add Page,
     #  plus the Pages overview that places pages on the global grid.
     #  The manifest is placement-only; each page's scene lives in its own
     #  encounter sidecars (agents/terrain/lighting/effects).
     # ─────────────────────────────────────────────────────────────────────
     def _show_dungeon_menu(self):
-        """Popup for the "Dungeon…" panel button. The item set depends on whether a
-        manifest is currently open."""
+        """Popup for the "Dungeon Configuration" panel button. The item set depends
+        on whether a manifest is currently open."""
         if self.dungeon is None:
             items = [
                 ("New Dungeon (this map)", self._dungeon_new),
@@ -2505,9 +2684,15 @@ class App:
             if idx < 0 or idx >= len(agents):
                 continue
             pt = agents[idx]
-            if pt.removed_from_play or pt.conditions.dead:
+            # NPC turn playback holds a just-killed token on screen until it drains, so the
+            # killing-blow flash isn't dropped over an empty square.
+            if pt.removed_from_play or (pt.conditions.dead and not self._npc_anim_draws_dead(idx)):
                 continue
-            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            apos = self._npc_anim_display_pos(idx)   # follow the animated position mid-slide
+            if apos is not None:
+                sx, sy = self._cell_to_screen_f(apos[0], apos[1])
+            else:
+                sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
             size_px = cpx * pt.size
             p = (now - f["spawn_ms"]) / max(1, f["dur_ms"])   # 0 → 1 over lifetime
             label = font.render(f["text"], True, f["color"]).convert_alpha()
@@ -2518,6 +2703,205 @@ class App:
             lx = sx + size_px // 2 - label.get_width() // 2
             ly = sy - 6 - f["rise"] - int(p * 20)
             self.screen.blit(label, (lx, ly))
+
+    # ─────────────────────────────────────────────────────────────────────
+    #  NPC turn playback (animated automated turns)
+    # ─────────────────────────────────────────────────────────────────────
+    # run_npc_turn resolves an automated turn atomically in C++, but the engine records a
+    # visual event stream (rpg.NpcVisualEvent: Move paths / Announce text / Outcomes) which
+    # the GUI replays here over several frames. While a playback is active the board renders
+    # DISPLAY OVERRIDES — positions, HP values and alive-flags snapshotted BEFORE the turn
+    # ran — and each played event advances them: the token slides along its actual route,
+    # the action text typewriter-scrolls above the actor, and damage flashes / HP-bar drops
+    # land when their moment arrives instead of teleport-and-done. _advance_turn (or the
+    # parked reaction menu) is DEFERRED until the queue drains. Any click or keypress
+    # fast-forwards (see _handle_events).
+
+    _NPC_EV_MOVE, _NPC_EV_ANNOUNCE, _NPC_EV_OUTCOME = 0, 1, 2   # NpcVisualEvent.Kind values
+
+    def _npc_anim_snapshot(self):
+        """Pre-turn display state: origin / HP / alive of every in-play agent, captured
+        BEFORE run_npc_turn mutates the world. Seeds the playback's display overrides."""
+        snap = {}
+        for i, pt in enumerate(self.bm.placed_agents):
+            if pt.removed_from_play:
+                continue
+            snap[i] = {"pos": (float(pt.origin.col), float(pt.origin.row)),
+                       "hp": pt.stats.hp_cur,
+                       "was_alive": not pt.conditions.dead}
+        return snap
+
+    def _npc_anim_start(self, events, snapshot, on_done):
+        """Begin replaying an automated turn's event stream. on_done runs when it drains
+        (advance the turn, or open the parked reaction menu the turn suspended on)."""
+        self._npc_anim = {
+            "events":  events,
+            "ei":      0,                          # current event index
+            "t0":      pygame.time.get_ticks(),    # ms the current event started
+            "applied": False,                      # current Outcome's one-shot side effects done
+            "pos":     {i: s["pos"] for i, s in snapshot.items()},   # {idx: (fcol, frow)}
+            "hp":      {i: s["hp"] for i, s in snapshot.items()},    # {idx: displayed hp_cur}
+            # Agents alive at snapshot keep drawing even if the turn killed them — the corpse
+            # (and its killing-blow flash) vanish together when the playback drains.
+            "draw_dead": {i for i, s in snapshot.items() if s["was_alive"]},
+            "on_done": on_done,
+        }
+
+    # ── Display-override accessors (rendering reads these) ───────────────
+    def _npc_anim_display_pos(self, idx):
+        """(fcol, frow) the token should be drawn at during playback, else None."""
+        a = self._npc_anim
+        return a["pos"].get(idx) if a is not None else None
+
+    def _npc_anim_hp(self, idx):
+        """HP value the token's bar should show during playback, else None (= live)."""
+        a = self._npc_anim
+        return a["hp"].get(idx) if a is not None else None
+
+    def _npc_anim_draws_dead(self, idx):
+        """True while playback holds a now-dead token on screen (alive at snapshot)."""
+        a = self._npc_anim
+        return a is not None and idx in a["draw_dead"]
+
+    def _npc_anim_agent_fogged(self, idx):
+        """True when idx's whole footprint sits in never-explored fog (mirrors _draw_agents'
+        fog gate). Its Move/Announce events resolve instantly and silently — no info leak,
+        no dead air staring at an empty map."""
+        if not self._fog_active() or idx < 0 or idx >= len(self.bm.placed_agents):
+            return False
+        pt = self.bm.placed_agents[idx]
+        if pt.faction == PC_FACTION:
+            return False
+        fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
+              for dc in range(pt.size) for dr in range(pt.size)]
+        return bool(fp) and all(not self.bm.is_explored(c) for c in fp)
+
+    # ── Per-frame advance (called from the main loop) ─────────────────────
+    def _advance_npc_playback(self):
+        """Advance the active playback one frame. Instant events chain within the frame;
+        timed events (a sliding move, a scrolling announce, an outcome beat) return with
+        their overrides set for this frame's draw."""
+        a = self._npc_anim
+        if a is None:
+            return
+        now = pygame.time.get_ticks()
+        while True:
+            if a["ei"] >= len(a["events"]):
+                self._npc_anim_finish()
+                return
+            ev = a["events"][a["ei"]]
+            el = now - a["t0"]
+            if ev.kind == self._NPC_EV_MOVE:
+                path  = ev.path
+                steps = len(path) - 1
+                if steps <= 0 or self._npc_anim_agent_fogged(ev.agent_idx):
+                    if steps > 0:   # fogged mover: commit the destination, skip the slide
+                        a["pos"][ev.agent_idx] = (float(path[-1].col), float(path[-1].row))
+                    self._npc_anim_next(now)
+                    continue
+                dur = steps / NPC_ANIM_CELLS_PER_SEC * 1000.0
+                if el >= dur:
+                    a["pos"][ev.agent_idx] = (float(path[-1].col), float(path[-1].row))
+                    self._npc_anim_next(now)
+                    continue
+                p = el / dur * steps                 # fractional path progress in cells
+                i = min(int(p), steps - 1)
+                f = p - i
+                c0, c1 = path[i], path[i + 1]
+                a["pos"][ev.agent_idx] = (c0.col + f * (c1.col - c0.col),
+                                          c0.row + f * (c1.row - c0.row))
+                return
+            if ev.kind == self._NPC_EV_ANNOUNCE:
+                if self._npc_anim_agent_fogged(ev.agent_idx):
+                    self._npc_anim_next(now)
+                    continue
+                dur = len(ev.text) / NPC_TYPEWRITER_CPS * 1000.0 + NPC_ANNOUNCE_HOLD_MS
+                if el >= dur:
+                    self._npc_anim_next(now)
+                    continue
+                return   # _draw_npc_announcement renders the typewriter reveal from ev + t0
+            # Outcome: one-shot side effects (flash + HP override), then a short beat so
+            # consecutive swings of a multiattack read as separate hits.
+            if not a["applied"]:
+                a["applied"] = True
+                self._npc_anim_apply_outcome(ev)
+            if el >= NPC_OUTCOME_BEAT_MS:
+                self._npc_anim_next(now)
+                continue
+            return
+
+    def _npc_anim_next(self, now):
+        a = self._npc_anim
+        a["ei"]      += 1
+        a["t0"]       = now
+        a["applied"]  = False
+
+    def _npc_anim_apply_outcome(self, ev):
+        """One-shot side effects of an Outcome event: the floating flash and the synced
+        HP-bar override. (A killed token keeps drawing until the playback drains — see
+        draw_dead — so the killing-blow flash isn't orphaned over an empty square.)"""
+        self._spawn_flash(ev.agent_idx, ev.text, FLASH_GOOD if ev.good else FLASH_BAD)
+        if ev.hp_after >= 0:
+            self._npc_anim["hp"][ev.agent_idx] = ev.hp_after
+
+    def _npc_anim_fast_forward(self):
+        """Skip control (any click/keypress): apply everything left instantly and finish."""
+        a = self._npc_anim
+        if a is None:
+            return
+        first = True
+        for ev in a["events"][a["ei"]:]:
+            if ev.kind == self._NPC_EV_MOVE and len(ev.path) > 1:
+                a["pos"][ev.agent_idx] = (float(ev.path[-1].col), float(ev.path[-1].row))
+            elif ev.kind == self._NPC_EV_OUTCOME and not (first and a["applied"]):
+                self._npc_anim_apply_outcome(ev)
+            first = False
+        a["ei"] = len(a["events"])
+        self._npc_anim_finish()
+
+    def _npc_anim_finish(self):
+        """Queue drained: drop every display override (live state shows — including corpse
+        removal for anything killed this turn) and run the deferred continuation."""
+        a = self._npc_anim
+        self._npc_anim = None
+        cb = a.get("on_done")
+        if cb:
+            cb()
+
+    def _draw_npc_announcement(self):
+        """Typewriter-scroll the active Announce event's text above the acting token.
+        Drawn each frame right after the floating flashes."""
+        a = self._npc_anim
+        if a is None or a["ei"] >= len(a["events"]):
+            return
+        ev = a["events"][a["ei"]]
+        if ev.kind != self._NPC_EV_ANNOUNCE:
+            return
+        idx = ev.agent_idx
+        if idx < 0 or idx >= len(self.bm.placed_agents):
+            return
+        pt = self.bm.placed_agents[idx]
+        # A still-concealed actor's announcement bubble would float over an undrawn
+        # token and give away its position — suppress it. (An attacker's Hidden clears
+        # during the turn, so revealed actors announce normally at playback time.)
+        if self._npc_concealed_from_party(idx, pt):
+            return
+        now   = pygame.time.get_ticks()
+        shown = ev.text[:max(1, int((now - a["t0"]) / 1000.0 * NPC_TYPEWRITER_CPS))]
+        pos = a["pos"].get(idx, (float(pt.origin.col), float(pt.origin.row)))
+        sx, sy = self._cell_to_screen_f(pos[0], pos[1])
+        cpx     = int(self.bm.cell_pixel_size * self.map_scale)
+        size_px = cpx * pt.size
+        font  = getattr(self, "font_md", None) or self.font_sm
+        label = font.render(shown, True, (255, 240, 200))
+        bg = pygame.Surface((label.get_width() + 10, label.get_height() + 6), pygame.SRCALPHA)
+        bg.fill((20, 15, 5, 215))
+        bx = sx + size_px // 2 - bg.get_width() // 2
+        by = sy - bg.get_height() - 8
+        bx = max(4, min(bx, self.screen.get_width() - bg.get_width() - 4))   # keep on screen
+        by = max(4, by)
+        self.screen.blit(bg, (bx, by))
+        self.screen.blit(label, (bx + 5, by + 3))
 
     def _on_save_terrain_chosen(self, path: str):
         """Export the current terrain to a chosen _terrain.json (does not change the
@@ -2560,7 +2944,6 @@ class App:
         self._load_lighting(path)
         # Auto-enable the lighting overlay so the user can see the loaded lighting
         self.show_lighting_overlay = True
-        self.btn_toggle_lighting.text = "Lighting: ON"
         self._flash_status(f"Lighting loaded: {os.path.basename(path)}")
 
     def _merge_free_cell(self, col: int, row: int, size: int,
@@ -2841,6 +3224,10 @@ class App:
         if idx < 0 or idx >= len(self.bm.placed_agents):
             return
         pt    = self.bm.placed_agents[idx]
+        # A concealed automated NPC (Hidden/unpierced Invisible) must not paint its
+        # movement range — the overlay would betray the position of an undrawn token.
+        if self._npc_concealed_from_party(idx, pt):
+            return
         stats = self.combat.get_agent_stats(self.bm, idx)
 
         if self.combat_active:
@@ -3153,6 +3540,9 @@ class App:
         if not weapons:
             return
         pt = self.bm.placed_agents[idx]
+        # Same leak-guard as _update_reach: no attack-range paint for a concealed token.
+        if self._npc_concealed_from_party(idx, pt):
+            return
         melee_cells:  set[tuple[int, int]] = set()
         rnorm_cells:  set[tuple[int, int]] = set()
         rlongx_cells: set[tuple[int, int]] = set()  # long-range-only
@@ -3399,6 +3789,7 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
+        self.pending_dispel_selection  = None
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
@@ -3588,6 +3979,7 @@ class App:
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
         self.pending_spell_targets     = []
+        self.pending_dispel_selection  = None
         self.pending_shove_slot        = ""
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
@@ -4128,9 +4520,12 @@ class App:
     def _drive_npc_turn_if_pending(self):
         """Drive ONE automated NPC turn step this frame (NPC_AUTOMATION_PLAN Step 2). Called once per
         frame from the main loop. The C++ engine's run_npc_turn does all the deciding via the combat
-        resolution primitives; Python only relays a parked human reaction/counter window and advances
-        the turn when the NPC finishes. Never recurses through _finish_turn_start, so a run of automated
-        NPCs renders one at a time and stays watchable."""
+        resolution primitives; Python snapshots display state first, then REPLAYS the turn's recorded
+        visual events as an animation (see _npc_anim_start) before advancing the turn or relaying a
+        parked human reaction/counter window. Never recurses through _finish_turn_start, so a run of
+        automated NPCs renders one at a time and stays watchable."""
+        if self._npc_anim is not None:
+            return   # a playback is still running — its continuation advances the turn
         if self._npc_drive_idx < 0:
             return
         idx = self._npc_drive_idx
@@ -4138,16 +4533,34 @@ class App:
         # The agent may have died / been removed between its turn-start and this frame.
         if not self.combat_active or idx < 0 or idx >= len(self.bm.placed_agents):
             return
+        snapshot = self._npc_anim_snapshot()   # display state BEFORE the turn mutates the world
         status = self.combat.run_npc_turn(self.bm, idx)
         self._mark_fog_dirty()   # the automated turn moved tokens / opened doors / placed lights
         self._flush_combat_log()
+        # Hidden-agent detection after the automated move (mirrors _after_move_committed's
+        # check for manual moves — the C++ driver moves without the GUI move path). Without
+        # this, a concealed automated NPC could walk into plain sight and stay undrawn
+        # forever, since only attacking would ever clear its Hidden condition.
+        if idx < len(self.bm.placed_agents) and self.bm.placed_agents[idx].conditions.hidden:
+            detection_msg = self.combat.check_hidden_agent_detection(self.bm, idx, True)
+            if detection_msg:
+                self._combat_log_add(detection_msg)
+        events = self.combat.take_npc_visual_events()
         if status == rpg.FlowStatus.AwaitingDecision and self.combat.pending_decision().active:
             # The NPC attempted an action; a human gets a reaction/counter window. When it closes,
             # re-arm the driver so run_npc_turn resumes next frame (one step per frame, still watchable).
             self._reaction_finish = lambda i=idx: self._resume_npc_turn(i)
-            self._show_pending_reaction_menu()
+            # Play what already happened FIRST — the human must SEE the provoking move/attack
+            # before being asked to react to it — then open the parked reaction menu.
+            if events:
+                self._npc_anim_start(events, snapshot, on_done=self._show_pending_reaction_menu)
+            else:
+                self._show_pending_reaction_menu()
             return
-        self._advance_turn()
+        if events:
+            self._npc_anim_start(events, snapshot, on_done=self._advance_turn)
+        else:
+            self._advance_turn()
 
     def _resume_npc_turn(self, idx: int):
         """Re-arm the NPC driver after a parked human reaction window closed mid-automated-turn."""
@@ -4466,6 +4879,80 @@ class App:
             return getattr(sp, "opens_doors", False)
         except Exception:
             return False
+
+    def _pending_spell_dispels_magic(self) -> bool:
+        """True if the spell pending a target is a Dispel-Magic effect (dispels_magic flag).
+
+        Dispel Magic is a Single-geometry spell that normally targets a creature, but it can
+        also be aimed at a map CELL holding an ongoing area effect (Hunger of Hadar, Web, …) —
+        that cell cast routes through the aoe path so the engine reads aoe_col/aoe_row."""
+        if not self.pending_spell_slot:
+            return False
+        ci = self._current_agent_idx()
+        if ci < 0:
+            return False
+        try:
+            sp = self.combat.get_agent_spells(self.bm, ci)[self.pending_spell_idx]
+            return getattr(sp, "dispels_magic", False)
+        except Exception:
+            return False
+
+    def _begin_dispel_pick(self, hit, cell, pos):
+        """Dispel Magic click: enumerate the dispellable ongoing spells at the aimed creature and/or
+        cell and open a picker so the DM ends exactly one — a buff on an ally, a debuff on an enemy,
+        or one of several overlapping AoEs. Casting is deferred until an entry is chosen; an empty
+        target just logs and leaves the spell pending so the caster can re-aim."""
+        caster = self._current_agent_idx()
+        if caster < 0:
+            return
+
+        cands, seen = [], set()
+
+        def _add(c_list):
+            for c in c_list:
+                key = (tuple(c.condition_ids), tuple(c.spell_effect_ids), tuple(c.terrain_ids))
+                if key in seen:
+                    continue
+                seen.add(key)
+                cands.append(c)
+
+        if hit is not None and hit >= 0:
+            # A creature: its own spell-applied effects, plus any area magic it stands in.
+            _add(self.combat.dispel_candidates_on_agent(self.bm, caster, hit))
+            oc = self.bm.placed_agents[hit].origin
+            _add(self.combat.dispel_candidates_at_cell(self.bm, caster, oc.col, oc.row))
+        elif cell is not None:
+            _add(self.combat.dispel_candidates_at_cell(self.bm, caster, cell.col, cell.row))
+
+        if not cands:
+            self._combat_log_add("No magic to dispel there.")
+            return
+
+        agents = self.bm.placed_agents
+        options = []
+        for c in cands:
+            owner = (agents[c.owner_idx].name
+                     if 0 <= c.owner_idx < len(agents) else "?")
+            side  = "ally" if c.owner_is_ally else "enemy"
+            label = f"{c.label} — L{c.level}, {owner} ({side})"
+            options.append((label, lambda cc=c, h=hit, cl=cell: self._cast_dispel_selection(cc, h, cl)))
+        self.context_menu.show(pos, options, self.screen.get_size())
+
+    def _cast_dispel_selection(self, candidate, hit, cell):
+        """Commit the picked Dispel Magic target: stash its structure ids and route through the
+        normal cast path (which spends the slot once and runs the OnDeclareCast reaction window).
+        execute_spell reads the selection and ends only that spell (dispelSelected)."""
+        self.pending_dispel_selection = dict(
+            condition_ids    = list(candidate.condition_ids),
+            spell_effect_ids = list(candidate.spell_effect_ids),
+            terrain_ids      = list(candidate.terrain_ids),
+        )
+        if hit is not None and hit >= 0:
+            self._resolve_spell_cast(hit)
+        elif cell is not None:
+            self._resolve_spell_cast_aoe(cell)
+        else:
+            self.pending_dispel_selection = None
 
     def _begin_item_drag(self, item):
         """Grab a dropped weapon for dragging. The release decides move vs. pickup."""
@@ -10406,6 +10893,7 @@ class App:
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         action.overchannel   = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
+        self._apply_dispel_selection(action)  # Dispel Magic picker (no-op when nothing was picked)
         self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
         self._apply_pact_slot_level(caster_idx, sp, action)
 
@@ -10739,6 +11227,18 @@ class App:
         dist_cells = math.hypot(cell.col - origin.col, cell.row - origin.row)
         return dist_cells * 5.0 <= sp.range + 1e-6
 
+    def _apply_dispel_selection(self, action):
+        """Copy the Dispel Magic picker's chosen structure ids onto `action`, then clear the pending
+        selection. A no-op for every other spell (and for a whole-target dispel), so it is safe to
+        call on every cast. execute_spell ends only the chosen effects when these are set."""
+        sel = self.pending_dispel_selection
+        if not sel:
+            return
+        action.dispel_condition_ids    = sel["condition_ids"]
+        action.dispel_spell_effect_ids = sel["spell_effect_ids"]
+        action.dispel_terrain_ids      = sel["terrain_ids"]
+        self.pending_dispel_selection  = None
+
     # FLAG: Move to C++
     def _resolve_spell_cast_aoe(self, cell):
         caster_idx = self._current_agent_idx()
@@ -10760,6 +11260,7 @@ class App:
         action.slot_level     = self.pending_spell_slot_level
         action.target_indices = []
         action.overchannel    = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
+        self._apply_dispel_selection(action)  # Dispel Magic picker (cell-aimed dispel of an AoE)
         self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
         if sp.geometry == rpg.SpellGeometry.Rectangle and self.spell_anchor_cell is not None:
             # Oriented wall: anchor is the first click, `cell` is the endpoint.
@@ -11147,7 +11648,11 @@ class App:
         """Convert C++ Spell object to dict, including metadata."""
         geo = s.geometry.name
         uses_radius = geo in ("Sphere", "Cone")
-        uses_line   = geo == "Line"
+        # Line, Square and Rectangle all store their extent in width/length. A
+        # narrow `geo == "Line"` test dropped them for Square/Rectangle, so a
+        # saved Square reloaded with the width=5/length=30 defaults — a 1-cell
+        # line (this is how Hypnotic Pattern silently became a line on reload).
+        uses_line   = geo in ("Line", "Square", "Rectangle")
         metadata = self._spell_metadata.get((agent_idx, spell_idx), {})
 
         # Convert magic_damage_rolls to dict format
@@ -11205,6 +11710,7 @@ class App:
             "requires_los":          s.requires_los,
             "check_los_on_center":   s.check_los_on_center,
             "opens_doors":           s.opens_doors,
+            "dispels_magic":         getattr(s, "dispels_magic", False),
             "requires_sight":        s.requires_sight,
             "moves_with_caster":     s.moves_with_caster,
             "grants_advantage_aura": s.grants_advantage_aura,
@@ -11272,6 +11778,10 @@ class App:
                     "save_prof_cha":      s.save_prof_cha,
                     "save_advantage_mask": s.save_advantage_mask,
                     "blessed":            s.blessed,
+                    "hasted":                 s.hasted,
+                    "haste_speed_bonus":      s.haste_speed_bonus,
+                    "haste_action_available": s.haste_action_available,
+                    "aid_hp_bonus":           s.aid_hp_bonus,
                     "sleight_of_hand_prof":      s.sleight_of_hand_prof,
                     "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
                     "num_attacks":        s.num_attacks,
@@ -12048,7 +12558,9 @@ class App:
                             difficulty_end=encounter_params["end"],
                             min_room=encounter_params["min_room"],
                             boss=encounter_params["boss"] and is_boss_tile,
-                            entrance=None, automation_level=1, rng=rng, place=True,
+                            entrance=None,
+                            automation_level=encounter_params.get("automation", 4),
+                            rng=rng, place=True,
                             filter_types=encounter_params.get("types"),
                             filter_languages=encounter_params.get("languages"))
                         # Leave the ENTRY tile's entrance (floor 0 spine, room 0) empty so the
@@ -12115,6 +12627,49 @@ class App:
         summary.append("Use Floor +/- (top-left) or a ladder to move between floors.")
         return summary
 
+    def _carve_current_map(self, dfp, params, rng):
+        """Carve one BSP layout into the CURRENT map and make it the live scene:
+        replaces the terrain regions with the carved Wall layout, records the
+        walk-order rooms (``_terrain_rooms``), swaps in the carver's doors (closed),
+        and saves the terrain sidecar. Returns ``(regions, rooms_meta, doors)``.
+        Raises ValueError on a too-tight layout or a missing grid. Shared by
+        Generate Terrain and the carve-first Generate Dungeon path."""
+        cols = getattr(self.bm, "grid_cols", 0)
+        rows = getattr(self.bm, "grid_rows", 0)
+        raw_v = list(self.bm.v_line_positions)
+        raw_h = list(self.bm.h_line_positions)
+        if not cols or not rows or len(raw_v) < 2 or len(raw_h) < 2:
+            raise ValueError("No grid on this map — set a grid first.")
+
+        # Use the map's own detected walls as the exterior boundary: the rooms are
+        # tessellated inside the free (non-blocked) area and never carve floor into
+        # a wall, so the PNG's walls become the dungeon's outer shell.
+        blocked = {(c.col, c.row) for c in self.bm.disallowed_cells}
+        _grid, regions, rooms_meta, doors = self._carve_dungeon_layout(
+            dfp, cols, rows, raw_v, raw_h, blocked, params, rng)
+
+        # Replace the scene's terrain with the carved layout and record walk-order rooms
+        # (cell coords) for Generate Dungeon. Walls are explicit here, so drop auto-detect.
+        self._terrain_regions = regions
+        self._terrain_rooms = rooms_meta
+        self._walls_enabled = False
+        self.btn_toggle_walls.text = "Walls: OFF"
+        self._apply_terrain_to_battle_map()
+        self.bm.clear_walls()
+
+        # Punch the generated doors through the shared walls. Drop any doors left
+        # over from a previous scene first, then add ours closed (a closed door is
+        # Wall terrain, so it blocks until opened and keeps rooms separate). Door
+        # cells are FLOOR in the carve grid, so they're excluded from wall_rects
+        # above and the door owns the cell. _save_terrain reads bm.doors.
+        for d in list(self.bm.doors):
+            self.bm.remove_door(d.id)
+        for (c, r) in doors:
+            self.bm.add_door([rpg.Cell(c, r)], False, False, 15, False)
+
+        self._save_terrain()
+        return regions, rooms_meta, doors
+
     def _on_generate_terrain(self):
         """DM-mode: carve a BSP room/corridor dungeon into the CURRENT map's grid,
         replacing the terrain regions with the resulting Wall layout and recording the
@@ -12163,40 +12718,13 @@ class App:
             self._modal_message(summary)
             return
 
-        # Use the map's own detected walls as the exterior boundary: the rooms are
-        # tessellated inside the free (non-blocked) area and never carve floor into
-        # a wall, so the PNG's walls become the dungeon's outer shell.
-        blocked = {(c.col, c.row) for c in self.bm.disallowed_cells}
-
         rng = random.Random(params["seed"])
         try:
-            _grid, regions, rooms_meta, doors = self._carve_dungeon_layout(
-                dfp, cols, rows, raw_v, raw_h, blocked, params, rng)
+            regions, rooms_meta, doors = self._carve_current_map(dfp, params, rng)
         except ValueError as e:
             self._modal_message(["Generate Terrain failed", str(e),
                                  "Try fewer/smaller rooms or a bigger grid."])
             return
-
-        # Replace the scene's terrain with the carved layout and record walk-order rooms
-        # (cell coords) for Generate Dungeon. Walls are explicit here, so drop auto-detect.
-        self._terrain_regions = regions
-        self._terrain_rooms = rooms_meta
-        self._walls_enabled = False
-        self.btn_toggle_walls.text = "Walls: OFF"
-        self._apply_terrain_to_battle_map()
-        self.bm.clear_walls()
-
-        # Punch the generated doors through the shared walls. Drop any doors left
-        # over from a previous scene first, then add ours closed (a closed door is
-        # Wall terrain, so it blocks until opened and keeps rooms separate). Door
-        # cells are FLOOR in the carve grid, so they're excluded from wall_rects
-        # above and the door owns the cell. _save_terrain reads bm.doors.
-        for d in list(self.bm.doors):
-            self.bm.remove_door(d.id)
-        for (c, r) in doors:
-            self.bm.add_door([rpg.Cell(c, r)], False, False, 15, False)
-
-        self._save_terrain()
 
         self._modal_message([
             f"Terrain generated: {len(rooms_meta)} rooms, {len(doors)} doors",
@@ -12313,9 +12841,12 @@ class App:
     def _modal_generate_dungeon(self) -> dict | None:
         """Blocking dialog for the Generate Dungeon (DM-mode) parameters.
 
-        Returns {cr, min_room, start, end, boss, seed} or None on cancel. The
-        start/peak difficulties are the endpoints of the per-room category-weight
-        ramp; boss forces a category-E encounter into the deepest room."""
+        Returns {cr, min_room, start, end, boss, seed, carve, ...} or None on
+        cancel. The start/peak difficulties are the endpoints of the per-room
+        category-weight ramp; boss forces a category-E encounter into the deepest
+        room. carve=True (the default) carves a fresh terrain floor plan first and
+        populates exactly those rooms; OFF populates the map's existing terrain
+        (the old Generate Terrain -> Generate Dungeon two-step)."""
         DIFFS = ["Easy", "Medium", "Hard"]
 
         # Build type and language lists from bestiary
@@ -12333,7 +12864,7 @@ class App:
             all_languages = []
 
         sw, sh = self.screen.get_size()
-        W, H = min(500, sw - 80), min(640, sh - 80)
+        W, H = min(500, sw - 80), min(680, sh - 80)
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         lx = box.x + 20
         fx = box.right - 200       # field column
@@ -12353,7 +12884,13 @@ class App:
         nm_y = y0 + 10 * row_h
         mapsx_step = IntStepper(pygame.Rect(fx,           nm_y, 82, 30), 1, 1, 4, font=self.font_md)
         mapsy_step = IntStepper(pygame.Rect(fx + fw - 82, nm_y, 82, 30), 1, 1, 4, font=self.font_md)
+        # npc_automation_difficulty_level written on every mob. Level 1+ hands the strategy choice to the
+        # engine's difficulty resolver (role + level at turn time; 4 = best heuristics — casters pick
+        # Heal/Control/Support/AoE dynamically). Level 0 keeps the generator's fixed per-category
+        # strategies (the legacy Simple/PreferRange/PreferAOE table in encounter_generator.py).
+        auto_step = IntStepper(pygame.Rect(fx, y0 + 11 * row_h, fw, 30), 4, 0, 6, font=self.font_md)
         start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
+        carve_on = [True]   # carve a fresh floor plan (single-map; multi always carves)
         type_selection, lang_selection = set(), set()  # multi-select for both
 
         btn_start = Button(pygame.Rect(fx, y0 + 2 * row_h, fw, 30), DIFFS[start_i[0]],
@@ -12361,6 +12898,8 @@ class App:
         btn_end   = Button(pygame.Rect(fx, y0 + 3 * row_h, fw, 30), DIFFS[end_i[0]],
                            (70, 90, 120), (95, 115, 150), font=self.font_md)
         btn_boss  = Button(pygame.Rect(fx, y0 + 4 * row_h, fw, 30), "ON",
+                           (60, 110, 70), (80, 140, 90), font=self.font_md)
+        btn_carve = Button(pygame.Rect(fx, y0 + 12 * row_h, fw, 30), "ON",
                            (60, 110, 70), (80, 140, 90), font=self.font_md)
         type_label = ["Any type"]
         btn_type = Button(pygame.Rect(fx, y0 + 6 * row_h, fw, 30), type_label[0],
@@ -12375,7 +12914,8 @@ class App:
 
         labels = ["Target CR", "Min room cells", "Start difficulty",
                   "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages",
-                  "Floors", "Rooms/floor", "Each floor (N×M)"]
+                  "Floors", "Rooms/map", "Each floor (N×M)", "NPC automation",
+                  "New terrain"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -12391,6 +12931,7 @@ class App:
                 roomsfloor_step.handle(event)
                 mapsx_step.handle(event)
                 mapsy_step.handle(event)
+                auto_step.handle(event)
                 if btn_start.clicked(event):
                     start_i[0] = (start_i[0] + 1) % len(DIFFS)
                     btn_start.text = DIFFS[start_i[0]]
@@ -12400,6 +12941,9 @@ class App:
                 if btn_boss.clicked(event):
                     boss_on[0] = not boss_on[0]
                     btn_boss.text = "ON" if boss_on[0] else "OFF"
+                if btn_carve.clicked(event):
+                    carve_on[0] = not carve_on[0]
+                    btn_carve.text = "ON" if carve_on[0] else "OFF"
                 if btn_type.clicked(event):
                     self._modal_select_items("Select Mob Types", all_types, type_selection, multi_select=True)
                     if type_selection:
@@ -12432,12 +12976,13 @@ class App:
                             seed = None
                     return {"cr": cr_step.value, "min_room": room_step.value,
                             "start": DIFFS[start_i[0]], "end": DIFFS[end_i[0]],
-                            "boss": boss_on[0], "seed": seed,
+                            "boss": boss_on[0], "seed": seed, "carve": carve_on[0],
                             "types": list(type_selection) if type_selection else None,
                             "languages": list(lang_selection) if lang_selection else None,
                             "floors": floors_step.value,
                             "rooms_per_floor": roomsfloor_step.value,
-                            "maps_x": mapsx_step.value, "maps_y": mapsy_step.value}
+                            "maps_x": mapsx_step.value, "maps_y": mapsy_step.value,
+                            "automation": auto_step.value}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
@@ -12451,16 +12996,18 @@ class App:
             self.screen.blit(xt, (fx + fw // 2 - xt.get_width() // 2, nm_y + 6))
             for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
                       btn_lang, floors_step, roomsfloor_step, mapsx_step, mapsy_step,
-                      gen, cancel):
+                      auto_step, btn_carve, gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
 
     def _on_generate_dungeon(self):
-        """DM-mode: fill the current map's rooms with one progressive-difficulty
-        encounter — category weights ramp from the start to the peak difficulty as
-        the party goes deeper, with a boss in the last room — then load it into the
-        scene. Delegates to tools/encounter_generator.build_dungeon."""
+        """DM-mode: carve a fresh terrain floor plan (unless "New terrain" is OFF),
+        then fill its rooms with one progressive-difficulty encounter — category
+        weights ramp from the start to the peak difficulty as the party goes
+        deeper, with a boss in the last room — and load it into the scene. One RNG
+        drives both the carve and the populate, so a seed reproduces the whole
+        dungeon. Delegates to tools/encounter_generator.build_dungeon."""
         if not getattr(self.bm, "grid_cols", 0):
             self._modal_message(["Generate Dungeon",
                                  "No grid on this map — set a grid first."])
@@ -12507,17 +13054,43 @@ class App:
             return
 
         self._modal_message(["Generating dungeon…"], blocking=False)
+        rng = random.Random(params["seed"])
+
+        # Carve a fresh floor plan first (default), then populate exactly those rooms
+        # below — the same rng drives both, so one seed reproduces terrain + encounter
+        # together. Terrain params mirror the multi-floor branch: Rooms/map is the
+        # carver's room count and the min room side is inferred from "Min room cells".
+        # "New terrain: OFF" keeps the old behavior (populate the existing terrain).
+        if params.get("carve", True):
+            try:
+                import dungeon_from_png as dfp
+            except Exception as e:
+                self._modal_message(["Generate Dungeon failed",
+                                     f"Could not load carver: {e}"])
+                return
+            terrain_params = {
+                "rooms": params["rooms_per_floor"],
+                "min_room": max(2, int(round(params["min_room"] ** 0.5))),
+                "margin": 1,
+            }
+            try:
+                self._carve_current_map(dfp, terrain_params, rng)
+            except ValueError as e:
+                self._modal_message(["Generate Dungeon failed", str(e),
+                                     "Try fewer/smaller rooms or a bigger grid."])
+                return
+
         try:
             bestiary = eg.Bestiary(data_dir=gui_dir)
-            # Prefer dungeon_from_png walk-order room metadata if the terrain carries it;
-            # otherwise build_dungeon flood-fills the live map and orders by distance.
+            # Prefer dungeon_from_png walk-order room metadata if the terrain carries it
+            # (always the case after the carve above); otherwise build_dungeon
+            # flood-fills the live map and orders by distance.
             terrain = {"rooms": getattr(self, "_terrain_rooms", []) or []}
-            rng = random.Random(params["seed"])
             rooms, results, note = eg.build_dungeon(
                 self.bm, rpg, terrain, bestiary, cr=params["cr"],
                 difficulty_start=params["start"], difficulty_end=params["end"],
                 min_room=params["min_room"], boss=params["boss"], entrance=None,
-                automation_level=1, rng=rng, place=True,
+                automation_level=params.get("automation", 4), rng=rng, place=True,
                 filter_types=params.get("types"), filter_languages=params.get("languages"))
         except Exception as e:
             self._modal_message(["Generate Dungeon failed", str(e)])
@@ -12955,12 +13528,20 @@ class App:
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
 
-    def _load_terrain(self, path: str | None = None):
+    def _load_terrain(self, path: str | None = None, blank: bool = False):
         """Load terrain data from JSON file if it exists.
 
         If the file doesn't exist on first load, terrain starts empty.
         User can manually label terrain using the terrain editor,
         or choose to auto-detect walls as a fallback.
+
+        ``blank=True`` skips the SCENE content (regions/doors/ladders/rooms/fog) —
+        used at startup so a fresh session begins with an empty scene instead of
+        inheriting whatever terrain was last saved for this map (load it explicitly
+        via Terrain… → Load). MAP-INTRINSIC calibration is still honoured: the
+        manual grid (Set Grid…, e.g. simplemap's 20×16 @ 50px that auto-detection
+        misreads as 19×16) and the walls-detector preference describe how to read
+        the PNG, not what's placed on it.
         """
         # Reset first so this is safe to call repeatedly when swapping encounters
         # (a new encounter with no terrain file must not inherit the previous scene).
@@ -12986,7 +13567,24 @@ class App:
         self._door_links = {}
         explored_data = None  # fog-of-war mask from JSON; None = key absent (start fogged)
 
-        if os.path.exists(path):
+        if blank and os.path.exists(path):
+            # Blank startup: apply ONLY the map-intrinsic calibration keys.
+            try:
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                mg = data.get("manual_grid")
+                if mg:
+                    try:
+                        self.bm.set_uniform_grid(int(mg["cell_px"]),
+                                                 int(mg["anchor"][0]),
+                                                 int(mg["anchor"][1]))
+                        self._manual_grid = mg
+                    except Exception:
+                        self._manual_grid = None
+                self._walls_enabled = bool(data.get("walls_enabled", True))
+            except Exception:
+                pass
+        elif os.path.exists(path):
             try:
                 with open(path, 'r') as f:
                     data = json.load(f)
@@ -13107,6 +13705,12 @@ class App:
         ]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
+        # Walk-order rooms from the terrain carver — the link between the terrain
+        # floor plan and the encounter floor plan (Generate Dungeon populates these
+        # exact rooms). Persisted so the linkage survives save/reload; previously only
+        # the multi-floor generator's sidecars carried it (_write_generated_terrain).
+        if getattr(self, "_terrain_rooms", None):
+            data["rooms"] = self._terrain_rooms
         # Staging room the dungeon generator left empty for the party (Load PCs targets it).
         if getattr(self, "_staging_cells", None):
             data["staging_cells"] = [[int(c), int(r)] for (c, r) in self._staging_cells]
@@ -13471,6 +14075,35 @@ class App:
                 and not self.lighting_editor.active
                 and not self.terrain_editor.active)
 
+    def _npc_concealed_from_party(self, idx: int, pt) -> bool:
+        """True when an automated enemy token should not be drawn because the party
+        can't perceive it (Hidden, or Invisible with no sense that pierces it).
+
+        Scope: automated non-party NPCs only. Manually-driven NPCs stay drawn — the
+        DM has to see them to run them; an automated NPC drives itself, so its token
+        can genuinely vanish until discovered via the usual mechanics:
+          · Hidden clears through check_hidden_agent_detection / attacking, so the
+            flag itself is authoritative — hidden ⇒ concealed.
+          · Invisible is per-viewer: concealed unless some living party member
+            pierces it (Truesight/Blindsight/Blind Fighting/Skulker, via the C++
+            can_perceive_target — the same gate targeting uses)."""
+        if pt.faction == PC_FACTION or not self.bm.is_agent_npc_automated(idx):
+            return False
+        cond = pt.conditions
+        if cond.hidden:
+            return True
+        if not cond.invisible:
+            return False
+        for j, viewer in enumerate(self.bm.placed_agents):
+            if viewer.faction != PC_FACTION or viewer.removed_from_play:
+                continue
+            if (viewer.conditions.dead or viewer.conditions.incapacitated
+                    or viewer.stats.hp_cur <= 0):
+                continue   # mirrors the engine's observer gate in hide detection
+            if self.combat.can_perceive_target(self.bm, j, idx):
+                return False
+        return True
+
     def _draw_fog_overlay(self):
         """Grey out every cell the PC party has never seen (fog of war).
 
@@ -13749,6 +14382,10 @@ class App:
                   for dc in range(pt.size) for dr in range(pt.size)]
             if fp and all(not self.bm.is_explored(c) for c in fp):
                 return
+        # Concealed automated NPC (Hidden/unpierced Invisible): no name tooltip either,
+        # or hovering the empty-looking cell would betray the ambush.
+        if self._npc_concealed_from_party(idx, pt):
+            return
 
         label = self.font_md.render(pt.name, True, (240, 240, 240))
         pad = 5
@@ -13870,16 +14507,18 @@ class App:
                 # Draw inner circle (bright yellow)
                 pygame.draw.circle(self.screen, (255, 255, 100), (center_x, center_y), radius - 2, 1)
 
-    def _draw_hp_bar(self, screen_x, screen_y, size_px, stats):
+    def _draw_hp_bar(self, screen_x, screen_y, size_px, stats, hp_override=None):
         """Draw a thin at-a-glance HP bar along the bottom edge of an agent's sprite.
 
         Reuses the panel's HP color convention (COL_HP_HIGH/MID/LOW at 66%/33%).
         Temp HP, if any, is shown as a cyan segment appended at the current-HP end.
+        hp_override (NPC turn playback) replaces stats.hp_cur so the bar drops when
+        the animated hit lands, not when the engine resolved it.
         """
         hp_max = stats.hp_max
         if hp_max <= 0:
             return  # unknown/uninitialized HP — nothing meaningful to show
-        hp_cur = max(0, stats.hp_cur)
+        hp_cur = max(0, stats.hp_cur if hp_override is None else hp_override)
         frac   = min(1.0, hp_cur / hp_max)
 
         inset = 2
@@ -13968,8 +14607,13 @@ class App:
                 lt.set_alpha(alpha)
             self.screen.blit(lt, (screen_x + (size_px - lt.get_width()) // 2,
                                   screen_y + (size_px - lt.get_height()) // 2))
+        # NPC turn playback: the HP bar (and down-hatching) show the animation-synced value
+        # until the outcome that changed it has played (None = live rendering).
+        hp_override = self._npc_anim_hp(agent_idx)
+        hp_disp = pt.stats.hp_cur if hp_override is None else hp_override
+
         # Down hatching (diagonal lines when HP <= 0)
-        if pt.stats.hp_cur <= 0:
+        if hp_disp <= 0:
             hatch = pygame.Surface((size_px, size_px), pygame.SRCALPHA)
             hatch.fill((0, 0, 0, 0))
             step = max(4, size_px // 8)
@@ -13981,7 +14625,7 @@ class App:
 
         # HP bar (skip translucent previews, e.g. movement ghosts)
         if alpha == 255:
-            self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats)
+            self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats, hp_override=hp_override)
 
         # Name is shown on hover (see _draw_agent_hover_name), not painted on the token.
 
@@ -14729,8 +15373,10 @@ class App:
                 continue    # tombstoned (dismissed summon): not rendered, not selectable
             # Downed NPCs die outright (no death saves) and their corpses are cleared
             # from the map. PCs at 0 HP stay drawn — they're unconscious and rolling
-            # death saves, so the DM still needs to see and select them.
-            if pt.conditions.dead:
+            # death saves, so the DM still needs to see and select them. During an NPC
+            # turn playback a just-killed token keeps drawing until the animation drains,
+            # so its death lands at the animated moment instead of instantly.
+            if pt.conditions.dead and not self._npc_anim_draws_dead(i):
                 continue
             # Fog of war: hide a non-party token whose whole footprint sits in cells the
             # party has never seen. Party-faction tokens are always drawn. Keyed off the
@@ -14740,7 +15386,19 @@ class App:
                       for dc in range(pt.size) for dr in range(pt.size)]
                 if fp and all(not self.bm.is_explored(cell) for cell in fp):
                     continue
-            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            # Concealment: an automated enemy that is Hidden or Invisible (and not
+            # pierced by any party member's senses) is not drawn at all. It reappears
+            # through the usual mechanics — detection/attacking clears Hidden, and
+            # Truesight/Blindsight pierce Invisible.
+            if self._npc_concealed_from_party(i, pt):
+                continue
+            # NPC turn playback: draw at the animated display position (a token mid-slide,
+            # or frozen at its pre-turn cell until its Move event plays).
+            apos = self._npc_anim_display_pos(i)
+            if apos is not None:
+                sx, sy = self._cell_to_screen_f(apos[0], apos[1])
+            else:
+                sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
             # On-deck reserves are still drawn (the DM placed them), but dimmed with an
             # "ON DECK" badge so it's clear they aren't in the initiative yet.
             on_deck = self.bm.is_agent_on_deck(i)
@@ -15512,6 +16170,18 @@ class App:
                 self.btn_cbt_escape_net.rect.y = y
                 self.btn_cbt_escape_net.rect.w = W
                 self.btn_cbt_escape_net.draw(self.screen)
+                y += B + gap
+
+        # Haste (Phase 2): the extra limited action, refilled each of the hasted creature's turns.
+        # Drawn OUTSIDE the `not self.bonus_used` band below — Haste's extra action is an Action, not
+        # a bonus action, so spending a bonus action first must not hide (dead-key) this button.
+        if not _is_incapacitated and 0 <= cur_idx < len(agents):
+            _hstats = self.combat.get_agent_stats(self.bm, cur_idx)
+            if _hstats.haste_action_available:
+                self.btn_cbt_haste_action.rect.x = lx
+                self.btn_cbt_haste_action.rect.y = y
+                self.btn_cbt_haste_action.rect.w = W
+                self.btn_cbt_haste_action.draw(self.screen)
                 y += B + gap
 
         if not _is_incapacitated and not self.bonus_used:
@@ -16565,9 +17235,8 @@ class App:
         self.btn_show_visible_targets.draw(self.screen)
         y += B + gap
 
-        # Show/Hide Terrain (btn_show_terrain is shared with the config panel; reposition it
-        # here so it is never stale/invisible during combat, which would cause accidental
-        # toggles when other buttons are clicked at the same Y coordinate).
+        # Show/Hide Terrain (in-combat toggle; pre-combat the same toggle lives in
+        # the setup panel's Terrain… menu).
         self.btn_show_terrain.text = "Hide Terrain" if self.show_terrain else "Show Terrain"
         self.btn_show_terrain.rect.x = lx
         self.btn_show_terrain.rect.y = y
@@ -16733,8 +17402,7 @@ class App:
             self.screen.blit(t, (x, widget_y - loff))
 
         # ── Widgets ───────────────────────────────────────────────────────
-        for w in [self.btn_select_mob, self.btn_select_pc, self.btn_clear, self.btn_save,
-                  self.btn_load, self.btn_import_ddb, self.btn_load_pcs]:
+        for w in [self.btn_agents, self.btn_clear]:
             w.draw(self.screen)
 
         # Current save-file hint (updates when user picks a different path)
@@ -16751,37 +17419,15 @@ class App:
         if self.bm.placed_agents:
             self.btn_begin_combat.draw(self.screen)
 
-        # ── Edit Terrain button ────────────────────────────────────────────
-        self.btn_edit_terrain.draw(self.screen)
+        # ── Terrain… / Lighting… grouped menus ─────────────────────────────
+        self.btn_terrain.draw(self.screen)
+        self.btn_lighting.draw(self.screen)
 
-        # ── Show/Hide Terrain toggle (shared with the combat panel) ────────
-        # Re-anchor each frame: the combat panel resizes this same button, so we
-        # restore the pre-combat slot (full width, below Edit Terrain) here.
-        self.btn_show_terrain.rect.update(
-            self.btn_edit_terrain.rect.x,
-            self.btn_edit_terrain.rect.bottom + self._BTN_GAP,
-            self.btn_edit_terrain.rect.w, self._BTN_H)
-        self.btn_show_terrain.text = "Hide Terrain" if self.show_terrain else "Show Terrain"
-        self.btn_show_terrain.draw(self.screen)
-
-        # ── Save / Load Terrain (file pickers) ─────────────────────────────
-        self.btn_save_terrain.draw(self.screen)
-        self.btn_load_terrain.draw(self.screen)
-
-        # ── Generate Terrain / Generate Dungeon (DM-mode) ──────────────────
-        self.btn_generate_terrain.draw(self.screen)
+        # ── Generate Dungeon (DM-mode) ─────────────────────────────────────
         self.btn_generate_dungeon.draw(self.screen)
 
         # ── Dungeon manifest menu (New / Open / Save / pages) ───────────────
-        self.btn_dungeon.text = ("Dungeon: " + self.dungeon_page.id) if self.dungeon_page else "Dungeon…"
         self.btn_dungeon.draw(self.screen)
-
-        # ── Edit Lighting button ───────────────────────────────────────────
-        self.btn_edit_lighting.draw(self.screen)
-        self.btn_load_lighting.draw(self.screen)
-
-        # ── Toggle Lighting Overlay button ─────────────────────────────────
-        self.btn_toggle_lighting.draw(self.screen)
 
         # ── Toggle Wall Auto-Detection button ──────────────────────────────
         self.btn_toggle_walls.draw(self.screen)
@@ -16914,6 +17560,14 @@ class App:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
+
+            # NPC turn playback: any click or keypress fast-forwards the animation. The event
+            # is CONSUMED — while the board shows deferred (snapshot) display state nothing
+            # else may react to it (the parked reaction menu only opens once playback drains).
+            if self._npc_anim is not None and event.type in (pygame.MOUSEBUTTONDOWN,
+                                                             pygame.KEYDOWN):
+                self._npc_anim_fast_forward()
+                continue
 
             # Map-level pan input (wheel / arrow keys) is suppressed while any
             # menu is open, so scrolling a dialog doesn't also pan the map.
@@ -17569,6 +18223,9 @@ class App:
                                     ("Prefer AOE",          rpg.NpcAutomationStrategy.PreferAOE),
                                     ("Prefer Range",        rpg.NpcAutomationStrategy.PreferRange),
                                     ("Prefer Hide",         rpg.NpcAutomationStrategy.PreferHide),
+                                    ("Prefer Control",      rpg.NpcAutomationStrategy.PreferControl),
+                                    ("Prefer Heal",         rpg.NpcAutomationStrategy.PreferHeal),
+                                    ("Prefer Support",      rpg.NpcAutomationStrategy.PreferSupport),
                                     ("No-op (Cower)",       rpg.NpcAutomationStrategy.NoOp)]
                                 def _set_strat(strat, h2=hh):
                                     self.bm.set_agent_npc_automation_strategy(h2, strat)
@@ -17724,6 +18381,11 @@ class App:
                                 # Knock targets a doorway cell (no creature). Route through the
                                 # cell path so the engine reads aoe_col/aoe_row for the door.
                                 self._resolve_spell_cast_aoe(cell)
+                            elif self._pending_spell_dispels_magic():
+                                # Dispel Magic: open a picker for the ongoing spells at the clicked
+                                # creature and/or cell (buff vs debuff, or one of several AoEs) — the
+                                # chosen effect is cast via _cast_dispel_selection.
+                                self._begin_dispel_pick(hit, cell, event.pos)
                             elif self.pending_spell_is_aoe:
                                 if self._pending_spell_is_wall():
                                     if self.spell_anchor_cell is None:
@@ -17999,65 +18661,14 @@ class App:
                     _claimed = True
                     return True
 
-                # Select Mob button
-                if _hit(self.btn_select_mob):
-                    self.mob_dialog.show(lambda mob: self._on_mob_selected(mob))
+                # Agents… — encounter save/load, Import DDB, Load PCs, Create Mob/PC
+                if _hit(self.btn_agents):
+                    self._show_agents_menu()
 
-                # Select PC
-                if _hit(self.btn_select_pc):
-                    pc_classes = ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
-                    options = [(cls, lambda c=cls: self._on_pc_class_selected(c)) for cls in pc_classes]
-                    px_popup = self._panel_x() + self._PANEL_PAD
-                    self.context_menu.show((px_popup, 100), options, self.screen.get_size())
-
-                # Clear All
+                # Clear All — full scene wipe (agents + terrain + lighting);
+                # the agents-only clear lives in the Agents… menu.
                 if _hit(self.btn_clear):
-                    self.bm.clear_agents()
-                    self.bm.clear_terrain_effects()
-                    self.bm.clear_items()
-                    self.selected_idx        = -1
-                    self.drag_idx            = -1
-                    self._attack_cells_melee = []
-                    self._attack_cells_rnorm = []
-                    self._attack_cells_rlong = []
-
-                # Save — open browser in save mode
-                if _hit(self.btn_save):
-                    start = os.path.dirname(self._save_path) or self._map_dir
-                    self.file_browser.open(
-                        start, self._on_save_path_chosen,
-                        save_mode=True,
-                        extensions=JSON_EXTS,
-                        default_filename=os.path.basename(self._save_path),
-                        name_pattern="_agents.json",
-                        title="Save Encounter As",
-                    )
-
-                # Load — open browser in load mode. No name_pattern: show ALL .json so
-                # encounters saved with custom names (not just *_agents.json) are visible.
-                if _hit(self.btn_load):
-                    start = os.path.dirname(self._save_path) or self._map_dir
-                    self.file_browser.open(
-                        start, self._on_load_path_chosen,
-                        save_mode=False,
-                        extensions=JSON_EXTS,
-                        title="Load Encounter",
-                    )
-
-                # Import a D&D Beyond character into the current encounter
-                if _hit(self.btn_import_ddb):
-                    self._import_ddb_character()
-
-                # Load PCs — merge a party (*_pc_agents.json) onto the current scene
-                if _hit(self.btn_load_pcs):
-                    start = os.path.dirname(self._save_path) or self._map_dir
-                    self.file_browser.open(
-                        start, self._on_load_pcs_chosen,
-                        save_mode=False,
-                        extensions=JSON_EXTS,
-                        name_pattern="_pc_agents.json",
-                        title="Load PCs",
-                    )
+                    self._clear_all()
 
                 # Long Rest — reset all spell slots
                 if _hit(self.btn_long_rest):
@@ -18084,106 +18695,22 @@ class App:
                 if _hit(self.btn_begin_combat):
                     self._start_combat()
 
-                # Edit Terrain
-                if _hit(self.btn_edit_terrain):
-                    self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
-                                             ladders=self._ladders, door_links=self._door_links)
+                # Terrain… — edit / load / save / generate / show-hide / clear
+                if _hit(self.btn_terrain):
+                    self._show_terrain_menu()
 
-                # Show/Hide Terrain (same toggle as in combat)
-                if _hit(self.btn_show_terrain):
-                    self.show_terrain = not self.show_terrain
-
-                # Save Terrain — open browser in save mode
-                if _hit(self.btn_save_terrain):
-                    start = os.path.dirname(self._terrain_path) or self._map_dir
-                    self.file_browser.open(
-                        start, self._on_save_terrain_chosen,
-                        save_mode=True,
-                        extensions=JSON_EXTS,
-                        default_filename=os.path.basename(self._terrain_path),
-                        name_pattern="_terrain.json",
-                        title="Save Terrain As",
-                    )
-
-                # Load Terrain — open browser in load mode. No name_pattern: show ALL
-                # .json so terrain saved with custom names (not just *_terrain.json) shows.
-                if _hit(self.btn_load_terrain):
-                    start = os.path.dirname(self._terrain_path) or self._map_dir
-                    self.file_browser.open(
-                        start, self._on_load_terrain_chosen,
-                        save_mode=False,
-                        extensions=JSON_EXTS,
-                        title="Load Terrain",
-                    )
-
-                # Generate Terrain — carve BSP rooms/walls into the live terrain
-                if _hit(self.btn_generate_terrain):
-                    self._on_generate_terrain()
+                # Lighting… — edit / load / show-hide overlay
+                if _hit(self.btn_lighting):
+                    self._show_lighting_menu()
 
                 # Generate Dungeon — fill the map's rooms with a progressive encounter
                 if _hit(self.btn_generate_dungeon):
                     self._on_generate_dungeon()
 
-                # Dungeon… — New / Open / Save a multi-map dungeon manifest, edit pages
+                # Dungeon Configuration — New / Open / Save a multi-map dungeon
+                # manifest, edit pages
                 if _hit(self.btn_dungeon):
                     self._show_dungeon_menu()
-
-                # Edit Lighting
-                if _hit(self.btn_edit_lighting):
-                    light_sources = []
-                    default_light = rpg.VisibilityLevel.Clear
-                    if os.path.exists(self._lighting_path):
-                        try:
-                            with open(self._lighting_path, 'r') as f:
-                                data = json.load(f)
-                                # Convert saved format (with "light_level" string) to dialog format (with "level" enum)
-                                saved_sources = data.get("light_sources", [])
-                                for src in saved_sources:
-                                    level_str = src.get("light_level", "Sunlight")
-
-                                    # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
-                                    if "col" in src and "row" in src:
-                                        # New format: grid coordinates
-                                        col = src.get("col", 0)
-                                        row = src.get("row", 0)
-                                    else:
-                                        # Old format: pixel coordinates - convert to grid
-                                        x = src.get("x", 0)
-                                        y = src.get("y", 0)
-                                        cell = self._pixel_to_cell(x, y)
-                                        if not cell:
-                                            continue
-                                        col = cell.col
-                                        row = cell.row
-
-                                    light_sources.append({
-                                        "name": src.get("name", "Light"),
-                                        "col": col,
-                                        "row": row,
-                                        "level": self._parse_light_level(level_str),
-                                        "radius": src.get("bright_radius", 5),
-                                    })
-                                default_light_str = data.get("default_light", "BrightLight")
-                                default_light = self._parse_light_level(default_light_str)
-                        except:
-                            light_sources = []
-                            default_light = rpg.VisibilityLevel.Clear
-                    self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
-
-                # Load Lighting
-                if _hit(self.btn_load_lighting):
-                    start = os.path.dirname(self._lighting_path) or self._map_dir
-                    self.file_browser.open(
-                        start, self._on_load_lighting_chosen,
-                        save_mode=False,
-                        extensions=JSON_EXTS,
-                        title="Load Lighting",
-                    )
-
-                # Toggle Lighting Overlay
-                if _hit(self.btn_toggle_lighting):
-                    self.show_lighting_overlay = not self.show_lighting_overlay
-                    self.btn_toggle_lighting.text = "Lighting: ON" if self.show_lighting_overlay else "Lighting: OFF"
 
                 # Toggle Wall Auto-Detection
                 if _hit(self.btn_toggle_walls):
@@ -18992,6 +19519,18 @@ class App:
                         self._show_arcane_ward_menu()
                     if self.btn_cbt_wild_shape.clicked(event):
                         self._show_wild_shape_menu()
+                # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the
+                # `not self.bonus_used` block above so spending a bonus action first doesn't dead-key it.
+                if self.btn_cbt_haste_action.clicked(event):
+                    idx = self._current_agent_idx()
+                    if 0 <= idx < len(self.bm.placed_agents):
+                        stats = self.combat.get_agent_stats(self.bm, idx)
+                        stats.haste_action_available = False  # spend the extra action for this turn
+                        self.combat.set_agent_stats(self.bm, idx, stats)
+                        self.action_used = False  # grant the extra action
+                        self._combat_log_add(
+                            f"{self.bm.placed_agents[idx].name}: Haste action granted (Attack ×1 / Dash / "
+                            "Disengage / Hide / Utilize only).")
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for mv_mt, mv_rect in self._move_type_btns.items():
                         if mv_rect.collidepoint(event.pos):
@@ -19128,12 +19667,14 @@ class App:
         while running:
             running = self._handle_events()
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
+            self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
             self.screen.fill(COL_BG)
             self._draw_map()
             self._draw_fog_overlay()            # fog of war: grey never-seen cells (above map, below agents)
             self._draw_agents()
             self._draw_floating_texts()                     # transient outcome flashes above tokens
+            self._draw_npc_announcement()                   # NPC playback: typewriter action text
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_agent_hover_name()                   # token name shown only under the pointer
