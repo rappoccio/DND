@@ -1064,7 +1064,7 @@ ManeuverResult CombatEngine::applySweepingAttack(BattleMap& bm, const Attack& ac
     if (action.weapon_idx >= 0 && action.weapon_idx < static_cast<int>(weapons.size())) {
         const Weapon& w = weapons[static_cast<std::size_t>(action.weapon_idx)];
         if (!w.physicalDamageRolls.empty())
-            mult = ts.physical_damage_multipliers[w.physicalDamageRolls.front().type];
+            mult = effectivePhysicalDamageMult(as, ts, w.physicalDamageRolls.front().type);
         else if (!w.magicDamageRolls.empty())
             mult = effectiveMagicDamageMult(as, ts, w.magicDamageRolls.front().type, false);
     }
@@ -1292,6 +1292,62 @@ void CombatEngine::applyGuidedStrike(BattleMap& bm, const Attack& action, int cl
     result.target_down = (tgt_stats_g.hp_cur <= 0);
     bm.setAgentStats(tgt, tgt_stats_g);
     log_("Guided Strike turns a miss into a hit: {} damage to {}", dmg, agentName(bm, tgt));
+    if (dmg > 0) {
+        checkConcentrationOnDamage(bm, tgt, dmg);
+        processDamageTaken(bm, tgt, dmg);
+    }
+}
+
+// Boon of Combat Prowess (Peerless Aim) eligibility — path-agnostic gate shared by the NPC auto-fire
+// (maybePeerlessAim), the PC deferred-flag arming (applyAttackResult), and applyPeerlessAim. The
+// attacker must hold the boon, be alive, and not have used the once-per-turn miss→hit yet. The caller
+// confirms the attack actually missed.
+bool CombatEngine::canPeerlessAim(const BattleMap& bm, int attacker_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats as = bm.getAgentStats(attacker_idx);
+    if (as.hp_cur <= 0 || !as.hasFeat("Boon of Combat Prowess")) return false;
+    return !bm.getAgentConditions(attacker_idx).peerless_aim_used;
+}
+
+// Boon of Combat Prowess (Peerless Aim) — post-hoc GUI entry. After a PC misses, the GUI offers this;
+// it turns the miss into a hit, rolls + applies weapon damage, and updates result (mirrors
+// applyGuidedStrike's damage application). Consumes the once-per-turn use.
+void CombatEngine::applyPeerlessAim(BattleMap& bm, const Attack& action, AttackResult& result) noexcept
+{
+    auto agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    const int atk = action.attacker_idx, tgt = action.target_idx;
+    if (atk < 0 || atk >= n || tgt < 0 || tgt >= n) return;
+    if (!canPeerlessAim(bm, atk)) return;
+    if (result.hit) return;                                // nothing to promote (already a hit)
+
+    // Consume the once-per-turn use and clear the deferred flag.
+    Agent::Conditions ac = bm.getAgentConditions(atk);
+    ac.peerless_aim_used      = true;
+    ac.peerless_aim_available = false;
+    bm.setAgentConditions(atk, ac);
+
+    result.hit = true;
+    log_("{} takes Peerless Aim: the miss becomes a hit instead", agentName(bm, atk));
+
+    Agent::Stats atk_stats_p = bm.getAgentStats(atk);
+    Agent::Stats tgt_stats_p = bm.getAgentStats(tgt);
+    auto weapons = bm.getAgentWeapons(atk);
+    if (weapons.empty()) return;
+    const int wi_p = std::clamp(action.weapon_idx, 0, static_cast<int>(weapons.size()) - 1);
+    const Weapon& w = weapons[static_cast<std::size_t>(wi_p)];
+    rollDamage(w, atk_stats_p, tgt_stats_p, result, action.no_ability_damage);  // miss was not a crit → normal damage
+    result.hp_before = tgt_stats_p.hp_cur;
+    const int dmg = result.total_damage;
+    const int overflow = std::max(0, dmg - tgt_stats_p.temp_hp);
+    tgt_stats_p.temp_hp = std::max(0, tgt_stats_p.temp_hp - dmg);
+    tgt_stats_p.hp_cur  = std::clamp(tgt_stats_p.hp_cur - overflow, 0, tgt_stats_p.hp_max);
+    result.hp_after = tgt_stats_p.hp_cur;
+    result.target_down = (tgt_stats_p.hp_cur <= 0);
+    bm.setAgentStats(tgt, tgt_stats_p);
+    log_("Peerless Aim turns a miss into a hit: {} damage to {}", dmg, agentName(bm, tgt));
     if (dmg > 0) {
         checkConcentrationOnDamage(bm, tgt, dmg);
         processDamageTaken(bm, tgt, dmg);

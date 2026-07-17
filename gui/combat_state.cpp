@@ -135,6 +135,14 @@ bool CombatEngine::spendSpellSlot(BattleMap& bm, int idx, int level) noexcept
     auto& slots = stats.spell_slots_remaining;
     const std::size_t li = static_cast<std::size_t>(level - 1);
     if (slots[li] <= 0) return false;
+    // Boon of Spell Recall — Free Casting: when a boon-holder casts using a level 1–4 slot, roll 1d4;
+    // if it equals the slot's level, the slot is not expended. Applied at this single chokepoint so
+    // every PC cast routes through it (NPCs use the N/day system and never reach here).
+    if (level >= 1 && level <= 4 && stats.hasFeat("Boon of Spell Recall") && roll(4) == level) {
+        log_("{}: Free Casting — the level {} slot is retained (Boon of Spell Recall)",
+             agentName(bm, idx), level);
+        return true;
+    }
     slots[li] -= 1;
     return true;
 }

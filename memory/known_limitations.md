@@ -1082,3 +1082,37 @@ Oath of Glory implemented (Inspiring Smite L3, Aura of Alacrity L7, Glorious Def
 - **Living Legend (L20).** Save-Throw Reroll wired into the OnSaveFail reaction window (spell saves only — non-spell saves don't open that window). Unerring Strike (once/turn weapon miss→hit) **auto-fires on the first miss each turn** while active — the RAW "save it for a later attack" player choice is not modeled (it's strictly beneficial). Charismatic (Advantage on CHA checks) is non-combat, not modeled.
 
 </details>
+
+
+
+<details>
+<summary><b>Epic Boon feats — deferred / partial scopes (2026-07-17)</b></summary>
+
+Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
+
+- **ASI to 30 — manual.** Every Epic Boon raises one score to a max of **30** (not 20). Consistent
+  with the general-feat rule (`feat_system.md`: ASI is not auto-applied), boons implement only their
+  special benefit; the "+1 to 30" is set via the ability steppers. The stepper cap is left unchanged
+  (not raised to 30 automatically for boon-holders).
+- **Boon of Fate (Improve Fate) — attacks + saves only.** RAW triggers on **any D20 Test** within
+  60 ft (attack rolls, saving throws, *and ability checks*). We implement the 2d4 ± nudge on attack
+  rolls and saving throws only (1/rest); **ability checks are not covered** — they are barely modeled
+  in the combat sim.
+- **Boon of Dimensional Travel (Blink Steps) — PC only (NPC reposition deferred).** The ≤30-ft
+  post-action teleport is fully wired for PCs (the **✦ Blink Steps** button + a destination pick that
+  reuses `teleport_agent` / `is_valid_teleport_destination` / `has_line_of_sight`), armed after the
+  Attack/Magic action via `blink_steps_available`. **Automated NPC boon-holders never blink** — the
+  C++ `runNpcTurn` driver does not arm or use Blink Steps (no "pick a safe reposition" heuristic yet).
+  Also: the "you can see" clause is modeled as a wall line-of-sight check only (it ignores Invisible/
+  Blinded and other perception nuances), and Blink triggers off the Attack/Magic action generically —
+  it is not re-gated per Action-Surge extra action.
+- **Boon of the Night Spirit (Shadowy Form) — primary damage path only.** The light-gated Resistance
+  (all but Psychic/Radiant while the defender is in Dim/Dark) is folded into `effectivePhysicalDamageMult`
+  / `effectiveMagicDamageMult` and reaches every site that passes `bm`/`target_idx`: the interactive
+  weapon attack path (`resolveAttack` → `rollDamage`, all 3 callers) plus all spell/AoE/item damage.
+  **Secondary weapon damage-reroll paths do not pass `bm`/`target_idx`** — a boon-holder hit by
+  **Savage Attacker**, **Piercer**, **Brutal Strike**, or a **GWM Hew** reroll has that reroll's damage
+  computed at full multiplier (and "keep the higher" can then bypass the Resistance). *Merge with
+  Shadows* is also **PC-only** — automated NPCs never activate it (no `runNpcTurn` arming).
+
+</details>

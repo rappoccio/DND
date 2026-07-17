@@ -54,7 +54,7 @@ from helpers import (
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, METAMAGIC_OPTIONS, metamagic_offered
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, METAMAGIC_OPTIONS, metamagic_offered
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -680,6 +680,7 @@ class App:
         # here so the cast menu skips them (they must never be re-cast for free with a normal slot).
         self._wish_temp_spells: set = set()
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
+        self.blink_steps_pending       = False # Boon of Dimensional Travel: awaiting a Blink Steps teleport destination (≤30 ft)
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
         self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
         self.pending_wild_magic_teleport = False # Wild Magic Sorcerer: awaiting a teleport destination (20 ft)
@@ -1286,6 +1287,11 @@ class App:
         self.btn_cbt_gwm_hew = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Hew (Bonus Attack)",
                                           (190, 100, 70), (225, 135, 100), self.font_md)
+        # Boon of Dimensional Travel — Blink Steps: a ≤30-ft teleport armed right after the Attack/Magic
+        # action; clicking enters a destination pick (see _resolve_blink_steps). Deep-violet like teleports.
+        self.btn_cbt_blink_steps = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "✦ Blink Steps (30 ft)",
+                                          (90, 60, 170), (125, 90, 210), self.font_md)
         self.btn_cbt_martial_arts = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Martial Arts (Bonus Attack)",
                                           (180, 110, 200), (210, 140, 230), self.font_md)
@@ -1295,6 +1301,10 @@ class App:
         self.btn_cbt_one_with_shadows = Button(pygame.Rect(px, dummy_y, W, B),
                                           "One with Shadows (Invisible)",
                                           (90, 80, 150), (120, 110, 190), self.font_md)
+        # Boon of the Night Spirit — Merge with Shadows: BA Invisible while in Dim Light/Darkness.
+        self.btn_cbt_merge_shadows = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Merge with Shadows (Invisible)",
+                                          (70, 70, 130), (100, 100, 170), self.font_md)
         self.btn_cbt_second_wind = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Second Wind (Bonus Action)",
                                           (180, 150, 100), (220, 190, 130), self.font_md)
@@ -3324,14 +3334,16 @@ class App:
         edit ability scores via the steppers), so this is a plain replace: drop all general
         feats, then re-add the selected ones. `add_feat` is used so any future general feat
         that gains an addFeat effect still applies on grant. Origin feats are untouched
-        (the two name-sets are disjoint).
+        (the name-sets are disjoint). Epic boons ride the same picker/list as general feats,
+        so they are dropped/re-added here too.
         """
         names = list(names or [])
-        stats.feats = [f for f in list(stats.feats) if f not in GENERAL_FEAT_NAMES]
+        stats.feats = [f for f in list(stats.feats)
+                       if f not in GENERAL_FEAT_NAMES and f not in EPIC_BOON_FEAT_NAMES]
         for n in names:
             stats.add_feat(n)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0):
         """Called by StatsDialog when the user clicks OK."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
@@ -3437,6 +3449,8 @@ class App:
         # Elemental Adept's chosen element(s) (set via the element picker). Kept only while the feat
         # is selected; cleared otherwise so a deselect doesn't leave stale types.
         stats.elemental_adept_types = list(elemental_adept_types or []) if stats.has_feat("Elemental Adept") else []
+        # Boon of Irresistible Offense: which score Overwhelming Strike reads (0=STR, 1=DEX).
+        stats.irresistible_offense_ability = int(irresistible_offense_ability) if stats.has_feat("Boon of Irresistible Offense") else 0
         # Draconic L6: persist the chosen ancestry element (-1 = none/not yet set).
         if class_name == "Sorcerer" and subclass_name == "Draconic":
             stats.draconic_affinity_type = int(draconic_affinity_type)
@@ -4206,6 +4220,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
         self.arcane_charge_pending       = False
+        self.blink_steps_pending         = False
         self.pending_psychic_teleport    = False
         self.pending_wild_magic_teleport = False
         self.pending_warping_implosion   = False
@@ -5124,6 +5139,10 @@ class App:
             self._attack_sequence_slot = ""
             self.pending_attack_offhand = None
             self.pending_attack_resource = None
+            # Boon of Dimensional Travel — arm Blink Steps once the Attack action is fully spent (this is
+            # the rider-path twin of the exhausted branch in _finish_attack).
+            if seq_slot == "action":
+                self._arm_blink_steps(atk_idx)
 
         self._update_attack_overlay()
 
@@ -5515,6 +5534,7 @@ class App:
         has_cunning_strike = False
         has_divine_strike = False
         has_guided_strike = False
+        has_peerless_aim = False
         has_restore_balance_miss = False
         has_push = False
         has_topple = False
@@ -5571,6 +5591,8 @@ class App:
                 has_eldritch_smite = True
             elif result.hit and atk_cond and atk_cond.maneuver_available:
                 has_maneuver = True
+            elif (not result.hit) and atk_cond and atk_cond.peerless_aim_available:
+                has_peerless_aim = True
             elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
                 has_guided_strike = True
             elif (not result.hit) and atk_cond and atk_cond.restore_balance_miss_available:
@@ -5717,6 +5739,8 @@ class App:
             self._offer_divine_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_eldritch_smite:
             self._offer_eldritch_smite(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+        elif has_peerless_aim:
+            self._offer_peerless_aim(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_guided_strike:
             self._offer_guided_strike(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_restore_balance_miss:
@@ -5763,7 +5787,7 @@ class App:
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_sudden_strike
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_sudden_strike
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:
@@ -5796,6 +5820,9 @@ class App:
                 # Clear the generic extra-attack knobs so they don't leak to the next attack.
                 self.pending_attack_offhand = None
                 self.pending_attack_resource = None
+                # Boon of Dimensional Travel — arm Blink Steps: the Attack action is fully spent.
+                if slot == "action":
+                    self._arm_blink_steps(atk_idx)
 
             # Restore original weapons if this was an unarmed strike
             if self._unarmed_strike_original_weapons:
@@ -6407,6 +6434,34 @@ class App:
             label = "Guided Strike (+10)" if ci == atk_idx else f"Guided Strike: {agents[ci].name} reacts (+10)"
             options.append((label, (lambda c=ci: _apply(c))))
         options.append(("Skip Guided Strike", lambda: _apply(None)))
+        px, py = self._agent_screen_pos(atk_idx)
+        self.context_menu.show((px, py), options, self.screen.get_size())
+
+    def _offer_peerless_aim(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+        """After a miss, offer Boon of Combat Prowess — Peerless Aim (turn the miss into a hit, once per
+        turn). apply_peerless_aim_effect re-validates in C++ and rolls/applies weapon damage on accept."""
+        def _apply(use_it):
+            if use_it:
+                self.combat.apply_peerless_aim_effect(self.bm, action, result)
+                if result.hit:
+                    dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                    dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                    self._combat_log_add(
+                        f"{atk_name}→{tgt_name}: Peerless Aim → HIT {result.total_damage}"
+                        f"{self._damage_breakdown_str(result)} {dmg_type_str}{' — DOWN' if result.target_down else ''}")
+                else:
+                    self._combat_log_add(atk_msg)
+            else:
+                self._combat_log_add(atk_msg)
+            self._flush_combat_log()
+            self._sync_spell_effect_cache()
+            self._update_attack_overlay()
+            self._continue_attack_sequence_after_rider(atk_idx)
+
+        options = [
+            ("Peerless Aim (turn miss into a hit)", lambda: _apply(True)),
+            ("Skip Peerless Aim", lambda: _apply(False)),
+        ]
         px, py = self._agent_screen_pos(atk_idx)
         self.context_menu.show((px, py), options, self.screen.get_size())
 
@@ -8205,6 +8260,72 @@ class App:
             self._combat_log_add("Arcane Charge: out of range (max 30 ft) — pick a closer cell.")
         else:  # -3 blocked (or -1 ineligible, which shouldn't reach here)
             self._combat_log_add("Arcane Charge: destination is blocked — pick another cell.")
+
+    def _resolve_blink_steps(self, cell):
+        """Boon of Dimensional Travel — Blink Steps: teleport the actor up to 30 ft to the clicked cell,
+        an unoccupied space it can see. Reuses the existing teleport primitives (is_valid_teleport_
+        destination + has_line_of_sight + _agent_at occupancy + teleport_agent) rather than a bespoke
+        engine path; clears the blink_steps_available arming on success or on the skip gesture."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self.blink_steps_pending = False
+            return
+        pt = self.bm.placed_agents[idx]
+        origin = pt.origin
+        # Click your own cell to skip.
+        if cell.col == origin.col and cell.row == origin.row:
+            self.blink_steps_pending = False
+            self._clear_blink_steps_arm(idx)
+            self._combat_log_add("Blink Steps skipped.")
+            return
+        dist_ft = ((cell.col - origin.col) ** 2 + (cell.row - origin.row) ** 2) ** 0.5 * 5
+        if dist_ft > 30 + 1e-6:
+            self._combat_log_add("Blink Steps: out of range (max 30 ft) — pick a closer cell.")
+            return
+        if self._agent_at(cell) >= 0 or not self.combat.is_valid_teleport_destination(self.bm, cell.col, cell.row):
+            self._combat_log_add("Blink Steps: destination is blocked — pick another cell.")
+            return
+        if not self.bm.has_line_of_sight(origin, pt.size, cell, 1):
+            self._combat_log_add("Blink Steps: no line of sight to that cell — pick a visible one.")
+            return
+        if self.combat.teleport_agent(self.bm, idx, cell.col, cell.row):
+            self.blink_steps_pending = False
+            self._clear_blink_steps_arm(idx)
+            self._mark_fog_dirty()   # the teleport moved the token; explored mask + overlays need a refresh
+            self._combat_log_add(
+                f"{pt.name}: Blink Steps — teleports {int(dist_ft + 0.5)} ft to ({cell.col}, {cell.row}).")
+            self._flush_combat_log()
+        else:
+            self._combat_log_add("Blink Steps: destination is blocked — pick another cell.")
+
+    def _arm_blink_steps(self, idx: int):
+        """Boon of Dimensional Travel: arm Blink Steps right after this agent's Attack/Magic action so the
+        ✦ Blink Steps button (a free ≤30-ft teleport) appears. No-op unless the agent holds the boon."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        if not self.combat.get_agent_stats(self.bm, idx).has_feat("Boon of Dimensional Travel"):
+            return
+        conds = self.combat.get_agent_conditions(self.bm, idx)
+        if not conds.blink_steps_available:
+            conds.blink_steps_available = True
+            self.combat.set_agent_conditions(self.bm, idx, conds)
+
+    def _clear_blink_steps_arm(self, idx: int):
+        """Consume the Blink Steps arming (blink_steps_available) after a teleport or a skip."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        conds = self.combat.get_agent_conditions(self.bm, idx)
+        if conds.blink_steps_available:
+            conds.blink_steps_available = False
+            self.combat.set_agent_conditions(self.bm, idx, conds)
+
+    def _blink_steps_ready(self, idx: int) -> bool:
+        """True iff idx holds Boon of Dimensional Travel and has an armed Blink Steps this turn."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return False
+        if not self.combat.get_agent_stats(self.bm, idx).has_feat("Boon of Dimensional Travel"):
+            return False
+        return self.combat.get_agent_conditions(self.bm, idx).blink_steps_available
 
     def _use_sacred_weapon(self, agent_idx: int):
         """Paladin Oath of Devotion Sacred Weapon: spend 1 Channel Oath, +CHA to weapon attacks for 1 min."""
@@ -11032,6 +11153,8 @@ class App:
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
         self._consume_cast_slot(ctx["slot"], caster_idx)
+        # Boon of Dimensional Travel — arm Blink Steps: casting a spell is the Magic action.
+        self._arm_blink_steps(caster_idx)
         # College of Glamour Beguiling Magic: offer the once/long-rest rider after a slot-fueled
         # Enchantment/Illusion cast (a free Mantle-of-Majesty Command uses no slot, so it's excluded).
         if not ctx.get("free_cast"):
@@ -11888,6 +12011,7 @@ class App:
                     "feats": list(s.feats),
                     "stolen_spell_names": list(s.stolen_spell_names),
                     "elemental_adept_types": list(s.elemental_adept_types),
+                    "irresistible_offense_ability": s.irresistible_offense_ability,
                     "metamagic_options": [int(m) for m in s.metamagic_options],
                     "draconic_hp_applied": s.draconic_hp_applied,
                     "draconic_affinity_type": s.draconic_affinity_type,
@@ -16724,6 +16848,16 @@ class App:
                     self.btn_cbt_gwm_hew.draw(self.screen)
                     y += B + gap
 
+            # Blink Steps button — Boon of Dimensional Travel: armed right after the Attack/Magic action
+            # (blink_steps_available in C++). A free ≤30-ft teleport, so it is NOT gated on the action/bonus
+            # economy; clicking it enters a destination pick (_resolve_blink_steps).
+            if 0 <= cur_idx < len(agents) and self._blink_steps_ready(cur_idx):
+                self.btn_cbt_blink_steps.rect.x = lx
+                self.btn_cbt_blink_steps.rect.y = y
+                self.btn_cbt_blink_steps.rect.w = W
+                self.btn_cbt_blink_steps.draw(self.screen)
+                y += B + gap
+
             # Martial Arts button — Monk (L1+), bonus-action unarmed strike (always available)
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
@@ -16783,6 +16917,17 @@ class App:
                     self.btn_cbt_one_with_shadows.rect.y = y
                     self.btn_cbt_one_with_shadows.rect.w = W
                     self.btn_cbt_one_with_shadows.draw(self.screen)
+                    y += B + gap
+
+            # Merge with Shadows button — Boon of the Night Spirit. BA Invisibility while the
+            # holder stands in Dim Light/Darkness; the click enforces the lighting gate.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.has_feat("Boon of the Night Spirit"):
+                    self.btn_cbt_merge_shadows.rect.x = lx
+                    self.btn_cbt_merge_shadows.rect.y = y
+                    self.btn_cbt_merge_shadows.rect.w = W
+                    self.btn_cbt_merge_shadows.draw(self.screen)
                     y += B + gap
 
             # Action Surge button — Fighter (L1+), resets action_used (available anytime)
@@ -18387,6 +18532,9 @@ class App:
                         # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
                         if self.arcane_charge_pending:
                             self._resolve_arcane_charge(cell)
+                        # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
+                        elif self.blink_steps_pending:
+                            self._resolve_blink_steps(cell)
                         # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
                         elif self.pending_psychic_teleport:
                             self._resolve_psychic_teleport(cell)
@@ -19188,6 +19336,13 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_gwm_hew(idx)
+                    if self.btn_cbt_blink_steps.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
+                            self.blink_steps_pending = True
+                            self._combat_log_add(
+                                "Blink Steps: click a destination within 30 ft you can see "
+                                "(or click yourself to skip).")
                     if self.btn_cbt_martial_arts.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -19220,6 +19375,13 @@ class App:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: One with Shadows — now invisible.")
                             else:
                                 self._combat_log_add("One with Shadows requires standing in Dim Light or Darkness.")
+                    if self.btn_cbt_merge_shadows.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            if self.combat.apply_merge_with_shadows(self.bm, idx):
+                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Merge with Shadows — now invisible.")
+                            else:
+                                self._combat_log_add("Merge with Shadows requires standing in Dim Light or Darkness.")
                     if self.btn_cbt_action_surge.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

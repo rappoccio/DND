@@ -624,6 +624,14 @@ namespace rpg {
           return std::find(feats.begin(), feats.end(), f) != feats.end();
       }
 
+      // Truesight range in feet, folding in the Boon of Truesight epic boon (60 ft).
+      // Queried at every read site instead of writing truesight_range so the boon
+      // round-trips through save/load, which serializes feats but not raw sense
+      // ranges (mirrors how Skulker/Blind Fighting are queried, not materialized).
+      [[nodiscard]] int effectiveTruesightRange() const noexcept {
+          return std::max(truesight_range, hasFeat("Boon of Truesight") ? 60 : 0);
+      }
+
       // ── Spell Thief (Arcane Trickster Rogue L17) ────────────────────────
       // Spell names this caster currently CANNOT cast because an Arcane Trickster stole them with
       // Spell Thief (the caster failed the INT save). Checked at the top of executeSpell; cleared on
@@ -645,6 +653,13 @@ namespace rpg {
                  std::find(elemental_adept_types.begin(), elemental_adept_types.end(), t)
                      != elemental_adept_types.end();
       }
+
+      // ── Boon of Irresistible Offense (epic boon) ────────────────────────
+      // Which ability score the boon boosted (0 = STR, 1 = DEX). Overwhelming Strike
+      // reads the LIVE score of this ability for the natural-20 bonus damage, so it
+      // stores the choice (not the modifier). Only consulted when the actor
+      // hasFeat("Boon of Irresistible Offense").
+      int irresistible_offense_ability{0};
 
       // ── Lucky (Origin feat) ─────────────────────────────────────────────
       // Luck Points = proficiency bonus, regained on a Long Rest. Spent to grant
@@ -786,6 +801,9 @@ namespace rpg {
       bool soul_of_vengeance_available{false}; // Paladin Oath of Vengeance L15 Soul of Vengeance: a creature under a paladin's Vow of Enmity just attacked; that paladin may react-strike it (set on the ATTACKER)
       bool inspiring_smite_used{false};     // Paladin Oath of Glory L3 Inspiring Smite: already distributed temp HP this turn (once per Divine Smite); reset at turn start
       bool unerring_strike_used{false};     // Paladin Oath of Glory L20 Living Legend: the once-per-turn Unerring Strike (weapon miss→hit) has fired this turn; reset at turn start
+      bool peerless_aim_used{false};        // Boon of Combat Prowess (Peerless Aim): the once-per-turn miss→hit has fired; reset at turn start ("until the start of your next turn")
+      bool peerless_aim_available{false};   // Boon of Combat Prowess: this missed attack can be turned into a hit (deferred flag; GUI-offered for PCs, auto for NPCs)
+      bool blink_steps_available{false};    // Boon of Dimensional Travel (Blink Steps): armed right after the Attack/Magic action; the actor may teleport ≤30 ft to a visible empty cell (consumed on teleport; reset at turn start)
       bool colossus_slayer_used{false};     // Hunter L3 Colossus Slayer: +1d8 already applied this turn (once/turn)
       bool horde_breaker_available{false};  // Hunter L3 Horde Breaker: a weapon hit can grant an extra attack vs an adjacent creature (GUI prompt)
       bool horde_breaker_used{false};       // Hunter L3 Horde Breaker already used this turn (once/turn)
@@ -1001,6 +1019,9 @@ namespace rpg {
       conditions_.soul_of_vengeance_available  = false;
       conditions_.inspiring_smite_used         = false;
       conditions_.unerring_strike_used         = false;
+      conditions_.peerless_aim_used            = false;  // Boon of Combat Prowess: resets "at the start of your next turn"
+      conditions_.peerless_aim_available       = false;
+      conditions_.blink_steps_available        = false;  // Boon of Dimensional Travel: re-armed each Attack/Magic action
       // Weapon Mastery per-turn flags. sapped/vex_target_idx are NOT reset here:
       // they are consumed on the next qualifying attack roll (and survive into this
       // turn so a sapped creature's attack still suffers disadvantage). slowed and

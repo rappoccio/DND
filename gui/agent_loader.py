@@ -82,6 +82,8 @@ def dict_to_stats(stats_dict):
     # long rest). Persisted so an in-progress steal survives save/reload.
     stats.stolen_spell_names = list(stats_dict.get("stolen_spell_names", []))
     stats.elemental_adept_types = [int(t) for t in stats_dict.get("elemental_adept_types", [])]
+    # Boon of Irresistible Offense: which ability the boon boosted (0=STR, 1=DEX) for Overwhelming Strike.
+    stats.irresistible_offense_ability = int(stats_dict.get("irresistible_offense_ability", 0))
     # Sorcerer Metamagic: learned options (list of MetamagicOption enum values).
     stats.metamagic_options = [rpg.MetamagicOption(int(v)) for v in stats_dict.get("metamagic_options", [])]
     # Sorcerer subclass feature state (round-trip so flags survive save/reload)

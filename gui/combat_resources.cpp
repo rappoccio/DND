@@ -308,6 +308,33 @@ bool CombatEngine::applyOneWithShadows(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+// Boon of the Night Spirit — Merge with Shadows: a Bonus Action grants the Invisible condition while
+// the boon-holder stands in Dim Light or Darkness. The Invisibility ends when the creature next takes
+// an action/bonus/reaction (invisible_persists_on_action = false), so it is mostly a one-turn setup —
+// structurally identical to the Warlock's One with Shadows above.
+bool CombatEngine::applyMergeWithShadows(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
+    const Agent::Stats& s = pa.agent->getStats();
+    if (!s.hasFeat("Boon of the Night Spirit")) return false;
+
+    // Must be standing in an area of Dim Light or Darkness (the cell's light level — not the
+    // obscuration-effect layer used for fog/magical-darkness AoEs), matching Shadowy Form's gate.
+    VisibilityLevel light = bm.getLightLevel(pa.origin);
+    if (light != VisibilityLevel::Dim && light != VisibilityLevel::Dark &&
+        light != VisibilityLevel::MagicalDark)
+        return false;
+
+    Agent::Conditions c = bm.getAgentConditions(idx);
+    c.invisible = true;
+    c.invisible_persists_on_action = false;  // ends when you next take an action/bonus/reaction
+    bm.setAgentConditions(idx, c);
+    log_("{}: Merge with Shadows — gains the Invisible condition", agentName(bm, idx));
+    return true;
+}
+
 // Soulknife Rogue — Psychic Veil (L13): a Magic action → gain Invisible. Once per Long Rest, or by
 // expending 1 Psionic Energy Die. v1: "ends when you deal damage or force a save" is approximated by
 // the base Invisibility (ends on the next attack); the force-a-save end-trigger is not tracked.

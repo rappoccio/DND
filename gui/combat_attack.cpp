@@ -316,7 +316,9 @@ void CombatEngine::rollDamage(const Weapon& w,
                                const Agent::Stats& attacker,
                                const Agent::Stats& target,
                                AttackResult& result,
-                               bool suppress_positive_mod)
+                               bool suppress_positive_mod,
+                               const BattleMap* bm,
+                               int target_idx)
 {
     result.dice_results.clear();
     int raw = 0;
@@ -375,7 +377,7 @@ void CombatEngine::rollDamage(const Weapon& w,
             format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice, magicDamageName(mt));
         } else {
             // Normal physical damage
-            float multiplier = target.physical_damage_multipliers[dmg_roll.type];
+            float multiplier = effectivePhysicalDamageMult(attacker, target, dmg_roll.type, bm, target_idx);
             int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
             raw += modified_damage;
             result.physical_damage_types.push_back(dmg_roll.type);
@@ -397,10 +399,9 @@ void CombatEngine::rollDamage(const Weapon& w,
         }
         // Apply target's resistance/vulnerability/immunity multiplier. Poisoner (Potent Poison) lets a
         // weapon's Poison damage ignore the target's Poison Resistance (from_spell=false → no Elemental
-        // Adept, which is spells-only).
-        // (Aura of Warding is not applied on the weapon-damage path: rollDamage has no BattleMap/target
-        // index in scope. Weapon-borne Necrotic/Psychic/Radiant is rare — see known_limitations.)
-        float multiplier = effectiveMagicDamageMult(attacker, target, dmg_roll.type, false);
+        // Adept, which is spells-only). When the caller supplied bm/target_idx, Aura of Warding and the
+        // Boon of the Night Spirit's Shadowy Form also fold in on the weapon-damage path.
+        float multiplier = effectiveMagicDamageMult(attacker, target, dmg_roll.type, false, bm, target_idx);
         int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += modified_damage;
         result.magic_damage_dealt[static_cast<std::size_t>(dmg_roll.type)] += modified_damage;
@@ -425,7 +426,7 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        float multiplier = target.physical_damage_multipliers[Bludgeoning];
+        float multiplier = effectivePhysicalDamageMult(attacker, target, Bludgeoning, bm, target_idx);
         raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
         result.physical_damage_types.push_back(Bludgeoning);
         format_type(num_dice, 4, type_damage, multiplier, type_dice,
@@ -447,7 +448,7 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        float multiplier = target.physical_damage_multipliers[Bludgeoning];
+        float multiplier = effectivePhysicalDamageMult(attacker, target, Bludgeoning, bm, target_idx);
         raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
         result.physical_damage_types.push_back(Bludgeoning);
         format_type(num_dice, 6, type_damage, multiplier, type_dice,
@@ -480,14 +481,15 @@ void CombatEngine::rollDamage(const Weapon& w,
             mod_mult = target.magic_damage_multipliers[
                 static_cast<std::size_t>(attacker.unarmed_damage_override)];
         } else if (!w.physicalDamageRolls.empty()) {
-            mod_mult = target.physical_damage_multipliers[w.physicalDamageRolls.front().type];
+            mod_mult = effectivePhysicalDamageMult(attacker, target, w.physicalDamageRolls.front().type,
+                                                   bm, target_idx);
         } else if (!w.magicDamageRolls.empty()) {
             mod_mult = effectiveMagicDamageMult(attacker, target,
-                                                w.magicDamageRolls.front().type, false);
+                                                w.magicDamageRolls.front().type, false, bm, target_idx);
         } else {
             // No damage dice (default Unarmed / improvised strike = STR-mod-only Bludgeoning).
-            mod_mult = target.physical_damage_multipliers[
-                static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)];
+            mod_mult = effectivePhysicalDamageMult(attacker, target, PhysicalDamage_t::Bludgeoning,
+                                                   bm, target_idx);
         }
     }
     const int modified_mod = static_cast<int>(static_cast<float>(result.damage_mod) * mod_mult);
@@ -681,14 +683,16 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           const Agent& target,
                                           bool advantage,
                                           bool disadvantage,
-                                          bool suppress_positive_mod)
+                                          bool suppress_positive_mod,
+                                          const BattleMap* bm,
+                                          int target_idx)
 {
     int target_ac = target.getStats().base_ac;
     AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage, attacker.getConditions().exhaustion_level);
     r.hp_before = target.getStats().hp_cur;
 
     if (r.hit) {
-        rollDamage(w, attacker.getStats(), target.getStats(), r, suppress_positive_mod);
+        rollDamage(w, attacker.getStats(), target.getStats(), r, suppress_positive_mod, bm, target_idx);
 
         // Combat Inspiration damage mode (Valor Bard L3+): consume pending die bonus to this damage roll
         int inspiration_bonus = consumePendingDamageBonus();
@@ -1685,7 +1689,7 @@ void CombatEngine::forceAutoHit(BattleMap& bm, InFlightAttack& s)
         // if the underlying attack roll had missed.
         if (!s.r.hit) {
             Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
-            rollDamage(w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage);
+            rollDamage(w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage, &bm, s.action.target_idx);
         }
         s.r.hit = true; s.r.fumble = false;
         log_("{} fails its {} save (DC {}, rolled {}) vs {}'s {} — bitten",
@@ -1701,7 +1705,7 @@ void CombatEngine::forceAutoHit(BattleMap& bm, InFlightAttack& s)
     if (s.r.total_damage <= 0) {
         Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
         Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
-        rollDamage(w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage);
+        rollDamage(w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage, &bm, s.action.target_idx);
     }
     s.r.hit    = true;
     s.r.fumble = false;
@@ -1728,11 +1732,35 @@ void CombatEngine::maybeUnerringStrike(BattleMap& bm, InFlightAttack& s)
     if (s.r.total_damage <= 0) {
         Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
         Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
-        rollDamage(s.w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage);
+        rollDamage(s.w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage, &bm, s.action.target_idx);
     }
     s.r.hit    = true;
     s.r.fumble = false;
     log_("{} refuses to miss (Unerring Strike): the attack hits instead", agentName(bm, s.action.attacker_idx));
+}
+
+// Boon of Combat Prowess — Peerless Aim (SRD 5.2 p.88): immediately after a missed attack roll, turn
+// that miss into a hit, once until the start of your next turn. NPCs auto-fire on their first missed
+// weapon attack of the turn (mirrors maybeUnerringStrike's damage-roll-on-promotion). PCs are offered
+// the choice instead — applyAttackResult flags peerless_aim_available and the GUI calls applyPeerlessAim.
+void CombatEngine::maybePeerlessAim(BattleMap& bm, InFlightAttack& s)
+{
+    if (s.r.hit || !s.r.valid) return;                   // only a resolved miss can be promoted
+    const Agent::Stats as = bm.getAgentStats(s.action.attacker_idx);
+    if (!as.is_npc) return;                              // PCs choose via the deferred peerless_aim_available prompt
+    if (!canPeerlessAim(bm, s.action.attacker_idx)) return;
+    // Record intent; peerless_aim_used is committed as a late attacker-conditions write in
+    // applyAttackResult (setting it here would be clobbered by that finalize's updated_atk_cond write).
+    s.peerless_fired = true;
+    // resolveAttack skips the damage roll on a miss, so roll it now for the promoted hit.
+    if (s.r.total_damage <= 0) {
+        Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
+        Agent::Stats tgt_stats = bm.getAgentStats(s.action.target_idx);
+        rollDamage(s.w, atk_stats, tgt_stats, s.r, s.action.no_ability_damage, &bm, s.action.target_idx);
+    }
+    s.r.hit    = true;
+    s.r.fumble = false;
+    log_("{} takes Peerless Aim: the miss becomes a hit instead", agentName(bm, s.action.attacker_idx));
 }
 
 void CombatEngine::reevaluateAttackHit(AttackResult& r) const noexcept
@@ -2109,9 +2137,11 @@ FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
     auto agents = bm.placedAgents();
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
-    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage,
+                        &bm, action.target_idx);
     forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
     maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
+    maybePeerlessAim(bm, s);     // Boon of Combat Prowess: NPC boon-holders auto-promote their first miss
     return advanceAttack(bm);
 }
 
@@ -2807,9 +2837,11 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     auto agents = bm.placedAgents();
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
-    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage);
+    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage,
+                        &bm, action.target_idx);
     forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
     maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
+    maybePeerlessAim(bm, s);     // Boon of Combat Prowess: NPC boon-holders auto-promote their first miss
     // Auto/RL OnD20Seen window (inline): nearby creatures may LOWER the roll (Bend Luck / Cutting
     // Words / Silvery Barbs) before it commits — runs BEFORE Shield so a lowered-to-miss attack opens
     // no Shield window (shouldOfferDefenderShield is gated on r.hit).
@@ -2987,7 +3019,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             updated_atk_cond.reckless_attack = true;
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
             adv = true;
-            r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage);
+            r = resolveAttack(w, *atk_pt.agent, *tgt_pt.agent, adv, dis, action.no_ability_damage,
+                              &bm, action.target_idx);
             log_("{} attacks recklessly (reroll with advantage; attacks against them gain advantage)",
                  agentName(bm, action.attacker_idx));
         } else if (!decider_) {
@@ -3262,6 +3295,15 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         bm.setAgentConditions(action.target_idx, tcond);
     }
 
+    // ── Boon of Combat Prowess — Peerless Aim eligibility (on a miss) ─────
+    // A PC boon-holder who just missed can turn the miss into a hit (once/turn). Flag it for the GUI
+    // (which offers the choice and calls applyPeerlessAim). NPCs don't use this flag — maybePeerlessAim
+    // already auto-promoted their miss at roll time. Any miss qualifies (RAW has no natural-1 exception).
+    if (!r.hit && !atk_stats.is_npc && canPeerlessAim(bm, action.attacker_idx)) {
+        updated_atk_cond.peerless_aim_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     // ── War Domain — Guided Strike eligibility (on a miss) ────────────────
     // A missed attack (not a natural 1) can be nudged to a hit by a War Cleric L3+ spending Channel
     // Divinity — the attacker themselves, or an ally within 30 ft (who pays a Reaction). Flag it for the
@@ -3371,6 +3413,28 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 if (kv.first == "weapon") { kv.second = std::max(0, kv.second + delta); return; }
         };
 
+        // Boon of Irresistible Offense — Overwhelming Strike: on a natural 20, deal extra damage
+        // equal to the FULL ability score the boon boosted (STR or DEX, not the modifier), of the
+        // attack's damage type. Gated on the natural die, not r.critical (an expanded crit range
+        // must not qualify). Scaled by the target's effective multiplier for that type (the boon's
+        // own Overcome Defenses already lifts B/P/S Resistance for this attacker).
+        if (r.hit && r.d20 == 20 && atk_stats.hasFeat("Boon of Irresistible Offense")) {
+            const int score = (atk_stats.irresistible_offense_ability == 1)
+                                  ? atk_stats.dex : atk_stats.str;
+            float mult = 1.0f;
+            if (!r.physical_damage_types.empty())
+                mult = effectivePhysicalDamageMult(atk_stats, tgt_stats, r.physical_damage_types.front());
+            else if (!r.magic_damage_types.empty())
+                mult = effectiveMagicDamageMult(atk_stats, tgt_stats, r.magic_damage_types.front(), false);
+            const int extra = std::max(0, static_cast<int>(static_cast<float>(score) * mult));
+            if (extra > 0) {
+                r.total_damage += extra;
+                r.damage_breakdown.push_back({"Overwhelming Strike", extra});
+                log_("{}: Overwhelming Strike adds +{} damage (natural 20)",
+                     agentName(bm, action.attacker_idx), extra);
+            }
+        }
+
         // Great Weapon Master — Heavy Weapon Mastery: a hit with a Heavy melee weapon as part of
         // the Attack action deals +PB extra damage (every qualifying hit, not once/turn).
         if (r.hit && atk_stats.hasFeat("Great Weapon Master") && w.heavy &&
@@ -3420,7 +3484,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             if (die > 0) {
                 auto it = std::min_element(r.dice_results.begin(), r.dice_results.end());
                 int oldv = *it, newv = roll(die);
-                float mult = tgt_stats.physical_damage_multipliers[Piercing];
+                float mult = effectivePhysicalDamageMult(atk_stats, tgt_stats, Piercing);
                 int delta = static_cast<int>(static_cast<float>(newv - oldv) * mult);
                 *it = newv;
                 r.total_damage = std::max(0, r.total_damage + delta);
@@ -3436,7 +3500,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         if (r.hit && r.critical && atk_stats.hasFeat("Piercer") && deals_phys(Piercing)) {
             int die = weapon_phys_die(Piercing);
             if (die > 0) {
-                float mult = tgt_stats.physical_damage_multipliers[Piercing];
+                float mult = effectivePhysicalDamageMult(atk_stats, tgt_stats, Piercing);
                 int extra = static_cast<int>(static_cast<float>(roll(die)) * mult);
                 r.total_damage += extra;
                 bump_weapon_breakdown(extra);
@@ -4279,6 +4343,17 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         Agent::Conditions uc = bm.getAgentConditions(action.attacker_idx);
         uc.unerring_strike_used = true;
         bm.setAgentConditions(action.attacker_idx, uc);
+    }
+
+    // Boon of Combat Prowess Peerless Aim: commit the once-per-turn flag the same way (NPC auto-fire
+    // path; PCs set it in applyPeerlessAim). Also clears any stale peerless_aim_available on the promoted
+    // hit so the GUI won't re-offer it.
+    if (s.peerless_fired && action.attacker_idx >= 0 &&
+        action.attacker_idx < static_cast<int>(agents.size())) {
+        Agent::Conditions pc = bm.getAgentConditions(action.attacker_idx);
+        pc.peerless_aim_used      = true;
+        pc.peerless_aim_available = false;
+        bm.setAgentConditions(action.attacker_idx, pc);
     }
 
     // NPC turn playback: applyAttackResult is THE phase-B finalizer for every weapon swing (including

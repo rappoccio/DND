@@ -3196,7 +3196,7 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
         for (const auto& dr : w.physicalDamageRolls) {
             const DamagePmf dice = pmfDice(crit ? dr.num_dice * 2 : dr.num_dice, dr.die_size);
             total = pmfConvolve(total,
-                pmfScale(dice, ts.physical_damage_multipliers[static_cast<std::size_t>(dr.type)]));
+                pmfScale(dice, effectivePhysicalDamageMult(as, ts, dr.type)));
         }
         for (const auto& dr : w.magicDamageRolls) {
             const DamagePmf dice = pmfDice(crit ? dr.num_dice * 2 : dr.num_dice, dr.die_size);
@@ -3209,11 +3209,11 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
     dmg_mod += w.bonus_damage;
     float mod_mult = 1.0f;   // the flat mod takes the primary damage type's multiplier (rollDamage)
     if (!w.physicalDamageRolls.empty())
-        mod_mult = ts.physical_damage_multipliers[static_cast<std::size_t>(w.physicalDamageRolls.front().type)];
+        mod_mult = effectivePhysicalDamageMult(as, ts, w.physicalDamageRolls.front().type);
     else if (!w.magicDamageRolls.empty())
         mod_mult = effectiveMagicDamageMult(as, ts, w.magicDamageRolls.front().type, false);
     else
-        mod_mult = ts.physical_damage_multipliers[static_cast<std::size_t>(PhysicalDamage_t::Bludgeoning)];
+        mod_mult = effectivePhysicalDamageMult(as, ts, PhysicalDamage_t::Bludgeoning);
     int flat_dmg = static_cast<int>(static_cast<float>(dmg_mod) * mod_mult);
     if (ac.raging && as.character_class == CharacterClass::Barbarian &&
         (w.type == WeaponType::Melee || w.thrown))

@@ -623,6 +623,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "element the feat was taken for; chosen via the GUI element picker, serialized in the save.")
         .def("has_elemental_adept_type", &Agent::Stats::hasElementalAdeptType, py::arg("type"),
              "True if the caster has Elemental Adept covering MagicDamage_t `type`.")
+        .def_readwrite("irresistible_offense_ability", &Agent::Stats::irresistible_offense_ability,
+             "Boon of Irresistible Offense: which score the boon boosted (0=STR, 1=DEX). "
+             "Overwhelming Strike reads this ability's live full score for its natural-20 bonus damage.")
         .def_readwrite("luck_points", &Agent::Stats::luck_points,
              "Lucky feat: current Luck Points (spent for Advantage; regained on a Long Rest)")
         .def_readwrite("luck_points_max", &Agent::Stats::luck_points_max,
@@ -713,6 +716,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("soul_of_vengeance_available", &Agent::Conditions::soul_of_vengeance_available)
         .def_readwrite("inspiring_smite_used", &Agent::Conditions::inspiring_smite_used)
         .def_readwrite("unerring_strike_used", &Agent::Conditions::unerring_strike_used)
+        .def_readwrite("peerless_aim_used", &Agent::Conditions::peerless_aim_used)
+        .def_readwrite("peerless_aim_available", &Agent::Conditions::peerless_aim_available)
+        .def_readwrite("blink_steps_available", &Agent::Conditions::blink_steps_available)
         .def_readwrite("berserker_frenzy_used", &Agent::Conditions::berserker_frenzy_used)
         .def_readwrite("colossus_slayer_used", &Agent::Conditions::colossus_slayer_used)
         .def_readwrite("horde_breaker_available", &Agent::Conditions::horde_breaker_available)
@@ -2232,6 +2238,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "One with Shadows (Warlock invocation 8): if standing in Dim Light/Darkness,\n"
              "gain the Invisible condition for free (ends on the Warlock's next attack/cast).\n"
              "Returns True if applied.")
+        .def("apply_merge_with_shadows",
+             &CombatEngine::applyMergeWithShadows,
+             py::arg("battle_map"), py::arg("idx"),
+             "Merge with Shadows (Boon of the Night Spirit): if standing in Dim Light/Darkness,\n"
+             "gain the Invisible condition as a Bonus Action (ends when you next act).\n"
+             "Returns True if applied.")
         .def("activate_sacred_weapon",
              &CombatEngine::activateSacredWeapon,
              py::arg("battle_map"), py::arg("idx"),
@@ -2429,7 +2441,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("disadvantage") = false, py::arg("exhaustion_level") = 0,
              "Roll d20 + modifier vs AC.  Does not apply damage.")
         .def("resolve_attack",
-             &CombatEngine::resolveAttack,
+             // Wrapper keeps the 6-arg Python API stable — the engine-internal bm/target_idx
+             // (Shadowy Form light gate) default off for this direct convenience binding.
+             [](CombatEngine& self, const Weapon& w, const Agent& attacker, const Agent& target,
+                bool advantage, bool disadvantage, bool suppress_positive_mod) {
+                 return self.resolveAttack(w, attacker, target, advantage, disadvantage,
+                                           suppress_positive_mod);
+             },
              py::arg("weapon"), py::arg("attacker"), py::arg("target"),
              py::arg("advantage") = false, py::arg("disadvantage") = false,
              py::arg("suppress_positive_mod") = false,
@@ -3240,6 +3258,16 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "True iff cleric_idx (War Domain L3+ with a Channel Divinity use; the attacker itself, or an\n"
              "ally within 30 ft whose reaction is free) may Guided-Strike action's miss. Eligibility gate\n"
              "shared by the GUI flag and the auto/RL OnMiss window (maybeGuidedStrikeInline).")
+        .def("apply_peerless_aim_effect",
+             &CombatEngine::applyPeerlessAim,
+             py::arg("battle_map"), py::arg("action"), py::arg("result"),
+             "Boon of Combat Prowess — Peerless Aim: turn a missed attack (conditions.peerless_aim_available)\n"
+             "into a hit, once per turn. Rolls and applies weapon damage and consumes the once-per-turn use.\n"
+             "Pass the Attack that missed and its AttackResult (mirrors apply_guided_strike_effect).")
+        .def("can_peerless_aim", &CombatEngine::canPeerlessAim,
+             py::arg("battle_map"), py::arg("attacker_idx"),
+             "True iff attacker_idx holds Boon of Combat Prowess, is alive, and has not yet used the\n"
+             "once-per-turn Peerless Aim miss→hit this turn. Caller confirms the attack missed.")
         .def("can_uncanny_dodge", &CombatEngine::canUncannyDodge,
              py::arg("battle_map"), py::arg("target_idx"),
              "True iff target_idx (Rogue L5+, reaction free, not incapacitated, alive) may use Uncanny\n"

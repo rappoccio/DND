@@ -939,6 +939,39 @@ GENERAL_FEATS = [
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Epic Boon feats (SRD 5.2 p.88). Prerequisite: Level 19+ (not enforced here).
+#  A PC may take one (like any feat, stored in Agent.Stats.feats). Each raises a
+#  score to max 30 — ASI stays MANUAL (edit the stepper), only the special benefit
+#  is built. Combat mechanics are phased in E1–E4; see EPIC_BOONS_PLAN.md.
+#  status tags mirror GENERAL_FEATS ("in"/"soon"/"note").
+# ─────────────────────────────────────────────────────────────────────────────
+EPIC_BOON_FEATS = [
+    # name,                        status, note
+    ("Boon of Combat Prowess",     "in",   "Peerless Aim: turn a miss into a hit, once/turn"),
+    ("Boon of Irresistible Offense","in",   "B/P/S ignores Resistance; nat-20: +score damage"),
+    ("Boon of Truesight",          "in",   "Truesight 60 ft"),
+    ("Boon of Dimensional Travel", "in",   "Blink Steps: teleport 30 ft after your action"),
+    ("Boon of Spell Recall",       "in",   "Free Casting: 1d4=slot lvl 1-4 → slot retained"),
+    ("Boon of the Night Spirit",   "in",   "Merge with Shadows (invis) + Shadowy Form resist"),
+    ("Boon of Fate",               "soon", "Improve Fate: 2d4 ± a D20 Test within 60 ft, 1/rest"),
+]
+
+
+def _feat_dialog_rows():
+    """Display rows for FeatDialog: general feats, then an Epic Boon section header,
+    then the epic boon feats. Each row is either ('header', label) — a non-selectable
+    section label — or ('feat', name, status, note)."""
+    rows = [("feat",) + row for row in GENERAL_FEATS]
+    rows.append(("header", "Epic Boon Feats — Level 19+"))
+    rows += [("feat",) + row for row in EPIC_BOON_FEATS]
+    return rows
+
+
+# Combined, ordered rows the FeatDialog renders (built once at import).
+FEAT_DIALOG_ROWS = _feat_dialog_rows()
+
+
 class FeatDialog:
     """Scrollable modal multi-select picker for General feats (one PC may take several).
 
@@ -985,7 +1018,7 @@ class FeatDialog:
         return list_y, list_h
 
     def _max_scroll(self, list_h):
-        return max(0, len(GENERAL_FEATS) * self.ITEM_H - list_h)
+        return max(0, len(FEAT_DIALOG_ROWS) * self.ITEM_H - list_h)
 
     def handle(self, event) -> bool:
         if not self.visible or not self.rect:
@@ -1004,7 +1037,9 @@ class FeatDialog:
         elif event.type == pygame.MOUSEMOTION:
             list_y, list_h = self._list_geom()
             self._hover_idx = -1
-            for i in range(len(GENERAL_FEATS)):
+            for i, entry in enumerate(FEAT_DIALOG_ROWS):
+                if entry[0] == "header":
+                    continue
                 iy = list_y + i * self.ITEM_H - self.scroll_y
                 if list_y <= iy < list_y + list_h:
                     r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
@@ -1019,7 +1054,10 @@ class FeatDialog:
                 self._commit_and_dismiss()
                 return True
             list_y, list_h = self._list_geom()
-            for i, (name, status, note) in enumerate(GENERAL_FEATS):
+            for i, entry in enumerate(FEAT_DIALOG_ROWS):
+                if entry[0] == "header":
+                    continue
+                name = entry[1]
                 iy = list_y + i * self.ITEM_H - self.scroll_y
                 if not (list_y <= iy < list_y + list_h):
                     continue
@@ -1042,7 +1080,7 @@ class FeatDialog:
         surf.blit(overlay, (0, 0))
         pygame.draw.rect(surf, (40, 40, 54), self.rect, border_radius=8)
         pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
-        title = self.font_md.render("General Feats", True, (220, 220, 235))
+        title = self.font_md.render("Feats & Epic Boons", True, (220, 220, 235))
         surf.blit(title, (self.rect.x + self.PAD, self.rect.y + 9))
 
         list_y, list_h = self._list_geom()
@@ -1052,10 +1090,17 @@ class FeatDialog:
         cb = 14
         _TAGS = {"in": ("combat", (90, 200, 110)), "soon": ("soon", (210, 170, 70)),
                  "note": ("note", (130, 130, 150))}
-        for i, (name, status, note) in enumerate(GENERAL_FEATS):
+        for i, entry in enumerate(FEAT_DIALOG_ROWS):
             iy = list_y + i * self.ITEM_H - self.scroll_y
             if iy + self.ITEM_H < list_y or iy > list_y + list_h:
                 continue
+            if entry[0] == "header":
+                hr = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
+                pygame.draw.rect(surf, (30, 30, 46), hr)
+                hs = self.font_sm.render(entry[1], True, (180, 160, 220))
+                surf.blit(hs, (hr.x + 6, hr.y + (self.ITEM_H - hs.get_height()) // 2))
+                continue
+            _, name, status, note = entry
             row = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
             selected = name in self._selected
             if i == self._hover_idx:
@@ -1082,7 +1127,7 @@ class FeatDialog:
         if max_scroll > 0:
             track = pygame.Rect(list_rect.right - 6, list_y, 6, list_h)
             pygame.draw.rect(surf, (30, 30, 42), track)
-            frac = list_h / (len(GENERAL_FEATS) * self.ITEM_H)
+            frac = list_h / (len(FEAT_DIALOG_ROWS) * self.ITEM_H)
             th_h = max(20, int(list_h * frac))
             th_y = list_y + int((list_h - th_h) * (self.scroll_y / max_scroll))
             pygame.draw.rect(surf, (110, 110, 150), pygame.Rect(track.x, th_y, track.w, th_h))
@@ -1107,6 +1152,10 @@ class FeatDialog:
 
 # The five elements Elemental Adept may choose (label, MagicDamage_t index).
 ELEMENTAL_ADEPT_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
+
+# Boon of Irresistible Offense — which ability the boon boosted (single-select). Overwhelming
+# Strike deals its natural-20 bonus damage equal to the FULL value of this ability score.
+IRRESISTIBLE_OFFENSE_ABILITY_OPTIONS = [("Strength", 0), ("Dexterity", 1)]
 
 # Dragon ancestry types for Draconic Sorcerer L6 Elemental Affinity (single-select).
 # Excludes Force, Necrotic, Radiant, Thunder — not standard dragon types.
@@ -1575,6 +1624,9 @@ class NamePromptDialog:
 
 # Set of general-feat names (for splitting feats vector between origin + general pickers).
 GENERAL_FEAT_NAMES = {row[0] for row in GENERAL_FEATS}
+# Set of epic-boon feat names. They ride the same stats.feats vector and are selected in
+# the same FeatDialog as general feats, so they share the general-feat picker state.
+EPIC_BOON_FEAT_NAMES = {row[0] for row in EPIC_BOON_FEATS}
 
 
 class StatsDialog:
@@ -1668,6 +1720,7 @@ class StatsDialog:
         self._general_feats      = set()   # selected general feat names
         self._element_dialog     = None    # Elemental Adept element picker (opened from the feat picker)
         self._elemental_adept_types = []   # MagicDamage_t indices chosen for Elemental Adept
+        self._irresistible_offense_ability = 0  # Boon of Irresistible Offense: 0=STR, 1=DEX (Overwhelming Strike)
         self._draconic_affinity_type = -1  # Draconic L6: chosen ancestry element (-1 = not set)
         self._draconic_affinity_btn_rect = None  # "Dragon Ancestry" button rect in draw()
         self._metamagic_options    = []    # Sorcerer Metamagic (list of int MetamagicOption values)
@@ -1694,8 +1747,11 @@ class StatsDialog:
         # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
-        self._general_feats = {f for f in cur_feats if f in GENERAL_FEAT_NAMES}
+        # Epic boons ride the same picker/set as general feats (both live in stats.feats).
+        self._general_feats = {f for f in cur_feats
+                               if f in GENERAL_FEAT_NAMES or f in EPIC_BOON_FEAT_NAMES}
         self._elemental_adept_types = list(stats.elemental_adept_types) if hasattr(stats, 'elemental_adept_types') else []
+        self._irresistible_offense_ability = int(stats.irresistible_offense_ability) if hasattr(stats, 'irresistible_offense_ability') else 0
         self._draconic_affinity_type = int(stats.draconic_affinity_type) if hasattr(stats, 'draconic_affinity_type') else -1
         self._feat_dialog = FeatDialog(self.font_sm, self.font_md)
         self._element_dialog = ElementPickerDialog(self.font_sm, self.font_md)
@@ -2042,10 +2098,23 @@ class StatsDialog:
                                           title="Elemental Adept — element(s)")
         else:
             self._elemental_adept_types = []
+        # Boon of Irresistible Offense: pick which score Overwhelming Strike reads (STR or DEX).
+        # (Shares the single element picker; if both this boon and Elemental Adept are selected, the
+        # Elemental Adept picker above takes precedence for this open — a rare level-19+ combination.)
+        if "Boon of Irresistible Offense" in self._general_feats:
+            if self._element_dialog and "Elemental Adept" not in self._general_feats:
+                self._element_dialog.show(self._on_boon_ability_chosen,
+                                          IRRESISTIBLE_OFFENSE_ABILITY_OPTIONS,
+                                          current_values=[self._irresistible_offense_ability], multi=False,
+                                          title="Irresistible Offense — ability score")
 
     def _on_elements_chosen(self, values):
         """Callback from the element picker: store the chosen MagicDamage_t indices."""
         self._elemental_adept_types = list(values)
+
+    def _on_boon_ability_chosen(self, values):
+        """Callback from the ability picker: store which score Overwhelming Strike uses (0=STR, 1=DEX)."""
+        self._irresistible_offense_ability = values[0] if values else 0
 
     def _on_draconic_elem_chosen(self, values):
         """Callback from the Dragon Ancestry element picker (single-select)."""
@@ -2062,7 +2131,7 @@ class StatsDialog:
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options))
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────

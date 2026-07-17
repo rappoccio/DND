@@ -35,6 +35,20 @@ namespace rpg {
 //  G5b feats — caster resistance-ignore / treat-1-as-2 (Elemental Adept + Poisoner)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Boon of the Night Spirit — Shadowy Form: while the boon-holder stands in an area of Dim Light or
+// Darkness, it has Resistance to all damage except Psychic and Radiant. Evaluated at damage time on
+// the DEFENDER's current cell light (the light level, not the obscuration-effect layer), so it turns
+// on and off as the creature moves in and out of shadow. Callers gate the Psychic/Radiant exclusion.
+bool CombatEngine::shadowyFormActive(const BattleMap& bm, int idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (!bm.getAgentStats(idx).hasFeat("Boon of the Night Spirit")) return false;
+    const VisibilityLevel light = bm.getLightLevel(agents[static_cast<std::size_t>(idx)].origin);
+    return light == VisibilityLevel::Dim || light == VisibilityLevel::Dark ||
+           light == VisibilityLevel::MagicalDark;
+}
+
 float CombatEngine::effectiveMagicDamageMult(const Agent::Stats& caster, const Agent::Stats& target,
                                              MagicDamage_t type, bool from_spell,
                                              const BattleMap* bm, int target_idx) const noexcept
@@ -46,10 +60,35 @@ float CombatEngine::effectiveMagicDamageMult(const Agent::Stats& caster, const A
         m > 0.5f && m != 2.0f && hasAuraOfWarding(*bm, target_idx)) {
         m = 0.5f;
     }
+    // Boon of the Night Spirit — Shadowy Form: Resistance to all damage except Psychic and Radiant
+    // while in Dim/Dark. Added before the caster-side bypasses so Elemental Adept can still lift it.
+    // Vulnerability (2.0) is left intact (resistance+vulnerability cancelling isn't modeled), matching
+    // Aura of Warding above.
+    if (bm && target_idx >= 0 && type != Psychic && type != Radiant &&
+        m > 0.5f && m != 2.0f && shadowyFormActive(*bm, target_idx)) {
+        m = 0.5f;
+    }
     if (m > 0.0f && m < 1.0f) {  // Resistance only — leave Immunity (0.0) and Vulnerability untouched
         if (type == Poison && caster.hasFeat("Poisoner")) return 1.0f;            // Potent Poison (any source)
         if (from_spell && caster.hasElementalAdeptType(type)) return 1.0f;        // Elemental Adept (spells)
     }
+    return m;
+}
+
+float CombatEngine::effectivePhysicalDamageMult(const Agent::Stats& attacker, const Agent::Stats& target,
+                                                PhysicalDamage_t type,
+                                                const BattleMap* bm, int target_idx) const noexcept
+{
+    float m = target.physical_damage_multipliers[type];
+    // Boon of the Night Spirit — Shadowy Form: Resistance to B/P/S while the target stands in Dim/Dark.
+    // Added first so a Boon of Irresistible Offense attacker (Overcome Defenses) can still lift it below.
+    // Vulnerability (2.0) is left intact (the resistance+vulnerability cancel isn't modeled).
+    if (bm && target_idx >= 0 && m > 0.5f && m != 2.0f && shadowyFormActive(*bm, target_idx))
+        m = 0.5f;
+    // Boon of Irresistible Offense — Overcome Defenses: B/P/S damage ignores Resistance (0 < m < 1 → 1.0).
+    // Immunity (0.0) and Vulnerability (2.0) stand — the boon lifts Resistance only.
+    if (m > 0.0f && m < 1.0f && attacker.hasFeat("Boon of Irresistible Offense"))
+        return 1.0f;
     return m;
 }
 

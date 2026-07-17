@@ -25,7 +25,7 @@ namespace rpg {
 // each grant Blindsight 10 ft — queried from hasFeat (not blindsight_range) so they
 // round-trip through save/load, which does not serialize the raw sense ranges.
 static bool piercesInvisibility(const Agent::Stats& vs, int dist_ft) noexcept {
-    return vs.truesight_range >= dist_ft || vs.blindsight_range >= dist_ft
+    return vs.effectiveTruesightRange() >= dist_ft || vs.blindsight_range >= dist_ft
         || (dist_ft <= 10 && (vs.hasFeat("Blind Fighting") || vs.hasFeat("Skulker")));
 }
 
@@ -80,7 +80,7 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
     // live light-effect layer instead of the dead obscuration layer.
     const int viewer_size = viewer.agent->getSize();
     const int dv = viewer_stats.darkvision_range;
-    const int ts = viewer_stats.truesight_range;
+    const int ts = viewer_stats.effectiveTruesightRange();
     const int ds = viewer_stats.devilssight_range;
 
     // Iterate through all other agents on the map

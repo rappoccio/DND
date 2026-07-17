@@ -729,6 +729,8 @@ struct InFlightAttack {
     bool unerring_fired{false};     // Oath of Glory L20 Unerring Strike promoted this attack's miss → hit;
                                     // the once-per-turn flag is committed as the LAST attacker-conditions
                                     // write in applyAttackResult (a mid-attack write would be clobbered)
+    bool peerless_fired{false};     // Boon of Combat Prowess (Peerless Aim) promoted this NPC's miss → hit;
+                                    // peerless_aim_used committed as a late attacker-conditions write (as above)
     bool onhit_offered{false};      // the OnHit defender window (Shield / Uncanny Dodge) has been opened once
     // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
@@ -998,6 +1000,11 @@ public:
     // Warlock's next attack/cast, like Invisibility). Returns true if applied, false if the
     // agent isn't an invocation-8 Warlock or isn't standing in dim/dark.
     bool applyOneWithShadows(BattleMap& bm, int idx) noexcept;
+
+    // Merge with Shadows (Boon of the Night Spirit): a Bonus Action grants the Invisible condition
+    // while the boon-holder stands in Dim Light or Darkness (ends when it next acts). Returns true if
+    // applied, false if the agent lacks the boon or isn't standing in dim/dark.
+    bool applyMergeWithShadows(BattleMap& bm, int idx) noexcept;
 
     // Sacred Weapon (Paladin Oath of Devotion): Bonus Action, spend 1 Channel Oath use to add
     // +CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires Oath of Devotion
@@ -1736,6 +1743,18 @@ public:
     [[nodiscard]] float effectiveMagicDamageMult(const Agent::Stats& caster, const Agent::Stats& target,
                                                  MagicDamage_t type, bool from_spell,
                                                  const BattleMap* bm = nullptr, int target_idx = -1) const noexcept;
+    // effectivePhysicalDamageMult: the target's B/P/S multiplier for `type`, but Resistance (0 < m < 1)
+    // is lifted to 1.0 when the attacker has the Boon of Irresistible Offense (Overcome Defenses: your
+    // Bludgeoning/Piercing/Slashing damage ignores Resistance). Immunity (0.0) and Vulnerability (2.0)
+    // are untouched. Symmetric to effectiveMagicDamageMult; route ALL physical B/P/S multiplier reads
+    // on the weapon-damage path through it. When bm is non-null and target_idx >= 0, the Boon of the
+    // Night Spirit's Shadowy Form folds in Resistance for a target standing in Dim Light/Darkness.
+    [[nodiscard]] float effectivePhysicalDamageMult(const Agent::Stats& attacker, const Agent::Stats& target,
+                                                    PhysicalDamage_t type,
+                                                    const BattleMap* bm = nullptr, int target_idx = -1) const noexcept;
+    // Boon of the Night Spirit — Shadowy Form: true when agent `idx` holds the boon and its current
+    // cell is Dim Light/Darkness (grants Resistance to all but Psychic/Radiant, folded into the mults).
+    [[nodiscard]] bool shadowyFormActive(const BattleMap& bm, int idx) const noexcept;
     // rollSpellTypeDamage: roll `num_dice` d`die_size`, applying Elemental Adept's "treat a 1 as a 2"
     // for the caster's chosen elements (spells only). Appends each die to `out_dice`; returns the sum.
     // empower_budget: when non-null and > 0, applies Empowered Spell metamagic (see rollDamageDice).
@@ -1760,18 +1779,25 @@ public:
                     const Agent::Stats& attacker,
                     const Agent::Stats& target,
                     AttackResult& result,
-                    bool suppress_positive_mod = false);
+                    bool suppress_positive_mod = false,
+                    const BattleMap* bm = nullptr,
+                    int target_idx = -1);
 
     // Resolve a complete attack (roll to hit, roll damage, compute result).
     // Pure with respect to the target: computes total_damage / hp_after but does
     // NOT mutate the target's HP. The caller applies and persists the damage.
     // attacker_conditions: attacker's conditions (used for Rage bonus, etc.)
+    // bm/target_idx (optional): when supplied, the damage roll can consult the defender's map cell —
+    // used by the Boon of the Night Spirit's Shadowy Form (light-gated Resistance). Callers that have
+    // the target's index (beginAttack et al.) pass them; the rest fall back to the raw multipliers.
     [[nodiscard]] AttackResult resolveAttack(const Weapon& w,
                                               const Agent& attacker,
                                               const Agent& target,
                                               bool advantage = false,
                                               bool disadvantage = false,
-                                              bool suppress_positive_mod = false);
+                                              bool suppress_positive_mod = false,
+                                              const BattleMap* bm = nullptr,
+                                              int target_idx = -1);
 
     // ── Class feature helpers ────────────────────────────────────────────
 
@@ -2006,6 +2032,9 @@ public:
     // Returns feet moved (>=0) on success, or a negative code: -1 not eligible / invalid,
     // -2 out of range, -3 destination blocked.
     int applyArcaneCharge(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+    // Boon of Dimensional Travel — Blink Steps has no dedicated engine entry: it reuses the existing
+    // teleport primitives (teleportAgent / isValidTeleportDestination / hasLineOfSight) from the GUI,
+    // gated on the blink_steps_available Conditions flag (armed after the Attack/Magic action).
 
     // Psi Warrior Psionic Strike (on-hit): spend one Psionic Energy die to add Force damage
     // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
@@ -3096,6 +3125,17 @@ public:
     // Living Legend (Oath of Glory L20) Unerring Strike: promote the attacker's first weapon miss of the
     // turn into a hit while Living Legend is active. Called right after forceAutoHit in both attack paths.
     void maybeUnerringStrike(BattleMap& bm, InFlightAttack& s);
+    // Boon of Combat Prowess (Peerless Aim): for an NPC boon-holder, auto-promote its first missed weapon
+    // attack of the turn into a hit (once/turn). Called right after maybeUnerringStrike in both attack
+    // paths; no-ops for PCs (they get the deferred peerless_aim_available prompt via applyPeerlessAim).
+    void maybePeerlessAim(BattleMap& bm, InFlightAttack& s);
+    // Peerless Aim eligibility (path-agnostic): the attacker holds Boon of Combat Prowess, is alive, and
+    // has not yet used the once-per-turn miss→hit this turn. Caller confirms the attack actually missed.
+    [[nodiscard]] bool canPeerlessAim(const BattleMap& bm, int attacker_idx) const;
+    // Boon of Combat Prowess (Peerless Aim) — post-hoc GUI entry point. After a miss the engine flags
+    // peerless_aim_available; the GUI prompts and calls this to turn the miss into a hit: sets
+    // peerless_aim_used, rolls + applies weapon damage, and updates result (mirrors applyGuidedStrike).
+    void applyPeerlessAim(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
     // "Auto-use-when-grappling" intent (Vampire Bite auto-offer/auto-attempt). For attacker `atk`,
     // scan its weapons for one flagged auto_use_when_grappling and find a legal victim it is currently
     // Grappling (alive, not tombstoned, in reach of that weapon). Returns {weapon_slot, victim_idx},

@@ -78,7 +78,7 @@ void CombatEngine::updateDarknessBlinding(BattleMap& bm, int agent_idx) noexcept
     } else if (light == VisibilityLevel::HeavilyObscured) {
         // Fog/smoke (non-magical heavy obscurement): blinded unless Truesight/Blindsight. Neither
         // darkvision nor devil's sight pierces a physical cloud.
-        should_be_blinded = (stats.truesight_range == 0 && stats.blindsight_range == 0);
+        should_be_blinded = (stats.effectiveTruesightRange() == 0 && stats.blindsight_range == 0);
     } else if (light == VisibilityLevel::Dark) {
         // Heavily Obscured by Darkness: blinded unless have darkvision
         should_be_blinded = (stats.darkvision_range == 0);
