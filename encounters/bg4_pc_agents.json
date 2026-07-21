@@ -12,7 +12,7 @@
       "npc_automation_difficulty_level": 0,
       "npc_automation_strategy": 0,
       "stats": {
-        "str": 25,
+        "str": 26,
         "dex": 14,
         "con": 25,
         "intel": 8,
@@ -62,11 +62,13 @@
           "Weapon Mastery",
           "Savage Attacker",
           "Athlete",
+          "Boon of Irresistible Offense",
           "Great Weapon Master",
           "Speedy"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
+        "irresistible_offense_ability": 0,
         "metamagic_options": [],
         "draconic_hp_applied": false,
         "draconic_affinity_type": -1,
@@ -400,12 +402,14 @@
         "available_hit_points": 0,
         "feats": [
           "Alert",
+          "Boon of Spell Recall",
           "Spell Sniper",
           "Telekinetic",
           "War Caster"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
+        "irresistible_offense_ability": 0,
         "metamagic_options": [
           1,
           5,
@@ -484,7 +488,8 @@
         "Wish",
         "Power Word Kill",
         "Earthquake",
-        "Teleport"
+        "Teleport",
+        "Shield"
       ],
       "items": [
         {
@@ -616,7 +621,7 @@
         "regeneration_amount": 0,
         "regen_interrupt_damage_types": [],
         "has_cunning_action": true,
-        "has_offhand_attack": true,
+        "has_offhand_attack": false,
         "has_sentinel": false,
         "has_branches_of_the_tree": false,
         "spellcasting_ability": "cha",
@@ -626,10 +631,12 @@
           "Alert",
           "Weapon Mastery",
           "Archery",
+          "Boon of the Night Spirit",
           "Sharpshooter"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
+        "irresistible_offense_ability": 0,
         "metamagic_options": [],
         "draconic_hp_applied": false,
         "draconic_affinity_type": -1,
@@ -966,12 +973,14 @@
         "available_hit_points": 0,
         "feats": [
           "Tough",
+          "Boon of Dimensional Travel",
           "Heavily Armored",
           "Shield Master",
           "War Caster"
         ],
         "stolen_spell_names": [],
         "elemental_adept_types": [],
+        "irresistible_offense_ability": 0,
         "metamagic_options": [],
         "draconic_hp_applied": false,
         "draconic_affinity_type": -1,

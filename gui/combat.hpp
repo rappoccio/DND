@@ -1090,6 +1090,13 @@ public:
     // Magic Sorcerer, or not enough Sorcery Points).
     int sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept;
 
+    // Boon of Fate (epic boon — Improve Fate): once per short-or-long rest (also refreshed at
+    // initiative), roll 2d4 and apply it as a bonus (boost=true) or penalty (boost=false) to the
+    // next D20 Test (attack roll or saving throw), via the pending_roll_bonus_ path — the same
+    // primitive Bend Luck / Bardic Inspiration / Cutting Words use. Returns the 2d4 value rolled,
+    // or 0 on failure (no Boon of Fate feat, or the use is already spent this rest).
+    int applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept;
+
     // Wild Magic Surge (Sorcerer L3+, College of Wild Magic): roll d100 on the curated surge
     // table and return the classified effect band (1-10) + description. The effect itself is
     // applied by the caller (see known_limitations.md). effect == 0 if the agent is not a

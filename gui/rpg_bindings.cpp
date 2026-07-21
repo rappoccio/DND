@@ -630,6 +630,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Lucky feat: current Luck Points (spent for Advantage; regained on a Long Rest)")
         .def_readwrite("luck_points_max", &Agent::Stats::luck_points_max,
              "Lucky feat: maximum Luck Points (= proficiency bonus)")
+        .def_readwrite("boon_of_fate_used", &Agent::Stats::boon_of_fate_used,
+             "Boon of Fate (epic boon): whether the 1/rest Improve Fate use is spent "
+             "(reset on short/long rest and at initiative). Available == has feat and not used.")
         .def_readwrite("fiendish_resilience_type", &Agent::Stats::fiendish_resilience_type,
              "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
@@ -2344,6 +2347,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Bend Luck (Wild Magic Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply\n"
              "it as a bonus (boost=True) or penalty (boost=False) to the next D20 Test. Returns\n"
              "the 1d4 value, or 0 on failure (not a L6+ Wild Magic Sorcerer, or no Sorcery Point).")
+        .def("apply_boon_of_fate",
+             &CombatEngine::applyBoonOfFate,
+             py::arg("battle_map"), py::arg("idx"), py::arg("boost"),
+             "Boon of Fate (epic boon — Improve Fate): once per short-or-long rest (refreshed at\n"
+             "initiative), roll 2d4 and apply it as a bonus (boost=True) or penalty (boost=False)\n"
+             "to the next D20 Test (attack roll or saving throw). Returns the 2d4 value, or 0 on\n"
+             "failure (no Boon of Fate feat, or the use is already spent this rest).")
         .def("roll_wild_magic_surge",
              &CombatEngine::rollWildMagicSurge,
              py::arg("battle_map"), py::arg("idx"),

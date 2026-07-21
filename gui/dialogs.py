@@ -954,7 +954,7 @@ EPIC_BOON_FEATS = [
     ("Boon of Dimensional Travel", "in",   "Blink Steps: teleport 30 ft after your action"),
     ("Boon of Spell Recall",       "in",   "Free Casting: 1d4=slot lvl 1-4 → slot retained"),
     ("Boon of the Night Spirit",   "in",   "Merge with Shadows (invis) + Shadowy Form resist"),
-    ("Boon of Fate",               "soon", "Improve Fate: 2d4 ± a D20 Test within 60 ft, 1/rest"),
+    ("Boon of Fate",               "in",   "Improve Fate: 2d4 ± your own attack roll / saving throw, 1/rest"),
 ]
 
 

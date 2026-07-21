@@ -1442,6 +1442,10 @@ class App:
         self.btn_cbt_tides_of_chaos = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Tides of Chaos",
                                           (120, 70, 200), (150, 100, 230), self.font_md)
+        # Boon of Fate (epic boon): prime ±2d4 on the next D20 Test (1/rest).
+        self.btn_cbt_boon_of_fate = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Boon of Fate (2d4)",
+                                          (150, 120, 40), (190, 155, 60), self.font_md)
         self.btn_cbt_trance_of_order = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Trance of Order",
                                           (70, 110, 180), (100, 145, 215), self.font_md)
@@ -12026,6 +12030,7 @@ class App:
                     "revelation_prior_truesight": s.revelation_prior_truesight,
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
+                    "boon_of_fate_used": s.boon_of_fate_used,
                     "primal_champion_applied": s.primal_champion_applied,
                     "relentless_rage_dc": s.relentless_rage_dc,
                     # Legendary Actions & Resistance — written in the bestiary meta.legendary shape so
@@ -16607,6 +16612,17 @@ class App:
                         self.btn_cbt_bend_luck.draw(self.screen)
                         y += B + gap
 
+            # Boon of Fate (epic boon — Improve Fate): prime ±2d4 on the next D20 Test (1/rest,
+            # refreshed at initiative). Shown while the current agent has the feat and an unspent use.
+            if 0 <= cur_idx < len(agents):
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if stats.has_feat("Boon of Fate") and not stats.boon_of_fate_used:
+                    self.btn_cbt_boon_of_fate.rect.x = lx
+                    self.btn_cbt_boon_of_fate.rect.y = y
+                    self.btn_cbt_boon_of_fate.rect.w = W
+                    self.btn_cbt_boon_of_fate.draw(self.screen)
+                    y += B + gap
+
             # Wild Magic Sorcerer L3+ Tides of Chaos (no action cost): Advantage on the next D20
             # Test. Shown only when the use is available (recharges on long rest / Wild Magic Surge).
             if 0 <= cur_idx < len(agents):
@@ -19588,6 +19604,26 @@ class App:
                                 (px, py),
                                 [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
                                  ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
+                                self.screen.get_size())
+                    if self.btn_cbt_boon_of_fate.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            def _apply_boon_of_fate(boost, idx=idx):
+                                v = self.combat.apply_boon_of_fate(self.bm, idx, boost)
+                                if v > 0:
+                                    sign = "+" if boost else "-"
+                                    self._combat_log_add(
+                                        f"{self.bm.placed_agents[idx].name}: Boon of Fate — {sign}{v} "
+                                        f"to the next D20 Test (attack roll or saving throw)")
+                                    self._flush_combat_log()
+                                else:
+                                    self._combat_log_add("Boon of Fate: not available (no feat / already used this rest)")
+                                    self._flush_combat_log()
+                            px, py = event.pos
+                            self.context_menu.show(
+                                (px, py),
+                                [("Boost (+2d4)", lambda: _apply_boon_of_fate(True)),
+                                 ("Penalty (-2d4)", lambda: _apply_boon_of_fate(False))],
                                 self.screen.get_size())
                     if self.btn_cbt_tides_of_chaos.clicked(event):
                         idx = self._current_agent_idx()

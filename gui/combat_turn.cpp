@@ -96,6 +96,13 @@ InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_i
     e.modifier = s.initiativeModifier();
     e.total    = e.d20 + e.modifier;
 
+    // ── Boon of Fate (epic boon): refresh the once-per-combat use at initiative ─
+    // ("reset at initiative", independent of the short/long-rest recharge).
+    if (s.hasFeat("Boon of Fate") && s.boon_of_fate_used) {
+      s.boon_of_fate_used = false;
+      const_cast<BattleMap&>(bm).setAgentStats(agent_idx, s);
+    }
+
     // ── Monk L15 Perfect Focus: regain focus on initiative if below max ────────
     if (s.character_class == CharacterClass::Monk && s.char_level >= 15) {
       auto fp_res = s.resources.find("Focus Points");

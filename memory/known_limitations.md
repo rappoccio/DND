@@ -1094,10 +1094,19 @@ Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
   with the general-feat rule (`feat_system.md`: ASI is not auto-applied), boons implement only their
   special benefit; the "+1 to 30" is set via the ability steppers. The stepper cap is left unchanged
   (not raised to 30 automatically for boon-holders).
-- **Boon of Fate (Improve Fate) — attacks + saves only.** RAW triggers on **any D20 Test** within
-  60 ft (attack rolls, saving throws, *and ability checks*). We implement the 2d4 ± nudge on attack
-  rolls and saving throws only (1/rest); **ability checks are not covered** — they are barely modeled
-  in the combat sim.
+- **Boon of Fate (Improve Fate) — attacks + saves, self-primed on your turn; NPC auto deferred.**
+  RAW triggers on **any D20 Test by you or a creature within 60 ft** (attack rolls, saving throws,
+  *and ability checks*), reactively after the roll. Implemented (2026-07-21) as `applyBoonOfFate` —
+  a **Boon of Fate (2d4)** GUI button on the holder's turn that primes ±2d4 on the **next** D20 Test
+  via the shared `pending_roll_bonus_` primitive (same path as Bend Luck / Bardic Inspiration /
+  Cutting Words), 1/short-or-long rest (also refreshed at initiative, `boon_of_fate_used`). Scope
+  gaps: (a) **ability checks not covered** (barely modeled in the sim); (b) **prime-before-roll, own
+  turn only** — like Bend Luck, the nudge is committed to the *next* d20, so it naturally covers the
+  holder's own attack rolls; boosting one's own **saving throw** works only if the holder primed it
+  on their turn and their next d20 is that save (saves fire on the enemy's turn, so there is no
+  reactive post-save prompt); the "any creature within 60 ft" targeting is not surfaced (you effectively
+  aid/hinder whoever rolls the next d20 — normally yourself). (c) **NPC auto-use deferred** — the
+  `runNpcTurn` driver never spends Boon of Fate (no heuristic for when the ±2d4 is worth the 1/rest use).
 - **Boon of Dimensional Travel (Blink Steps) — PC only (NPC reposition deferred).** The ≤30-ft
   post-action teleport is fully wired for PCs (the **✦ Blink Steps** button + a destination pick that
   reuses `teleport_agent` / `is_valid_teleport_destination` / `has_line_of_sight`), armed after the

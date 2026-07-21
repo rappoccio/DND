@@ -65,6 +65,7 @@ test_scripts = [
     "test_epic_boons_e1.py",
     "test_epic_boons_e2.py",
     "test_epic_boons_e3.py",
+    "test_epic_boons_e4.py",
     "test_element_spells.py",
     "test_fighting_styles.py",
     "test_dual_wield.py",

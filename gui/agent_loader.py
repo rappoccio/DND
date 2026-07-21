@@ -100,6 +100,7 @@ def dict_to_stats(stats_dict):
     stats.revelation_prior_truesight = int(stats_dict.get("revelation_prior_truesight", 0))
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
+    stats.boon_of_fate_used = bool(stats_dict.get("boon_of_fate_used", False))
     # Barbarian L20 Primal Champion and L11 Relentless Rage
     stats.primal_champion_applied = bool(stats_dict.get("primal_champion_applied", False))
     stats.relentless_rage_dc = int(stats_dict.get("relentless_rage_dc", 10))

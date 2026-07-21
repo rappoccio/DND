@@ -667,6 +667,13 @@ namespace rpg {
       int luck_points{0};
       int luck_points_max{0};
 
+      // ── Boon of Fate (epic boon) ────────────────────────────────────────
+      // Improve Fate: 1/short-or-long rest, roll 2d4 and apply ± to a D20 Test
+      // (attack roll or saving throw) via the pending_roll_bonus_ path. Tracks
+      // whether the single use has been spent since the last rest / combat start.
+      // Available == hasFeat("Boon of Fate") && !boon_of_fate_used.
+      bool boon_of_fate_used{false};
+
       // Grant a feat and apply its one-time stat-derived effects. Call AFTER ability
       // scores, level, and prof_bonus are set (the GUI assigns feats at the end of
       // configuration). Restoring from a save sets the `feats` list directly instead —
@@ -710,6 +717,7 @@ namespace rpg {
           res.restore_long_rest();
         }
         luck_points = luck_points_max;   // Lucky feat: Luck Points regained on a Long Rest
+        boon_of_fate_used = false;        // Boon of Fate: the once-per-rest use refreshes
       }
 
       // Short rest: restore some resources (e.g., Focus Points for Monk)
@@ -720,6 +728,7 @@ namespace rpg {
         for (auto& [name, res] : resources) {
           res.restore_short_rest();
         }
+        boon_of_fate_used = false;        // Boon of Fate: recharges on a short rest too
       }
 
       // Called at end of turn to tick down duration-based resources

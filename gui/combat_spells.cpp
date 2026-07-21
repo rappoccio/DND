@@ -3647,6 +3647,34 @@ int CombatEngine::sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept
     return value;
 }
 
+int CombatEngine::applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept
+{
+    // Boon of Fate — Improve Fate (SRD 5.2 p.88). Roll 2d4 and apply ± to the NEXT D20 Test
+    // (attack roll or saving throw) via the shared pending_roll_bonus_ primitive; 1/short-or-long
+    // rest (also refreshed at initiative). Mirrors Bend Luck (2d4 instead of 1d4, feat-gated).
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (!stats.hasFeat("Boon of Fate")) {
+        log_("{} does not have the Boon of Fate", agentName(bm, idx));
+        return 0;
+    }
+    if (stats.boon_of_fate_used) {
+        log_("{} has already used Boon of Fate since the last rest", agentName(bm, idx));
+        return 0;
+    }
+
+    int value = roll(4) + roll(4);                       // 2d4
+    pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
+    stats.boon_of_fate_used = true;
+    bm.setAgentStats(idx, stats);
+
+    log_("{} invokes Boon of Fate: {}{} to the next D20 Test (attack roll or saving throw)",
+         agentName(bm, idx), boost ? "+" : "-", value);
+    return value;
+}
+
 std::string CombatEngine::wildMagicSurgeDescription(int effect) noexcept
 {
     // Curated d100 surge table (bands of 10 → effect 1-10). Applying each effect is the
