@@ -3,6 +3,10 @@
 
 namespace rpg{
 
+// Diagnostic verbosity gate (defined in battle_map.cpp). The ConfiguredAgent action stubs below
+// print "[name] …" traces to stdout; those are silenced in headless/test runs when this is false.
+bool battleMapVerbose() noexcept;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ConfiguredAgent class
@@ -47,17 +51,17 @@ public:
     std::string_view treasure()         const noexcept override { return treasure_; }
     std::string_view languages()        const noexcept override { return languages_; }
   
-    void takeTurn()    override { std::cout << "[" << name_ << "] awaiting input...\n"; }
-    void action()      override { std::cout << "[" << name_ << "] action\n"; }
-    void attack()      override { std::cout << "[" << name_ << "] attack\n"; }
-    void dash()        override { conditions_.dashing = true;  std::cout << "[" << name_ << "] dash\n"; }
-    void disengage()   override { conditions_.disengaging = true; std::cout << "[" << name_ << "] disengage\n"; }
-    void dodge()       override { conditions_.dodging = true;  std::cout << "[" << name_ << "] dodge\n"; }
-    void hide()        override { conditions_.hidden  = true;  std::cout << "[" << name_ << "] hide\n"; }
-    void bonusAction() override { std::cout << "[" << name_ << "] bonusAction\n"; }
-    void walk()        override { std::cout << "[" << name_ << "] walk\n"; }
-    void fly()         override { std::cout << "[" << name_ << "] fly\n"; }
-    void reaction()    override { std::cout << "[" << name_ << "] reaction\n"; }
+    void takeTurn()    override { if (battleMapVerbose()) std::cout << "[" << name_ << "] awaiting input...\n"; }
+    void action()      override { if (battleMapVerbose()) std::cout << "[" << name_ << "] action\n"; }
+    void attack()      override { if (battleMapVerbose()) std::cout << "[" << name_ << "] attack\n"; }
+    void dash()        override { conditions_.dashing = true;  if (battleMapVerbose()) std::cout << "[" << name_ << "] dash\n"; }
+    void disengage()   override { conditions_.disengaging = true; if (battleMapVerbose()) std::cout << "[" << name_ << "] disengage\n"; }
+    void dodge()       override { conditions_.dodging = true;  if (battleMapVerbose()) std::cout << "[" << name_ << "] dodge\n"; }
+    void hide()        override { conditions_.hidden  = true;  if (battleMapVerbose()) std::cout << "[" << name_ << "] hide\n"; }
+    void bonusAction() override { if (battleMapVerbose()) std::cout << "[" << name_ << "] bonusAction\n"; }
+    void walk()        override { if (battleMapVerbose()) std::cout << "[" << name_ << "] walk\n"; }
+    void fly()         override { if (battleMapVerbose()) std::cout << "[" << name_ << "] fly\n"; }
+    void reaction()    override { if (battleMapVerbose()) std::cout << "[" << name_ << "] reaction\n"; }
 
 private:
     std::string name_;

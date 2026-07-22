@@ -4606,6 +4606,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Expose params so Python can tune detection
         .def_readwrite("params", &BattleMap::params);
 
+    // ── Diagnostic verbosity ──────────────────────────────────────────────
+    m.def("set_battlemap_verbose", &setBattleMapVerbose, py::arg("on"),
+          "Enable/disable the '[BattleMap] …' stdout diagnostics printed during grid/wall\n"
+          "analysis and agent placement. An explicit call wins over the RPG_QUIET environment\n"
+          "variable. Call set_battlemap_verbose(False) for quiet headless/test runs.");
+    m.def("get_battlemap_verbose", &battleMapVerbose,
+          "Whether '[BattleMap] …' stdout diagnostics are currently enabled.");
+
     // ── Map Configuration Functions ───────────────────────────────────────
     m.def("apply_terrain_configuration", &applyTerrainConfiguration,
          py::arg("bm"), py::arg("json_path"),

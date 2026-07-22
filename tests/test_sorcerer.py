@@ -1414,7 +1414,7 @@ def test_dragon_wings():
 def test_aberrant_psionic_spells_data():
     """Aberrant Mind psionic spell table references spells that exist in spells.json."""
     import json, pathlib
-    spells_path = pathlib.Path(__file__).parent / "spells.json"
+    spells_path = pathlib.Path(__file__).parent.parent / "gui" / "spells.json"
     with spells_path.open() as f:
         raw = json.load(f)
     spell_list = raw if isinstance(raw, list) else raw.get("spells", [])
@@ -1693,7 +1693,7 @@ def _clock_greataxe():
 def test_clockwork_spells_data():
     """Clockwork Soul Clockwork-spell table references spells that all exist in spells.json."""
     import json, pathlib
-    spells_path = pathlib.Path(__file__).parent / "spells.json"
+    spells_path = pathlib.Path(__file__).parent.parent / "gui" / "spells.json"
     with spells_path.open() as f:
         raw = json.load(f)
     spell_list = raw if isinstance(raw, list) else raw.get("spells", [])

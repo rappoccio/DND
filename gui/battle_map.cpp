@@ -9,14 +9,41 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <format>
+#include <iostream>
 #include <queue>
 #include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 
 namespace rpg {
+
+// ── Diagnostic verbosity gate (see battle_map.hpp) ─────────────────────────
+// -1 = follow the environment (default); 0/1 = explicit override set from Python.
+namespace {
+int g_verboseOverride = -1;
+}
+
+void setBattleMapVerbose(bool on) noexcept { g_verboseOverride = on ? 1 : 0; }
+
+bool battleMapVerbose() noexcept
+{
+    if (g_verboseOverride >= 0) return g_verboseOverride != 0;
+    const char* q = std::getenv("RPG_QUIET");
+    return !(q && *q && std::string_view{q} != "0");   // RPG_QUIET set (non-empty, not "0") ⇒ quiet
+}
+
+// std::cout-style diagnostic that is silenced unless battleMapVerbose(). Replaces the raw
+// `std::cout << std::format(...)` calls throughout this file so all "[BattleMap] …" noise is gated.
+template <class... A>
+static void bmlog(std::format_string<A...> fmt, A&&... args)
+{
+    if (battleMapVerbose())
+        std::cout << std::format(fmt, std::forward<A>(args)...);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 BattleMap::BattleMap(std::filesystem::path p) : mapImagePath_{std::move(p)}
@@ -68,7 +95,7 @@ static void detectGridLines(const cv::Mat& gray,
     }
     outH = clusterLines(rawH);
     outV = clusterLines(rawV);
-    std::cout << std::format("[BattleMap] {} h-lines, {} v-lines detected\n",
+    bmlog("[BattleMap] {} h-lines, {} v-lines detected\n",
                  outH.size(), outV.size());
 }
 
@@ -113,7 +140,7 @@ void BattleMap::analyzeGrid()
     // Reset fog-of-war explored mask (all fogged) for the new grid dimensions.
     explored_.assign(static_cast<std::size_t>(rows_ * cols_), 0);
 
-    std::cout << std::format("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
+    bmlog("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
 
 void BattleMap::setUniformGrid(int cellPx, int anchorX, int anchorY)
@@ -156,7 +183,7 @@ void BattleMap::setUniformGrid(int cellPx, int anchorX, int anchorY)
 
     clearWalls();
 
-    std::cout << std::format("[BattleMap] Manual grid {}×{}, {}px/cell (phase {},{})\n",
+    bmlog("[BattleMap] Manual grid {}×{}, {}px/cell (phase {},{})\n",
                  cols_, rows_, cellPx_, px, py);
 }
 
@@ -191,7 +218,7 @@ static void detectDarkCells(const cv::Mat& gray,
             }
         }
     }
-    std::cout << std::format("[BattleMap] {} dark (wall) cells detected (threshold={})\n",
+    bmlog("[BattleMap] {} dark (wall) cells detected (threshold={})\n",
                  count, darkThreshold);
 }
 
@@ -238,7 +265,7 @@ static void detectEdgeWalls(const cv::Mat& gray,
                              hLines[r], hLines[r+1], wallMinPx))
                 walls.push_back({{c,r},{c+1,r}});
 
-    std::cout << std::format("[BattleMap] {} edge walls detected\n", walls.size());
+    bmlog("[BattleMap] {} edge walls detected\n", walls.size());
 }
 
 void BattleMap::floodFillPassable()
@@ -273,7 +300,7 @@ void BattleMap::floodFillPassable()
             Cell cell{c,r};
             if (!passable.contains(cell)) disallowed_.insert(cell);
         }
-    std::cout << std::format("[BattleMap] {} disallowed cells\n", disallowed_.size());
+    bmlog("[BattleMap] {} disallowed cells\n", disallowed_.size());
 }
 
 void BattleMap::detectWalls()
@@ -346,7 +373,7 @@ void BattleMap::applyAgentConfigs()
     for (const auto& cfg : agentConfigs_) {
         Cell origin{cfg.startCol, cfg.startRow};
         if (isBlocked(origin, cfg.size)) {
-            std::cout << std::format("[BattleMap] '{}' skipped – blocked\n", cfg.name);
+            bmlog("[BattleMap] '{}' skipped – blocked\n", cfg.name);
             continue;
         }
         auto tok = std::make_shared<ConfiguredAgent>(
@@ -360,14 +387,14 @@ void BattleMap::applyAgentConfigs()
         pa.origin = origin;
         placedAgents_.push_back(std::move(pa));
     }
-    std::cout << std::format("[BattleMap] {} agents placed\n", placedAgents_.size());
+    bmlog("[BattleMap] {} agents placed\n", placedAgents_.size());
 }
 
 int BattleMap::spawnAgent(const AgentConfig& cfg)
 {
     Cell origin{cfg.startCol, cfg.startRow};
     if (isBlocked(origin, cfg.size)) {
-        std::cout << std::format("[BattleMap] spawn '{}' failed – blocked\n", cfg.name);
+        bmlog("[BattleMap] spawn '{}' failed – blocked\n", cfg.name);
         return -1;
     }
     // Reject a cell already occupied by a live agent's footprint (a tombstoned/dismissed
@@ -378,7 +405,7 @@ int BattleMap::spawnAgent(const AgentConfig& cfg)
         int psize = pa.agent->getSize();
         if (origin.col < pa.origin.col + psize && origin.col + cfg.size > pa.origin.col &&
             origin.row < pa.origin.row + psize && origin.row + cfg.size > pa.origin.row) {
-            std::cout << std::format("[BattleMap] spawn '{}' failed – cell occupied\n", cfg.name);
+            bmlog("[BattleMap] spawn '{}' failed – cell occupied\n", cfg.name);
             return -1;
         }
     }

@@ -119,8 +119,10 @@ def test_empty_slot_segment_skipped():
     npc = add_agent_to_battle(engine, bm, create_test_agent("Brute", 6, 5))
     foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 7, 5), hp=1000)
     bm.set_agent_faction(npc, 1); bm.set_agent_faction(foe, 2)
-    # slot 1 left empty (default Weapon, name == "")
-    engine.set_agent_weapons(bm, npc, [_fixed_weapon("Club", 4), rpg.Weapon(), rpg.Weapon()])
+    # slot 1 left empty — a bare rpg.Weapon() defaults name to "Unarmed", so blank the name explicitly
+    # (the engine's empty-slot ruling keys off name.empty()).
+    _empty = rpg.Weapon(); _empty.name = ""
+    engine.set_agent_weapons(bm, npc, [_fixed_weapon("Club", 4), _empty, rpg.Weapon()])
     _set_recipe(engine, bm, npc, [(1, 2), (0, 1)], num_attacks=3)
     _automate(bm, npc)
 

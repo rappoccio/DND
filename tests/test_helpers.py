@@ -9,6 +9,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import rpg_battle_map as rpg
 
+# Silence the C++ map layer's "[BattleMap] …" stdout diagnostics during tests. Guarded so the
+# suite still runs against an older .so built before the binding existed. (The runner also sets
+# RPG_QUIET=1 in each subprocess env, covering suites that don't import this module.)
+if hasattr(rpg, "set_battlemap_verbose"):
+    rpg.set_battlemap_verbose(False)
+
 # Test map and configuration paths (relative to project root, one level up from tests/)
 import os
 _script_dir = os.path.dirname(os.path.abspath(__file__))

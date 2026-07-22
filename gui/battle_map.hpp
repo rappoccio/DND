@@ -27,6 +27,16 @@
 
 namespace rpg {
 
+// ── Diagnostic verbosity gate ─────────────────────────────────────────────
+// The map layer prints "[BattleMap] …" diagnostics to stdout during grid/wall
+// analysis and agent placement. That noise is unwanted in headless contexts
+// (test suites, RL rollouts). Verbosity defaults to ON, is suppressed when the
+// environment has RPG_QUIET set to anything but "0"/empty, and can be forced
+// either way from Python via set_battlemap_verbose() (an explicit call wins
+// over the environment).
+void setBattleMapVerbose(bool on) noexcept;
+bool battleMapVerbose() noexcept;
+
 // ── Wall between two adjacent cells ───────────────────────────────────────
 struct Wall {
     Cell a;

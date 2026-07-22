@@ -189,6 +189,9 @@ def run_tests():
     # (spells.json, DND2024_MonsterStats.json, ...) live in gui/. Run each suite
     # with cwd=gui/ so the engine's cwd-relative JSON loads resolve as before.
     gui_dir = os.path.join(os.path.dirname(script_dir), "gui")
+    # Silence the C++ map layer's "[BattleMap] …" stdout diagnostics for every suite (covers even
+    # tests that don't import test_helpers). Honored by battleMapVerbose() in the engine.
+    child_env = os.environ | {"RPG_QUIET": "1"}
     total_passed = 0
     total_failed = 0
     failed_scripts = []
@@ -203,7 +206,7 @@ def run_tests():
         print(f"Running: {script}")
         print(f"{'=' * 70}\n")
 
-        result = subprocess.run([sys.executable, script_path], cwd=gui_dir)
+        result = subprocess.run([sys.executable, script_path], cwd=gui_dir, env=child_env)
 
         if result.returncode != 0:
             failed_scripts.append(script)
