@@ -6298,7 +6298,8 @@
     },
     "spell_indices": [
       "BalorEmanation",
-      "BalorDeathThroes"
+      "BalorDeathThroes",
+      "BalorTeleport"
     ],
     "npc_spell_groups": {
       "99": [
