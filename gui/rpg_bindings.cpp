@@ -747,6 +747,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("open_hand_rider_available", &Agent::Conditions::open_hand_rider_available)
         .def_readwrite("open_hand_rider_used", &Agent::Conditions::open_hand_rider_used)
         .def_readwrite("quivering_palm_available", &Agent::Conditions::quivering_palm_available)
+        .def_readwrite("fleet_step_used", &Agent::Conditions::fleet_step_used)
         .def_readwrite("fanatical_focus_used", &Agent::Conditions::fanatical_focus_used)
         .def_readwrite("brutal_strike_available", &Agent::Conditions::brutal_strike_available)
         .def_readwrite("divine_strike_available", &Agent::Conditions::divine_strike_available)
@@ -3506,6 +3507,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "one of Blinded/Deafened/Paralyzed/Poisoned/Stunned. free=true (only at L11, Flurry of Healing\n"
              "and Harm) folds the heal into a Flurry strike: no Focus Point, no Bonus Action. Returns a\n"
              "HandOfHealingResult.")
+        .def("wholeness_of_body",
+             &CombatEngine::wholenessOfBody,
+             py::arg("battle_map"), py::arg("monk_idx"),
+             "Monk Warrior of the Open Hand — Wholeness of Body (L6+): a Bonus Action spending one use of the\n"
+             "\"Wholeness of Body\" resource (PB per long rest) to heal yourself (Martial Arts die + WIS mod).\n"
+             "Returns the HP restored, or 0 if unavailable.")
         .def("apply_hand_of_harm_effect",
              &CombatEngine::applyHandOfHarmEffect,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("result"),

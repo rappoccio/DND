@@ -1151,6 +1151,9 @@ class App:
         self.btn_cbt_hand_of_healing = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Hand of Healing",
                                           (150, 200, 160), (180, 230, 190), self.font_md)
+        self.btn_cbt_wholeness_of_body = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Wholeness of Body",
+                                          (150, 200, 160), (180, 230, 190), self.font_md)
         # Use Item: drink a carried potion / administer one to an adjacent creature (a Bonus
         # Action), or throw a flask or a Net (replacing one attack of the Attack action). Shown
         # whenever the actor has anything in its pack it can still pay for.
@@ -16396,12 +16399,20 @@ class App:
                         self.btn_cbt_patient_defense.draw(self.screen)
                         y += B + gap
 
-            # Step of the Wind button - Monk (L1+) with Focus Points, bonus action (Disengage + Dash)
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+            # Step of the Wind button - Monk (L1+) with Focus Points, bonus action (Disengage + Dash).
+            # Warrior of the Open Hand L11 Fleet Step: a free Step of the Wind (no Focus / no Bonus
+            # Action, once per turn) — so the button also shows when the bonus action is already spent
+            # or Focus is empty, as long as the free use hasn't been taken this turn.
+            if 0 <= cur_idx < len(agents):
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
                 if stats.character_class == rpg.CharacterClass.Monk:
                     fp = stats.get_resource("Focus Points")
-                    if fp and fp.current > 0:
+                    conds = self.combat.get_agent_conditions(self.bm, cur_idx)
+                    fleet_step_ready = (stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
+                                        stats.char_level >= 11 and not conds.fleet_step_used and
+                                        self.bonus_used)
+                    normal_ready = (not self.bonus_used) and bool(fp and fp.current > 0)
+                    if normal_ready or fleet_step_ready:
                         self.btn_cbt_step_of_wind.rect.x = lx
                         self.btn_cbt_step_of_wind.rect.y = y
                         self.btn_cbt_step_of_wind.rect.w = W
@@ -16421,6 +16432,21 @@ class App:
                         self.btn_cbt_hand_of_healing.rect.y = y
                         self.btn_cbt_hand_of_healing.rect.w = W
                         self.btn_cbt_hand_of_healing.draw(self.screen)
+                        y += B + gap
+
+            # Wholeness of Body button — Warrior of the Open Hand Monk (L6+), bonus-action self-heal
+            # (Martial Arts die + WIS), PB uses per long rest.
+            if 0 <= cur_idx < len(agents) and not self.bonus_used:
+                stats = self.combat.get_agent_stats(self.bm, cur_idx)
+                if (stats.character_class == rpg.CharacterClass.Monk and
+                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
+                        stats.char_level >= 6):
+                    wob = stats.get_resource("Wholeness of Body")
+                    if wob and wob.current > 0:
+                        self.btn_cbt_wholeness_of_body.rect.x = lx
+                        self.btn_cbt_wholeness_of_body.rect.y = y
+                        self.btn_cbt_wholeness_of_body.rect.w = W
+                        self.btn_cbt_wholeness_of_body.draw(self.screen)
                         y += B + gap
 
             # Rage button - only if agent is Barbarian, not raging, and has uses
@@ -19137,8 +19163,29 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
+                            conds = self.combat.get_agent_conditions(self.bm, idx)
+                            # Warrior of the Open Hand L11 Fleet Step: once per turn, Step of the Wind
+                            # is free (no Focus Point, no Bonus Action) when it rides alongside another
+                            # Bonus Action (i.e., the Bonus Action has already been spent this turn).
                             fp = stats.get_resource("Focus Points")
-                            if fp and fp.current > 0:
+                            fleet_step = (stats.character_class == rpg.CharacterClass.Monk and
+                                          stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
+                                          stats.char_level >= 11 and not conds.fleet_step_used and
+                                          self.bonus_used)
+                            can_pay_focus = bool(fp and fp.current > 0)
+                            if fleet_step:
+                                conds.fleet_step_used = True
+                                self.combat.set_agent_conditions(self.bm, idx, conds)
+                                agent = self.bm.placed_agents[idx]
+                                agent.disengage()
+                                self.bm.apply_dash(idx)
+                                self.move_remaining_walk   = agent.walk_remaining
+                                self.move_remaining_fly    = agent.fly_remaining
+                                self.move_remaining_swim   = agent.swim_remaining
+                                self.move_remaining_burrow = agent.burrow_remaining
+                                self._combat_log_add(f"{agent.name}: Fleet Step — free Step of the Wind (disengaging and dashing)")
+                                self._update_reach()
+                            elif can_pay_focus:
                                 self.combat.spend_resource(self.bm, idx, "Focus Points")
                                 agent = self.bm.placed_agents[idx]
                                 agent.disengage()
@@ -19149,7 +19196,17 @@ class App:
                                 self.move_remaining_burrow = agent.burrow_remaining
                                 self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
                                 self._update_reach()
-                            self.bonus_used = True
+                                self.bonus_used = True
+                    if self.btn_cbt_wholeness_of_body.clicked(event):
+                        idx = self._current_agent_idx()
+                        if 0 <= idx < len(self.bm.placed_agents):
+                            healed = self.combat.wholeness_of_body(self.bm, idx)
+                            agent = self.bm.placed_agents[idx]
+                            if healed > 0:
+                                self._combat_log_add(f"{agent.name}: Wholeness of Body — {healed} HP restored")
+                                self.bonus_used = True
+                            else:
+                                self._combat_log_add(f"{agent.name}: Wholeness of Body unavailable.")
                     if self.btn_cbt_hand_of_healing.clicked(event):
                         self.pending_hand_of_healing = True
                         self.hint = "Click target for Hand of Healing"

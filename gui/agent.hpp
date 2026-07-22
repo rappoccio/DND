@@ -842,6 +842,7 @@ namespace rpg {
       bool open_hand_rider_available{false}; // Monk Open Hand: a Flurry hit can apply a rider (Knockdown/Push/Deny Reaction)
       bool open_hand_rider_used{false};     // Monk Open Hand: rider already applied this turn (once per turn)
       bool quivering_palm_available{false}; // Monk Open Hand L17: an unarmed hit can plant Quivering Palm vibrations this attack
+      bool fleet_step_used{false};          // Monk Open Hand L11 Fleet Step: the free Step of the Wind (no Focus / no Bonus Action) has been used this turn
       bool divine_strike_available{false};  // Cleric L7: a weapon hit can apply Divine Strike this attack
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
@@ -1027,6 +1028,7 @@ namespace rpg {
       conditions_.sentinel_guard_available     = false;
       conditions_.soul_of_vengeance_available  = false;
       conditions_.inspiring_smite_used         = false;
+      conditions_.fleet_step_used              = false;  // Monk Open Hand L11: free Step of the Wind refreshes each turn
       conditions_.unerring_strike_used         = false;
       conditions_.peerless_aim_used            = false;  // Boon of Combat Prowess: resets "at the start of your next turn"
       conditions_.peerless_aim_available       = false;

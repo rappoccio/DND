@@ -143,6 +143,20 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
         monk_body_mind_applied = true;
       }
 
+      // ── Warrior of the Open Hand (Phase 4) ───────────────────────────────
+      if (monk_subclass == WarriorOfTheOpenHandPath) {
+        // L6 Wholeness of Body: a Bonus Action self-heal (Martial Arts die + WIS), PB uses / long rest.
+        if (level >= 6) {
+          int wob_uses = 2 + (level - 1) / 4;  // proficiency bonus
+          Resource wob("Wholeness of Body", wob_uses, 0);
+          wob.long_rest_regen = wob_uses;
+          resources["Wholeness of Body"] = wob;
+        }
+        // L11 Fleet Step: whenever you take another Bonus Action, you can also use Step of the Wind
+        // for free (no Focus Point, no Bonus Action). Modeled in the GUI Step-of-the-Wind handler,
+        // gated once per turn by the fleet_step_used condition flag. No resource setup needed here.
+      }
+
       // ── Warrior of Shadow (Phase 1) ──────────────────────────────────────
       // L6 Shadow Step: bonus-action teleport 30 ft in dim/dark + Advantage on next attack
       // (handled in combat_attack.cpp executeAction + determineAdvantage)
@@ -151,6 +165,19 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // L17 Cloak of Shadows: bonus-action Invisibility in dim/dark, expires on light change/attack
       // (handled in combat_turn.cpp beginTurn + combat_attack.cpp executeAction)
       // L3 Shadow Arts: Darkness [OPUS] — deferred to Phase 2 (needs light-effect infra enhancement)
+      // L3 Shadow Arts also grants Darkvision (60 ft; +60 ft if you already have it). Derived here so it
+      // survives save/load re-runs without accumulating (std::max is idempotent).
+      if (monk_subclass == WarriorOfShadowPath && level >= 3) {
+        darkvision_range = std::max(darkvision_range, 60);
+      }
+
+      // ── Warrior of the Elements (Phase 3) ────────────────────────────────
+      // L11 Stride of the Elements: you gain a Fly Speed and a Swim Speed, each equal to your Speed.
+      // Passive; derived from speed_walk (idempotent max, save/load safe like the Thief climb speed).
+      if (monk_subclass == WarriorOfFourElementsPath && level >= 11) {
+        speed_fly  = std::max(speed_fly,  speed_walk);
+        speed_swim = std::max(speed_swim, speed_walk);
+      }
 
       // Unarmored Defense (L1+): AC = 10 + DEX + WIS is applied in the AC calculation
       // (see the Monk branch in computeAC ~combat.cpp:313), so nothing to grant here.

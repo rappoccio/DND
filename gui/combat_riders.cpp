@@ -524,6 +524,38 @@ HandOfHealingResult CombatEngine::handOfHealing(BattleMap& bm, int monk_idx, int
     return res;
 }
 
+int CombatEngine::wholenessOfBody(BattleMap& bm, int monk_idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (monk_idx < 0 || monk_idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats ms = bm.getAgentStats(monk_idx);
+    if (ms.character_class != CharacterClass::Monk ||
+        ms.monk_subclass  != WarriorOfTheOpenHandPath ||
+        ms.char_level < 6) return 0;
+
+    if (!hasBonusAction(bm, monk_idx)) return 0;
+    const Resource* wob = ms.getResource("Wholeness of Body");
+    if (!wob || wob->current <= 0) return 0;
+
+    // Heal = one Martial Arts die + WIS modifier (floored for odd negative scores; minimum 1).
+    int wis_mod = (ms.wis - 10) / 2;
+    if (ms.wis < 10 && (ms.wis - 10) % 2 != 0) --wis_mod;
+    int amount = std::max(1, roll(martialArtsDieSize(ms.char_level)) + wis_mod);
+
+    int before = bm.getAgentStats(monk_idx).hp_cur;
+    healAgent(bm, monk_idx, amount);
+    int healed = bm.getAgentStats(monk_idx).hp_cur - before;
+
+    // Spend the resource first, then the Bonus Action (spendResource re-reads/writes stats; doing it
+    // last would clobber the spendBonusAction decrement — mirrors handOfHealing).
+    spendResource(bm, monk_idx, "Wholeness of Body", 1);
+    spendBonusAction(bm, monk_idx);
+
+    log_("{} uses Wholeness of Body: {} HP restored", agentName(bm, monk_idx), healed);
+    return healed;
+}
+
 GrappleResult CombatEngine::applyPunchAndGrab(BattleMap& bm, int attacker_idx, int target_idx) noexcept
 {
     GrappleResult result;

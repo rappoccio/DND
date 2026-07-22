@@ -446,6 +446,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     cond.retaliation_available = false;   // Berserker L10 Retaliation: stale reaction offer (resets with the reaction)
     cond.retaliation_target_idx = -1;
 
+    // Monk Open Hand L11 Fleet Step: the free Step of the Wind refreshes at the start of each turn.
+    // (Reset here — the runRound batch path also clears it, but the GUI drives turns via beginTurn.)
+    cond.fleet_step_used = false;
+
     if (cond.exhaustion_level >= 6 && stats.hp_cur > 0) {
         stats.hp_cur = 0;
         bm.setAgentStats(agent_idx, stats);
@@ -1085,6 +1089,7 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.open_hand_rider_available = false;
         cond.open_hand_rider_used = false;
         cond.quivering_palm_available = false;
+        cond.fleet_step_used = false;
         cond.hamstrung = false;
         cond.sundering_target_idx = -1;
         cond.staggered_next_save = false;

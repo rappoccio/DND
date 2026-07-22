@@ -1453,6 +1453,103 @@ def test_delayed_effect_auto_detonates_on_expire():
     print("✅ test_delayed_effect_auto_detonates_on_expire passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Warrior of the Open Hand — Wholeness of Body (L6) + Fleet Step marker (L11)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_wholeness_of_body_l6_heals_self():
+    """L6 Wholeness of Body: a Bonus Action self-heal (Martial Arts die + WIS), spends one use."""
+    bm, engine, mon, tgt = _setup(6)
+    _open_hand_monk(engine, bm, mon, 6, wis=14, pb=3)
+    s = engine.get_agent_stats(bm, mon)
+    s.hp_max = 100
+    s.hp_cur = 20
+    engine.set_agent_stats(bm, mon, s)
+
+    wob_before = engine.get_agent_stats(bm, mon).get_resource("Wholeness of Body").current
+    assert wob_before == 3, f"L6 (PB 3) Monk should have 3 Wholeness of Body uses, got {wob_before}"
+
+    healed = engine.wholeness_of_body(bm, mon)
+    # Martial Arts die at L6 is d6 (1..6) + WIS mod (+2) → 3..8; capped by missing HP (80).
+    assert 3 <= healed <= 8, f"Wholeness of Body should heal 3..8 at L6/WIS14, got {healed}"
+    s2 = engine.get_agent_stats(bm, mon)
+    assert s2.hp_cur == 20 + healed, "HP should increase by the healed amount"
+    assert s2.get_resource("Wholeness of Body").current == wob_before - 1, "one use should be spent"
+    print("✅ test_wholeness_of_body_l6_heals_self passed")
+
+
+def test_wholeness_of_body_gating():
+    """Wholeness of Body is unavailable below L6 and for non-Open-Hand Monks."""
+    # L5 Open Hand: too low.
+    bm, engine, mon, tgt = _setup(5)
+    _open_hand_monk(engine, bm, mon, 5, pb=3)
+    assert engine.get_agent_stats(bm, mon).get_resource("Wholeness of Body") is None, \
+        "no Wholeness of Body resource below L6"
+    assert engine.wholeness_of_body(bm, mon) == 0, "Wholeness of Body should be a no-op below L6"
+
+    # L6 Warrior of Shadow: wrong subclass.
+    bm2, engine2, mon2, tgt2 = _setup(6)
+    _shadow_monk(engine2, bm2, mon2, 6)
+    assert engine2.wholeness_of_body(bm2, mon2) == 0, "Wholeness of Body is Open-Hand only"
+    print("✅ test_wholeness_of_body_gating passed")
+
+
+def test_fleet_step_marker_l11():
+    """L11 Fleet Step: the per-turn free-use flag resets at the start of the Monk's turn."""
+    bm, engine, mon, tgt = _setup(11)
+    _open_hand_monk(engine, bm, mon, 11, pb=4)
+    cond = engine.get_agent_conditions(bm, mon)
+    cond.fleet_step_used = True
+    engine.set_agent_conditions(bm, mon, cond)
+
+    engine.begin_turn(bm, mon)
+    assert not engine.get_agent_conditions(bm, mon).fleet_step_used, \
+        "fleet_step_used should reset at the start of the Monk's turn"
+    print("✅ test_fleet_step_marker_l11 passed")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Subclass passive senses / speeds
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_shadow_monk_gains_darkvision():
+    """Shadow Arts (L3) grants Darkvision 60 ft (and does not accumulate on re-init)."""
+    bm, engine, mon, tgt = _setup(3)
+    _shadow_monk(engine, bm, mon, 3)
+    assert engine.get_agent_stats(bm, mon).darkvision_range >= 60, \
+        "Shadow Monk L3 should have at least 60 ft Darkvision"
+
+    # Re-running class init (save/load) must be idempotent, not additive.
+    s = engine.get_agent_stats(bm, mon)
+    s.initialize_class_resources(rpg.CharacterClass.Monk, 3)
+    engine.set_agent_stats(bm, mon, s)
+    assert engine.get_agent_stats(bm, mon).darkvision_range == 60, \
+        "Darkvision should stay 60 ft after re-init, not stack"
+
+    # A non-Shadow Monk gains no Darkvision from the class.
+    bm2, engine2, mon2, tgt2 = _setup(3)
+    assert engine2.get_agent_stats(bm2, mon2).darkvision_range == 0, \
+        "a base Monk gains no Darkvision"
+    print("✅ test_shadow_monk_gains_darkvision passed")
+
+
+def test_stride_of_the_elements_fly_speed():
+    """L11 Stride of the Elements: Fly and Swim speeds equal to walking speed."""
+    bm, engine, mon, tgt = _setup(11)
+    _elements_monk(engine, bm, mon, 11)
+    s = engine.get_agent_stats(bm, mon)
+    assert s.speed_fly >= s.speed_walk > 0, \
+        f"Elements Monk L11 should fly at least its walk speed ({s.speed_fly} vs {s.speed_walk})"
+    assert s.speed_swim >= s.speed_walk, "Stride of the Elements also grants a Swim Speed"
+
+    # Not granted before L11.
+    bm2, engine2, mon2, tgt2 = _setup(6)
+    _elements_monk(engine2, bm2, mon2, 6)
+    assert engine2.get_agent_stats(bm2, mon2).speed_fly == 0, \
+        "Stride of the Elements is not granted below L11"
+    print("✅ test_stride_of_the_elements_fly_speed passed")
+
+
 if __name__ == "__main__":
     test_unarmored_defense()
     test_focus_points_resource()
@@ -1521,4 +1618,11 @@ if __name__ == "__main__":
     test_quivering_palm_one_creature_at_a_time()
     test_quivering_palm_gated_below_l17()
     test_delayed_effect_auto_detonates_on_expire()
+    # Warrior of the Open Hand — Wholeness of Body (L6) + Fleet Step (L11)
+    test_wholeness_of_body_l6_heals_self()
+    test_wholeness_of_body_gating()
+    test_fleet_step_marker_l11()
+    # Subclass passive senses / speeds
+    test_shadow_monk_gains_darkvision()
+    test_stride_of_the_elements_fly_speed()
     print("\n✅ All Monk tests passed!")

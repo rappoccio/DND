@@ -2110,6 +2110,11 @@ public:
     // Flurry of Healing and Harm) to fold the heal into a Flurry strike: no Focus Point and no Bonus Action.
     HandOfHealingResult handOfHealing(BattleMap& bm, int monk_idx, int target_idx, bool free = false) noexcept;
 
+    // Monk Warrior of the Open Hand — Wholeness of Body (L6+): a Bonus Action that spends one use of the
+    // "Wholeness of Body" resource (PB per long rest) to heal yourself (Martial Arts die + WIS mod, min 1).
+    // Returns the HP actually restored, or 0 if unavailable (wrong subclass/level, no uses, no Bonus Action).
+    int wholenessOfBody(BattleMap& bm, int monk_idx) noexcept;
+
     // Monk Warrior of Mercy — Hand of Harm (L3+): once per turn, after a qualifying unarmed hit
     // (hand_of_harm_available), spend 1 Focus Point to add (Martial Arts die + WIS mod) Necrotic damage to
     // the AttackResult and the target's HP. At L6 (Physician's Touch) the target also becomes Poisoned. At
