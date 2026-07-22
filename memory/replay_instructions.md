@@ -10,7 +10,7 @@ expected vs actual). Use it to capture and reproduce combat bugs deterministical
   a per-agent state snapshot) as one JSON event per line. Also holds the shared
   `engine_snapshot()` / `diff_snapshots()` used by both recorder and checker.
 - `gui/replay.py` — the checked replayer (CLI).
-- `gui/test_replay_roundtrip.py` — round-trip test (records, replays=PASS, tamper=FAIL).
+- `tests/test_replay_roundtrip.py` — round-trip test (records, replays=PASS, tamper=FAIL).
 
 ## Recording (automatic)
 The GUI wraps its engine in `RecordingCombat`. Recording starts at combat start (the
@@ -33,7 +33,7 @@ python3 gui/replay.py <map_image> [replay_log.txt] [--check]
   (to match the RNG the recording consumed before recording started), then replays events.
 - After each event it asserts the snapshot matches; on mismatch it prints the diff.
 - `--check`: quiet on success, **exit code 1** on any divergence (CI/bug-test friendly).
-- Run the round-trip self-test: `python3 gui/test_replay_roundtrip.py` (also in the suite).
+- Run the round-trip self-test: `cd gui && python3 ../tests/test_replay_roundtrip.py` (also in the suite).
 
 ## Workflow for a bug report
 1. Launch the GUI, run **one** combat that reproduces the bug, End Combat.

@@ -14,6 +14,6 @@ docker run --rm -v "$HOME":/home/user rpg_map \
            cmake -S ./gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && \
            cmake --build build --parallel && \
            cmake --install build && \
-           cd gui && python3 run_all_tests.py"
+           python3 tests/run_all_tests.py"
 
 echo "[+] All tests passed!"

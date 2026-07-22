@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This includes:
 - `cmake` build commands
 - `python` script execution  
-- `python3 run_all_tests.py` or any test runners
+- `python3 tests/run_all_tests.py` or any test runners
 - `rm`, `rm -rf`, or any destructive file operations
 - `git` commands that modify state
 - Anything that runs code or changes the filesystem
@@ -67,6 +67,18 @@ docker run --rm -p 6080:6080 -v ~/my_maps:/app/maps rpg_map /app/maps/mymap.png
 ```
 
 The container uses Xvfb + x11vnc + noVNC to avoid the XQuartz GLX crash on macOS.
+
+## Tests
+
+The Python unit suite lives in the top-level `tests/` directory (`tests/test_*.py`),
+driven by `tests/run_all_tests.py`. Tests import the compiled `rpg_battle_map`
+module and read data JSONs (`spells.json`, `DND2024_MonsterStats.json`, …) from
+this `gui/` directory: each test prepends `gui/` to `sys.path`, and the runner
+executes every suite with its working directory set to `gui/` so the engine's
+cwd-relative JSON loads resolve. New tests go in `tests/` and must be registered
+in `tests/run_all_tests.py`. Test fixtures (e.g. `*.golden.txt`) live in `tests/`
+alongside their test; shared data JSONs stay in `gui/`. `test_helpers.py` provides
+the common setup helpers.
 
 ## Key Design Decisions
 

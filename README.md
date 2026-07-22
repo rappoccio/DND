@@ -43,10 +43,20 @@ the battle map; the right panel configures and places agents.
 
 ## Test
 
-The suite lives in `gui/test_*.py` (run via `run_all_tests.py`):
+The suite lives in `tests/test_*.py`, driven by `tests/run_all_tests.py`. Build
+the extension and run everything with:
 
 ```bash
 ./test.sh
+```
+
+The tests import the compiled `rpg_battle_map` module and read data files
+(`spells.json`, `DND2024_MonsterStats.json`, …) from `gui/`, so `run_all_tests.py`
+runs each suite with its working directory set to `gui/`. To run a single suite
+directly, do the same:
+
+```bash
+cd gui && python3 ../tests/test_monk.py
 ```
 
 ## Features

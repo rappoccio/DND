@@ -24,7 +24,7 @@ so builds no longer corrupt anything.
   ```
 - Tests:
   ```
-  docker run --rm -v "$HOME":/home/user rpg_map -c "cd /home/user/Claude/DND/gui && python3 run_all_tests.py"
+  docker run --rm -v "$HOME":/home/user rpg_map -c "cd /home/user/Claude/DND && python3 tests/run_all_tests.py"
   ```
 
 **Always hands-off regardless of model:** user owns all git commits (never commit/push); never

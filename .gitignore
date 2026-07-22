@@ -1,6 +1,8 @@
 gui/__pycache__
+tests/__pycache__
 build
 build/*
 combat_log.txt
 *~
 *.so
+*.actual
