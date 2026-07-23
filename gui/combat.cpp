@@ -241,7 +241,10 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
       // rollSpellSave clause; Versatile Trickster (L13) is a determineAdvantage clause keyed on the
       // Mage Hand summon; Spell Thief (L17) is an OnDeclareCast reaction — none need a resource here.
       if (rogue_subclass == ArcaneTricksterPath && level >= 3) {
-        spell_slots_max       = compute_third_caster_slots(level);
+        // Now that the subclass is known, computeMulticlassSlots() sees the AT
+        // third-caster contribution — identical to compute_third_caster_slots(level)
+        // for a single-class AT, and correctly combined for a multiclass caster.
+        spell_slots_max       = computeMulticlassSlots();
         spell_slots_remaining = spell_slots_max;
         spellcasting_ability  = 3;   // 3 = INT (SaveAbility_t::SaveInt), matches Wizard chassis
         can_cast_spell        = true;

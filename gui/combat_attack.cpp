@@ -63,9 +63,9 @@ void CombatEngine::grantDarkOnesBlessing(BattleMap& bm, int victim_idx, int kill
 
     for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
         Agent::Stats ws = bm.getAgentStats(i);
-        if (ws.character_class != CharacterClass::Warlock) continue;
+        if (ws.lacksClass(CharacterClass::Warlock)) continue;
         if (ws.warlock_subclass != FiendPath) continue;
-        if (ws.char_level < 3) continue;
+        if (ws.classLevel(CharacterClass::Warlock) < 3) continue;
         if (ws.hp_cur <= 0) continue;                 // a downed warlock gains nothing
         if (areAllies(bm, i, victim_idx)) continue;   // the fallen creature must be an enemy
 
@@ -81,7 +81,7 @@ void CombatEngine::grantDarkOnesBlessing(BattleMap& bm, int victim_idx, int kill
 
         int chaMod = (ws.cha - 10) / 2;
         if (ws.cha < 10 && (ws.cha - 10) % 2 != 0) --chaMod;
-        const int bonus = std::max(1, chaMod + ws.char_level);
+        const int bonus = std::max(1, chaMod + ws.classLevel(CharacterClass::Warlock));
         grantTempHp(ws, bonus);                       // non-rage source: max() semantics
         bm.setAgentStats(i, ws);
         log_("{}: Dark One's Blessing grants {} temp HP", agentName(bm, i), bonus);
@@ -223,7 +223,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.advantage    = advantage;
     r.attack_mod   = attackModifier(w, attacker) + w.bonus_hit;
     // Paladin Oath of Devotion — Sacred Weapon: while active, add the stored CHA bonus to weapon attack rolls.
-    if (attacker.character_class == CharacterClass::Paladin && attacker.sacred_weapon_turns > 0)
+    if (attacker.hasClass(CharacterClass::Paladin) && attacker.sacred_weapon_turns > 0)
         r.attack_mod += attacker.sacred_weapon_bonus;
     // Bless — a blessed creature adds 1d4 to every attack roll (rolled fresh each attack).
     // Folded into total_roll (not attack_mod) so it shows as its own piece on the to-hit line.
@@ -363,7 +363,7 @@ void CombatEngine::rollDamage(const Weapon& w,
         // Unarmed damage-type override: Monk L6 Empowered Strikes (Force) or Warrior of the Elements
         // L3 Elemental Attunement (chosen Acid/Cold/Fire/Lightning/Thunder). One Stats field holds the
         // active override (-1 = none); the engine treats the overridden physical roll as magic damage.
-        bool use_override = (w.name == "MonkUnarmed" && attacker.character_class == CharacterClass::Monk &&
+        bool use_override = (w.name == "MonkUnarmed" && attacker.hasClass(CharacterClass::Monk) &&
                              attacker.unarmed_damage_override >= 0 &&
                              attacker.unarmed_damage_override < NumMagicDamage_t);
 
@@ -474,7 +474,7 @@ void CombatEngine::rollDamage(const Weapon& w,
     float mod_mult = 1.0f;
     {
         const bool unarmed_override = (w.name == "MonkUnarmed" &&
-            attacker.character_class == CharacterClass::Monk &&
+            attacker.hasClass(CharacterClass::Monk) &&
             attacker.unarmed_damage_override >= 0 &&
             attacker.unarmed_damage_override < NumMagicDamage_t);
         if (unarmed_override) {
@@ -529,8 +529,8 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
     if (s.hp_cur <= 0) {
         Agent::Conditions cond = bm.getAgentConditions(idx);
         if (cond.raging &&
-            s.character_class == CharacterClass::Barbarian &&
-            s.char_level >= 11) {
+            s.hasClass(CharacterClass::Barbarian) &&
+            s.classLevel(CharacterClass::Barbarian) >= 11) {
             // Make a CON save vs Relentless Rage DC
             int save_roll = roll(20, saveModFor(bm, idx, SaveCon));
             if (save_roll >= s.relentless_rage_dc) {
@@ -550,14 +550,14 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
     // drop to 1 HP instead and regain 3× Paladin level HP. Once per long rest. The paladin's own
     // life-save, so it runs before an ally's Rage of the Gods rescue below.
     if (s.hp_cur <= 0) {
-        if (s.character_class == CharacterClass::Paladin &&
+        if (s.hasClass(CharacterClass::Paladin) &&
             s.paladin_oath == OathOfAncientsPath &&
-            s.char_level >= 15 && !s.undying_sentinel_used) {
+            s.classLevel(CharacterClass::Paladin) >= 15 && !s.undying_sentinel_used) {
             s.undying_sentinel_used = true;
-            s.hp_cur = std::min(s.hp_max, 1 + 3 * s.char_level);
+            s.hp_cur = std::min(s.hp_max, 1 + 3 * s.classLevel(CharacterClass::Paladin));
             bm.setAgentStats(idx, s);
             log_("{} refuses to fall (Undying Sentinel): drops to 1 HP and regains {} — now at {} HP",
-                 agentName(bm, idx), 3 * s.char_level, s.hp_cur);
+                 agentName(bm, idx), 3 * s.classLevel(CharacterClass::Paladin), s.hp_cur);
             return s.hp_cur;
         }
     }
@@ -583,7 +583,7 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
             if (std::sqrt(dx * dx + dy * dy) * 5.0f > 30.0f) continue;
 
             // Revive: set HP to the Zealot's Barbarian level; spend the Zealot's reaction + a Rage use.
-            s.hp_cur = std::max(1, zs.char_level);
+            s.hp_cur = std::max(1, zs.classLevel(CharacterClass::Barbarian));
             bm.setAgentStats(idx, s);
             Agent::Stats zs_mut = bm.getAgentStats(static_cast<int>(z));
             zs_mut.resources.at("Rage").current -= 1;
@@ -704,9 +704,9 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
         // Barbarian Rage damage bonus (STR-based attacks only)
         // Applies to melee and thrown weapons (where STR is the primary damage ability)
         if (attacker.getConditions().raging &&
-            attacker.getStats().character_class == CharacterClass::Barbarian &&
+            attacker.getStats().hasClass(CharacterClass::Barbarian) &&
             (w.type == WeaponType::Melee || w.thrown)) {
-            int rage_bonus = getRageDamageBonus(attacker.getStats().char_level);
+            int rage_bonus = getRageDamageBonus(attacker.getStats().classLevel(CharacterClass::Barbarian));
             r.total_damage += rage_bonus;
             r.damage_breakdown.push_back({"rage", rage_bonus});
         }
@@ -748,7 +748,7 @@ bool CombatEngine::canUncannyDodge(const BattleMap& bm, int target_idx) const
     if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
     if (s.hp_cur <= 0) return false;
-    return s.character_class == CharacterClass::Rogue && s.char_level >= 5;
+    return s.hasClass(CharacterClass::Rogue) && s.classLevel(CharacterClass::Rogue) >= 5;
 }
 
 bool CombatEngine::applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResult& r)
@@ -775,8 +775,8 @@ bool CombatEngine::canBeguilingDefenses(const BattleMap& bm, int target_idx) con
     if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
     if (s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Warlock ||
-        s.warlock_subclass != ArchfeyPath || s.char_level < 10) return false;
+    if (s.lacksClass(CharacterClass::Warlock) ||
+        s.warlock_subclass != ArchfeyPath || s.classLevel(CharacterClass::Warlock) < 10) return false;
     // Needs either an unspent use or a Pact Magic slot to restore it (spent as part of the reaction).
     const Resource* bd = s.getResource("Beguiling Defenses");
     const bool has_use = bd && bd->current > 0;
@@ -858,8 +858,8 @@ bool CombatEngine::canSuperiorHunterDefense(const BattleMap& bm, int target_idx)
     if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(target_idx);
     if (s.hp_cur <= 0) return false;
-    return s.character_class == CharacterClass::Ranger &&
-           s.ranger_subclass == HunterPath && s.char_level >= 15;
+    return s.hasClass(CharacterClass::Ranger) &&
+           s.ranger_subclass == HunterPath && s.classLevel(CharacterClass::Ranger) >= 15;
 }
 
 bool CombatEngine::applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, AttackResult& r)
@@ -886,7 +886,7 @@ bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
     if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
     if (s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Fighter || s.fighter_subclass != BattleMasterPath) return false;
+    if (s.lacksClass(CharacterClass::Fighter) || s.fighter_subclass != BattleMasterPath) return false;
     const Resource* sd = s.getResource("Superiority Dice");
     return sd && sd->current > 0;
 }
@@ -924,8 +924,8 @@ bool CombatEngine::canGloriousDefense(const BattleMap& bm, const Attack& action,
     if (!r.hit || r.critical) return false;                // a natural-20 crit auto-hits; can't be flipped
     if (bm.isAgentOnDeck(pal_idx)) return false;
     const Agent::Stats ps = bm.getAgentStats(pal_idx);
-    if (ps.character_class != CharacterClass::Paladin || ps.paladin_oath != OathOfGloryPath ||
-        ps.char_level < 15 || ps.hp_cur <= 0) return false;
+    if (ps.lacksClass(CharacterClass::Paladin) || ps.paladin_oath != OathOfGloryPath ||
+        ps.classLevel(CharacterClass::Paladin) < 15 || ps.hp_cur <= 0) return false;
     const Agent::Conditions pc = bm.getAgentConditions(pal_idx);
     if (!canTakeReaction(pc)) return false;
     const Resource* gd = ps.getResource("Glorious Defense");
@@ -1020,7 +1020,7 @@ bool CombatEngine::canDeflectAttacks(const BattleMap& bm, int defender_idx) cons
     if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
     if (s.hp_cur <= 0) return false;
-    return s.character_class == CharacterClass::Monk && s.char_level >= 3;
+    return s.hasClass(CharacterClass::Monk) && s.classLevel(CharacterClass::Monk) >= 3;
 }
 
 bool CombatEngine::applyDeflectAttacks(BattleMap& bm, int reactor_idx, AttackResult& r)
@@ -1029,15 +1029,15 @@ bool CombatEngine::applyDeflectAttacks(BattleMap& bm, int reactor_idx, AttackRes
     if (!r.hit || r.total_damage <= 0) return false;
     const Agent::Stats s = bm.getAgentStats(reactor_idx);
     // L3–12: only an attack that dealt Bludgeoning/Piercing/Slashing. L13 Deflect Energy: any type.
-    if (s.char_level < 13 && r.physical_damage_types.empty()) return false;
-    const int reduction = roll(10) + dndMod(s.dex) + s.char_level;
+    if (s.classLevel(CharacterClass::Monk) < 13 && r.physical_damage_types.empty()) return false;
+    const int reduction = roll(10) + dndMod(s.dex) + s.classLevel(CharacterClass::Monk);
     const int before = r.total_damage;
     r.total_damage = std::max(0, before - reduction);
     Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
     cond.reaction_used = true;
     bm.setAgentConditions(reactor_idx, cond);
-    const char* label = s.char_level >= 13 ? "Deflect Energy" : "Deflect Attacks";
-    r.damage_breakdown.push_back({s.char_level >= 13 ? "deflect energy" : "deflect attacks",
+    const char* label = s.classLevel(CharacterClass::Monk) >= 13 ? "Deflect Energy" : "Deflect Attacks";
+    r.damage_breakdown.push_back({s.classLevel(CharacterClass::Monk) >= 13 ? "deflect energy" : "deflect attacks",
                                   r.total_damage - before});  // negative: reduction
     log_("{}: {} reduces the attack by {} ({} -> {})", label,
          agentName(bm, reactor_idx), before - r.total_damage, before, r.total_damage);
@@ -1154,9 +1154,9 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
     // Monk Deflect Attacks (L3+) / Deflect Energy (L13+): reduce B/P/S (any type at L13) by 1d10+DEX+level.
     if (r.hit && r.total_damage > 0 && canDeflectAttacks(bm, action.target_idx)) {
         const Agent::Stats ds = bm.getAgentStats(action.target_idx);
-        if (ds.char_level >= 13 || !r.physical_damage_types.empty())
+        if (ds.classLevel(CharacterClass::Monk) >= 13 || !r.physical_damage_types.empty())
             opts.push_back(ReactionOption{ReactionOption::Feature, -1,
-                ds.char_level >= 13 ? "Deflect Energy (reduce the damage by 1d10 + DEX + level)"
+                ds.classLevel(CharacterClass::Monk) >= 13 ? "Deflect Energy (reduce the damage by 1d10 + DEX + level)"
                                     : "Deflect Attacks (reduce the damage by 1d10 + DEX + level)",
                 "DeflectAttacks"});
     }
@@ -1265,7 +1265,7 @@ bool CombatEngine::canRiposte(const BattleMap& bm, int defender_idx, int attacke
     if (!canTakeReaction(cond)) return false;
     const Agent::Stats s = bm.getAgentStats(defender_idx);
     if (s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Fighter || s.fighter_subclass != BattleMasterPath) return false;
+    if (s.lacksClass(CharacterClass::Fighter) || s.fighter_subclass != BattleMasterPath) return false;
     const Resource* sd = s.getResource("Superiority Dice");
     if (!sd || sd->current <= 0) return false;
     if (riposteWeaponIdx(bm, defender_idx) < 0) return false;          // needs a melee weapon to strike back
@@ -1415,8 +1415,8 @@ bool CombatEngine::canSoulOfVengeance(const BattleMap& bm, const Attack& action,
     if (pal_idx == atk) return false;                     // a creature is never its own vow target
     if (bm.isAgentOnDeck(pal_idx)) return false;          // On Deck reserves take no reactions until deployed
     const Agent::Stats ps = bm.getAgentStats(pal_idx);
-    if (ps.character_class != CharacterClass::Paladin || ps.paladin_oath != OathOfVengeancePath ||
-        ps.char_level < 15 || ps.hp_cur <= 0) return false;
+    if (ps.lacksClass(CharacterClass::Paladin) || ps.paladin_oath != OathOfVengeancePath ||
+        ps.classLevel(CharacterClass::Paladin) < 15 || ps.hp_cur <= 0) return false;
     // The attacker must be this paladin's currently-sworn foe.
     if (ps.vow_of_enmity_turns <= 0 || ps.vow_of_enmity_target != atk) return false;
     const Agent::Conditions pc = bm.getAgentConditions(pal_idx);
@@ -1489,8 +1489,8 @@ bool CombatEngine::canGuidedStrike(const BattleMap& bm, const Attack& action, in
     if (cleric_idx < 0 || cleric_idx >= n || atk < 0 || atk >= n) return false;
     if (bm.isAgentOnDeck(cleric_idx)) return false;       // On Deck reserves take no reactions until deployed
     const Agent::Stats cs = bm.getAgentStats(cleric_idx);
-    if (cs.character_class != CharacterClass::Cleric ||
-        cs.cleric_subclass != WarDomain || cs.char_level < 3) return false;
+    if (cs.lacksClass(CharacterClass::Cleric) ||
+        cs.cleric_subclass != WarDomain || cs.classLevel(CharacterClass::Cleric) < 3) return false;
     const Resource* cd = cs.getResource("Channel Divinity");
     if (!cd || cd->current <= 0) return false;
     if (cleric_idx == atk) return true;                       // self-guide: no reaction needed
@@ -1498,7 +1498,7 @@ bool CombatEngine::canGuidedStrike(const BattleMap& bm, const Attack& action, in
     const Cell co = agents[static_cast<std::size_t>(cleric_idx)].origin;
     const Cell ao = agents[static_cast<std::size_t>(atk)].origin;
     const double dx = co.col - ao.col, dy = co.row - ao.row;
-    const double reach = (cs.char_level >= 6) ? 60.0 : 30.0;  // War God's Blessing extends Guided Strike's reach at L6
+    const double reach = (cs.classLevel(CharacterClass::Cleric) >= 6) ? 60.0 : 30.0;  // War God's Blessing extends Guided Strike's reach at L6
     return std::sqrt(dx * dx + dy * dy) * 5.0 <= reach;
 }
 
@@ -1557,8 +1557,8 @@ bool CombatEngine::canBendLuck(const BattleMap& bm, int reactor, int roller) con
 {
     if (!d20ReactorBase(bm, reactor, roller)) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.classLevel(CharacterClass::Sorcerer) < 6) return false;
     const Resource* sp = s.getResource("Sorcery Points");
     return sp && sp->current >= 1;
 }
@@ -1567,8 +1567,8 @@ bool CombatEngine::canCuttingWords(const BattleMap& bm, int reactor, int roller)
 {
     if (!d20ReactorBase(bm, reactor, roller)) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Bard ||
-        s.bard_subclass != BardCollege::LorePath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Bard) ||
+        s.bard_subclass != BardCollege::LorePath || s.classLevel(CharacterClass::Bard) < 3) return false;
     const Resource* bi = s.getResource("Bardic Inspiration");
     return bi && bi->current >= 1;
 }
@@ -1595,8 +1595,8 @@ bool CombatEngine::canWardingFlare(const BattleMap& bm, int reactor, int roller,
     if (!d20ReactorBase(bm, reactor, roller)) return false;
     if (target != reactor && !areAllies(bm, reactor, target)) return false;  // only shield the reactor's team
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Cleric ||
-        s.cleric_subclass != LightDomain || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Cleric) ||
+        s.cleric_subclass != LightDomain || s.classLevel(CharacterClass::Cleric) < 3) return false;
     const auto& agents = bm.placedAgents();
     const PlacedAgent& rpa = agents[static_cast<std::size_t>(reactor)];
     const PlacedAgent& opa = agents[static_cast<std::size_t>(roller)];
@@ -1616,8 +1616,8 @@ bool CombatEngine::canRestoreBalance(const BattleMap& bm, int reactor, int rolle
     if (!r.advantage || r.disadvantage) return false;     // only an advantaged roll is a lowering revert
     if (!d20ReactorBase(bm, reactor, roller)) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.classLevel(CharacterClass::Sorcerer) < 3) return false;
     const Resource* rb = s.getResource("Restore Balance");
     return rb && rb->current >= 1;
 }
@@ -1722,8 +1722,8 @@ void CombatEngine::maybeUnerringStrike(BattleMap& bm, InFlightAttack& s)
 {
     if (s.r.hit || !s.r.valid) return;                   // only a resolved miss can be promoted
     const Agent::Stats as = bm.getAgentStats(s.action.attacker_idx);
-    if (as.character_class != CharacterClass::Paladin || as.paladin_oath != OathOfGloryPath ||
-        as.char_level < 20 || as.living_legend_turns <= 0) return;
+    if (as.lacksClass(CharacterClass::Paladin) || as.paladin_oath != OathOfGloryPath ||
+        as.classLevel(CharacterClass::Paladin) < 20 || as.living_legend_turns <= 0) return;
     if (bm.getAgentConditions(s.action.attacker_idx).unerring_strike_used) return;  // once per turn
     // Record intent; the once-per-turn flag is committed as the LAST attacker-conditions write in
     // applyAttackResult (setting it here would be clobbered by that finalize's updated_atk_cond write).
@@ -1778,8 +1778,8 @@ bool CombatEngine::applyBendLuckToAttack(BattleMap& bm, int reactor, AttackResul
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::WildMagicPath || s.classLevel(CharacterClass::Sorcerer) < 6) return false;
     Resource* sp = s.getResource("Sorcery Points");
     if (!sp || sp->current < 1) return false;
 
@@ -1803,8 +1803,8 @@ bool CombatEngine::applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackR
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Bard ||
-        s.bard_subclass != BardCollege::LorePath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Bard) ||
+        s.bard_subclass != BardCollege::LorePath || s.classLevel(CharacterClass::Bard) < 3) return false;
     Resource* bi = s.getResource("Bardic Inspiration");
     if (!bi || bi->current < 1) return false;
 
@@ -1857,8 +1857,8 @@ bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackR
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Cleric ||
-        s.cleric_subclass != LightDomain || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Cleric) ||
+        s.cleric_subclass != LightDomain || s.classLevel(CharacterClass::Cleric) < 3) return false;
     Resource* wf = s.getResource("Warding Flare");
     if (!wf || wf->current < 1) return false;
 
@@ -1887,8 +1887,8 @@ bool CombatEngine::applyRestoreBalanceToAttack(BattleMap& bm, int reactor, Attac
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.classLevel(CharacterClass::Sorcerer) < 3) return false;
     Resource* rb = s.getResource("Restore Balance");
     if (!rb || rb->current < 1) return false;
 
@@ -1920,8 +1920,8 @@ bool CombatEngine::canRestoreBalanceMiss(const BattleMap& bm, int reactor, int r
     if (!d20ReactorBase(bm, reactor, roller)) return false;
     if (!areAllies(bm, reactor, roller)) return false;    // cancel Disadvantage only to help your team
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.classLevel(CharacterClass::Sorcerer) < 3) return false;
     const Resource* rb = s.getResource("Restore Balance");
     return rb && rb->current >= 1;
 }
@@ -1934,8 +1934,8 @@ bool CombatEngine::applyRestoreBalanceMissToAttack(BattleMap& bm, const Attack& 
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::ClockworkPath || s.classLevel(CharacterClass::Sorcerer) < 3) return false;
     if (!r.disadvantage) return false;                    // safety: only cancels Disadvantage
     Resource* rb = s.getResource("Restore Balance");
     if (!rb || rb->current < 1) return false;
@@ -2371,7 +2371,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // Precise Hunter (Ranger L17+): Advantage on attack rolls against your Hunter's Mark target.
     {
         const Agent::Stats& as = atk_pt.agent->getStats();
-        if (as.character_class == CharacterClass::Ranger && as.char_level >= 17 &&
+        if (as.hasClass(CharacterClass::Ranger) && as.classLevel(CharacterClass::Ranger) >= 17 &&
             as.hunters_mark_target == action.target_idx) {
             adv = true;
             log_("Precise Hunter: Advantage vs the marked target");
@@ -2382,8 +2382,8 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // hasn't taken a turn in the current combat yet (flag set in beginTurn, reset at combat start).
     {
         const Agent::Stats& as = atk_pt.agent->getStats();
-        if (as.character_class == CharacterClass::Rogue && as.rogue_subclass == AssassinPath &&
-            as.char_level >= 3 && !tgt_pt.agent->getConditions().has_taken_turn_this_combat) {
+        if (as.hasClass(CharacterClass::Rogue) && as.rogue_subclass == AssassinPath &&
+            as.classLevel(CharacterClass::Rogue) >= 3 && !tgt_pt.agent->getConditions().has_taken_turn_this_combat) {
             adv = true;
             log_("Assassinate: Advantage vs a creature that hasn't acted yet");
         }
@@ -2395,8 +2395,8 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // measure from because Mage Hand Legerdemain is modeled as a summon.
     {
         const Agent::Stats& as = atk_pt.agent->getStats();
-        if (as.character_class == CharacterClass::Rogue && as.rogue_subclass == ArcaneTricksterPath &&
-            as.char_level >= 13) {
+        if (as.hasClass(CharacterClass::Rogue) && as.rogue_subclass == ArcaneTricksterPath &&
+            as.classLevel(CharacterClass::Rogue) >= 13) {
             for (int i = 0; i < n; ++i) {
                 const PlacedAgent& h = agents[static_cast<std::size_t>(i)];
                 if (h.removed_from_play || h.summoner_idx != action.attacker_idx ||
@@ -2419,8 +2419,8 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // any of which satisfies the rule — the loop matches the first adjacent one.
     {
         const Agent::Stats& as = atk_pt.agent->getStats();
-        if (as.character_class == CharacterClass::Cleric && as.cleric_subclass == TrickeryDomain &&
-            as.char_level >= 3 &&
+        if (as.hasClass(CharacterClass::Cleric) && as.cleric_subclass == TrickeryDomain &&
+            as.classLevel(CharacterClass::Cleric) >= 3 &&
             footprintDistance(atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz) <= 1) {
             for (int i = 0; i < n; ++i) {
                 const PlacedAgent& d = agents[static_cast<std::size_t>(i)];
@@ -2470,8 +2470,8 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     //   on its other attacks vs the Hunter.
     {
         const Agent::Stats& ds = tgt_pt.agent->getStats();
-        if (ds.character_class == CharacterClass::Ranger && ds.ranger_subclass == HunterPath &&
-            ds.char_level >= 7) {
+        if (ds.hasClass(CharacterClass::Ranger) && ds.ranger_subclass == HunterPath &&
+            ds.classLevel(CharacterClass::Ranger) >= 7) {
             if (ds.defensive_tactics == DefensiveTactics::EscapeTheHorde && action.opportunity) {
                 dis = true;
                 log_("Escape the Horde: Opportunity Attack vs the Hunter has Disadvantage");
@@ -2786,8 +2786,8 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     
     // Check Brutal Strike eligibility (L9+: Reckless Attack + melee weapon, once per turn)
     bool can_use_brutal_strike = false;
-    if (atk_stats.character_class == CharacterClass::Barbarian &&
-        atk_stats.char_level >= 9 &&
+    if (atk_stats.hasClass(CharacterClass::Barbarian) &&
+        atk_stats.classLevel(CharacterClass::Barbarian) >= 9 &&
         atk_cond.reckless_attack &&
         !atk_cond.brutal_strike_used_this_turn &&
         (w.type == WeaponType::Melee || w.thrown)) {
@@ -2796,7 +2796,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     }
 
     // Rogue Elusive (L18+): no attack roll can have advantage against you unless Incapacitated.
-    if (adv && tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 18 &&
+    if (adv && tgt_stats.hasClass(CharacterClass::Rogue) && tgt_stats.classLevel(CharacterClass::Rogue) >= 18 &&
         !tgt_cond.incapacitated) {
         adv = false;
         log_("Elusive: target is a L18+ Rogue — advantage negated");
@@ -2804,9 +2804,9 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
     // Clockwork L14 Trance of Order: while active, attack rolls against the sorcerer can't benefit
     // from Advantage (defender-side, mirrors Elusive). Composes harmlessly with Restore Balance.
-    if (adv && tgt_stats.character_class == CharacterClass::Sorcerer &&
+    if (adv && tgt_stats.hasClass(CharacterClass::Sorcerer) &&
         tgt_stats.sorcerer_subclass == SorcererSubclass::ClockworkPath &&
-        tgt_stats.char_level >= 14 && tgt_stats.trance_of_order_turns > 0) {
+        tgt_stats.classLevel(CharacterClass::Sorcerer) >= 14 && tgt_stats.trance_of_order_turns > 0) {
         adv = false;
         log_("Trance of Order: target's perfect order negates Advantage on the attack");
     }
@@ -3011,8 +3011,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // window — a Reckless reroll re-resolves the attack (mutating `r` and setting reckless_attack).
     // This is intentional: a Shield-negated hit is a genuine miss the attacker may reroll (DM ruling).
     else if (!r.hit &&
-             atk_stats.character_class == CharacterClass::Barbarian &&
-             atk_stats.char_level >= 2 &&
+             atk_stats.hasClass(CharacterClass::Barbarian) &&
+             atk_stats.classLevel(CharacterClass::Barbarian) >= 2 &&
              !atk_cond.reckless_attack &&
              (w.type == WeaponType::Melee || w.thrown)) {
         if (decider_ && decider_->chooseReckless(RecklessCtx{action.attacker_idx})) {
@@ -3053,7 +3053,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // applyCunningStrikeEffect() AFTER this attack fully resolves — so a rider that sets a condition
     // (e.g. Knock Out) can never leak into this attack's own post-resolution logic. Here we only
     // flag availability. (areAllies now provides the faction check the original TODO lacked.)
-    if (r.hit && atk_stats.character_class == CharacterClass::Rogue &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Rogue) &&
         (w.finesse || w.type == WeaponType::Ranged) &&
         !dis && !atk_cond.sneak_attack_used) {
         bool qualifies = adv;
@@ -3084,7 +3084,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // ── Monk Stunning Strike eligibility ────────────────────────────────────
     // Monks can, once per turn, spend 1 Focus Point to force a CON save (Stunned on fail)
     // The save is applied out of band via applyStunningStrikeEffect.
-    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Monk) &&
         (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
         !atk_cond.stunning_strike_used) {
         updated_atk_cond.stunning_strike_available = true;
@@ -3095,7 +3095,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // Monks with Warrior of the Open Hand subclass can apply one of three riders to a
     // bonus-action Flurry of Blows hit (only on bonus-action attacks, not action attacks).
     // Riders: Knockdown (STR save or Prone), Push (5 ft), or Deny Reaction (1 FP each).
-    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Monk) &&
         atk_stats.monk_subclass == WarriorOfTheOpenHandPath &&
         (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
         action.attack_slot == "bonus") {
@@ -3109,10 +3109,10 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // (focus spend + condition setup) is applied out of band via plantQuiveringPalm(); here we only
     // flag availability so the GUI can offer it. Not gated once-per-turn — only one creature may be
     // affected at a time, which plantQuiveringPalm enforces by replacing any prior vibrations.
-    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Monk) &&
         atk_stats.monk_subclass == WarriorOfTheOpenHandPath &&
         (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
-        atk_stats.char_level >= 17) {
+        atk_stats.classLevel(CharacterClass::Monk) >= 17) {
         updated_atk_cond.quivering_palm_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
@@ -3122,11 +3122,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // other on-hit riders, the dice (and the L6 Poisoned rider) are applied out of band via
     // applyHandOfHarmEffect() AFTER this attack resolves. Below L11 it's once per turn; at L11 (Flurry of
     // Healing and Harm) the once-per-turn gate lifts (the effect itself enforces once-per-target).
-    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Monk) &&
         atk_stats.monk_subclass == WarriorOfMercyPath &&
         (w.name == "MonkUnarmed" || w.name == "Unarmed") &&
-        atk_stats.char_level >= 3 &&
-        (atk_stats.char_level >= 11 || !atk_cond.hand_of_harm_used)) {
+        atk_stats.classLevel(CharacterClass::Monk) >= 3 &&
+        (atk_stats.classLevel(CharacterClass::Monk) >= 11 || !atk_cond.hand_of_harm_used)) {
         updated_atk_cond.hand_of_harm_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
@@ -3134,7 +3134,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // ── Monk Warrior of the Elements — Elemental Attunement push/pull eligibility ──────────────
     // While Elemental Attunement is active, an unarmed hit lets the Monk push or pull the target 10 ft
     // (no save). The direction is a player choice, so the GUI offers it; we only flag availability here.
-    if (r.hit && atk_stats.character_class == CharacterClass::Monk &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Monk) &&
         atk_stats.monk_subclass == WarriorOfFourElementsPath &&
         w.name == "MonkUnarmed" && atk_cond.elemental_attunement_active) {
         updated_atk_cond.elemental_attunement_move_available = true;
@@ -3144,7 +3144,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // ── Battle Master Maneuver eligibility (on-hit) ───────────────────────────
     // On any hit, a Battle Master with Superiority Dice remaining can spend one die
     // for a Maneuver rider (Trip/Menacing/Pushing). Flagged here; applied out-of-band.
-    if (r.hit && atk_stats.character_class == CharacterClass::Fighter &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Fighter) &&
         atk_stats.fighter_subclass == BattleMasterPath) {
         const Resource* sd = atk_stats.getResource("Superiority Dice");
         if (sd && sd->current > 0) {
@@ -3156,7 +3156,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // ── Battle Master Precision Attack eligibility (on-miss) ─────────────────
     // On a non-fumble miss, a Battle Master with Superiority Dice can spend one die
     // to add 1d8/d10 to the roll and potentially convert the miss to a hit.
-    if (!r.hit && !r.fumble && atk_stats.character_class == CharacterClass::Fighter &&
+    if (!r.hit && !r.fumble && atk_stats.hasClass(CharacterClass::Fighter) &&
         atk_stats.fighter_subclass == BattleMasterPath) {
         const Resource* sd = atk_stats.getResource("Superiority Dice");
         if (sd && sd->current > 0) {
@@ -3181,9 +3181,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // While raging with the Ram power, a melee hit knocks a Large-or-smaller creature Prone (no save).
     // getSize() footprint: Medium/Small=1, Large=2, Huge=3, Gargantuan=4 → Large-or-smaller is <= 2.
     if (r.hit && w.type == WeaponType::Melee && !r.target_down &&
-        atk_stats.character_class == CharacterClass::Barbarian &&
+        atk_stats.hasClass(CharacterClass::Barbarian) &&
         atk_stats.barbarian_subclass == WildHeartPath &&
-        atk_stats.char_level >= 14 && atk_stats.wild_heart_power == RamPower &&
+        atk_stats.classLevel(CharacterClass::Barbarian) >= 14 && atk_stats.wild_heart_power == RamPower &&
         atk_cond.raging && tgt_sz <= 2) {
         Agent::Conditions tgt_prone = bm.getAgentConditions(action.target_idx);
         if (!tgt_prone.prone) {
@@ -3198,9 +3198,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // melee weapon attack back. Flagged on the TARGET (the reactor); the GUI prompts and calls
     // apply_retaliation. Gated: r.hit (damage dealt), attacker adjacent, reaction free, melee weapon free.
     if (r.hit && r.total_damage > 0 &&
-        tgt_stats.character_class == CharacterClass::Barbarian &&
+        tgt_stats.hasClass(CharacterClass::Barbarian) &&
         tgt_stats.barbarian_subclass == BerserkerPath &&
-        tgt_stats.char_level >= 10 &&
+        tgt_stats.classLevel(CharacterClass::Barbarian) >= 10 &&
         canTakeReaction(tgt_cond) && !tgt_cond.retaliation_available &&
         footprintDistance(atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz) <= 1 &&
         riposteWeaponIdx(bm, action.target_idx) >= 0) {
@@ -3213,8 +3213,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // ── Cleric Blessed Strikes — Divine Strike eligibility ────────────────
     // L7+ Clerics who chose Divine Strike can, once per turn, add Necrotic/Radiant to a weapon
     // hit. Like Brutal/Cunning Strike, the extra die is applied out of band (applyDivineStrikeEffect).
-    if (r.hit && atk_stats.character_class == CharacterClass::Cleric &&
-        atk_stats.char_level >= 7 &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Cleric) &&
+        atk_stats.classLevel(CharacterClass::Cleric) >= 7 &&
         atk_stats.blessed_strike == BlessedStrikeDivineStrike &&
         !atk_cond.divine_strike_used) {
         updated_atk_cond.divine_strike_available = true;
@@ -3224,8 +3224,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // ── Psi Warrior Psionic Strike eligibility (on-hit) ───────────────────
     // L3+ Psi Warriors can, once per turn, spend one Psionic Energy die to add Force damage to a
     // hit (die roll + INT mod). Applied out of band via applyPsionicStrikeEffect.
-    if (r.hit && atk_stats.character_class == CharacterClass::Fighter &&
-        atk_stats.fighter_subclass == PsiWarriorPath && atk_stats.char_level >= 3 &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Fighter) &&
+        atk_stats.fighter_subclass == PsiWarriorPath && atk_stats.classLevel(CharacterClass::Fighter) >= 3 &&
         !atk_cond.psionic_strike_used) {
         const Resource* ped = atk_stats.getResource("Psionic Energy");
         if (ped && ped->current > 0) {
@@ -3253,7 +3253,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // GUI offers a slot-level choice). Gated on: a free bonus action, no leveled spell already
     // cast this turn (the bonus-action-spell interlock), not already smited this turn, and at
     // least one spell slot available. (A L1 Paladin has no slots, so the slot check gates it.)
-    if (r.hit && atk_stats.character_class == CharacterClass::Paladin &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Paladin) &&
         (w.type == WeaponType::Melee || w.name == "Unarmed" || w.name == "MonkUnarmed") &&
         !atk_cond.divine_smite_used && !atk_stats.leveled_spell_cast_this_turn &&
         hasBonusAction(bm, action.attacker_idx)) {
@@ -3272,8 +3272,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // Pact Magic spell slot as a Bonus Action to add (slot+1)d8 Force + knock Prone. Like Divine
     // Smite: gated on a free bonus action, a pact slot, and no leveled spell already this turn.
     // Applied out of band via applyEldritchSmiteEffect (GUI offer / auto path).
-    if (r.hit && atk_stats.character_class == CharacterClass::Warlock &&
-        atk_stats.char_level >= 5 && w.pact_weapon &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Warlock) &&
+        atk_stats.classLevel(CharacterClass::Warlock) >= 5 && w.pact_weapon &&
         atk_stats.hasInvocation(13) && atk_stats.hasInvocation(15) &&
         !atk_cond.eldritch_smite_used && !atk_stats.leveled_spell_cast_this_turn &&
         hasBonusAction(bm, action.attacker_idx)) {
@@ -3288,8 +3288,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // L10+ EK: hitting a creature with a weapon gives it disadvantage on its next saving throw
     // against a spell the EK casts. Tag the target with the EK's index; the save site (executeSpell)
     // consumes it. RAW window ("before the end of your next turn") is simplified to one-shot.
-    if (r.hit && atk_stats.character_class == CharacterClass::Fighter &&
-        atk_stats.fighter_subclass == EldritchKnightPath && atk_stats.char_level >= 10) {
+    if (r.hit && atk_stats.hasClass(CharacterClass::Fighter) &&
+        atk_stats.fighter_subclass == EldritchKnightPath && atk_stats.classLevel(CharacterClass::Fighter) >= 10) {
         Agent::Conditions tcond = bm.getAgentConditions(action.target_idx);
         tcond.eldritch_strike_by = action.attacker_idx;
         bm.setAgentConditions(action.target_idx, tcond);
@@ -3629,14 +3629,14 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     }
 
     // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging
-    if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Barbarian) &&
         atk_stats.barbarian_subclass == ZealotPath &&
         atk_cond.raging &&
         !atk_cond.zealot_divine_fury_used &&
         (w.type == WeaponType::Melee || w.thrown)) {
 
         // Roll 1d6 + floor(level/2)
-        int divine_fury_bonus = roll(6) + (atk_stats.char_level / 2);
+        int divine_fury_bonus = roll(6) + (atk_stats.classLevel(CharacterClass::Barbarian) / 2);
 
         r.total_damage += divine_fury_bonus;
         r.damage_breakdown.push_back({"divine fury", divine_fury_bonus});
@@ -3651,11 +3651,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         updated_atk_cond.zealot_divine_fury_used = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
 
-        //log_("Zealot Divine Fury: added 1d6 + {} = {} damage", atk_stats.char_level / 2, divine_fury_bonus);
+        //log_("Zealot Divine Fury: added 1d6 + {} = {} damage", atk_stats.classLevel(CharacterClass::Barbarian) / 2, divine_fury_bonus);
     }
 
     // Berserker Frenzy bonus: add extra Nd6, where N is the rage damage bonus
-    if (r.hit && atk_stats.character_class == CharacterClass::Barbarian &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Barbarian) &&
         atk_stats.barbarian_subclass == BerserkerPath &&
         atk_cond.raging &&
         !atk_cond.berserker_frenzy_used &&
@@ -3664,7 +3664,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // Roll 1d6 + floor(level/2)
         int berserker_frenzy_bonus = 0;
 
-	for ( int irage_bonus = 0; irage_bonus < getRageDamageBonus(atk_stats.char_level); ++irage_bonus ){
+	for ( int irage_bonus = 0; irage_bonus < getRageDamageBonus(atk_stats.classLevel(CharacterClass::Barbarian)); ++irage_bonus ){
 	  berserker_frenzy_bonus += roll(6);
 	}
 
@@ -3718,8 +3718,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // mark) — the "different creature of your choice" a sane Ranger would pick. Applies the
         // splash damage directly to that creature (it's not the attack's target, so it doesn't
         // touch r), then handles its own 0-HP transition. Once/turn via superior_prey_used.
-        if (atk_stats.character_class == CharacterClass::Ranger &&
-            atk_stats.ranger_subclass == HunterPath && atk_stats.char_level >= 11 &&
+        if (atk_stats.hasClass(CharacterClass::Ranger) &&
+            atk_stats.ranger_subclass == HunterPath && atk_stats.classLevel(CharacterClass::Ranger) >= 11 &&
             !updated_atk_cond.superior_prey_used) {
             const PlacedAgent& mark_pa = agents[static_cast<std::size_t>(action.target_idx)];
             int splash_idx = -1, best = 999;
@@ -3767,8 +3767,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         const int owner = bm.getAgentSummonerIdx(action.attacker_idx);
         if (owner >= 0 && owner < static_cast<int>(bm.placedAgents().size())) {
             const Agent::Stats os = bm.getAgentStats(owner);
-            if (os.character_class == CharacterClass::Ranger &&
-                os.ranger_subclass == BeastMasterPath && os.char_level >= 11 &&
+            if (os.hasClass(CharacterClass::Ranger) &&
+                os.ranger_subclass == BeastMasterPath && os.classLevel(CharacterClass::Ranger) >= 11 &&
                 os.hunters_mark_target == action.target_idx && os.hunters_mark_dice > 0) {
                 const int type = std::clamp(os.hunters_mark_damage_type, 0,
                                             static_cast<int>(MagicDamage_t::NumMagicDamage_t) - 1);
@@ -3796,12 +3796,12 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
 
     // ── Hunter (Ranger subclass) on-hit features ──────────────────────────
     const bool is_weapon_atk = (w.type == WeaponType::Melee || w.type == WeaponType::Ranged || w.thrown);
-    if (r.hit && atk_stats.character_class == CharacterClass::Ranger &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Ranger) &&
         atk_stats.ranger_subclass == HunterPath && is_weapon_atk) {
 
         // Colossus Slayer (L3 prey): +1d8 once/turn if the target was already missing HP
         // *before* this attack (RAW timing — a full-HP target's first hit doesn't qualify).
-        if (atk_stats.char_level >= 3 && atk_stats.hunter_prey == HunterPrey::ColossusSlayer &&
+        if (atk_stats.classLevel(CharacterClass::Ranger) >= 3 && atk_stats.hunter_prey == HunterPrey::ColossusSlayer &&
             !updated_atk_cond.colossus_slayer_used && r.hp_before < tgt_stats.hp_max) {
             int cs = roll(8);
             r.total_damage += cs;
@@ -3819,7 +3819,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // Horde Breaker (L3 prey): once/turn a weapon hit lets you make another attack with the
         // same weapon vs a different creature within 5 ft of the target. Flag availability; the GUI
         // offers the extra attack (via _start_extra_attack) and sets horde_breaker_used.
-        if (atk_stats.char_level >= 3 && atk_stats.hunter_prey == HunterPrey::HordeBreaker &&
+        if (atk_stats.classLevel(CharacterClass::Ranger) >= 3 && atk_stats.hunter_prey == HunterPrey::HordeBreaker &&
             !updated_atk_cond.horde_breaker_used && !updated_atk_cond.horde_breaker_available) {
             updated_atk_cond.horde_breaker_available = true;
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
@@ -3829,8 +3829,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // Multiattack Defense (Hunter L7 Defensive Tactics): when a creature hits a Hunter who chose
     // this option, that creature has Disadvantage on its OTHER attacks vs the Hunter this turn.
     // Record the attacker on the defender; determineAdvantage consults the list.
-    if (r.hit && tgt_stats.character_class == CharacterClass::Ranger &&
-        tgt_stats.ranger_subclass == HunterPath && tgt_stats.char_level >= 7 &&
+    if (r.hit && tgt_stats.hasClass(CharacterClass::Ranger) &&
+        tgt_stats.ranger_subclass == HunterPath && tgt_stats.classLevel(CharacterClass::Ranger) >= 7 &&
         tgt_stats.defensive_tactics == DefensiveTactics::MultiattackDefense) {
         Agent::Conditions tgt_upd = bm.getAgentConditions(action.target_idx);
         auto& hb = tgt_upd.multiattack_def_hit_by;
@@ -3866,7 +3866,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         // Stalker's Flurry (Gloom Stalker L11): immediately after Dreadful Strike, you may make one
         // additional weapon attack (Sudden Strike) against a creature within 5 ft of the target.
         // Flag it so the GUI offers the free extra attack (mirrors Horde Breaker / GWM Hew).
-        if (atk_stats.ranger_subclass == GloomStalkerPath && atk_stats.char_level >= 11)
+        if (atk_stats.ranger_subclass == GloomStalkerPath && atk_stats.classLevel(CharacterClass::Ranger) >= 11)
             updated_atk_cond.sudden_strike_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         log_("Dreadful Strike: +{} Psychic ({}d{})", ds, atk_stats.dreadful_strike_dice,
@@ -3902,8 +3902,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // deals extra Necrotic = max(1, CHA mod) and grants the Warlock that many temp HP. No player
     // choice (like Zealot Divine Fury above), so it covers every attack path. Must run AFTER the
     // base-damage application above (it adds to the already-decremented tgt_stats).
-    if (r.hit && atk_stats.character_class == CharacterClass::Warlock &&
-        atk_stats.char_level >= 9 && w.pact_weapon &&
+    if (r.hit && atk_stats.hasClass(CharacterClass::Warlock) &&
+        atk_stats.classLevel(CharacterClass::Warlock) >= 9 && w.pact_weapon &&
         atk_stats.hasInvocation(13) && atk_stats.hasInvocation(16) &&
         !atk_cond.lifedrinker_used) {
         const int bonus = std::max(1, abilityMod(atk_stats.cha));
@@ -4271,6 +4271,13 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 cond.save_dc = save_dc;
                 cond.save_repeat_turns = weapon_cond.save_repeat_turns;
                 cond.next_save_turn = 0;
+                // Carry any damage-over-time / no-heal rider (Pit Fiend poison) onto the tracked
+                // condition so beginTurn ticks it and healAgent/Regeneration honor the block.
+                cond.dot_dice         = weapon_cond.dot_dice;
+                cond.dot_die_size     = weapon_cond.dot_die_size;
+                cond.dot_flat_bonus   = weapon_cond.dot_flat_bonus;
+                cond.dot_damage_type  = weapon_cond.dot_damage_type;
+                cond.prevents_healing = weapon_cond.prevents_healing;
 
                 [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
                 log_("Weapon condition '{}' applied to target", weapon_cond.condition_name);

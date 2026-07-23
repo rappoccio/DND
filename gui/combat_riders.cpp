@@ -107,7 +107,7 @@ void CombatEngine::applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int 
     Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
 
     // L7: 1d8; L14 (Improved Blessed Strikes): 2d8.
-    const int dice = (atk_stats.char_level >= 14) ? 2 : 1;
+    const int dice = (atk_stats.classLevel(CharacterClass::Cleric) >= 14) ? 2 : 1;
     const MagicDamage_t dtype = radiant ? MagicDamage_t::Radiant : MagicDamage_t::Necrotic;
     int raw = 0;
     for (int i = 0; i < dice; ++i) raw += roll(8);
@@ -276,9 +276,9 @@ bool CombatEngine::canUseWarMagic(BattleMap& bm, int idx) const noexcept
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats st = bm.getAgentStats(idx);
-    if (st.character_class != CharacterClass::Fighter) return false;
+    if (st.lacksClass(CharacterClass::Fighter)) return false;
     if (st.fighter_subclass != EldritchKnightPath) return false;
-    if (st.char_level < 7) return false;                       // War Magic unlocks at L7
+    if (st.classLevel(CharacterClass::Fighter) < 7) return false;  // War Magic unlocks at L7
     if (bm.getAgentConditions(idx).war_magic_used) return false;  // once per Attack action
     return true;
 }
@@ -300,11 +300,11 @@ std::vector<int> CombatEngine::availableWarMagicSpells(const BattleMap& bm, int 
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return result;
     const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
     const Agent::Stats& stats = pa.agent->getStats();
-    if (stats.character_class != CharacterClass::Fighter ||
-        stats.fighter_subclass != EldritchKnightPath || stats.char_level < 7)
+    if (stats.lacksClass(CharacterClass::Fighter) ||
+        stats.fighter_subclass != EldritchKnightPath || stats.classLevel(CharacterClass::Fighter) < 7)
         return result;
 
-    const bool improved = stats.char_level >= 18;  // Improved War Magic also allows level 1-5 spells
+    const bool improved = stats.classLevel(CharacterClass::Fighter) >= 18;  // Improved War Magic also allows level 1-5 spells
     const auto& spells = pa.spells;
     for (int si : availableCastableSpells(bm, idx)) {
         if (si < 0 || si >= static_cast<int>(spells.size())) continue;
@@ -321,8 +321,8 @@ int CombatEngine::applyArcaneCharge(BattleMap& bm, int idx, int target_col, int 
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
     const Agent::Stats& stats = agents[static_cast<std::size_t>(idx)].agent->getStats();
-    if (stats.character_class != CharacterClass::Fighter ||
-        stats.fighter_subclass != EldritchKnightPath || stats.char_level < 15)
+    if (stats.lacksClass(CharacterClass::Fighter) ||
+        stats.fighter_subclass != EldritchKnightPath || stats.classLevel(CharacterClass::Fighter) < 15)
         return -1;  // not an EK L15+
 
     const Cell origin = agents[static_cast<std::size_t>(idx)].origin;
@@ -406,11 +406,11 @@ void CombatEngine::applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int ta
     if (!atk_cond.hand_of_harm_available) return;
 
     Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
-    if (atk_stats.character_class != CharacterClass::Monk ||
+    if (atk_stats.lacksClass(CharacterClass::Monk) ||
         atk_stats.monk_subclass  != WarriorOfMercyPath ||
-        atk_stats.char_level < 3) return;
+        atk_stats.classLevel(CharacterClass::Monk) < 3) return;
 
-    const bool free = atk_stats.char_level >= 11;   // L11 Flurry of Healing and Harm: no Focus Point cost
+    const bool free = atk_stats.classLevel(CharacterClass::Monk) >= 11;   // L11 Flurry of Healing and Harm: no Focus Point cost
 
     // L11: usable any number of times per turn, but only once per target.
     if (free && atk_cond.hand_of_harm_last_target == target_idx) return;
@@ -424,7 +424,7 @@ void CombatEngine::applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int ta
     // Necrotic damage = one Martial Arts die + WIS modifier (floored for odd negative scores).
     int wis_mod = (atk_stats.wis - 10) / 2;
     if (atk_stats.wis < 10 && (atk_stats.wis - 10) % 2 != 0) --wis_mod;
-    int raw = std::max(0, roll(martialArtsDieSize(atk_stats.char_level)) + wis_mod);
+    int raw = std::max(0, roll(martialArtsDieSize(atk_stats.classLevel(CharacterClass::Monk))) + wis_mod);
 
     const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Necrotic];
     const int hoh_damage = static_cast<int>(static_cast<float>(raw) * mult);
@@ -451,7 +451,7 @@ void CombatEngine::applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int ta
 
     // L6 Physician's Touch: the target is also Poisoned (until the end of the Monk's next turn — modeled
     // as the Poisoned condition, cleared like other conditions).
-    if (atk_stats.char_level >= 6) {
+    if (atk_stats.classLevel(CharacterClass::Monk) >= 6) {
         applyPoisoned(bm, target_idx);
         log_("{} is Poisoned (Physician's Touch)", agentName(bm, target_idx));
     }
@@ -470,13 +470,13 @@ HandOfHealingResult CombatEngine::handOfHealing(BattleMap& bm, int monk_idx, int
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return res;
 
     Agent::Stats ms = bm.getAgentStats(monk_idx);
-    if (ms.character_class != CharacterClass::Monk ||
+    if (ms.lacksClass(CharacterClass::Monk) ||
         ms.monk_subclass  != WarriorOfMercyPath ||
-        ms.char_level < 3) return res;
+        ms.classLevel(CharacterClass::Monk) < 3) return res;
 
     // "free" (no Focus Point, no Bonus Action) is only granted at L11 (Flurry of Healing and Harm),
     // where a Flurry strike may be replaced with a use of Hand of Healing.
-    const bool actually_free = free && ms.char_level >= 11;
+    const bool actually_free = free && ms.classLevel(CharacterClass::Monk) >= 11;
 
     if (!actually_free) {
         if (!hasBonusAction(bm, monk_idx)) return res;
@@ -489,14 +489,14 @@ HandOfHealingResult CombatEngine::handOfHealing(BattleMap& bm, int monk_idx, int
     // Heal = one Martial Arts die + WIS modifier (floored for odd negative scores; minimum 1).
     int wis_mod = (ms.wis - 10) / 2;
     if (ms.wis < 10 && (ms.wis - 10) % 2 != 0) --wis_mod;
-    int amount = std::max(1, roll(martialArtsDieSize(ms.char_level)) + wis_mod);
+    int amount = std::max(1, roll(martialArtsDieSize(ms.classLevel(CharacterClass::Monk))) + wis_mod);
 
     int before = bm.getAgentStats(target_idx).hp_cur;
     healAgent(bm, target_idx, amount);
     res.amount_healed = bm.getAgentStats(target_idx).hp_cur - before;
 
     // L6 Physician's Touch: Hand of Healing also ends one of Blinded/Deafened/Paralyzed/Poisoned/Stunned.
-    if (ms.char_level >= 6) {
+    if (ms.classLevel(CharacterClass::Monk) >= 6) {
         Agent::Conditions tc = bm.getAgentConditions(target_idx);
         const char* cleared = nullptr;
         if      (tc.blinded)   { tc.blinded   = false; cleared = "Blinded"; }
@@ -530,9 +530,9 @@ int CombatEngine::wholenessOfBody(BattleMap& bm, int monk_idx) noexcept
     if (monk_idx < 0 || monk_idx >= static_cast<int>(agents.size())) return 0;
 
     Agent::Stats ms = bm.getAgentStats(monk_idx);
-    if (ms.character_class != CharacterClass::Monk ||
+    if (ms.lacksClass(CharacterClass::Monk) ||
         ms.monk_subclass  != WarriorOfTheOpenHandPath ||
-        ms.char_level < 6) return 0;
+        ms.classLevel(CharacterClass::Monk) < 6) return 0;
 
     if (!hasBonusAction(bm, monk_idx)) return 0;
     const Resource* wob = ms.getResource("Wholeness of Body");
@@ -541,7 +541,7 @@ int CombatEngine::wholenessOfBody(BattleMap& bm, int monk_idx) noexcept
     // Heal = one Martial Arts die + WIS modifier (floored for odd negative scores; minimum 1).
     int wis_mod = (ms.wis - 10) / 2;
     if (ms.wis < 10 && (ms.wis - 10) % 2 != 0) --wis_mod;
-    int amount = std::max(1, roll(martialArtsDieSize(ms.char_level)) + wis_mod);
+    int amount = std::max(1, roll(martialArtsDieSize(ms.classLevel(CharacterClass::Monk))) + wis_mod);
 
     int before = bm.getAgentStats(monk_idx).hp_cur;
     healAgent(bm, monk_idx, amount);
@@ -593,19 +593,19 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
     // Only valid right after a qualifying hit flagged this attack, and only once per turn.
     if (!atk_cond.cunning_strike_available || atk_cond.sneak_attack_used) return;
 
-    const bool is_assassin = (atk_stats.character_class == CharacterClass::Rogue &&
+    const bool is_assassin = (atk_stats.hasClass(CharacterClass::Rogue) &&
                               atk_stats.rogue_subclass == AssassinPath);
 
-    const int sneak_dice = (atk_stats.char_level + 1) / 2;  // 1d6 @ L1-2 … 10d6 @ L19-20
+    const int sneak_dice = (atk_stats.classLevel(CharacterClass::Rogue) + 1) / 2;  // 1d6 @ L1-2 … 10d6 @ L19-20
 
     // Validate the chosen rider set: count limit (Improved Cunning Strike), per-effect cost, min level.
-    const int max_effects = (atk_stats.char_level >= 11) ? 2 : 1;
+    const int max_effects = (atk_stats.classLevel(CharacterClass::Rogue) >= 11) ? 2 : 1;
     int cost = 0;
     bool has_poison_rider = false;
     bool effects_ok = (static_cast<int>(effects.size()) <= max_effects);
     for (int e : effects) {
         int c = cunningStrikeCost(e);
-        if (c <= 0 || atk_stats.char_level < cunningStrikeMinLevel(e)) { effects_ok = false; break; }
+        if (c <= 0 || atk_stats.classLevel(CharacterClass::Rogue) < cunningStrikeMinLevel(e)) { effects_ok = false; break; }
         // Stealth Attack (Thief Supreme Sneak): Thief-only, and only if this strike came from
         // stealth (the attack just ended the Hide/Invisible condition this turn).
         if (e == 6 && (atk_stats.rogue_subclass != ThiefPath || !atk_cond.attacked_while_invisible)) {
@@ -615,7 +615,7 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
         cost += c;
     }
     // Envenom Weapons (Assassin L13+): the Poison option costs 0 Sneak Attack dice (refund it).
-    if (effects_ok && has_poison_rider && is_assassin && atk_stats.char_level >= 13)
+    if (effects_ok && has_poison_rider && is_assassin && atk_stats.classLevel(CharacterClass::Rogue) >= 13)
         cost -= cunningStrikeCost(0);
     if (!effects_ok || cost > sneak_dice) { effects_ok = false; cost = 0; }
 
@@ -632,8 +632,8 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
 
     // Assassinate (Assassin L3+): a Sneak hit during the first round of combat (round_num == 0)
     // also deals flat damage equal to the Rogue's level.
-    if (is_assassin && atk_stats.char_level >= 3 && round_num == 0) {
-        const int bonus = atk_stats.char_level;
+    if (is_assassin && atk_stats.classLevel(CharacterClass::Rogue) >= 3 && round_num == 0) {
+        const int bonus = atk_stats.classLevel(CharacterClass::Rogue);
         result.total_damage += bonus;
         result.damage_breakdown.push_back({"Assassinate", bonus});
         log_("Assassinate: {} adds +{} damage (first round)", agentName(bm, attacker_idx), bonus);
@@ -669,7 +669,7 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
     // Death Strike (Assassin L17+): a Sneak hit during the first round forces the target to make a
     // Constitution save (DC 8 + DEX + PB). On a failure, the entire attack's damage is doubled. Run
     // last so it doubles base + Sneak + Assassinate + Envenom damage together.
-    if (is_assassin && atk_stats.char_level >= 17 && round_num == 0 && result.total_damage > 0) {
+    if (is_assassin && atk_stats.classLevel(CharacterClass::Rogue) >= 17 && round_num == 0 && result.total_damage > 0) {
         const int dc = spellSaveDcFromAbility(atk_stats, SaveDex);   // 8 + PB + DEX mod
         int total = roll(20) + saveModFor(bm, target_idx, SaveCon);
         total = applyIndomitableMight(bm, target_idx, SaveCon, total);
@@ -706,8 +706,8 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
 
     const Agent::Stats atk = bm.getAgentStats(attacker_idx);
     const int dc = spellSaveDcFromAbility(atk, SaveDex);  // 8 + prof + DEX mod
-    const bool envenom = (atk.character_class == CharacterClass::Rogue &&
-                          atk.rogue_subclass == AssassinPath && atk.char_level >= 13);
+    const bool envenom = (atk.hasClass(CharacterClass::Rogue) &&
+                          atk.rogue_subclass == AssassinPath && atk.classLevel(CharacterClass::Rogue) >= 13);
 
     for (int e : effects) {
         if (e == 2) {  // Withdraw — no save; attacker moves without provoking opportunity attacks
@@ -820,8 +820,8 @@ bool CombatEngine::applyHomingStrike(BattleMap& bm, int attacker_idx, int target
     if (weapon_idx < 0 || weapon_idx > 2) return false;
 
     Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
-    if (atk_stats.character_class != CharacterClass::Rogue ||
-        atk_stats.rogue_subclass != SoulknifePath || atk_stats.char_level < 9) return false;
+    if (atk_stats.lacksClass(CharacterClass::Rogue) ||
+        atk_stats.rogue_subclass != SoulknifePath || atk_stats.classLevel(CharacterClass::Rogue) < 9) return false;
     Resource* ped = atk_stats.getResource("Psionic Energy");
     if (!ped || ped->current < 1) return false;
 
@@ -870,8 +870,8 @@ bool CombatEngine::canRendMind(const BattleMap& bm, int attacker_idx) const noex
     const auto& agents = bm.placedAgents();
     if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(attacker_idx);
-    if (s.character_class != CharacterClass::Rogue ||
-        s.rogue_subclass != SoulknifePath || s.char_level < 17) return false;
+    if (s.lacksClass(CharacterClass::Rogue) ||
+        s.rogue_subclass != SoulknifePath || s.classLevel(CharacterClass::Rogue) < 17) return false;
     const Resource* rm  = s.getResource("Rend Mind");
     const Resource* ped = s.getResource("Psionic Energy");
     const bool have_use = rm && rm->current >= 1;
@@ -1150,8 +1150,8 @@ int CombatEngine::bardMantleOfInspiration(BattleMap& bm, int bard_idx,
     if (bard_idx < 0 || bard_idx >= n) return 0;
 
     Agent::Stats bs = bm.getAgentStats(bard_idx);
-    if (bs.character_class != CharacterClass::Bard ||
-        bs.bard_subclass != BardCollege::GlamourPath || bs.char_level < 3) {
+    if (bs.lacksClass(CharacterClass::Bard) ||
+        bs.bard_subclass != BardCollege::GlamourPath || bs.classLevel(CharacterClass::Bard) < 3) {
         log_("{} cannot use Mantle of Inspiration (not a L3+ College of Glamour Bard)",
              agentName(bm, bard_idx));
         return 0;
@@ -1277,8 +1277,8 @@ void CombatEngine::applyGuidedStrike(BattleMap& bm, const Attack& action, int cl
     if (atk < 0 || atk >= n || tgt < 0 || tgt >= n || cleric_idx < 0 || cleric_idx >= n) return;
 
     Agent::Stats cleric = bm.getAgentStats(cleric_idx);
-    if (cleric.character_class != CharacterClass::Cleric ||
-        cleric.cleric_subclass != WarDomain || cleric.char_level < 3) return;
+    if (cleric.lacksClass(CharacterClass::Cleric) ||
+        cleric.cleric_subclass != WarDomain || cleric.classLevel(CharacterClass::Cleric) < 3) return;
     Resource* cd = cleric.getResource("Channel Divinity");
     if (!cd || cd->current <= 0) return;
 
@@ -1696,8 +1696,8 @@ int CombatEngine::applyProtectiveField(BattleMap& bm, int defender_idx, int dama
     if (damage_taken <= 0) return -1;
 
     Agent::Stats stats = bm.getAgentStats(defender_idx);
-    if (stats.character_class != CharacterClass::Fighter ||
-        stats.fighter_subclass != PsiWarriorPath || stats.char_level < 3) return -1;
+    if (stats.lacksClass(CharacterClass::Fighter) ||
+        stats.fighter_subclass != PsiWarriorPath || stats.classLevel(CharacterClass::Fighter) < 3) return -1;
 
     Agent::Conditions cond = bm.getAgentConditions(defender_idx);
     if (!canTakeReaction(cond)) return -1;
@@ -1756,8 +1756,8 @@ int CombatEngine::applyTelekineticMovement(BattleMap& bm, int idx, int target_id
         target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return -1;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Fighter ||
-        stats.fighter_subclass != PsiWarriorPath || stats.char_level < 3) return -1;
+    if (stats.lacksClass(CharacterClass::Fighter) ||
+        stats.fighter_subclass != PsiWarriorPath || stats.classLevel(CharacterClass::Fighter) < 3) return -1;
 
     const Resource* tk = stats.getResource("Telekinetic Movement");
     if (!tk || tk->current <= 0) return -1;
@@ -1783,13 +1783,13 @@ FlurryResult CombatEngine::executeFlurryOfBlows(BattleMap& bm, int attacker_idx,
     const Agent::Stats& stats = bm.getAgentStats(attacker_idx);
 
     // L10 Heightened Focus: Flurry grants 3 strikes instead of 2
-    int num_flurry_attacks = (stats.char_level >= 10 && stats.character_class == CharacterClass::Monk) ? 3 : 2;
+    int num_flurry_attacks = (stats.classLevel(CharacterClass::Monk) >= 10 && stats.hasClass(CharacterClass::Monk)) ? 3 : 2;
 
     // L11 Warrior of Mercy — Flurry of Healing and Harm: each Flurry strike that hits also delivers a free
     // Hand of Harm (no Focus Point), capped at once per target by applyHandOfHarmEffect itself.
     const bool mercy_flurry_harm =
-        stats.character_class == CharacterClass::Monk &&
-        stats.monk_subclass  == WarriorOfMercyPath && stats.char_level >= 11;
+        stats.hasClass(CharacterClass::Monk) &&
+        stats.monk_subclass  == WarriorOfMercyPath && stats.classLevel(CharacterClass::Monk) >= 11;
 
     auto apply_riders = [&](AttackResult& atk_result, OpenHandRiderResult& rider) {
         if (!atk_result.valid || !atk_result.hit) return;
@@ -2349,8 +2349,8 @@ bool CombatEngine::canVitalityOfTheTree(const BattleMap& bm, int source) const
     if (source < 0 || source >= n) return false;
     if (bm.isAgentOnDeck(source)) return false;           // On Deck reserves take no reactions until deployed
     const Agent::Stats s = bm.getAgentStats(source);
-    if (s.character_class != Barbarian || s.barbarian_subclass != WorldTreePath) return false;
-    if (s.char_level < 3 || s.hp_cur <= 0) return false;
+    if (s.lacksClass(Barbarian) || s.barbarian_subclass != WorldTreePath) return false;
+    if (s.classLevel(CharacterClass::Barbarian) < 3 || s.hp_cur <= 0) return false;
     const Agent::Conditions c = bm.getAgentConditions(source);
     if (!c.raging || c.vitality_used_this_turn || c.incapacitated) return false;
     // At least one other living creature within 10 ft (2 cells) to receive the temp HP.
@@ -2364,7 +2364,7 @@ bool CombatEngine::applyVitalityOfTheTree(BattleMap& bm, int source, int target)
     if (std::find(in_range.begin(), in_range.end(), target) == in_range.end()) return false;  // target not within 10 ft
 
     const Agent::Stats ss = bm.getAgentStats(source);
-    const int dice = std::max(1, getRageDamageBonus(ss.char_level));
+    const int dice = std::max(1, getRageDamageBonus(ss.classLevel(CharacterClass::Barbarian)));
     int amount = 0;
     for (int i = 0; i < dice; ++i) amount += roll(6);
 

@@ -599,7 +599,7 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
 
     // Otherworldly Leap invocation (code 10): the Warlock keeps the Jump spell up on
     // itself for free, tripling its jump distance.
-    if (jstats.character_class == CharacterClass::Warlock && jstats.hasInvocation(10))
+    if (jstats.hasClass(CharacterClass::Warlock) && jstats.hasInvocation(10))
         max_jump_ft *= 3;
 
     // The reach is the Strength SCORE in feet (running) or half (standing). Convert that to whole

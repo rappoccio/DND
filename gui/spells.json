@@ -9949,5 +9949,65 @@
     "requires_los": true,
     "check_los_on_center": true,
     "school": "enchantment"
+  },
+  {
+    "name": "PitFiendFearAura",
+    "description": "While the pit fiend is conscious, each creature that starts its turn in a 20-foot Emanation originating from the pit fiend must succeed on a Wisdom saving throw or have the Frightened condition until the start of its next turn.",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "casting_time": "BonusAction",
+    "range": 0,
+    "radius": 20,
+    "width": 0,
+    "length": 0,
+    "duration": 99,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "conditions": [
+      {
+        "condition_name": "Frightened",
+        "condition_duration": 1,
+        "save_repeat_turns": 1,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ],
+    "school": "conjuration",
+    "moves_with_caster": true,
+    "selective_targeting": false
+  },
+  {
+    "name": "Hellfire",
+    "description": "The pit fiend unleashes hellfire (Fireball cast at 7th level): each creature in a 20-foot-radius Sphere makes a Dexterity saving throw, taking 12d6 Fire damage on a failed save or half as much on a success. (Recharge 5-6.)",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Save",
+    "save_ability": "SaveDex",
+    "range": 150,
+    "radius": 15,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Fire",
+        "num_dice": 12,
+        "die_size": 6
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 7,
+    "upcast_dice_bonus": 1,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "recharge_min": 5,
+    "school": "evocation"
   }
 ]

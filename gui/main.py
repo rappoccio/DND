@@ -12000,6 +12000,9 @@ class App:
                     "is_undead":  s.is_undead,
                     "is_fiend":   s.is_fiend,
                     "is_vampire": s.is_vampire,
+                    # Magic Resistance trait (Advantage on saves vs spells/magical effects). Must
+                    # round-trip or a reloaded Pit Fiend/Balor loses it (dict_to_stats reads it back).
+                    "magic_resistance": s.magic_resistance,
                     # On-death AoE (Balor Death Throes): names a spell in this creature's own list.
                     # Must round-trip or a reloaded exploder stops detonating. dict_to_stats reads it back.
                     "death_burst_spell": s.death_burst_spell,
@@ -12093,8 +12096,14 @@ class App:
                 # and any hand-tuned dice survive the round-trip without re-reading items.json.
                 "items": [_item_to_dict(it)
                           for it in self.combat.get_agent_items(self.bm, i)],
+                # Multiclassing (MULTICLASSING_PLAN.md Phase 1): class_levels is the
+                # source of truth. agent_class/agent_char_level are kept as derived
+                # mirrors (primary class / total level) for back-compat and for the
+                # UI/readers that show a single "primary" class.
                 "agent_class":      s.character_class.name,
                 "agent_char_level": s.char_level,
+                "agent_class_levels": {rpg.CharacterClass(i).name: lvl
+                                       for i, lvl in enumerate(s.class_levels) if lvl > 0},
                 "agent_barbarian_subclass": s.barbarian_subclass.name,
                 "agent_wild_heart_power": s.wild_heart_power.name,
                 "agent_rage_of_gods_used": s.rage_of_gods_used,

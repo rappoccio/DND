@@ -107,6 +107,10 @@ int CombatEngine::healAgent(BattleMap& bm, int idx, int amount) noexcept
 {
     Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_max == 0 && s.hp_cur == 0) return 0;   // default-constructed → invalid idx
+    // A creature under a prevents_healing condition (Pit Fiend poison: "can't regain hit points")
+    // gains no HP from any source. The condition still ends normally via its saves; this only
+    // gates the gain. Revival from 0 is likewise blocked — a downed target can't be healed up.
+    if (s.cant_heal) return s.hp_cur;
     s.hp_cur = std::min(s.effectiveMaxHp(), s.hp_cur + amount);  // can't heal past a drained max
     bm.setAgentStats(idx, s);
     reviveOnHeal(bm, idx);   // regaining HP from 0 returns a downed creature to consciousness
@@ -291,7 +295,7 @@ bool CombatEngine::applyOneWithShadows(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
     const Agent::Stats& s = pa.agent->getStats();
-    if (s.character_class != CharacterClass::Warlock || !s.hasInvocation(8)) return false;
+    if (s.lacksClass(CharacterClass::Warlock) || !s.hasInvocation(8)) return false;
 
     // Must be standing in an area of Dim Light or Darkness (the light level at the cell —
     // not the obscuration-effect layer, which is for fog/magical-darkness AoEs).
@@ -343,8 +347,8 @@ bool CombatEngine::activatePsychicVeil(BattleMap& bm, int idx) noexcept
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Rogue ||
-        s.rogue_subclass != SoulknifePath || s.char_level < 13) return false;
+    if (s.lacksClass(CharacterClass::Rogue) ||
+        s.rogue_subclass != SoulknifePath || s.classLevel(CharacterClass::Rogue) < 13) return false;
     Resource* pv  = s.getResource("Psychic Veil");
     Resource* ped = s.getResource("Psionic Energy");
     if (pv && pv->current >= 1)        pv->current  -= 1;     // free use first
@@ -368,8 +372,8 @@ bool CombatEngine::shadowStepTeleport(BattleMap& bm, int idx, int target_col, in
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Monk ||
-        s.monk_subclass != WarriorOfShadowPath || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Monk) ||
+        s.monk_subclass != WarriorOfShadowPath || s.classLevel(CharacterClass::Monk) < 6) return false;
 
     const Cell from = agents[static_cast<std::size_t>(idx)].origin;
     const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
@@ -381,7 +385,7 @@ bool CombatEngine::shadowStepTeleport(BattleMap& bm, int idx, int target_col, in
     }
 
     // L6 gate: must be in dim or dark light
-    if (s.char_level < 11) {
+    if (s.classLevel(CharacterClass::Monk) < 11) {
         VisibilityLevel light = bm.getLightLevel(from);
         if (light != VisibilityLevel::Dim && light != VisibilityLevel::Dark &&
             light != VisibilityLevel::MagicalDark) {
@@ -398,12 +402,12 @@ bool CombatEngine::shadowStepTeleport(BattleMap& bm, int idx, int target_col, in
     Agent::Conditions c = bm.getAgentConditions(idx);
     c.shadow_step_advantage = true;
     // L11 Improved Shadow Step: the Advantage attack also gains +5 ft reach.
-    if (s.char_level >= 11) c.bonus_reach_available = true;
+    if (s.classLevel(CharacterClass::Monk) >= 11) c.bonus_reach_available = true;
     bm.setAgentConditions(idx, c);
 
     log_("{}: Shadow Step — teleports {} ft, next attack has Advantage{}",
          agentName(bm, idx), dcells * 5,
-         s.char_level >= 11 ? " and +5 ft reach" : "");
+         s.classLevel(CharacterClass::Monk) >= 11 ? " and +5 ft reach" : "");
     return true;
 }
 
@@ -424,17 +428,17 @@ bool CombatEngine::stepsOfTheFey(BattleMap& bm, int idx, int target_col, int tar
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Warlock ||
-        s.warlock_subclass != ArchfeyPath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Warlock) ||
+        s.warlock_subclass != ArchfeyPath || s.classLevel(CharacterClass::Warlock) < 3) return false;
 
     // Misty Escape (L6): casting Misty Step reactively (in response to taking damage) requires L6+.
-    if (as_reaction && s.char_level < 6) {
+    if (as_reaction && s.classLevel(CharacterClass::Warlock) < 6) {
         log_("{}: Misty Escape (reaction Misty Step) unlocks at Warlock level 6", agentName(bm, idx));
         return false;
     }
 
     // L6+ gate for the Disappearing / Dreadful step options.
-    if ((effect == 3 || effect == 4) && s.char_level < 6) {
+    if ((effect == 3 || effect == 4) && s.classLevel(CharacterClass::Warlock) < 6) {
         log_("{}: that Steps of the Fey option unlocks at Warlock level 6", agentName(bm, idx));
         return false;
     }
@@ -565,11 +569,11 @@ bool CombatEngine::bewitchingMistyStep(BattleMap& bm, int idx, int target_col, i
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     const Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Warlock ||
-        s.warlock_subclass != ArchfeyPath || s.char_level < 14) return false;
+    if (s.lacksClass(CharacterClass::Warlock) ||
+        s.warlock_subclass != ArchfeyPath || s.classLevel(CharacterClass::Warlock) < 14) return false;
 
     // The Disappearing / Dreadful riders are L6+ — always satisfied at L14, but keep the shared gate.
-    if ((effect == 3 || effect == 4) && s.char_level < 6) return false;
+    if ((effect == 3 || effect == 4) && s.classLevel(CharacterClass::Warlock) < 6) return false;
 
     const Cell from = agents[static_cast<std::size_t>(idx)].origin;
     const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
@@ -592,8 +596,8 @@ bool CombatEngine::cloakOfShadows(BattleMap& bm, int idx) noexcept
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Monk ||
-        s.monk_subclass != WarriorOfShadowPath || s.char_level < 17) return false;
+    if (s.lacksClass(CharacterClass::Monk) ||
+        s.monk_subclass != WarriorOfShadowPath || s.classLevel(CharacterClass::Monk) < 17) return false;
 
     // Must be in dim or dark light
     VisibilityLevel light = bm.getLightLevel(agents[static_cast<std::size_t>(idx)].origin);
@@ -623,8 +627,8 @@ int CombatEngine::shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Monk ||
-        s.monk_subclass != WarriorOfShadowPath || s.char_level < 3) return -1;
+    if (s.lacksClass(CharacterClass::Monk) ||
+        s.monk_subclass != WarriorOfShadowPath || s.classLevel(CharacterClass::Monk) < 3) return -1;
     Resource* fp = s.getResource("Focus Points");
     if (!fp || fp->current < 1) {
         log_("{}: Shadow Arts: Darkness requires 1 Focus Point", agentName(bm, idx));
@@ -677,8 +681,8 @@ bool CombatEngine::activateElementalAttunement(BattleMap& bm, int idx, int eleme
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Monk ||
-        s.monk_subclass != WarriorOfFourElementsPath || s.char_level < 3) return false;
+    if (s.lacksClass(CharacterClass::Monk) ||
+        s.monk_subclass != WarriorOfFourElementsPath || s.classLevel(CharacterClass::Monk) < 3) return false;
     if (element != Acid && element != Cold && element != Fire &&
         element != Lightning && element != Thunder) {
         log_("{}: Elemental Attunement requires an elemental damage type", agentName(bm, idx));
@@ -738,8 +742,8 @@ bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int ta
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats cs = bm.getAgentStats(idx);
-    if (cs.character_class != CharacterClass::Monk ||
-        cs.monk_subclass != WarriorOfFourElementsPath || cs.char_level < 6) return false;
+    if (cs.lacksClass(CharacterClass::Monk) ||
+        cs.monk_subclass != WarriorOfFourElementsPath || cs.classLevel(CharacterClass::Monk) < 6) return false;
     if (element != Acid && element != Cold && element != Fire &&
         element != Lightning && element != Thunder) {
         log_("{}: Elemental Burst requires an elemental damage type", agentName(bm, idx));
@@ -753,7 +757,7 @@ bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int ta
 
     const auto mt  = static_cast<MagicDamage_t>(element);
     const int  dc  = spellSaveDcFromAbility(cs, SaveWis);   // Monk Ki DC = 8 + PB + WIS
-    const int  num = martialArtsDieCount(cs.char_level);
+    const int  num = martialArtsDieCount(cs.classLevel(CharacterClass::Monk));
 
     spendResource(bm, idx, "Focus Points", 2);
     log_("{}: Elemental Burst — a 20 ft Sphere of {} erupts (DC {} DEX save, {}d8)",
@@ -783,7 +787,7 @@ bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int ta
         bool saved    = (save_tot >= dc);
 
         // Rogue Evasion (L7+): DEX save success = no damage, failure = half.
-        if (ts.character_class == CharacterClass::Rogue && ts.char_level >= 7) {
+        if (ts.hasClass(CharacterClass::Rogue) && ts.classLevel(CharacterClass::Rogue) >= 7) {
             dmg = saved ? 0 : (dmg / 2);
         } else if (saved) {
             dmg /= 2;
@@ -823,8 +827,8 @@ bool CombatEngine::plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_id
     if (monk_idx < 0 || monk_idx >= n || target_idx < 0 || target_idx >= n) return false;
 
     Agent::Stats ms = bm.getAgentStats(monk_idx);
-    if (ms.character_class != CharacterClass::Monk ||
-        ms.monk_subclass != WarriorOfTheOpenHandPath || ms.char_level < 17) {
+    if (ms.lacksClass(CharacterClass::Monk) ||
+        ms.monk_subclass != WarriorOfTheOpenHandPath || ms.classLevel(CharacterClass::Monk) < 17) {
         log_("{}: Quivering Palm requires Warrior of the Open Hand (L17)", agentName(bm, monk_idx));
         return false;
     }
@@ -873,8 +877,8 @@ bool CombatEngine::psychicTeleportation(BattleMap& bm, int idx, int target_col, 
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Rogue ||
-        s.rogue_subclass != SoulknifePath || s.char_level < 9) return false;
+    if (s.lacksClass(CharacterClass::Rogue) ||
+        s.rogue_subclass != SoulknifePath || s.classLevel(CharacterClass::Rogue) < 9) return false;
     Resource* ped = s.getResource("Psionic Energy");
     if (!ped || ped->current < 1) return false;
 
@@ -910,8 +914,8 @@ bool CombatEngine::moveDuplicate(BattleMap& bm, int cleric_idx, int dup_idx,
     if (dup.removed_from_play || dup.summoner_idx != cleric_idx ||
         dup.summon_spell != "Invoke Duplicity") return false;
     const Agent::Stats cs = bm.getAgentStats(cleric_idx);
-    if (cs.character_class != CharacterClass::Cleric ||
-        cs.cleric_subclass != TrickeryDomain || cs.char_level < 3) return false;
+    if (cs.lacksClass(CharacterClass::Cleric) ||
+        cs.cleric_subclass != TrickeryDomain || cs.classLevel(CharacterClass::Cleric) < 3) return false;
 
     const Cell from = dup.origin;
     const int dcells = std::max(std::abs(target_col - from.col), std::abs(target_row - from.row));
@@ -938,8 +942,8 @@ bool CombatEngine::swapWithDuplicate(BattleMap& bm, int cleric_idx, int dup_idx)
     if (dup.removed_from_play || dup.summoner_idx != cleric_idx ||
         dup.summon_spell != "Invoke Duplicity") return false;
     const Agent::Stats cs = bm.getAgentStats(cleric_idx);
-    if (cs.character_class != CharacterClass::Cleric ||
-        cs.cleric_subclass != TrickeryDomain || cs.char_level < 6) return false;
+    if (cs.lacksClass(CharacterClass::Cleric) ||
+        cs.cleric_subclass != TrickeryDomain || cs.classLevel(CharacterClass::Cleric) < 6) return false;
 
     const Cell cleric_from = agents[static_cast<std::size_t>(cleric_idx)].origin;
     const Cell dup_from    = dup.origin;
@@ -1088,20 +1092,20 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         }
 
         // Initialize Arcane Ward for Abjurers at L3+
-        if (stats.character_class == Wizard && stats.wizard_subclass == AbjurerPath && stats.char_level >= 3) {
-            stats.temp_hp = stats.char_level;
+        if (stats.hasClass(Wizard) && stats.wizard_subclass == AbjurerPath && stats.classLevel(CharacterClass::Wizard) >= 3) {
+            stats.temp_hp = stats.classLevel(CharacterClass::Wizard);
         }
 
         // TASK E: Celestial Resilience (Celestial L10): temp HP on long rest
-        if (stats.character_class == CharacterClass::Warlock && stats.warlock_subclass == CelestialPath && stats.char_level >= 10) {
+        if (stats.hasClass(CharacterClass::Warlock) && stats.warlock_subclass == CelestialPath && stats.classLevel(CharacterClass::Warlock) >= 10) {
             int chaMod = (stats.cha - 10) / 2;
             if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
-            stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+            stats.temp_hp = std::max(stats.temp_hp, stats.classLevel(CharacterClass::Warlock) + chaMod);
         }
 
         // Warrior of the Elements — Elemental Attunement ends on a long rest (clear the active flag and
         // the unarmed damage-type override it set).
-        if (stats.character_class == CharacterClass::Monk && stats.unarmed_damage_override >= 0)
+        if (stats.hasClass(CharacterClass::Monk) && stats.unarmed_damage_override >= 0)
             stats.unarmed_damage_override = -1;
         {
             Agent::Conditions ec = bm.getAgentConditions(agent_idx);
@@ -1136,7 +1140,7 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         stats.living_legend_turns = 0;
 
         // Zealot L14 Rage of the Gods is usable once per long rest — restore it here.
-        if (stats.character_class == CharacterClass::Barbarian &&
+        if (stats.hasClass(CharacterClass::Barbarian) &&
             stats.barbarian_subclass == ZealotPath)
             stats.rage_of_gods_used = false;
 
@@ -1147,7 +1151,7 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         bm.setAgentStats(agent_idx, stats);
 
         // Regenerate Portent Dice for Diviners
-        if (stats.character_class == Wizard && stats.wizard_subclass == DivinierPath) {
+        if (stats.hasClass(Wizard) && stats.wizard_subclass == DivinierPath) {
             regeneratePortentDice(bm, agent_idx);
         }
 
@@ -1164,14 +1168,14 @@ void CombatEngine::applyShortRest(BattleMap& bm) noexcept
         stats.restore_resources_short_rest();  // Warlock pact slots, Monk Ki, etc.
 
         // TASK E: Celestial Resilience (Celestial L10): temp HP on short rest
-        if (stats.character_class == CharacterClass::Warlock && stats.warlock_subclass == CelestialPath && stats.char_level >= 10) {
+        if (stats.hasClass(CharacterClass::Warlock) && stats.warlock_subclass == CelestialPath && stats.classLevel(CharacterClass::Warlock) >= 10) {
             int chaMod = (stats.cha - 10) / 2;
             if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
-            stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+            stats.temp_hp = std::max(stats.temp_hp, stats.classLevel(CharacterClass::Warlock) + chaMod);
         }
 
         // Warrior of the Elements — Elemental Attunement ends on a short rest too.
-        if (stats.character_class == CharacterClass::Monk && stats.unarmed_damage_override >= 0)
+        if (stats.hasClass(CharacterClass::Monk) && stats.unarmed_damage_override >= 0)
             stats.unarmed_damage_override = -1;
         {
             Agent::Conditions ec = bm.getAgentConditions(agent_idx);
@@ -1237,20 +1241,20 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
 
     // World Tree Vitality of the Tree: grant temp HP = Barbarian level on Rage activation
     if (stats.barbarian_subclass == WorldTreePath) {
-        int vitality_temp_hp = stats.char_level;
+        int vitality_temp_hp = stats.classLevel(CharacterClass::Barbarian);
         grantTempHp(stats, vitality_temp_hp);  // entry THP is NOT rage-tagged: it persists past Rage end
         log_("{} grants Vitality: {} temp HP", agentName(bm, idx), vitality_temp_hp);
     }
 
     // Berserker L6: Mindless Rage - clear Charmed and Frightened conditions
-    if (stats.barbarian_subclass == BerserkerPath && stats.char_level >= 6) {
+    if (stats.barbarian_subclass == BerserkerPath && stats.classLevel(CharacterClass::Barbarian) >= 6) {
         cond.charmed = false;
         cond.frightened = false;
         log_("{} Mindless Rage: charmed/frightened cleared", agentName(bm, idx));
     }
 
     // Wild Heart L6: Aspect of the Wilds - apply aspect bonuses
-    if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 6) {
+    if (stats.barbarian_subclass == WildHeartPath && stats.classLevel(CharacterClass::Barbarian) >= 6) {
         if (stats.wild_heart_aspect == OwlAspect) {
             stats.darkvision_range = std::max(stats.darkvision_range, 60);
             log_("{} Owl Aspect: darkvision 60 ft", agentName(bm, idx));
@@ -1261,7 +1265,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
     }
 
     // Reset Zealot Fanatical Focus flag on Rage activation (can use once per Rage)
-    if (stats.barbarian_subclass == ZealotPath && stats.char_level >= 6) {
+    if (stats.barbarian_subclass == ZealotPath && stats.classLevel(CharacterClass::Barbarian) >= 6) {
         cond.fanatical_focus_used = false;
         log_("{} Fanatical Focus: ready for use this Rage", agentName(bm, idx));
     }
@@ -1269,7 +1273,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
     // Wild Heart L14 — Power of the Wilds: the chosen option (Falcon/Lion/Ram) applies for
     // the duration of this Rage. Ram is an on-hit melee rider (handled in applyAttackResult);
     // Falcon grants a Fly Speed (only while unarmored); Lion sets the disadvantage-aura flag.
-    if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 14) {
+    if (stats.barbarian_subclass == WildHeartPath && stats.classLevel(CharacterClass::Barbarian) >= 14) {
         cond.lion_aura_active = (stats.wild_heart_power == LionPower);
         bool wearing_armor = false;
         for (const auto& piece : agents[static_cast<std::size_t>(idx)].armor) {
@@ -1286,7 +1290,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
     }
 
     // World Tree L14 — Travel along the Tree: the 150-ft teleport upgrade is once per Rage.
-    if (stats.barbarian_subclass == WorldTreePath && stats.char_level >= 14) {
+    if (stats.barbarian_subclass == WorldTreePath && stats.classLevel(CharacterClass::Barbarian) >= 14) {
         cond.world_tree_long_teleport_used = false;
     }
 
@@ -1300,7 +1304,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
     }
 
     // Instinctive Pounce (L7): grant up to half speed of extra movement THIS turn
-    if (stats.char_level >= 7) {
+    if (stats.classLevel(CharacterClass::Barbarian) >= 7) {
         walkRemaining_[idx] += stats.speed_walk / 2;
         log_("{} Instinctive Pounce: +{} ft movement", agentName(bm, idx), stats.speed_walk / 2);
     }
@@ -1358,7 +1362,7 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
     }
 
     // Wild Heart L6 Aspect: restore swim speed / darkvision on Rage end
-    if (stats.barbarian_subclass == WildHeartPath && stats.char_level >= 6) {
+    if (stats.barbarian_subclass == WildHeartPath && stats.classLevel(CharacterClass::Barbarian) >= 6) {
         if (stats.wild_heart_aspect == SalmonAspect) {
             stats.speed_swim = 0;  // Reset swim speed (Salmon aspect only during Rage)
         }
@@ -1420,9 +1424,9 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
     Agent::Conditions cond = bm.getAgentConditions(idx);
 
     // Gate on Berserker L14+ (2024 PHB: Intimidating Presence is the L14 feature; L10 is Retaliation)
-    if (stats.character_class != CharacterClass::Barbarian ||
+    if (stats.lacksClass(CharacterClass::Barbarian) ||
         stats.barbarian_subclass != BerserkerPath ||
-        stats.char_level < 14) {
+        stats.classLevel(CharacterClass::Barbarian) < 14) {
         return false;
     }
 
@@ -1523,9 +1527,9 @@ bool CombatEngine::activateClairvoyantCombatant(BattleMap& bm, int warlock_idx, 
     Agent::Stats stats = bm.getAgentStats(warlock_idx);
 
     // Gate on Great Old One L6+
-    if (stats.character_class != CharacterClass::Warlock ||
+    if (stats.lacksClass(CharacterClass::Warlock) ||
         stats.warlock_subclass != GreatOldOnePath ||
-        stats.char_level < 6) {
+        stats.classLevel(CharacterClass::Warlock) < 6) {
         return false;
     }
 
@@ -1602,8 +1606,8 @@ bool CombatEngine::triggerSearingVengeance(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Warlock ||
-        stats.warlock_subclass != CelestialPath || stats.char_level < 14) return false;
+    if (stats.lacksClass(CharacterClass::Warlock) ||
+        stats.warlock_subclass != CelestialPath || stats.classLevel(CharacterClass::Warlock) < 14) return false;
     Resource* sv = stats.getResource("Searing Vengeance");
     if (!sv || sv->current <= 0) return false;
 
@@ -1671,9 +1675,9 @@ bool CombatEngine::useZealousPresence(BattleMap& bm, int idx) noexcept
     Agent::Stats stats = bm.getAgentStats(idx);
 
     // Gate on Zealot L10+
-    if (stats.character_class != CharacterClass::Barbarian ||
+    if (stats.lacksClass(CharacterClass::Barbarian) ||
         stats.barbarian_subclass != ZealotPath ||
-        stats.char_level < 10) {
+        stats.classLevel(CharacterClass::Barbarian) < 10) {
         return false;
     }
 
@@ -1761,9 +1765,9 @@ bool CombatEngine::activateRageOfTheGods(BattleMap& bm, int idx) noexcept
     Agent::Conditions cond = bm.getAgentConditions(idx);
 
     // Gate on Zealot L14+, currently raging, once per long rest.
-    if (stats.character_class != CharacterClass::Barbarian ||
+    if (stats.lacksClass(CharacterClass::Barbarian) ||
         stats.barbarian_subclass != ZealotPath ||
-        stats.char_level < 14 ||
+        stats.classLevel(CharacterClass::Barbarian) < 14 ||
         !cond.raging ||
         stats.rage_of_gods_used) {
         return false;
@@ -1795,9 +1799,9 @@ bool CombatEngine::travelAlongTree(BattleMap& bm, int idx, int target_col, int t
     Agent::Conditions cond = bm.getAgentConditions(idx);
 
     // Gate on World Tree L14+, currently raging.
-    if (stats.character_class != CharacterClass::Barbarian ||
+    if (stats.lacksClass(CharacterClass::Barbarian) ||
         stats.barbarian_subclass != WorldTreePath ||
-        stats.char_level < 14 ||
+        stats.classLevel(CharacterClass::Barbarian) < 14 ||
         !cond.raging) {
         return false;
     }
@@ -1868,7 +1872,7 @@ bool CombatEngine::canUsePrimalKnowledge(const BattleMap& bm, int idx, const std
     const Agent::Conditions& cond = pa.agent->getConditions();
 
     // Primal Knowledge (L3): Acrobatics and Stealth can use STR instead of their normal ability while Raging
-    if (stats.character_class != CharacterClass::Barbarian || stats.char_level < 3)
+    if (stats.lacksClass(CharacterClass::Barbarian) || stats.classLevel(CharacterClass::Barbarian) < 3)
         return false;
 
     if (!cond.raging)
@@ -1887,7 +1891,7 @@ int CombatEngine::activateSacredWeapon(BattleMap& bm, int idx) noexcept
     if (stats.hp_max == 0 && stats.hp_cur == 0) return -1;  // invalid idx
 
     // Requires a Paladin who has taken the Oath of Devotion.
-    if (stats.character_class != CharacterClass::Paladin ||
+    if (stats.lacksClass(CharacterClass::Paladin) ||
         stats.paladin_oath != OathOfDevotionPath) return -1;
 
     // Needs an available Channel Oath use.
@@ -1924,7 +1928,7 @@ bool CombatEngine::activateVowOfEnmity(BattleMap& bm, int idx, int target_idx) n
     Agent::Stats stats = bm.getAgentStats(idx);
 
     // Requires a Paladin who has taken the Oath of Vengeance.
-    if (stats.character_class != CharacterClass::Paladin ||
+    if (stats.lacksClass(CharacterClass::Paladin) ||
         stats.paladin_oath != OathOfVengeancePath) return false;
 
     // Needs an available Channel Oath use.
@@ -1968,8 +1972,8 @@ bool CombatEngine::activateAvengingAngel(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Paladin ||
-        s.paladin_oath != OathOfVengeancePath || s.char_level < 20) {
+    if (s.lacksClass(CharacterClass::Paladin) ||
+        s.paladin_oath != OathOfVengeancePath || s.classLevel(CharacterClass::Paladin) < 20) {
         log_("{} cannot use Avenging Angel (not a L20 Oath of Vengeance paladin)", agentName(bm, idx));
         return false;
     }
@@ -2017,8 +2021,8 @@ bool CombatEngine::activateElderChampion(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Paladin ||
-        s.paladin_oath != OathOfAncientsPath || s.char_level < 20) {
+    if (s.lacksClass(CharacterClass::Paladin) ||
+        s.paladin_oath != OathOfAncientsPath || s.classLevel(CharacterClass::Paladin) < 20) {
         log_("{} cannot use Elder Champion (not a L20 Oath of the Ancients paladin)", agentName(bm, idx));
         return false;
     }
@@ -2063,7 +2067,7 @@ int CombatEngine::activateInspiringSmite(BattleMap& bm, int idx, int target_idx)
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return -1;
 
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Paladin || s.paladin_oath != OathOfGloryPath) return -1;
+    if (s.lacksClass(CharacterClass::Paladin) || s.paladin_oath != OathOfGloryPath) return -1;
 
     // Must immediately follow a Divine Smite this turn, and only once per turn.
     const Agent::Conditions ic = bm.getAgentConditions(idx);
@@ -2080,7 +2084,7 @@ int CombatEngine::activateInspiringSmite(BattleMap& bm, int idx, int target_idx)
         return -1;
     }
 
-    const int pool = roll(8) + roll(8) + s.char_level;   // 2d8 + Paladin level
+    const int pool = roll(8) + roll(8) + s.classLevel(CharacterClass::Paladin);   // 2d8 + Paladin level
     spendResource(bm, idx, "Channel Oath", 1);
 
     // Mark used this turn (re-fetch conditions in case spendResource touched them).
@@ -2107,8 +2111,8 @@ bool CombatEngine::activateLivingLegend(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Paladin ||
-        s.paladin_oath != OathOfGloryPath || s.char_level < 20) {
+    if (s.lacksClass(CharacterClass::Paladin) ||
+        s.paladin_oath != OathOfGloryPath || s.classLevel(CharacterClass::Paladin) < 20) {
         log_("{} cannot use Living Legend (not a L20 Oath of Glory paladin)", agentName(bm, idx));
         return false;
     }
@@ -2148,8 +2152,8 @@ bool CombatEngine::activateCoronaOfLight(BattleMap& bm, int idx) noexcept
     if (stats.hp_max == 0 && stats.hp_cur == 0) return false;  // invalid idx
 
     // Requires a Light Domain Cleric of level 17+.
-    if (stats.character_class != CharacterClass::Cleric ||
-        stats.cleric_subclass != LightDomain || stats.char_level < 17) return false;
+    if (stats.lacksClass(CharacterClass::Cleric) ||
+        stats.cleric_subclass != LightDomain || stats.classLevel(CharacterClass::Cleric) < 17) return false;
 
     stats.corona_of_light_turns = 10;  // 1 minute = 10 rounds
     bm.setAgentStats(idx, stats);
@@ -2165,7 +2169,7 @@ bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer) return false;
+    if (stats.lacksClass(CharacterClass::Sorcerer)) return false;
 
     // Normally requires an available Innate Sorcery use (Bonus Action; 2 uses per long rest).
     // Sorcery Incarnate (L7): with the uses spent, 2 Sorcery Points buy an activation instead.
@@ -2175,7 +2179,7 @@ bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
     bool paid_with_sp = false;
     if (innate && innate->current > 0) {
         innate->spend(1);
-    } else if (stats.char_level >= 7) {
+    } else if (stats.classLevel(CharacterClass::Sorcerer) >= 7) {
         Resource* sp = stats.getResource("Sorcery Points");
         if (!sp || sp->current < 2) return false;
         sp->spend(2);
@@ -2194,8 +2198,8 @@ bool CombatEngine::activateInnateSorcery(BattleMap& bm, int idx) noexcept
 
 bool CombatEngine::sorceryIncarnateActive(const Agent::Stats& s) noexcept
 {
-    return s.character_class == CharacterClass::Sorcerer &&
-           s.char_level >= 7 && s.innate_sorcery_turns > 0;
+    return s.hasClass(CharacterClass::Sorcerer) &&
+           s.classLevel(CharacterClass::Sorcerer) >= 7 && s.innate_sorcery_turns > 0;
 }
 
 bool CombatEngine::activateDragonWings(BattleMap& bm, int idx) noexcept
@@ -2204,9 +2208,9 @@ bool CombatEngine::activateDragonWings(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
         stats.sorcerer_subclass != SorcererSubclass::DraconicPath ||
-        stats.char_level < 14) {
+        stats.classLevel(CharacterClass::Sorcerer) < 14) {
         return false;
     }
 
@@ -2232,9 +2236,9 @@ bool CombatEngine::activateDraconicResistance(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
         stats.sorcerer_subclass != SorcererSubclass::DraconicPath ||
-        stats.char_level < 6 || stats.draconic_affinity_type < 0) {
+        stats.classLevel(CharacterClass::Sorcerer) < 6 || stats.draconic_affinity_type < 0) {
         return false;
     }
     if (stats.draconic_affinity_resist_turns > 0) return false;  // already active
@@ -2259,9 +2263,9 @@ bool CombatEngine::activateTranceOfOrder(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
         stats.sorcerer_subclass != SorcererSubclass::ClockworkPath ||
-        stats.char_level < 14) {
+        stats.classLevel(CharacterClass::Sorcerer) < 14) {
         log_("{} cannot enter Trance of Order (not a L14+ Clockwork Sorcerer)", agentName(bm, idx));
         return false;
     }
@@ -2295,9 +2299,9 @@ int CombatEngine::activateBastionOfLaw(BattleMap& bm, int caster_idx, int target
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return -1;
 
     Agent::Stats caster = bm.getAgentStats(caster_idx);
-    if (caster.character_class != CharacterClass::Sorcerer ||
+    if (caster.lacksClass(CharacterClass::Sorcerer) ||
         caster.sorcerer_subclass != SorcererSubclass::ClockworkPath ||
-        caster.char_level < 6) {
+        caster.classLevel(CharacterClass::Sorcerer) < 6) {
         log_("{} cannot use Bastion of Law (not a L6+ Clockwork Sorcerer)", agentName(bm, caster_idx));
         return -1;
     }
@@ -2352,9 +2356,9 @@ int CombatEngine::clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept
     if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return -1;
 
     Agent::Stats caster = bm.getAgentStats(caster_idx);
-    if (caster.character_class != CharacterClass::Sorcerer ||
+    if (caster.lacksClass(CharacterClass::Sorcerer) ||
         caster.sorcerer_subclass != SorcererSubclass::ClockworkPath ||
-        caster.char_level < 18) {
+        caster.classLevel(CharacterClass::Sorcerer) < 18) {
         log_("{} cannot use Clockwork Cavalcade (not a L18+ Clockwork Sorcerer)", agentName(bm, caster_idx));
         return -1;
     }
@@ -2417,8 +2421,8 @@ bool CombatEngine::activateRevelationInFlesh(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Sorcerer ||
-        s.sorcerer_subclass != SorcererSubclass::AberrantPath || s.char_level < 14) {
+    if (s.lacksClass(CharacterClass::Sorcerer) ||
+        s.sorcerer_subclass != SorcererSubclass::AberrantPath || s.classLevel(CharacterClass::Sorcerer) < 14) {
         log_("{} cannot use Revelation in Flesh (not a L14+ Aberrant Mind Sorcerer)", agentName(bm, idx));
         return false;
     }
@@ -2453,8 +2457,8 @@ int CombatEngine::warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, 
     if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return -1;
 
     Agent::Stats caster = bm.getAgentStats(caster_idx);
-    if (caster.character_class != CharacterClass::Sorcerer ||
-        caster.sorcerer_subclass != SorcererSubclass::AberrantPath || caster.char_level < 18) {
+    if (caster.lacksClass(CharacterClass::Sorcerer) ||
+        caster.sorcerer_subclass != SorcererSubclass::AberrantPath || caster.classLevel(CharacterClass::Sorcerer) < 18) {
         log_("{} cannot use Warping Implosion (not a L18+ Aberrant Mind Sorcerer)", agentName(bm, caster_idx));
         return -1;
     }
@@ -2537,7 +2541,7 @@ bool CombatEngine::useMagicalCunning(BattleMap& bm, int agent_idx)
     if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(agent_idx);
-    if (stats.character_class != Warlock) return false;
+    if (stats.lacksClass(Warlock)) return false;
 
     Resource* mc = stats.getResource("Magical Cunning");
     if (!mc || mc->current <= 0) return false;  // not available / already used
@@ -2550,7 +2554,7 @@ bool CombatEngine::useMagicalCunning(BattleMap& bm, int agent_idx)
     if (expended <= 0) return false;  // nothing to recover
 
     // ceil(max/2), or all expended at L20 (Eldritch Master).
-    const int recover = (stats.char_level >= 20) ? expended
+    const int recover = (stats.classLevel(CharacterClass::Warlock) >= 20) ? expended
                                                  : std::min(expended, (maxs + 1) / 2);
     stats.spell_slots_remaining[i] += recover;
     mc->spend();
@@ -2558,12 +2562,12 @@ bool CombatEngine::useMagicalCunning(BattleMap& bm, int agent_idx)
     log_("{}: Magical Cunning recovers {} pact slot(s).", agentName(bm, agent_idx), recover);
 
     // TASK E: Celestial Resilience (Celestial L10): temp HP on Magical Cunning use
-    if (stats.character_class == CharacterClass::Warlock && stats.warlock_subclass == CelestialPath && stats.char_level >= 10) {
+    if (stats.hasClass(CharacterClass::Warlock) && stats.warlock_subclass == CelestialPath && stats.classLevel(CharacterClass::Warlock) >= 10) {
         int chaMod = (stats.cha - 10) / 2;
         if (stats.cha < 10 && (stats.cha - 10) % 2 != 0) --chaMod;
-        stats.temp_hp = std::max(stats.temp_hp, stats.char_level + chaMod);
+        stats.temp_hp = std::max(stats.temp_hp, stats.classLevel(CharacterClass::Warlock) + chaMod);
         bm.setAgentStats(agent_idx, stats);
-        log_("{}: Celestial Resilience grants {} temp HP", agentName(bm, agent_idx), stats.char_level + chaMod);
+        log_("{}: Celestial Resilience grants {} temp HP", agentName(bm, agent_idx), stats.classLevel(CharacterClass::Warlock) + chaMod);
     }
 
     return true;
@@ -2576,8 +2580,8 @@ int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx,
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return 0;
 
     Agent::Stats healer_stats = bm.getAgentStats(healer_idx);
-    if (healer_stats.character_class != CharacterClass::Warlock || healer_stats.warlock_subclass != CelestialPath ||
-        healer_stats.char_level < 3) {
+    if (healer_stats.lacksClass(CharacterClass::Warlock) || healer_stats.warlock_subclass != CelestialPath ||
+        healer_stats.classLevel(CharacterClass::Warlock) < 3) {
         return 0;
     }
 
@@ -2616,7 +2620,7 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
     if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return result;
 
     Agent::Stats caster = bm.getAgentStats(caster_idx);
-    if (caster.character_class != CharacterClass::Cleric || caster.char_level < 2) return result;
+    if (caster.lacksClass(CharacterClass::Cleric) || caster.classLevel(CharacterClass::Cleric) < 2) return result;
 
     Resource* cd = caster.getResource("Channel Divinity");
     if (!cd || cd->current <= 0) return result;
@@ -2629,7 +2633,7 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
 
     // Sear Undead (L5+): roll WIS-mod d8 (minimum 1d8) ONCE; each failed undead takes that total.
     int sear_total = 0;
-    if (caster.char_level >= 5) {
+    if (caster.classLevel(CharacterClass::Cleric) >= 5) {
         int sear_dice = std::max(1, wisMod);
         for (int i = 0; i < sear_dice; ++i) sear_total += roll(8);
         result.sear_damage = sear_total;
@@ -2699,14 +2703,14 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
 
 bool CombatEngine::lifeSupremeHealing(const Agent::Stats& s) const noexcept
 {
-    return s.character_class == CharacterClass::Cleric &&
-           s.cleric_subclass == LifeDomain && s.char_level >= 17;
+    return s.hasClass(CharacterClass::Cleric) &&
+           s.cleric_subclass == LifeDomain && s.classLevel(CharacterClass::Cleric) >= 17;
 }
 
 int CombatEngine::discipleOfLifeBonus(const Agent::Stats& s, int slot_level) const noexcept
 {
-    if (s.character_class == CharacterClass::Cleric &&
-        s.cleric_subclass == LifeDomain && s.char_level >= 3 && slot_level >= 1)
+    if (s.hasClass(CharacterClass::Cleric) &&
+        s.cleric_subclass == LifeDomain && s.classLevel(CharacterClass::Cleric) >= 3 && slot_level >= 1)
         return 2 + slot_level;
     return 0;
 }
@@ -2719,14 +2723,14 @@ PreserveLifeResult CombatEngine::usePreserveLife(BattleMap& bm, int caster_idx,
     if (caster_idx < 0 || caster_idx >= static_cast<int>(agents.size())) return result;
 
     Agent::Stats caster = bm.getAgentStats(caster_idx);
-    if (caster.character_class != CharacterClass::Cleric ||
-        caster.cleric_subclass != LifeDomain || caster.char_level < 3) return result;
+    if (caster.lacksClass(CharacterClass::Cleric) ||
+        caster.cleric_subclass != LifeDomain || caster.classLevel(CharacterClass::Cleric) < 3) return result;
 
     Resource* cd = caster.getResource("Channel Divinity");
     if (!cd || cd->current <= 0) return result;
 
     result.valid = true;
-    result.pool  = 5 * caster.char_level;
+    result.pool  = 5 * caster.classLevel(CharacterClass::Cleric);
     int pool     = result.pool;
 
     // Expend one Channel Divinity use.
@@ -2778,7 +2782,7 @@ bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, in
     Agent::Stats stats = bm.getAgentStats(agent_idx);
 
     // Check if Diviner wizard with Portent Dice resource
-    if (stats.character_class != Wizard || stats.wizard_subclass != DivinierPath) {
+    if (stats.lacksClass(Wizard) || stats.wizard_subclass != DivinierPath) {
         log_("{} is not a Diviner Wizard", agentName(bm, agent_idx));
         return false;
     }
@@ -2893,7 +2897,7 @@ int CombatEngine::bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, in
     if (slot_level < 1 || slot_level > 9) return -1;
 
     Agent::Stats stats = bm.getAgentStats(agent_idx);
-    if (stats.character_class != CharacterClass::Bard || stats.char_level < 5) return -1;
+    if (stats.lacksClass(CharacterClass::Bard) || stats.classLevel(CharacterClass::Bard) < 5) return -1;
 
     auto si = static_cast<std::size_t>(slot_level - 1);
     if (stats.spell_slots_remaining[si] <= 0) return -1;  // no slot of that level to spend
@@ -2916,8 +2920,8 @@ bool CombatEngine::activateMantleOfMajesty(BattleMap& bm, int bard_idx) noexcept
     if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(bard_idx);
-    if (stats.character_class != CharacterClass::Bard ||
-        stats.bard_subclass != GlamourPath || stats.char_level < 6) return false;
+    if (stats.lacksClass(CharacterClass::Bard) ||
+        stats.bard_subclass != GlamourPath || stats.classLevel(CharacterClass::Bard) < 6) return false;
 
     Resource* maj = stats.getResource("Mantle of Majesty");
     if (!maj || maj->current <= 0) return false;   // no use left → don't open the window
@@ -2951,8 +2955,8 @@ int CombatEngine::bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx
     if (slot_level < 3 || slot_level > 9) return -1;          // restorable only with a level 3+ slot
 
     Agent::Stats stats = bm.getAgentStats(bard_idx);
-    if (stats.character_class != CharacterClass::Bard ||
-        stats.bard_subclass != GlamourPath || stats.char_level < 6) return -1;
+    if (stats.lacksClass(CharacterClass::Bard) ||
+        stats.bard_subclass != GlamourPath || stats.classLevel(CharacterClass::Bard) < 6) return -1;
 
     auto si = static_cast<std::size_t>(slot_level - 1);
     if (stats.spell_slots_remaining[si] <= 0) return -1;      // no slot of that level to spend
@@ -2975,8 +2979,8 @@ bool CombatEngine::activateUnbreakableMajesty(BattleMap& bm, int bard_idx) noexc
     if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(bard_idx);
-    if (stats.character_class != CharacterClass::Bard ||
-        stats.bard_subclass != GlamourPath || stats.char_level < 14) return false;
+    if (stats.lacksClass(CharacterClass::Bard) ||
+        stats.bard_subclass != GlamourPath || stats.classLevel(CharacterClass::Bard) < 14) return false;
 
     Resource* maj = stats.getResource("Unbreakable Majesty");
     if (!maj || maj->current <= 0) return false;   // no use left
@@ -3011,8 +3015,8 @@ int CombatEngine::bardRestoreUnbreakableMajestyFromSlot(BattleMap& bm, int bard_
     if (slot_level < 3 || slot_level > 9) return -1;          // restorable only with a level 3+ slot
 
     Agent::Stats stats = bm.getAgentStats(bard_idx);
-    if (stats.character_class != CharacterClass::Bard ||
-        stats.bard_subclass != GlamourPath || stats.char_level < 14) return -1;
+    if (stats.lacksClass(CharacterClass::Bard) ||
+        stats.bard_subclass != GlamourPath || stats.classLevel(CharacterClass::Bard) < 14) return -1;
 
     auto si = static_cast<std::size_t>(slot_level - 1);
     if (stats.spell_slots_remaining[si] <= 0) return -1;      // no slot of that level to spend
@@ -3038,8 +3042,8 @@ bool CombatEngine::bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_id
         return false;
 
     Agent::Stats bs = bm.getAgentStats(bard_idx);
-    if (bs.character_class != CharacterClass::Bard ||
-        bs.bard_subclass != BardCollege::GlamourPath || bs.char_level < 3) {
+    if (bs.lacksClass(CharacterClass::Bard) ||
+        bs.bard_subclass != BardCollege::GlamourPath || bs.classLevel(CharacterClass::Bard) < 3) {
         log_("{} cannot use Beguiling Magic (not a L3+ College of Glamour Bard)", agentName(bm, bard_idx));
         return false;
     }
@@ -3096,8 +3100,8 @@ int CombatEngine::bardRestoreBeguilingMagic(BattleMap& bm, int bard_idx) noexcep
     if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return -1;
 
     Agent::Stats bs = bm.getAgentStats(bard_idx);
-    if (bs.character_class != CharacterClass::Bard ||
-        bs.bard_subclass != BardCollege::GlamourPath || bs.char_level < 3) return -1;
+    if (bs.lacksClass(CharacterClass::Bard) ||
+        bs.bard_subclass != BardCollege::GlamourPath || bs.classLevel(CharacterClass::Bard) < 3) return -1;
 
     Resource* beg = bs.getResource("Beguiling Magic");
     if (!beg || beg->current >= beg->max) return -1;   // already full → don't waste an Inspiration
@@ -3123,7 +3127,7 @@ void CombatEngine::applySuperiorInspiration(BattleMap& bm) noexcept
     const int n = static_cast<int>(agents.size());
     for (int i = 0; i < n; ++i) {
         Agent::Stats stats = bm.getAgentStats(i);
-        if (stats.character_class != CharacterClass::Bard || stats.char_level < 18) continue;
+        if (stats.lacksClass(CharacterClass::Bard) || stats.classLevel(CharacterClass::Bard) < 18) continue;
 
         Resource* bi = stats.getResource("Bardic Inspiration");
         if (!bi || bi->current >= 2) continue;
@@ -3141,8 +3145,8 @@ int CombatEngine::bardCuttingWords(BattleMap& bm, int bard_idx) noexcept
     if (bard_idx < 0 || bard_idx >= static_cast<int>(agents.size())) return 0;
 
     Agent::Stats stats = bm.getAgentStats(bard_idx);
-    if (stats.character_class != CharacterClass::Bard ||
-        stats.bard_subclass != BardCollege::LorePath || stats.char_level < 3) {
+    if (stats.lacksClass(CharacterClass::Bard) ||
+        stats.bard_subclass != BardCollege::LorePath || stats.classLevel(CharacterClass::Bard) < 3) {
         log_("{} cannot use Cutting Words (not a L3+ College of Lore Bard)", agentName(bm, bard_idx));
         return 0;
     }
@@ -3171,7 +3175,7 @@ void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
     Agent::Stats stats = bm.getAgentStats(agent_idx);
 
     // Check if Diviner wizard
-    if (stats.character_class != Wizard || stats.wizard_subclass != DivinierPath) {
+    if (stats.lacksClass(Wizard) || stats.wizard_subclass != DivinierPath) {
         return;
     }
 
@@ -3261,7 +3265,7 @@ bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& 
     stats.base_ac = std::max(stats.base_ac, 13 + (stats.wis - 10) / 2);
   }
 
-  int temp_hp = stats.char_level * (stats.druid_circle == CircleOfMoon ? 3 : 1);
+  int temp_hp = stats.classLevel(CharacterClass::Druid) * (stats.druid_circle == CircleOfMoon ? 3 : 1);
   stats.temp_hp += temp_hp;
   stats.rage_thp_source_idx = -1;  // Wild Shape THP is not rage-sourced (don't let endRage wipe it)
 
@@ -3330,13 +3334,13 @@ bool CombatEngine::activateStarryForm(BattleMap& bm, int idx, int constellation)
   stats.starry_constellation = constellation;
 
   // Dragon constellation: add fly speed at L10+
-  if (constellation == 3 && stats.char_level >= 10) {  // 3 = Dragon
+  if (constellation == 3 && stats.classLevel(CharacterClass::Druid) >= 10) {  // 3 = Dragon
     stats.speed_fly = stats.speed_walk;
     log_("[STARRY_FORM] Added fly speed for Dragon constellation");
   }
 
   // Full of Stars (L14): add resistances to B/P/S
-  if (stats.char_level >= 14) {
+  if (stats.classLevel(CharacterClass::Druid) >= 14) {
     stats.set_physical_damage_multiplier(0, 0.5f);  // Bludgeoning
     stats.set_physical_damage_multiplier(1, 0.5f);  // Piercing
     stats.set_physical_damage_multiplier(2, 0.5f);  // Slashing
@@ -3394,7 +3398,7 @@ bool CombatEngine::activateWrathOfSea(BattleMap& bm, int idx) noexcept {
   stats.wrath_of_sea_active = true;
 
   // Stormborn (L10): add fly speed and resistances
-  if (stats.char_level >= 10) {
+  if (stats.classLevel(CharacterClass::Druid) >= 10) {
     stats.speed_fly = stats.speed_walk;
     // Cold, Lightning, Thunder
     stats.set_magic_damage_multiplier(1, 0.5f);   // Cold
@@ -3439,7 +3443,7 @@ int CombatEngine::applyDragonMinRoll(BattleMap& bm, int idx, int d20_roll) noexc
   Agent::Stats stats = bm.getAgentStats(idx);
 
   // Dragon constellation (value 3) with level 10+ gets min-roll-10
-  if (stats.starry_form_active && stats.starry_constellation == 3 && stats.char_level >= 10) {
+  if (stats.starry_form_active && stats.starry_constellation == 3 && stats.classLevel(CharacterClass::Druid) >= 10) {
     int result = std::max(d20_roll, 10);
     if (result > d20_roll) {
       log_("[DRAGON_MIN_ROLL] Applied min-10: rolled {} -> {}", d20_roll, result);

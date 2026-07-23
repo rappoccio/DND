@@ -168,6 +168,7 @@ test_scripts = [
     "test_advantage_aura.py",
     "test_aoe_shared_roll.py",
     "test_balor_attacks.py",
+    "test_pit_fiend.py",
     "test_death_burst.py",
     "test_deny_reactions.py",
     "test_doors.py",
@@ -180,6 +181,12 @@ test_scripts = [
     "test_short_rest_heal.py",
     "test_warlock_patrons.py",
     "test_weapon_mastery_roundtrip.py",
+
+    # Multiclassing Phase 2 — per-class level gates (classLevel(cls) >= N, not char_level)
+    "test_multiclass_gates.py",
+
+    # Multiclassing Phase 3 — combined-caster-level spell slots (compute_multiclass_slots)
+    "test_multiclass_slots.py",
 ]
 
 def run_tests():

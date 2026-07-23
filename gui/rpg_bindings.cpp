@@ -306,9 +306,39 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // Initiative
         .def_readwrite("initiative_prof", &Agent::Stats::initiative_prof)
         .def_property_readonly("initiative_modifier", &Agent::Stats::initiativeModifier)
-        // Character Class & Spell Slots
-        .def_readwrite("character_class",       &Agent::Stats::character_class)
-        .def_readwrite("char_level",            &Agent::Stats::char_level)
+        // Character Class & Spell Slots. Multiclassing (MULTICLASSING_PLAN.md):
+        // class_levels is the source of truth. character_class/char_level stay
+        // read/WRITE for back-compat (existing code + tests assign them directly as
+        // `stats.character_class = X; stats.char_level = N`), but each write routes
+        // through a compat setter that keeps class_levels in sync for the single-
+        // class case those scalars describe. Multiclass callers use
+        // set_class_level() (single-class reset) or add_class_level() (add one class).
+        .def_property("character_class",
+             [](const Agent::Stats& s) { return s.character_class; },
+             [](Agent::Stats& s, CharacterClass c) { s.setPrimaryClassMirror(c); },
+             "Primary class (lowest-enum class with levels), mirror of class_levels.\n"
+             "Writing it makes that class the SOLE class (single-class reset, level preserved);\n"
+             "use set_class_level()/add_class_level() for multiclass. Prefer has_class()/class_level() to read.")
+        .def_property("char_level",
+             [](const Agent::Stats& s) { return s.char_level; },
+             [](Agent::Stats& s, int n) { s.setCharLevelMirror(n); },
+             "Total character level, mirror of total_level(). Writing it sets the (single)\n"
+             "primary class's level; multiclass callers use set_class_level()/add_class_level().")
+        .def_property_readonly("class_levels",
+             [](const Agent::Stats& s) {
+                 std::vector<int> v(static_cast<std::size_t>(NumCharacterClass), 0);
+                 for (int c = 1; c < static_cast<int>(NumCharacterClass); ++c)
+                     v[static_cast<std::size_t>(c)] =
+                         s.classLevel(static_cast<CharacterClass>(c));
+                 return v;
+             },
+             "Per-class levels indexed by the CharacterClass enum (list of ints; 0 = no levels).")
+        .def("has_class", &Agent::Stats::hasClass, py::arg("cls"),
+             "True if the creature has any levels in class cls.")
+        .def("class_level", &Agent::Stats::classLevel, py::arg("cls"),
+             "This creature's level in class cls (0 if it lacks the class).")
+        .def("total_level", &Agent::Stats::totalLevel,
+             "Sum of all class levels (proficiency/feat cadence; mirrored by char_level).")
         .def_readwrite("spell_slots_max",       &Agent::Stats::spell_slots_max)
         .def_readwrite("spell_slots_remaining", &Agent::Stats::spell_slots_remaining)
         .def_readwrite("darkvision_range",     &Agent::Stats::darkvision_range,
@@ -339,7 +369,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Per-type physical damage multipliers: 0.0=immune, 0.5=resist, 1.0=normal, 2.0=vulnerable.")
         .def("set_class_level", &Agent::Stats::set_class_level,
              py::arg("cls"), py::arg("level"),
-             "Set the character class and level. Automatically computes spell_slots_max and updates can_cast_spell.")
+             "Set the character class and level (SINGLE-CLASS RESET: clears any other class\n"
+             "levels first). Automatically computes spell_slots_max and the class mirrors.")
+        .def("add_class_level", &Agent::Stats::add_class_level,
+             py::arg("cls"), py::arg("level"),
+             "Additively set one class's level (multiclass entry point). Unlike set_class_level\n"
+             "this does NOT clear the other classes. Recomputes the character_class/char_level mirrors.")
+        .def("compute_multiclass_slots", &Agent::Stats::computeMulticlassSlots,
+             "Phase 3: the combined leveled-slot array for this creature's full mix of\n"
+             "spellcasting classes (single-class → that class's own table; 2+ casters →\n"
+             "combined caster level on the full-caster table). Warlock Pact Magic is a\n"
+             "separate pool: a Warlock-only caster returns its pact table; a Warlock's\n"
+             "levels are ignored when other caster classes are present. Third-caster\n"
+             "(EK/AT) contribution requires the subclass to be set.")
         .def("restore_spell_slots", &Agent::Stats::restore_spell_slots,
              "Restore spell_slots_remaining to their maximum (Long Rest).")
         .def("pact_slot_level", &Agent::Stats::pact_slot_level,
@@ -574,6 +616,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
         .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
              "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
+        .def_readwrite("magic_resistance", &Agent::Stats::magic_resistance,
+             "Magic Resistance trait: Advantage on saving throws against spells and other magical effects.")
+        .def_readwrite("cant_heal", &Agent::Stats::cant_heal,
+             "Derived: true while a prevents_healing condition is active (Pit Fiend poison). Blocks "
+             "healAgent + Regeneration. Set/recomputed by the condition lifecycle — not authored.")
         .def_readwrite("death_burst_spell", &Agent::Stats::death_burst_spell,
              "Name of a spell in this creature's own list that detonates centered on it when it "
              "drops to 0 HP (Balor Death Throes). Empty = no burst.")
@@ -900,7 +947,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("kickback_die_size",   &AttackCondition::kickback_die_size,
              "Vistani Curse kickback die size (e.g. 6 → d6).")
         .def_readwrite("kickback_damage_type", &AttackCondition::kickback_damage_type,
-             "Vistani Curse kickback damage type (MagicDamage; default Psychic).");
+             "Vistani Curse kickback damage type (MagicDamage; default Psychic).")
+        .def_readwrite("dot_dice",            &AttackCondition::dot_dice,
+             "Damage-over-time rider: number of dice taken at the start of each turn (0 = no DoT).")
+        .def_readwrite("dot_die_size",        &AttackCondition::dot_die_size,
+             "DoT die size (e.g. 6 → d6).")
+        .def_readwrite("dot_flat_bonus",      &AttackCondition::dot_flat_bonus,
+             "Flat damage added to each DoT tick after the dice.")
+        .def_readwrite("dot_damage_type",     &AttackCondition::dot_damage_type,
+             "DoT damage type (MagicDamage; default Poison).")
+        .def_readwrite("prevents_healing",    &AttackCondition::prevents_healing,
+             "If true, the creature can't regain HP while this condition is active (Pit Fiend poison).");
 
     py::enum_<OnDamage_t>(m, "OnDamage")
         .value("None", OnDamage_t::None)
@@ -2021,6 +2078,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("delay_drop_to_zero",   &ActiveAgentCondition::delay_drop_to_zero)
         .def_readwrite("delay_auto_on_expire", &ActiveAgentCondition::delay_auto_on_expire)
         .def_readwrite("delay_label",          &ActiveAgentCondition::delay_label)
+        // ── Damage-over-time / no-heal rider (generic; Pit Fiend poison) ─────────
+        .def_readwrite("dot_dice",             &ActiveAgentCondition::dot_dice)
+        .def_readwrite("dot_die_size",         &ActiveAgentCondition::dot_die_size)
+        .def_readwrite("dot_flat_bonus",       &ActiveAgentCondition::dot_flat_bonus)
+        .def_readwrite("dot_damage_type",      &ActiveAgentCondition::dot_damage_type)
+        .def_readwrite("prevents_healing",     &ActiveAgentCondition::prevents_healing)
         // ── Caster "kickback" on condition end (Vistani Curse) ──────────────────
         .def_readwrite("kickback_dice",        &ActiveAgentCondition::kickback_dice)
         .def_readwrite("kickback_die_size",    &ActiveAgentCondition::kickback_die_size)

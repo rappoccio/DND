@@ -44412,6 +44412,9 @@
       "save_prof_cha": false,
       "temp_hp": 0,
       "is_npc": true,
+      "is_fiend": true,
+      "magic_resistance": true,
+      "spellcasting_ability": "cha",
       "magic_resistances": [
         "Cold"
       ],
@@ -44433,14 +44436,14 @@
           2
         ],
         [
-          3,
+          2,
           1
         ]
       ]
     },
     "weapons": [
       {
-        "name": "Melee (Piercing)",
+        "name": "Bite",
         "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
@@ -44456,37 +44459,31 @@
           }
         ],
         "magic_damage_types": [],
-        "conditions": [],
+        "conditions": [
+          {
+            "condition_name": "Poisoned",
+            "requires_save": true,
+            "save_ability": "SaveCon",
+            "save_dc_ability": "SaveCon",
+            "save_repeat_turns": 1,
+            "condition_duration": 99,
+            "dot_dice": 6,
+            "dot_die_size": 6,
+            "dot_damage_type": "Poison",
+            "prevents_healing": true
+          }
+        ],
         "mastery": "None"
       },
       {
-        "name": "Melee (Force)",
+        "name": "Devilish Claw",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
         "bonus_damage": 0,
-        "physical_damage_types": [],
-        "magic_damage_types": [
-          {
-            "type": "Force",
-            "num_dice": 10,
-            "die_size": 6
-          }
-        ],
-        "conditions": [],
-        "mastery": "None",
-        "off_hand": true
-      },
-      {
-        "name": "Ranged (Necrotic)",
-        "type": "ranged",
-        "reach_ft": 5,
-        "normal_range_ft": 10,
-        "long_range_ft": 40,
-        "proficient": true,
-        "bonus_damage": 6,
         "physical_damage_types": [],
         "magic_damage_types": [
           {
@@ -44500,20 +44497,20 @@
       },
       {
         "name": "Fiery Mace",
+        "permanently_armed": true,
         "type": "melee",
         "reach_ft": 10,
         "normal_range_ft": 80,
         "long_range_ft": 320,
         "proficient": true,
         "bonus_damage": 0,
-        "physical_damage_types": [
-          {
-            "type": "Bludgeoning",
-            "num_dice": 2,
-            "die_size": 6
-          }
-        ],
+        "physical_damage_types": [],
         "magic_damage_types": [
+          {
+            "type": "Force",
+            "num_dice": 4,
+            "die_size": 6
+          },
           {
             "type": "Fire",
             "num_dice": 6,
@@ -44550,7 +44547,7 @@
         "Wisdom",
         "Constitution"
       ],
-      "action_notes": "Akt 1 on hit and fail the target is poisoned can't regain hp and takes 21 Poison damage every round",
+      "action_notes": "Multiattack: one Bite, two Devilish Claw, one Fiery Mace. Bite forces a DC 21 CON save or the target is Poisoned (can't regain HP, takes 6d6 Poison at the start of each of its turns, repeats the save each turn). Fear Aura (20-ft, WIS DC 21 or Frightened). Hellfire spellcasting (Recharge 5-6): Fireball at 7th level. Magic Resistance. Legendary Resistance 4/day.",
       "bonus_action": null,
       "reaction": null,
       "legendary": {
@@ -44560,6 +44557,18 @@
         "actions_in_lair": null,
         "has_lair": false
       }
+    },
+    "spell_indices": [
+      "PitFiendFearAura",
+      "Hellfire"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "PitFiendFearAura"
+      ],
+      "1": [
+        "Hellfire"
+      ]
     }
   },
   "Pixie": {

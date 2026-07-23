@@ -160,8 +160,8 @@ void CombatEngine::applyCharmed(BattleMap& bm, int idx) noexcept
     // Beguiling Defenses (Archfey Warlock L10+): immune to the Charmed condition.
     {
         const Agent::Stats s = bm.getAgentStats(idx);
-        if (s.character_class == CharacterClass::Warlock &&
-            s.warlock_subclass == ArchfeyPath && s.char_level >= 10) {
+        if (s.hasClass(CharacterClass::Warlock) &&
+            s.warlock_subclass == ArchfeyPath && s.classLevel(CharacterClass::Warlock) >= 10) {
             log_("{} can't be Charmed (Beguiling Defenses)", agentName(bm, idx));
             return;
         }
@@ -951,6 +951,16 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                     healAgent(bm, cond.agent_idx, bonus);
                 }
             }
+            // Generic no-heal rider (Pit Fiend poison): while any active condition prevents
+            // healing, the creature can't regain HP. Derived flag on Stats so the static
+            // healAgent + the Regeneration block can honor it without scanning conditions.
+            if (cond.prevents_healing) {
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (!st.cant_heal) {
+                    st.cant_heal = true;
+                    bm.setAgentStats(cond.agent_idx, st);
+                }
+            }
             log_("Applied condition '{}' to {} for {} turns",
                  cond.condition_name, agentName(bm, cond.agent_idx), cond.turns_remaining);
         }
@@ -1151,6 +1161,24 @@ void CombatEngine::onConditionEnded(BattleMap& bm, const ActiveAgentCondition& c
     // concentration drop, Dispel Magic, and death cleanup all funnel through here. Buff-spell
     // teardowns (Bless/Haste/Aid) will hang off this call site too.
     clearSpellConditionEffect(bm, cond);
+
+    // ── Generic no-heal rider teardown (Pit Fiend poison) ───────────────────────
+    // If the ended condition prevented healing, recompute the derived cant_heal flag from the
+    // agent's REMAINING active conditions — another prevents_healing condition may still be in
+    // force. Exclude this condition's id: some end paths call onConditionEnded on a copy before
+    // the entry is erased from activeAgentConditions_ (removeAgentCondition-by-id).
+    if (cond.prevents_healing && cond.agent_idx >= 0 &&
+        cond.agent_idx < static_cast<int>(agents.size())) {
+        bool still = false;
+        for (const auto& ac : activeAgentConditions_)
+            if (ac.agent_idx == cond.agent_idx && ac.condition_id != cond.condition_id &&
+                ac.prevents_healing) { still = true; break; }
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        if (st.cant_heal != still) {
+            st.cant_heal = still;
+            bm.setAgentStats(cond.agent_idx, st);
+        }
+    }
 
     // ── Vistani Curse of Vulnerability teardown ─────────────────────────────────
     // Restore the target's prior damage multiplier for the cursed type. Done on EVERY

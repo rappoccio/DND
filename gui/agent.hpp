@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <concepts>
 #include <deque>
 #include <filesystem>
@@ -180,8 +181,19 @@ namespace rpg {
       bool initiative_prof{false};
 
       // ── Character Class & Spell Slots ─────────────────────────────────
+      // Multiclassing data model (see MULTICLASSING_PLAN.md Phase 0).
+      // class_levels is the source of truth: one level (0–20) per CharacterClass,
+      // indexed by the enum. A single-class agent has exactly one nonzero entry.
+      // The two fields below are DERIVED, transition-only mirrors so the ~247
+      // existing single-class reads keep compiling until Phases 1–2 convert them:
+      //   character_class — the "primary" class (first class assigned). Prefer
+      //                     hasClass()/classLevel() over reading this directly.
+      //   char_level      — read-only mirror of totalLevel().
+      // Both are recomputed by set_class_level()/add_class_level(); if you build
+      // class_levels by hand, call recompute_class_mirrors() afterward.
+      std::array<uint8_t, NumCharacterClass> class_levels{};
       CharacterClass character_class{CharClassNone};
-      int char_level{1};  // Character level 1-20
+      int char_level{1};  // Character level 1-20 (derived mirror of totalLevel())
       std::array<int,9> spell_slots_max{};       // max slots per level (1-9)
       std::array<int,9> spell_slots_remaining{}; // current remaining slots
 
@@ -367,12 +379,157 @@ namespace rpg {
         }
       }
 
-      // Set character class and level; computes spell_slots_max.
+      // ── Multiclassing accessors ───────────────────────────────────────
+      // classLevel(c): this creature's level in class c (0 if it lacks the class).
+      // Phase 2 rewrites class-feature gates from `char_level >= N` to this.
+      [[nodiscard]] int classLevel(CharacterClass c) const noexcept {
+        if (c <= CharClassNone || c >= NumCharacterClass) return 0;
+        return class_levels[static_cast<std::size_t>(c)];
+      }
+      // hasClass(c): true if the creature has any levels in class c.
+      // Phase 1 rewrites the 217 `character_class == c` gates to this.
+      [[nodiscard]] bool hasClass(CharacterClass c) const noexcept {
+        return classLevel(c) > 0;
+      }
+      // lacksClass(c): the negation companion — true if the creature has NO levels
+      // in class c. Phase 1 rewrites `character_class != c` gates to this so the
+      // sweep is a pure object-independent suffix rewrite (.character_class != c →
+      // .lacksClass(c)) with no `!`-placement to get wrong. Equivalent to !hasClass(c).
+      [[nodiscard]] bool lacksClass(CharacterClass c) const noexcept {
+        return !hasClass(c);
+      }
+      // totalLevel(): sum of all class levels — proficiency bonus, ASI/feat
+      // cadence, HP-per-level. This is what char_level mirrors.
+      [[nodiscard]] int totalLevel() const noexcept {
+        int t = 0;
+        for (std::size_t i = 1; i < class_levels.size(); ++i)
+          t += class_levels[i];
+        return t;
+      }
+
+      // Recompute the transition-only mirrors (character_class, char_level) from
+      // class_levels. Call after building class_levels directly (e.g. loaders).
+      // character_class = the lowest-enum nonzero class (stable "primary"); if the
+      // array is empty it is left as-is so single-class None callers are unchanged.
+      void recompute_class_mirrors() noexcept {
+        const int total = totalLevel();
+        if (total > 0) {
+          char_level = total;
+          for (int i = 1; i < NumCharacterClass; ++i) {
+            if (class_levels[static_cast<std::size_t>(i)] > 0) {
+              character_class = static_cast<CharacterClass>(i);
+              break;
+            }
+          }
+        }
+      }
+
+      // Multiclass spell slots (Phase 3). Compute the leveled-slot array for this
+      // creature's FULL combination of spellcasting classes, per the PHB multiclass
+      // spellcaster rule. NOT a sum of tables and NOT a single class level:
+      //   * With exactly ONE spellcasting class, use that class's OWN table (a
+      //     single-class Paladin/Ranger keeps kHalf; a single-class EK/AT keeps the
+      //     third-caster table; a single full caster keeps kFull). The combined
+      //     multiclass table only applies to a genuine multi-caster.
+      //   * With TWO OR MORE spellcasting classes, form the combined caster level =
+      //     (full-caster levels) + ⌊half-caster levels / 2⌋ + ⌊third-caster levels / 3⌋
+      //     and read the full-caster table (kFull) at that level.
+      // Warlock Pact Magic is a SEPARATE pool and never folds into the combined
+      // level: a Warlock-only caster returns its pact table (kPact) unchanged, and a
+      // Warlock's levels are ignored when other caster classes are present. (Storing
+      // a parallel pact pool alongside the combined slots — needed for a Warlock +
+      // other-caster multiclass — is deferred; only its non-Warlock slots are
+      // returned here today.) Third-caster (EK/AT) contribution is subclass-gated, so
+      // this reads correctly only once the subclass is set (see initializeClassResources).
+      [[nodiscard]] std::array<int,9> computeMulticlassSlots() const {
+        int fullLevels = 0, halfLevels = 0, thirdLevels = 0;
+        int casterClasses = 0;                       // distinct non-Warlock caster classes
+        CharacterClass loneFull = CharClassNone, loneHalf = CharClassNone;
+        int loneThirdLevel = 0;
+
+        for (CharacterClass c : {Bard, Cleric, Druid, Sorcerer, Wizard}) {
+          const int L = classLevel(c);
+          if (L > 0) { fullLevels += L; ++casterClasses; loneFull = c; }
+        }
+        for (CharacterClass c : {Paladin, Ranger}) {
+          const int L = classLevel(c);
+          if (L > 0) { halfLevels += L; ++casterClasses; loneHalf = c; }
+        }
+        if (fighter_subclass == EldritchKnightPath && classLevel(Fighter) > 0) {
+          thirdLevels += classLevel(Fighter); ++casterClasses; loneThirdLevel = classLevel(Fighter);
+        }
+        if (rogue_subclass == ArcaneTricksterPath && classLevel(Rogue) > 0) {
+          thirdLevels += classLevel(Rogue); ++casterClasses; loneThirdLevel = classLevel(Rogue);
+        }
+
+        const bool hasWarlock = classLevel(Warlock) > 0;
+
+        if (casterClasses == 0)
+          return hasWarlock ? compute_class_slots(Warlock, classLevel(Warlock))
+                            : std::array<int,9>{};
+        if (casterClasses == 1) {
+          if (fullLevels > 0) return compute_class_slots(loneFull, fullLevels);
+          if (halfLevels > 0) return compute_class_slots(loneHalf, halfLevels);
+          return compute_third_caster_slots(loneThirdLevel);   // single-class EK/AT
+        }
+        // Two or more spellcasting classes → combined multiclass caster level → kFull.
+        const int combined = std::max(1, fullLevels + halfLevels / 2 + thirdLevels / 3);
+        return compute_class_slots(Bard, combined);   // Bard = any full-caster row (kFull)
+      }
+
+      // Set character class and level (SINGLE-CLASS RESET): clears any existing
+      // class levels first, then assigns this one. Existing single-class callers
+      // keep their exact meaning. Computes spell_slots_max and the mirrors.
       void set_class_level(CharacterClass cls, int level) {
+        level = std::max(1, std::min(20, level));
+        class_levels.fill(0);
+        if (cls > CharClassNone && cls < NumCharacterClass)
+          class_levels[static_cast<std::size_t>(cls)] = static_cast<uint8_t>(level);
         character_class = cls;
-        char_level = std::max(1, std::min(20, level));
-        spell_slots_max = compute_class_slots(cls, char_level);
+        char_level = level;  // single-class: totalLevel() == this class's level
+        spell_slots_max = computeMulticlassSlots();
         // Note: can_cast_spell is now derived from the actual spell list, not set here
+      }
+
+      // Add/overwrite one class's level ADDITIVELY (multiclass entry point). Unlike
+      // set_class_level it does NOT clear the other classes. Recomputes the mirrors
+      // and the combined multiclass spell slots (Phase 3).
+      void add_class_level(CharacterClass cls, int level) {
+        level = std::max(1, std::min(20, level));
+        if (cls > CharClassNone && cls < NumCharacterClass)
+          class_levels[static_cast<std::size_t>(cls)] = static_cast<uint8_t>(level);
+        if (character_class == CharClassNone) character_class = cls;
+        recompute_class_mirrors();
+        spell_slots_max = computeMulticlassSlots();
+      }
+
+      // ── Mirror write-back (transition compat) ─────────────────────────────
+      // The Python bindings expose character_class/char_level as read/WRITE for
+      // back-compat: much existing code (and the whole test suite) sets them
+      // directly, one at a time, as `stats.character_class = X; stats.char_level = N`.
+      // Since Phase 1 made every class-feature gate read class_levels (via hasClass),
+      // those scalar writes MUST keep class_levels in sync or the gates silently
+      // read empty. Both setters below treat the write as a SINGLE-CLASS
+      // description — the only thing two scalars can express — mirroring
+      // set_class_level's reset semantics. Multiclass callers use
+      // set_class_level()/add_class_level() instead.
+      //
+      // setPrimaryClassMirror(c): make c the sole class, preserving the current level.
+      void setPrimaryClassMirror(CharacterClass c) {
+        const int lvl = std::max(1, char_level);
+        class_levels.fill(0);
+        if (c > CharClassNone && c < NumCharacterClass)
+          class_levels[static_cast<std::size_t>(c)] = static_cast<uint8_t>(std::min(20, lvl));
+        character_class = c;
+      }
+      // setCharLevelMirror(n): set the (single) primary class's level to n.
+      void setCharLevelMirror(int n) {
+        char_level = n;
+        if (character_class > CharClassNone && character_class < NumCharacterClass) {
+          class_levels.fill(0);
+          class_levels[static_cast<std::size_t>(character_class)] =
+              static_cast<uint8_t>(std::max(1, std::min(20, n)));
+        }
       }
 
       // Restore remaining spell slots to their maximum (Long Rest).
@@ -515,6 +672,8 @@ namespace rpg {
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
       bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
+      bool magic_resistance{false};                              // Magic Resistance trait: Advantage on saves vs spells & other magical effects (Pit Fiend, Balor, many fiends/elementals)
+      bool cant_heal{false};                                     // derived: ≥1 active condition with prevents_healing (Pit Fiend poison). Blocks healAgent + Regeneration. Set in addAgentCondition, recomputed in onConditionEnded — NOT authored/serialized.
 
       // ── Death Burst (Balor Death Throes, and any "explodes on death" monster) ──
       // Name of a spell in this creature's OWN spell list that detonates, centered on the creature,
@@ -609,9 +768,9 @@ namespace rpg {
       // crit/fumble evaluation and gated on !auto_fail (an automatic-fail save must not be floored).
       // A no-op for any creature not a L14+ Clockwork Sorcerer in an active trance.
       [[nodiscard]] int applyTranceFloor(int d20) const noexcept {
-          return (character_class == CharacterClass::Sorcerer &&
+          return (hasClass(CharacterClass::Sorcerer) &&
                   sorcerer_subclass == SorcererSubclass::ClockworkPath &&
-                  char_level >= 14 && trance_of_order_turns > 0 && d20 < 10) ? 10 : d20;
+                  classLevel(CharacterClass::Sorcerer) >= 14 && trance_of_order_turns > 0 && d20 < 10) ? 10 : d20;
       }
 
       // ── Feats ───────────────────────────────────────────────────────────

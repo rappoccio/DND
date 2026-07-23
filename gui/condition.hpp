@@ -26,6 +26,20 @@ struct AttackCondition {
     bool requires_save = false;           // if false, condition applies automatically; if true, target gets a save
     OnDamage_t on_damage = OnDamage_t::None;   // behavior when the affected creature takes damage
 
+    // ── Damage-over-time rider (Pit Fiend poison, and any future recurring DoT) ──
+    // A generic "takes N dice of <type> at the start of each of its turns" effect,
+    // carried on the applied condition. When dot_dice > 0 the affected creature
+    // takes dot_dice × d(dot_die_size) + dot_flat_bonus of dot_damage_type at the
+    // start of each of its turns (CombatEngine::beginTurn), resistances applying.
+    // prevents_healing blocks all HP gain (healAgent + Regeneration) while the
+    // condition persists — the Pit Fiend's poison "can't regain hit points" clause.
+    // These are copied verbatim onto the tracked ActiveAgentCondition.
+    int           dot_dice           = 0;         // number of DoT dice (0 = no DoT)
+    int           dot_die_size       = 0;         // die size, e.g. 6 → d6
+    int           dot_flat_bonus     = 0;         // flat damage added after the dice
+    MagicDamage_t dot_damage_type    = Poison;    // damage type dealt each turn
+    bool          prevents_healing   = false;     // while active, the creature can't regain HP
+
     // ── Grappled rider (condition_name == "Grappled") ──────────────────────────
     // The on-hit grapple reuses the standalone Grapple Weapon Action core
     // (CombatEngine::resolveGrapple → applyGrappled), shared with the Grappler feat.

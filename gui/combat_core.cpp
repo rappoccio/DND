@@ -219,7 +219,7 @@ int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_le
     for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
         const PlacedAgent& ppa = agents[static_cast<std::size_t>(p)];
         const Agent::Stats& ps = ppa.agent->getStats();
-        if (ps.character_class != CharacterClass::Paladin || ps.char_level < min_level) continue;
+        if (ps.lacksClass(CharacterClass::Paladin) || ps.classLevel(CharacterClass::Paladin) < min_level) continue;
         // Oath-specific auras (e.g. Aura of Warding) emanate only from a Paladin of that oath.
         if (require_oath != PaladinOathNone && ps.paladin_oath != require_oath) continue;
         // The aura emanates only from a conscious Paladin.
@@ -228,7 +228,7 @@ int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_le
         if (pc.unconscious || pc.incapacitated) continue;
         // The Paladin always benefits from its own aura; others must be same-team allies.
         if (p != agent_idx && !areAllies(bm, agent_idx, p)) continue;
-        const int radius_ft = (ps.char_level >= 18) ? 30 : 10;
+        const int radius_ft = (ps.classLevel(CharacterClass::Paladin) >= 18) ? 30 : 10;
         const int d = footprintDistance(self_pa.origin, self_size,
                                         ppa.origin, ppa.agent->getSize());
         if (d * 5 > radius_ft) continue;
@@ -336,7 +336,7 @@ int CombatEngine::applyIndomitableMight(const BattleMap& bm, int saver_idx, Save
     const Agent::Stats& s = agents[static_cast<std::size_t>(saver_idx)].agent->getStats();
 
     // Indomitable Might (Barbarian L18): STR saving throw total can't be lower than STR score
-    if (ab == SaveStr && s.character_class == CharacterClass::Barbarian && s.char_level >= 18) {
+    if (ab == SaveStr && s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 18) {
         return std::max(total, s.str);
     }
     return total;
@@ -411,7 +411,7 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     }
 
     // Barbarian Unarmored Defense: AC = 10 + DEX + CON (no armor worn)
-    if (pa.agent->getStats().character_class == CharacterClass::Barbarian && !has_armor) {
+    if (pa.agent->getStats().hasClass(CharacterClass::Barbarian) && !has_armor) {
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int con_mod = (pa.agent->getStats().con - 10) / 2;
         int ac = 10 + dex_mod + con_mod;
@@ -430,7 +430,7 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     }
 
     // Monk Unarmored Defense: AC = 10 + DEX + WIS (no armor worn)
-    if (pa.agent->getStats().character_class == CharacterClass::Monk && !has_armor) {
+    if (pa.agent->getStats().hasClass(CharacterClass::Monk) && !has_armor) {
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int wis_mod = (pa.agent->getStats().wis - 10) / 2;
         int ac = 10 + dex_mod + wis_mod;
@@ -449,9 +449,9 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     }
 
     // College of Dance Bard (L3+) Unarmored Defense: AC = 10 + DEX + CHA (no armor worn)
-    if (pa.agent->getStats().character_class == CharacterClass::Bard &&
+    if (pa.agent->getStats().hasClass(CharacterClass::Bard) &&
         pa.agent->getStats().bard_subclass == BardCollege::DancePath &&
-        pa.agent->getStats().char_level >= 3 && !has_armor) {
+        pa.agent->getStats().classLevel(CharacterClass::Bard) >= 3 && !has_armor) {
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int cha_mod = (pa.agent->getStats().cha - 10) / 2;
         int ac = 10 + dex_mod + cha_mod;
@@ -470,9 +470,9 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     }
 
     // Draconic Sorcerer (L3+) Draconic Resilience: AC = 10 + DEX + CHA (no armor worn)
-    if (pa.agent->getStats().character_class == CharacterClass::Sorcerer &&
+    if (pa.agent->getStats().hasClass(CharacterClass::Sorcerer) &&
         pa.agent->getStats().sorcerer_subclass == SorcererSubclass::DraconicPath &&
-        pa.agent->getStats().char_level >= 3 && !has_armor) {
+        pa.agent->getStats().classLevel(CharacterClass::Sorcerer) >= 3 && !has_armor) {
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int cha_mod = (pa.agent->getStats().cha - 10) / 2;
         int ac = 10 + dex_mod + cha_mod;
@@ -493,7 +493,7 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     // Armor of Shadows invocation (code 5): the Warlock keeps Mage Armor up at all
     // times (free, no slot), so model it as unarmored defense AC = 13 + DEX when no
     // armor is worn. Mage Armor does not cap DEX.
-    if (pa.agent->getStats().character_class == CharacterClass::Warlock &&
+    if (pa.agent->getStats().hasClass(CharacterClass::Warlock) &&
         pa.agent->getStats().hasInvocation(5) && !has_armor) {
         int dex_mod = (pa.agent->getStats().dex - 10) / 2;
         int ac = 13 + dex_mod;
@@ -651,7 +651,7 @@ void CombatEngine::applyArmorMultipliers(BattleMap& bm, int agent_idx) noexcept
     }
 
     // War Domain — Avatar of Battle (L17+): Resistance to Bludgeoning/Piercing/Slashing.
-    if (s.character_class == CharacterClass::Cleric && s.cleric_subclass == WarDomain && s.char_level >= 17) {
+    if (s.hasClass(CharacterClass::Cleric) && s.cleric_subclass == WarDomain && s.classLevel(CharacterClass::Cleric) >= 17) {
         for (auto t : {PhysicalDamage_t::Bludgeoning, PhysicalDamage_t::Piercing, PhysicalDamage_t::Slashing}) {
             float& cur = s.physical_damage_multipliers[static_cast<std::size_t>(t)];
             if (cur > 0.5f && cur != 2.0f) cur = 0.5f;  // resist, but don't override vuln/immunity

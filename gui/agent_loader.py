@@ -45,6 +45,7 @@ def dict_to_stats(stats_dict):
     stats.is_undead = bool(stats_dict.get("is_undead", False))
     stats.is_fiend = bool(stats_dict.get("is_fiend", False))
     stats.is_vampire = bool(stats_dict.get("is_vampire", False))
+    stats.magic_resistance = bool(stats_dict.get("magic_resistance", False))
     stats.death_burst_spell = str(stats_dict.get("death_burst_spell", ""))
     stats.regeneration_amount = int(stats_dict.get("regeneration_amount", 0))
     # Assign a whole list (pybind returns a copy on read, so in-place append wouldn't stick).
@@ -165,8 +166,27 @@ def restore_class_resources(stats, agent_dict, rpg_module=None):
     """Restore character class, subclass, and resources from a saved agent dict."""
     if rpg_module is None:
         rpg_module = rpg
-    class_name = agent_dict.get("agent_class", "None")
-    char_level = int(agent_dict.get("agent_char_level", 1))
+    # Multiclassing (MULTICLASSING_PLAN.md Phase 1): agent_class_levels
+    # ({class_name: level}) is the source of truth when present. Fall back to the
+    # legacy single-class scalars (agent_class + agent_char_level) for old saves.
+    # class_name / char_level below mirror the PRIMARY class (lowest-enum) and the
+    # TOTAL level so the existing single-class downstream logic keeps working; a
+    # single-class agent round-trips identically. (Full multiclass resource init
+    # is Phase 4.)
+    class_levels_dict = agent_dict.get("agent_class_levels")
+    cl_items = None
+    if class_levels_dict:
+        # Sort by enum ordinal so cl_items[0] is the primary (matches C++
+        # recompute_class_mirrors, which picks the lowest-enum class with levels).
+        cl_items = sorted(
+            ((getattr(rpg_module.CharacterClass, k), int(v))
+             for k, v in class_levels_dict.items()),
+            key=lambda kv: int(kv[0]))
+        class_name = cl_items[0][0].name
+        char_level = sum(v for _, v in cl_items)
+    else:
+        class_name = agent_dict.get("agent_class", "None")
+        char_level = int(agent_dict.get("agent_char_level", 1))
     # Set sorcerer subclass before set_class_level so initializeClassResources gates apply.
     sorc_pre = agent_dict.get("agent_sorcerer_subclass", "NONE")
     if class_name == "Sorcerer" and sorc_pre not in (None, "NONE"):
@@ -174,7 +194,13 @@ def restore_class_resources(stats, agent_dict, rpg_module=None):
             stats.sorcerer_subclass = getattr(rpg_module.SorcererSubclass, sorc_pre)
         except AttributeError:
             pass
-    stats.set_class_level(getattr(rpg_module.CharacterClass, class_name), char_level)
+    if cl_items is not None:
+        # set the primary (single-class reset), then add the remaining classes.
+        stats.set_class_level(cl_items[0][0], cl_items[0][1])
+        for cls, lvl in cl_items[1:]:
+            stats.add_class_level(cls, lvl)
+    else:
+        stats.set_class_level(getattr(rpg_module.CharacterClass, class_name), char_level)
     barb = agent_dict.get("agent_barbarian_subclass", "NONE")
     if barb != "NONE":
         stats.barbarian_subclass = getattr(rpg_module.BarbianSubclass, barb)

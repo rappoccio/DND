@@ -196,6 +196,18 @@ struct ActiveAgentCondition {
     int              cast_level           = 0;    // slot level the spell was cast at (for Dispel Magic / Aid)
     OnDamage_t       on_damage            = OnDamage_t::None;  // End / RepeatSave on taking damage
 
+    // ── Damage-over-time rider (Pit Fiend poison, generic recurring DoT) ─────────
+    // Copied verbatim from the AttackCondition that created this tracked condition.
+    // When dot_dice > 0 the creature takes dot_dice × d(dot_die_size) + dot_flat_bonus
+    // of dot_damage_type at the start of each of its turns (beginTurn), resistances
+    // applying. prevents_healing blocks HP gain (healAgent + Regeneration) while this
+    // condition persists — the Pit Fiend poison's "can't regain hit points" clause.
+    int           dot_dice           = 0;
+    int           dot_die_size       = 0;
+    int           dot_flat_bonus     = 0;
+    MagicDamage_t dot_damage_type    = Poison;
+    bool          prevents_healing   = false;
+
     // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──────
     // When delayed_trigger is true this condition is a *planted* effect that does
     // nothing on its own; it resolves into a burst of damage when its owner

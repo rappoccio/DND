@@ -378,7 +378,14 @@ def _weapon_to_dict(w) -> dict:
                         "requires_save":       c.requires_save,
                         "save_ability":        c.save_ability.name,
                         "save_dc_ability":     c.save_dc_ability.name,
-                        "on_damage":           c.on_damage.name}
+                        "on_damage":           c.on_damage.name,
+                        # Damage-over-time / no-heal rider (Pit Fiend poison). MUST round-trip or the
+                        # bite's ongoing poison silently reverts to a plain Poisoned condition on reload.
+                        "dot_dice":            c.dot_dice,
+                        "dot_die_size":        c.dot_die_size,
+                        "dot_flat_bonus":      c.dot_flat_bonus,
+                        "dot_damage_type":     c.dot_damage_type.name,
+                        "prevents_healing":    c.prevents_healing}
                        for c in w.conditions],
     }
 
@@ -485,6 +492,13 @@ def _dict_to_weapon(d: dict):
                 c.save_dc_ability = getattr(rpg.SaveAbility, save_dc_ability_str)
             except AttributeError:
                 c.save_dc_ability = rpg.SaveAbility.SaveWis
+            # Damage-over-time / no-heal rider (Pit Fiend poison): dot_dice × d(dot_die_size) +
+            # dot_flat_bonus of dot_damage_type at the start of each turn; prevents_healing blocks HP gain.
+            c.dot_dice = int(cond_entry.get("dot_dice", 0))
+            c.dot_die_size = int(cond_entry.get("dot_die_size", 0))
+            c.dot_flat_bonus = int(cond_entry.get("dot_flat_bonus", 0))
+            c.dot_damage_type = _parse_magic_damage(cond_entry.get("dot_damage_type", "Poison"))
+            c.prevents_healing = bool(cond_entry.get("prevents_healing", False))
             conditions.append(c)
         else:
             # Simple string: just the condition name
@@ -533,6 +547,12 @@ def _condition_to_dict(c) -> dict:
         "delay_drop_to_zero":   c.delay_drop_to_zero,
         "delay_auto_on_expire": c.delay_auto_on_expire,
         "delay_label":          c.delay_label,
+        # Damage-over-time / no-heal rider (generic; Pit Fiend poison).
+        "dot_dice":             c.dot_dice,
+        "dot_die_size":         c.dot_die_size,
+        "dot_flat_bonus":       c.dot_flat_bonus,
+        "dot_damage_type":      c.dot_damage_type.name,
+        "prevents_healing":     c.prevents_healing,
         # Caster "kickback" on condition end (Vistani Curse).
         "kickback_dice":        c.kickback_dice,
         "kickback_die_size":    c.kickback_die_size,
@@ -580,6 +600,12 @@ def _dict_to_condition(d: dict):
     c.delay_drop_to_zero   = bool(d.get("delay_drop_to_zero",   False))
     c.delay_auto_on_expire = bool(d.get("delay_auto_on_expire", False))
     c.delay_label          = d.get("delay_label", "")
+    # Damage-over-time / no-heal rider (generic; Pit Fiend poison).
+    c.dot_dice         = int(d.get("dot_dice",         0))
+    c.dot_die_size     = int(d.get("dot_die_size",     0))
+    c.dot_flat_bonus   = int(d.get("dot_flat_bonus",   0))
+    c.dot_damage_type  = _parse_magic_damage(d.get("dot_damage_type", "Poison"))
+    c.prevents_healing = bool(d.get("prevents_healing", False))
     # Caster "kickback" on condition end (Vistani Curse).
     c.kickback_dice        = int(d.get("kickback_dice",     0))
     c.kickback_die_size    = int(d.get("kickback_die_size", 0))
@@ -953,6 +979,12 @@ def _dict_to_spell(d: dict):
                 c.kickback_damage_type = getattr(rpg.MagicDamage, kb_type_str)
             except AttributeError:
                 c.kickback_damage_type = rpg.MagicDamage.Psychic
+            # Damage-over-time / no-heal rider (generic; a spell-delivered poison, etc.).
+            c.dot_dice = int(cond_entry.get("dot_dice", 0))
+            c.dot_die_size = int(cond_entry.get("dot_die_size", 0))
+            c.dot_flat_bonus = int(cond_entry.get("dot_flat_bonus", 0))
+            c.dot_damage_type = _parse_magic_damage(cond_entry.get("dot_damage_type", "Poison"))
+            c.prevents_healing = bool(cond_entry.get("prevents_healing", False))
             conditions.append(c)
         else:
             # Simple string: just the condition name (legacy support)

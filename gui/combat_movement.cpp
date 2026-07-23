@@ -652,8 +652,8 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
     const Agent::Stats rstats = bm.getAgentStats(reactor);
     const bool reactor_has_sentinel = rstats.has_sentinel;
     const bool reactor_relentless =
-        rstats.character_class == CharacterClass::Paladin &&
-        rstats.paladin_oath == OathOfVengeancePath && rstats.char_level >= 7;
+        rstats.hasClass(CharacterClass::Paladin) &&
+        rstats.paladin_oath == OathOfVengeancePath && rstats.classLevel(CharacterClass::Paladin) >= 7;
     bool sentinel_hit = false;   // an OA hit that reduces the mover's Speed to 0 (either source)
 
     if (opt.kind == ReactionOption::Weapon) {

@@ -332,8 +332,8 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
 
     // Arcane Trickster L9 — Magical Ambush: if the AT is Hidden/Invisible (unseen) when casting a
     // spell that forces a save, the target has Disadvantage on that save.
-    if (caster_stats.character_class == CharacterClass::Rogue &&
-        caster_stats.rogue_subclass == ArcaneTricksterPath && caster_stats.char_level >= 9) {
+    if (caster_stats.hasClass(CharacterClass::Rogue) &&
+        caster_stats.rogue_subclass == ArcaneTricksterPath && caster_stats.classLevel(CharacterClass::Rogue) >= 9) {
         const Agent::Conditions& cc = caster_pa.agent->getConditions();
         if (cc.hidden || cc.invisible) {
             target_dis = true;
@@ -361,7 +361,7 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     // Oath options (both flow through this save path) while Elder Champion is active.
     if (caster_stats.elder_champion_turns > 0 && action.caster_idx != tgt_idx &&
         !areAllies(bm, action.caster_idx, tgt_idx)) {
-        const int radius_ft = (caster_stats.char_level >= 18) ? 30 : 10;
+        const int radius_ft = (caster_stats.classLevel(CharacterClass::Paladin) >= 18) ? 30 : 10;
         if (footprintDistance(caster_pa.origin, caster_pa.agent->getSize(),
                               target_pa.origin, target_pa.agent->getSize()) * 5 <= radius_ft) {
             target_dis = true;
@@ -383,14 +383,14 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
 
     // Barbarian Danger Sense (L2+): Advantage on DEX saves unless Incapacitated
     if (sp.save_ability == SaveDex && !target_cond.incapacitated &&
-        tgt_stats.character_class == CharacterClass::Barbarian && tgt_stats.char_level >= 2) {
+        tgt_stats.hasClass(CharacterClass::Barbarian) && tgt_stats.classLevel(CharacterClass::Barbarian) >= 2) {
         target_adv = true;
         log_("Danger Sense: target has Advantage on DEX save");
     }
 
     // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies Charmed/Frightened.
-    if (!target_cond.incapacitated && tgt_stats.character_class == CharacterClass::Ranger &&
-        tgt_stats.ranger_subclass == FeyWandererPath && tgt_stats.char_level >= 7) {
+    if (!target_cond.incapacitated && tgt_stats.hasClass(CharacterClass::Ranger) &&
+        tgt_stats.ranger_subclass == FeyWandererPath && tgt_stats.classLevel(CharacterClass::Ranger) >= 7) {
         for (const auto& c : sp.conditions)
             if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
                 target_adv = true;
@@ -400,8 +400,8 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     }
 
     // Aberrant Mind Psychic Defenses (L6): Advantage on saves vs spells that apply Charmed/Frightened.
-    if (!target_cond.incapacitated && tgt_stats.character_class == CharacterClass::Sorcerer &&
-        tgt_stats.sorcerer_subclass == SorcererSubclass::AberrantPath && tgt_stats.char_level >= 6) {
+    if (!target_cond.incapacitated && tgt_stats.hasClass(CharacterClass::Sorcerer) &&
+        tgt_stats.sorcerer_subclass == SorcererSubclass::AberrantPath && tgt_stats.classLevel(CharacterClass::Sorcerer) >= 6) {
         for (const auto& c : sp.conditions)
             if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
                 target_adv = true;
@@ -427,6 +427,15 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     if (saveAdvantageFor(bm, tgt_idx, sp.save_ability)) {
         target_adv = true;
         log_("Advantage on the save: {} (scoped save advantage)", agentName(bm, tgt_idx));
+    }
+
+    // Magic Resistance trait (Pit Fiend, Balor, many fiends/elementals/etc.): Advantage on
+    // saving throws against spells and other magical effects. Every save resolved through
+    // rollSpellSave is a save vs a spell (or a spell-modeled magical ability), so the trait
+    // grants Advantage here across the board.
+    if (tgt_stats.magic_resistance) {
+        target_adv = true;
+        log_("Magic Resistance: {} has Advantage on the save vs magic", agentName(bm, tgt_idx));
     }
 
     int save_d20;
@@ -959,14 +968,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (rinfo.type == 8 || rinfo.type == 2) { spell_radiant_or_fire = true; break; }
 
     // ── Evoker (Wizard) subclass features ─────────────────────────────────────
-    const bool is_evoker = caster_stats.character_class == Wizard &&
+    const bool is_evoker = caster_stats.hasClass(Wizard) &&
                            caster_stats.wizard_subclass == EvokerPath;
     const int int_mod = abilityMod(caster_stats.intel);
     // Empowered Evocation (L10): add INT mod to ONE damage roll of a Wizard Evocation spell you
     // cast. A fresh executeSpell call is a fresh cast, so this local flag gives exactly-once-per-cast
     // semantics; empowerEvocation() consumes it on the first magic damage roll (works for AoE shared
     // rolls, single/save targets, and multi-beam spells alike).
-    bool empowered_evoc_available = is_evoker && caster_stats.char_level >= 10 &&
+    bool empowered_evoc_available = is_evoker && caster_stats.classLevel(CharacterClass::Wizard) >= 10 &&
                                     sp.school == Spell::Evocation && int_mod != 0;
     auto empowerEvocation = [&](int base) -> int {
         if (!empowered_evoc_available) return base;
@@ -977,13 +986,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // Potent Cantrip (L3): a creature that succeeds on the save — or that the attack roll misses —
     // still takes half the cantrip's damage. The Save branch already halves on a success; the extra
     // work is dealing half on a *missed* attack cantrip (handled in the AttackRoll branch below).
-    const bool potent_cantrip = is_evoker && caster_stats.char_level >= 3 && sp.level == 0;
+    const bool potent_cantrip = is_evoker && caster_stats.classLevel(CharacterClass::Wizard) >= 3 && sp.level == 0;
     // Overchannel (L14): deal maximum damage with a damaging Wizard spell of effective level 1–5.
     // First use per Long Rest is free; later uses inflict escalating Necrotic self-damage (applied
     // after the spell resolves, below). Honored only for a genuine Evoker L14+ damaging spell.
     const int overchannel_level = std::max(sp.level, action.slot_level);
     const bool overchannel_active = action.overchannel && is_evoker &&
-                                    caster_stats.char_level >= 14 && sp.type == Spell::Harm &&
+                                    caster_stats.classLevel(CharacterClass::Wizard) >= 14 && sp.type == Spell::Harm &&
                                     overchannel_level >= 1 && overchannel_level <= 5;
     force_max_damage_ = overchannel_active;
 
@@ -992,7 +1001,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // The per-turn gate (draconic_affinity_used_this_turn) is read once and persisted on first apply.
     bool draconic_affinity_available =
         caster_stats.sorcerer_subclass == SorcererSubclass::DraconicPath &&
-        caster_stats.char_level >= 6 &&
+        caster_stats.classLevel(CharacterClass::Sorcerer) >= 6 &&
         caster_stats.draconic_affinity_type >= 0 &&
         !caster_stats.draconic_affinity_used_this_turn;
 
@@ -1188,7 +1197,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                     // Agonizing Blast: add CHA modifier to each Eldritch Blast beam's damage.
                     if (sp.name == "Eldritch Blast" &&
-                        caster_stats.character_class == CharacterClass::Warlock &&
+                        caster_stats.hasClass(CharacterClass::Warlock) &&
                         caster_stats.hasInvocation(0)) {
                         int chaMod = abilityMod(caster_stats.cha);
                         if (chaMod > 0) {
@@ -1402,7 +1411,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
                 if (sp.save_ability == SaveDex &&
-                    tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 7 &&
+                    tgt_stats.hasClass(CharacterClass::Rogue) && tgt_stats.classLevel(CharacterClass::Rogue) >= 7 &&
                     !target_cond.incapacitated) {
                     dmg = tr.saved ? 0 : (dmg / 2);
                     log_("Evasion: {} {} damage on a DEX save", agentName(bm, tgt_idx),
@@ -1449,7 +1458,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
                 // A successful save already halved per-roll above; override to the Evasion outcome.
                 if (sp.save_ability == SaveDex &&
-                    tgt_stats.character_class == CharacterClass::Rogue && tgt_stats.char_level >= 7 &&
+                    tgt_stats.hasClass(CharacterClass::Rogue) && tgt_stats.classLevel(CharacterClass::Rogue) >= 7 &&
                     !target_cond.incapacitated) {
                     dmg = tr.saved ? 0 : (dmg / 2);
                     log_("Evasion: {} {} damage on a DEX save", agentName(bm, tgt_idx),
@@ -1718,8 +1727,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         // TASK D: Radiant Soul (Celestial L6+): once per turn, add CHA mod to one damaging
         // Radiant/Fire spell. Applies across all attack types (AttackRoll/Save/Automatic).
         if (tr.total_damage > 0 && sp.type != Spell::Heal && spell_radiant_or_fire &&
-            caster_stats.character_class == CharacterClass::Warlock &&
-            caster_stats.warlock_subclass == CelestialPath && caster_stats.char_level >= 6) {
+            caster_stats.hasClass(CharacterClass::Warlock) &&
+            caster_stats.warlock_subclass == CelestialPath && caster_stats.classLevel(CharacterClass::Warlock) >= 6) {
             Agent::Conditions caster_cond = bm.getAgentConditions(action.caster_idx);
             if (!caster_cond.radiant_soul_used) {
                 int chaMod = (caster_stats.cha - 10) / 2;
@@ -1738,8 +1747,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         // Cleric Blessed Strikes — Potent Spellcasting (L7+): add WIS mod to Cleric cantrip damage.
         if (tr.total_damage > 0 && sp.type != Spell::Heal && sp.level == 0 &&
-            caster_stats.character_class == CharacterClass::Cleric &&
-            caster_stats.char_level >= 7 &&
+            caster_stats.hasClass(CharacterClass::Cleric) &&
+            caster_stats.classLevel(CharacterClass::Cleric) >= 7 &&
             caster_stats.blessed_strike == BlessedStrikePotentSpellcasting) {
             int wisMod = (caster_stats.wis - 10) / 2;
             if (caster_stats.wis < 10 && (caster_stats.wis - 10) % 2 != 0) --wisMod;
@@ -1758,7 +1767,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
         // Repelling Blast: each Eldritch Blast beam that hits pushes the target 10 ft away.
         if (tr.hit && sp.name == "Eldritch Blast" &&
-            caster_stats.character_class == CharacterClass::Warlock &&
+            caster_stats.hasClass(CharacterClass::Warlock) &&
             caster_stats.hasInvocation(1)) {
             int moved = bm.forceMoveAgent(tgt_idx, caster_pa.origin, 10);
             if (moved > 0)
@@ -1846,16 +1855,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs Charmed/Frightened.
                         const bool fey_twist =
-                            tgt_stats.character_class == CharacterClass::Ranger &&
+                            tgt_stats.hasClass(CharacterClass::Ranger) &&
                             tgt_stats.ranger_subclass == FeyWandererPath &&
-                            tgt_stats.char_level >= 7 &&
+                            tgt_stats.classLevel(CharacterClass::Ranger) >= 7 &&
                             (spell_cond.condition_name == "Charmed" ||
                              spell_cond.condition_name == "Frightened");
                         // Aberrant Mind Psychic Defenses (L6): same advantage vs Charmed/Frightened.
                         const bool aberrant_defense =
-                            tgt_stats.character_class == CharacterClass::Sorcerer &&
+                            tgt_stats.hasClass(CharacterClass::Sorcerer) &&
                             tgt_stats.sorcerer_subclass == SorcererSubclass::AberrantPath &&
-                            tgt_stats.char_level >= 6 &&
+                            tgt_stats.classLevel(CharacterClass::Sorcerer) >= 6 &&
                             (spell_cond.condition_name == "Charmed" ||
                              spell_cond.condition_name == "Frightened");
                         // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed
@@ -1925,6 +1934,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     cond.kickback_dice        = spell_cond.kickback_dice;
                     cond.kickback_die_size    = spell_cond.kickback_die_size;
                     cond.kickback_damage_type = spell_cond.kickback_damage_type;
+
+                    // Damage-over-time / no-heal rider (generic; e.g. a spell-delivered poison).
+                    cond.dot_dice         = spell_cond.dot_dice;
+                    cond.dot_die_size     = spell_cond.dot_die_size;
+                    cond.dot_flat_bonus   = spell_cond.dot_flat_bonus;
+                    cond.dot_damage_type  = spell_cond.dot_damage_type;
+                    cond.prevents_healing = spell_cond.prevents_healing;
 
                     // A Vistani curse "lasts until it ends" (Remove Curse / duration expiry) — it
                     // never grants the cursed creature a per-turn save to shrug it off. Override the
@@ -2065,8 +2081,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // Life Domain — Blessed Healer (L6): when a slot-level-1+ heal restores HP to another creature,
     // the cleric regains 2 + slot level HP as well.
     if (life_healed_other && heal_slot >= 1 &&
-        caster_stats.character_class == CharacterClass::Cleric &&
-        caster_stats.cleric_subclass == LifeDomain && caster_stats.char_level >= 6) {
+        caster_stats.hasClass(CharacterClass::Cleric) &&
+        caster_stats.cleric_subclass == LifeDomain && caster_stats.classLevel(CharacterClass::Cleric) >= 6) {
         Agent::Stats cs = bm.getAgentStats(action.caster_idx);
         if (cs.hp_cur > 0) {
             const int self_heal = 2 + heal_slot;
@@ -2130,8 +2146,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             cs.hunters_mark_die_size    = 6;
             cs.hunters_mark_damage_type = MagicDamage_t::Necrotic;  // 5
         } else {  // Hunter's Mark
-            cs.hunters_mark_die_size    = (cs.character_class == CharacterClass::Ranger &&
-                                           cs.char_level >= 20) ? 10 : 6;  // Foe Slayer
+            cs.hunters_mark_die_size    = (cs.hasClass(CharacterClass::Ranger) &&
+                                           cs.classLevel(CharacterClass::Ranger) >= 20) ? 10 : 6;  // Foe Slayer
             cs.hunters_mark_damage_type = MagicDamage_t::Force;            // 3
         }
         bm.setAgentStats(action.caster_idx, cs);
@@ -2365,7 +2381,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Wizard Diviner L6: Expert Divination
                 // Cast Divination spell with L2+ slot → regain highest-level lower-level slot (max L5)
-                if (stats.character_class == Wizard && stats.wizard_subclass == DivinierPath &&
+                if (stats.hasClass(Wizard) && stats.wizard_subclass == DivinierPath &&
                     spell_mut.school == Spell::Divination && slot_level >= 2) {
                     log_("[EXPERT DIVINATION] Restoring spell slot for spell: {}", spell_mut.name);
                     // Find highest expended lower-level slot (capped at L5)
@@ -2385,9 +2401,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Wizard Abjurer L3+: Arcane Ward auto-charging
                 // Cast abjuration spell → Ward gains 2 × spell slot level (capped at max)
-                if (stats.character_class == Wizard && stats.wizard_subclass == AbjurerPath &&
-                    stats.char_level >= 3 && spell_mut.school == Spell::Abjuration) {
-                    int max_ward = 2 * stats.char_level + (stats.intel - 10) / 2;
+                if (stats.hasClass(Wizard) && stats.wizard_subclass == AbjurerPath &&
+                    stats.classLevel(CharacterClass::Wizard) >= 3 && spell_mut.school == Spell::Abjuration) {
+                    int max_ward = 2 * stats.classLevel(CharacterClass::Wizard) + (stats.intel - 10) / 2;
                     int ward_gain = 2 * slot_level;
                     stats.temp_hp = std::min(stats.temp_hp + ward_gain, max_ward);
                     log_("{} Arcane Ward charged: +{} HP ({}/{})", agentName(bm, action.caster_idx), ward_gain, stats.temp_hp, max_ward);
@@ -2402,9 +2418,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // Battle Magic (Valor Bard L14+): casting a Bard spell via the Magic action sets a flag
     // enabling a bonus-action weapon attack. Gate on Valor L14+ (no class-feature check; we
     // assume this is called only for Bard spells; the GUI enforces that).
-    if (result.valid && caster_pa.agent->getStats().character_class == CharacterClass::Bard &&
+    if (result.valid && caster_pa.agent->getStats().hasClass(CharacterClass::Bard) &&
         caster_pa.agent->getStats().bard_subclass == ValorPath &&
-        caster_pa.agent->getStats().char_level >= 14) {
+        caster_pa.agent->getStats().classLevel(CharacterClass::Bard) >= 14) {
         Agent::Conditions c = bm.getAgentConditions(action.caster_idx);
         c.battle_magic_available = true;
         bm.setAgentConditions(action.caster_idx, c);
@@ -2519,9 +2535,9 @@ int CombatEngine::effectiveSpellRange(const BattleMap& bm, int caster_idx, const
 
     // Eldritch Spear (code 2): the chosen damage cantrip's range increases by 30 ft
     // per Warlock level (RAW requires a 10+ ft ranged cantrip — Eldritch Blast qualifies).
-    if (sp.name == "Eldritch Blast" && cs.character_class == CharacterClass::Warlock &&
+    if (sp.name == "Eldritch Blast" && cs.hasClass(CharacterClass::Warlock) &&
         cs.hasInvocation(2) && sp.range >= 10) {
-        return sp.range + 30 * cs.char_level;
+        return sp.range + 30 * cs.classLevel(CharacterClass::Warlock);
     }
 
     // Spell Sniper (general feat): a spell that requires an attack roll gains +60 ft of range
@@ -2582,12 +2598,12 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
             dis = true;
         // Barbarian Danger Sense (L2+): advantage on DEX saves unless incapacitated.
         if (sp.save_ability == SaveDex && !tc.incapacitated &&
-            target_stats.character_class == CharacterClass::Barbarian && target_stats.char_level >= 2)
+            target_stats.hasClass(CharacterClass::Barbarian) && target_stats.classLevel(CharacterClass::Barbarian) >= 2)
             adv = true;
         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies
         // Charmed or Frightened (this is the Save-for-half site; the condition reuses tr.saved).
-        if (!tc.incapacitated && target_stats.character_class == CharacterClass::Ranger &&
-            target_stats.ranger_subclass == FeyWandererPath && target_stats.char_level >= 7) {
+        if (!tc.incapacitated && target_stats.hasClass(CharacterClass::Ranger) &&
+            target_stats.ranger_subclass == FeyWandererPath && target_stats.classLevel(CharacterClass::Ranger) >= 7) {
             for (const auto& c : sp.conditions)
                 if (c.condition_name == "Charmed" || c.condition_name == "Frightened") { adv = true; break; }
         }
@@ -2638,7 +2654,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
 
     // Rogue Evasion (L7+): on a DEX save, success = no damage, failure = half.
     if (do_save && sp.save_ability == SaveDex &&
-        target_stats.character_class == CharacterClass::Rogue && target_stats.char_level >= 7 &&
+        target_stats.hasClass(CharacterClass::Rogue) && target_stats.classLevel(CharacterClass::Rogue) >= 7 &&
         !agents[static_cast<std::size_t>(target_idx)].agent->getConditions().incapacitated) {
         total = saved ? 0 : (total / 2);
     }
@@ -2853,7 +2869,7 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
     bool has_adv = cond.has_advantage;
     {
         Agent::Stats cs = bm.getAgentStats(agent_idx);
-        if (cs.character_class == CharacterClass::Warlock && cs.hasInvocation(3))
+        if (cs.hasClass(CharacterClass::Warlock) && cs.hasInvocation(3))
             has_adv = true;  // Eldritch Mind
         if (cs.hasFeat("War Caster"))
             has_adv = true;  // War Caster: Advantage on concentration saves
@@ -2905,7 +2921,7 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
     // Relentless Hunter (Ranger L13+): taking damage can't break your concentration on Hunter's Mark.
     {
         const Agent::Stats& rs = pa.agent->getStats();
-        if (rs.character_class == CharacterClass::Ranger && rs.char_level >= 13 &&
+        if (rs.hasClass(CharacterClass::Ranger) && rs.classLevel(CharacterClass::Ranger) >= 13 &&
             cond.concentrating_on == "Hunter's Mark")
             return false;  // Concentration automatically holds
     }
@@ -2920,7 +2936,7 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
     // War Caster (feat) → Advantage on the save; Mage Slayer (feat) on the damager → Disadvantage
     // (Concentration Breaker). Eldritch Mind invocation also grants Advantage. They cancel if both apply.
     bool adv = cstats.hasFeat("War Caster") ||
-               (cstats.character_class == CharacterClass::Warlock && cstats.hasInvocation(3));
+               (cstats.hasClass(CharacterClass::Warlock) && cstats.hasInvocation(3));
     bool dis = false;
     if (damager_idx >= 0 && static_cast<std::size_t>(damager_idx) < agents.size() &&
         bm.getAgentStats(damager_idx).hasFeat("Mage Slayer"))
@@ -3553,7 +3569,7 @@ int CombatEngine::createSpellSlot(BattleMap& bm, int idx, int slot_level) noexce
     if (slot_level < 1 || slot_level > 5) return -1;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer) return -1;
+    if (stats.lacksClass(CharacterClass::Sorcerer)) return -1;
 
     static const int cost_by_level[6] = {0, 2, 3, 5, 6, 7};  // SP cost; index = slot level
     int cost = cost_by_level[slot_level];
@@ -3578,7 +3594,7 @@ int CombatEngine::convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_le
     if (slot_level < 1 || slot_level > 9) return -1;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer) return -1;
+    if (stats.lacksClass(CharacterClass::Sorcerer)) return -1;
 
     auto si = static_cast<std::size_t>(slot_level - 1);
     if (stats.spell_slots_remaining[si] <= 0) return -1;   // no slot of that level to spend
@@ -3602,9 +3618,9 @@ bool CombatEngine::spendSorceryPointsForSpell(BattleMap& bm, int idx, int spell_
     if (spell_level < 1) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
         stats.sorcerer_subclass != SorcererSubclass::AberrantPath ||
-        stats.char_level < 3) {
+        stats.classLevel(CharacterClass::Sorcerer) < 3) {
         return false;
     }
 
@@ -3625,8 +3641,8 @@ int CombatEngine::sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return 0;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
-        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 6) {
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 6) {
         log_("{} cannot use Bend Luck (not a L6+ Wild Magic Sorcerer)", agentName(bm, idx));
         return 0;
     }
@@ -3708,8 +3724,8 @@ WildMagicSurgeResult CombatEngine::rollWildMagicSurge(BattleMap& bm, int idx) no
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return res;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
-        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
         log_("{} cannot surge (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
         return res;  // effect = 0
     }
@@ -3807,8 +3823,8 @@ bool CombatEngine::activateTidesOfChaos(BattleMap& bm, int idx) noexcept
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
-        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
         log_("{} cannot use Tides of Chaos (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
         return false;
     }
@@ -3835,8 +3851,8 @@ WildMagicSurgeOffer CombatEngine::offerWildMagicSurge(BattleMap& bm, int idx) no
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return offer;
 
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (stats.character_class != CharacterClass::Sorcerer ||
-        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.char_level < 3) {
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
         return offer;                            // silent: only Wild Magic Sorcerers surge
     }
 
@@ -3854,7 +3870,7 @@ WildMagicSurgeOffer CombatEngine::offerWildMagicSurge(BattleMap& bm, int idx) no
     offer.surged = true;
     // Roll the table. Controlled Chaos (L14): roll twice and keep both bands so the caller may use
     // either result.
-    const int rolls = (stats.char_level >= 14) ? 2 : 1;
+    const int rolls = (stats.classLevel(CharacterClass::Sorcerer) >= 14) ? 2 : 1;
     for (int i = 0; i < rolls; ++i) {
         WildMagicSurgeResult r = rollWildMagicSurge(bm, idx);   // rolls d100, classifies, logs
         if (r.effect > 0 &&
@@ -3862,7 +3878,7 @@ WildMagicSurgeOffer CombatEngine::offerWildMagicSurge(BattleMap& bm, int idx) no
             offer.options.push_back(r.effect);
     }
     // Tamed Surge (L18): the caller may replace the rolled result with any band 1-10.
-    offer.can_choose_any = (stats.char_level >= 18);
+    offer.can_choose_any = (stats.classLevel(CharacterClass::Sorcerer) >= 18);
     return offer;
 }
 
@@ -3905,8 +3921,8 @@ bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_l
     Agent::Stats stats = bm.getAgentStats(agent_idx);
 
     // Validate: Abjurer L3+ with active ward
-    if (stats.character_class != Wizard || stats.wizard_subclass != AbjurerPath ||
-        stats.char_level < 3 || stats.temp_hp <= 0) {
+    if (stats.lacksClass(Wizard) || stats.wizard_subclass != AbjurerPath ||
+        stats.classLevel(CharacterClass::Wizard) < 3 || stats.temp_hp <= 0) {
         return false;
     }
 
@@ -3922,7 +3938,7 @@ bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_l
     stats.spell_slots_remaining[static_cast<std::size_t>(slot_level - 1)]--;
 
     // Charge the ward
-    int max_ward = 2 * stats.char_level + (stats.intel - 10) / 2;
+    int max_ward = 2 * stats.classLevel(CharacterClass::Wizard) + (stats.intel - 10) / 2;
     int ward_gain = 2 * slot_level;
     stats.temp_hp = std::min(stats.temp_hp + ward_gain, max_ward);
 
@@ -3978,7 +3994,7 @@ bool CombatEngine::canCountercharm(const BattleMap& bm, int reactor, int save_ta
     if (reactor == action.caster_idx) return false;               // the caster won't aid its own target
     if (!saveReactorBase(bm, reactor, save_target, 30, /*require_reaction=*/true)) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Bard || s.char_level < 7) return false;
+    if (s.lacksClass(CharacterClass::Bard) || s.classLevel(CharacterClass::Bard) < 7) return false;
     // Only vs a spell that would apply Charmed or Frightened.
     const auto& spells = bm.getAgentSpells(action.caster_idx);
     if (action.spell_idx < 0 || action.spell_idx >= static_cast<int>(spells.size())) return false;
@@ -3990,7 +4006,7 @@ bool CombatEngine::canIndomitable(const BattleMap& bm, int reactor, int save_tar
     if (reactor != save_target) return false;                     // you reroll your OWN save
     if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/false)) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Fighter || s.char_level < 9) return false;
+    if (s.lacksClass(CharacterClass::Fighter) || s.classLevel(CharacterClass::Fighter) < 9) return false;
     const Resource* ind = s.getResource("Indomitable");
     return ind && ind->current >= 1;
 }
@@ -4000,8 +4016,8 @@ bool CombatEngine::canDarkOnesOwnLuck(const BattleMap& bm, int reactor, int save
     if (reactor != save_target) return false;                     // you add the die to your OWN save
     if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/false)) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Warlock ||
-        s.warlock_subclass != FiendPath || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Warlock) ||
+        s.warlock_subclass != FiendPath || s.classLevel(CharacterClass::Warlock) < 6) return false;
     const Resource* luck = s.getResource("Dark One's Own Luck");
     return luck && luck->current >= 1;
 }
@@ -4011,8 +4027,8 @@ bool CombatEngine::canLivingLegendReroll(const BattleMap& bm, int reactor, int s
     if (reactor != save_target) return false;                     // you reroll your OWN save
     if (!saveReactorBase(bm, reactor, save_target, 0, /*require_reaction=*/true)) return false;  // costs a Reaction
     const Agent::Stats s = bm.getAgentStats(reactor);
-    return s.character_class == CharacterClass::Paladin && s.paladin_oath == OathOfGloryPath &&
-           s.char_level >= 20 && s.living_legend_turns > 0;
+    return s.hasClass(CharacterClass::Paladin) && s.paladin_oath == OathOfGloryPath &&
+           s.classLevel(CharacterClass::Paladin) >= 20 && s.living_legend_turns > 0;
 }
 
 void CombatEngine::reevaluateSave(SpellSave& ss) const noexcept
@@ -4028,7 +4044,7 @@ bool CombatEngine::applyCountercharmToSave(BattleMap& bm, int reactor, SpellSave
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Bard || s.char_level < 7) return false;
+    if (s.lacksClass(CharacterClass::Bard) || s.classLevel(CharacterClass::Bard) < 7) return false;
 
     cond.reaction_used = true;                                    // Countercharm costs the bard's reaction
     const int a = roll(20), b = roll(20);                         // reroll WITH ADVANTAGE
@@ -4047,14 +4063,14 @@ bool CombatEngine::applyIndomitableToSave(BattleMap& bm, int reactor, SpellSave&
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     if (s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Fighter || s.char_level < 9) return false;
+    if (s.lacksClass(CharacterClass::Fighter) || s.classLevel(CharacterClass::Fighter) < 9) return false;
     Resource* ind = s.getResource("Indomitable");
     if (!ind || ind->current < 1) return false;
 
     ind->current -= 1;                                            // costs an Indomitable use, NOT the reaction
     const int old_d20 = ss.d20;
     ss.d20   = roll(20);                                          // reroll the save
-    ss.bonus = s.char_level;                                      // 2024: add the Fighter level to the new roll
+    ss.bonus = s.classLevel(CharacterClass::Fighter);            // 2024: add the Fighter level to the new roll
     reevaluateSave(ss);
     bm.setAgentStats(reactor, s);
     log_("{} uses Indomitable: rerolls the save {}→{} +{} (level) = {} vs DC {} → {}",
@@ -4069,8 +4085,8 @@ bool CombatEngine::applyLivingLegendRerollToSave(BattleMap& bm, int reactor, Spe
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     const Agent::Stats s = bm.getAgentStats(reactor);
     if (s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Paladin || s.paladin_oath != OathOfGloryPath ||
-        s.char_level < 20 || s.living_legend_turns <= 0) return false;
+    if (s.lacksClass(CharacterClass::Paladin) || s.paladin_oath != OathOfGloryPath ||
+        s.classLevel(CharacterClass::Paladin) < 20 || s.living_legend_turns <= 0) return false;
     Agent::Conditions c = bm.getAgentConditions(reactor);
     if (!canTakeReaction(c)) return false;
     c.reaction_used = true;                                       // Living Legend's reroll costs the Reaction
@@ -4089,8 +4105,8 @@ bool CombatEngine::applyDarkOnesOwnLuckToSave(BattleMap& bm, int reactor, SpellS
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
     Agent::Stats s = bm.getAgentStats(reactor);
     if (s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Warlock ||
-        s.warlock_subclass != FiendPath || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Warlock) ||
+        s.warlock_subclass != FiendPath || s.classLevel(CharacterClass::Warlock) < 6) return false;
     Resource* luck = s.getResource("Dark One's Own Luck");
     if (!luck || luck->current < 1) return false;
 
@@ -4140,8 +4156,8 @@ bool CombatEngine::canWarGodsBlessing(const BattleMap& bm, int reactor, int save
     if (!canTakeReaction(bm.getAgentConditions(reactor))) return false;
     if (reactor != save_target && !areAllies(bm, reactor, save_target)) return false;   // only aid yourself/allies
     const Agent::Stats s = bm.getAgentStats(reactor);
-    if (s.character_class != CharacterClass::Cleric ||
-        s.cleric_subclass != WarDomain || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Cleric) ||
+        s.cleric_subclass != WarDomain || s.classLevel(CharacterClass::Cleric) < 6) return false;
     const Resource* cd = s.getResource("Channel Divinity");
     return cd && cd->current >= 1;
 }
@@ -4153,8 +4169,8 @@ bool CombatEngine::applyWarGodsBlessingToSave(BattleMap& bm, int reactor, SpellS
     Agent::Stats s = bm.getAgentStats(reactor);
     Agent::Conditions cond = bm.getAgentConditions(reactor);
     if (!canTakeReaction(cond) || s.hp_cur <= 0) return false;
-    if (s.character_class != CharacterClass::Cleric ||
-        s.cleric_subclass != WarDomain || s.char_level < 6) return false;
+    if (s.lacksClass(CharacterClass::Cleric) ||
+        s.cleric_subclass != WarDomain || s.classLevel(CharacterClass::Cleric) < 6) return false;
     Resource* cd = s.getResource("Channel Divinity");
     if (!cd || cd->current < 1) return false;
 
@@ -4305,8 +4321,8 @@ bool CombatEngine::canSpellThief(const BattleMap& bm, int idx, int caster_idx) c
     if (bm.isAgentOnDeck(idx)) return false;                      // On Deck reserves take no reactions until deployed
     if (areAllies(bm, idx, caster_idx)) return false;            // never steal a teammate's spell
     const Agent::Stats s = bm.getAgentStats(idx);
-    if (s.character_class != CharacterClass::Rogue ||
-        s.rogue_subclass != ArcaneTricksterPath || s.char_level < 17) return false;
+    if (s.lacksClass(CharacterClass::Rogue) ||
+        s.rogue_subclass != ArcaneTricksterPath || s.classLevel(CharacterClass::Rogue) < 17) return false;
     if (s.hp_cur <= 0) return false;
     const Agent::Conditions cond = bm.getAgentConditions(idx);
     if (!canTakeReaction(cond)) return false;

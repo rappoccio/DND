@@ -30,6 +30,26 @@
 
 namespace rpg {
 
+namespace {
+    // File-local damage-type name for DoT log lines (combat_attack.cpp's magicDamageName
+    // lives in its own anonymous namespace and is not visible in this TU).
+    const char* dotDamageName(MagicDamage_t t) noexcept {
+        switch (t) {
+            case Acid:      return "Acid";
+            case Cold:      return "Cold";
+            case Fire:      return "Fire";
+            case Force:     return "Force";
+            case Lightning: return "Lightning";
+            case Necrotic:  return "Necrotic";
+            case Poison:    return "Poison";
+            case Psychic:   return "Psychic";
+            case Radiant:   return "Radiant";
+            case Thunder:   return "Thunder";
+            default:        return "Magic";
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Initiative
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,9 +70,9 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
         InitiativeEntry e;
         e.agent_idx = i;
         // Roll Initiative at Advantage: Feral Instinct (Barbarian L7) or Assassinate (Assassin Rogue L3+).
-        if ((s.character_class == CharacterClass::Barbarian && s.char_level >= 7) ||
-            (s.character_class == CharacterClass::Rogue &&
-             s.rogue_subclass == AssassinPath && s.char_level >= 3)) {
+        if ((s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 7) ||
+            (s.hasClass(CharacterClass::Rogue) &&
+             s.rogue_subclass == AssassinPath && s.classLevel(CharacterClass::Rogue) >= 3)) {
             e.d20 = std::max(roll(20), roll(20));
         } else {
             e.d20 = roll(20);
@@ -87,9 +107,9 @@ InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_i
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return e;
     Agent::Stats s = bm.getAgentStats(agent_idx);
-    if ((s.character_class == CharacterClass::Barbarian && s.char_level >= 7) ||
-        (s.character_class == CharacterClass::Rogue &&
-         s.rogue_subclass == AssassinPath && s.char_level >= 3))
+    if ((s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 7) ||
+        (s.hasClass(CharacterClass::Rogue) &&
+         s.rogue_subclass == AssassinPath && s.classLevel(CharacterClass::Rogue) >= 3))
         e.d20 = std::max(roll(20), roll(20));
     else
         e.d20 = roll(20);
@@ -104,7 +124,7 @@ InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_i
     }
 
     // ── Monk L15 Perfect Focus: regain focus on initiative if below max ────────
-    if (s.character_class == CharacterClass::Monk && s.char_level >= 15) {
+    if (s.hasClass(CharacterClass::Monk) && s.classLevel(CharacterClass::Monk) >= 15) {
       auto fp_res = s.resources.find("Focus Points");
       if (fp_res != s.resources.end() && fp_res->second.current < fp_res->second.max) {
         int regain = 1;  // Regain 1 Focus Point
@@ -226,7 +246,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             const Agent::Conditions pc = bm.getAgentConditions(p);
             if (pc.unconscious || pc.incapacitated) continue;
             if (areAllies(bm, p, agent_idx)) continue;
-            const int radius_ft = (ps.char_level >= 18) ? 30 : 10;
+            const int radius_ft = (ps.classLevel(CharacterClass::Paladin) >= 18) ? 30 : 10;
             const PlacedAgent& pal_pa = agents[static_cast<std::size_t>(p)];
             const PlacedAgent& vic_pa = agents[static_cast<std::size_t>(agent_idx)];
             const int d = footprintDistance(pal_pa.origin, pal_pa.agent->getSize(),
@@ -429,7 +449,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Fiendish Vigor invocation (code 6): the Warlock keeps False Life up (free, no
     // slot) and auto-maxes the dice (2d4 + 4 = 12 temp HP). Granted once, the first
     // time this Warlock begins a turn in the combat (the pre-buff is "already up").
-    if (stats.character_class == CharacterClass::Warlock && stats.hasInvocation(6) &&
+    if (stats.hasClass(CharacterClass::Warlock) && stats.hasInvocation(6) &&
         !stats.fiendish_vigor_applied) {
         stats.fiendish_vigor_applied = true;
         if (stats.temp_hp < 12) stats.temp_hp = 12;
@@ -538,13 +558,53 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         }
     }
 
+    // Damage-over-time conditions (generic; Pit Fiend poison and any future recurring DoT):
+    // any active condition carrying a DoT rider (dot_dice > 0) deals its damage at the start
+    // of the creature's turn, resistances applying. Runs BEFORE Regeneration (like Burning)
+    // so a DoT that interrupts a regenerator is accounted for this same turn. Snapshot the
+    // specs first — processDamageTaken can end conditions (on_damage), which would invalidate
+    // a live iterator over activeAgentConditions_.
+    if (stats.hp_cur > 0) {
+        struct DotTick { int dice; int die; int flat; MagicDamage_t type; std::string name; };
+        std::vector<DotTick> ticks;
+        for (const auto& ac : activeAgentConditions_)
+            if (ac.agent_idx == agent_idx && ac.dot_dice > 0)
+                ticks.push_back({ac.dot_dice, ac.dot_die_size, ac.dot_flat_bonus,
+                                 ac.dot_damage_type, ac.condition_name});
+        for (const auto& t : ticks) {
+            if (stats.hp_cur <= 0) break;
+            int raw = t.flat;
+            for (int i = 0; i < t.dice; ++i) raw += roll(t.die);
+            const Agent::Stats no_source{};  // ongoing effect has no active source
+            const float mult = effectiveMagicDamageMult(no_source, stats, t.type, false,
+                                                        &bm, agent_idx);
+            const int dmg = static_cast<int>(static_cast<float>(raw) * mult);
+            if (dmg <= 0) continue;
+            damageAgent(bm, agent_idx, dmg);
+            processDamageTaken(bm, agent_idx, dmg, 1u << static_cast<unsigned>(t.type));
+            checkConcentrationOnDamage(bm, agent_idx, dmg);
+            stats = bm.getAgentStats(agent_idx);  // re-sync: the blocks below write `stats` back wholesale
+            log_("{} suffers {} damage ({}) from {} → {}/{}", agent_name, dmg,
+                 dotDamageName(t.type), t.name, stats.hp_cur, stats.effectiveMaxHp());
+            if (stats.hp_cur <= 0) {
+                const Agent::Conditions dc = bm.getAgentConditions(agent_idx);
+                if (!dc.unconscious && !dc.dead) applyUnconscious(bm, agent_idx);
+                result.save_roll_message = t.name + ": succumbed";
+                return result;   // the creature is down — nothing else happens on its turn
+            }
+        }
+    }
+
     // Regeneration (Troll, Vampire, Hydra, …): regain regeneration_amount HP at the start of the
     // turn, capped at effectiveMaxHp(), provided the creature still has ≥1 HP. Regeneration is
     // suppressed for this one check if regen_suppressed is set — either by an interrupting damage
     // type taken since the last turn (processDamageTaken) or, for vampires, by the Radiant damage the
     // Sunlight block above just dealt this turn. The flag is consumed here so only the one turn is hit.
+    // It is also blocked outright while a prevents_healing condition (Pit Fiend poison) is active.
     if (stats.regeneration_amount > 0 && stats.hp_cur > 0) {
-        if (stats.regen_suppressed) {
+        if (stats.cant_heal) {
+            log_("{}'s Regeneration is blocked (can't regain HP)", agent_name);
+        } else if (stats.regen_suppressed) {
             stats.regen_suppressed = false;  // consume
             log_("{}'s Regeneration is suppressed this turn", agent_name);
         } else {
@@ -596,7 +656,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // ── Monk Phase 0: Turn-start features ───────────────────────────────────────
     // L2 Uncanny Metabolism: restore all Focus Points + heal once per combat
-    if (stats.character_class == CharacterClass::Monk && stats.char_level >= 2 &&
+    if (stats.hasClass(CharacterClass::Monk) && stats.classLevel(CharacterClass::Monk) >= 2 &&
         !cond.uncanny_metabolism_used_this_combat) {
       auto fp_res = stats.resources.find("Focus Points");
       if (fp_res != stats.resources.end()) {
@@ -610,7 +670,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     }
 
     // L10 Self-Restoration: remove Charmed/Frightened/Poisoned at turn start
-    if (stats.character_class == CharacterClass::Monk && stats.char_level >= 10) {
+    if (stats.hasClass(CharacterClass::Monk) && stats.classLevel(CharacterClass::Monk) >= 10) {
       bool restored = false;
       if (cond.charmed) {
         cond.charmed = false;
@@ -638,8 +698,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // chain short-circuits for everyone else, and triggerSearingVengeance also returns false when the
     // resource is spent — so a non-qualifying creature falls through to the normal death save below.
     if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead &&
-        stats.character_class == CharacterClass::Warlock &&
-        stats.warlock_subclass == CelestialPath && stats.char_level >= 14 &&
+        stats.hasClass(CharacterClass::Warlock) &&
+        stats.warlock_subclass == CelestialPath && stats.classLevel(CharacterClass::Warlock) >= 14 &&
         triggerSearingVengeance(bm, agent_idx)) {
         cond  = bm.getAgentConditions(agent_idx);   // refresh: now conscious and standing
         stats = bm.getAgentStats(agent_idx);
@@ -3175,7 +3235,7 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
 
     // ── To-hit (mirrors rollToHit): attack mod + Sacred Weapon + exhaustion vs the target's AC ──
     int attack_mod = attackModifier(w, as) + w.bonus_hit;
-    if (as.character_class == CharacterClass::Paladin && as.sacred_weapon_turns > 0)
+    if (as.hasClass(CharacterClass::Paladin) && as.sacred_weapon_turns > 0)
         attack_mod += as.sacred_weapon_bonus;
     const int flat      = attack_mod - 2 * ac.exhaustion_level;
     const int target_ac = ts.base_ac;   // resolveAttack rolls against base_ac
@@ -3227,7 +3287,7 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
     else
         mod_mult = effectivePhysicalDamageMult(as, ts, PhysicalDamage_t::Bludgeoning);
     int flat_dmg = static_cast<int>(static_cast<float>(dmg_mod) * mod_mult);
-    if (ac.raging && as.character_class == CharacterClass::Barbarian &&
+    if (ac.raging && as.hasClass(CharacterClass::Barbarian) &&
         (w.type == WeaponType::Melee || w.thrown))
         flat_dmg += getRageDamageBonus(as.char_level);    // added post-multiplier, like rollDamage
 

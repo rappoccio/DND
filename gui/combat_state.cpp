@@ -52,7 +52,7 @@ void CombatEngine::setAgentStats(BattleMap& bm, int idx, Agent::Stats s) noexcep
     // the blinded-in-darkness check, the GUI) sees it without each re-deriving the rules.
     // Idempotent (only ever raises the field), so internal bm.setAgentStats round-trips
     // preserve it.
-    if (s.character_class == CharacterClass::Warlock) {
+    if (s.hasClass(CharacterClass::Warlock)) {
         // Devil's Sight (code 4): see normally in dim light & darkness within 120 ft.
         if (s.hasInvocation(4) && s.devilssight_range < 120)
             s.devilssight_range = 120;
