@@ -182,11 +182,20 @@ test_scripts = [
     "test_warlock_patrons.py",
     "test_weapon_mastery_roundtrip.py",
 
+    # Power Word Kill / Stun HP gates + Mass Heal / Power Word Fortify HP pool
+    "test_power_words.py",
+
     # Multiclassing Phase 2 — per-class level gates (classLevel(cls) >= N, not char_level)
     "test_multiclass_gates.py",
 
     # Multiclassing Phase 3 — combined-caster-level spell slots (compute_multiclass_slots)
     "test_multiclass_slots.py",
+
+    # Multiclassing Phase 4 — resource-init merge (initialize_multiclass_resources)
+    "test_multiclass_resources.py",
+
+    # Multiclassing Phase 5 — GUI save/load round-trip (class_levels + subclasses + merge)
+    "test_multiclass_gui_roundtrip.py",
 ]
 
 def run_tests():

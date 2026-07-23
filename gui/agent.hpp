@@ -865,9 +865,20 @@ namespace rpg {
         return (it != resources.end()) ? &it->second : nullptr;
       }
 
-      // Initialize class resources based on class and level
-      // Declared here, implemented in agent.cpp
+      // Apply ONE class's resources without clearing the resource map first. This is
+      // the multiclass-safe body: it accumulates into whatever is already present.
+      // (Implemented in combat.cpp.) Single-class callers use initializeClassResources.
+      void applyClassResources(CharacterClass cls, int level);
+
+      // Initialize class resources for a SINGLE class: clears the map, then applies
+      // that class's body. Unchanged behavior/signature from before Phase 4.
       void initializeClassResources(CharacterClass cls, int level);
+
+      // Initialize class resources for ALL classes in class_levels (multiclass merge,
+      // MULTICLASSING_PLAN.md Phase 4). Clears once, then applies each populated
+      // class's body so resources ACCUMULATE (Rage + Second Wind + …). Extra Attack
+      // does not stack: num_attacks is the max any one class grants, never a sum.
+      void initializeMulticlassResources();
 
       // Long rest: restore spell slots + all resources
       void restore_resources_long_rest() {

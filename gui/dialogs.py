@@ -1698,6 +1698,12 @@ class StatsDialog:
         self._defensive_tactics_name = "NONE"    # Hunter L7 Defensive Tactics choice
         self._defensive_tactics_rects: dict = {}
         self._char_level         = 1
+        # Multiclassing (MULTICLASSING_PLAN.md Phase 5): the class cycle + level
+        # stepper + subclass picker edit ONE *focused* class at a time; these two
+        # maps hold the whole build across focus switches. _class_name is the
+        # currently-focused class, _char_level its level, _subclass_name its subclass.
+        self._class_levels: dict = {}   # {class_enum_name: level>0}
+        self._subclasses: dict   = {}   # {class_enum_name: subclass_enum_name}
         self._cb                 = None
         self.steppers: dict      = {}   # populated in open()
         self.prof_flags: dict    = {}   # save_prof_<ability> -> bool
@@ -1737,7 +1743,21 @@ class StatsDialog:
         self._blessed_strike_name = blessed_strike_name
         self._hunter_prey_name  = hunter_prey_name
         self._defensive_tactics_name = defensive_tactics_name
-        self._char_level        = char_level
+        # Build the multiclass maps straight off the stats object (class_levels is a
+        # list indexed by the CharacterClass enum). class_name/char_level passed in
+        # are the PRIMARY class / TOTAL level; the focused stepper edits the focused
+        # class's OWN level, so seed _char_level from the per-class map.
+        self._class_levels = {}
+        if hasattr(stats, "class_levels"):
+            for i, lvl in enumerate(stats.class_levels):
+                if lvl > 0:
+                    self._class_levels[rpg.CharacterClass(i).name] = int(lvl)
+        if not self._class_levels and class_name not in (None, "None"):
+            self._class_levels[class_name] = char_level
+        self._subclasses = self._read_subclasses(stats)
+        # Focus the primary class; its own level + subclass drive the pickers.
+        self._char_level        = self._class_levels.get(class_name, char_level)
+        self._subclass_name     = self._subclasses.get(class_name, subclass_name)
         self._cb                = callback
         self._is_npc            = is_npc
         self._npc_spell_groups  = dict(npc_spell_groups) if npc_spell_groups else {}
@@ -1759,6 +1779,38 @@ class StatsDialog:
         self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
         self._metamagic_dialog = MetamagicDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
+
+    # Per-class subclass stats field + enum type (name matches the class picker).
+    SUBCLASS_FIELDS = {
+        "Barbarian": ("barbarian_subclass", "BarbianSubclass"),
+        "Fighter":   ("fighter_subclass",   "FighterSubclass"),
+        "Druid":     ("druid_circle",       "DruidCircle"),
+        "Monk":      ("monk_subclass",      "MonkSubclass"),
+        "Paladin":   ("paladin_oath",       "PaladinOath"),
+        "Wizard":    ("wizard_subclass",    "WizardSubclass"),
+        "Warlock":   ("warlock_subclass",   "WarlockSubclass"),
+        "Rogue":     ("rogue_subclass",     "RogueSubclass"),
+        "Cleric":    ("cleric_subclass",    "ClericSubclass"),
+        "Bard":      ("bard_subclass",      "BardCollege"),
+        "Sorcerer":  ("sorcerer_subclass",  "SorcererSubclass"),
+        "Ranger":    ("ranger_subclass",    "RangerSubclass"),
+    }
+
+    @staticmethod
+    def _class_order() -> list[str]:
+        """Class enum names in ordinal order (skips the None sentinel). The primary
+        class is the lowest-ordinal member, matching C++ recompute_class_mirrors."""
+        members = [(n, int(v)) for n, v in rpg.CharacterClass.__members__.items()]
+        return [n for n, v in sorted(members, key=lambda kv: kv[1]) if v > 0]
+
+    def _read_subclasses(self, stats) -> dict:
+        """Read each membered class's subclass enum name off the stats object."""
+        out = {}
+        for cls in self._class_levels:
+            field = self.SUBCLASS_FIELDS.get(cls)
+            if field and hasattr(stats, field[0]):
+                out[cls] = getattr(stats, field[0]).name
+        return out
 
     def _get_available_subclasses(self, class_name: str) -> list[str]:
         """Return list of available subclasses for a given class (using enum names)."""
@@ -1859,7 +1911,8 @@ class StatsDialog:
         last_row_idx = (len(self.COMBAT) - 1) // 2
         char_level_y = cy + (last_row_idx + 1) * ROW + 10
         char_level_rect = pygame.Rect(dlg.x + PAD, char_level_y, half, step_h)
-        self._char_level_stepper = IntStepper(char_level_rect, self._char_level, 1, 20, self.font_md)
+        # lo=0 so a focused class can be dropped from the multiclass build (0 levels).
+        self._char_level_stepper = IntStepper(char_level_rect, self._char_level, 0, 20, self.font_md)
 
     # ── events ───────────────────────────────────────────────────────────────
     def handle(self, event, screen) -> bool:
@@ -1966,23 +2019,27 @@ class StatsDialog:
                 self._npc_spell_groups[str(max_n + 1)] = []
                 return True
 
-            # Class cycle buttons
+            # Class cycle buttons — cycling CHANGES which class is *focused* (edited by
+            # the level stepper + subclass picker). Commit the focused class first so its
+            # level/subclass survive the switch, then load the newly-focused class.
             if self._class_rects:
                 available = self._class_rects.get("available", [])
                 left_rect = self._class_rects.get("left")
                 right_rect = self._class_rects.get("right")
                 if available and left_rect and left_rect.collidepoint(event.pos):
+                    self._commit_focused()
                     idx = available.index(self._class_name) if self._class_name in available else 0
                     self._class_name = available[(idx - 1) % len(available)]
-                    self._subclass_name = "NONE"  # Reset subclass when class changes
+                    self._load_focused()
                     return True
                 if available and right_rect and right_rect.collidepoint(event.pos):
+                    self._commit_focused()
                     idx = available.index(self._class_name) if self._class_name in available else 0
                     self._class_name = available[(idx + 1) % len(available)]
-                    self._subclass_name = "NONE"  # Reset subclass when class changes
+                    self._load_focused()
                     return True
 
-            # Subclass cycle buttons
+            # Subclass cycle buttons (edit the focused class's subclass)
             if self._subclass_rects:
                 available = self._subclass_rects.get("available", [])
                 left_rect = self._subclass_rects.get("left")
@@ -1990,10 +2047,12 @@ class StatsDialog:
                 if available and left_rect and left_rect.collidepoint(event.pos):
                     idx = available.index(self._subclass_name) if self._subclass_name in available else 0
                     self._subclass_name = available[(idx - 1) % len(available)]
+                    self._subclasses[self._class_name] = self._subclass_name
                     return True
                 if available and right_rect and right_rect.collidepoint(event.pos):
                     idx = available.index(self._subclass_name) if self._subclass_name in available else 0
                     self._subclass_name = available[(idx + 1) % len(available)]
+                    self._subclasses[self._class_name] = self._subclass_name
                     return True
 
             # Blessed Strikes cycle buttons (Cleric L7+)
@@ -2128,10 +2187,41 @@ class StatsDialog:
         if spell_name not in self._npc_spell_groups[str(group_n)]:
             self._npc_spell_groups[str(group_n)].append(spell_name)
 
+    def _commit_focused(self):
+        """Flush the focused class's stepper level + subclass into the multiclass maps.
+        A level of 0 drops the class from the build."""
+        if self._class_name in (None, "None"):
+            return
+        lvl = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+        if lvl > 0:
+            self._class_levels[self._class_name] = lvl
+        else:
+            self._class_levels.pop(self._class_name, None)
+        self._subclasses[self._class_name] = self._subclass_name
+
+    def _load_focused(self):
+        """Load the newly-focused class's stored level + subclass into the pickers."""
+        lvl = self._class_levels.get(self._class_name, 0)
+        self._char_level = lvl
+        if self._char_level_stepper:
+            self._char_level_stepper.value = lvl
+        self._subclass_name = self._subclasses.get(self._class_name, "NONE")
+
     def _confirm(self):
         if self._cb and self._agent_idx >= 0:
+            self._commit_focused()
+            # Assemble the final build: drop level-0 classes. If nothing real remains,
+            # keep the focused class name (which may be the "None" sentinel for a
+            # classless monster — _on_stats_ok preserves it rather than inventing a class).
+            class_levels = {c: l for c, l in self._class_levels.items()
+                            if l > 0 and c not in (None, "None")}
+            if not class_levels:
+                class_levels = {self._class_name: max(0, self._char_level)}
+            order = self._class_order()
+            primary = min(class_levels, key=lambda c: order.index(c) if c in order else 99)
+            total_level = sum(class_levels.values())
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, self._class_name, self._char_level, npc_data, self._subclass_name, self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses))
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -2269,12 +2359,31 @@ class StatsDialog:
             hp_txt = self.font_sm.render(f"HP  {cur} / {mx}", True, (210, 210, 210))
             screen.blit(hp_txt, hp_txt.get_rect(center=bar_r.center))
 
-        # ── Character Level and Class ─────────────────────────────────────
+        # ── Class Level and Class ─────────────────────────────────────────
         if self._char_level_stepper:
             cs_y_label = self._char_level_stepper.rect.y - 14
-            t = self.font_sm.render("Character Level", True, self.C_LABEL)
+            t = self.font_sm.render("Class Level", True, self.C_LABEL)
             screen.blit(t, (self._char_level_stepper.rect.x, cs_y_label))
             self._char_level_stepper.draw(screen)
+
+            # Multiclass build readout (right column of the stepper row): the whole
+            # build with the live focused-class level folded in, plus total level.
+            live = {c: l for c, l in self._class_levels.items() if l > 0}
+            if self._class_name not in (None, "None"):
+                fl = self._char_level_stepper.value
+                if fl > 0:
+                    live[self._class_name] = fl
+                else:
+                    live.pop(self._class_name, None)
+            order = self._class_order()
+            parts = [f"{c} {live[c]}" for c in sorted(live, key=lambda c: order.index(c) if c in order else 99)]
+            build_txt = " / ".join(parts) if parts else "(none)"
+            total = sum(live.values())
+            rx = self._char_level_stepper.rect.right + PAD
+            bt = self.font_sm.render(f"Build: {build_txt}", True, (200, 220, 200))
+            screen.blit(bt, (rx, cs_y_label))
+            tt = self.font_sm.render(f"Total level: {total}", True, self.C_LABEL)
+            screen.blit(tt, (rx, cs_y_label + 16))
 
             # Class cycle buttons (compact, on same row)
             class_y = self._char_level_stepper.rect.bottom + 8

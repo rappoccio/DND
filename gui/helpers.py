@@ -826,6 +826,13 @@ def _spell_to_dict(s) -> dict:
         "uses_remaining":        s.uses_remaining,
         "recharge_min":          s.recharge_min,
         "expended":              s.expended,
+        # Power Word Kill / Stun HP gates + Mass Heal / Power Word Fortify pool.
+        "instant_kill_threshold": getattr(s, "instant_kill_threshold", 0),
+        "condition_hp_threshold": getattr(s, "condition_hp_threshold", 0),
+        "hp_pool":                getattr(s, "hp_pool", 0),
+        "pool_is_temp_hp":        getattr(s, "pool_is_temp_hp", False),
+        "heal_to_full":           getattr(s, "heal_to_full", False),
+        "ends_conditions":        list(getattr(s, "ends_conditions", [])),
     }
 
 
@@ -908,6 +915,20 @@ def _dict_to_spell(d: dict):
     s.opens_doors = d.get("opens_doors", False)
     if hasattr(s, "dispels_magic"):
         s.dispels_magic = d.get("dispels_magic", False)
+    # Power Word Kill / Stun HP gates and Mass Heal / Power Word Fortify HP pool.
+    # Guarded with hasattr so an older compiled module still loads spells.json.
+    if hasattr(s, "instant_kill_threshold"):
+        s.instant_kill_threshold = int(d.get("instant_kill_threshold", 0))
+    if hasattr(s, "condition_hp_threshold"):
+        s.condition_hp_threshold = int(d.get("condition_hp_threshold", 0))
+    if hasattr(s, "hp_pool"):
+        s.hp_pool = int(d.get("hp_pool", 0))
+    if hasattr(s, "pool_is_temp_hp"):
+        s.pool_is_temp_hp = bool(d.get("pool_is_temp_hp", False))
+    if hasattr(s, "heal_to_full"):
+        s.heal_to_full = bool(d.get("heal_to_full", False))
+    if hasattr(s, "ends_conditions"):
+        s.ends_conditions = list(d.get("ends_conditions", []))
     s.level = int(d.get("level", 0))
     s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
     s.num_targets = int(d.get("num_targets", 1))

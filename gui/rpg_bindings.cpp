@@ -401,6 +401,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("initialize_class_resources", &Agent::Stats::initializeClassResources,
              py::arg("cls"), py::arg("level"),
              "Initialize resources for a class at a given level (Rage for Barbarian, Ki for Monk, etc.)")
+        .def("initialize_multiclass_resources", &Agent::Stats::initializeMulticlassResources,
+             "Initialize resources for ALL classes in class_levels (multiclass merge): "
+             "accumulates each class's resources; Extra Attack does not stack.")
         .def("restore_resources_long_rest", &Agent::Stats::restore_resources_long_rest,
              "Restore all resources and spell slots after a long rest.")
         .def("restore_resources_short_rest", &Agent::Stats::restore_resources_short_rest,
@@ -1594,6 +1597,25 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "(e.g. 'Channel Divinity') instead of a spell slot. Used by classfeatures.json.")
         .def_readwrite("resource_cost", &Spell::resource_cost,
              "Amount of resource_name spent per cast (default 1).")
+        .def_readwrite("instant_kill_threshold", &Spell::instant_kill_threshold,
+             "Power Word Kill: a creature whose current HP <= this dies outright (no damage\n"
+             "roll, no death saves). Above the threshold the spell deals its normal damage.\n"
+             "0 = disabled.")
+        .def_readwrite("condition_hp_threshold", &Spell::condition_hp_threshold,
+             "Power Word Stun: the spell's conditions take hold only if the target's current\n"
+             "HP <= this. 0 = no gate (conditions always apply).")
+        .def_readwrite("hp_pool", &Spell::hp_pool,
+             "Power Word Fortify / Mass Heal: a shared pool of HP distributed among every\n"
+             "affected creature instead of rolling per-target healing dice. 0 = disabled.")
+        .def_readwrite("pool_is_temp_hp", &Spell::pool_is_temp_hp,
+             "When true the hp_pool grants Temporary HP (Power Word Fortify) rather than\n"
+             "restoring current HP (Mass Heal).")
+        .def_readwrite("heal_to_full", &Spell::heal_to_full,
+             "Power Word Heal: the target regains all its Hit Points (healed to its HP\n"
+             "maximum) instead of rolling healing_type dice.")
+        .def_readwrite("ends_conditions", &Spell::ends_conditions,
+             "Restorative Heal: condition names ended on each healed target (e.g. Power\n"
+             "Word Heal ends Charmed/Frightened/Paralyzed/Poisoned/Stunned).")
         .def_readwrite("teleportation_spell", &Spell::teleportation_spell,
              "If true, this spell enables teleporting agents (Misty Step, Dimension Door, Teleport).")
         .def_readwrite("max_teleport_targets", &Spell::max_teleport_targets,

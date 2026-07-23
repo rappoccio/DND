@@ -261,7 +261,9 @@ def restore_class_resources(stats, agent_dict, rpg_module=None):
         stats.primal_companion = getattr(rpg_module.PrimalCompanion, pcomp)
     stats.eldritch_invocations = list(agent_dict.get("agent_eldritch_invocations", []))
     stats.fiendish_resilience_type = int(agent_dict.get("agent_fiendish_resilience_type", -1))
-    stats.initialize_class_resources(getattr(rpg_module.CharacterClass, class_name), char_level)
+    # Multiclassing (Phase 4/5): merge resources across ALL classes in class_levels.
+    # Single-class results are identical to the old initialize_class_resources(cls, lvl).
+    stats.initialize_multiclass_resources()
     slots_cur = agent_dict.get("spell_slots_cur")
     if slots_cur:
         stats.spell_slots_remaining = list(slots_cur)

@@ -16,9 +16,13 @@
 namespace rpg {
 
 // ── Resource Initialization by Class and Level ──────────────────────────────
-void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
-  resources.clear();
-
+// applyClassResources applies ONE class's resources WITHOUT clearing the map, so it
+// can be called repeatedly to accumulate a multiclass character's resources. It must
+// therefore avoid any write that is a merge hazard: num_attacks (Extra Attack must not
+// stack across classes) is handled by the multiclass driver, and the one-shot ability
+// bumps (Primal Champion, Body and Mind, Draconic HP) are guarded by their *_applied
+// flags so they fire at most once per lifecycle regardless of how often this runs.
+void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
   switch (cls) {
     case Barbarian: {
       // Rage: uses per day scales with level
@@ -852,6 +856,33 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
     default:
       break;
   }
+}
+
+// Single-class entry point: clear the map, then apply this one class. Unchanged
+// behavior from before Phase 4 — used by the existing single-class GUI/save path.
+void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
+  resources.clear();
+  applyClassResources(cls, level);
+}
+
+// Multiclass merge (MULTICLASSING_PLAN.md Phase 4): clear ONCE, then apply every
+// populated class so resources accumulate (e.g. Barbarian 5 / Fighter 5 gets Rage,
+// Second Wind, AND Action Surge). Extra Attack must NOT stack: two martial classes
+// each granting a second attack still yields a single extra attack, so num_attacks
+// is taken as the MAX any one class grants (a Fighter 11's three attacks beats a
+// Barbarian 5's two), not the sum. Each class's body is isolated by resetting
+// num_attacks to 1 before it runs, then folding the result into the running max.
+void Agent::Stats::initializeMulticlassResources() {
+  resources.clear();
+  int max_attacks = 1;
+  for (std::size_t i = 1; i < class_levels.size(); ++i) {  // skip CharClassNone (0)
+    const int lvl = class_levels[i];
+    if (lvl <= 0) continue;
+    num_attacks = 1;                                       // isolate this class's grant
+    applyClassResources(static_cast<CharacterClass>(i), lvl);
+    max_attacks = std::max(max_attacks, num_attacks);
+  }
+  num_attacks = max_attacks;
 }
 
 } // namespace rpg

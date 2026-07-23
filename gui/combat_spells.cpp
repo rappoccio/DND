@@ -945,6 +945,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
     bool any_conditions_applied = false;
 
+    // Power Word Fortify / Mass Heal HP pool. `pool_remaining` is drawn down as each
+    // affected creature takes its share across the per-target loop below; `pool_targets`
+    // is the ally count used for the even Temporary-HP split (Fortify). Both are inert
+    // (pool 0) for every ordinary Heal spell.
+    int pool_remaining = sp.hp_pool;
+    const int pool_targets = static_cast<int>(targets.size());
+
     // Life Domain rider context (Disciple of Life / Blessed Healer / Supreme Healing). The effective
     // slot level drives the bonus; a base-level cast (slot_level 0 / NPC) falls back to the spell level.
     const int  heal_slot          = action.slot_level > 0 ? action.slot_level : sp.level;
@@ -1057,6 +1064,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         SpellTargetResult tr;
         tr.target_idx = tgt_idx;
         tr.hp_before  = tgt_stats.hp_cur;
+        // Power Word Kill: set when this target is reduced to 0 outright by the HP-threshold
+        // instant-kill below, so the post-switch knockout handler grants true death (no death saves).
+        bool instakilled = false;
 
         // Immunity to Magic Missile: the Shield spell, or Wild Magic band 2 (spectral shield).
         if (sp.name == "Magic Missile" && (tgt_stats.shield_active || tgt_stats.wild_magic_shield_turns > 0)) {
@@ -1628,12 +1638,58 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 break;  // Exit the attack-type switch, not the target loop
             }
 
+            // Power Word Kill: a creature at or below the HP threshold dies outright — no
+            // damage roll. Above the threshold it takes the spell's normal damage (the 12d12
+            // Psychic rolled below). Reduce it to 0 here and let the post-switch knockout
+            // handler take it down; `instakilled` upgrades that to true death (no death saves).
+            if (sp.type == Spell::Harm && sp.instant_kill_threshold > 0 &&
+                tr.hp_before > 0 && tr.hp_before <= sp.instant_kill_threshold) {
+                instakilled       = true;
+                tr.hit            = true;
+                tr.total_damage   = tr.hp_before;
+                tgt_stats.temp_hp = 0;
+                tgt_stats.hp_cur  = 0;
+                log_("Power Word Kill: {} has {} HP (<= {}) — dies instantly",
+                     agentName(bm, tgt_idx), tr.hp_before, sp.instant_kill_threshold);
+                break;  // to the post-switch handler (hp<=0 → applyUnconscious → true death)
+            }
+
             std::vector<int> dice;
             int total = 0;
             // Empowered Spell: per-target reroll budget of CHA mod damage dice (0 = inactive).
             int empower_budget = mmApplied(MetamagicEmpowered) ? std::max(1, cha_mod) : 0;
 
-            if (sp.type == Spell::Heal) {
+            if (sp.type == Spell::Heal && sp.heal_to_full) {
+                // Power Word Heal: the target regains all its Hit Points.
+                total = std::max(0, tgt_stats.hp_max - tgt_stats.hp_cur);
+                log_("[POWER WORD HEAL] {} regains all HP (+{} to {})",
+                     agentName(bm, tgt_idx), total, tgt_stats.hp_max);
+            } else if (sp.type == Spell::Heal && sp.hp_pool > 0) {
+                // Power Word Fortify / Mass Heal: draw this creature's share from the shared
+                // HP pool instead of rolling healing dice. Mass Heal (pool_is_temp_hp=false)
+                // fills each creature toward its HP maximum; Power Word Fortify grants an even
+                // share of the pool as Temporary HP (5e max() semantics — never stacks).
+                if (sp.pool_is_temp_hp) {
+                    int share = pool_targets > 0 ? sp.hp_pool / pool_targets : sp.hp_pool;
+                    int grant = std::min(share, pool_remaining);
+                    if (grant > tgt_stats.temp_hp) {
+                        grantTempHp(tgt_stats, grant);
+                        pool_remaining -= grant;
+                        log_("[FORTIFY] {} gains {} temporary HP (pool {} left)",
+                             agentName(bm, tgt_idx), grant, pool_remaining);
+                    } else {
+                        log_("[FORTIFY] {} keeps its higher {} temporary HP",
+                             agentName(bm, tgt_idx), tgt_stats.temp_hp);
+                    }
+                    total = 0;  // temp HP handled here; the hp_cur add below is a no-op
+                } else {
+                    int missing = std::max(0, tgt_stats.hp_max - tgt_stats.hp_cur);
+                    total = std::min(missing, pool_remaining);
+                    pool_remaining -= total;
+                    log_("[MASS HEAL] {} restored {} HP (pool {} left)",
+                         agentName(bm, tgt_idx), total, pool_remaining);
+                }
+            } else if (sp.type == Spell::Heal) {
                 // Healing spell: roll healing_type dice + add spellcasting ability modifier
                 int n_dice = sp.healing_type.num_dice;
                 int die_size = sp.healing_type.die_size;
@@ -1781,6 +1837,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (spell_just_knocked_unconscious) {
                 log_("[SPELL KNOCKDOWN] {} going unconscious from spell damage ({})", agentName(bm, tgt_idx), sp.name);
                 applyUnconscious(bm, tgt_idx);
+                // Power Word Kill: the target "dies" — upgrade the knockout to true death so a PC
+                // doesn't linger on death saves (NPCs already die outright in applyUnconscious).
+                if (instakilled) {
+                    Agent::Conditions dc = bm.getAgentConditions(tgt_idx);
+                    if (!dc.dead) {
+                        dc.dead = true;
+                        bm.setAgentConditions(tgt_idx, dc);
+                        log_("{} dies outright (Power Word Kill — no death saves)", agentName(bm, tgt_idx));
+                    }
+                }
                 // Don't roll death save yet - they'll roll on their next turn or if they take more damage
                 // Dark One's Blessing (Fiend L3): temp HP to the caster and allied Fiend warlocks
                 // within 10 ft of each enemy this spell felled.
@@ -1900,6 +1966,18 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     } else {
                         condition_applies = true;
                     }
+                }
+
+                // Power Word Stun (and kin): the condition takes hold only if the target's
+                // current Hit Points are at or below the threshold. Above it, no condition
+                // lands (RAW: the target's Speed instead drops to 0 for a round — a marginal
+                // rider not modeled here; the meaningful stun/no-stun gate is what matters).
+                if (condition_applies && sp.condition_hp_threshold > 0 &&
+                    tgt_stats.hp_cur > sp.condition_hp_threshold) {
+                    condition_applies = false;
+                    log_("{} has {} HP (> {}) — {} does not take hold",
+                         agentName(bm, tgt_idx), tgt_stats.hp_cur,
+                         sp.condition_hp_threshold, spell_cond.condition_name);
                 }
 
                 if (condition_applies) {
@@ -2040,6 +2118,22 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             } else if (sp.name == "Greater Restoration") {
                 greaterRestoration(bm, tgt_idx);
             }
+        }
+
+        // Restorative Heal (data-driven, e.g. Power Word Heal): end each listed condition on
+        // the target. Removed via removeAgentCondition so the normal onConditionEnded teardown
+        // runs (clears the live flag + any curse/kickback bookkeeping).
+        if (!sp.ends_conditions.empty() && tgt_idx >= 0 && tgt_idx < static_cast<int>(agents.size())) {
+            std::vector<int> to_end;
+            for (const auto& ac : activeAgentConditions_) {
+                if (ac.agent_idx != tgt_idx) continue;
+                if (std::find(sp.ends_conditions.begin(), sp.ends_conditions.end(),
+                              ac.condition_name) != sp.ends_conditions.end())
+                    to_end.push_back(ac.condition_id);
+            }
+            for (int cid : to_end) removeAgentCondition(bm, cid);
+            if (!to_end.empty())
+                log_("{} ends {} condition(s) on {}", sp.name, to_end.size(), agentName(bm, tgt_idx));
         }
 
         result.target_results.push_back(tr);
@@ -2446,6 +2540,14 @@ std::vector<int> CombatEngine::availableCastableSpells(
 
     for (size_t i = 0; i < spells.size(); ++i) {
         const Spell& spell = spells[i];
+
+        // Death-burst spells (e.g. Balor Death Throes) live in the creature's own spell list so
+        // resolveDeathBurst can find and detonate them on 0 HP — but they are NEVER voluntarily
+        // cast. They ship as level-0 catalog entries (casting_time "Special", which the enum can't
+        // represent, so it degrades to Action), which would otherwise slot them in here as at-will
+        // cantrip AoEs and let the NPC automation blast them every turn. Gate them out by name.
+        if (!stats.death_burst_spell.empty() && spell.name == stats.death_burst_spell)
+            continue;
 
         // Class feature: castable iff its named resource has enough charges.
         if (!spell.resource_name.empty()) {

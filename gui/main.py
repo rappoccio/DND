@@ -3350,8 +3350,15 @@ class App:
         for n in names:
             stats.add_feat(n)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0):
-        """Called by StatsDialog when the user clicks OK."""
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None):
+        """Called by StatsDialog when the user clicks OK.
+
+        Multiclassing (MULTICLASSING_PLAN.md Phase 5): `class_levels` ({class:level})
+        and `subclasses` ({class:subclass}) carry the full build. `class_name` /
+        `char_level` remain the PRIMARY class / TOTAL level for the single-class
+        feature logic below; the class/level/subclass/resource application iterates
+        the maps. When `class_levels` is absent (legacy callers) it degrades to the
+        single {class_name: char_level} build."""
         # Start from current stats so flags not shown in the dialog are preserved.
         stats = self.combat.get_agent_stats(self.bm, agent_idx)
         stats.str        = steppers["str"].value
@@ -3379,74 +3386,88 @@ class App:
         # Skill proficiency: Sleight of Hand (picks door locks)
         stats.sleight_of_hand_prof = prof_flags.get("sleight_of_hand_prof", False)
 
-        # Set sorcerer subclass before set_class_level so initializeClassResources sees it
-        # (Draconic HP bonus and Aberrant Psychic resistance are gated on subclass in C++).
-        if class_name == "Sorcerer" and subclass_name != "NONE":
-            stats.sorcerer_subclass = getattr(rpg.SorcererSubclass, subclass_name)
+        # ── Multiclass class / level / subclass / resource application ──────────
+        # Resolve the full build. Fall back to the single {primary: total} shape for
+        # legacy callers that don't pass class_levels.
+        cl_map = {c: int(l) for c, l in (class_levels or {}).items()
+                  if int(l) > 0 and c not in (None, "None")}
+        if not cl_map:
+            # No real class in the build → keep the agent's primary as-is. This
+            # preserves the "None" sentinel for classless monsters (never invents a
+            # Fighter) and degrades gracefully for legacy single-class callers.
+            cl_map = {class_name: char_level}
+        sub_map = dict(subclasses or {})
+        if class_name in cl_map and subclass_name != "NONE" and class_name not in sub_map:
+            sub_map[class_name] = subclass_name
 
-        # Set class and level; this updates spell_slots_max and can_cast_spell automatically
-        stats.set_class_level(getattr(rpg.CharacterClass, class_name), char_level)
-        # Restore remaining slots to max (they're newly set)
-        stats.spell_slots_remaining = list(stats.spell_slots_max)
+        # Apply each membered class's subclass field FIRST (Draconic HP / Aberrant
+        # resistance and other resource gates read the subclass in C++).
+        subclass_fields = {
+            "Barbarian": ("barbarian_subclass", rpg.BarbianSubclass),
+            "Fighter":   ("fighter_subclass",   rpg.FighterSubclass),
+            "Druid":     ("druid_circle",       rpg.DruidCircle),
+            "Monk":      ("monk_subclass",      rpg.MonkSubclass),
+            "Paladin":   ("paladin_oath",       rpg.PaladinOath),
+            "Wizard":    ("wizard_subclass",    rpg.WizardSubclass),
+            "Warlock":   ("warlock_subclass",   rpg.WarlockSubclass),
+            "Rogue":     ("rogue_subclass",     rpg.RogueSubclass),
+            "Cleric":    ("cleric_subclass",    rpg.ClericSubclass),
+            "Bard":      ("bard_subclass",      rpg.BardCollege),
+            "Sorcerer":  ("sorcerer_subclass",  rpg.SorcererSubclass),
+            "Ranger":    ("ranger_subclass",    rpg.RangerSubclass),
+        }
+        for cls in cl_map:
+            field = subclass_fields.get(cls)
+            sub = sub_map.get(cls, "NONE")
+            if field and sub not in (None,):
+                try:
+                    setattr(stats, field[0], getattr(field[1], sub))
+                except AttributeError:
+                    pass
 
-        # Set subclass BEFORE initializing resources (resource init may check subclass)
-        if class_name == "Barbarian" and subclass_name != "NONE":
-            stats.barbarian_subclass = getattr(rpg.BarbianSubclass, subclass_name)
-            # Path of the World Tree L6 — Branches of the Tree (the reaction is gated in C++ on this
-            # flag; derive it here so a GUI-configured barbarian actually gets the feature). Set on
-            # every Barbarian edit so dropping the subclass/level clears it.
+        # Set class levels: primary (lowest enum ordinal) as a single-class reset,
+        # then the remaining classes additively. Slots recompute via computeMulticlassSlots.
+        _members = [(n, int(v)) for n, v in rpg.CharacterClass.__members__.items()]
+        order = [n for n, v in sorted(_members, key=lambda kv: kv[1]) if v > 0]
+        ordered = sorted(cl_map.items(), key=lambda kv: order.index(kv[0]) if kv[0] in order else 99)
+        stats.set_class_level(getattr(rpg.CharacterClass, ordered[0][0]), ordered[0][1])
+        for cls, lvl in ordered[1:]:
+            stats.add_class_level(getattr(rpg.CharacterClass, cls), lvl)
+
+        # Per-class level-dependent side effects.
+        # Path of the World Tree L6 — Branches of the Tree (C++ reaction gates on this flag).
+        if "Barbarian" in cl_map:
             stats.has_branches_of_the_tree = (
-                subclass_name == "WorldTree" and char_level >= 6)
-        elif class_name == "Fighter" and subclass_name != "NONE":
-            stats.fighter_subclass = getattr(rpg.FighterSubclass, subclass_name)
-        elif class_name == "Druid" and subclass_name != "NONE":
-            stats.druid_circle = getattr(rpg.DruidCircle, subclass_name)
-        elif class_name == "Monk" and subclass_name != "NONE":
-            stats.monk_subclass = getattr(rpg.MonkSubclass, subclass_name)
-        elif class_name == "Paladin" and subclass_name != "NONE":
-            stats.paladin_oath = getattr(rpg.PaladinOath, subclass_name)
-        elif class_name == "Wizard" and subclass_name != "NONE":
-            stats.wizard_subclass = getattr(rpg.WizardSubclass, subclass_name)
-        elif class_name == "Warlock" and subclass_name != "NONE":
-            stats.warlock_subclass = getattr(rpg.WarlockSubclass, subclass_name)
-        elif class_name == "Rogue" and subclass_name != "NONE":
-            stats.rogue_subclass = getattr(rpg.RogueSubclass, subclass_name)
-        elif class_name == "Cleric" and subclass_name != "NONE":
-            stats.cleric_subclass = getattr(rpg.ClericSubclass, subclass_name)
-        elif class_name == "Bard" and subclass_name != "NONE":
-            stats.bard_subclass = getattr(rpg.BardCollege, subclass_name)
-        elif class_name == "Sorcerer" and subclass_name != "NONE":
-            stats.sorcerer_subclass = getattr(rpg.SorcererSubclass, subclass_name)
-        elif class_name == "Ranger" and subclass_name != "NONE":
-            stats.ranger_subclass = getattr(rpg.RangerSubclass, subclass_name)
-            # Hunter L3 Hunter's Prey / L7 Defensive Tactics: honor the in-dialog picker if it set a
-            # choice; otherwise default it the first time (preserved across later edits since stats
-            # start from the current agent). The StatsDialog picker passes the chosen enum names.
-            if subclass_name == "Hunter":
+                sub_map.get("Barbarian") == "WorldTree" and cl_map["Barbarian"] >= 6)
+        # Ranger Hunter / Beast Master defaults.
+        if "Ranger" in cl_map:
+            rlvl = cl_map["Ranger"]
+            if sub_map.get("Ranger") == "Hunter":
                 if hunter_prey_name not in (None, "NONE"):
                     stats.hunter_prey = getattr(rpg.HunterPrey, hunter_prey_name)
                 elif stats.hunter_prey == rpg.HunterPrey.NONE:
                     stats.hunter_prey = rpg.HunterPrey.ColossusSlayer
                 if defensive_tactics_name not in (None, "NONE"):
                     stats.defensive_tactics = getattr(rpg.DefensiveTactics, defensive_tactics_name)
-                elif char_level >= 7 and stats.defensive_tactics == rpg.DefensiveTactics.NONE:
+                elif rlvl >= 7 and stats.defensive_tactics == rpg.DefensiveTactics.NONE:
                     stats.defensive_tactics = rpg.DefensiveTactics.EscapeTheHorde
-            # Beast Master L3 Primal Companion: default the form to Land when first set;
-            # the player picks Land/Sea/Sky each time via the in-combat companion menu.
-            if subclass_name == "BeastMaster" and stats.primal_companion == rpg.PrimalCompanion.NONE:
+            if sub_map.get("Ranger") == "BeastMaster" and stats.primal_companion == rpg.PrimalCompanion.NONE:
                 stats.primal_companion = rpg.PrimalCompanion.Land
 
         # Cleric Blessed Strikes choice (L7+)
-        if class_name == "Cleric" and blessed_strike_name != "NONE":
+        if "Cleric" in cl_map and blessed_strike_name != "NONE":
             stats.blessed_strike = getattr(rpg.BlessedStrike, blessed_strike_name)
 
         # Set Warlock invocations
-        if class_name == "Warlock" and eldritch_invocations:
+        if "Warlock" in cl_map and eldritch_invocations:
             stats.eldritch_invocations = list(eldritch_invocations)
 
-        # Initialize class resources (Rage, Focus Points, Portent Dice, etc.)
-        # This must come AFTER setting subclass since resource creation checks subclass
-        stats.initialize_class_resources(getattr(rpg.CharacterClass, class_name), char_level)
+        # Initialize class resources for ALL classes (Rage, Focus Points, Portent Dice, …).
+        # Merges per class and never double-counts Extra Attack. Must come AFTER subclasses
+        # are set since resource creation checks them.
+        stats.initialize_multiclass_resources()
+        # Restore remaining slots to max (set/add + resource init just recomputed them).
+        stats.spell_slots_remaining = list(stats.spell_slots_max)
 
         # Origin feat (one per PC). Applied after stats/level/prof_bonus are set so Tough HP,
         # Alert initiative proficiency, and Lucky points compute from the final values.
@@ -3459,18 +3480,18 @@ class App:
         # Boon of Irresistible Offense: which score Overwhelming Strike reads (0=STR, 1=DEX).
         stats.irresistible_offense_ability = int(irresistible_offense_ability) if stats.has_feat("Boon of Irresistible Offense") else 0
         # Draconic L6: persist the chosen ancestry element (-1 = none/not yet set).
-        if class_name == "Sorcerer" and subclass_name == "Draconic":
+        if "Sorcerer" in cl_map and sub_map.get("Sorcerer") == "Draconic":
             stats.draconic_affinity_type = int(draconic_affinity_type)
         # Sorcerer Metamagic: the learned options (assign the whole list via the property
         # setter — metamagic_options is a bound std::vector<MetamagicOption>; do not mutate
         # elements in place, cf. pybind11_array_copy_gotcha). Cleared for non-Sorcerers.
         stats.metamagic_options = ([rpg.MetamagicOption(int(v)) for v in (metamagic_options or [])]
-                                   if class_name == "Sorcerer" else [])
+                                   if "Sorcerer" in cl_map else [])
 
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
 
         # For Monks, replace default "Unarmed" weapon with "MonkUnarmed" (1d8)
-        if class_name == "Monk":
+        if "Monk" in cl_map:
             current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
             # Replace the first weapon (default) with MonkUnarmed if it's named "Unarmed"
             if current_weapons and current_weapons[0].name == "Unarmed":
@@ -3479,7 +3500,7 @@ class App:
 
         # Master of Myriad Forms (invocation 12): give the Warlock Alter Self claws
         # (1d6) in place of a bare unarmed strike.
-        if class_name == "Warlock" and 12 in (eldritch_invocations or []):
+        if "Warlock" in cl_map and 12 in (eldritch_invocations or []):
             current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
             if current_weapons and current_weapons[0].name == "Unarmed":
                 current_weapons[0] = self._create_alter_self_claws_weapon()
@@ -3489,7 +3510,7 @@ class App:
         # Weapons are a fixed 3-slot array (main/off/ranged); the pact weapon is the Warlock's
         # primary armament, so it always takes the main hand. pact_weapon=True drives the CHA
         # attack/damage + the pact-weapon rider gates.
-        if class_name == "Warlock" and 13 in (eldritch_invocations or []):
+        if "Warlock" in cl_map and 13 in (eldritch_invocations or []):
             current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
             # Re-conjure when slot 0 isn't a proper pact blade. Guarding on the flag (not just the
             # name) self-heals legacy saves where "PactBlade" round-tripped without pact_weapon=True.
@@ -18319,8 +18340,10 @@ class App:
                                 subclass_name = stats.sorcerer_subclass.name
                             elif class_name == "Ranger":
                                 subclass_name = stats.ranger_subclass.name
-                            blessed_strike_name = stats.blessed_strike.name if class_name == "Cleric" else "NONE"
-                            is_hunter = (class_name == "Ranger" and subclass_name == "Hunter")
+                            # Load the specialized sub-choices by class MEMBERSHIP (not just the
+                            # primary) so a multiclass build surfaces them for the focused class.
+                            blessed_strike_name = stats.blessed_strike.name if stats.has_class(rpg.CharacterClass.Cleric) else "NONE"
+                            is_hunter = (stats.has_class(rpg.CharacterClass.Ranger) and stats.ranger_subclass.name == "Hunter")
                             hunter_prey_name = stats.hunter_prey.name if is_hunter else "NONE"
                             defensive_tactics_name = stats.defensive_tactics.name if is_hunter else "NONE"
                             self.stats_dialog.open(

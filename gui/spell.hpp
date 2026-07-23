@@ -113,6 +113,35 @@ namespace rpg {
       // CombatEngine::dispelMagic from executeSpell.
       bool dispels_magic{false};
 
+      // Power Word Kill: a creature whose current Hit Points are <= this threshold
+      // dies outright when the spell resolves (no damage roll, no death saves). Above
+      // the threshold the spell falls through to its normal damage (12d12 Psychic).
+      // 0 = disabled (no instant-kill gate).
+      int instant_kill_threshold{0};
+
+      // Power Word Stun: the spell's conditions take hold only if the target's current
+      // Hit Points are <= this threshold. 0 = no gate (conditions always apply).
+      int condition_hp_threshold{0};
+
+      // Power Word Fortify / Mass Heal: a shared pool of Hit Points distributed among
+      // every affected creature instead of rolling per-target healing dice. Mass Heal
+      // fills each creature toward its HP maximum; Power Word Fortify hands out an even
+      // share as Temporary HP. 0 = disabled (roll healing_type per target as usual).
+      int hp_pool{0};
+      // When true the pool grants Temporary HP (Power Word Fortify) rather than
+      // restoring current HP (Mass Heal).
+      bool pool_is_temp_hp{false};
+
+      // Power Word Heal: the target regains all its Hit Points (healed to its HP
+      // maximum) instead of rolling healing_type dice. false = roll dice as usual.
+      bool heal_to_full{false};
+
+      // Restorative Heal: condition names ended on each (healed) target when the spell
+      // resolves — e.g. Power Word Heal ends Charmed / Frightened / Paralyzed / Poisoned
+      // / Stunned. Empty for ordinary heals. Each ends via removeAgentCondition so the
+      // normal onConditionEnded teardown runs.
+      std::vector<std::string> ends_conditions;
+
       // Teleportation spell (Misty Step, Dimension Door, Teleport)
       bool teleportation_spell{false};     // spell enables teleporting agents
       int max_teleport_targets{0};         // max number of agents (incl. caster) that can teleport (0 = not a teleport spell)
