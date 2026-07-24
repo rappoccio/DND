@@ -326,6 +326,12 @@ int CombatEngine::saveModFor(const BattleMap& bm, int agent_idx, SaveAbility_t a
         m += bless_d4;
         log_("Bless: +{} to {} save", bless_d4, agentName(bm, agent_idx));
     }
+    // Bane — subtract 1d4 from the saving throw (rolled fresh per save). Stacks with Bless.
+    if (s.baned) {
+        int bane_d4 = roll(4);
+        m -= bane_d4;
+        log_("Bane: -{} to {} save", bane_d4, agentName(bm, agent_idx));
+    }
     return m + auraSaveBonus(bm, agent_idx);
 }
 

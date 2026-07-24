@@ -3250,10 +3250,16 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
         return hits / 20.0;
     };
     double p_hit = 0.0;
-    if (as.blessed) {                                     // Bless: fresh 1d4 per attack — average over it
-        for (int b = 1; b <= 4; ++b) p_hit += 0.25 * advFold(singleDieHit(b), adv, dis);
-    } else {
-        p_hit = advFold(singleDieHit(0), adv, dis);
+    // Bless adds a fresh 1d4, Bane subtracts one; average over whichever dice are live. When
+    // neither is active the loops collapse to a single net-0 term (b=0, n=0).
+    {
+        double wsum = 0.0;
+        for (int b = as.blessed ? 1 : 0; b <= (as.blessed ? 4 : 0); ++b)
+            for (int n = as.baned ? 1 : 0; n <= (as.baned ? 4 : 0); ++n) {
+                p_hit += advFold(singleDieHit(b - n), adv, dis);
+                wsum  += 1.0;
+            }
+        p_hit /= wsum;
     }
     out.p_hit = p_hit;
     if (p_hit <= 0.0) return out;
@@ -3337,12 +3343,15 @@ double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int targ
             if (v + mod + bless >= dc) ++ok;
         return ok / 20.0;
     };
-    if (ts.blessed) {
-        double p = 0.0;
-        for (int b = 1; b <= 4; ++b) p += 0.25 * advFold(singleDieSave(b), adv, dis);
-        return p;
-    }
-    return advFold(singleDieSave(0), adv, dis);
+    // Bless adds a fresh 1d4 to the save, Bane subtracts one; average over whichever dice are
+    // live. Neither active → single net-0 term.
+    double p = 0.0, wsum = 0.0;
+    for (int b = ts.blessed ? 1 : 0; b <= (ts.blessed ? 4 : 0); ++b)
+        for (int n = ts.baned ? 1 : 0; n <= (ts.baned ? 4 : 0); ++n) {
+            p    += advFold(singleDieSave(b - n), adv, dis);
+            wsum += 1.0;
+        }
+    return p / wsum;
 }
 
 double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int target_idx,
@@ -3375,12 +3384,15 @@ double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int 
         }
         return hits / 20.0;
     };
-    if (cs.blessed) {
-        double p = 0.0;
-        for (int b = 1; b <= 4; ++b) p += 0.25 * advFold(singleDieHit(b), adv, dis);
-        return p;
-    }
-    return advFold(singleDieHit(0), adv, dis);
+    // Bless adds a fresh 1d4 to the spell attack, Bane subtracts one; average over whichever
+    // dice are live. Neither active → single net-0 term.
+    double p = 0.0, wsum = 0.0;
+    for (int b = cs.blessed ? 1 : 0; b <= (cs.blessed ? 4 : 0); ++b)
+        for (int n = cs.baned ? 1 : 0; n <= (cs.baned ? 4 : 0); ++n) {
+            p    += advFold(singleDieHit(b - n), adv, dis);
+            wsum += 1.0;
+        }
+    return p / wsum;
 }
 
 void CombatEngine::npcLogAttackAnalysis(const BattleMap& bm, int attacker_idx, int target_idx,

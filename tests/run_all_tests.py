@@ -152,6 +152,9 @@ test_scripts = [
     # Bless (SPELLS_TO_WIRE Phase 1: +1d4 to attacks & saves, dies with concentration)
     "test_bless.py",
 
+    # Bane (mirror of Bless: −1d4 to attacks & saves on a failed CHA save, dies with concentration)
+    "test_bane.py",
+
     # Haste (SPELLS_TO_WIRE Phase 2: +2 AC, Adv DEX saves, doubled speed, extra action, end-lethargy)
     "test_haste.py",
 

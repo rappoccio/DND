@@ -132,6 +132,10 @@ namespace rpg {
       // saveModFor (the single source of truth for save modifiers). Set in
       // addAgentCondition("Blessed"), cleared in clearSpellConditionEffect.
       bool blessed{false};
+      // Bane — the mirror of Bless: a baned creature subtracts a fresh 1d4 from every attack
+      // roll and saving throw. Reaches rollToHit/rollSpellAttack (const Agent::Stats&) and
+      // saveModFor. Set in addAgentCondition("Baned"), cleared in clearSpellConditionEffect.
+      bool baned{false};
 
       // ── Haste (Phase 2) ───────────────────────────────────────────────
       // While set, the creature has +2 AC (folded into ac_temporary_modifications),

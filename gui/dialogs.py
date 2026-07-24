@@ -3045,6 +3045,12 @@ class ContextMenu:
         """Returns True if the event was consumed (menu was visible)."""
         if not self.visible:
             return False
+        # Esc dismisses the menu (same as clicking away) so a mis-opened popup — e.g. the
+        # "Harm ally?" friendly-fire confirm that appears when a click during spell targeting
+        # lands on a teammate — never traps the player mid-target-pick.
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.dismiss()
+            return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect and self.rect.collidepoint(*event.pos):
                 idx = (event.pos[1] - self.rect.y - self.PAD) // self.ITEM_H

@@ -908,6 +908,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 Agent::Stats st = bm.getAgentStats(cond.agent_idx);
                 st.blessed = true;
                 bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Baned") {
+                // Bane — mirror of Blessed. Flag lives on Stats so it reaches rollToHit/
+                // rollSpellAttack and saveModFor (the -1d4). Cleared via clearSpellConditionEffect.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.baned = true;
+                bm.setAgentStats(cond.agent_idx, st);
             } else if (cond.condition_name == "Hasted") {
                 // Haste (Phase 2) — +2 AC, Advantage on DEX saves, doubled walk Speed, and an
                 // extra limited action each turn (refilled in beginTurn). Idempotent: never stack

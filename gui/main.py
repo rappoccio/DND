@@ -9894,6 +9894,12 @@ class App:
                 [(f"{name} {lbl}", cb) for lbl, cb in subs],
                 self.screen.get_size())
 
+        # Quickened Spell (Sorcerer Metamagic) lets an Action-cast spell be cast as a Bonus
+        # Action. When it is armed, the bonus menu also offers Action-cast spells — the engine
+        # folds in Quickened and spends the 2 SP on cast (_apply_armed_metamagic).
+        quickened_armed = (slot == "bonus" and
+                           rpg.MetamagicOption.Quickened in self._armed_metamagic_options(idx))
+
         # Build spell menu from available spells. Each spell contributes ONE top-level row;
         # leveled player spells with more than one castable level open a follow-up popup to
         # pick the slot level, instead of flooding this list with one row per spell per level.
@@ -9911,7 +9917,10 @@ class App:
             if slot == "action" and sp.casting_time == rpg.CastingTime.BonusAction:
                 continue  # Skip bonus-action spells from the action menu
             elif slot == "bonus" and sp.casting_time != rpg.CastingTime.BonusAction:
-                continue  # Skip non-bonus-action spells from the bonus menu
+                # The bonus menu normally shows only Bonus-Action spells; with Quickened armed it
+                # also offers Action-cast spells (which then cast as a Bonus Action via Quickened).
+                if not (quickened_armed and sp.casting_time == rpg.CastingTime.Action):
+                    continue  # Skip non-bonus-action spells from the bonus menu
 
             if sp_level == 0:
                 # Cantrip - always available, no level to pick
@@ -11244,6 +11253,11 @@ class App:
         engine gates the second on Seeking (which stacks) or Sorcery Incarnate (L7 + Innate
         Sorcery active), and drops it unpaid otherwise."""
         opts = self._armed_metamagic_options(caster_idx)
+        # Quickened only makes sense on a Bonus-Action cast (it IS the bonus-action cast). If the
+        # spell is going out with the Action, drop Quickened so it neither spends Sorcery Points
+        # nor mislabels the economy — the player simply casts it normally with their Action.
+        if self.pending_spell_slot != "bonus":
+            opts = [o for o in opts if o != rpg.MetamagicOption.Quickened]
         if not opts:
             return
         action.metamagic = opts[0]
@@ -12378,6 +12392,7 @@ class App:
                     "save_prof_cha":      s.save_prof_cha,
                     "save_advantage_mask": s.save_advantage_mask,
                     "blessed":            s.blessed,
+                    "baned":              s.baned,
                     "hasted":                 s.hasted,
                     "haste_speed_bonus":      s.haste_speed_bonus,
                     "haste_action_available": s.haste_action_available,
@@ -17122,46 +17137,10 @@ class App:
                         self.btn_cbt_innate_sorcery.draw(self.screen)
                         y += B + gap
 
-            # Sorcerer Metamagic arm-toggles (Phase 2): one button per LEARNED + AFFORDABLE
-            # option (any subclass, L2+). The armed option is highlighted; arming modifies the
-            # next player cast (_apply_armed_metamagic). Seeking is an independent stacking toggle.
-            # Sorcery Incarnate (L7, Phase 4): while Innate Sorcery runs, a SECOND option can be
-            # armed alongside the first — flagged by the caption below.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.char_level >= 2 and len(stats.metamagic_options) > 0):
-                    sp_res = stats.get_resource("Sorcery Points")
-                    sp_have = sp_res.current if sp_res else 0
-                    learned = list(stats.metamagic_options)
-                    incarnate = rpg.CombatEngine.sorcery_incarnate_active(stats)
-                    if incarnate:
-                        cap = self.font_sm.render(
-                            "Sorcery Incarnate: 2 options per spell", True, (210, 190, 255))
-                        self.screen.blit(cap, (lx, y))
-                        y += cap.get_height() + 2
-                    for mm_val, mm_name, mm_sp, mm_note in METAMAGIC_OPTIONS:
-                        key = int(mm_val)
-                        btn = self.btn_cbt_metamagic.get(key)
-                        if btn is None:  # defensive: every option now has a button
-                            continue
-                        cost = rpg.CombatEngine.metamagic_sp_cost(mm_val)
-                        if not metamagic_offered(mm_val, learned, sp_have, cost):
-                            continue
-                        if mm_val == rpg.MetamagicOption.Seeking:
-                            armed = self.armed_seeking
-                        else:
-                            armed = (self.armed_metamagic == mm_val or
-                                     (incarnate and self.armed_metamagic2 == mm_val))
-                        btn.text = f"{'✓ ' if armed else ''}✨ {mm_name} ({cost} SP)"
-                        btn.color = (120, 95, 190) if armed else (80, 62, 135)
-                        btn.rect.x = lx
-                        btn.rect.y = y
-                        btn.rect.w = W
-                        btn.draw(self.screen)
-                        if armed:
-                            pygame.draw.rect(self.screen, (210, 190, 255), btn.rect, 2, border_radius=4)
-                        y += B + gap
+            # NOTE: the Sorcerer Metamagic arm-toggles used to live here, but that put them inside
+            # the `not self.bonus_used` guard above — so spending the Bonus Action (e.g. on Innate
+            # Sorcery) hid Heightened/Careful/Empowered/etc. Metamagic options are qualifiers on a
+            # spell, not Bonus Actions, so they are now drawn OUTSIDE this guard (see below).
 
             # Clockwork Sorcerer L14+ Trance of Order (Bonus Action): for 1 minute, attacks against
             # you lose Advantage and you floor your own d20s to 10. Free 1/long rest or 5 SP. Shown
@@ -17840,6 +17819,53 @@ class App:
                     self.btn_cbt_familiar.draw(self.screen)
                     y += B + gap
 
+
+        # Sorcerer Metamagic arm-toggles (Phase 2): one button per LEARNED + AFFORDABLE option
+        # (any subclass, L2+). The armed option is highlighted; arming modifies the next player
+        # cast (_apply_armed_metamagic). Seeking is an independent stacking toggle. Sorcery
+        # Incarnate (L7, Phase 4): while Innate Sorcery runs, a SECOND option can be armed.
+        # Drawn OUTSIDE the `not self.bonus_used` guard above — these are spell qualifiers, not
+        # Bonus Actions, so spending the Bonus Action must NOT hide them. Quickened is the lone
+        # exception (it casts the spell AS a Bonus Action) and is skipped once that is spent.
+        if not _is_incapacitated and 0 <= cur_idx < len(agents):
+            stats = self.combat.get_agent_stats(self.bm, cur_idx)
+            if (stats.character_class == rpg.CharacterClass.Sorcerer and
+                    stats.char_level >= 2 and len(stats.metamagic_options) > 0):
+                sp_res = stats.get_resource("Sorcery Points")
+                sp_have = sp_res.current if sp_res else 0
+                learned = list(stats.metamagic_options)
+                incarnate = rpg.CombatEngine.sorcery_incarnate_active(stats)
+                if incarnate:
+                    cap = self.font_sm.render(
+                        "Sorcery Incarnate: 2 options per spell", True, (210, 190, 255))
+                    self.screen.blit(cap, (lx, y))
+                    y += cap.get_height() + 2
+                for mm_val, mm_name, mm_sp, mm_note in METAMAGIC_OPTIONS:
+                    key = int(mm_val)
+                    btn = self.btn_cbt_metamagic.get(key)
+                    if btn is None:  # defensive: every option now has a button
+                        continue
+                    # Quickened casts a spell AS a Bonus Action, so it is unusable once the Bonus
+                    # Action is spent — hide only that option (the other qualifiers stay available).
+                    if mm_val == rpg.MetamagicOption.Quickened and self.bonus_used:
+                        continue
+                    cost = rpg.CombatEngine.metamagic_sp_cost(mm_val)
+                    if not metamagic_offered(mm_val, learned, sp_have, cost):
+                        continue
+                    if mm_val == rpg.MetamagicOption.Seeking:
+                        armed = self.armed_seeking
+                    else:
+                        armed = (self.armed_metamagic == mm_val or
+                                 (incarnate and self.armed_metamagic2 == mm_val))
+                    btn.text = f"{'✓ ' if armed else ''}✨ {mm_name} ({cost} SP)"
+                    btn.color = (120, 95, 190) if armed else (80, 62, 135)
+                    btn.rect.x = lx
+                    btn.rect.y = y
+                    btn.rect.w = W
+                    btn.draw(self.screen)
+                    if armed:
+                        pygame.draw.rect(self.screen, (210, 190, 255), btn.rect, 2, border_radius=4)
+                    y += B + gap
 
         y += section_gap
 
@@ -20155,57 +20181,10 @@ class App:
                                     "Innate Sorcery: not available (no use left / not enough SP / wrong class)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
-                    # Sorcerer Metamagic arm-toggles: radio-select (arming one clears the others;
-                    # clicking the armed one disarms). Seeking toggles independently (it stacks).
-                    # Under Sorcery Incarnate (L7 + Innate Sorcery active) the caster gets a SECOND
-                    # slot: arming a new option while one is already armed fills slot 2 instead of
-                    # replacing slot 1, so two options ride the next cast.
-                    for _mm_key, _mm_btn in self.btn_cbt_metamagic.items():
-                        if not _mm_btn.clicked(event):
-                            continue
-                        opt = rpg.MetamagicOption(_mm_key)
-                        name = METAMAGIC_NAME_BY_VALUE.get(_mm_key, "Metamagic")
-                        cost = rpg.CombatEngine.metamagic_sp_cost(opt)
-                        incarnate = self._sorcery_incarnate_active(self._current_agent_idx())
-                        if not incarnate:
-                            self.armed_metamagic2 = rpg.MetamagicOption.NONE
-                        if opt == rpg.MetamagicOption.Seeking:
-                            self.armed_seeking = not self.armed_seeking
-                            self._combat_log_add(
-                                f"Metamagic {name} {'ARMED' if self.armed_seeking else 'disarmed'} "
-                                f"({cost} SP on next cast).")
-                        elif self.armed_metamagic == opt:
-                            # Disarming slot 1 promotes slot 2 (if any) so the armed set stays packed.
-                            self.armed_metamagic = self.armed_metamagic2
-                            self.armed_metamagic2 = rpg.MetamagicOption.NONE
-                            self._combat_log_add(f"Metamagic {name} disarmed.")
-                        elif incarnate and self.armed_metamagic2 == opt:
-                            self.armed_metamagic2 = rpg.MetamagicOption.NONE
-                            self._combat_log_add(f"Metamagic {name} disarmed.")
-                        else:
-                            if incarnate and self.armed_metamagic != rpg.MetamagicOption.NONE:
-                                # Sorcery Incarnate: keep the first option, add this one alongside it
-                                # (a third click replaces slot 2 — the engine takes at most two).
-                                self.armed_metamagic2 = opt
-                                self._combat_log_add(
-                                    f"Metamagic {name} ARMED as the 2nd option ({cost} SP on next "
-                                    f"cast — Sorcery Incarnate).")
-                            else:
-                                self.armed_metamagic = opt
-                                self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
-                            # Transmuted needs a replacement damage type chosen at arm time.
-                            if opt == rpg.MetamagicOption.Transmuted:
-                                def _on_mm_transmute(chosen):
-                                    self.pending_metamagic_transmute_type = chosen[0] if chosen else -1
-                                    tname = _DAMAGE_TYPE_NAMES.get(self.pending_metamagic_transmute_type, "?")
-                                    self._combat_log_add(f"Transmuted Spell → {tname} damage.")
-                                    self._flush_combat_log()
-                                self._element_dialog.show(
-                                    _on_mm_transmute, METAMAGIC_TRANSMUTE_OPTIONS,
-                                    current_values=None, multi=False,
-                                    title="Transmuted Spell — new damage type")
-                        self._flush_combat_log()
-                        break
+                    # NOTE: the Metamagic arm-toggle click handler was moved OUT of this
+                    # `not self.bonus_used` block (see below, next to the Haste handler) so the
+                    # toggles stay clickable after the Bonus Action is spent — they are spell
+                    # qualifiers, not Bonus Actions.
                     if self.btn_cbt_trance_of_order.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20295,6 +20274,60 @@ class App:
                         self._show_arcane_ward_menu()
                     if self.btn_cbt_wild_shape.clicked(event):
                         self._show_wild_shape_menu()
+                # Sorcerer Metamagic arm-toggles — handled OUTSIDE the `not self.bonus_used` block
+                # above (they are spell qualifiers, not Bonus Actions), so spending the Bonus Action
+                # doesn't dead-key them. Radio-select (arming one clears the others; clicking the
+                # armed one disarms). Seeking toggles independently (it stacks). Under Sorcery
+                # Incarnate (L7 + Innate Sorcery active) a second option fills slot 2. Quickened is
+                # skipped once the Bonus Action is spent — it casts the spell AS a Bonus Action.
+                for _mm_key, _mm_btn in self.btn_cbt_metamagic.items():
+                    if not _mm_btn.clicked(event):
+                        continue
+                    opt = rpg.MetamagicOption(_mm_key)
+                    if opt == rpg.MetamagicOption.Quickened and self.bonus_used:
+                        continue  # can't cast as a Bonus Action once it's spent
+                    name = METAMAGIC_NAME_BY_VALUE.get(_mm_key, "Metamagic")
+                    cost = rpg.CombatEngine.metamagic_sp_cost(opt)
+                    incarnate = self._sorcery_incarnate_active(self._current_agent_idx())
+                    if not incarnate:
+                        self.armed_metamagic2 = rpg.MetamagicOption.NONE
+                    if opt == rpg.MetamagicOption.Seeking:
+                        self.armed_seeking = not self.armed_seeking
+                        self._combat_log_add(
+                            f"Metamagic {name} {'ARMED' if self.armed_seeking else 'disarmed'} "
+                            f"({cost} SP on next cast).")
+                    elif self.armed_metamagic == opt:
+                        # Disarming slot 1 promotes slot 2 (if any) so the armed set stays packed.
+                        self.armed_metamagic = self.armed_metamagic2
+                        self.armed_metamagic2 = rpg.MetamagicOption.NONE
+                        self._combat_log_add(f"Metamagic {name} disarmed.")
+                    elif incarnate and self.armed_metamagic2 == opt:
+                        self.armed_metamagic2 = rpg.MetamagicOption.NONE
+                        self._combat_log_add(f"Metamagic {name} disarmed.")
+                    else:
+                        if incarnate and self.armed_metamagic != rpg.MetamagicOption.NONE:
+                            # Sorcery Incarnate: keep the first option, add this one alongside it
+                            # (a third click replaces slot 2 — the engine takes at most two).
+                            self.armed_metamagic2 = opt
+                            self._combat_log_add(
+                                f"Metamagic {name} ARMED as the 2nd option ({cost} SP on next "
+                                f"cast — Sorcery Incarnate).")
+                        else:
+                            self.armed_metamagic = opt
+                            self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
+                        # Transmuted needs a replacement damage type chosen at arm time.
+                        if opt == rpg.MetamagicOption.Transmuted:
+                            def _on_mm_transmute(chosen):
+                                self.pending_metamagic_transmute_type = chosen[0] if chosen else -1
+                                tname = _DAMAGE_TYPE_NAMES.get(self.pending_metamagic_transmute_type, "?")
+                                self._combat_log_add(f"Transmuted Spell → {tname} damage.")
+                                self._flush_combat_log()
+                            self._element_dialog.show(
+                                _on_mm_transmute, METAMAGIC_TRANSMUTE_OPTIONS,
+                                current_values=None, multi=False,
+                                title="Transmuted Spell — new damage type")
+                    self._flush_combat_log()
+                    break
                 # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the
                 # `not self.bonus_used` block above so spending a bonus action first doesn't dead-key it.
                 if self.btn_cbt_haste_action.clicked(event):

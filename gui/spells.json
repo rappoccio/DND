@@ -583,14 +583,16 @@
     "name": "Bane",
     "description": "Up to three creatures of your choice that you can see within range must each make a Charisma saving throw. Whenever a target that fails this save makes an attack roll or a saving throw before the spell ends, the target must subtract 1d4 from the attack roll or save.",
     "type": "Harm",
-    "geometry": "Single",
-    "attack_type": "AttackRoll",
+    "geometry": "Multiple",
+    "attack_type": "Save",
     "save_ability": "SaveCha",
     "range": 30,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "num_targets": 3,
+    "targets_per_upcast_level": 1,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 1,
@@ -598,7 +600,15 @@
     "requires_concentration": true,
     "requires_los": true,
     "check_los_on_center": true,
-    "school": "enchantment"
+    "school": "enchantment",
+    "conditions": [
+      {
+        "condition_name": "Baned",
+        "save_ability": "SaveCha",
+        "condition_duration": 0,
+        "save_repeat_turns": -1
+      }
+    ]
   },
   {
     "name": "Banishment",
@@ -3926,7 +3936,7 @@
     "name": "Hallow",
     "description": "You touch a point and infuse an area around it with holy or unholy power. The area can have a radius up to 60 feet, and the spell fails if the radius includes an area already under the effect of Hallow. The affected area has the following effects.\n\n**_Hallowed Ward._** Choose any of these creature types: Aberration, Celestial, Elemental, Fey, Fiend, or Undead. Creatures of the chosen types can't willingly enter the area, and any creature that is possessed by or that has the Charmed or Frightened condition from such creatures isn't possessed, Charmed, or Frightened by them while in the area.\n\n**_Extra Effect._** You bind an extra effect to the area from the list below:\n\n- **_Courage._** Creatures of any types you choose can't gain the Frightened condition while in the area.\n- **_Darkness._** Darkness fills the area. Normal light, as well as magical light created by spells of a level lower than this spell, can't illuminate the area.\n - **_Daylight._** Bright light fills the area. Magical Darkness created by spells of a level lower than this spell can't extinguish the light.\n- **_Peaceful Rest._** Dead bodies interred in the area can't be turned into Undead.\n- **_Extradimensional Interference._** Creatures of any types you choose can't enter or exit the area using teleportation or interplanar travel.\n- **_Fear._** Creatures of any types you choose have the Frightened condition while in the area.\n- **_Silence._** No sound can emanate from within the area, and no sound can reach into it.\n- **_Tongues._** Creatures of any types you choose can communicate with any other creature in the area even if they don't share a common language.\n- **_Vulnerability._** Creatures of any types you choose have Vulnerability to one damage type of your choice while in the area.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Sphere",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 5,

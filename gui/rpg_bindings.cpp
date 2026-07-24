@@ -276,6 +276,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         // that ability's saves. Set/cleared by "Advantage on X saves" buffs like Haste.
         .def_readwrite("save_advantage_mask", &Agent::Stats::save_advantage_mask)
         .def_readwrite("blessed", &Agent::Stats::blessed)   // Bless: +1d4 to attacks & saves
+        .def_readwrite("baned", &Agent::Stats::baned)       // Bane:  -1d4 to attacks & saves
         // Haste (Phase 2): +2 AC, Adv on DEX saves, doubled Speed, one extra limited action/turn.
         .def_readwrite("hasted", &Agent::Stats::hasted)
         .def_readwrite("haste_speed_bonus", &Agent::Stats::haste_speed_bonus)

@@ -251,6 +251,12 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         mod += bless_d4;
         log_("Bless: +{} to spell attack", bless_d4);
     }
+    // Bane — subtract 1d4 from spell attack rolls (folded into the mod like Bless; stacks with it).
+    if (caster_stats.baned) {
+        int bane_d4 = roll(4);
+        mod -= bane_d4;
+        log_("Bane: -{} to spell attack", bane_d4);
+    }
     int total   = d20_val + mod;
     th.d20        = d20_val;
     th.attack_mod = mod;
@@ -3498,6 +3504,14 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     if (n == "Blessed") {
         Agent::Stats st = bm.getAgentStats(cond.agent_idx);
         st.blessed = false;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    // Bane — mirror of Blessed. Clear the -1d4 flag on every end path (concentration drop,
+    // duration expiry, Dispel Magic, death) so the penalty never lingers.
+    if (n == "Baned") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.baned = false;
         bm.setAgentStats(cond.agent_idx, st);
         return;
     }

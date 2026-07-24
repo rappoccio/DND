@@ -65,6 +65,7 @@ def dict_to_stats(stats_dict):
     stats.save_prof_cha = bool(stats_dict.get("save_prof_cha", False))
     stats.save_advantage_mask = int(stats_dict.get("save_advantage_mask", 0))
     stats.blessed = bool(stats_dict.get("blessed", False))
+    stats.baned = bool(stats_dict.get("baned", False))
     stats.hasted = bool(stats_dict.get("hasted", False))
     stats.haste_speed_bonus = int(stats_dict.get("haste_speed_bonus", 0))
     stats.haste_action_available = bool(stats_dict.get("haste_action_available", False))
