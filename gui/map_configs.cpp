@@ -136,6 +136,8 @@ static Spell spellFromJson(const json& j) noexcept {
 
     // Magic Circle / Hallow movement ward (D4). Types + direction are chosen per cast (SpellAction).
     spell.creates_movement_ward = j.value("creates_movement_ward", false);
+    // Antilife Shell: a caster-anchored emanation no living creature can cross.
+    spell.ward_blocks_living = j.value("ward_blocks_living", false);
 
     return spell;
 }

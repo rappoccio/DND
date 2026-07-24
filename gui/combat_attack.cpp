@@ -496,8 +496,29 @@ void CombatEngine::rollDamage(const Weapon& w,
                                                    bm, target_idx);
         }
     }
+    // Enlarge/Reduce (size_damage_dice) and Ray of Enfeeblement (enfeebled) adjust a weapon or
+    // Unarmed Strike's damage roll by a flat, unscaled amount. Enlarge adds 1d4, Reduce subtracts
+    // 1d4, and enfeeblement subtracts 1d8. These ride the physical hit only (spell damage never
+    // routes through rollDamage), and can lower the total but never take it below 0.
+    int size_enfeeble_mod = 0;
+    std::string size_enfeeble_note;
+    if (attacker.size_damage_dice > 0) {
+        int d = roll(4);
+        size_enfeeble_mod += d;
+        size_enfeeble_note = std::format(" +{}(enlarge)", d);
+    } else if (attacker.size_damage_dice < 0) {
+        int d = roll(4);
+        size_enfeeble_mod -= d;
+        size_enfeeble_note = std::format(" -{}(reduce)", d);
+    }
+    if (attacker.enfeebled) {
+        int d = roll(8);
+        size_enfeeble_mod -= d;
+        size_enfeeble_note += std::format(" -{}(enfeebled)", d);
+    }
+
     const int modified_mod = static_cast<int>(static_cast<float>(result.damage_mod) * mod_mult);
-    result.total_damage = std::max(0, raw + modified_mod);
+    result.total_damage = std::max(0, raw + modified_mod + size_enfeeble_mod);
     result.damage_breakdown.clear();
     result.damage_breakdown.push_back({"weapon", result.total_damage});
 
@@ -510,8 +531,9 @@ void CombatEngine::rollDamage(const Weapon& w,
         dmg_line += log_parts[i];
     }
     if (dmg_line.empty()) dmg_line = "—";
-    log_("Damage: {} {:+}(dmg){} = {}{}", dmg_line, result.damage_mod,
+    log_("Damage: {} {:+}(dmg){}{} = {}{}", dmg_line, result.damage_mod,
          mod_mult != 1.0f ? std::format(" x{:g}={}", mod_mult, modified_mod) : std::string{},
+         size_enfeeble_note,
          result.total_damage, result.critical ? " (CRIT)" : "");
 }
 
@@ -691,6 +713,18 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
                                           const BattleMap* bm,
                                           int target_idx)
 {
+    // Forcecage Box (10-ft solid): a two-way wall — an attack never crosses between a sealed occupant
+    // and anyone outside. Exactly one of the pair being sealed means they are on opposite sides of it.
+    // (availableAttacks already omits these targets; this guards direct callers / summoned attacks too.)
+    if (attacker.getConditions().forcecage_sealed != target.getConditions().forcecage_sealed) {
+        AttackResult blocked;
+        blocked.valid     = true;
+        blocked.hit       = false;
+        blocked.hp_before = target.getStats().hp_cur;
+        blocked.hp_after  = target.getStats().hp_cur;
+        return blocked;
+    }
+
     int target_ac = target.getStats().base_ac;
     AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage, attacker.getConditions().exhaustion_level);
     r.hp_before = target.getStats().hp_cur;
@@ -2594,6 +2628,19 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Disadvantage: attacker is restrained");
     }
 
+    // Ray of Enfeeblement: the enfeebled creature has Disadvantage on its weapon attack rolls
+    // (a STR-based-test approximation; the −1d8 damage rider is applied in rollDamage).
+    if (atk_pt.agent->getStats().enfeebled) {
+        dis = true;
+        log_("Disadvantage: attacker is enfeebled (Ray of Enfeeblement)");
+    }
+
+    // Foresight: the seer has Advantage on its own attack rolls (and all saves — see saveAdvantageFor).
+    if (atk_pt.agent->getStats().has_foresight) {
+        adv = true;
+        log_("Advantage: attacker has Foresight");
+    }
+
     // Attacker is hidden: attacks have advantage (will be revealed after attack)
     bool attacker_was_hidden = atk_cond.hidden;
     if (attacker_was_hidden) {
@@ -2692,6 +2739,13 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (tgt_cond.reckless_attack) {
         adv = true;
         log_("Advantage: target has Reckless Attack active");
+    }
+
+    // Blur / Foresight: attack rolls against this creature have Disadvantage. (RAW Blur is
+    // negated by Blindsight/Truesight; that carve-out is not modeled — the flag applies flatly.)
+    if (tgt_pt.agent->getStats().attackers_disadvantage) {
+        dis = true;
+        log_("Disadvantage: target is blurred / has Foresight");
     }
 
     // Crusher (general feat) — Enhanced Critical: attack rolls against a creature crit by

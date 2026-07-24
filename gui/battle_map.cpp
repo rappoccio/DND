@@ -833,7 +833,9 @@ bool BattleMap::movementWardBlocks(int mover_idx, Cell from, Cell to) const noex
         return false;
     const auto& mpa = placedAgents_[static_cast<std::size_t>(mover_idx)];
     const uint32_t mover_types = mpa.agent->getStats().creatureTypeMask();
-    if (mover_types == 0) return false;    // typeless creatures cross any ward freely
+    // Antilife Shell wards by "is this creature alive?", so it must consider typeless movers
+    // (Humanoids, Beasts, …) too. Only Undead are exempt (Construct is not a modeled type).
+    const bool mover_is_undead = mpa.agent->getStats().is_undead;
 
     const int size = mpa.agent->getSize();
     // Any-cell-overlap of the token's NxN footprint at `o` with a ward's flat cell set.
@@ -850,14 +852,25 @@ bool BattleMap::movementWardBlocks(int mover_idx, Cell from, Cell to) const noex
     };
 
     for (const auto& te : activeTerrainEffects_) {
-        if (te.ward_creature_mask == 0) continue;                 // not a movement ward
-        if ((te.ward_creature_mask & mover_types) == 0) continue; // ward doesn't target this type
+        // A ward is either a living-barrier (Antilife Shell) or a creature-type ward (Magic
+        // Circle / Hallow). Decide whether this mover is blocked by THIS ward, then apply the
+        // shared boundary rule (keep-out vs trap-inside).
+        bool warded;
+        if (te.ward_all_living) {
+            warded = !mover_is_undead;            // living creatures can't cross; Undead pass
+        } else if (te.ward_creature_mask != 0) {
+            if (mover_types == 0) continue;        // typeless creatures cross a type ward freely
+            warded = (te.ward_creature_mask & mover_types) != 0;
+        } else {
+            continue;                              // not a movement ward
+        }
+        if (!warded) continue;
         const bool from_in = footprintInWard(from, te.cell_indices);
         const bool to_in   = footprintInWard(to,   te.cell_indices);
         if (te.ward_traps) {
             if (from_in && !to_in) return true;   // reverse Magic Circle: can't leave the zone
         } else {
-            if (!from_in && to_in) return true;   // Magic Circle: can't enter the zone
+            if (!from_in && to_in) return true;   // Magic Circle / Antilife: can't enter the zone
         }
     }
     return false;
@@ -2014,7 +2027,8 @@ int BattleMap::placeTerrainEffect(std::string name,
                                    int anchor_radius_ft,
                                    bool spares_source_allies,
                                    uint32_t ward_creature_mask,
-                                   bool ward_traps) {
+                                   bool ward_traps,
+                                   bool ward_all_living) {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -2044,7 +2058,8 @@ int BattleMap::placeTerrainEffect(std::string name,
         anchor_radius_ft,
         spares_source_allies,
         ward_creature_mask,
-        ward_traps
+        ward_traps,
+        ward_all_living
     };
     activeTerrainEffects_.push_back(effect);
 

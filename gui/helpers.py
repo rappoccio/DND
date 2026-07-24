@@ -837,6 +837,7 @@ def _spell_to_dict(s) -> dict:
         "animates_dead":          getattr(s, "animates_dead", False),
         "binds_creature":         getattr(s, "binds_creature", False),
         "creates_movement_ward":  getattr(s, "creates_movement_ward", False),
+        "ward_blocks_living":     getattr(s, "ward_blocks_living", False),
         "ends_conditions":        list(getattr(s, "ends_conditions", [])),
     }
 
@@ -940,6 +941,8 @@ def _dict_to_spell(d: dict):
         s.binds_creature = bool(d.get("binds_creature", False))
     if hasattr(s, "creates_movement_ward"):
         s.creates_movement_ward = bool(d.get("creates_movement_ward", False))
+    if hasattr(s, "ward_blocks_living"):
+        s.ward_blocks_living = bool(d.get("ward_blocks_living", False))
     if hasattr(s, "ends_conditions"):
         s.ends_conditions = list(d.get("ends_conditions", []))
     s.level = int(d.get("level", 0))

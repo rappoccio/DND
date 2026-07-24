@@ -161,6 +161,11 @@ test_scripts = [
     # Aid (SPELLS_TO_WIRE Phase 3: +5 current & max HP per target, +5/upcast level, revives downed)
     "test_aid.py",
 
+    # SPELL_IMPLEMENTATION_PLAN Tier 1 — False Life, Longstrider, Expeditious Retreat, Blur,
+    # Barkskin, Ray of Enfeeblement, Enlarge/Reduce, Regenerate, Divine Word, Dominate Monster,
+    # Mind Blank, Foresight (buff/debuff Stats flags + condition apply/clear + mechanic hooks)
+    "test_spells_tier1.py",
+
     # Divine Intervention D0 (Cleric L10 free-cast resource; L20 Greater-DI 2d4 Wish lock)
     "test_divine_intervention.py",
 

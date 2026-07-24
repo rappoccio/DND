@@ -54,6 +54,16 @@ bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int ta
     return piercesInvisibility(viewer.agent->getStats(), chebyshevFeet(viewer, target));
 }
 
+bool CombatEngine::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (a_idx < 0 || a_idx >= n || b_idx < 0 || b_idx >= n) return false;
+    const bool a_sealed = agents[static_cast<std::size_t>(a_idx)].agent->getConditions().forcecage_sealed;
+    const bool b_sealed = agents[static_cast<std::size_t>(b_idx)].agent->getConditions().forcecage_sealed;
+    return a_sealed != b_sealed;   // exactly one is inside a solid box → opposite sides of the wall
+}
+
 bool CombatEngine::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept
 {
     if (a_idx == b_idx) return true;            // self is always "friendly"

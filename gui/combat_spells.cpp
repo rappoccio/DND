@@ -532,6 +532,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         return result;   // valid == false → no effect
     }
 
+    // Forcecage Box (10-ft solid): a sealed occupant can't cast a spell at anything outside the box.
+    // The only spell that leaves is a teleport/planar-travel escape, which is CHA-gated in
+    // teleportAgent — so allow teleportation spells and refuse all others before any cost. (This is
+    // the deliberate simplification: even self-only buffs are refused while boxed — see known limits.)
+    if (caster_pa.agent->getConditions().forcecage_sealed && !sp.teleportation_spell) {
+        log_("{} is sealed in a Forcecage box and can't cast {} — only a teleport can leave the box.",
+             agentName(bm, action.caster_idx), sp.name);
+        return result;   // valid == false → nothing spent
+    }
+
     // An area of effect needs a clear path to its point of origin: you can't drop a Fireball's
     // center in the next room, because Total Cover blocks the path to the point you chose. Only
     // a *placed* area is at risk — a Cone/Line/Emanation originates on the caster's own footprint
@@ -1065,6 +1075,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     for (std::size_t ti = 0; ti < targets.size(); ++ti) {
         int tgt_idx = targets[ti];
         if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) continue;
+
+        // Forcecage Box (10-ft solid): nothing crosses the wall between a sealed occupant and the
+        // outside — a spell or its area has no effect on a target on the other side of the box. Covers
+        // both directions and every geometry (single, multi, AoE) at the point effects are applied.
+        if (forcecageSeparates(bm, action.caster_idx, tgt_idx)) {
+            log_("{} is unaffected by {} — a Forcecage wall blocks it.",
+                 agentName(bm, tgt_idx), sp.name);
+            continue;
+        }
 
         Agent::Stats tgt_stats = bm.getAgentStats(tgt_idx);
         SpellTargetResult tr;
@@ -2126,6 +2145,64 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             applyCommandEffect(bm, action.caster_idx, tgt_idx, action.command_word);
         }
 
+        // Forcecage: the Box form (action.forcecage_sealed) upgrades the just-applied Forcecaged
+        // condition to a two-way seal. The Forcecaged condition (with its forcecaged flag + escape DC)
+        // was already installed by the generic conditions loop above; here we only flip on the
+        // solid-box seal so the occupant can neither act out nor be targeted from outside.
+        if (sp.name == "Forcecage" && action.forcecage_sealed && tgt_idx >= 0 &&
+            tgt_idx < static_cast<int>(agents.size())) {
+            Agent::Conditions fc = bm.getAgentConditions(tgt_idx);
+            fc.forcecage_sealed = true;
+            bm.setAgentConditions(tgt_idx, fc);
+            log_("{} is sealed inside a solid Forcecage box — nothing passes in or out except a "
+                 "teleport escape.", agentName(bm, tgt_idx));
+        }
+
+        // Divine Word: on a failed CHA save, a target's fate depends on its current HP (the
+        // Power-Word HP-threshold model, but tiered). The four-tier table can't be expressed with
+        // the single condition_hp_threshold field, so it is resolved here (keyed by name, like
+        // Command). The banish/return-to-plane clause is out of scope (no planar travel).
+        if (sp.name == "Divine Word" && !tr.saved && tgt_idx >= 0 &&
+            tgt_idx < static_cast<int>(agents.size())) {
+            const int hp = tgt_stats.hp_cur;
+            auto add_cond = [&](const std::string& name, int turns) {
+                ActiveAgentCondition c;
+                c.agent_idx        = tgt_idx;
+                c.caster_idx       = action.caster_idx;
+                c.spell_idx        = action.spell_idx;
+                c.condition_name   = name;
+                c.turns_remaining  = turns;
+                c.save_repeat_turns = -1;   // fixed-duration afflictions — no repeated save
+                c.next_save_turn    = -1;
+                (void)addAgentCondition(bm, c);
+            };
+            if (hp <= 20) {
+                // The target dies outright (no death saves), mirroring Power Word Kill.
+                Agent::Conditions dc = bm.getAgentConditions(tgt_idx);
+                if (!dc.dead) {
+                    tgt_stats.temp_hp = 0;
+                    tgt_stats.hp_cur  = 0;
+                    bm.setAgentStats(tgt_idx, tgt_stats);
+                    if (!dc.unconscious) applyUnconscious(bm, tgt_idx);
+                    Agent::Conditions dc2 = bm.getAgentConditions(tgt_idx);
+                    dc2.dead = true;
+                    bm.setAgentConditions(tgt_idx, dc2);
+                    log_("Divine Word: {} has {} HP (<= 20) — dies", agentName(bm, tgt_idx), hp);
+                }
+            } else if (hp <= 30) {
+                add_cond("Blinded", 600); add_cond("Deafened", 600); add_cond("Stunned", 600);  // 1 hour
+                log_("Divine Word: {} ({} HP) is Blinded, Deafened, and Stunned", agentName(bm, tgt_idx), hp);
+            } else if (hp <= 40) {
+                add_cond("Blinded", 100); add_cond("Deafened", 100);  // 10 minutes
+                log_("Divine Word: {} ({} HP) is Blinded and Deafened", agentName(bm, tgt_idx), hp);
+            } else if (hp <= 50) {
+                add_cond("Deafened", 10);  // 1 minute
+                log_("Divine Word: {} ({} HP) is Deafened", agentName(bm, tgt_idx), hp);
+            } else {
+                log_("Divine Word: {} ({} HP) is above 50 HP — no effect", agentName(bm, tgt_idx), hp);
+            }
+        }
+
         // Remove Curse / Greater Restoration: restorative spells whose only mechanical effect is
         // to strip debilitating conditions from the (allied) target rather than deal damage. Keyed
         // by name like Command; both carry no sp.conditions of their own.
@@ -2265,10 +2342,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     }
 
     // Create persistent spell effect if spell has AoE geometry and duration > 1. A movement-ward
-    // spell (Magic Circle / Hallow) is skipped here: it deals no damage, so a zone effect would only
-    // spam "took 0" each turn — its behavior and rendered footprint both ride on the terrain ward
-    // placed further below.
-    if (result.valid && sp.duration > 1 && sp.geometry != Spell::Single && !sp.creates_movement_ward) {
+    // spell (Magic Circle / Hallow, Antilife Shell) is skipped here: it deals no damage, so a zone
+    // effect would only spam "took 0" each turn — its behavior and rendered footprint both ride on
+    // the terrain ward placed further below.
+    if (result.valid && sp.duration > 1 && sp.geometry != Spell::Single &&
+        !sp.creates_movement_ward && !sp.ward_blocks_living) {
         std::vector<Cell> effect_cells;
 
         // Calculate cells based on spell geometry
@@ -2423,6 +2501,33 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 log_("{} casts {} — a warding circle {} the chosen creature types.",
                      agentName(bm, action.caster_idx), sp.name,
                      action.ward_traps ? "traps" : "repels");
+            }
+        }
+    }
+
+    // Antilife Shell: a caster-anchored emanation no living creature can cross. Reuses the
+    // movement-ward chokepoint (a Normal-difficulty terrain effect carrying the ward flag), but
+    // wards by "alive?" (ward_all_living) instead of a creature-type mask. Anchored to the caster
+    // so recomputeAnchoredEffects re-centers it as they move, like any Emanation.
+    if (result.valid && sp.ward_blocks_living) {
+        Cell caster_origin = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].origin;
+        int  caster_size   = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].agent->getSize();
+        std::vector<Cell> ward_cells = bm.pruneBlockedCells(
+            AreaOrigin{caster_origin, caster_size},
+            sphereCellsAround(caster_origin.col, caster_origin.row, sp.radius));
+        if (!ward_cells.empty()) {
+            int ward_id = bm.placeTerrainEffect(
+                sp.name, ward_cells, TerrainDifficulty::Normal,
+                sp.duration, action.caster_idx,
+                sp.slip_save_dc, sp.slip_distance_feet,
+                action.spell_idx, std::max(action.slot_level, sp.level),
+                sp.requires_concentration,
+                action.caster_idx, sp.radius, false,   // anchor to caster (moving emanation)
+                0, false, true);                       // ward_creature_mask=0, ward_traps=false, ward_all_living=true
+            if (ward_id >= 0) {
+                result.terrain_effect_ids.push_back(ward_id);
+                log_("{} casts {} — a shell that no living creature can cross.",
+                     agentName(bm, action.caster_idx), sp.name);
             }
         }
     }
@@ -2839,6 +2944,11 @@ bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect
 {
     // A creature is never caught in its own Emanation/zone.
     if (target_idx == effect.caster_idx) return true;
+
+    // Forcecage Box (10-ft solid): a persistent zone can't reach across the wall either — spare a
+    // sealed occupant from a zone cast by someone outside (and vice versa). Same two-way seal as
+    // direct spells/attacks.
+    if (forcecageSeparates(bm, effect.caster_idx, target_idx)) return true;
 
     const Spell& sp = effect.spell;
     // A neutral (faction 0) caster has no allies, so it keeps the legacy "affect everyone in
@@ -3515,6 +3625,17 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
         bm.setAgentStats(cond.agent_idx, st);
         return;
     }
+    // Forcecage — release the creature: clear the trap flag (canAgentMove is free again) and the
+    // stored escape DC. Runs on every end path (duration expiry, Dispel Magic, death, or a successful
+    // teleport escape which removes the condition via teleportAgent).
+    if (n == "Forcecaged") {
+        Agent::Conditions cc = bm.getAgentConditions(cond.agent_idx);
+        cc.forcecaged       = false;
+        cc.forcecage_dc     = 0;
+        cc.forcecage_sealed = false;
+        bm.setAgentConditions(cond.agent_idx, cc);
+        return;
+    }
     // Haste (Phase 2) teardown — reverse every buff exactly, then inflict the end-of-spell lethargy
     // on EVERY end path (concentration drop, duration expiry, Dispel Magic, death). Adding a
     // condition here is safe: onConditionEnded (this method's only caller) always runs deferred,
@@ -3555,6 +3676,75 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
             st.hp_max      -= st.aid_hp_bonus;
             st.aid_hp_bonus = 0;
             st.hp_cur       = std::min(st.hp_cur, st.effectiveMaxHp());
+            bm.setAgentStats(cond.agent_idx, st);
+        }
+        return;
+    }
+    // ── Tier 1 spell buff/debuff teardowns (SPELL_IMPLEMENTATION_PLAN.md) ──────
+    // Each reverses exactly what addAgentCondition set, on EVERY end path (duration expiry,
+    // Dispel Magic, concentration drop, death cleanup).
+    if (n == "Longstriding") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.speed_walk       -= st.longstrider_bonus;
+        st.longstrider_bonus = 0;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "ExpeditiousRetreat") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        if (st.expeditious_retreat) {   // only strip Cunning Action if THIS spell granted it
+            st.has_cunning_action  = false;
+            st.expeditious_retreat = false;
+            bm.setAgentStats(cond.agent_idx, st);
+        }
+        return;
+    }
+    if (n == "Blurred") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.attackers_disadvantage = false;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "Foresight") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.has_foresight          = false;
+        st.attackers_disadvantage = false;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "Barkskinned") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.base_ac          -= st.barkskin_ac_bonus;
+        st.barkskin_ac_bonus = 0;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "Enfeebled") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.enfeebled = false;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "Enlarged" || n == "Reduced") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.size_damage_dice = 0;
+        if (n == "Enlarged") st.save_advantage_mask &= ~(1 << SaveStr);
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "MindBlank") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.immune_charm = false;
+        st.magic_damage_multipliers[Psychic] = st.mind_blank_psychic_saved;
+        st.mind_blank_psychic_saved = 1.0f;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    if (n == "Regenerating") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        if (st.regenerate_saved >= 0) {
+            st.regeneration_amount = st.regenerate_saved;
+            st.regenerate_saved    = -1;
             bm.setAgentStats(cond.agent_idx, st);
         }
         return;

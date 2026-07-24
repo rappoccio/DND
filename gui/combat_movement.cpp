@@ -105,7 +105,8 @@ bool CombatEngine::canAgentMove(const BattleMap& bm, int idx) const noexcept
     // Check for any condition that reduces speed to 0
     if (cond.incapacitated || cond.unconscious || cond.paralyzed
             || cond.restrained                 // Restrained (e.g. Nature's Wrath): Speed 0
-            || cond.branches_speed_zeroed) {   // World Tree Branches of the Tree: Speed 0 this turn
+            || cond.branches_speed_zeroed       // World Tree Branches of the Tree: Speed 0 this turn
+            || cond.forcecaged) {               // Forcecage: trapped — can't walk out (teleport-out needs a CHA save)
         return false;
     }
     // A grapple only pins the creature while its grappler can still maintain it (alive, conscious,
@@ -126,6 +127,14 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     Agent::Conditions cond = bm.getAgentConditions(idx);
     if (cond.incapacitated || cond.unconscious) {
         log_("Movement blocked: agent is incapacitated or unconscious");
+        return false;
+    }
+
+    // Forcecage traps the creature in place: it can act but can't walk out (only a CHA-saved
+    // teleport frees it — see teleportAgent). Hard-block here too so no movement path (NPC driver,
+    // drag, RL) can slide it out of the cage, matching the grappled guard below.
+    if (cond.forcecaged) {
+        log_("Movement blocked: {} is trapped in a Forcecage (Speed 0)", agentName(bm, idx));
         return false;
     }
 
@@ -344,6 +353,34 @@ bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int tar
     if (target_col < 0 || target_row < 0 || target_col >= bm.gridCols() || target_row >= bm.gridRows())
         return false;
 
+    // Forcecage: a trapped creature can leave the cage by teleporting, but must FIRST succeed on a
+    // Charisma saving throw vs the caster's spell save DC (RAW). This is the single chokepoint every
+    // teleport funnels through (Misty Step, Dimension Door, Teleport, Shadow Step, Steps of the Fey,
+    // Misty Escape, Psychic Teleportation, Arcane Charge, …), so gating here covers them all. A failed
+    // attempt is wasted (the teleport is blocked); a success frees the creature — the cage condition
+    // ends — and the teleport proceeds. Non-caged movers (forcecaged == false) pass straight through.
+    {
+        Agent::Conditions mcond = bm.getAgentConditions(idx);
+        if (mcond.forcecaged) {
+            int d20   = roll(20);
+            int total = d20 + saveModFor(bm, idx, SaveCha);
+            if (total < mcond.forcecage_dc) {
+                log_("{} tries to teleport out of the Forcecage but fails the Charisma save "
+                     "({} vs DC {}) — the teleport is blocked.",
+                     agentName(bm, idx), total, mcond.forcecage_dc);
+                return false;
+            }
+            log_("{} succeeds the Charisma save ({} vs DC {}) and teleports free of the Forcecage!",
+                 agentName(bm, idx), total, mcond.forcecage_dc);
+            // Escaped: end the underlying Forcecaged condition (which clears the flag via
+            // clearSpellConditionEffect) so it no longer traps the creature at its new location.
+            int cage_id = -1;
+            for (const auto& c : activeAgentConditions_)
+                if (c.agent_idx == idx && c.condition_name == "Forcecaged") { cage_id = c.condition_id; break; }
+            if (cage_id >= 0) removeAgentCondition(bm, cage_id);
+        }
+    }
+
     // Set the new position
     if (!bm.setAgentPosition(idx, targetCell))
         return false;
@@ -392,8 +429,14 @@ int CombatEngine::placeTeleportedAgents(BattleMap& bm, const std::vector<int>& a
 
     // Place the first agent at the destination
     if (!agent_indices.empty()) {
+        // A Forcecaged agent's teleport is a single all-or-nothing CHA-save attempt (rolled inside
+        // teleportAgent). If it fails, abort entirely — the ring search below must NOT re-attempt the
+        // same caged agent at nearby cells, which would roll a fresh save each time until one passed.
+        const bool first_caged = bm.getAgentConditions(agent_indices[0]).forcecaged;
         if (teleportAgent(bm, agent_indices[0], dest_col, dest_row))
             placed_count++;
+        else if (first_caged)
+            return 0;
     }
 
     // Place remaining agents in expanding circles around the destination

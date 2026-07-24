@@ -368,6 +368,9 @@ bool CombatEngine::saveAdvantageFor(const BattleMap& bm, int agent_idx, SaveAbil
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return false;
     const Agent::Stats& s = agents[static_cast<std::size_t>(agent_idx)].agent->getStats();
+    // Foresight grants Advantage on ALL saving throws (in addition to attack rolls), so it is
+    // honored here for every ability without needing to flip each mask bit.
+    if (s.has_foresight) return true;
     return (s.save_advantage_mask & (1 << static_cast<int>(ab))) != 0;
 }
 
@@ -788,7 +791,8 @@ std::vector<Attack> CombatEngine::availableAttacks(
         for (int wi = 0; wi < static_cast<int>(atk.weapons.size()); ++wi) {
             const Weapon& w = atk.weapons[static_cast<std::size_t>(wi)];
             if (canAttack(w, bm, atk.origin, atk_sz, tgt.origin, tgt_sz)
-                    && canPerceiveTarget(bm, attacker_idx, ti)) {
+                    && canPerceiveTarget(bm, attacker_idx, ti)
+                    && !forcecageSeparates(bm, attacker_idx, ti)) {   // no attack crosses a Forcecage Box wall
                 log_("[AVAILABLE_ATTACKS] Can attack with weapon {}: '{}'", wi, w.name);
                 result.push_back({attacker_idx, ti, wi});
             }

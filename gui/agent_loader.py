@@ -70,6 +70,18 @@ def dict_to_stats(stats_dict):
     stats.haste_speed_bonus = int(stats_dict.get("haste_speed_bonus", 0))
     stats.haste_action_available = bool(stats_dict.get("haste_action_available", False))
     stats.aid_hp_bonus = int(stats_dict.get("aid_hp_bonus", 0))
+    # Tier 1 spell buffs / debuffs (SPELL_IMPLEMENTATION_PLAN.md) — round-trip so a saved
+    # mid-combat buff/debuff is not silently dropped on reload.
+    stats.longstrider_bonus = int(stats_dict.get("longstrider_bonus", 0))
+    stats.expeditious_retreat = bool(stats_dict.get("expeditious_retreat", False))
+    stats.attackers_disadvantage = bool(stats_dict.get("attackers_disadvantage", False))
+    stats.has_foresight = bool(stats_dict.get("has_foresight", False))
+    stats.barkskin_ac_bonus = int(stats_dict.get("barkskin_ac_bonus", 0))
+    stats.enfeebled = bool(stats_dict.get("enfeebled", False))
+    stats.size_damage_dice = int(stats_dict.get("size_damage_dice", 0))
+    stats.immune_charm = bool(stats_dict.get("immune_charm", False))
+    stats.mind_blank_psychic_saved = float(stats_dict.get("mind_blank_psychic_saved", 1.0))
+    stats.regenerate_saved = int(stats_dict.get("regenerate_saved", -1))
     stats.divine_intervention_lock = int(stats_dict.get("divine_intervention_lock", 0))
     stats.sleight_of_hand_prof = bool(stats_dict.get("sleight_of_hand_prof", False))
     stats.sleight_of_hand_expertise = bool(stats_dict.get("sleight_of_hand_expertise", False))

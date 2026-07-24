@@ -219,6 +219,12 @@ struct SpellAction {
     // them IN (reverse Magic Circle). mask 0 = no ward placed (defensive; the GUI supplies a mask).
     uint32_t ward_creature_mask = 0;
     bool     ward_traps = false;
+    // Forcecage (only read when casting Forcecage). false = the Cage form (20-ft barred cube): the
+    // occupant is trapped but attacks/spells still pass through the bars both ways. true = the Box
+    // form (10-ft solid cube): a two-way seal — the occupant can't attack or cast at anything outside
+    // (only a CHA-saved teleport escapes), and nothing outside can attack, target, or reach into the
+    // box either. Rides onto the applied Forcecaged condition's forcecage_sealed flag.
+    bool     forcecage_sealed = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1649,6 +1655,12 @@ public:
     // line-of-sight is enforced separately). Used by availableAttacks / getBattleObservation
     // so the RL action space and observation agree with the GUI.
     [[nodiscard]] bool canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept;
+
+    // True when a Forcecage BOX (10-ft solid) stands between the two agents: exactly one of them is
+    // sealed inside a box, so they are on opposite sides of that wall and NO attack, spell, or effect
+    // passes between them (a two-way seal). Both unsealed (normal) or both sealed (same box) → false.
+    // The occupant's own teleport-escape is exempt — that is gated separately in teleportAgent.
+    [[nodiscard]] bool forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
 
     // True if two placed agents are allies: same NON-zero faction. Faction 0 is
     // neutral/unassigned — every neutral is its own faction, allied with no one

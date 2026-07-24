@@ -156,6 +156,14 @@ namespace rpg {
       // Radius comes from `radius`; treat as a timed zone (non-concentration).
       bool creates_movement_ward{false};
 
+      // Antilife Shell — a 10-ft emanation the caster carries that no living creature can cross
+      // (only Undead and Constructs may pass). Reuses the movement-ward chokepoint, but instead of
+      // a creature-type mask it wards by "is this creature alive?": the placed terrain effect gets
+      // ward_all_living = true, and BattleMap::movementWardBlocks blocks any mover that is not
+      // Undead (Construct is not modeled as a distinct type, so only Undead are exempt). The zone
+      // is anchored to the caster (anchor_agent_idx) so it follows them like any emanation.
+      bool ward_blocks_living{false};
+
       // Divine Intervention D3 — Planar Binding: on a failed Charisma save the targeted
       // creature is bound to the caster's service (transferred to the caster's team). The
       // engine does nothing with this flag; it only routes the GUI's single-target click to

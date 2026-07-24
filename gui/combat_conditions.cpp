@@ -165,6 +165,11 @@ void CombatEngine::applyCharmed(BattleMap& bm, int idx) noexcept
             log_("{} can't be Charmed (Beguiling Defenses)", agentName(bm, idx));
             return;
         }
+        // Mind Blank: immune to the Charmed condition for the duration.
+        if (s.immune_charm) {
+            log_("{} can't be Charmed (Mind Blank)", agentName(bm, idx));
+            return;
+        }
     }
 
     // Set charmed condition
@@ -956,6 +961,92 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                     // freshly raised effectiveMaxHp.
                     healAgent(bm, cond.agent_idx, bonus);
                 }
+            } else if (cond.condition_name == "Longstriding") {
+                // Longstrider — +10 ft walk Speed. Idempotent: store the exact bonus so the
+                // teardown restores Speed precisely and a re-cast can't stack it.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (st.longstrider_bonus == 0) {
+                    st.longstrider_bonus = 10;
+                    st.speed_walk       += 10;
+                    bm.setAgentStats(cond.agent_idx, st);
+                }
+            } else if (cond.condition_name == "ExpeditiousRetreat") {
+                // Expeditious Retreat — Dash as a Bonus Action. Reuse the Cunning Action machinery
+                // (bonus-action Dash for NPC auto-turns + the GUI's Dash bonus button). Only record
+                // it as spell-granted if the creature didn't already have Cunning Action, so the
+                // teardown never strips a Rogue's innate feature.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (!st.has_cunning_action) {
+                    st.has_cunning_action  = true;
+                    st.expeditious_retreat = true;
+                    bm.setAgentStats(cond.agent_idx, st);
+                }
+            } else if (cond.condition_name == "Blurred") {
+                // Blur — attack rolls against the target have Disadvantage.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.attackers_disadvantage = true;
+                bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Foresight") {
+                // Foresight — Advantage on the target's attack rolls and all saves, plus Disadvantage
+                // on attack rolls against it.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.has_foresight          = true;
+                st.attackers_disadvantage = true;
+                bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Barkskinned") {
+                // Barkskin — the target's AC can't be lower than 17. Weapon attacks resolve against
+                // base_ac (resolveAttack), so raise base_ac to the 17 floor and store the exact delta
+                // for restore. Idempotent via barkskin_ac_bonus.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (st.barkskin_ac_bonus == 0 && st.base_ac < 17) {
+                    st.barkskin_ac_bonus = 17 - st.base_ac;
+                    st.base_ac           = 17;
+                    bm.setAgentStats(cond.agent_idx, st);
+                }
+            } else if (cond.condition_name == "Enfeebled") {
+                // Ray of Enfeeblement — Disadvantage on the target's weapon attacks and −1d8 to its
+                // damage rolls (both read the enfeebled flag in resolveAttack/rollDamage).
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.enfeebled = true;
+                bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Enlarged" || cond.condition_name == "Reduced") {
+                // Enlarge/Reduce — ±1d4 to the target's weapon damage rolls (size_damage_dice read in
+                // rollDamage). Enlarge additionally grants Advantage on STR saving throws.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (cond.condition_name == "Enlarged") {
+                    st.size_damage_dice     = 1;
+                    st.save_advantage_mask |= (1 << SaveStr);
+                } else {
+                    st.size_damage_dice = -1;
+                }
+                bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "MindBlank") {
+                // Mind Blank — Immunity to Psychic damage and the Charmed condition. Store the prior
+                // Psychic multiplier so the teardown restores it exactly.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.immune_charm             = true;
+                st.mind_blank_psychic_saved = st.magic_damage_multipliers[Psychic];
+                st.magic_damage_multipliers[Psychic] = 0.0f;
+                bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "Regenerating") {
+                // Regenerate — the target regains 1 HP at the start of each of its turns (reuse the
+                // beginTurn regeneration path). Store the prior amount so a Troll's stronger natural
+                // regeneration is restored, not clobbered, when the spell ends.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                if (st.regenerate_saved < 0) {
+                    st.regenerate_saved     = st.regeneration_amount;
+                    st.regeneration_amount  = std::max(st.regeneration_amount, 1);
+                    bm.setAgentStats(cond.agent_idx, st);
+                }
+            } else if (cond.condition_name == "Forcecaged") {
+                // Forcecage — trap the creature in place (canAgentMove returns false) WITHOUT
+                // Incapacitating it: it can still act, attack, and cast. Store the caster's spell
+                // save DC so teleportAgent can gate a teleport-out on a CHA save. Cleared in
+                // clearSpellConditionEffect on any end path (or on a successful teleport escape).
+                Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
+                ac.forcecaged   = true;
+                ac.forcecage_dc = cond.save_dc;
+                bm.setAgentConditions(cond.agent_idx, ac);
             }
             // Generic no-heal rider (Pit Fiend poison): while any active condition prevents
             // healing, the creature can't regain HP. Derived flag on Stats so the static

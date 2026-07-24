@@ -235,16 +235,17 @@
     "name": "Antilife Shell",
     "description": "An aura extends from you in a 10-foot Emanation for the duration. The aura prevents creatures other than Constructs and Undead from passing or reaching through it. An affected creature can cast spells or make attacks with Ranged or Reach weapons through the barrier. If you move so that an affected creature is forced to pass through the barrier, the spell ends.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Sphere",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 0,
-    "radius": 0,
+    "radius": 10,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "ward_blocks_living": true,
     "level": 5,
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
@@ -634,7 +635,7 @@
   {
     "name": "Barkskin",
     "description": "You touch a willing creature. Until the spell ends, the target's skin assumes a bark-like appearance, and the target has an Armor Class of 17 if its AC is lower than that.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -642,12 +643,19 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
+    "conditions": [
+      {
+        "condition_name": "Barkskinned",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 2,
     "upcast_dice_bonus": 0,
-    "requires_concentration": false,
+    "requires_concentration": true,
     "requires_los": false,
     "check_los_on_center": true,
     "school": "transmutation"
@@ -921,15 +929,22 @@
   {
     "name": "Blur",
     "description": "Your body becomes blurred. For the duration, any creature has Disadvantage on attack rolls against you. An attacker is immune to this effect if it perceives you with Blindsight or Truesight.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
-    "attack_type": "AttackRoll",
+    "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 0,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "Blurred",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 2,
@@ -2409,7 +2424,16 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "Charmed",
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1,
+        "on_damage": "RepeatSave"
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 4,
@@ -2430,7 +2454,16 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "Charmed",
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1,
+        "on_damage": "RepeatSave"
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 8,
@@ -2451,7 +2484,16 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "Charmed",
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1,
+        "on_damage": "RepeatSave"
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 5,
@@ -2688,7 +2730,16 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "Reduced",
+        "requires_save": true,
+        "save_ability": "SaveCon",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 2,
@@ -2809,7 +2860,7 @@
   {
     "name": "Expeditious Retreat",
     "description": "You take the Dash action, and until the spell ends, you can take that action again as a Bonus Action.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -2817,7 +2868,14 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "ExpeditiousRetreat",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 1,
@@ -2834,13 +2892,22 @@
     "geometry": "Single",
     "attack_type": "Save",
     "save_ability": "SaveWis",
-    "range": 0,
+    "range": 60,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Frightened",
+        "condition_duration": 0,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1
+      }
+    ],
     "level": 6,
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
@@ -2920,7 +2987,7 @@
   {
     "name": "False Life",
     "description": "You gain 2d4 + 4 Temporary Hit Points.",
-    "type": "Harm",
+    "type": "Heal",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -2929,6 +2996,8 @@
     "width": 0,
     "length": 0,
     "duration": 1,
+    "hp_pool": 9,
+    "pool_is_temp_hp": true,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 1,
@@ -3299,9 +3368,18 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Restrained",
+        "condition_duration": 0,
+        "save_ability": "SaveCon",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": 1
+      }
+    ],
     "level": 6,
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
@@ -3402,18 +3480,26 @@
   },
   {
     "name": "Forcecage",
-    "description": "",
+    "description": "An immobile, invisible, cube-shaped prison composed of magical force springs into existence around an area you choose within range. The target is trapped for the duration and can't leave the cage by nonmagical means. A creature inside can still act, but can't reach or move to anything outside the barrier.",
     "type": "Harm",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
-    "range": 0,
+    "range": 100,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Forcecaged",
+        "condition_duration": 0,
+        "save_repeat_turns": -1,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ],
     "level": 7,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
@@ -3424,15 +3510,22 @@
   {
     "name": "Foresight",
     "description": "You touch a willing creature and bestow a limited ability to see into the immediate future. For the duration, the target has Advantage on D20 Tests, and other creatures have Disadvantage on attack rolls against it. The spell ends early if you cast it again.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
-    "attack_type": "AttackRoll",
+    "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 5,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
+    "conditions": [
+      {
+        "condition_name": "Foresight",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 9,
@@ -4537,9 +4630,18 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1
+      }
+    ],
     "level": 9,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
@@ -4691,15 +4793,24 @@
     "description": "One creature that you can see within range must make a Wisdom saving throw. On a successful save, the target dances comically until the end of its next turn, during which it must spend all its movement to dance in place. On a failed save, the target has the Charmed condition for the duration. While Charmed, the target dances comically, must use all its movement to dance in place, and has Disadvantage on Dexterity saving throws and attack rolls, and other creatures have Advantage on attack rolls against it. On each of its turns, the target can take an action to collect itself and repeat the save, ending the spell on itself on a success.",
     "type": "Harm",
     "geometry": "Single",
-    "attack_type": "AttackRoll",
+    "attack_type": "Save",
     "save_ability": "SaveWis",
     "range": 30,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": 1
+      }
+    ],
     "level": 6,
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
@@ -4927,18 +5038,27 @@
   {
     "name": "Longstrider",
     "description": "You touch a creature. The target's Speed increases by 10 feet until the spell ends.",
-    "type": "Harm",
-    "geometry": "Single",
+    "type": "Help",
+    "geometry": "Multiple",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 5,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
+    "conditions": [
+      {
+        "condition_name": "Longstriding",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "num_targets": 1,
     "level": 1,
+    "targets_per_upcast_level": 1,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
     "requires_los": false,
@@ -5257,15 +5377,24 @@
     "description": "You banish a creature that you can see within range into a labyrinthine demiplane. The target remains there for the duration or until it escapes the maze. The target can take a Study action to try to escape. When it does so, it makes a DC 20 Intelligence (Investigation) check. If it succeeds, it escapes, and the spell ends. When the spell ends, the target reappears in the space it left or, if that space is occupied, in the nearest unoccupied space.",
     "type": "Harm",
     "geometry": "Single",
-    "attack_type": "Automatic",
-    "save_ability": "SaveDex",
+    "attack_type": "Save",
+    "save_ability": "SaveInt",
     "range": 60,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_ability": "SaveInt",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": 1
+      }
+    ],
     "level": 8,
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
@@ -5372,7 +5501,7 @@
   {
     "name": "Mind Blank",
     "description": "Until the spell ends, one willing creature you touch has Immunity to Psychic damage and the Charmed condition. The target is also unaffected by anything that would sense its emotions or alignment, read its thoughts, or magically detect its location, and no spell—not even Wish—can gather information about the target, observe it remotely, or control its mind.",
-    "type": "Harm",
+    "type": "Help",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -5380,7 +5509,14 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
+    "conditions": [
+      {
+        "condition_name": "MindBlank",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 8,
@@ -6306,13 +6442,22 @@
     "description": "A beam of enervating energy shoots from you toward a creature within range. The target must make a Constitution saving throw. On a successful save, the target has Disadvantage on the next attack roll it makes until the start of your next turn. On a failed save, the target has Disadvantage on Strength-based D20 Tests for the duration. During that time, it also subtracts 1d8 from all its damage rolls. The target repeats the save at the end of each of its turns, ending the spell on a success.",
     "type": "Harm",
     "geometry": "Single",
-    "attack_type": "AttackRoll",
+    "attack_type": "Save",
     "save_ability": "SaveCon",
     "range": 60,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "Enfeebled",
+        "requires_save": true,
+        "save_ability": "SaveCon",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": 1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 2,
@@ -6387,7 +6532,7 @@
   {
     "name": "Regenerate",
     "description": "A creature you touch regains 4d8 + 15 Hit Points. For the duration, the target regains 1 Hit Point at the start of each of its turns, and any severed body parts regrow after 2 minutes.",
-    "type": "Harm",
+    "type": "Heal",
     "geometry": "Single",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
@@ -6396,6 +6541,19 @@
     "width": 0,
     "length": 0,
     "duration": 1,
+    "healing_type": {
+      "num_dice": 4,
+      "die_size": 8,
+      "bonus": 15
+    },
+    "conditions": [
+      {
+        "condition_name": "Regenerating",
+        "condition_duration": 100,
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 7,
@@ -6458,9 +6616,18 @@
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "conditions": [
+      {
+        "condition_name": "Incapacitated",
+        "condition_duration": 0,
+        "save_ability": "SaveDex",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1
+      }
+    ],
     "level": 4,
     "upcast_dice_bonus": 0,
     "requires_concentration": true,
@@ -6514,19 +6681,34 @@
     "name": "Reverse Gravity",
     "description": "This spell reverses gravity in a 50-foot-radius, 100 foot high Cylinder centered on a point within range. All creatures and objects in that area that aren't anchored to the ground fall upward and reach the top of the Cylinder. A creature can make a Dexterity saving throw to grab a fixed object it can reach, thus avoiding the fall upward. If a ceiling or an anchored object is encountered in this upward fall, creatures and objects strike it just as they would during a downward fall. If an affected creature or object reaches the Cylinder's top without striking anything, it hovers there for the duration. When the spell ends, affected objects and creatures fall downward.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Sphere",
     "attack_type": "Save",
     "save_ability": "SaveDex",
     "range": 100,
-    "radius": 0,
+    "radius": 50,
     "width": 0,
     "length": 0,
     "duration": 1,
     "magic_damage_types": [],
-    "physical_damage_types": [],
+    "physical_damage_types": [
+      {
+        "type": "Bludgeoning",
+        "num_dice": 6,
+        "die_size": 6
+      }
+    ],
+    "conditions": [
+      {
+        "condition_name": "Prone",
+        "condition_duration": 1,
+        "save_ability": "SaveDex",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1
+      }
+    ],
     "level": 7,
     "upcast_dice_bonus": 0,
-    "requires_concentration": true,
+    "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true,
     "school": "transmutation"
@@ -7819,14 +8001,20 @@
     "description": "You inscribe a harmful glyph either on a surface (such as a section of floor or wall) or within an object that can be closed (such as a book or chest). The glyph can cover an area no larger than 10 feet in diameter. If you choose an object, it must remain in place; if it is moved more than 10 feet from where you cast this spell, the glyph is broken, and the spell ends without being triggered.\n\nThe glyph is nearly imperceptible and requires a successful Wisdom (Perception) check against your spell save DC to notice.\n\nWhen you inscribe the glyph, you set its trigger and choose which effect the symbol bears: Death, Discord, Fear, Pain, Sleep, or Stunning. Each one is explained below.\n\n**_Set the Trigger._** You decide what triggers the glyph when you cast the spell. For glyphs inscribed on a surface, common triggers include touching or stepping on the glyph, removing another object covering it, or approaching within a certain distance of it. For glyphs inscribed within an object, common triggers include opening that object or seeing the glyph.\n\nYou can refine the trigger so that only creatures of certain types activate it (for example, the glyph could be set to affect Aberrations). You can also set conditions for creatures that don't trigger the glyph, such as those who say a certain password.\n\nOnce triggered, the glyph glows, filling a 60-foot-radius Sphere with Dim Light for 10 minutes, after which time the spell ends. Each creature in the Sphere when the glyph activates is targeted by its effect, as is a creature that enters the Sphere for the first time on a turn or ends its turn there. A creature is targeted only once per turn.\n\n**_Death._** Each target makes a Constitution saving throw, taking 10d10 Necrotic damage on a failed save or half as much damage on a successful save.\n\n**_Discord._** Each target makes a Wisdom saving throw. On a failed save, a target argues with other creatures for 1 minute. During this time, it is incapable of meaningful communication and has Disadvantage on attack rolls and ability checks.\n\n**_Fear._** Each target must succeed on a Wisdom saving throw or have the Frightened condition for 1 minute. While Frightened, the target must move at least 30 feet away from the glyph on each of its turns, if able.\n\n**_Pain._** Each target must succeed on a Constitution saving throw or have the Incapacitated condition for 1 minute.\n\n**_Sleep._** Each target must succeed on a Wisdom saving throw or have the Unconscious condition for 10 minutes. A creature awakens if it takes damage or if someone takes an action to shake it awake.\n\n**_Stunning._** Each target must succeed on a Wisdom saving throw or have the Stunned condition for 1 minute.",
     "type": "Harm",
     "geometry": "Sphere",
-    "attack_type": "Automatic",
-    "save_ability": "SaveDex",
+    "attack_type": "Save",
+    "save_ability": "SaveCon",
     "range": 5,
     "radius": 15,
     "width": 0,
     "length": 0,
     "duration": 1,
-    "magic_damage_types": [],
+    "magic_damage_types": [
+      {
+        "type": "Necrotic",
+        "num_dice": 10,
+        "die_size": 10
+      }
+    ],
     "physical_damage_types": [],
     "level": 7,
     "upcast_dice_bonus": 0,

@@ -3730,7 +3730,8 @@ class App:
                 walk += 10
             # World Tree Branches of the Tree: a failed save zeroes the target's Speed until end of turn
             # (canAgentMove also blocks the move); reflect it in the budget/overlay so the UI agrees.
-            if cond.branches_speed_zeroed:
+            # Forcecage traps the creature in place the same way (it can still act, just not walk out).
+            if cond.branches_speed_zeroed or cond.forcecaged:
                 walk = fly = swim = burrow = 0
             # Pass base speeds to init_movement; C++ getWalkRemaining() applies exhaustion penalty
             agent.init_movement(walk, fly, swim, burrow)
@@ -9572,6 +9573,7 @@ class App:
         self.pending_spell_free_cast    = free_cast
         self.pending_spell_command_word = -1
         self.pending_spell_curse_choice = -1
+        self.pending_forcecage_sealed   = False   # Forcecage form: False = Cage (20 ft), True = Box (10 ft)
         # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
         # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
         self.pending_chromatic_active  = False
@@ -9644,6 +9646,26 @@ class App:
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
             self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None,
                                       multi=False, title="Command: choose a word")
+            return
+
+        # Cast-time form choice (Forcecage): Cage (20-ft barred cube — the occupant is trapped but
+        # attacks and spells still pass through the bars both ways) vs Box (10-ft solid cube — a
+        # two-way seal: the occupant can't act out and can't be targeted from outside; its only exit
+        # is a CHA-saved teleport). The choice rides on SpellAction.forcecage_sealed. Single geometry,
+        # so it falls through to the normal "click a target" dispatch afterward.
+        if sp_.name == "Forcecage":
+            forcecage_opts = [
+                ("Cage — 20 ft (barred: attacks & spells pass through)", 0),
+                ("Box — 10 ft (solid: sealed in; only a teleport escapes)", 1),
+            ]
+            def _on_forcecage(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
+                self.pending_forcecage_sealed = bool(chosen and chosen[0] == 1)
+                self._combat_log_add(
+                    f"Forcecage form: {'Box (10 ft, sealed)' if self.pending_forcecage_sealed else 'Cage (20 ft)'}"
+                    " — click a target.")
+                self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
+            self._element_dialog.show(_on_forcecage, forcecage_opts, current_values=None,
+                                      multi=False, title="Forcecage: choose a form")
             return
 
         # Summon spells: pick an empty cell within range to manifest the creature, rather than
@@ -11491,6 +11513,7 @@ class App:
         action.free_cast      = self.pending_spell_free_cast
         action.command_word   = self.pending_spell_command_word
         action.curse_choice   = self.pending_spell_curse_choice  # Vistani Curse sub-choice (-1 = n/a)
+        action.forcecage_sealed = self.pending_forcecage_sealed   # Forcecage form (Box seals the occupant)
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         action.overchannel   = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
@@ -11927,6 +11950,22 @@ class App:
         )
 
         if placed_count == 0:
+            # A Forcecaged caster that just failed its Charisma save to teleport out: the attempt is
+            # spent (RAW), so consume the slot/action instead of letting the player retry for free.
+            # The engine already logged the failed CHA save inside teleport_agent.
+            caster_cond = self.combat.get_agent_conditions(self.bm, caster_idx)
+            if getattr(caster_cond, "forcecaged", False):
+                cast_name = (self.bm.placed_agents[caster_idx].name
+                             if caster_idx < len(self.bm.placed_agents) else "?")
+                self._combat_log_add(
+                    f"{cast_name}'s {sp.name} fails to breach the Forcecage — the spell is wasted.")
+                self.pending_spell_slot        = ""
+                self.pending_spell_is_aoe      = False
+                self.pending_spell_num_targets = 0
+                self.pending_spell_targets     = []
+                self.spell_hover_cell          = None
+                self._consume_cast_slot(slot, caster_idx)
+                return
             self._combat_log_add("Failed to teleport — no valid destination.")
             return
 
@@ -12334,6 +12373,7 @@ class App:
             "revives_dead":          getattr(s, "revives_dead", False),
             "animates_dead":         getattr(s, "animates_dead", False),
             "binds_creature":        getattr(s, "binds_creature", False),
+            "ward_blocks_living":    getattr(s, "ward_blocks_living", False),
             "conditions":            conditions,
             # N/day + Recharge (breath weapons). See helpers._dict_to_spell.
             "uses_max":              s.uses_max,
@@ -12397,6 +12437,20 @@ class App:
                     "haste_speed_bonus":      s.haste_speed_bonus,
                     "haste_action_available": s.haste_action_available,
                     "aid_hp_bonus":           s.aid_hp_bonus,
+                    # Tier 1 spell buffs / debuffs (SPELL_IMPLEMENTATION_PLAN.md). Each must
+                    # round-trip or a saved mid-combat Longstrider/Blur/Barkskin/Foresight/
+                    # Enfeeblement/Enlarge-Reduce/Mind Blank/Regenerate/Expeditious Retreat is
+                    # silently reset on reload (dict_to_stats reads all of these back).
+                    "longstrider_bonus":       s.longstrider_bonus,
+                    "expeditious_retreat":     s.expeditious_retreat,
+                    "attackers_disadvantage":  s.attackers_disadvantage,
+                    "has_foresight":           s.has_foresight,
+                    "barkskin_ac_bonus":       s.barkskin_ac_bonus,
+                    "enfeebled":               s.enfeebled,
+                    "size_damage_dice":        s.size_damage_dice,
+                    "immune_charm":            s.immune_charm,
+                    "mind_blank_psychic_saved":s.mind_blank_psychic_saved,
+                    "regenerate_saved":        s.regenerate_saved,
                     "divine_intervention_lock": s.divine_intervention_lock,
                     "sleight_of_hand_prof":      s.sleight_of_hand_prof,
                     "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
@@ -15970,6 +16024,39 @@ class App:
             self.screen.blit(surf, (int(sx + half) - r, int(sy + half) - r))
         self.screen.set_clip(clip)
 
+    def _draw_forcecages(self, cpx):
+        """Square cage/box around each Forcecaged creature. The Cage form (20-ft, unsealed) is drawn
+        as a barred enclosure (outline + vertical bars — attacks/spells pass through). The Box form
+        (10-ft, sealed) is drawn as a solid steel enclosure (heavier outline + translucent fill) to
+        signal the two-way seal. Size is derived from the seal: box = 2 cells (10 ft), cage = 4 (20 ft)."""
+        bm = self.bm
+        STEEL = (150, 205, 225)
+        clip = self.screen.get_clip()
+        self.screen.set_clip(self.map_rect)
+        for pt in bm.placed_agents:
+            if pt.removed_from_play:
+                continue
+            if not getattr(pt.conditions, "forcecaged", False):
+                continue
+            sealed = getattr(pt.conditions, "forcecage_sealed", False)
+            box_cells = 2 if sealed else 4                 # 10 ft (box) vs 20 ft (cage)
+            sx, sy = self._cell_to_screen(pt.origin.col, pt.origin.row)
+            half = (pt.size * cpx) / 2.0
+            cx, cy = sx + half, sy + half                  # centre of the occupant's footprint
+            side = box_cells * cpx
+            left, top = int(cx - side / 2), int(cy - side / 2)
+            surf = pygame.Surface((side, side), pygame.SRCALPHA)
+            if sealed:
+                pygame.draw.rect(surf, (*STEEL, 40), (0, 0, side, side))            # solid-wall fill
+                pygame.draw.rect(surf, (*STEEL, 230), (0, 0, side, side), 4)        # heavy outline
+            else:
+                pygame.draw.rect(surf, (*STEEL, 200), (0, 0, side, side), 2)        # thin outline
+                for bx in range(1, box_cells * 2):                                  # vertical bars
+                    x = int(bx * side / (box_cells * 2))
+                    pygame.draw.line(surf, (*STEEL, 130), (x, 0), (x, side), 1)
+            self.screen.blit(surf, (left, top))
+        self.screen.set_clip(clip)
+
     def _draw_agents(self):
         bm    = self.bm
         s     = self.map_scale
@@ -16007,6 +16094,9 @@ class App:
 
         # ── Paladin aura rings (beneath all agents) ───────────────────────
         self._draw_paladin_auras(cpx)
+
+        # ── Forcecage enclosures (barred cage / solid box) ────────────────
+        self._draw_forcecages(cpx)
 
         # ── Draw items on the map ─────────────────────────────────────────
         self._draw_items(cpx)
@@ -19141,10 +19231,15 @@ class App:
                                 if caster_idx >= 0 and caster_idx < len(self.bm.placed_agents):
                                     caster = self.bm.placed_agents[caster_idx]
                                     target = self.bm.placed_agents[hit]
+                                    c_cond = self.combat.get_agent_conditions(self.bm, caster_idx)
+                                    t_cond = self.combat.get_agent_conditions(self.bm, hit)
                                     if not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
                                         self._combat_log_add("No line of sight to target!")
                                     elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
                                         self._combat_log_add("Cannot perceive target (invisible)!")
+                                    elif getattr(c_cond, "forcecage_sealed", False) != getattr(t_cond, "forcecage_sealed", False):
+                                        # Forcecage Box: a solid wall between the occupant and the outside — no spell crosses.
+                                        self._combat_log_add("A Forcecage wall blocks that — no spell crosses it.")
                                     elif self._is_chromatic_pending():
                                         # Chromatic Orb: the primary target opens leap-chain selection
                                         # instead of casting immediately (confirm friendly harm first).

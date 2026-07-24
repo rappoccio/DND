@@ -283,6 +283,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("haste_action_available", &Agent::Stats::haste_action_available)
         // Aid (Phase 3): the +HP maximum currently granted (stored for an exact teardown).
         .def_readwrite("aid_hp_bonus", &Agent::Stats::aid_hp_bonus)
+        // Tier 1 spell buffs / debuffs (SPELL_IMPLEMENTATION_PLAN.md)
+        .def_readwrite("longstrider_bonus",       &Agent::Stats::longstrider_bonus)
+        .def_readwrite("expeditious_retreat",     &Agent::Stats::expeditious_retreat)
+        .def_readwrite("attackers_disadvantage",  &Agent::Stats::attackers_disadvantage)
+        .def_readwrite("has_foresight",           &Agent::Stats::has_foresight)
+        .def_readwrite("barkskin_ac_bonus",       &Agent::Stats::barkskin_ac_bonus)
+        .def_readwrite("enfeebled",               &Agent::Stats::enfeebled)
+        .def_readwrite("size_damage_dice",        &Agent::Stats::size_damage_dice)
+        .def_readwrite("immune_charm",            &Agent::Stats::immune_charm)
+        .def_readwrite("mind_blank_psychic_saved",&Agent::Stats::mind_blank_psychic_saved)
+        .def_readwrite("regenerate_saved",        &Agent::Stats::regenerate_saved)
         // Skill proficiency flags
         .def_readwrite("stealth_prof",    &Agent::Stats::stealth_prof)
         .def_readwrite("perception_prof", &Agent::Stats::perception_prof)
@@ -797,6 +808,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("sudden_strike_available", &Agent::Conditions::sudden_strike_available)
         .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
         .def_readwrite("branches_speed_zeroed", &Agent::Conditions::branches_speed_zeroed)
+        .def_readwrite("forcecaged", &Agent::Conditions::forcecaged)
+        .def_readwrite("forcecage_dc", &Agent::Conditions::forcecage_dc)
+        .def_readwrite("forcecage_sealed", &Agent::Conditions::forcecage_sealed)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
@@ -1649,6 +1663,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Magic Circle / Hallow (Divine Intervention D4): places a creature-type movement ward\n"
              "at the aimed center. The warded types + direction ride on SpellAction\n"
              "(ward_creature_mask / ward_traps); radius comes from `radius`.")
+        .def_readwrite("ward_blocks_living", &Spell::ward_blocks_living,
+             "Antilife Shell: places a caster-anchored emanation (radius `radius`) that no living\n"
+             "creature can cross (only Undead may pass). Reuses the movement-ward terrain effect\n"
+             "with ward_all_living instead of a creature-type mask.")
         .def_readwrite("ends_conditions", &Spell::ends_conditions,
              "Restorative Heal: condition names ended on each healed target (e.g. Power\n"
              "Word Heal ends Charmed/Frightened/Paralyzed/Poisoned/Stunned).")
@@ -1729,6 +1747,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Magic Circle / Hallow: OR of rpg creature-type bits this cast wards (chosen in GUI).")
         .def_readwrite("ward_traps", &SpellAction::ward_traps,
              "Magic Circle reverse mode: False keeps warded types OUT, True traps them IN.")
+        .def_readwrite("forcecage_sealed", &SpellAction::forcecage_sealed,
+             "Forcecage form: False = Cage (20-ft barred, attacks/spells pass through); True = Box\n"
+             "(10-ft solid, two-way seal — occupant can't act out and can't be targeted from outside).")
         .def_readwrite("dispel_terrain_ids", &SpellAction::dispel_terrain_ids,
              "Dispel Magic picker selection: ActiveTerrainEffect ids to end. When any of these three\n"
              "lists is non-empty, a dispels_magic cast ends ONLY the chosen effects (grouped by source\n"
@@ -4648,11 +4669,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("anchor_agent_idx") = -1, py::arg("anchor_radius_ft") = 0,
              py::arg("spares_source_allies") = false,
              py::arg("ward_creature_mask") = 0, py::arg("ward_traps") = false,
+             py::arg("ward_all_living") = false,
              "Place a temporary terrain effect covering the given cells.\n"
              "anchor_agent_idx>=0 makes it follow that agent (moving emanation);\n"
              "spares_source_allies excludes the source + its allies (selective_targeting).\n"
              "ward_creature_mask != 0 makes it a Magic Circle / Hallow movement ward (an OR of\n"
              "rpg.CreatureType bits); ward_traps=False keeps those types out, True traps them in.\n"
+             "ward_all_living=True is an Antilife Shell ward: blocks any non-Undead mover (typeless\n"
+             "creatures too), independent of ward_creature_mask.\n"
              "Returns unique effect id (for later removal/metadata).")
         .def("set_terrain_effect_cells", &BattleMap::setTerrainEffectCells,
              py::arg("effect_id"), py::arg("cells"),

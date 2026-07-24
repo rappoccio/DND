@@ -158,6 +158,22 @@ namespace rpg {
       // Set in addAgentCondition("Aided"), reversed in clearSpellConditionEffect.
       int  aid_hp_bonus{0};
 
+      // ── Tier 1 spell buffs / debuffs (SPELL_IMPLEMENTATION_PLAN.md) ────
+      // Each is a self/target flag set in addAgentCondition(<name>) and reversed in
+      // clearSpellConditionEffect on EVERY end path (duration expiry, Dispel, death,
+      // concentration drop). The paired *_saved / *_bonus fields record the exact
+      // amount granted so the teardown restores precisely what was changed.
+      int   longstrider_bonus{0};        // Longstrider: walk-speed bonus granted (+10), for exact restore
+      bool  expeditious_retreat{false};  // Expeditious Retreat: THIS spell granted has_cunning_action (restore on end)
+      bool  attackers_disadvantage{false}; // Blur / Foresight: attack rolls against this creature have Disadvantage
+      bool  has_foresight{false};        // Foresight: this creature has Advantage on attack rolls and ALL saving throws
+      int   barkskin_ac_bonus{0};        // Barkskin: amount added to base_ac to reach the AC-17 floor (for exact restore)
+      bool  enfeebled{false};            // Ray of Enfeeblement: Disadvantage on this creature's weapon attacks; −1d8 to its damage rolls
+      int   size_damage_dice{0};         // Enlarge/Reduce: +1 (Enlarge) or −1 (Reduce) → ±1d4 to this creature's weapon damage rolls
+      bool  immune_charm{false};         // Mind Blank: immune to the Charmed condition
+      float mind_blank_psychic_saved{1.0f}; // Mind Blank: saved Psychic damage multiplier, restored when the spell ends
+      int   regenerate_saved{-1};        // Regenerate: prior regeneration_amount to restore on end (-1 = inactive)
+
       // ── Skill proficiency flags ────────────────────────────────────────
       bool stealth_prof{false};     // proficiency in Stealth (DEX-based)
       bool perception_prof{false};  // proficiency in Perception (WIS-based)
@@ -994,6 +1010,9 @@ namespace rpg {
       bool restrained{false};     // speed drops to 0, attacks have disadvantage, attacks against have advantage
       bool netted{false};         // Restrained by a thrown Net: no duration — it lasts "until it escapes" (CombatEngine::escapeNet, a DC net_escape_dc STR check by the target or a creature within 5 ft). Kept alongside `restrained` so an unrelated Restrained effect expiring cannot free a netted creature.
       int  net_escape_dc{10};     // DC of the STR (Athletics) check to cut/wriggle free of the Net
+      bool forcecaged{false};     // Forcecage: trapped in place (Speed 0 → canAgentMove false) but NOT Incapacitated — the creature can still act, attack, and cast. Persists for the spell's duration (NOT a per-turn transient, so it is NOT reset in turn()); cleared in clearSpellConditionEffect on any end path, or immediately when the creature teleports free (teleportAgent). A caged creature may teleport out only by first succeeding on a CHA save vs forcecage_dc.
+      int  forcecage_dc{0};       // Forcecage: CHA save DC (caster's spell save DC) to teleport out of the cage.
+      bool forcecage_sealed{false}; // Forcecage BOX form (10-ft solid cube) rather than the Cage (20-ft barred): a two-way seal. The occupant can't attack or cast at anything outside (only a CHA-saved teleport escapes — non-teleport actions are blocked), AND nothing outside can attack, target, or affect the occupant (attacks/harmful spells/AoEs between inside and outside are blocked, like a wall). Set alongside forcecaged for the Box form only; cleared with it.
       bool burning{false};        // Burning [Hazard] (Alchemist's Fire): 1d4 Fire at the start of each of its turns until extinguished (CombatEngine::extinguishBurning — an action: drop Prone and roll on the ground)
       bool poisoned{false};      // disadvantage on attack rolls and ability checks
       bool petrified{false};     // incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, advantage on attacks

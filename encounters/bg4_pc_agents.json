@@ -489,7 +489,10 @@
         "Power Word Kill",
         "Earthquake",
         "Teleport",
-        "Shield"
+        "Shield",
+	"Blur",
+	"Dominate Person",
+	"Dominate Monster"
       ],
       "items": [
         {
@@ -1150,6 +1153,7 @@
         "Resistance",
         "Bless",
         "Command",
+	"Longstrider",
         "Sanctuary",
         "Aid",
         "Spirit Guardians",
@@ -1180,6 +1184,8 @@
         "Arcane Eye",
         "Scrying",
         "Mass Heal",
+	"Regenerate",
+	"Divine Word",
         "Divine Spark (Harm)",
         "Divine Spark (Heal)",
         "Radiance of the Dawn"

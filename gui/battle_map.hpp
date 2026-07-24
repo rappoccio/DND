@@ -160,6 +160,10 @@ struct ActiveTerrainEffect {
     // Magic Circle). difficulty stays Normal, so the zone imposes no speed penalty on anyone.
     uint32_t            ward_creature_mask{0};
     bool                ward_traps{false};
+    // Antilife Shell: a barrier no living creature can cross. Independent of ward_creature_mask —
+    // it wards by "alive?" rather than by creature type, so it blocks typeless movers (Humanoids,
+    // Beasts, …) too. Only Undead are exempt (Construct is not a modeled creature type).
+    bool                ward_all_living{false};
 };
 
 // ── Active temporary light effect ──────────────────────────────────────────
@@ -651,7 +655,8 @@ public:
                                          int anchor_radius_ft = 0,
                                          bool spares_source_allies = false,
                                          uint32_t ward_creature_mask = 0,
-                                         bool ward_traps = false);
+                                         bool ward_traps = false,
+                                         bool ward_all_living = false);
 
     // Re-point an anchored terrain effect's footprint (moving emanation follows the caster).
     void setTerrainEffectCells(int effect_id, std::vector<Cell> cells) noexcept;
