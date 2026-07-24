@@ -3255,8 +3255,8 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
     {
         double wsum = 0.0;
         for (int b = as.blessed ? 1 : 0; b <= (as.blessed ? 4 : 0); ++b)
-            for (int n = as.baned ? 1 : 0; n <= (as.baned ? 4 : 0); ++n) {
-                p_hit += advFold(singleDieHit(b - n), adv, dis);
+            for (int bn = as.baned ? 1 : 0; bn <= (as.baned ? 4 : 0); ++bn) {
+                p_hit += advFold(singleDieHit(b - bn), adv, dis);
                 wsum  += 1.0;
             }
         p_hit /= wsum;
@@ -3347,8 +3347,8 @@ double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int targ
     // live. Neither active → single net-0 term.
     double p = 0.0, wsum = 0.0;
     for (int b = ts.blessed ? 1 : 0; b <= (ts.blessed ? 4 : 0); ++b)
-        for (int n = ts.baned ? 1 : 0; n <= (ts.baned ? 4 : 0); ++n) {
-            p    += advFold(singleDieSave(b - n), adv, dis);
+        for (int bn = ts.baned ? 1 : 0; bn <= (ts.baned ? 4 : 0); ++bn) {
+            p    += advFold(singleDieSave(b - bn), adv, dis);
             wsum += 1.0;
         }
     return p / wsum;
@@ -3388,8 +3388,8 @@ double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int 
     // dice are live. Neither active → single net-0 term.
     double p = 0.0, wsum = 0.0;
     for (int b = cs.blessed ? 1 : 0; b <= (cs.blessed ? 4 : 0); ++b)
-        for (int n = cs.baned ? 1 : 0; n <= (cs.baned ? 4 : 0); ++n) {
-            p    += advFold(singleDieHit(b - n), adv, dis);
+        for (int bn = cs.baned ? 1 : 0; bn <= (cs.baned ? 4 : 0); ++bn) {
+            p    += advFold(singleDieHit(b - bn), adv, dis);
             wsum += 1.0;
         }
     return p / wsum;
