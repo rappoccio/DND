@@ -213,6 +213,12 @@ struct SpellAction {
     std::vector<int> dispel_condition_ids;
     std::vector<int> dispel_spell_effect_ids;
     std::vector<int> dispel_terrain_ids;
+    // Magic Circle / Hallow (only read when the cast's spell has creates_movement_ward). The
+    // creature types this cast wards (an OR of Agent::CreatureTypeBit values, chosen in the GUI)
+    // and the direction: ward_traps == false keeps the warded types OUT of the zone, true keeps
+    // them IN (reverse Magic Circle). mask 0 = no ward placed (defensive; the GUI supplies a mask).
+    uint32_t ward_creature_mask = 0;
+    bool     ward_traps = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2033,6 +2039,14 @@ public:
     // 1-5 action spells at L18+ (Improved War Magic). Reuses availableCastableSpells, so the
     // slot / one-leveled-spell-per-turn rules already apply to the leveled case.
     [[nodiscard]] std::vector<int> availableWarMagicSpells(const BattleMap& bm, int idx) const;
+
+    // Divine Intervention (Cleric L10+): once per Long Rest, free-cast a chosen Cleric spell of
+    // level ≤ 5. canUse owns the class/level + resource-availability + Greater-DI-lock gate; the
+    // GUI orchestrates the picker (like Wish). useDivineIntervention spends the one use and, if
+    // chose_wish (Greater DI, L20), sets the 2d4-Long-Rest recharge lock; returns false with no
+    // state change when unavailable. The caller free-casts the chosen spell.
+    [[nodiscard]] bool canUseDivineIntervention(const BattleMap& bm, int agent_idx) const noexcept;
+    bool useDivineIntervention(BattleMap& bm, int agent_idx, bool chose_wish) noexcept;
 
     // Eldritch Knight Arcane Charge (L15): teleport up to 30 ft (the optional rider on Action
     // Surge). Validates EK L15+, the 30-ft range, and a clear destination, then teleports.

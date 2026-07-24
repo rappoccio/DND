@@ -398,10 +398,11 @@ int BattleMap::spawnAgent(const AgentConfig& cfg)
         return -1;
     }
     // Reject a cell already occupied by a live agent's footprint (a tombstoned/dismissed
-    // summon no longer occupies its cell, and neither does a downed body — mirroring
-    // agentOccupancy). isBlocked only covers walls/terrain, not agents.
+    // summon no longer occupies its cell, and neither does a corpse (conditions.dead) —
+    // mirroring agentOccupancy; an unconscious/downed body still blocks). isBlocked only
+    // covers walls/terrain, not agents.
     for (const auto& pa : placedAgents_) {
-        if (pa.removed_from_play || pa.agent->getStats().hp_cur <= 0) continue;
+        if (pa.removed_from_play || pa.agent->getConditions().dead) continue;
         int psize = pa.agent->getSize();
         if (origin.col < pa.origin.col + psize && origin.col + cfg.size > pa.origin.col &&
             origin.row < pa.origin.row + psize && origin.row + cfg.size > pa.origin.row) {
@@ -506,6 +507,9 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
                 // Enemy footprints block the path; allies may be passed through (but not stopped on,
                 // which is enforced by the destination check below).
                 if (agentOccupancy(next, pa.agent->getSize(), idx) == 2) continue;
+                // Magic Circle / Hallow: a creature-type ward bars this creature from crossing the
+                // zone boundary (entering, or leaving in reverse mode). Blocks the directed edge.
+                if (movementWardBlocks(idx, cell, next)) continue;
 
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
 
@@ -808,7 +812,7 @@ int BattleMap::agentOccupancy(Cell origin, int size, int mover_idx) const noexce
         if (static_cast<int>(i) == mover_idx) continue;
         const auto& pa = placedAgents_[i];
         if (pa.removed_from_play || pa.on_deck)   continue;   // tombstoned / reserve: not on the map
-        if (pa.agent->getStats().hp_cur <= 0)     continue;   // a downed body doesn't block movement
+        if (pa.agent->getConditions().dead)       continue;   // a corpse frees its square; a downed (unconscious) body still blocks
         const int psize = pa.agent->getSize();
         // Rectangle-overlap of the two footprints.
         if (origin.col < pa.origin.col + psize && origin.col + size > pa.origin.col &&
@@ -821,6 +825,42 @@ int BattleMap::agentOccupancy(Cell origin, int size, int mover_idx) const noexce
         }
     }
     return worst;
+}
+
+bool BattleMap::movementWardBlocks(int mover_idx, Cell from, Cell to) const noexcept
+{
+    if (mover_idx < 0 || mover_idx >= static_cast<int>(placedAgents_.size()))
+        return false;
+    const auto& mpa = placedAgents_[static_cast<std::size_t>(mover_idx)];
+    const uint32_t mover_types = mpa.agent->getStats().creatureTypeMask();
+    if (mover_types == 0) return false;    // typeless creatures cross any ward freely
+
+    const int size = mpa.agent->getSize();
+    // Any-cell-overlap of the token's NxN footprint at `o` with a ward's flat cell set.
+    auto footprintInWard = [&](Cell o, const std::vector<int>& cells) -> bool {
+        for (int dc = 0; dc < size; ++dc)
+            for (int dr = 0; dr < size; ++dr) {
+                Cell c{o.col + dc, o.row + dr};
+                if (c.col < 0 || c.col >= cols_ || c.row < 0 || c.row >= rows_) continue;
+                const int flat = c.row * cols_ + c.col;
+                if (std::find(cells.begin(), cells.end(), flat) != cells.end())
+                    return true;
+            }
+        return false;
+    };
+
+    for (const auto& te : activeTerrainEffects_) {
+        if (te.ward_creature_mask == 0) continue;                 // not a movement ward
+        if ((te.ward_creature_mask & mover_types) == 0) continue; // ward doesn't target this type
+        const bool from_in = footprintInWard(from, te.cell_indices);
+        const bool to_in   = footprintInWard(to,   te.cell_indices);
+        if (te.ward_traps) {
+            if (from_in && !to_in) return true;   // reverse Magic Circle: can't leave the zone
+        } else {
+            if (!from_in && to_in) return true;   // Magic Circle: can't enter the zone
+        }
+    }
+    return false;
 }
 
 // Helper: Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump)
@@ -858,6 +898,9 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
                 if (isBlocked(next, tokenSize, type))  continue;
                 // Enemy footprints block the path entirely; allies may be passed through.
                 if (agentOccupancy(next, tokenSize, mover_idx) == 2)  continue;
+                // Magic Circle / Hallow ward boundary (same rule as moveAgent) so the reachable
+                // set — walk highlight and fly-destination validation — never offers a warded step.
+                if (movementWardBlocks(mover_idx, cell, next))  continue;
 
                 // Orthogonal: 5 ft; Diagonal: 10 ft
                 int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
@@ -1969,7 +2012,9 @@ int BattleMap::placeTerrainEffect(std::string name,
                                    bool requires_concentration,
                                    int anchor_agent_idx,
                                    int anchor_radius_ft,
-                                   bool spares_source_allies) {
+                                   bool spares_source_allies,
+                                   uint32_t ward_creature_mask,
+                                   bool ward_traps) {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -1997,7 +2042,9 @@ int BattleMap::placeTerrainEffect(std::string name,
         requires_concentration,
         anchor_agent_idx,
         anchor_radius_ft,
-        spares_source_allies
+        spares_source_allies,
+        ward_creature_mask,
+        ward_traps
     };
     activeTerrainEffects_.push_back(effect);
 

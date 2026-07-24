@@ -482,6 +482,16 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
       cd.long_rest_regen = cd_uses;  // full on a long rest
       resources["Channel Divinity"] = cd;
 
+      // Divine Intervention (L10+): once per Long Rest, free-cast a Cleric spell of level ≤ 5.
+      // The resource's current (0/1) is the single source of availability; the Greater-DI (L20)
+      // 2d4-rest lock lives in Stats.divine_intervention_lock and is applied in applyLongRest.
+      if (level >= 10) {
+        Resource di("Divine Intervention", 1, 0);  // (name, max, duration); starts available (current=1)
+        di.long_rest_regen = 1;                     // full recharge on a Long Rest (unless locked)
+        di.short_rest_regen = 0;                     // NOT on a short rest
+        resources["Divine Intervention"] = di;
+      }
+
       // War Domain — War Priest (L3+): WIS-mod (min 1) bonus-action weapon attacks per Short/Long Rest.
       if (cleric_subclass == WarDomain && level >= 3) {
         int wp = std::max(1, _mod(wis));

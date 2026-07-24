@@ -134,6 +134,9 @@ static Spell spellFromJson(const json& j) noexcept {
     // Parse light level (-1 = no light effect)
     spell.light_level = j.value("light_level", -1);
 
+    // Magic Circle / Hallow movement ward (D4). Types + direction are chosen per cast (SpellAction).
+    spell.creates_movement_ward = j.value("creates_movement_ward", false);
+
     return spell;
 }
 

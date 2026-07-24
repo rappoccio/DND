@@ -316,6 +316,35 @@ std::vector<int> CombatEngine::availableWarMagicSpells(const BattleMap& bm, int 
     return result;
 }
 
+bool CombatEngine::canUseDivineIntervention(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats& st = agents[static_cast<std::size_t>(agent_idx)].agent->getStats();
+    if (st.classLevel(CharacterClass::Cleric) < 10) return false;          // unlocks at Cleric L10
+    // Availability is the resource's current (0/1). The Greater-DI (L20) recharge lock keeps that
+    // at 0 across the locked rests, so the resource check alone is sufficient here.
+    const Resource* di = st.getResource("Divine Intervention");
+    return di != nullptr && di->current > 0;
+}
+
+bool CombatEngine::useDivineIntervention(BattleMap& bm, int agent_idx, bool chose_wish) noexcept
+{
+    if (!canUseDivineIntervention(bm, agent_idx)) return false;
+    Agent::Stats st = bm.getAgentStats(agent_idx);
+    Resource* di = st.getResource("Divine Intervention");
+    if (di == nullptr || !di->spend(1)) return false;
+    if (chose_wish) {
+        // Greater Divine Intervention (L20): Wish locks DI for 2d4 Long Rests. applyLongRest
+        // decrements the lock instead of refilling the resource while it is > 0.
+        st.divine_intervention_lock = static_cast<uint8_t>(roll(4) + roll(4));
+    }
+    bm.setAgentStats(agent_idx, st);
+    log_("{} invokes Divine Intervention{}", agentName(bm, agent_idx),
+         chose_wish ? " (Greater — Wish)" : "");
+    return true;
+}
+
 int CombatEngine::applyArcaneCharge(BattleMap& bm, int idx, int target_col, int target_row) noexcept
 {
     const auto& agents = bm.placedAgents();

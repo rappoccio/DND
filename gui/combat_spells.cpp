@@ -1857,8 +1857,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 rollDeathSave(bm, tgt_idx);
             }
         } else {
-            // HP is positive: if a healing spell brought a downed target back up, restore
-            // consciousness so they aren't skipped in initiative (no-op otherwise).
+            // HP is positive. A revives_dead heal (Raise Dead / Revivify) first lifts true
+            // death — clear the `dead` condition so the corpse returns to life — otherwise
+            // reviveOnHeal would bail on a dead target. Then restore consciousness so the
+            // creature rejoins initiative (a plain heal on a downed ally is the no-op case).
+            if (sp.revives_dead) {
+                Agent::Conditions rc = bm.getAgentConditions(tgt_idx);
+                if (rc.dead) {
+                    rc.dead = false;
+                    bm.setAgentConditions(tgt_idx, rc);
+                    log_("{} is restored to life by {} (revived at {} HP)",
+                         agentName(bm, tgt_idx), sp.name, tgt_stats.hp_cur);
+                }
+            }
             reviveOnHeal(bm, tgt_idx);
         }
 
@@ -2247,8 +2258,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         bm.setAgentStats(action.caster_idx, cs);
     }
 
-    // Create persistent spell effect if spell has AoE geometry and duration > 1
-    if (result.valid && sp.duration > 1 && sp.geometry != Spell::Single) {
+    // Create persistent spell effect if spell has AoE geometry and duration > 1. A movement-ward
+    // spell (Magic Circle / Hallow) is skipped here: it deals no damage, so a zone effect would only
+    // spam "took 0" each turn — its behavior and rendered footprint both ride on the terrain ward
+    // placed further below.
+    if (result.valid && sp.duration > 1 && sp.geometry != Spell::Single && !sp.creates_movement_ward) {
         std::vector<Cell> effect_cells;
 
         // Calculate cells based on spell geometry
@@ -2375,6 +2389,34 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Movement-ward zone (Magic Circle / Hallow, D4): a timed emanation the chosen creature types
+    // can't cross. Reuses the terrain-effect system (duration ticking, Dispel Magic, GUI overlay)
+    // with Normal difficulty — the ward behavior rides on ward_creature_mask / ward_traps, not the
+    // speed multiplier. Static Sphere centered on the aim point, Total-Cover pruned like any area.
+    if (result.valid && sp.creates_movement_ward && action.ward_creature_mask != 0) {
+        Cell caster_origin = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].origin;
+        int  caster_size   = bm.placedAgents()[static_cast<std::size_t>(action.caster_idx)].agent->getSize();
+        std::vector<Cell> ward_cells = bm.pruneBlockedCells(
+            BattleMap::areaOrigin(sp, caster_origin, caster_size, Cell{center_col, center_row}),
+            sphereCellsAround(center_col, center_row, sp.radius));
+        if (!ward_cells.empty()) {
+            int ward_id = bm.placeTerrainEffect(
+                sp.name, ward_cells, TerrainDifficulty::Normal,
+                sp.duration, action.caster_idx,
+                sp.slip_save_dc, sp.slip_distance_feet,
+                action.spell_idx, std::max(action.slot_level, sp.level),
+                sp.requires_concentration,
+                -1, 0, false,
+                action.ward_creature_mask, action.ward_traps);
+            if (ward_id >= 0) {
+                result.terrain_effect_ids.push_back(ward_id);
+                log_("{} casts {} — a warding circle {} the chosen creature types.",
+                     agentName(bm, action.caster_idx), sp.name,
+                     action.ward_traps ? "traps" : "repels");
             }
         }
     }

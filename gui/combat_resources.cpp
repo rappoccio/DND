@@ -1069,6 +1069,15 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         // Restore spell slots and all resources
         stats.restore_resources_long_rest();
 
+        // Greater Divine Intervention lock (Cleric L20): a Wish use costs 2d4 Long Rests before
+        // DI returns. restore_resources_long_rest() just refilled the DI resource generically, so
+        // undo that refill while the lock is still counting down.
+        if (stats.divine_intervention_lock > 0) {
+            stats.divine_intervention_lock -= 1;
+            if (stats.divine_intervention_lock > 0)
+                if (Resource* di = stats.getResource("Divine Intervention")) di->current = 0;
+        }
+
         // Spell Thief (Arcane Trickster L17): the 8-hour lock on a stolen spell clears on a long rest.
         stats.stolen_spell_names.clear();
 

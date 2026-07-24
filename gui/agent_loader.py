@@ -44,6 +44,10 @@ def dict_to_stats(stats_dict):
     stats.is_npc = bool(stats_dict.get("is_npc", False))
     stats.is_undead = bool(stats_dict.get("is_undead", False))
     stats.is_fiend = bool(stats_dict.get("is_fiend", False))
+    # Remaining Magic Circle / Hallow creature types (guarded so an older compiled module still loads).
+    for _ct in ("is_celestial", "is_elemental", "is_fey", "is_aberration"):
+        if hasattr(stats, _ct):
+            setattr(stats, _ct, bool(stats_dict.get(_ct, False)))
     stats.is_vampire = bool(stats_dict.get("is_vampire", False))
     stats.magic_resistance = bool(stats_dict.get("magic_resistance", False))
     stats.death_burst_spell = str(stats_dict.get("death_burst_spell", ""))
@@ -65,6 +69,7 @@ def dict_to_stats(stats_dict):
     stats.haste_speed_bonus = int(stats_dict.get("haste_speed_bonus", 0))
     stats.haste_action_available = bool(stats_dict.get("haste_action_available", False))
     stats.aid_hp_bonus = int(stats_dict.get("aid_hp_bonus", 0))
+    stats.divine_intervention_lock = int(stats_dict.get("divine_intervention_lock", 0))
     stats.sleight_of_hand_prof = bool(stats_dict.get("sleight_of_hand_prof", False))
     stats.sleight_of_hand_expertise = bool(stats_dict.get("sleight_of_hand_expertise", False))
     if "spellcasting_ability" in stats_dict:

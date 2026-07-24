@@ -153,6 +153,13 @@ struct ActiveTerrainEffect {
     // "Creatures of your choice" sparing: when true, the source agent and its allies ignore
     // this terrain (mirrors the spell's selective_targeting / the zone-damage faction rule).
     bool                spares_source_allies{false};
+    // Movement ward (Magic Circle / Hallow, D4). When ward_creature_mask != 0 this effect is a
+    // creature-type-selective movement barrier: a creature whose Stats::creatureTypeMask() shares a
+    // bit with ward_creature_mask can't cross the zone boundary. ward_traps == false keeps warded
+    // types OUT (can't enter cell_indices); ward_traps == true keeps them IN (can't leave — reverse
+    // Magic Circle). difficulty stays Normal, so the zone imposes no speed penalty on anyone.
+    uint32_t            ward_creature_mask{0};
+    bool                ward_traps{false};
 };
 
 // ── Active temporary light effect ──────────────────────────────────────────
@@ -375,6 +382,25 @@ public:
     [[nodiscard]] const std::vector<Wall>& walls()           const noexcept { return walls_; }
     [[nodiscard]] const CellSet&           disallowedCells() const noexcept { return disallowed_; }
     [[nodiscard]] bool isBlocked(Cell origin, int agentSize, MovementType mt = MovementType::Walk) const noexcept;
+
+    // Occupancy of the footprint a `size`-token would cover with top-left `origin`,
+    // for a mover identified by `mover_idx` (its own footprint never counts). Other
+    // living, in-play (not removed/on-deck) agents block movement: an enemy footprint
+    // is impassable (can't pass through or stop), an ally footprint is passable but
+    // can't be stopped on (D&D 5e moving-through-allies rule). Corpses (conditions.dead)
+    // free their square; unconscious/downed bodies still block. Returns:
+    //   0 = free, 1 = ally-occupied (pass-through only), 2 = enemy-occupied (impassable).
+    // mover_idx < 0 (no actor) means agents are ignored entirely (returns 0).
+    [[nodiscard]] int agentOccupancy(Cell origin, int size, int mover_idx) const noexcept;
+
+    // Magic Circle / Hallow movement ward (D4): true if a creature-type-selective ward forbids
+    // agent `mover_idx` stepping from `from` to `to`. A ward whose ward_creature_mask shares a bit
+    // with the mover's Stats::creatureTypeMask() blocks the boundary crossing — entering the zone
+    // (ward_traps == false) or leaving it (ward_traps == true). Consulted per Dijkstra edge in
+    // moveAgent and pathfindMovement, so both the committed move and the reachable-set preview
+    // (walk and fly) honor it. Typeless movers (mask 0) are never blocked. Cheap: few active wards,
+    // small footprints; footprint membership is any-cell-overlap of the token's NxN at from / to.
+    [[nodiscard]] bool movementWardBlocks(int mover_idx, Cell from, Cell to) const noexcept;
 
     // ── Agent management ──────────────────────────────────────────────────
     // Called from Python after the GUI collects AgentConfig objects.
@@ -623,7 +649,9 @@ public:
                                          bool requires_concentration = false,
                                          int anchor_agent_idx = -1,
                                          int anchor_radius_ft = 0,
-                                         bool spares_source_allies = false);
+                                         bool spares_source_allies = false,
+                                         uint32_t ward_creature_mask = 0,
+                                         bool ward_traps = false);
 
     // Re-point an anchored terrain effect's footprint (moving emanation follows the caster).
     void setTerrainEffectCells(int effect_id, std::vector<Cell> cells) noexcept;
@@ -808,15 +836,6 @@ private:
     [[nodiscard]] CellSet pathfindMovement(Cell origin, int tokenSize,
                                            int speedFt, MovementType type,
                                            int mover_idx = -1) const;
-
-    // Occupancy of the footprint a `size`-token would cover with top-left `origin`,
-    // for a mover identified by `mover_idx` (its own footprint never counts). Other
-    // living, in-play (not removed/on-deck) agents block movement: an enemy footprint
-    // is impassable (can't pass through or stop), an ally footprint is passable but
-    // can't be stopped on (D&D 5e moving-through-allies rule). Returns:
-    //   0 = free, 1 = ally-occupied (pass-through only), 2 = enemy-occupied (impassable).
-    // mover_idx < 0 (no actor) means agents are ignored entirely (returns 0).
-    [[nodiscard]] int agentOccupancy(Cell origin, int size, int mover_idx) const noexcept;
 
     std::filesystem::path mapImagePath_;
     int cols_{0}, rows_{0}, cellPx_{0};

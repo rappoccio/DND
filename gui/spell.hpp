@@ -136,6 +136,32 @@ namespace rpg {
       // maximum) instead of rolling healing_type dice. false = roll dice as usual.
       bool heal_to_full{false};
 
+      // Raise Dead / Revivify: this heal can restore a true-dead corpse (conditions.dead).
+      // When true, applying the heal clears the target's `dead` condition before reviving,
+      // so a corpse returns to life at the healed HP (RAW 1 HP). It also drives the GUI's
+      // corpse-pick targeting mode (a dead body is not clickable via the normal path).
+      bool revives_dead{false};
+
+      // Divine Intervention D3 — Animate Dead: this spell targets a CORPSE (conditions.dead)
+      // and raises an undead servant (Skeleton/Zombie) from it, rather than reviving the
+      // original creature. The engine does nothing with this flag; it only drives the GUI's
+      // corpse-pick targeting mode (shared with revives_dead) and the spawn-an-undead resolve.
+      bool animates_dead{false};
+
+      // Divine Intervention D4 — Magic Circle / Hallow: places a creature-type movement ward
+      // (a timed emanation the chosen creature types can't cross). The types warded and the
+      // direction (keep-out vs trap-inside) are chosen per cast and ride on the SpellAction
+      // (ward_creature_mask / ward_traps); this flag only tells executeSpell to place the ward
+      // zone (a Normal-difficulty terrain effect carrying the ward mask) at the aimed center.
+      // Radius comes from `radius`; treat as a timed zone (non-concentration).
+      bool creates_movement_ward{false};
+
+      // Divine Intervention D3 — Planar Binding: on a failed Charisma save the targeted
+      // creature is bound to the caster's service (transferred to the caster's team). The
+      // engine does nothing with this flag; it only routes the GUI's single-target click to
+      // the control-transfer resolve instead of the ordinary damage/heal cast path.
+      bool binds_creature{false};
+
       // Restorative Heal: condition names ended on each (healed) target when the spell
       // resolves — e.g. Power Word Heal ends Charmed / Frightened / Paralyzed / Poisoned
       // / Stunned. Empty for ordinary heals. Each ends via removeAgentCondition so the

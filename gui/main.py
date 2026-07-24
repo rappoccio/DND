@@ -167,6 +167,50 @@ ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4
 # restriction toward/away from the bard, Grovel=Prone, Halt=Incapacitated for one turn.
 COMMAND_WORD_OPTIONS = [("Drop", 0), ("Flee", 1), ("Grovel", 2), ("Halt", 3), ("Approach", 4)]
 
+# Magic Circle / Hallow movement ward (D4): the creature types a caster may ward, plus a "Reverse"
+# toggle. Each type value is a rpg.CreatureType bit (int); the caster multi-selects any subset and
+# optionally Reverse. The OR of the checked type bits becomes SpellAction.ward_creature_mask; the
+# Reverse sentinel sets ward_traps=True (keep the warded types INSIDE instead of out). Reused via
+# the multi-select ElementPickerDialog. RAW Magic Circle offers the five non-Aberration types.
+WARD_REVERSE_SENTINEL = 1 << 30
+MAGIC_CIRCLE_TYPE_OPTIONS = [
+    ("Celestials", int(rpg.CreatureType.Celestial)),
+    ("Elementals", int(rpg.CreatureType.Elemental)),
+    ("Fey",        int(rpg.CreatureType.Fey)),
+    ("Fiends",     int(rpg.CreatureType.Fiend)),
+    ("Undead",     int(rpg.CreatureType.Undead)),
+    ("↺ Reverse (trap them inside)", WARD_REVERSE_SENTINEL),
+]
+
+# Divine Intervention (Cleric L10): the explicit set of Cleric spells (levels 0-5) the DI picker
+# may offer. spells.json has no reliable per-spell class list, so scope by name. None of these is
+# Reaction-cast, so the SRD "doesn't require a Reaction" clause is automatically satisfied. The L20
+# Greater-DI Wish option is added separately when building the picker.
+CLERIC_DI_SPELL_NAMES = {
+    # cantrips
+    "Guidance", "Light", "Mending", "Resistance", "Sacred Flame", "Spare the Dying", "Thaumaturgy",
+    # 1
+    "Bane", "Bless", "Command", "Create or Destroy Water", "Cure Wounds", "Detect Evil and Good",
+    "Detect Magic", "Detect Poison and Disease", "Guiding Bolt", "Healing Word", "Inflict Wounds",
+    "Protection from Evil and Good", "Purify Food and Drink", "Sanctuary", "Shield of Faith",
+    # 2
+    "Aid", "Augury", "Blindness/Deafness", "Calm Emotions", "Continual Flame", "Enhance Ability",
+    "Find Traps", "Gentle Repose", "Hold Person", "Lesser Restoration", "Locate Object",
+    "Prayer of Healing", "Protection from Poison", "Silence", "Spiritual Weapon", "Warding Bond",
+    "Zone of Truth",
+    # 3
+    "Animate Dead", "Beacon of Hope", "Bestow Curse", "Clairvoyance", "Create Food and Water",
+    "Daylight", "Dispel Magic", "Glyph of Warding", "Magic Circle", "Mass Healing Word",
+    "Meld into Stone", "Protection from Energy", "Remove Curse", "Revivify", "Sending",
+    "Speak with Dead", "Spirit Guardians", "Tongues", "Water Walk",
+    # 4
+    "Aura of Life", "Banishment", "Control Water", "Death Ward", "Divination", "Freedom of Movement",
+    "Guardian of Faith", "Locate Creature", "Stone Shape",
+    # 5
+    "Commune", "Contagion", "Dispel Evil and Good", "Flame Strike", "Geas", "Greater Restoration",
+    "Hallow", "Insect Plague", "Legend Lore", "Mass Cure Wounds", "Planar Binding", "Raise Dead", "Scrying",
+}
+
 # Vistani Curse sub-choices, reused via the ElementPickerDialog. Each maps to
 # SpellAction.curse_choice, decoded in executeSpell's condition chokepoint:
 #   Vulnerability → damage type: 0..9 = MagicDamage_t, 100+i = PhysicalDamage_t i.
@@ -679,6 +723,12 @@ class App:
         # dispel bookkeeping that re-reads spells[spell_idx] remains valid. Their indices are tracked
         # here so the cast menu skips them (they must never be re-cast for free with a normal slot).
         self._wish_temp_spells: set = set()
+        # Divine Intervention (Cleric L10): mirror of _wish_temp_spells — indices of spells injected by
+        # a DI free-cast, skipped in the cast menu. Session-only (not serialized), like _wish_temp_spells.
+        self._di_temp_spells: set = set()
+        # Greater-DI (L20): set while a DI-chosen Wish runs its own duplicate flow, so _on_wish_duplicate
+        # skips the 9th-slot charge (DI's 2d4 recharge lock is the cost instead).
+        self._di_wish_free             = False
         self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
         self.blink_steps_pending       = False # Boon of Dimensional Travel: awaiting a Blink Steps teleport destination (≤30 ft)
         self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
@@ -1265,6 +1315,9 @@ class App:
         self.btn_cbt_turn_undead = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Turn Undead",
                                           (190, 190, 220), (220, 220, 250), self.font_md)
+        self.btn_cbt_divine_intervention = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Divine Intervention",
+                                          (235, 215, 130), (255, 235, 160), self.font_md)
         self.btn_cbt_radiance = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Radiance of the Dawn",
                                           (230, 200, 90), (255, 225, 120), self.font_md)
@@ -1656,6 +1709,15 @@ class App:
             sd["legendary"] = meta["legendary"]
         stats = dict_to_stats(sd)
         apply_damage_multipliers(stats, sd)
+        # Creature type from the stat block's meta.type (e.g. "Fiend (Devil)", "Undead", "Fey").
+        # Drives the Magic Circle / Hallow movement wards (D4) and Divine Smite's +1d8 vs
+        # Fiend/Undead. Substring match handles the parenthetical subtypes in the bestiary.
+        mtype = str(meta.get("type") or "").lower()
+        for _needle, _flag in (("aberration", "is_aberration"), ("celestial", "is_celestial"),
+                               ("elemental", "is_elemental"), ("fey", "is_fey"),
+                               ("fiend", "is_fiend"), ("undead", "is_undead")):
+            if _needle in mtype and hasattr(stats, _flag):
+                setattr(stats, _flag, True)
         # Monsters whose bonus action grants Dash/Disengage (e.g. the Vampire
         # Spawn's "Deathless Agility") reuse the Cunning Action machinery, which
         # is what surfaces the bonus-action Dash/Disengage buttons in the GUI.
@@ -1782,6 +1844,19 @@ class App:
         so it can still be selected to be healed."""
         for i, pt in enumerate(self.bm.placed_agents):
             if pt.removed_from_play or pt.conditions.dead:
+                continue
+            oc, or_ = pt.origin.col, pt.origin.row
+            if oc <= cell.col < oc + pt.size and or_ <= cell.row < or_ + pt.size:
+                return i
+        return -1
+
+    def _corpse_at(self, cell):
+        """Return the index of a true-dead corpse (conditions.dead) whose footprint contains
+        cell, or -1. The mirror image of _agent_at, which deliberately skips corpses: revive /
+        raise spells (revives_dead) select a body the normal click can't reach. A tombstoned
+        (removed_from_play) corpse is still skipped — it's gone from the board."""
+        for i, pt in enumerate(self.bm.placed_agents):
+            if pt.removed_from_play or not pt.conditions.dead:
                 continue
             oc, or_ = pt.origin.col, pt.origin.row
             if oc <= cell.col < oc + pt.size and or_ <= cell.row < or_ + pt.size:
@@ -5403,6 +5478,34 @@ class App:
         if not (0 <= self.pending_spell_idx < len(spells)):
             return False
         return spells[self.pending_spell_idx].type == rpg.SpellType.Harm
+
+    def _pending_spell_targets_corpse(self) -> bool:
+        """True if the spell currently being aimed selects a true-dead body — either a revive
+        (revives_dead — Raise Dead / Revivify) or Animate Dead (animates_dead, which raises an
+        undead from the corpse). Both route their click through _corpse_at instead of _agent_at,
+        since a corpse isn't reachable by the normal path."""
+        sp = self._pending_spell_obj()
+        return bool(sp and (getattr(sp, "revives_dead", False) or
+                            getattr(sp, "animates_dead", False)))
+
+    def _pending_spell_binds_creature(self) -> bool:
+        """True if the spell currently being aimed binds a living creature to the caster's
+        service (Planar Binding, binds_creature). Routes the single-target click through the
+        control-transfer resolve instead of the ordinary damage/heal cast path."""
+        sp = self._pending_spell_obj()
+        return bool(sp and getattr(sp, "binds_creature", False))
+
+    def _pending_spell_obj(self):
+        """The rpg.Spell currently being aimed (pending single-target cast), or None."""
+        if not self.pending_spell_slot or self.pending_spell_is_aoe:
+            return None
+        ci = self._current_agent_idx()
+        if ci < 0:
+            return None
+        spells = self.combat.get_agent_spells(self.bm, ci)
+        if not (0 <= self.pending_spell_idx < len(spells)):
+            return None
+        return spells[self.pending_spell_idx]
 
     def _confirm_friendly_harm(self, target_idx: int, on_confirm) -> None:
         """Faction rule 4: if the acting agent and target_idx are on the same team,
@@ -9573,6 +9676,36 @@ class App:
                 f"Casting {sp_.name} — click an empty cell within range to place the {monster}.")
             return
 
+        # Magic Circle / Hallow (D4): pick the warded creature types + direction (keep-out vs
+        # trap-inside) via the multi-select picker, stash them for the SpellAction, then fall
+        # through to the normal Sphere AoE placement (click a center point). Mirrors Command's
+        # word-choice flow. reset to a clean ward each cast so a prior pick can't leak through.
+        self.pending_ward_mask  = 0
+        self.pending_ward_traps = False
+        if getattr(sp_, "creates_movement_ward", False):
+            def _on_ward(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, idx=idx):
+                mask, traps = 0, False
+                for v in chosen:
+                    if v == WARD_REVERSE_SENTINEL:
+                        traps = True
+                    else:
+                        mask |= v
+                if mask == 0:  # nothing picked → ward every offered type (RAW allows "one or more")
+                    mask = (int(rpg.CreatureType.Celestial) | int(rpg.CreatureType.Elemental) |
+                            int(rpg.CreatureType.Fey) | int(rpg.CreatureType.Fiend) |
+                            int(rpg.CreatureType.Undead))
+                self.pending_ward_mask  = mask
+                self.pending_ward_traps = traps
+                names = [lbl for lbl, val in MAGIC_CIRCLE_TYPE_OPTIONS
+                         if val != WARD_REVERSE_SENTINEL and (val & mask)]
+                self._combat_log_add(
+                    f"{sp_.name}: warding {', '.join(names)} "
+                    f"({'trapped inside' if traps else 'kept out'}).")
+                self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
+            self._element_dialog.show(_on_ward, MAGIC_CIRCLE_TYPE_OPTIONS, current_values=None,
+                                      multi=True, title=f"{sp_.name}: choose warded types")
+            return
+
         # Emanation (a moves_with_caster Sphere) is always centered on the caster,
         # so there is no placement to choose — cast immediately on the caster's cell.
         if getattr(sp_, "moves_with_caster", False) and sp_.geometry == rpg.SpellGeometry.Sphere:
@@ -9613,6 +9746,14 @@ class App:
             if self._twinned_single_armed(sp_, idx):
                 self.pending_spell_num_targets = 2
                 hint = "click 2 targets (0/2) — Twinned"
+            elif getattr(sp_, "revives_dead", False):
+                # Raise Dead / Revivify: the target is a corpse, picked via _corpse_at.
+                self.pending_spell_num_targets = 0
+                hint = "click a dead body within range"
+            elif getattr(sp_, "animates_dead", False):
+                # Animate Dead: the target is a corpse to raise as an undead — same corpse-pick.
+                self.pending_spell_num_targets = 0
+                hint = "click a corpse within range to animate"
             else:
                 self.pending_spell_num_targets = 0
                 hint = "click a target"
@@ -9649,7 +9790,11 @@ class App:
         if caster_idx < 0:
             return
         # Charge Wish's own slot (normally 9th). If the caster somehow lacks it, abort cleanly.
-        if not self.combat.spend_spell_slot(self.bm, caster_idx, wish_slot_level):
+        # Exception: a Greater-DI (L20) Wish is already paid for by Divine Intervention's 2d4
+        # recharge lock, so skip the slot charge (the _di_wish_free flag is a one-shot).
+        if self._di_wish_free:
+            self._di_wish_free = False
+        elif not self.combat.spend_spell_slot(self.bm, caster_idx, wish_slot_level):
             self._combat_log_add("Wish fizzles — no spell slot to power it.")
             return
         spell = _dict_to_spell(spell_dict)
@@ -9662,6 +9807,49 @@ class App:
         # Cast the duplicate at its base level, for free, through the full dispatch (element
         # choice, summon placement, AoE, single-target — all handled as usual).
         self._activate_spell(slot, new_idx, spell.level, caster_idx, spells, stats, free_cast=True)
+
+    def _start_divine_intervention(self):
+        """Divine Intervention (Cleric L10): open the Cleric-≤5 picker (Wish added at L20). Mirrors
+        the Wish flow — the chosen spell is injected and free-cast; the DI resource is the cost."""
+        idx = self._current_agent_idx()
+        if idx < 0 or not self.combat.can_use_divine_intervention(self.bm, idx):
+            return
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        greater = stats.class_level(rpg.CharacterClass.Cleric) >= 20
+        allow = CLERIC_DI_SPELL_NAMES | ({"Wish"} if greater else set())
+        self.spell_selection_dialog.show(
+            lambda d, i=idx, g=greater: self._on_divine_intervention_pick(i, g, d),
+            max_level=5,
+            allow_names=allow,
+            title="Divine Intervention — choose a Cleric spell (≤ 5th level)")
+        self._combat_log_add("Divine Intervention — choose a Cleric spell of level 5 or lower.")
+
+    def _on_divine_intervention_pick(self, caster_idx: int, greater: bool, spell_dict: dict):
+        """A spell was chosen from the DI picker. Spend the DI use, inject the spell, and free-cast
+        it. If the pick is Wish (Greater DI, L20) route through the normal Wish duplicate flow but
+        skip its slot charge (DI's 2d4 lock is the cost — see _on_wish_duplicate / _di_wish_free)."""
+        if caster_idx < 0:
+            return
+        chose_wish = spell_dict.get("name") == "Wish"
+        if not self.combat.use_divine_intervention(self.bm, caster_idx, chose_wish):
+            self._combat_log_add("Divine Intervention is unavailable.")
+            return
+        spell = _dict_to_spell(spell_dict)
+        self.combat.add_spell_to_agent(self.bm, caster_idx, spell)
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        new_idx = len(spells) - 1
+        self._di_temp_spells.add(new_idx)     # skip in the cast menu, like _wish_temp_spells
+        stats = self.combat.get_agent_stats(self.bm, caster_idx)
+        self.action_used = True               # DI is a Magic action
+        if chose_wish:
+            # Greater DI: run Wish's own duplicate picker for free (free_cast=False so the Wish
+            # branch in _activate_spell fires; _di_wish_free suppresses the 9th-slot charge).
+            self._di_wish_free = True
+            self._combat_log_add("Greater Divine Intervention: casting Wish for free!")
+            self._activate_spell("action", new_idx, spell.level, caster_idx, spells, stats, free_cast=False)
+        else:
+            self._combat_log_add(f"Divine Intervention: casting {spell.name} for free!")
+            self._activate_spell("action", new_idx, spell.level, caster_idx, spells, stats, free_cast=True)
 
     # FLAG: Move to C++
     def _start_cast_spell(self, slot: str):
@@ -9711,9 +9899,9 @@ class App:
         # pick the slot level, instead of flooding this list with one row per spell per level.
         options = []
         for si in available_indices:
-            # Spells injected by a past Wish live in the caster's list only so the engine can
-            # cast them by index; they must never reappear as normal, slot-castable options.
-            if si in self._wish_temp_spells:
+            # Spells injected by a past Wish or Divine Intervention live in the caster's list only so
+            # the engine can cast them by index; they must never reappear as normal slot-castable options.
+            if si in self._wish_temp_spells or si in self._di_temp_spells:
                 continue
             sp = spells[si]
             sp_level = sp.level
@@ -11067,6 +11255,193 @@ class App:
         if rpg.MetamagicOption.Careful in opts:
             action.careful_targets = self._careful_ally_targets(caster_idx)
 
+    def _resolve_corpse_spell(self, cell):
+        """Resolve a revives_dead spell (Raise Dead / Revivify) aimed at the clicked cell.
+
+        A corpse is invisible to _agent_at, so a revive spell picks its target through
+        _corpse_at instead. Validate that a true-dead body sits under the click and lies
+        within the spell's range, then hand the corpse index to the normal cast path — the
+        engine's revives_dead heal clears the `dead` condition and restores the creature."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_spell_slot:
+            return
+        corpse = self._corpse_at(cell)
+        if corpse < 0:
+            self._combat_log_add("No corpse there — click a dead body within range.")
+            return
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        sp = spells[self.pending_spell_idx]
+        dist_ft = self._footprint_dist_ft(caster_idx, corpse)
+        if dist_ft < 0 or dist_ft > sp.range:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[corpse].name} is out of range ({sp.range} ft).")
+            return
+        if getattr(sp, "animates_dead", False):
+            # Animate Dead: raise an undead servant from the corpse rather than revive it.
+            self._resolve_animate_dead(corpse)
+        else:
+            self._resolve_spell_cast(corpse)
+
+    def _resolve_animate_dead(self, corpse_idx):
+        """Animate Dead (Divine Intervention D3): raise an undead servant from the picked
+        corpse. The corpse (conditions.dead) is consumed — tombstoned — and a Skeleton or
+        Zombie is spawned in its place on the caster's team via spawn_agent (the summon path,
+        not the destructive applyAgentConfigs). The choice of undead is prompted here; the
+        actual spawn/slot/action-economy happen in _finish_animate_dead.
+
+        No summoner_idx link is set: Animate Dead is not a Concentration spell (24-hour
+        duration), and the summoner link would let a later dropConcentration wrongly tombstone
+        the undead. Faction inheritance alone makes it a player-controlled ally."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_spell_slot:
+            return
+        if not (0 <= corpse_idx < len(self.bm.placed_agents)):
+            return
+        corpse = self.bm.placed_agents[corpse_idx]
+        cell        = rpg.Cell(corpse.origin.col, corpse.origin.row)
+        slot        = self.pending_spell_slot
+        slot_level  = self.pending_spell_slot_level
+        free_cast   = self.pending_spell_free_cast
+        items = [
+            ("💀 Skeleton", lambda: self._finish_animate_dead(
+                caster_idx, corpse_idx, cell, "Skeleton", slot, slot_level, free_cast)),
+            ("🧟 Zombie", lambda: self._finish_animate_dead(
+                caster_idx, corpse_idx, cell, "Zombie", slot, slot_level, free_cast)),
+        ]
+        self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+        self._combat_log_add("Animate Dead — choose the undead to raise from the corpse.")
+
+    def _finish_animate_dead(self, caster_idx, corpse_idx, cell, undead,
+                             slot, slot_level, free_cast):
+        """Spawn the chosen undead (Skeleton/Zombie) where the corpse lay, on the caster's
+        team, then spend the slot (unless a free Divine-Intervention cast) and the action.
+        Mirrors the non-spirit branch of _resolve_summon."""
+        if caster_idx < 0 or not (0 <= corpse_idx < len(self.bm.placed_agents)):
+            return
+        mob_stats = self.mob_stats_json.get(undead)
+        if not mob_stats:
+            self._combat_log_add(f"Animate Dead failed: missing '{undead}' stat block.")
+            return
+        size = self._size_category_to_grid_size(mob_stats.get("size", "Medium"))
+
+        # Consume the corpse — it transforms into the undead — then spawn on its (now
+        # passable, §10) square. Roll the tombstone back if placement fails.
+        self.bm.placed_agents[corpse_idx].removed_from_play = True
+        # A dead body's square is passable, so a living creature may be standing on it — only
+        # raise the undead if the freed square is actually clear (corpse excluded via exclude_idx).
+        if not self._can_place(cell, size, exclude_idx=corpse_idx):
+            self.bm.placed_agents[corpse_idx].removed_from_play = False
+            self._combat_log_add("Animate Dead failed: the corpse's square is occupied.")
+            return
+        cfg = rpg.AgentConfig()
+        cfg.name        = undead
+        cfg.sprite_path = self._get_mob_sprite_path(undead)
+        cfg.size        = size
+        cfg.start_col   = cell.col
+        cfg.start_row   = cell.row
+        new_idx = self.bm.spawn_agent(cfg)
+        if new_idx < 0:
+            self.bm.placed_agents[corpse_idx].removed_from_play = False
+            self._combat_log_add("Animate Dead failed: could not place the undead.")
+            return
+
+        # Stats + auto-weapons + innate spells from the bestiary (same path as summons).
+        self.combat.set_agent_stats(self.bm, new_idx, self._mob_stats_to_d_d_stats(mob_stats))
+        weapons = list(self.combat.get_agent_weapons(self.bm, new_idx))
+        if not self._has_real_weapons(weapons):
+            for i, w in enumerate(self._auto_weapons_from_mob_stats(mob_stats)[:3]):
+                weapons[i] = w
+            self.combat.set_agent_weapons(self.bm, new_idx, weapons)
+        self._load_npc_spells_from_record(new_idx, mob_stats)
+
+        # Inherit the caster's team (allied undead servant). No summoner_idx (see docstring).
+        self.bm.set_agent_faction(new_idx, self.bm.get_agent_faction(caster_idx))
+
+        # Insert into initiative immediately after the caster (acts on the caster's count).
+        if self.combat_active and self.initiative_order:
+            caster_pos = next((p for p, e in enumerate(self.initiative_order)
+                               if e.agent_idx == caster_idx), -1)
+            if caster_pos >= 0:
+                base = self.initiative_order[caster_pos]
+                entry = rpg.InitiativeEntry()
+                entry.agent_idx = new_idx
+                entry.d20       = base.d20
+                entry.modifier  = base.modifier
+                entry.total     = base.total
+                self.initiative_order.insert(caster_pos + 1, entry)
+
+        caster = self.bm.placed_agents[caster_idx]
+        self._combat_log_add(f"{caster.name} animates a {undead} from the fallen!")
+
+        # Spend the spell slot (PC slots only; a free Divine-Intervention cast pays none),
+        # then consume the action economy and clear the pending-spell state.
+        cstats = self.combat.get_agent_stats(self.bm, caster_idx)
+        if not cstats.is_npc and slot_level >= 1 and not free_cast:
+            slots = list(cstats.spell_slots_remaining)
+            if slots[slot_level - 1] > 0:
+                slots[slot_level - 1] -= 1
+                cstats.spell_slots_remaining = slots
+                self.combat.set_agent_stats(self.bm, caster_idx, cstats)
+        self.pending_spell_slot      = ""
+        self.pending_spell_free_cast = False
+        self._consume_cast_slot(slot, caster_idx)
+
+    def _resolve_planar_binding(self, target_idx):
+        """Planar Binding (Divine Intervention D3): attempt to bind the clicked creature to
+        the caster's service. On a failed Charisma save (vs the caster's spell save DC) the
+        target is transferred to the caster's team — a lasting control transfer (this engine
+        has no timed team-revert; it holds until re-factioned or the encounter ends). No
+        summoner_idx is set (Planar Binding is not Concentration), and is_npc_automated is
+        cleared so the player controls the bound creature."""
+        caster_idx = self._current_agent_idx()
+        if caster_idx < 0 or not self.pending_spell_slot:
+            return
+        if not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        spells = self.combat.get_agent_spells(self.bm, caster_idx)
+        sp = spells[self.pending_spell_idx]
+        dist_ft = self._footprint_dist_ft(caster_idx, target_idx)
+        if dist_ft < 0 or dist_ft > sp.range:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[target_idx].name} is out of range ({sp.range} ft).")
+            return
+
+        caster = self.bm.placed_agents[caster_idx]
+        target = self.bm.placed_agents[target_idx]
+        cstats = self.combat.get_agent_stats(self.bm, caster_idx)
+        ab_name = _INT_TO_ABILITY.get(cstats.spellcasting_ability, "cha")
+        dc_by_ability = {
+            "str": cstats.spell_save_dc_str,   "dex":   cstats.spell_save_dc_dex,
+            "con": cstats.spell_save_dc_con,   "intel": cstats.spell_save_dc_intel,
+            "wis": cstats.spell_save_dc_wis,   "cha":   cstats.spell_save_dc_cha,
+        }
+        dc = dc_by_ability.get(ab_name, cstats.spell_save_dc_cha)
+        save_mod = self.combat.save_mod_for(self.bm, target_idx, rpg.SaveAbility.SaveCha)
+        roll = self.combat.roll(20, save_mod)
+        if roll >= dc:
+            self._combat_log_add(
+                f"{target.name} succeeds on the Charisma save ({roll} vs DC {dc}) — "
+                f"Planar Binding fails.")
+        else:
+            self.bm.set_agent_faction(target_idx, self.bm.get_agent_faction(caster_idx))
+            self.bm.set_agent_npc_automated(target_idx, False)
+            self._combat_log_add(
+                f"{target.name} fails the Charisma save ({roll} vs DC {dc}) — "
+                f"bound to {caster.name}'s service!")
+
+        # Spend the slot (PC only, non-free) and the action, then clear pending state.
+        if not cstats.is_npc and sp.level >= 1 and not self.pending_spell_free_cast:
+            slot_level = self.pending_spell_slot_level
+            slots = list(cstats.spell_slots_remaining)
+            if 1 <= slot_level <= len(slots) and slots[slot_level - 1] > 0:
+                slots[slot_level - 1] -= 1
+                cstats.spell_slots_remaining = slots
+                self.combat.set_agent_stats(self.bm, caster_idx, cstats)
+        slot = self.pending_spell_slot
+        self.pending_spell_slot      = ""
+        self.pending_spell_free_cast = False
+        self._consume_cast_slot(slot, caster_idx)
+
     def _resolve_spell_cast(self, target_idx: int):
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
@@ -11477,6 +11852,10 @@ class App:
         action.overchannel    = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
         self._apply_dispel_selection(action)  # Dispel Magic picker (cell-aimed dispel of an AoE)
         self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
+        if getattr(sp, "creates_movement_ward", False):
+            # Magic Circle / Hallow: the warded types + direction chosen at cast time (see _activate_spell).
+            action.ward_creature_mask = getattr(self, "pending_ward_mask", 0)
+            action.ward_traps         = getattr(self, "pending_ward_traps", False)
         if sp.geometry == rpg.SpellGeometry.Rectangle and self.spell_anchor_cell is not None:
             # Oriented wall: anchor is the first click, `cell` is the endpoint.
             action.aoe_col  = self.spell_anchor_cell.col
@@ -11938,6 +12317,9 @@ class App:
             "teleportation_spell":   s.teleportation_spell,
             "max_teleport_targets":  s.max_teleport_targets,
             "teleport_range_ft":     s.teleport_range_ft,
+            "revives_dead":          getattr(s, "revives_dead", False),
+            "animates_dead":         getattr(s, "animates_dead", False),
+            "binds_creature":        getattr(s, "binds_creature", False),
             "conditions":            conditions,
             # N/day + Recharge (breath weapons). See helpers._dict_to_spell.
             "uses_max":              s.uses_max,
@@ -12000,6 +12382,7 @@ class App:
                     "haste_speed_bonus":      s.haste_speed_bonus,
                     "haste_action_available": s.haste_action_available,
                     "aid_hp_bonus":           s.aid_hp_bonus,
+                    "divine_intervention_lock": s.divine_intervention_lock,
                     "sleight_of_hand_prof":      s.sleight_of_hand_prof,
                     "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
                     "num_attacks":        s.num_attacks,
@@ -12020,6 +12403,11 @@ class App:
                     "is_npc":     s.is_npc,
                     "is_undead":  s.is_undead,
                     "is_fiend":   s.is_fiend,
+                    # Remaining Magic Circle / Hallow creature types (D4 movement wards).
+                    "is_celestial":  getattr(s, "is_celestial", False),
+                    "is_elemental":  getattr(s, "is_elemental", False),
+                    "is_fey":        getattr(s, "is_fey", False),
+                    "is_aberration": getattr(s, "is_aberration", False),
                     "is_vampire": s.is_vampire,
                     # Magic Resistance trait (Advantage on saves vs spells/magical effects). Must
                     # round-trip or a reloaded Pit Fiend/Balor loses it (dict_to_stats reads it back).
@@ -14799,14 +15187,29 @@ class App:
         size_px = cpx * pt.size
         team_col = faction_color(pt.faction)   # red / blue / grey by team
 
+        # Down-state, animation-synced via the NPC-playback HP override (None = live).
+        # A corpse (conditions.dead) gets the red death hatch and frees its square (see
+        # occupancy); an unconscious body (hp<=0, not dead) is greyed out instead and
+        # still blocks its cell. Keying the visuals off hp_disp keeps a just-killed token
+        # drawing as alive until its death outcome plays during turn playback.
+        hp_override = self._npc_anim_hp(agent_idx)
+        hp_disp = pt.stats.hp_cur if hp_override is None else hp_override
+        is_down = hp_disp <= 0
+        is_corpse = is_down and pt.conditions.dead
+        is_unconscious = is_down and not pt.conditions.dead
+        # Grey multiply for an unconscious token (skipped when a caller passes an explicit
+        # tint, e.g. a drag/placement ghost). Reuses the BLEND_RGBA_MULT tint path below.
+        grey_tint = (105, 105, 115) if (is_unconscious and not tint) else None
+        eff_tint = tint if tint else grey_tint
+
         # Team-colored background square behind every token. Sprites (which are mostly
         # transparent) sit on top of it, so the whole cell reads as red / blue / grey.
         r = pygame.Rect(screen_x + 1, screen_y + 1, size_px - 2, size_px - 2)
-        bg_fill = tint if tint else team_col
+        bg_fill = eff_tint if eff_tint else team_col
         bg = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
         bg.fill((*bg_fill[:3], alpha))
         self.screen.blit(bg, r)
-        border_col = tint if tint else tuple(min(c + 50, 255) for c in team_col[:3])
+        border_col = eff_tint if eff_tint else tuple(min(c + 50, 255) for c in team_col[:3])
         pygame.draw.rect(self.screen, border_col, r, 2, border_radius=3)
 
         # Skip first-letter placeholder sprites (e.g. sprites/C.png). They're opaque
@@ -14816,10 +15219,10 @@ class App:
         is_letter_placeholder = len(stem) == 1 and stem.isalpha()
         sprite = None if is_letter_placeholder else self._get_sprite(pt.sprite_path, size_px)
         if sprite:
-            if alpha < 255 or tint:
+            if alpha < 255 or eff_tint:
                 surf = sprite.copy()
-                if tint:
-                    surf.fill(tint, special_flags=pygame.BLEND_RGBA_MULT)
+                if eff_tint:
+                    surf.fill(eff_tint, special_flags=pygame.BLEND_RGBA_MULT)
                 surf.set_alpha(alpha)
                 self.screen.blit(surf, (screen_x, screen_y))
             else:
@@ -14839,13 +15242,9 @@ class App:
                 lt.set_alpha(alpha)
             self.screen.blit(lt, (screen_x + (size_px - lt.get_width()) // 2,
                                   screen_y + (size_px - lt.get_height()) // 2))
-        # NPC turn playback: the HP bar (and down-hatching) show the animation-synced value
-        # until the outcome that changed it has played (None = live rendering).
-        hp_override = self._npc_anim_hp(agent_idx)
-        hp_disp = pt.stats.hp_cur if hp_override is None else hp_override
-
-        # Down hatching (diagonal lines when HP <= 0)
-        if hp_disp <= 0:
+        # Red death hatch — corpses only (a greyed-out unconscious body gets none). The
+        # NPC-playback HP override folded into is_corpse defers this until the death plays.
+        if is_corpse:
             hatch = pygame.Surface((size_px, size_px), pygame.SRCALPHA)
             hatch.fill((0, 0, 0, 0))
             step = max(4, size_px // 8)
@@ -15603,13 +16002,12 @@ class App:
                 continue    # skip the one being dragged (draw as ghost below)
             if pt.removed_from_play:
                 continue    # tombstoned (dismissed summon): not rendered, not selectable
-            # Downed NPCs die outright (no death saves) and their corpses are cleared
-            # from the map. PCs at 0 HP stay drawn — they're unconscious and rolling
-            # death saves, so the DM still needs to see and select them. During an NPC
-            # turn playback a just-killed token keeps drawing until the animation drains,
-            # so its death lands at the animated moment instead of instantly.
-            if pt.conditions.dead and not self._npc_anim_draws_dead(i):
-                continue
+            # Dead bodies stay drawn as corpses (red death hatch, square freed for the
+            # living to walk over — see occupancy). Unconscious PCs at 0 HP also stay
+            # drawn (greyed, rolling death saves) and still block their cell. Only
+            # tombstoned tokens (removed_from_play, handled above) vanish. During NPC turn
+            # playback _draw_one_agent's hp_override defers the corpse look until the
+            # death outcome plays, so a just-killed token still animates its death.
             # Fog of war: hide a non-party token whose whole footprint sits in cells the
             # party has never seen. Party-faction tokens are always drawn. Keyed off the
             # same explored mask as _draw_fog_overlay, so a sprite can never sit on fog.
@@ -16593,6 +16991,17 @@ class App:
                             self.btn_cbt_preserve_life.rect.w = W
                             self.btn_cbt_preserve_life.draw(self.screen)
                             y += B + gap
+
+            # Divine Intervention (Cleric L10+, Magic action) — independent of Channel Divinity uses.
+            # Shown only when a DI use is available (can_use gates class-level + resource + Greater-DI
+            # lock); keying visibility on the resource avoids the haste_button_bonus_used dead-key trap.
+            if (0 <= cur_idx < len(agents) and not self.action_used
+                    and self.combat.can_use_divine_intervention(self.bm, cur_idx)):
+                self.btn_cbt_divine_intervention.rect.x = lx
+                self.btn_cbt_divine_intervention.rect.y = y
+                self.btn_cbt_divine_intervention.rect.w = W
+                self.btn_cbt_divine_intervention.draw(self.screen)
+                y += B + gap
 
             # Trickery Cleric — Invoke Duplicity (Channel Divinity + Bonus Action), plus the bonus-action
             # Move Duplicate and the free Trickster's Transposition (L6+) swap.
@@ -18669,7 +19078,15 @@ class App:
                             # Collecting Chromatic Orb's leap chain: each click adds a hop.
                             self._chromatic_add_leap(hit)
                         elif self.pending_spell_slot:
-                            if self._pending_spell_opens_doors() and self.bm.door_at(cell) >= 0:
+                            if self._pending_spell_targets_corpse():
+                                # Raise Dead / Revivify / Animate Dead: click a true-dead body
+                                # (invisible to _agent_at). Routed through _corpse_at.
+                                self._resolve_corpse_spell(cell)
+                            elif self._pending_spell_binds_creature() and hit >= 0:
+                                # Planar Binding: click a living creature to bind to the caster's
+                                # team on a failed Charisma save (control transfer, no damage).
+                                self._resolve_planar_binding(hit)
+                            elif self._pending_spell_opens_doors() and self.bm.door_at(cell) >= 0:
                                 # Knock targets a doorway cell (no creature). Route through the
                                 # cell path so the engine reads aoe_col/aoe_row for the door.
                                 self._resolve_spell_cast_aoe(cell)
@@ -19326,6 +19743,8 @@ class App:
                                 self.action_used = True
                             else:
                                 self._combat_log_add("Turn Undead unavailable.")
+                    if self.btn_cbt_divine_intervention.clicked(event):
+                        self._start_divine_intervention()
                     if self.btn_cbt_radiance.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):

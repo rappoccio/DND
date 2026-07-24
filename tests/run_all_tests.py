@@ -158,6 +158,26 @@ test_scripts = [
     # Aid (SPELLS_TO_WIRE Phase 3: +5 current & max HP per target, +5/upcast level, revives downed)
     "test_aid.py",
 
+    # Divine Intervention D0 (Cleric L10 free-cast resource; L20 Greater-DI 2d4 Wish lock)
+    "test_divine_intervention.py",
+
+    # Dead-vs-Unconscious occupancy split (DI SPEC §10, prereq for D2/D3): corpse frees its
+    # square, unconscious body still blocks; engine agent_occupancy + helpers.can_place_agent
+    "test_dead_unconscious_occupancy.py",
+
+    # Divine Intervention D2 (Raise Dead / Revivify): revives_dead heal clears conditions.dead
+    # and restores a corpse; the flag also drives the GUI corpse-pick mode (SPEC §7 D2, §10.5)
+    "test_raise_dead.py",
+
+    # Divine Intervention D3 (Animate Dead / Planar Binding): animates_dead routes the corpse-pick
+    # to raise an undead servant; binds_creature routes a Cha-save single-target to a control
+    # transfer. Both resolve GUI-side; flag round-trips + JSON wiring here (SPEC §7 D3)
+    "test_animate_dead.py",
+
+    # Divine Intervention D4 (Magic Circle): a creature-type movement ward (an emanation the chosen
+    # species — Fiend, Fey, … — can't cross), in keep-out and reverse trap-inside modes (SPEC §7 D4)
+    "test_magic_circle.py",
+
     # Dispel Magic (SPELLS_TO_WIRE Phase 4: auto-end level<=slot, else DC 10+level check; clears concentration)
     "test_dispel_magic.py",
 

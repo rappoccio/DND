@@ -15,8 +15,9 @@ def can_place_agent(bm, cell, size, exclude_idx=-1) -> bool:
     """Return True if a size×size agent fits at top-left `cell`: in bounds, not on a
     wall/blocked cell, and not overlapping another LIVE agent's footprint. A tombstoned
     agent (removed_from_play, e.g. a dismissed summon) no longer occupies its cell, and
-    neither does a downed body (hp_cur <= 0) — mirroring the engine's agentOccupancy,
-    so a killed agent's square frees up for others to move into or be placed on."""
+    neither does a corpse (conditions.dead) — mirroring the engine's agentOccupancy, so a
+    dead agent's square frees up for others to move into or be placed on. An unconscious
+    (downed but not dead) body still blocks, like a living creature."""
     cols, rows = bm.grid_cols, bm.grid_rows
     if cell.col < 0 or cell.row < 0:
         return False
@@ -25,7 +26,7 @@ def can_place_agent(bm, cell, size, exclude_idx=-1) -> bool:
     if bm.is_blocked(cell, size):
         return False
     for i, pt in enumerate(bm.placed_agents):
-        if i == exclude_idx or pt.removed_from_play or pt.stats.hp_cur <= 0:
+        if i == exclude_idx or pt.removed_from_play or pt.conditions.dead:
             continue
         if (cell.col < pt.origin.col + pt.size and
                 cell.col + size > pt.origin.col and
@@ -832,6 +833,10 @@ def _spell_to_dict(s) -> dict:
         "hp_pool":                getattr(s, "hp_pool", 0),
         "pool_is_temp_hp":        getattr(s, "pool_is_temp_hp", False),
         "heal_to_full":           getattr(s, "heal_to_full", False),
+        "revives_dead":           getattr(s, "revives_dead", False),
+        "animates_dead":          getattr(s, "animates_dead", False),
+        "binds_creature":         getattr(s, "binds_creature", False),
+        "creates_movement_ward":  getattr(s, "creates_movement_ward", False),
         "ends_conditions":        list(getattr(s, "ends_conditions", [])),
     }
 
@@ -927,6 +932,14 @@ def _dict_to_spell(d: dict):
         s.pool_is_temp_hp = bool(d.get("pool_is_temp_hp", False))
     if hasattr(s, "heal_to_full"):
         s.heal_to_full = bool(d.get("heal_to_full", False))
+    if hasattr(s, "revives_dead"):
+        s.revives_dead = bool(d.get("revives_dead", False))
+    if hasattr(s, "animates_dead"):
+        s.animates_dead = bool(d.get("animates_dead", False))
+    if hasattr(s, "binds_creature"):
+        s.binds_creature = bool(d.get("binds_creature", False))
+    if hasattr(s, "creates_movement_ward"):
+        s.creates_movement_ward = bool(d.get("creates_movement_ward", False))
     if hasattr(s, "ends_conditions"):
         s.ends_conditions = list(d.get("ends_conditions", []))
     s.level = int(d.get("level", 0))

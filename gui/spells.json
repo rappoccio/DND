@@ -202,6 +202,7 @@
     "duration": 1,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "animates_dead": true,
     "level": 3,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
@@ -3567,26 +3568,31 @@
   },
   {
     "name": "Geas",
-    "description": "You give a verbal command to a creature that you can see within range, ordering it to carry out some service or refrain from an action or a course of activity as you decide. The target must succeed on a Wisdom saving throw or have the Charmed condition for the duration. The target automatically succeeds if it can't understand your command. While Charmed, the creature takes 5d10 Psychic damage if it acts in a manner directly counter to your command. It takes this damage no more than once each day. You can issue any command you choose, short of an activity that would result in certain death. Should you issue a suicidal command, the spell ends. A Remove Curse, Greater Restoration, or Wish spell ends this spell.",
+    "description": "You give a verbal command to a creature that you can see within range, ordering it to carry out some service or refrain from an action or a course of activity as you decide. The target must succeed on a Wisdom saving throw or have the Charmed condition for the duration. The target automatically succeeds if it can't understand your command. While Charmed, the creature takes 5d10 Psychic damage if it acts in a manner directly counter to your command. It takes this damage no more than once each day. You can issue any command you choose, short of an activity that would result in certain death. Should you issue a suicidal command, the spell ends. A Remove Curse, Greater Restoration, or Wish spell ends this spell.\n\n[Engine note] Modeled as an indefinite control spell: on a failed Wis save the target is compelled to leave combat (flees to the farthest point and takes no action, like Command's Flee) until it takes damage, at which point the compulsion ends.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Save",
     "save_ability": "SaveWis",
     "range": 60,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
-    "magic_damage_types": [
-      {
-        "type": "Psychic",
-        "num_dice": 5,
-        "die_size": 10
-      }
-    ],
+    "duration": 1000,
+    "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 5,
     "upcast_dice_bonus": 0,
+    "num_targets": 1,
+    "conditions": [
+      {
+        "condition_name": "CommandFlee",
+        "condition_duration": 1000,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1,
+        "on_damage": "end"
+      }
+    ],
     "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true,
@@ -4975,14 +4981,14 @@
     "name": "Magic Circle",
     "description": "You create a 10-foot-radius, 20-foot-tall Cylinder of magical energy centered on a point on the ground that you can see within range. Glowing runes appear wherever the Cylinder intersects with the floor or other surface. Choose one or more of the following types of creatures: Celestials, Elementals, Fey, Fiends, or Undead. The circle affects a creature of the chosen type in the following ways:\n\n- The creature can't willingly enter the Cylinder by nonmagical means. If the creature tries to use teleportation or interplanar travel to do so, it must first succeed on a Charisma saving throw.\n- The creature has Disadvantage on attack rolls against targets within the Cylinder.\n- Targets within the Cylinder can't be possessed by or gain the Charmed or Frightened condition from the creature. Each time you cast this spell, you can cause its magic to operate in the reverse direction, preventing a creature of the specified type from leaving the Cylinder and protecting targets outside it.",
     "type": "Harm",
-    "geometry": "Single",
-    "attack_type": "AttackRoll",
+    "geometry": "Sphere",
+    "attack_type": "Automatic",
     "save_ability": "SaveCha",
     "range": 10,
-    "radius": 0,
+    "radius": 10,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 100,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 3,
@@ -4990,6 +4996,12 @@
     "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true,
+    "creates_movement_ward": true,
+    "terrain_color": [
+      190,
+      150,
+      230
+    ],
     "school": "abjuration"
   },
   {
@@ -5200,20 +5212,31 @@
   },
   {
     "name": "Mass Suggestion",
-    "description": "You suggest a course of activity—described in no more than 25 words—to twelve or fewer creatures you can see within range that can hear and understand you. The suggestion must sound achievable and not involve anything that would obviously deal damage to any of the targets or their allies. For example, you could say, \"Walk to the village down that road, and help the villagers there harvest crops until sunset.\" Or you could say, \"Now is not the time for violence. Drop your weapons, and dance! Stop in an hour.\" Each target must succeed on a Wisdom saving throw or have the Charmed condition for the duration or until you or your allies deal damage to the target. Each Charmed target pursues the suggestion to the best of its ability. The suggested activity can continue for the entire duration, but if the suggested activity can be completed in a shorter time, the spell ends for a target upon completing it.",
+    "description": "You suggest a course of activity—described in no more than 25 words—to twelve or fewer creatures you can see within range that can hear and understand you. The suggestion must sound achievable and not involve anything that would obviously deal damage to any of the targets or their allies. For example, you could say, \"Walk to the village down that road, and help the villagers there harvest crops until sunset.\" Or you could say, \"Now is not the time for violence. Drop your weapons, and dance! Stop in an hour.\" Each target must succeed on a Wisdom saving throw or have the Charmed condition for the duration or until you or your allies deal damage to the target. Each Charmed target pursues the suggestion to the best of its ability. The suggested activity can continue for the entire duration, but if the suggested activity can be completed in a shorter time, the spell ends for a target upon completing it.\n\n[Engine note] Modeled as an indefinite control spell: each target that fails its Wis save is compelled to leave combat (flees to the farthest point and takes no action, like Command's Flee) until it takes damage, at which point the compulsion ends.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Save",
     "save_ability": "SaveWis",
     "range": 60,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 1000,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 6,
     "upcast_dice_bonus": 0,
+    "num_targets": 12,
+    "conditions": [
+      {
+        "condition_name": "CommandFlee",
+        "condition_duration": 1000,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1,
+        "on_damage": "end"
+      }
+    ],
     "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true,
@@ -5745,6 +5768,7 @@
     "duration": 1,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "binds_creature": true,
     "level": 5,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
@@ -5967,8 +5991,8 @@
   {
     "name": "Prayer of Healing",
     "description": "Up to five creatures of your choice who remain within range for the spell's entire casting gain the benefits of a Short Rest and also regain 2d8 Hit Points. A creature can't be affected by this spell again until that creature finishes a Long Rest.",
-    "type": "Harm",
-    "geometry": "Single",
+    "type": "Heal",
+    "geometry": "Multiple",
     "attack_type": "Automatic",
     "save_ability": "SaveDex",
     "range": 30,
@@ -5978,8 +6002,14 @@
     "duration": 1,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "healing_type": {
+      "num_dice": 2,
+      "die_size": 8,
+      "bonus": 0
+    },
     "level": 2,
     "upcast_dice_bonus": 1,
+    "num_targets": 5,
     "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true,
@@ -6248,6 +6278,12 @@
     "duration": 1,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "healing_type": {
+      "num_dice": 0,
+      "die_size": 0,
+      "bonus": 1
+    },
+    "revives_dead": true,
     "level": 5,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
@@ -6499,6 +6535,12 @@
     "duration": 1,
     "magic_damage_types": [],
     "physical_damage_types": [],
+    "healing_type": {
+      "num_dice": 0,
+      "die_size": 0,
+      "bonus": 1
+    },
+    "revives_dead": true,
     "level": 3,
     "upcast_dice_bonus": 0,
     "requires_concentration": false,
@@ -7468,21 +7510,32 @@
   },
   {
     "name": "Suggestion",
-    "description": "You suggest a course of activity—described in no more than 25 words—to one creature you can see within range that can hear and understand you. The suggestion must sound achievable and not involve anything that would obviously deal damage to the target or its allies. For example, you could say, \"Fetch the key to the cult's treasure vault, and give the key to me.\" Or you could say, \"Stop fighting, leave this library peacefully, and don't return.\" The target must succeed on a Wisdom saving throw or have the Charmed condition for the duration or until you or your allies deal damage to the target. The Charmed target pursues the suggestion to the best of its ability. The suggested activity can continue for the entire duration, but if the suggested activity can be completed in a shorter time, the spell ends for the target upon completing it.",
+    "description": "You suggest a course of activity—described in no more than 25 words—to one creature you can see within range that can hear and understand you. The suggestion must sound achievable and not involve anything that would obviously deal damage to the target or its allies. For example, you could say, \"Fetch the key to the cult's treasure vault, and give the key to me.\" Or you could say, \"Stop fighting, leave this library peacefully, and don't return.\" The target must succeed on a Wisdom saving throw or have the Charmed condition for the duration or until you or your allies deal damage to the target. The Charmed target pursues the suggestion to the best of its ability. The suggested activity can continue for the entire duration, but if the suggested activity can be completed in a shorter time, the spell ends for the target upon completing it.\n\n[Engine note] Modeled as an indefinite control spell: on a failed Wis save the target is compelled to leave combat (flees to the farthest point and takes no action, like Command's Flee) until it takes damage, at which point the compulsion ends.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Save",
     "save_ability": "SaveWis",
     "range": 30,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 1000,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 2,
     "upcast_dice_bonus": 0,
-    "requires_concentration": true,
+    "num_targets": 1,
+    "conditions": [
+      {
+        "condition_name": "CommandFlee",
+        "condition_duration": 1000,
+        "save_ability": "SaveWis",
+        "save_dc_ability": "SaveSpellcasterMod",
+        "save_repeat_turns": -1,
+        "on_damage": "end"
+      }
+    ],
+    "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true,
     "school": "enchantment"

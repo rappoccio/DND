@@ -3242,11 +3242,14 @@ class SpellSelectionDialog:
         self._tab_rects = []      # cached (rect, level) for hit-testing
         self._frames_since_show = 0  # Prevent immediate dismissal on show click
         self.max_level = None     # None == no cap; else hide/filter spells above this level (Wish ≤ 8)
+        self.allow_names = None   # None == no name filter; else keep only spells whose name is in this set
         self.title = "Select a Spell"
 
-    def show(self, callback, max_level=None, title=None):
+    def show(self, callback, max_level=None, title=None, allow_names=None):
         """Open the picker. ``max_level`` (e.g. 8 for Wish) hides the higher-level
-        tabs and filters those spells out of the list; ``title`` overrides the header."""
+        tabs and filters those spells out of the list; ``allow_names`` (a set, e.g. the
+        Divine Intervention Cleric list) restricts the list to those names; ``title``
+        overrides the header."""
         self.visible = True
         self.selected_callback = callback
         self.scroll_y = 0
@@ -3254,6 +3257,7 @@ class SpellSelectionDialog:
         self.search_text = ""
         self.active_level = None
         self.max_level = max_level
+        self.allow_names = allow_names
         self.title = title or "Select a Spell"
         self._frames_since_show = 0  # Reset counter to prevent immediate dismissal
         self._update_filtered_spells()
@@ -3287,6 +3291,11 @@ class SpellSelectionDialog:
         if self.max_level is not None:
             self.filtered_spells = [s for s in self.filtered_spells
                                     if s.get("level", 0) <= self.max_level]
+        # Name allow-list (e.g. Divine Intervention's Cleric-≤5 set): applies across every
+        # branch so an out-of-list spell can never be reached by search or by any tab.
+        if self.allow_names is not None:
+            self.filtered_spells = [s for s in self.filtered_spells
+                                    if s.get("name") in self.allow_names]
         self.scroll_y = 0
         self._hover_idx = -1
 

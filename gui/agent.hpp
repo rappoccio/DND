@@ -70,6 +70,19 @@ namespace rpg {
     { t.reaction() }        -> std::same_as<void>;
   };
 
+  // Creature-type bitmask (Magic Circle / Hallow warded types, SRD 5.2). One bit per type;
+  // Agent::Stats::creatureTypeMask() ORs the is_<type> flags into this. A ward stores the set of
+  // types it forbids as the same mask, so BattleMap::movementWardBlocks tests membership with a
+  // single AND. Typeless creatures (Humanoid, Beast, …) have mask 0 and are never warded.
+  enum CreatureTypeBit : uint32_t {
+    CT_Aberration = 1u << 0,
+    CT_Celestial  = 1u << 1,
+    CT_Elemental  = 1u << 2,
+    CT_Fey        = 1u << 3,
+    CT_Fiend      = 1u << 4,
+    CT_Undead     = 1u << 5,
+  };
+
   // ── Abstract base class implementing the AgentLike contract ───────────────
   class Agent {
   public:
@@ -615,6 +628,10 @@ namespace rpg {
       RogueSubclass rogue_subclass{RogueSubclassNone};           // Rogue subclass choice
       ClericSubclass cleric_subclass{ClericSubclassNone};        // Cleric divine domain choice
       BlessedStrike blessed_strike{BlessedStrikeNone};           // Cleric L7 Blessed Strikes choice
+      // Divine Intervention (Cleric L10). Availability lives in the "Divine Intervention"
+      // Resource (0/1). This counter is the Greater-DI (L20) recharge lock: while > 0, a
+      // Long Rest decrements it INSTEAD of refilling the resource. 0 = normal (refills).
+      uint8_t divine_intervention_lock{0};
       RangerSubclass ranger_subclass{RangerSubclassNone};        // Ranger subclass choice
       HunterPrey hunter_prey{HunterPreyNone};                    // Hunter L3 Hunter's Prey choice
       DefensiveTactics defensive_tactics{DefensiveTacticsNone};  // Hunter L7 Defensive Tactics choice
@@ -671,7 +688,27 @@ namespace rpg {
 
       bool is_undead{false};                                     // creature type Undead (Turn Undead target)
       bool is_fiend{false};                                      // creature type Fiend (Divine Smite +1d8 target)
+      // Remaining Magic Circle / Hallow creature types (SRD 5.2). Together with is_undead / is_fiend
+      // these six feed creatureTypeMask() → the Magic Circle / Hallow movement wards (D4). Populated
+      // from the bestiary stat block's meta.type when a monster loads; serialized alongside the flags.
+      bool is_celestial{false};                                  // creature type Celestial
+      bool is_elemental{false};                                  // creature type Elemental
+      bool is_fey{false};                                        // creature type Fey
+      bool is_aberration{false};                                 // creature type Aberration
       bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
+
+      // OR of the six Magic Circle / Hallow creature-type flags into a CreatureTypeBit mask.
+      // Used by BattleMap::movementWardBlocks to test a mover against a ward's warded-type set.
+      [[nodiscard]] uint32_t creatureTypeMask() const noexcept {
+          uint32_t m = 0;
+          if (is_aberration) m |= CT_Aberration;
+          if (is_celestial)  m |= CT_Celestial;
+          if (is_elemental)  m |= CT_Elemental;
+          if (is_fey)        m |= CT_Fey;
+          if (is_fiend)      m |= CT_Fiend;
+          if (is_undead)     m |= CT_Undead;
+          return m;
+      }
       bool magic_resistance{false};                              // Magic Resistance trait: Advantage on saves vs spells & other magical effects (Pit Fiend, Balor, many fiends/elementals)
       bool cant_heal{false};                                     // derived: ≥1 active condition with prevents_healing (Pit Fiend poison). Blocks healAgent + Regeneration. Set in addAgentCondition, recomputed in onConditionEnded — NOT authored/serialized.
 

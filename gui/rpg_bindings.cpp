@@ -584,6 +584,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Cleric divine domain (only valid when character_class == Cleric)")
         .def_readwrite("blessed_strike", &Agent::Stats::blessed_strike,
              "Cleric L7 Blessed Strikes choice: DivineStrike or PotentSpellcasting.")
+        .def_readwrite("divine_intervention_lock", &Agent::Stats::divine_intervention_lock,
+             "Greater Divine Intervention (Cleric L20) recharge lock: remaining Long Rests before\n"
+             "the DI resource refills again (0 = normal). Set to 2d4 when Wish is chosen.")
         // Druid Features
         .def_readwrite("wild_shape_active", &Agent::Stats::wild_shape_active,
              "True when Druid is in an active Wild Shape form.")
@@ -617,6 +620,14 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Creature type is Undead (a valid Turn Undead target).")
         .def_readwrite("is_fiend", &Agent::Stats::is_fiend,
              "Creature type is Fiend (takes Divine Smite's +1d8, like Undead).")
+        .def_readwrite("is_celestial", &Agent::Stats::is_celestial,
+             "Creature type is Celestial (a Magic Circle / Hallow warded type).")
+        .def_readwrite("is_elemental", &Agent::Stats::is_elemental,
+             "Creature type is Elemental (a Magic Circle / Hallow warded type).")
+        .def_readwrite("is_fey", &Agent::Stats::is_fey,
+             "Creature type is Fey (a Magic Circle / Hallow warded type).")
+        .def_readwrite("is_aberration", &Agent::Stats::is_aberration,
+             "Creature type is Aberration (a Hallow / Glyph of Warding warded type).")
         .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
              "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
         .def_readwrite("magic_resistance", &Agent::Stats::magic_resistance,
@@ -884,6 +895,17 @@ PYBIND11_MODULE(rpg_battle_map, m)
                 s += std::format(" deaths({}/{})", c.death_save_successes, c.death_save_failures);
             if (c.slipped_this_turn) s += " slipped_this_turn";
             return s + ">"; });
+
+    // ── Creature-type bitmask (Magic Circle / Hallow warded types) ─────────────
+    // Bit flags — a ward's mask and a creature's creatureTypeMask() are OR-combined ints, so
+    // these are exposed with arithmetic enabled (rpg.CreatureType.Fiend | rpg.CreatureType.Fey).
+    py::enum_<CreatureTypeBit>(m, "CreatureType", py::arithmetic())
+        .value("Aberration", CT_Aberration)
+        .value("Celestial",  CT_Celestial)
+        .value("Elemental",  CT_Elemental)
+        .value("Fey",        CT_Fey)
+        .value("Fiend",      CT_Fiend)
+        .value("Undead",     CT_Undead);
 
     // ── Damage type enums ─────────────────────────────────────────────────────
     py::enum_<MagicDamage_t>(m, "MagicDamage")
@@ -1613,6 +1635,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("heal_to_full", &Spell::heal_to_full,
              "Power Word Heal: the target regains all its Hit Points (healed to its HP\n"
              "maximum) instead of rolling healing_type dice.")
+        .def_readwrite("revives_dead", &Spell::revives_dead,
+             "Raise Dead / Revivify: this heal can restore a true-dead corpse. Clears the\n"
+             "target's `dead` condition before reviving, and drives the GUI corpse-pick mode.")
+        .def_readwrite("animates_dead", &Spell::animates_dead,
+             "Animate Dead (Divine Intervention D3): targets a corpse and raises an undead\n"
+             "servant from it. Engine ignores it; drives the GUI corpse-pick + spawn resolve.")
+        .def_readwrite("binds_creature", &Spell::binds_creature,
+             "Planar Binding (Divine Intervention D3): on a failed Charisma save the target is\n"
+             "bound to the caster's team. Engine ignores it; drives the GUI control-transfer resolve.")
+        .def_readwrite("creates_movement_ward", &Spell::creates_movement_ward,
+             "Magic Circle / Hallow (Divine Intervention D4): places a creature-type movement ward\n"
+             "at the aimed center. The warded types + direction ride on SpellAction\n"
+             "(ward_creature_mask / ward_traps); radius comes from `radius`.")
         .def_readwrite("ends_conditions", &Spell::ends_conditions,
              "Restorative Heal: condition names ended on each healed target (e.g. Power\n"
              "Word Heal ends Charmed/Frightened/Paralyzed/Poisoned/Stunned).")
@@ -1689,6 +1724,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Dispel Magic picker selection: ActiveAgentCondition ids to end (see dispel_spell_effect_ids).")
         .def_readwrite("dispel_spell_effect_ids", &SpellAction::dispel_spell_effect_ids,
              "Dispel Magic picker selection: ActiveSpellEffect ids to end.")
+        .def_readwrite("ward_creature_mask", &SpellAction::ward_creature_mask,
+             "Magic Circle / Hallow: OR of rpg creature-type bits this cast wards (chosen in GUI).")
+        .def_readwrite("ward_traps", &SpellAction::ward_traps,
+             "Magic Circle reverse mode: False keeps warded types OUT, True traps them IN.")
         .def_readwrite("dispel_terrain_ids", &SpellAction::dispel_terrain_ids,
              "Dispel Magic picker selection: ActiveTerrainEffect ids to end. When any of these three\n"
              "lists is non-empty, a dispels_magic cast ends ONLY the chosen effects (grouped by source\n"
@@ -3335,6 +3374,18 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("battle_map"), py::arg("idx"),
              "Spell indices an Eldritch Knight may cast via War Magic: action-casting-time cantrips\n"
              "(L7+), plus level 1-5 action spells at L18+ (Improved War Magic). Empty for non-EK / <L7.")
+        .def("can_use_divine_intervention",
+             &CombatEngine::canUseDivineIntervention,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Divine Intervention (Cleric L10+): true if agent_idx is a Cleric L10+ with a DI use\n"
+             "available (the 'Divine Intervention' resource current > 0) and not under the Greater-DI\n"
+             "recharge lock. The GUI gates the DI button on this, not on action_used.")
+        .def("use_divine_intervention",
+             &CombatEngine::useDivineIntervention,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chose_wish"),
+             "Spend one Divine Intervention use. chose_wish=True (Greater DI, L20) applies the\n"
+             "2d4-Long-Rest recharge lock. Returns False (no state change) if unavailable. The caller\n"
+             "then free-casts the chosen Cleric spell (mirrors the Wish free-cast flow).")
         .def("apply_arcane_charge",
              &CombatEngine::applyArcaneCharge,
              py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
@@ -4231,7 +4282,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("requires_concentration", &ActiveTerrainEffect::requires_concentration)
         .def_readonly("anchor_agent_idx",  &ActiveTerrainEffect::anchor_agent_idx)
         .def_readonly("anchor_radius_ft",  &ActiveTerrainEffect::anchor_radius_ft)
-        .def_readonly("spares_source_allies", &ActiveTerrainEffect::spares_source_allies);
+        .def_readonly("spares_source_allies", &ActiveTerrainEffect::spares_source_allies)
+        .def_readonly("ward_creature_mask", &ActiveTerrainEffect::ward_creature_mask,
+             "Magic Circle / Hallow: OR of warded creature-type bits (0 = not a movement ward).")
+        .def_readonly("ward_traps",        &ActiveTerrainEffect::ward_traps,
+             "Movement ward direction: False keeps warded types out, True traps them inside.");
 
     // ── ActiveLightEffect struct ────────────────────────────────────────────
     py::class_<ActiveLightEffect>(m, "ActiveLightEffect")
@@ -4290,6 +4345,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         })
         .def("is_blocked", &BattleMap::isBlocked,
              py::arg("origin"), py::arg("agent_size"), py::arg("movement_type") = MovementType::Walk)
+        .def("agent_occupancy", &BattleMap::agentOccupancy,
+             py::arg("origin"), py::arg("size"), py::arg("mover_idx"),
+             "Agent-footprint passability of the size×size cell at `origin` for mover_idx:\n"
+             "0 = free, 1 = ally footprint (pass-through), 2 = enemy footprint (impassable).\n"
+             "Corpses (conditions.dead) free their square; unconscious/downed bodies still block.")
         .def("set_terrain_type", &BattleMap::setTerrainType,
              py::arg("cell"), py::arg("terrain_type"),
              "Set a cell's TerrainType (Standard/Water/Wall/Chasm).")
@@ -4586,9 +4646,12 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("requires_concentration") = false,
              py::arg("anchor_agent_idx") = -1, py::arg("anchor_radius_ft") = 0,
              py::arg("spares_source_allies") = false,
+             py::arg("ward_creature_mask") = 0, py::arg("ward_traps") = false,
              "Place a temporary terrain effect covering the given cells.\n"
              "anchor_agent_idx>=0 makes it follow that agent (moving emanation);\n"
              "spares_source_allies excludes the source + its allies (selective_targeting).\n"
+             "ward_creature_mask != 0 makes it a Magic Circle / Hallow movement ward (an OR of\n"
+             "rpg.CreatureType bits); ward_traps=False keeps those types out, True traps them in.\n"
              "Returns unique effect id (for later removal/metadata).")
         .def("set_terrain_effect_cells", &BattleMap::setTerrainEffectCells,
              py::arg("effect_id"), py::arg("cells"),
