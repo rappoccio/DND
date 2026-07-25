@@ -1471,6 +1471,20 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
         return fs;
     }
 
+    // Forcecage (NPC_AUTOMATION_PLAN.md Step 14): a trapped NPC — barred (can't walk out) or sealed in the
+    // 10-ft box (can't even attack/cast out) — can do nothing this turn but attempt to teleport free. Try it
+    // up front, on a FRESH turn only, BEFORE the normal strategy dispatch would waste the turn dashing into
+    // the bars or casting a spell the box refuses. npcTeleportEscape spends the teleport and rolls the CHA
+    // save inside teleportAgent; on a failure the attempt is still spent (RAW), so the turn ends either way.
+    // With no teleport it falls through — the normal dispatch then finds it can't move/act and ends the turn.
+    if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx)) {
+        const auto cond = bm.getAgentConditions(agent_idx);
+        if ((cond.forcecaged || cond.forcecage_sealed) && npcTeleportEscape(bm, agent_idx)) {
+            npc_recording_ = false;
+            return FlowStatus::Completed;
+        }
+    }
+
     // Load-or-resolve the strategy (NEVER the raw field — resolveStrategy is the single difficulty seam).
     // A parked turn REUSES the strategy that launched it: the dynamic Level-4 resolution probes live game
     // state, so re-resolving after that state changed mid-park (the heal landed, an enemy dropped) could
@@ -1815,6 +1829,27 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     // positioning lambdas capture by reference and read at call time — after the Route-D override runs.
     bool kite = policy.kite;
 
+    // Movement type for the whole turn (Step 14): a flying-only or aquatic monster (walk == 0) must fly/swim
+    // to close, not sit still. Every positioning/approach step and beginMove below uses this type and its
+    // matching remaining budget, so the driver moves by whatever means the creature actually has.
+    const MovementType moveType = npcMovementType(bm, agent_idx);
+    auto moveBudget = [&]() -> int {
+        const Agent* a = bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent.get();
+        switch (moveType) {
+            case MovementType::Fly:  return a->getFlyRemaining();
+            case MovementType::Swim: return a->getSwimRemaining();
+            default:                 return a->getWalkRemaining();
+        }
+    };
+    auto moveSpeed = [&]() -> int {
+        const Agent::Stats s = bm.getAgentStats(agent_idx);
+        switch (moveType) {
+            case MovementType::Fly:  return s.speed_fly;
+            case MovementType::Swim: return s.speed_swim;
+            default:                 return s.speed_walk;
+        }
+    };
+
     // Reach of weapon slot `w`, in CELLS (footprintDistance units): melee uses reach_ft, ranged uses
     // normal_range_ft. reachableCells/footprintDistance are the single geometry source — never re-derived.
     auto reachCellsFor = [&](int w) -> int {
@@ -1864,11 +1899,10 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const auto& pa = bm.placedAgents();
         const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
         const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
-        const int  budget = budgetOverride >= 0 ? budgetOverride
-                          : pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+        const int  budget = budgetOverride >= 0 ? budgetOverride : moveBudget();
         bool found = false; int bestSteps = std::numeric_limits<int>::max();
         int  bestSafety = std::numeric_limits<int>::min();
-        for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
+        for (const Cell& c : bm.reachableCells(me, ms, budget, moveType, agent_idx)) {
             if (!canAttackFrom(c, t, w)) continue;
             const int steps = std::max(std::abs(c.col - me.col), std::abs(c.row - me.row));
             if (kite) {
@@ -1889,10 +1923,9 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
         const Cell tg = pa[static_cast<std::size_t>(t)].origin;
         const int  ts = pa[static_cast<std::size_t>(t)].agent->getSize();
-        const int  budget = budgetOverride >= 0 ? budgetOverride
-                          : pa[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+        const int  budget = budgetOverride >= 0 ? budgetOverride : moveBudget();
         bool found = false; int bestDist = footprintDistance(me, ms, tg, ts);
-        for (const Cell& c : bm.reachableCells(me, ms, budget, MovementType::Walk, agent_idx)) {
+        for (const Cell& c : bm.reachableCells(me, ms, budget, moveType, agent_idx)) {
             if (c == me) continue;
             const int d = footprintDistance(c, ms, tg, ts);
             if (d >= 1 && d < bestDist) { bestDist = d; out = c; found = true; }
@@ -2026,7 +2059,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 st.phase = NpcTurnState::Attacking;
                 if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
                 if (dest != curOrigin()) {             // a kiter may already be on the best cell → no move
-                    if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                    if (beginMove(bm, agent_idx, dest, moveType) == FlowStatus::AwaitingDecision)
                         return FlowStatus::AwaitingDecision;
                 }
                 // move resolved inline → fall through to the attack loop
@@ -2048,7 +2081,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                     st.phase = NpcTurnState::Attacking;
                     if (!hasRecipe) st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
                     if (altDest != curOrigin()) {
-                        if (beginMove(bm, agent_idx, altDest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        if (beginMove(bm, agent_idx, altDest, moveType) == FlowStatus::AwaitingDecision)
                             return FlowStatus::AwaitingDecision;
                     }
                     // reached a reachable target → fall through to the swing loop (Action + bonus intact)
@@ -2058,9 +2091,8 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                     // target). Probe the hypothetical dashed budget first so we never burn an Action/bonus on
                     // a Dash that changes nothing (the old bug: a vampire boxed out of its target spent BOTH
                     // dashes and moved nowhere).
-                    const int dashStep = bm.getAgentStats(agent_idx).speed_walk;
-                    const int walkNow  =
-                        bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->getWalkRemaining();
+                    const int dashStep = moveSpeed();
+                    const int walkNow  = moveBudget();
                     const int dashedBudget = walkNow + dashStep;
                     const bool bonusDashAvail =
                         bm.getAgentStats(agent_idx).has_cunning_action && hasBonusAction(bm, agent_idx);
@@ -2081,7 +2113,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                             if (!hasRecipe)
                                 st.attacks_remaining = std::max(1, bm.getAgentStats(agent_idx).num_attacks);
                             if (bonusDest != curOrigin()) {
-                                if (beginMove(bm, agent_idx, bonusDest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                                if (beginMove(bm, agent_idx, bonusDest, moveType) == FlowStatus::AwaitingDecision)
                                     return FlowStatus::AwaitingDecision;
                             }
                             // fall through to the swing loop (Action stays free)
@@ -2094,8 +2126,12 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                         if (findApproachCell(st.target_idx, adv, dashedBudget)) {
                             bm.applyDash(agent_idx);
                             log_("NPC {} dashes toward {}", agentName(bm, agent_idx), agentName(bm, st.target_idx));
-                            if (beginMove(bm, agent_idx, adv, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                            if (beginMove(bm, agent_idx, adv, moveType) == FlowStatus::AwaitingDecision)
                                 return FlowStatus::AwaitingDecision;
+                        } else if (npcTeleportEscape(bm, agent_idx)) {
+                            // Step 14 last resort: no movement type (walk/fly/swim, even with a Dash) closes
+                            // on any enemy — walled off, too far, or Forcecaged. Teleport toward the nearest
+                            // enemy if a teleportation spell is available (turn spent inside the helper).
                         } else {
                             log_("NPC {} can't reach or approach any enemy — holding position",
                                  agentName(bm, agent_idx));
@@ -2151,7 +2187,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 Cell dest{};
                 if (findPositionCell(st.target_idx, st.weapon_idx, dest)) {
                     if (dest != curOrigin()) {
-                        if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+                        if (beginMove(bm, agent_idx, dest, moveType) == FlowStatus::AwaitingDecision)
                             return FlowStatus::AwaitingDecision;
                     }
                 }
@@ -2441,6 +2477,102 @@ bool CombatEngine::npcHasAvailableRechargeAoe(const BattleMap& bm, int agent_idx
     return false;
 }
 
+MovementType CombatEngine::npcMovementType(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const Agent::Stats s = bm.getAgentStats(agent_idx);
+    if (s.speed_walk > 0) return MovementType::Walk;   // ground is the default and cheapest
+    if (s.speed_fly  > 0) return MovementType::Fly;     // a flying-only monster (walk == 0) flies to close
+    if (s.speed_swim > 0) return MovementType::Swim;    // an aquatic monster swims to close
+    return MovementType::Walk;                          // no movement at all → the finders find no cell
+}
+
+bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+
+    // 1) A castable teleportation spell (Misty Step / Dimension Door / Teleport). The N/day and per-turn
+    //    gating is already applied by availableCastableSpells, so a match here is castable right now. Prefer
+    //    the longest-range teleport (more destinations to improve position). Abilities (Shadow Step, etc.)
+    //    are folded in later — v1 handles teleportation_spell spells only (per the plan).
+    const auto& spells = bm.placedAgents()[static_cast<std::size_t>(agent_idx)].spells;
+    int spellIdx = -1, rangeCells = 0;
+    for (int si : availableCastableSpells(bm, agent_idx)) {
+        const Spell& sp = spells[static_cast<std::size_t>(si)];
+        if (!sp.teleportation_spell) continue;
+        const int rangeFt = sp.teleport_range_ft > 0 ? sp.teleport_range_ft
+                                                      : effectiveSpellRange(bm, agent_idx, sp);
+        const int rc = std::max(1, rangeFt / 5);
+        if (rc > rangeCells) { rangeCells = rc; spellIdx = si; }
+    }
+    if (spellIdx < 0) return false;
+
+    // 2) The nearest attackable enemy — the creature we want to land closer to (for a boxed NPC this
+    //    naturally lands the destination outside the cage, toward the enemy's side).
+    const int tgt = npcSelectTarget(bm, agent_idx);
+    if (tgt < 0) return false;
+
+    const auto& pa = bm.placedAgents();
+    const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
+    const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
+    const Cell eo = pa[static_cast<std::size_t>(tgt)].origin;
+    const int  es = pa[static_cast<std::size_t>(tgt)].agent->getSize();
+    const int  curDist = footprintDistance(me, ms, eo, es);
+
+    // A candidate cell is occupied if any OTHER in-play, non-dead agent's footprint overlaps it (downed
+    // bodies still lie in their square; truly dead agents free it — matches the GUI _agent_at occupancy).
+    auto occupied = [&](Cell at) -> bool {
+        for (int j = 0; j < n; ++j) {
+            if (j == agent_idx) continue;
+            const PlacedAgent& o = pa[static_cast<std::size_t>(j)];
+            if (o.removed_from_play || o.on_deck) continue;
+            if (o.agent->getConditions().dead)    continue;
+            if (footprintDistance(at, ms, o.origin, o.agent->getSize()) == 0) return true;
+        }
+        return false;
+    };
+
+    // 3) Scan cells within teleport range: legal (isValidTeleportDestination), in bounds for the footprint,
+    //    unoccupied, and STRICTLY reducing distance to the nearest enemy (never teleport sideways — avoids
+    //    oscillation). Best = minimises distance to the enemy; ties keep the first (lowest row/col) found.
+    Cell best{}; int bestDist = curDist; bool found = false;
+    const int r0 = std::max(0, me.row - rangeCells), r1 = std::min(bm.gridRows() - 1, me.row + rangeCells);
+    const int c0 = std::max(0, me.col - rangeCells), c1 = std::min(bm.gridCols() - 1, me.col + rangeCells);
+    for (int r = r0; r <= r1; ++r) {
+        for (int c = c0; c <= c1; ++c) {
+            const Cell cand{c, r};
+            if (cand == me) continue;
+            if (footprintDistance(me, ms, cand, ms) > rangeCells) continue;   // within the teleport's range
+            if (!isValidTeleportDestination(bm, c, r)) continue;              // bounds + terrain legality
+            if (c + ms > bm.gridCols() || r + ms > bm.gridRows()) continue;   // footprint fits on the grid
+            if (occupied(cand)) continue;
+            const int d = footprintDistance(cand, ms, eo, es);
+            if (d >= 1 && d < bestDist) { bestDist = d; best = cand; found = true; }
+        }
+    }
+    if (!found) return false;
+
+    // 4) Spend the spell's resource (mirrors executeSpell's is_npc branch — teleport spells are resolved by
+    //    the mover path, not executeSpell, so charge the use here) and funnel through teleportAgent. For a
+    //    Forcecaged/boxed NPC teleportAgent rolls the CHA save; on a failure the attempt is still spent
+    //    (RAW) — we end the turn either way and never re-try other cells (mirrors placeTeleportedAgents).
+    {
+        PlacedAgent& pam = bm.placedAgentMut(agent_idx);
+        Spell& sm = pam.spells[static_cast<std::size_t>(spellIdx)];
+        Agent::Stats& stats = pam.agent->getStats();
+        if (sm.level > 0) stats.markLeveledSpellCast(sm.level);
+        if (sm.uses_max > 0) sm.uses_remaining = std::max(0, sm.uses_remaining - 1);
+        if (sm.recharge_min > 0) sm.expended = true;
+    }
+    log_("NPC {} teleports with {} to close on {}", agentName(bm, agent_idx),
+         spells[static_cast<std::size_t>(spellIdx)].name, agentName(bm, tgt));
+    recordNpcAnnounce(agent_idx, -1, std::format("{} casts {}!", agentName(bm, agent_idx),
+        spells[static_cast<std::size_t>(spellIdx)].name));
+    renderAttack(agent_idx, tgt);
+    (void)teleportAgent(bm, agent_idx, best.col, best.row);   // rolls the Forcecage CHA save internally
+    return true;
+}
+
 bool CombatEngine::npcFindApproachCell(const BattleMap& bm, int agent_idx, int approach_target,
                                        Cell& out) const noexcept
 {
@@ -2456,11 +2588,17 @@ bool CombatEngine::npcFindApproachCell(const BattleMap& bm, int agent_idx, int a
     const Cell tOrigin = agents[static_cast<std::size_t>(tgt)].origin;
     const int  tSize   = agents[static_cast<std::size_t>(tgt)].agent
                        ? agents[static_cast<std::size_t>(tgt)].agent->getSize() : 1;
-    const int  budget  = me.agent ? me.agent->getWalkRemaining() : 0;
+    // Move by whatever means the caster actually has (Step 14): a flying-only caster (walk == 0) closes by
+    // air, not stuck in place. The executor's beginMove below uses the same npcMovementType.
+    const MovementType mtype = npcMovementType(bm, agent_idx);
+    const int  budget = !me.agent ? 0
+                      : mtype == MovementType::Fly  ? me.agent->getFlyRemaining()
+                      : mtype == MovementType::Swim ? me.agent->getSwimRemaining()
+                                                    : me.agent->getWalkRemaining();
 
     bool found = false;
     int  bestDist = footprintDistance(myOrigin, mySize, tOrigin, tSize);
-    for (const Cell& c : bm.reachableCells(myOrigin, mySize, budget, MovementType::Walk, agent_idx)) {
+    for (const Cell& c : bm.reachableCells(myOrigin, mySize, budget, mtype, agent_idx)) {
         if (c == myOrigin) continue;
         const int d = footprintDistance(c, mySize, tOrigin, tSize);
         if (d >= 1 && d < bestDist) { bestDist = d; out = c; found = true; }
@@ -2523,7 +2661,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
         const int approach = npcSelectTarget(bm, agent_idx);   // nearest attackable enemy (default priority)
         if (npcFindApproachCell(bm, agent_idx, approach, dest) && dest != curOrigin()) {
             log_("NPC {} moves to bring enemies into AoE range", agentName(bm, agent_idx));
-            if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+            if (beginMove(bm, agent_idx, dest, npcMovementType(bm, agent_idx)) == FlowStatus::AwaitingDecision)
                 return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
         }
         st.cast_moving = false;
@@ -3065,7 +3203,7 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
         Cell dest{};
         if (npcFindApproachCell(bm, agent_idx, plan.approach_target, dest) && dest != curOrigin()) {
             log_("NPC {} moves to bring a spell into range", agentName(bm, agent_idx));
-            if (beginMove(bm, agent_idx, dest, MovementType::Walk) == FlowStatus::AwaitingDecision)
+            if (beginMove(bm, agent_idx, dest, npcMovementType(bm, agent_idx)) == FlowStatus::AwaitingDecision)
                 return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
         }
         st.cast_moving = false;

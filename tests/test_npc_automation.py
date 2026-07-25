@@ -1859,6 +1859,153 @@ def test_difficulty_level4_turn_actually_heals():
     print("✅ test_difficulty_level4_turn_actually_heals passed")
 
 
+# ── Step 14: try all movement types, then teleport as a last resort ──────────────
+def _teleport_spell(range_ft=30, level=0, uses=0):
+    """A teleportation spell (Misty Step-like). level 0 / uses 0 → always castable (no gating). Pass
+    level>=1 + uses>=1 together with stats.is_npc=True to exercise the N/day use-decrement path."""
+    s = rpg.Spell()
+    s.name = "Misty Step"
+    s.type = rpg.SpellType.Help
+    s.geometry = rpg.SpellGeometry.Single
+    s.level = level
+    s.teleportation_spell = True
+    s.teleport_range_ft = range_ft
+    s.uses_max = uses
+    s.uses_remaining = uses
+    return s
+
+
+def test_step14_flying_monster_flies_to_engage():
+    """A monster with NO walk speed but a fly speed must FLY to close on an enemy — the driver picks the
+    movement type the creature actually has instead of sitting still on a 0 walk budget."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Wyvern", 3, 3))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 3, 8), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    s = engine.get_agent_stats(bm, npc); s.speed_walk = 0; s.speed_fly = 40
+    engine.set_agent_stats(bm, npc, s)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _fp_dist(bm, npc, foe) == 1, "the flying monster should have flown into melee reach"
+    assert (npc, foe) in calls, "having flown adjacent, it should attack"
+    print("✅ test_step14_flying_monster_flies_to_engage passed")
+
+
+def test_step14_teleports_when_no_movement_reaches():
+    """An NPC that can bring no attack to bear and has NO usable movement (walk/fly/swim all 0) — too far
+    to reach any other way — teleports toward the nearest enemy instead of standing idle."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Warlock", 2, 2))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 2, 9), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    s = engine.get_agent_stats(bm, npc); s.speed_walk = 0; s.speed_fly = 0; s.speed_swim = 0
+    engine.set_agent_stats(bm, npc, s)
+    engine.set_agent_spells(bm, npc, [_teleport_spell(range_ft=30)])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    dist_before = _fp_dist(bm, npc, foe)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _fp_dist(bm, npc, foe) < dist_before, "the teleport should have closed the distance to the enemy"
+    assert (npc, foe) in calls, "the teleport fallback should fire the render hook toward the enemy"
+    print("✅ test_step14_teleports_when_no_movement_reaches passed")
+
+
+def test_step14_teleport_spends_npc_use():
+    """The teleport fallback spends the spell's N/day use (mirrors executeSpell's NPC branch): a one-use
+    Misty Step is expended after the escape, so it is not available again."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Warlock", 2, 2))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 2, 9), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    s = engine.get_agent_stats(bm, npc)
+    s.speed_walk = 0; s.speed_fly = 0; s.speed_swim = 0; s.is_npc = True
+    engine.set_agent_stats(bm, npc, s)
+    engine.set_agent_spells(bm, npc, [_teleport_spell(range_ft=30, level=2, uses=1)])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)
+
+    engine.begin_turn(bm, npc)
+    engine.run_npc_turn(bm, npc)
+
+    assert engine.get_agent_spells(bm, npc)[0].uses_remaining == 0, "the one-use teleport should be spent"
+    print("✅ test_step14_teleport_spends_npc_use passed")
+
+
+def test_step14_boxed_npc_teleports_out():
+    """A Forcecaged/boxed NPC can do nothing but attempt a teleport out — it tries even though its normal
+    strategy would waste the turn. With a low escape DC the CHA save passes and it relocates toward the
+    enemy outside the cage."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Cambion", 3, 3))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 3, 10), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    engine.set_agent_spells(bm, npc, [_teleport_spell(range_ft=30)])
+    c = engine.get_agent_conditions(bm, npc)
+    c.forcecaged = True
+    c.forcecage_sealed = True
+    c.forcecage_dc = 1                       # trivial DC → the CHA save always passes
+    engine.set_agent_conditions(bm, npc, c)
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    dist_before = _fp_dist(bm, npc, foe)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _fp_dist(bm, npc, foe) < dist_before, "the boxed NPC should have teleported toward the enemy"
+    assert (npc, foe) in calls, "the escape teleport should fire the render hook"
+    print("✅ test_step14_boxed_npc_teleports_out passed")
+
+
+def test_step14_no_teleport_holds_when_stuck():
+    """No teleport + no usable movement → the NPC simply holds position (no crash, no phantom move). This
+    is the unchanged fallback for a creature with nothing left to do this turn."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Zombie", 2, 2))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 2, 9), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    s = engine.get_agent_stats(bm, npc); s.speed_walk = 0; s.speed_fly = 0; s.speed_swim = 0
+    engine.set_agent_stats(bm, npc, s)                 # no teleport spell given
+    _automate(bm, npc, rpg.NpcAutomationStrategy.Simple)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    origin_before = (bm.placed_agents[npc].origin.col, bm.placed_agents[npc].origin.row)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert calls == [], "no teleport and nobody reachable → no attack"
+    origin_after = (bm.placed_agents[npc].origin.col, bm.placed_agents[npc].origin.row)
+    assert origin_after == origin_before, "with no movement and no teleport the NPC holds position"
+    print("✅ test_step14_no_teleport_holds_when_stuck passed")
+
+
 def run_all():
     test_flags_round_trip()
     test_resolve_strategy_returns_agent_field()
@@ -1925,7 +2072,12 @@ def run_all():
     test_difficulty_level4_heal_outranks_control()
     test_difficulty_level5_clamps_to_level4()
     test_difficulty_level4_turn_actually_heals()
-    print("\nAll NPC automation (Steps 1–10 + Bucket D + difficulty resolver) tests passed ✅")
+    test_step14_flying_monster_flies_to_engage()
+    test_step14_teleports_when_no_movement_reaches()
+    test_step14_teleport_spends_npc_use()
+    test_step14_boxed_npc_teleports_out()
+    test_step14_no_teleport_holds_when_stuck()
+    print("\nAll NPC automation (Steps 1–10 + 14 + Bucket D + difficulty resolver) tests passed ✅")
 
 
 if __name__ == "__main__":

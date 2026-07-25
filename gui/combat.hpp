@@ -3062,6 +3062,20 @@ private:
     // Weapon slot (0..2) with the highest average-damage RANGED weapon, or — if the agent has no ranged
     // weapon — falls back to npcSelectWeapon so a melee-only creature still acts (PreferRange, Step 5).
     [[nodiscard]] int  npcSelectRangedWeapon(const BattleMap& bm, int agent_idx) const noexcept;
+    // The primary movement type an NPC should use this turn (NPC_AUTOMATION_PLAN.md Step 14): Walk if it has
+    // a walk speed, else Fly, else Swim — a purely-flying or aquatic monster otherwise can't move under
+    // automation (its walk budget is 0). The positioning/approach steps read this so the driver moves by
+    // whatever means the creature actually has; the teleport fallback fires only when none of them reach an
+    // enemy. Degenerate all-zero speeds return Walk (the finders then simply find no reachable cell).
+    [[nodiscard]] MovementType npcMovementType(const BattleMap& bm, int agent_idx) const noexcept;
+    // Last-resort escape hatch (NPC_AUTOMATION_PLAN.md Step 14): when an NPC can bring no attack/spell to
+    // bear and no ordinary movement (walk/fly/swim) closes on an enemy — walled off by terrain, too far, or
+    // sealed in a Forcecage — teleport toward the nearest enemy if it has a castable teleportation spell.
+    // Picks the in-range, legal, unoccupied destination that most reduces footprint distance to the nearest
+    // enemy (never sideways); spends the spell's resource (mirrors executeSpell's NPC branch) and funnels
+    // through teleportAgent, which rolls the Forcecage CHA save. Returns true if a teleport was attempted
+    // (the turn is spent) — a failed Forcecage save still counts (RAW). false ⇒ no teleport available/useful.
+    bool npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept;
 
     // PreferAOE turn (Step 6). Picks the available area spell + aim cell that maximizes the net enemies
     // caught (npcPlanAoeCast), casts it once through the parkable beginCast (so a human reaction window
