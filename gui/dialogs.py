@@ -1240,12 +1240,21 @@ class ElementPickerDialog:
                 r = pygame.Rect(self.rect.x + self.PAD, list_y + i * self.ITEM_H,
                                 self.rect.w - self.PAD * 2, self.ITEM_H)
                 if r.collidepoint(*event.pos):
-                    if value in self._selected:
-                        self._selected.discard(value)
-                    elif self._multi:
-                        self._selected.add(value)
+                    if self._multi:
+                        # Multi-select: toggle the value and keep the dialog open so the
+                        # user can pick more; commit happens on the "Done" button.
+                        if value in self._selected:
+                            self._selected.discard(value)
+                        else:
+                            self._selected.add(value)
                     else:
-                        self._selected = {value}   # single-select replaces
+                        # Single-select: picking an option IS the choice — commit and
+                        # dismiss immediately so the very next click can target/place.
+                        # (Otherwise the follow-up click lands outside the still-open
+                        # dialog, gets swallowed dismissing it, and never reaches the map
+                        # — the Chromatic Orb "can't target" bug.)
+                        self._selected = {value}
+                        self._commit_and_dismiss()
                     return True
             return True
         return False

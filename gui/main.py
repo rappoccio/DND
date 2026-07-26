@@ -889,6 +889,11 @@ class App:
         scale = min(MAX_MAP_W / mw, MAX_MAP_H / mh, 1.0)  # never upscale
         disp_mw = int(mw * scale)
         disp_mh = int(mh * scale)
+        # ``base_map_scale`` is the fit-to-window scale; ``view_zoom`` is the
+        # user-controlled zoom multiplier (Ctrl+wheel / +/- keys). The effective
+        # ``map_scale`` used by every coord transform is base × zoom.
+        self.base_map_scale = scale
+        self.view_zoom      = 1.0
         self.map_scale = scale       # used to convert C++ pixel coords → screen
 
         # ── Window sizing ─────────────────────────────────────────────────
@@ -897,7 +902,11 @@ class App:
         self.screen = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
 
         # ── Now safe to convert (display surface exists) ──────────────────
+        # Keep the full-resolution converted surface around so zoom can rescale
+        # from native pixels each time (avoids cumulative smoothscale blur).
         converted = raw_map.convert_alpha()
+        self._map_converted  = converted
+        self._map_native_size = (mw, mh)
         if scale < 1.0:
             self.map_surf = pygame.transform.smoothscale(converted, (disp_mw, disp_mh))
         else:
@@ -914,6 +923,7 @@ class App:
         # a mid-session swap starts from a clean viewport.
         self.pan_x = 0
         self.pan_y = 0
+        self.view_zoom = 1.0
         if hasattr(self, "selected_idx"):
             self.selected_idx = -1
         if hasattr(self, "drag_idx"):
@@ -989,6 +999,67 @@ class App:
                 wx = max(ax, bx)
                 pygame.draw.line(self.overlay, wall_color,
                                  (wx, ay), (wx, ay + cpx), 4)
+
+    # ─────────────────────────────────────────────────────────────────────
+    #  Zoom (Ctrl/Cmd + wheel, +/- keys, 0 to reset)
+    # ─────────────────────────────────────────────────────────────────────
+    ZOOM_MIN     = 0.5    # user-zoom multiplier floor (relative to fit scale)
+    ZOOM_MAX     = 6.0    # user-zoom multiplier ceiling
+    ZOOM_STEP    = 1.15   # per wheel-notch / keypress factor
+    ZOOM_MAX_DIM = 8000   # hard cap on rendered map dimension (px) — memory guard
+
+    def _apply_zoom(self, new_zoom, center=None):
+        """Set ``view_zoom`` to ``new_zoom`` (clamped), re-render the map/overlay
+        surfaces at the new effective scale, and keep the image point under
+        ``center`` (screen px, default = map viewport center) fixed on screen.
+
+        Everything else reads ``self.map_scale`` (= base × zoom) and ``pan_x/y``,
+        so no other draw/transform code needs to change.
+        """
+        if not hasattr(self, "_map_converted"):
+            return
+        new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, new_zoom))
+        mw, mh = self._map_native_size
+        # Clamp zoom so the rendered surface can't blow past ZOOM_MAX_DIM on
+        # either axis (guards against multi-hundred-MB allocations on big maps).
+        biggest = max(mw, mh) * self.base_map_scale
+        if biggest > 0:
+            new_zoom = min(new_zoom, self.ZOOM_MAX_DIM / biggest)
+            new_zoom = max(self.ZOOM_MIN, new_zoom)
+        old_scale = self.map_scale
+        new_scale = self.base_map_scale * new_zoom
+        if abs(new_scale - old_scale) < 1e-6:
+            return
+
+        disp_mw = max(1, int(mw * new_scale))
+        disp_mh = max(1, int(mh * new_scale))
+
+        # Rescale the map from native pixels; rebuild the (scaled) overlay.
+        self.map_surf = pygame.transform.smoothscale(self._map_converted, (disp_mw, disp_mh))
+        self.map_rect = pygame.Rect(0, 0, disp_mw, disp_mh)
+        self.map_scale = new_scale
+        self.view_zoom = new_zoom
+        self.overlay = pygame.Surface((disp_mw, disp_mh), pygame.SRCALPHA)
+        self._build_overlay()
+
+        # Keep the point under ``center`` anchored: pan' = c*(1-f) + pan*f,
+        # where f = new_scale / old_scale.
+        if center is None:
+            cx = self._panel_x() // 2               # center of the map viewport
+            cy = self.screen.get_height() // 2
+        else:
+            cx, cy = center
+        f = new_scale / old_scale
+        self.pan_x = int(cx * (1.0 - f) + self.pan_x * f)
+        self.pan_y = int(cy * (1.0 - f) + self.pan_y * f)
+
+    def _zoom_by(self, factor, center=None):
+        """Multiply the current zoom by ``factor`` (wheel notch / keypress)."""
+        self._apply_zoom(self.view_zoom * factor, center=center)
+
+    def _reset_zoom(self):
+        """Return to the fit-to-window scale, centered on the viewport."""
+        self._apply_zoom(1.0)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Config panel widgets
@@ -2213,6 +2284,9 @@ class App:
                                items, self.screen.get_size())
 
     def _open_terrain_editor(self):
+        # These full-map editors blit map_surf at (0,0) and map clicks via native
+        # image pixels, so return to fit scale first (zoom would misalign them).
+        self._reset_zoom()
         self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
                                  ladders=self._ladders, door_links=self._door_links)
 
@@ -2316,6 +2390,7 @@ class App:
             except:
                 light_sources = []
                 default_light = rpg.VisibilityLevel.Clear
+        self._reset_zoom()   # editor maps clicks via native px; fit scale first
         self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
 
     def _open_load_lighting_browser(self):
@@ -18261,7 +18336,7 @@ class App:
 
         info_y = self._panel_stats_y
         text(f"Grid: {self.bm.grid_cols}×{self.bm.grid_rows}  "
-             f"cell={self.bm.cell_pixel_size}px  scale={self.map_scale:.2f}",
+             f"cell={self.bm.cell_pixel_size}px  zoom={getattr(self, 'view_zoom', 1.0)*100:.0f}%",
              lx, info_y)
         text(f"Walls: {len(self.bm.walls)}   Blocked: {len(self.bm.disallowed_cells)}",
              lx, info_y + 18)
@@ -18460,6 +18535,20 @@ class App:
                         self.panel_scroll = min(max(0, self.panel_scroll + d), panel_max)
                     continue
 
+            # ── Ctrl/Cmd + mouse wheel over the map: zoom (centered on cursor) ──
+            # Checked before the pan handlers below so the zoom modifier wins.
+            zoom_mod = bool(pygame.key.get_mods() & (pygame.KMOD_CTRL | pygame.KMOD_META))
+            if (map_input_allowed and zoom_mod and not over_initiative and not over_panel):
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+                    f = self.ZOOM_STEP if event.button == 4 else 1.0 / self.ZOOM_STEP
+                    self._zoom_by(f, center=mouse_pos)
+                    continue
+                if (hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL
+                        and event.y != 0):
+                    f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
+                    self._zoom_by(f, center=mouse_pos)
+                    continue
+
             # ── Mouse wheel for map panning (suppressed while hovering the panel) ──
             if (map_input_allowed and not over_initiative and not over_panel
                     and event.type == pygame.MOUSEBUTTONDOWN):
@@ -18481,7 +18570,7 @@ class App:
                 else:
                     self.pan_y += event.y * 30
 
-            # ── Keyboard panning (arrow keys) ─────────────────────────────
+            # ── Keyboard panning (arrow keys) + zoom (+/-/0) ──────────────
             if map_input_allowed and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
                     self.pan_y += 30
@@ -18491,6 +18580,16 @@ class App:
                     self.pan_x += 30
                 elif event.key == pygame.K_RIGHT:
                     self.pan_x -= 30
+                # Zoom in: '+' / '=' (main and numpad). Zoom out: '-'. Reset: '0'.
+                # Suppressed while an inline text field is capturing keystrokes.
+                elif self._pc_name_input:
+                    pass
+                elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    self._zoom_by(self.ZOOM_STEP)
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    self._zoom_by(1.0 / self.ZOOM_STEP)
+                elif event.key == pygame.K_0:
+                    self._reset_zoom()
 
             # ── Copy / paste agents (Ctrl+C / Ctrl+V; Cmd on macOS) — pre-combat only ──
             if (map_input_allowed and event.type == pygame.KEYDOWN
@@ -19251,6 +19350,14 @@ class App:
                                         self._resolve_spell_cast(hit)
                                 else:
                                     self._resolve_spell_cast(hit)
+                            else:
+                                # Single-target spell armed, but the click landed on no
+                                # creature (hit < 0) — previously a totally silent no-op,
+                                # which read as "targeting is broken." Tell the user so a
+                                # near-miss on a big creature's footprint is obvious.
+                                self._combat_log_add(
+                                    f"No creature on that cell to target — click directly on the "
+                                    f"target (cell {cell.col},{cell.row}).")
                         elif self.pending_shove_slot and hit >= 0:
                             self._resolve_shove(hit)
                         elif self.pending_unarmed_type and hit >= 0:
@@ -20442,6 +20549,7 @@ class App:
                             self._update_reach()
                             break
                 if self.btn_cbt_place_terrain.clicked(event):
+                    self._reset_zoom()   # dialog blits map at (0,0); fit scale first
                     self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
                 if self.btn_show_terrain.clicked(event):
                     self.show_terrain = not self.show_terrain
