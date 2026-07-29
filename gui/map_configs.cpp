@@ -138,6 +138,8 @@ static Spell spellFromJson(const json& j) noexcept {
     spell.creates_movement_ward = j.value("creates_movement_ward", false);
     // Antilife Shell: a caster-anchored emanation no living creature can cross.
     spell.ward_blocks_living = j.value("ward_blocks_living", false);
+    // Wall of Stone: oriented wall whose cells become solid Wall terrain for the duration.
+    spell.creates_wall_terrain = j.value("creates_wall_terrain", false);
 
     return spell;
 }

@@ -2350,7 +2350,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // effect would only spam "took 0" each turn — its behavior and rendered footprint both ride on
     // the terrain ward placed further below.
     if (result.valid && sp.duration > 1 && sp.geometry != Spell::Single &&
-        !sp.creates_movement_ward && !sp.ward_blocks_living) {
+        !sp.creates_movement_ward && !sp.ward_blocks_living && !sp.creates_wall_terrain) {
         std::vector<Cell> effect_cells;
 
         // Calculate cells based on spell geometry
@@ -2531,6 +2531,34 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             if (ward_id >= 0) {
                 result.terrain_effect_ids.push_back(ward_id);
                 log_("{} casts {} — a shell that no living creature can cross.",
+                     agentName(bm, action.caster_idx), sp.name);
+            }
+        }
+    }
+
+    // Wall of Stone: an oriented wall (Rectangle geometry, aimed with a second point like Wall of
+    // Fire) whose cells become solid Wall terrain for the duration. Reuses the terrain-effect
+    // lifecycle (duration ticking, Dispel Magic, concentration teardown, GUI overlay) with the
+    // sets_wall flag — placeTerrainEffect swaps each cell to TerrainType::Wall and restores it on
+    // removal, so movement/LOS/cover all block the wall with no extra plumbing. Static (unanchored).
+    if (result.valid && sp.creates_wall_terrain) {
+        std::vector<Cell> wall_cells = bm.wallCells(
+            Cell{action.aoe_col, action.aoe_row},
+            Cell{action.aoe_col2, action.aoe_row2},
+            sp.width, sp.length);
+        if (!wall_cells.empty()) {
+            int wall_id = bm.placeTerrainEffect(
+                sp.name, wall_cells, TerrainDifficulty::Normal,
+                sp.duration, action.caster_idx,
+                sp.slip_save_dc, sp.slip_distance_feet,
+                action.spell_idx, std::max(action.slot_level, sp.level),
+                sp.requires_concentration,
+                -1, 0, false,
+                0, false, false,
+                true);                                 // sets_wall = true
+            if (wall_id >= 0) {
+                result.terrain_effect_ids.push_back(wall_id);
+                log_("{} casts {} — a solid wall of stone rises.",
                      agentName(bm, action.caster_idx), sp.name);
             }
         }

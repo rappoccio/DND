@@ -164,6 +164,13 @@ namespace rpg {
       // is anchored to the caster (anchor_agent_idx) so it follows them like any emanation.
       bool ward_blocks_living{false};
 
+      // Wall of Stone — an oriented wall (Rectangle geometry, aimed with a second point like Wall of
+      // Fire) whose cells become solid Wall terrain for the duration, then restore. Reuses the
+      // terrain-effect lifecycle: the placed effect gets sets_wall = true and BattleMap turns each
+      // cell into TerrainType::Wall (impassable to all non-burrowers + LOS-blocking) via
+      // applyWallOverride, restoring the original terrain when the effect ends / concentration drops.
+      bool creates_wall_terrain{false};
+
       // Divine Intervention D3 — Planar Binding: on a failed Charisma save the targeted
       // creature is bound to the caster's service (transferred to the caster's team). The
       // engine does nothing with this flag; it only routes the GUI's single-target click to

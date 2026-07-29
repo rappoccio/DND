@@ -171,6 +171,13 @@ struct ActiveTerrainEffect {
     // it wards by "alive?" rather than by creature type, so it blocks typeless movers (Humanoids,
     // Beasts, …) too. Only Undead are exempt (Construct is not a modeled creature type).
     bool                ward_all_living{false};
+    // Wall of Stone: this effect turns each of its cells into solid Wall terrain (impassable to all
+    // non-burrowers + LOS-blocking) for its duration, then restores the original terrain on removal.
+    // Reuses TerrainType::Wall so every consumer (movement of all types, line-of-sight, cover, AoE
+    // pruning) blocks the wall consistently with no extra plumbing. saved_terrain runs parallel to
+    // cell_indices and records each cell's pre-override TerrainType (as int) for exact restoration.
+    bool                sets_wall{false};
+    std::vector<int>    saved_terrain;
 };
 
 // ── Active temporary light effect ──────────────────────────────────────────
@@ -670,7 +677,8 @@ public:
                                          bool spares_source_allies = false,
                                          uint32_t ward_creature_mask = 0,
                                          bool ward_traps = false,
-                                         bool ward_all_living = false);
+                                         bool ward_all_living = false,
+                                         bool sets_wall = false);
 
     // Re-point an anchored terrain effect's footprint (moving emanation follows the caster).
     void setTerrainEffectCells(int effect_id, std::vector<Cell> cells) noexcept;
@@ -847,6 +855,12 @@ private:
 
     // Reconcile doors_[idx]'s cell TerrainType with its open state (see .cpp).
     void syncDoorTerrain(int idx) noexcept;
+
+    // Wall of Stone helpers: overwrite an effect's cells with solid Wall terrain (saving the
+    // pre-override TerrainType into e.saved_terrain) and later restore them. Called at the effect's
+    // discrete lifecycle events (place / tick-expire / remove / clear), never inside updateTerrain.
+    void applyWallOverride(ActiveTerrainEffect& e);
+    void restoreWallOverride(const ActiveTerrainEffect& e) noexcept;
 
     // True iff an agent of `size` placed at `origin` lies entirely within the grid.
     [[nodiscard]] bool inBounds(Cell origin, int size) const noexcept;

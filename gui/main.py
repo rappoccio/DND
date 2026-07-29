@@ -12528,6 +12528,7 @@ class App:
             "animates_dead":         getattr(s, "animates_dead", False),
             "binds_creature":        getattr(s, "binds_creature", False),
             "ward_blocks_living":    getattr(s, "ward_blocks_living", False),
+            "creates_wall_terrain":  getattr(s, "creates_wall_terrain", False),
             "conditions":            conditions,
             # N/day + Recharge (breath weapons). See helpers._dict_to_spell.
             "uses_max":              s.uses_max,

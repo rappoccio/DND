@@ -192,6 +192,12 @@ test_scripts = [
     # species — Fiend, Fey, … — can't cross), in keep-out and reverse trap-inside modes (SPEC §7 D4)
     "test_magic_circle.py",
 
+    # SPELL_IMPLEMENTATION_PLAN Tier 2 (control / terrain / ward): Eyebite, Irresistible Dance,
+    # Reverse Gravity, Symbol, Flesh to Stone, Maze, Imprisonment, Resilient Sphere, Forcecage
+    # (save-gated conditions, both fail + save paths), Antilife Shell (ward_all_living), and Wall
+    # of Stone (sets_wall solid terrain).
+    "test_spells_tier2.py",
+
     # Dispel Magic (SPELLS_TO_WIRE Phase 4: auto-end level<=slot, else DC 10+level check; clears concentration)
     "test_dispel_magic.py",
 

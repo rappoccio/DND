@@ -1678,6 +1678,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Antilife Shell: places a caster-anchored emanation (radius `radius`) that no living\n"
              "creature can cross (only Undead may pass). Reuses the movement-ward terrain effect\n"
              "with ward_all_living instead of a creature-type mask.")
+        .def_readwrite("creates_wall_terrain", &Spell::creates_wall_terrain,
+             "Wall of Stone: an oriented Rectangle wall (aimed with a second point like Wall of\n"
+             "Fire) whose cells become solid Wall terrain for the duration, then restore. Reuses\n"
+             "the terrain-effect lifecycle with the place_terrain_effect sets_wall flag.")
         .def_readwrite("ends_conditions", &Spell::ends_conditions,
              "Restorative Heal: condition names ended on each healed target (e.g. Power\n"
              "Word Heal ends Charmed/Frightened/Paralyzed/Poisoned/Stunned).")
@@ -4344,7 +4348,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readonly("ward_creature_mask", &ActiveTerrainEffect::ward_creature_mask,
              "Magic Circle / Hallow: OR of warded creature-type bits (0 = not a movement ward).")
         .def_readonly("ward_traps",        &ActiveTerrainEffect::ward_traps,
-             "Movement ward direction: False keeps warded types out, True traps them inside.");
+             "Movement ward direction: False keeps warded types out, True traps them inside.")
+        .def_readonly("ward_all_living",   &ActiveTerrainEffect::ward_all_living,
+             "Antilife Shell: True if this ward blocks any non-Undead mover (by 'alive?').")
+        .def_readonly("sets_wall",         &ActiveTerrainEffect::sets_wall,
+             "Wall of Stone: True if this effect turns its cells into solid Wall terrain.");
 
     // ── ActiveLightEffect struct ────────────────────────────────────────────
     py::class_<ActiveLightEffect>(m, "ActiveLightEffect")
@@ -4708,7 +4716,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("anchor_agent_idx") = -1, py::arg("anchor_radius_ft") = 0,
              py::arg("spares_source_allies") = false,
              py::arg("ward_creature_mask") = 0, py::arg("ward_traps") = false,
-             py::arg("ward_all_living") = false,
+             py::arg("ward_all_living") = false, py::arg("sets_wall") = false,
              "Place a temporary terrain effect covering the given cells.\n"
              "anchor_agent_idx>=0 makes it follow that agent (moving emanation);\n"
              "spares_source_allies excludes the source + its allies (selective_targeting).\n"
@@ -4716,6 +4724,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "rpg.CreatureType bits); ward_traps=False keeps those types out, True traps them in.\n"
              "ward_all_living=True is an Antilife Shell ward: blocks any non-Undead mover (typeless\n"
              "creatures too), independent of ward_creature_mask.\n"
+             "sets_wall=True is a Wall of Stone: each cell becomes solid Wall terrain (impassable +\n"
+             "LOS-blocking) for the duration, restored to its original type on removal.\n"
              "Returns unique effect id (for later removal/metadata).")
         .def("set_terrain_effect_cells", &BattleMap::setTerrainEffectCells,
              py::arg("effect_id"), py::arg("cells"),

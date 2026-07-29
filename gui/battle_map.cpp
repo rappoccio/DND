@@ -2047,7 +2047,8 @@ int BattleMap::placeTerrainEffect(std::string name,
                                    bool spares_source_allies,
                                    uint32_t ward_creature_mask,
                                    bool ward_traps,
-                                   bool ward_all_living) {
+                                   bool ward_all_living,
+                                   bool sets_wall) {
     // Convert Cell list to flat indices
     std::vector<int> indices;
     for (const auto& cell : cells) {
@@ -2078,12 +2079,44 @@ int BattleMap::placeTerrainEffect(std::string name,
         spares_source_allies,
         ward_creature_mask,
         ward_traps,
-        ward_all_living
+        ward_all_living,
+        sets_wall,
+        {}                       // saved_terrain filled in by applyWallOverride below
     };
+    // Wall of Stone: overwrite the effect's cells with solid Wall terrain (saving originals so
+    // removal restores them). Done before push_back so the pushed copy carries saved_terrain.
+    if (effect.sets_wall)
+        applyWallOverride(effect);
     activeTerrainEffects_.push_back(effect);
 
     updateTerrain();
     return id;
+}
+
+// Overwrite an effect's cells with solid Wall terrain, recording each cell's prior TerrainType so
+// restoreWallOverride can put it back. Reuses TerrainType::Wall so all movement/LOS/cover machinery
+// blocks the wall with no extra plumbing.
+void BattleMap::applyWallOverride(ActiveTerrainEffect& e) {
+    e.saved_terrain.clear();
+    e.saved_terrain.reserve(e.cell_indices.size());
+    for (int idx : e.cell_indices) {
+        if (idx < 0 || static_cast<std::size_t>(idx) >= terrainType_.size()) {
+            e.saved_terrain.push_back(static_cast<int>(TerrainType::Standard));
+            continue;
+        }
+        e.saved_terrain.push_back(static_cast<int>(terrainType_[static_cast<std::size_t>(idx)]));
+        terrainType_[static_cast<std::size_t>(idx)] = TerrainType::Wall;
+    }
+}
+
+// Restore the terrain an applyWallOverride'd effect had overwritten (called before the effect is
+// erased). Overlapping stone walls are an accepted edge case: cells restore to whatever was saved.
+void BattleMap::restoreWallOverride(const ActiveTerrainEffect& e) noexcept {
+    for (std::size_t i = 0; i < e.cell_indices.size() && i < e.saved_terrain.size(); ++i) {
+        const int idx = e.cell_indices[i];
+        if (idx < 0 || static_cast<std::size_t>(idx) >= terrainType_.size()) continue;
+        terrainType_[static_cast<std::size_t>(idx)] = static_cast<TerrainType>(e.saved_terrain[i]);
+    }
 }
 
 void BattleMap::setTerrainEffectCells(int effect_id, std::vector<Cell> cells) noexcept {
@@ -2112,6 +2145,7 @@ std::vector<int> BattleMap::tickTerrainEffects(int source_agent_idx) {
 
         --effect.turns_remaining;
         if (effect.turns_remaining <= 0) {
+            if (effect.sets_wall) restoreWallOverride(effect);
             expired.push_back(effect.id);
             return true;
         }
@@ -2137,6 +2171,7 @@ std::vector<int> BattleMap::tickDMTerrainEffects() {
 
         --effect.turns_remaining;
         if (effect.turns_remaining <= 0) {
+            if (effect.sets_wall) restoreWallOverride(effect);
             expired.push_back(effect.id);
             return true;
         }
@@ -2154,6 +2189,7 @@ std::vector<int> BattleMap::removeTerrainEffectsBySource(int source_agent_idx) {
 
     std::erase_if(activeTerrainEffects_, [&](const ActiveTerrainEffect& effect) {
         if (effect.source_agent_idx == source_agent_idx) {
+            if (effect.sets_wall) restoreWallOverride(effect);
             removed.push_back(effect.id);
             return true;
         }
@@ -2167,13 +2203,17 @@ std::vector<int> BattleMap::removeTerrainEffectsBySource(int source_agent_idx) {
 }
 
 void BattleMap::removeTerrainEffect(int effect_id) {
-    std::erase_if(activeTerrainEffects_, [effect_id](const ActiveTerrainEffect& effect) {
-        return effect.id == effect_id;
+    std::erase_if(activeTerrainEffects_, [&](const ActiveTerrainEffect& effect) {
+        if (effect.id != effect_id) return false;
+        if (effect.sets_wall) restoreWallOverride(effect);
+        return true;
     });
     updateTerrain();
 }
 
 void BattleMap::clearTerrainEffects() noexcept {
+    for (const auto& effect : activeTerrainEffects_)
+        if (effect.sets_wall) restoreWallOverride(effect);
     activeTerrainEffects_.clear();
     std::fill(tempTerrainDiff_.begin(), tempTerrainDiff_.end(), TerrainDifficulty::Normal);
 }
