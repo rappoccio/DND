@@ -2075,6 +2075,69 @@ PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int d
     return result;
 }
 
+BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int door_id)
+{
+    BreakDoorResult result;
+    auto agents = bm.placedAgents();
+
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
+        result.log_message = "Invalid agent index.";
+        return result;
+    }
+
+    // Locate the door by id.
+    const Door* door = nullptr;
+    for (const Door& d : bm.doors()) {
+        if (d.id == door_id) { door = &d; break; }
+    }
+    if (door == nullptr) {
+        result.log_message = "No such door.";
+        return result;
+    }
+
+    const auto& breaker = agents[agent_idx];
+    const std::string name = std::string(breaker.agent->name());
+
+    if (door->broken) {
+        result.valid = true;
+        result.log_message = "\"" + name + "\" — that door is already smashed off its frame.";
+        return result;
+    }
+    if (door->open) {
+        result.valid = true;
+        result.log_message = "\"" + name + "\" — that door is already open.";
+        return result;
+    }
+
+    // Effective DC: an active Arcane Lock stiffens the door by +10 (RAW). A suppressed
+    // Arcane Lock (Knock) imposes no penalty.
+    int dc = door->break_dc;
+    if (door->arcane_lock && door->arcane_suppressed_turns <= 0) dc += 10;
+
+    const Agent::Stats st = getAgentStats(bm, agent_idx);
+    int bonus = st.athletics();
+    int d20 = roll(20);
+
+    result.valid   = true;
+    result.roll    = d20;
+    result.total   = d20 + bonus;
+    result.dc      = dc;
+    result.success = result.total >= result.dc;
+
+    if (result.success) {
+        bm.breakDoor(door_id);
+        result.log_message = "\"" + name + "\" breaks the door down (Athletics " +
+                             std::to_string(result.total) + " vs DC " +
+                             std::to_string(result.dc) + ").";
+    } else {
+        result.log_message = "\"" + name + "\" fails to force the door (Athletics " +
+                             std::to_string(result.total) + " vs DC " +
+                             std::to_string(result.dc) + ").";
+    }
+    log_("{}", result.log_message);
+    return result;
+}
+
 GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int target_idx,
                                            bool contested, int escape_dc_override) noexcept
 {

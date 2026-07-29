@@ -467,6 +467,18 @@ struct PickLockResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Break-door attempt — Strength (Athletics) check vs a door's break DC
+// ─────────────────────────────────────────────────────────────────────────────
+struct BreakDoorResult {
+    bool valid   = false;   // false if the agent/door index was invalid or nothing to break
+    bool success = false;   // true if the door was smashed open
+    int  roll    = 0;       // the raw d20
+    int  total   = 0;       // d20 + Athletics (STR) bonus
+    int  dc      = 0;       // effective break DC (door break_dc, +10 for an active Arcane Lock)
+    std::string log_message;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Grapple action — initiate a grapple (contested Athletics check)
 // ─────────────────────────────────────────────────────────────────────────────
 struct GrappleAction {
@@ -2704,6 +2716,12 @@ public:
     // via BattleMap::unlockDoor (the door stays closed until opened). An Arcane Lock
     // cannot be picked. door_id is the Door::id (not the doors_ index).
     [[nodiscard]] PickLockResult attemptPickLock(BattleMap& bm, int agent_idx, int door_id);
+
+    // Force a door with a Strength (Athletics) check: roll(20) + the agent's athletics()
+    // vs the door's break_dc (+10 while an Arcane Lock is active). On success the door is
+    // smashed off its frame via BattleMap::breakDoor (permanently open; no lock survives).
+    // Unlike picking, this works on a locked or arcane-locked door. door_id is the Door::id.
+    [[nodiscard]] BreakDoorResult attemptBreakDoor(BattleMap& bm, int agent_idx, int door_id);
 
     // Telekinetic (general feat) — Telekinetic Shove: a Bonus Action that shoves one creature within
     // 30 ft. The target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure

@@ -1897,6 +1897,13 @@ class StatsDialog:
         self._sleight_rect = pygame.Rect(dlg.x + W - PAD - CB_H, cb_y - 16, CB_H, CB_H)
         self.prof_flags["sleight_of_hand_prof"] = getattr(stats, "sleight_of_hand_prof", False)
 
+        # ── Athletics skill checkbox (forces doors off their frame) ───────
+        # Same row, just left of Sleight of Hand (label + box drawn to its left).
+        _sleight_lbl_w = self.font_sm.size("Sleight of Hand")[0]
+        _ath_x = self._sleight_rect.x - _sleight_lbl_w - 6 - 14 - CB_H
+        self._athletics_rect = pygame.Rect(_ath_x, cb_y - 16, CB_H, CB_H)
+        self.prof_flags["athletics_prof"] = getattr(stats, "athletics_prof", False)
+
         # ── Combat stats (4 rows × 2 cols) ───────────────────────────────
         # Row starts below the checkbox row: cb_y + CB_H + gap + sect label + pad
         cy = cb_y + CB_H + 8 + 18 + 10
@@ -2120,6 +2127,10 @@ class StatsDialog:
             if getattr(self, "_sleight_rect", None) and self._sleight_rect.collidepoint(event.pos):
                 self.prof_flags["sleight_of_hand_prof"] = not self.prof_flags.get("sleight_of_hand_prof", False)
 
+            # Athletics skill checkbox
+            if getattr(self, "_athletics_rect", None) and self._athletics_rect.collidepoint(event.pos):
+                self.prof_flags["athletics_prof"] = not self.prof_flags.get("athletics_prof", False)
+
             # Invocation checkboxes (Warlock only)
             for invocation_code, rect in self._invocation_rects.items():
                 if rect.collidepoint(event.pos):
@@ -2307,6 +2318,24 @@ class StatsDialog:
             rect = self._sleight_rect
             checked = self.prof_flags.get("sleight_of_hand_prof", False)
             lbl = self.font_sm.render("Sleight of Hand", True, self.C_SECT)
+            screen.blit(lbl, (rect.x - lbl.get_width() - 6, rect.centery - lbl.get_height() // 2))
+            box_col = (45, 110, 55) if checked else self.C_HDR
+            bdr_col = (80, 200, 90) if checked else self.C_BORDER
+            pygame.draw.rect(screen, box_col, rect, border_radius=3)
+            pygame.draw.rect(screen, bdr_col,  rect, 1, border_radius=3)
+            if checked:
+                pts = [
+                    (rect.x + 3,       rect.centery),
+                    (rect.centerx - 1, rect.bottom - 3),
+                    (rect.right - 3,   rect.y + 3),
+                ]
+                pygame.draw.lines(screen, (110, 240, 110), False, pts, 2)
+
+        # ── Athletics skill checkbox ─────────────────────────────────────
+        if getattr(self, "_athletics_rect", None):
+            rect = self._athletics_rect
+            checked = self.prof_flags.get("athletics_prof", False)
+            lbl = self.font_sm.render("Athletics", True, self.C_SECT)
             screen.blit(lbl, (rect.x - lbl.get_width() - 6, rect.centery - lbl.get_height() // 2))
             box_col = (45, 110, 55) if checked else self.C_HDR
             bdr_col = (80, 200, 90) if checked else self.C_BORDER

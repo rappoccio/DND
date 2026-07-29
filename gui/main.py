@@ -3545,6 +3545,8 @@ class App:
         stats.save_prof_cha   = prof_flags.get("save_prof_cha",   False)
         # Skill proficiency: Sleight of Hand (picks door locks)
         stats.sleight_of_hand_prof = prof_flags.get("sleight_of_hand_prof", False)
+        # Skill proficiency: Athletics (forces doors off their frame)
+        stats.athletics_prof = prof_flags.get("athletics_prof", False)
 
         # ── Multiclass class / level / subclass / resource application ──────────
         # Resolve the full build. Fall back to the single {primary: total} shape for
@@ -4963,7 +4965,12 @@ class App:
 
         options = []
         door_id = door.id
-        if door.open:
+        if door.broken:
+            # Smashed off its frame — nothing left to open, close, or lock.
+            options.append(("Door broken (smashed off its frame)",
+                            lambda: self._combat_log_add(
+                                "The door has been smashed off its frame; it can't be closed.")))
+        elif door.open:
             options.append(("Close door", lambda d=door_id: self._door_close(d)))
         else:
             if door.arcane_lock:
@@ -4975,6 +4982,14 @@ class App:
                                 lambda a=actor, d=door_id: self._door_pick_lock(a, d)))
             else:
                 options.append(("Open door", lambda d=door_id: self._door_open(d)))
+
+            # Force it (Strength/Athletics) — available on any closed door, even a locked
+            # or arcane-locked one (you're smashing the door, not defeating the magic). An
+            # active Arcane Lock stiffens the door by +10 to the break DC.
+            break_dc = door.break_dc + (10 if (door.arcane_lock and
+                                               door.arcane_suppressed_turns <= 0) else 0)
+            options.append((f"Break Down (DC {break_dc})",
+                            lambda a=actor, d=door_id: self._door_break_down(a, d)))
 
         # Cross-map staple (Floors Phase 5): an open, linked door offers passage to the
         # abutting page. A locked/arcane-locked (thus closed) door blocks it — the option
@@ -5105,6 +5120,26 @@ class App:
             return
         self._combat_log_add(res.log_message)
         if self.combat_active:
+            self.action_used = True
+        self._after_door_change()
+
+    def _door_break_down(self, actor_idx: int, door_id: int):
+        """Force a door with a Strength (Athletics) check (an action). On a success the
+        door is smashed off its frame (permanently open); on a failure the action is
+        still spent. Mirrors _door_pick_lock's action-economy handling."""
+        if actor_idx < 0:
+            self._combat_log_add("No creature selected to force the door.")
+            return
+        if self.combat_active and self.action_used:
+            self._combat_log_add("Action already used this turn — cannot force the door.")
+            return
+        res = self.combat.attempt_break_door(self.bm, actor_idx, door_id)
+        if not res.valid:
+            self._combat_log_add("Cannot force this door.")
+            return
+        self._combat_log_add(res.log_message)
+        # A no-op attempt (roll made) still spends the action; an invalid one does not.
+        if self.combat_active and (res.success or res.roll > 0):
             self.action_used = True
         self._after_door_change()
 
@@ -12573,6 +12608,8 @@ class App:
                     "divine_intervention_lock": s.divine_intervention_lock,
                     "sleight_of_hand_prof":      s.sleight_of_hand_prof,
                     "sleight_of_hand_expertise": s.sleight_of_hand_expertise,
+                    "athletics_prof":            s.athletics_prof,
+                    "athletics_expertise":       s.athletics_expertise,
                     "num_attacks":        s.num_attacks,
                     # NPC segmented multiattack recipe: ordered (weapon_slot, count) segments.
                     # dict_to_stats reads it back; empty ⇒ legacy num_attacks behavior.
@@ -13198,13 +13235,15 @@ class App:
         linked_cells = {tuple(ld["cell"]) for ld in linked_doors}
         doors = [
             {"cells": [[c, r]], "cell": [c, r], "open": False, "locked": False,
-             "lock_dc": 15, "arcane_lock": False, "link_target": None}
+             "lock_dc": 15, "arcane_lock": False, "break_dc": 15, "broken": False,
+             "link_target": None}
             for (c, r) in door_cells if (c, r) not in linked_cells
         ]
         doors += [
             {"cells": [[ld["cell"][0], ld["cell"][1]]],
              "cell": [ld["cell"][0], ld["cell"][1]],
              "open": False, "locked": False, "lock_dc": 15, "arcane_lock": False,
+             "break_dc": 15, "broken": False,
              "link_target": [int(v) for v in ld["target"]]}
             for ld in linked_doors
         ]
@@ -14442,11 +14481,15 @@ class App:
                 else:
                     c = d["cell"]
                     cells = [rpg.Cell(int(c[0]), int(c[1]))]
-                self.bm.add_door(cells,
-                                 bool(d.get("open", False)),
-                                 bool(d.get("locked", False)),
-                                 int(d.get("lock_dc", 15)),
-                                 bool(d.get("arcane_lock", False)))
+                did = self.bm.add_door(cells,
+                                       bool(d.get("open", False)),
+                                       bool(d.get("locked", False)),
+                                       int(d.get("lock_dc", 15)),
+                                       bool(d.get("arcane_lock", False)),
+                                       int(d.get("break_dc", 15)))
+                # A door saved smashed off its frame comes back broken (permanently open).
+                if bool(d.get("broken", False)):
+                    self.bm.break_door(did)
                 # Re-associate a cross-map staple target (null/absent on ordinary doors).
                 lt = d.get("link_target")
                 if lt:
@@ -14501,6 +14544,7 @@ class App:
             {"cells": [[c.col, c.row] for c in d.cells],
              "cell": [d.cell.col, d.cell.row], "open": d.open,
              "locked": d.locked, "lock_dc": d.lock_dc, "arcane_lock": d.arcane_lock,
+             "break_dc": d.break_dc, "broken": d.broken,
              # Cross-map staple target in GLOBAL (X,Y,Z); null for an ordinary in-map door.
              "link_target": self._door_links.get(door_link_key(d.cells))}
             for d in self.bm.doors

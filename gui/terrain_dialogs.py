@@ -29,7 +29,8 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
     """Draw a door over screen rect (x, y, w, h) — defaults to a single cell (size×size).
 
     `door` is an rpg.Door. Closed doors are a filled wooden slab; open doors are an
-    ajar frame. A locked door shows a gold padlock; an Arcane Lock shows a purple one.
+    ajar frame; a broken door (smashed off its frame) is a splintered red-brown frame.
+    A locked door shows a gold padlock; an Arcane Lock shows a purple one.
     Used by both the in-game render loop (main.py) and the terrain editor below so the
     door looks identical wherever it is drawn. A wide (multi-cell) door is drawn as one
     elongated slab over its full bounding rect: pass w/h covering all of its cells.
@@ -42,7 +43,21 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
         h = size
     short = min(w, h)
     pad = max(2, short // 8)
-    if door.open:
+    if getattr(door, "broken", False):
+        # Broken: splintered red-brown frame with a couple of jagged shards — the door
+        # has been smashed off its hinges (permanently open, no lock to draw).
+        frame = pygame.Rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad)
+        pygame.draw.rect(screen, (150, 70, 45), frame, 2)
+        shard = max(3, short // 4)
+        pygame.draw.lines(screen, (120, 75, 40), False,
+                          [(frame.x, frame.y),
+                           (frame.x + shard, frame.centery - shard // 2),
+                           (frame.x, frame.bottom)], 2)
+        pygame.draw.lines(screen, (120, 75, 40), False,
+                          [(frame.right, frame.y),
+                           (frame.right - shard, frame.centery + shard // 2),
+                           (frame.right, frame.bottom)], 2)
+    elif door.open:
         # Open: faint green frame plus a thin ajar slab hinged on the left edge.
         frame = pygame.Rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad)
         pygame.draw.rect(screen, (120, 200, 120), frame, 2)
@@ -318,6 +333,7 @@ class TerrainEditorDialog:
         self.door_locked = False
         self.door_lock_dc = 15
         self.door_arcane = False
+        self.door_break_dc = 15   # STR (Athletics) DC to force the next placed door
         # Drag-to-span door placement: start/end cells while the mouse is held.
         self.door_drag_start = None
         self.door_drag_end = None
@@ -447,6 +463,10 @@ class TerrainEditorDialog:
                 self.door_lock_dc = min(30, self.door_lock_dc + 1)
             elif event.key == pygame.K_MINUS and self.selected_type == "Door":
                 self.door_lock_dc = max(1, self.door_lock_dc - 1)
+            elif event.key == pygame.K_RIGHTBRACKET and self.selected_type == "Door":
+                self.door_break_dc = min(30, self.door_break_dc + 1)
+            elif event.key == pygame.K_LEFTBRACKET and self.selected_type == "Door":
+                self.door_break_dc = max(1, self.door_break_dc - 1)
             elif event.key == pygame.K_h:
                 # Switch to Halved (0.5) difficulty
                 self.difficulty_mult = 0.5
@@ -537,7 +557,7 @@ class TerrainEditorDialog:
                 self.bm.remove_door(self.bm.doors[di].id)
                 return
         self.bm.add_door(cells, False, self.door_locked,
-                         self.door_lock_dc, self.door_arcane)
+                         self.door_lock_dc, self.door_arcane, self.door_break_dc)
         # Cross-map staple: if link mode is on and this door sits on a page edge, target
         # the abutting page's matching global cell (resolved to a page at use time).
         key = door_link_key(cells)
@@ -801,11 +821,13 @@ class TerrainEditorDialog:
             lock_str = "Locked" if self.door_locked else "Unlocked"
             arc_str = " + Arcane Lock" if self.door_arcane else ""
             link_str = "  + Link→neighbor" if self.door_link else ""
-            door_text = f"Door: [{lock_str}{arc_str}]  DC {self.door_lock_dc}{link_str}"
+            door_text = (f"Door: [{lock_str}{arc_str}]  lock DC {self.door_lock_dc}"
+                         f"  break DC {self.door_break_dc}{link_str}")
             door_surf = self.font_sm.render(door_text, True, (220, 200, 120))
             screen.blit(door_surf, (10, y + 10))
             keys_surf = self.font_sm.render(
-                "[L] lock  [A] arcane  [K] link  [+/-] DC  (click toggles; drag for a wide door, max 4)",
+                "[L] lock  [A] arcane  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
+                "(click toggles; drag for a wide door, max 4)",
                 True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         else:

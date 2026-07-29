@@ -104,6 +104,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("open",        &Door::open)
         .def_readwrite("locked",      &Door::locked)
         .def_readwrite("lock_dc",     &Door::lock_dc)
+        .def_readwrite("break_dc",    &Door::break_dc,
+             "DC of the Strength (Athletics) check to force the door off its frame.")
+        .def_readwrite("broken",      &Door::broken,
+             "Smashed off its frame: permanently open, cannot be closed or (re)locked.")
         .def_readwrite("arcane_lock", &Door::arcane_lock)
         .def_readwrite("arcane_suppressed_turns", &Door::arcane_suppressed_turns)
         .def("__repr__", [](const Door& d){
@@ -111,7 +115,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
             return "<Door #" + std::to_string(d.id) + " ("
                  + std::to_string(a.col) + "," + std::to_string(a.row) + ") x"
                  + std::to_string(d.cells.size()) + " "
-                 + (d.open ? "open" : "closed")
+                 + (d.broken ? "broken" : (d.open ? "open" : "closed"))
                  + (d.locked ? " locked" : "")
                  + (d.arcane_lock ? " arcane" : "") + ">"; });
 
@@ -299,10 +303,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("perception_prof", &Agent::Stats::perception_prof)
         .def_readwrite("sleight_of_hand_prof",      &Agent::Stats::sleight_of_hand_prof)
         .def_readwrite("sleight_of_hand_expertise", &Agent::Stats::sleight_of_hand_expertise)
+        .def_readwrite("athletics_prof",            &Agent::Stats::athletics_prof)
+        .def_readwrite("athletics_expertise",       &Agent::Stats::athletics_expertise)
         // Skill bonus methods
         .def("stealth_bonus",       &Agent::Stats::stealthBonus)
         .def("passive_perception",  &Agent::Stats::passivePerception)
         .def("sleight_of_hand",     &Agent::Stats::sleightOfHand)
+        .def("athletics",           &Agent::Stats::athletics)
         // Class-feature capability flags
         .def_readwrite("num_attacks",          &Agent::Stats::num_attacks)
         .def_readwrite("multiattack",          &Agent::Stats::multiattack)
@@ -2036,6 +2043,21 @@ PYBIND11_MODULE(rpg_battle_map, m)
                  + " total=" + std::to_string(r.total)
                  + " dc=" + std::to_string(r.dc) + ">"; });
 
+    // ── BreakDoorResult (Strength/Athletics vs a door's break DC) ──────────────
+    py::class_<BreakDoorResult>(m, "BreakDoorResult")
+        .def_readonly("valid",       &BreakDoorResult::valid)
+        .def_readonly("success",     &BreakDoorResult::success)
+        .def_readonly("roll",        &BreakDoorResult::roll)
+        .def_readonly("total",       &BreakDoorResult::total)
+        .def_readonly("dc",          &BreakDoorResult::dc)
+        .def_readonly("log_message", &BreakDoorResult::log_message)
+        .def("__repr__", [](const BreakDoorResult& r){
+            if (!r.valid) return std::string("<BreakDoorResult invalid>");
+            return "<BreakDoorResult " + (r.success ? std::string("success")
+                                                    : std::string("failed"))
+                 + " total=" + std::to_string(r.total)
+                 + " dc=" + std::to_string(r.dc) + ">"; });
+
     // ── GrappleAction / GrappleResult / GrappleEscapeResult ────────────────────
     py::class_<GrappleAction>(m, "GrappleAction")
         .def(py::init<>())
@@ -3158,6 +3180,13 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Pick a door's lock with a Sleight of Hand check: d20 + sleight_of_hand() vs the door's\n"
              "lock_dc. On success the mundane lock is removed (door stays closed until opened). An\n"
              "Arcane Lock cannot be picked. door_id is the Door.id. Returns a PickLockResult.")
+        .def("attempt_break_door",
+             &CombatEngine::attemptBreakDoor,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("door_id"),
+             "Force a door with a Strength (Athletics) check: d20 + athletics() vs the door's\n"
+             "break_dc (+10 while an Arcane Lock is active). On success the door is smashed off its\n"
+             "frame (permanently open; no lock survives). Works on a locked/arcane-locked door.\n"
+             "door_id is the Door.id. Returns a BreakDoorResult.")
         .def("execute_grapple",
              &CombatEngine::executeGrapple,
              py::arg("battle_map"), py::arg("action"),
@@ -4393,15 +4422,15 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def("door_at", &BattleMap::doorAt, py::arg("cell"),
              "Index into doors for the door occupying a cell (any of its cells), or -1 if none.")
         .def("add_door",
-             py::overload_cast<const std::vector<Cell>&, bool, bool, int, bool>(&BattleMap::addDoor),
+             py::overload_cast<const std::vector<Cell>&, bool, bool, int, bool, int>(&BattleMap::addDoor),
              py::arg("cells"), py::arg("open") = false, py::arg("locked") = false,
-             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false,
+             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false, py::arg("break_dc") = 15,
              "Create a door spanning a list of cells (a wide door is one object); returns its\n"
              "unique id and syncs every cell's terrain. Overlapping doors are replaced first.")
         .def("add_door",
-             py::overload_cast<Cell, bool, bool, int, bool>(&BattleMap::addDoor),
+             py::overload_cast<Cell, bool, bool, int, bool, int>(&BattleMap::addDoor),
              py::arg("cell"), py::arg("open") = false, py::arg("locked") = false,
-             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false,
+             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false, py::arg("break_dc") = 15,
              "Create a single-cell door; returns its unique id and syncs the cell's terrain.")
         .def("remove_door", &BattleMap::removeDoor, py::arg("id"),
              "Remove a door by id; restores all of its cells to Standard terrain.")
@@ -4417,6 +4446,9 @@ PYBIND11_MODULE(rpg_battle_map, m)
              py::arg("id"), py::arg("arcane_suppress_turns") = 100,
              "Knock spell: removes a mundane lock, suppresses an Arcane Lock for\n"
              "arcane_suppress_turns, then opens the door. Returns true if opened.")
+        .def("break_door", &BattleMap::breakDoor, py::arg("id"),
+             "Force a door off its frame: unlock it, mark it broken, and open it permanently\n"
+             "(works even on a locked/arcane-locked door). Returns true if the door now broke open.")
 
         // Agent management (core spatial operations only; stat/equipment management moved to CombatEngine)
         .def("clear_agents",       &BattleMap::clearAgents)

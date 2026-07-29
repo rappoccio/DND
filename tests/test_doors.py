@@ -142,6 +142,106 @@ def test_pick_unlocked_door_is_noop():
     print("✅ picking an unlocked door is a no-op")
 
 
+# ── Force / break-down: Strength (Athletics) vs the door's break DC ──────────
+
+def test_athletics_bonus():
+    """athletics() = STR mod + prof (+ prof again with expertise)."""
+    s = rpg.Stats()
+    s.str = 18          # +4
+    s.prof_bonus = 3
+    assert s.athletics() == 4, "no proficiency → STR mod only"
+
+    s.athletics_prof = True
+    assert s.athletics() == 7, "proficiency adds prof_bonus once"
+
+    s.athletics_expertise = True
+    assert s.athletics() == 10, "expertise adds prof_bonus a second time"
+    print("✅ athletics bonus calculation correct")
+
+
+def test_break_door_success():
+    """A strong barbarian smashes a DC 1 door off its frame — permanently open."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Barbarian", 3, 3))
+    s = engine.get_agent_stats(bm, idx)
+    s.str = 20
+    s.athletics_prof = True
+    engine.set_agent_stats(bm, idx, s)
+
+    cell = rpg.Cell(6, 6)
+    did = bm.add_door(cell, False, True, 30, False, 1)  # locked (unpickable), trivial break DC
+
+    res = engine.attempt_break_door(bm, idx, did)
+    assert res.valid and res.success, f"DC 1 door should be forced: {res.log_message}"
+    door = bm.doors[bm.door_at(cell)]
+    assert door.broken and door.open and not door.locked, "broken door is open + unlocked"
+    assert bm.get_terrain_type(cell) == rpg.TerrainType.Standard, "broken door cell is passable"
+    print("✅ break-down success smashes the door open")
+
+
+def test_break_door_failure():
+    """A weakling cannot force a DC 30 door; it stays shut and locked."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Weakling", 3, 3))
+    s = engine.get_agent_stats(bm, idx)
+    s.str = 6  # -2, no proficiency
+    engine.set_agent_stats(bm, idx, s)
+
+    cell = rpg.Cell(7, 7)
+    did = bm.add_door(cell, False, True, 15, False, 30)
+
+    res = engine.attempt_break_door(bm, idx, did)
+    assert res.valid and not res.success, "DC 30 door should hold"
+    door = bm.doors[bm.door_at(cell)]
+    assert not door.broken and not door.open, "failed force leaves the door shut"
+    assert bm.get_terrain_type(cell) == rpg.TerrainType.Wall
+    print("✅ break-down failure leaves the door intact")
+
+
+def test_break_door_beats_arcane_lock_but_plus_10():
+    """Force works on an Arcane Lock (unlike picking), but the DC is +10."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Goliath", 3, 3))
+    s = engine.get_agent_stats(bm, idx)
+    s.str = 20
+    engine.set_agent_stats(bm, idx, s)
+
+    cell = rpg.Cell(8, 8)
+    did = bm.add_door(cell, False, True, 1, True, 5)  # arcane-locked, break_dc 5
+
+    res = engine.attempt_break_door(bm, idx, did)
+    assert res.dc == 15, f"break DC should be 5 + 10 (Arcane Lock), got {res.dc}"
+    print("✅ arcane lock adds +10 to the break DC (still breakable)")
+
+
+def test_broken_door_cannot_close_or_lock():
+    """Once broken, a door can't be closed or (re)locked."""
+    bm = setup_battle_map()
+    cell = rpg.Cell(9, 9)
+    did = bm.add_door(cell, False, False, 15, False)
+    assert bm.break_door(did), "break_door should succeed"
+    assert not bm.close_door(did), "a broken door cannot be closed"
+    bm.lock_door(did, 20)
+    door = bm.doors[bm.door_at(cell)]
+    assert not door.locked and door.open, "a broken door cannot be re-locked"
+    print("✅ broken door refuses to close or lock")
+
+
+def test_break_open_door_is_noop():
+    """Forcing an already-open door reports valid but no success."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Barbarian", 3, 3))
+    cell = rpg.Cell(10, 10)
+    did = bm.add_door(cell, True, False, 15, False)  # already open
+    res = engine.attempt_break_door(bm, idx, did)
+    assert res.valid and not res.success, "nothing to break on an open door"
+    print("✅ forcing an open door is a no-op")
+
+
 # ── Wide (multi-cell) doors ──────────────────────────────────────────────────
 
 def test_wide_door_spans_all_cells():
@@ -197,6 +297,12 @@ if __name__ == "__main__":
         test_pick_lock_failure,
         test_arcane_lock_cannot_be_picked,
         test_pick_unlocked_door_is_noop,
+        test_athletics_bonus,
+        test_break_door_success,
+        test_break_door_failure,
+        test_break_door_beats_arcane_lock_but_plus_10,
+        test_broken_door_cannot_close_or_lock,
+        test_break_open_door_is_noop,
         test_wide_door_spans_all_cells,
         test_wide_door_removed_clears_all_cells,
         test_overlapping_door_replaces_previous,

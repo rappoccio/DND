@@ -56,6 +56,13 @@ struct Door {
     bool open{false};
     bool locked{false};
     int  lock_dc{15};
+    // DC of the Strength (Athletics) check to force the door off its frame. Independent
+    // of lock_dc: a strong creature can smash a door it cannot pick. An Arcane Lock adds
+    // +10 to this DC at check time (see CombatEngine::attemptBreakDoor).
+    int  break_dc{15};
+    // Broken: the door has been smashed off its frame. It is permanently open — it can no
+    // longer be closed, locked, or arcane-locked (there is nothing left to shut).
+    bool broken{false};
     // Arcane Lock (the spell): magically held shut; cannot be opened by a normal
     // pull or a mundane pick. Knock suppresses it for arcane_suppressed_turns.
     bool arcane_lock{false};
@@ -621,17 +628,22 @@ public:
     // cell's terrain. Any pre-existing door overlapping these cells is replaced first
     // (no stacking). A wide door is one logical object: it opens/closes/locks as a unit.
     int addDoor(const std::vector<Cell>& cells, bool open = false, bool locked = false,
-                int lock_dc = 15, bool arcane_lock = false);
+                int lock_dc = 15, bool arcane_lock = false, int break_dc = 15);
     // Single-cell convenience overload (delegates to the multi-cell form).
     int addDoor(Cell c, bool open = false, bool locked = false,
-                int lock_dc = 15, bool arcane_lock = false);
+                int lock_dc = 15, bool arcane_lock = false, int break_dc = 15);
     // Remove a door by id; restores all of its cells to Standard terrain.
     void removeDoor(int id) noexcept;
     // Open/close: openDoor fails (returns false) on a locked or arcane-locked door.
+    // closeDoor/lockDoor no-op (return false / do nothing) on a broken door.
     bool openDoor(int id) noexcept;
     bool closeDoor(int id) noexcept;
     void lockDoor(int id, int dc) noexcept;
     void unlockDoor(int id) noexcept;
+    // Force a door off its frame: unlocks it, marks it broken, and opens it permanently.
+    // Works even on a locked or arcane-locked door (you are smashing the door, not the
+    // magic). Returns true if a door with this id exists and is now broken open.
+    bool breakDoor(int id) noexcept;
     // Knock spell semantics: removes a mundane lock; an Arcane Lock is SUPPRESSED (not
     // removed) for arcane_suppress_turns; then the door is opened. Returns true if a
     // door with this id exists and is now open. (No tick decrements arcane_suppressed_turns

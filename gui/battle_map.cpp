@@ -1606,7 +1606,7 @@ void BattleMap::syncDoorTerrain(int idx) noexcept {
 }
 
 int BattleMap::addDoor(const std::vector<Cell>& cells, bool open, bool locked,
-                       int lock_dc, bool arcane_lock) {
+                       int lock_dc, bool arcane_lock, int break_dc) {
     // Replace any existing door overlapping any of these cells rather than stacking.
     // Collect ids first so removeDoor's vector erasure can't shift indices mid-scan.
     std::vector<int> to_remove;
@@ -1625,14 +1625,16 @@ int BattleMap::addDoor(const std::vector<Cell>& cells, bool open, bool locked,
     d.open        = open;
     d.locked      = locked;
     d.lock_dc     = lock_dc;
+    d.break_dc    = break_dc;
     d.arcane_lock = arcane_lock;
     doors_.push_back(d);
     syncDoorTerrain(static_cast<int>(doors_.size()) - 1);
     return d.id;
 }
 
-int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_lock) {
-    return addDoor(std::vector<Cell>{c}, open, locked, lock_dc, arcane_lock);
+int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_lock,
+                       int break_dc) {
+    return addDoor(std::vector<Cell>{c}, open, locked, lock_dc, arcane_lock, break_dc);
 }
 
 void BattleMap::removeDoor(int id) noexcept {
@@ -1667,6 +1669,7 @@ bool BattleMap::openDoor(int id) noexcept {
 bool BattleMap::closeDoor(int id) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id == id) {
+            if (doors_[i].broken) return false;   // smashed off its frame; nothing to shut
             doors_[i].open = false;
             syncDoorTerrain(static_cast<int>(i));
             return true;
@@ -1678,6 +1681,7 @@ bool BattleMap::closeDoor(int id) noexcept {
 void BattleMap::lockDoor(int id, int dc) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id == id) {
+            if (doors_[i].broken) return;         // a broken door can't be locked
             doors_[i].locked  = true;
             doors_[i].lock_dc = dc;
             doors_[i].open    = false;
@@ -1700,6 +1704,21 @@ bool BattleMap::knockDoor(int id, int arcane_suppress_turns) noexcept {
         if (doors_[i].arcane_lock)                        // Arcane Lock suppressed, not removed
             doors_[i].arcane_suppressed_turns = arcane_suppress_turns;
         doors_[i].open = true;
+        syncDoorTerrain(static_cast<int>(i));
+        return true;
+    }
+    return false;
+}
+
+bool BattleMap::breakDoor(int id) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id != id) continue;
+        // Smashed off its frame: no lock (mundane or arcane) can hold what isn't there.
+        doors_[i].locked                 = false;
+        doors_[i].arcane_lock            = false;
+        doors_[i].arcane_suppressed_turns = 0;
+        doors_[i].broken                 = true;
+        doors_[i].open                   = true;
         syncDoorTerrain(static_cast<int>(i));
         return true;
     }

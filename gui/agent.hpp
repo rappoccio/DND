@@ -179,6 +179,8 @@ namespace rpg {
       bool perception_prof{false};  // proficiency in Perception (WIS-based)
       bool sleight_of_hand_prof{false};      // proficiency in Sleight of Hand (DEX-based; picks locks)
       bool sleight_of_hand_expertise{false}; // expertise: prof_bonus counted twice
+      bool athletics_prof{false};            // proficiency in Athletics (STR-based; forces doors)
+      bool athletics_expertise{false};       // expertise: prof_bonus counted twice
 
       // ── Spellcasting ──────────────────────────────────────────────────
       // 0=STR 1=DEX 2=CON 3=INT 4=WIS 5=CHA — drives spell attack rolls and
@@ -294,6 +296,11 @@ namespace rpg {
         int p = sleight_of_hand_prof ? prof_bonus : 0;
         if (sleight_of_hand_expertise) p += prof_bonus;  // expertise doubles the bonus
         return _mod(dex) + p;
+      }
+      [[nodiscard]] int athletics() const noexcept {
+        int p = athletics_prof ? prof_bonus : 0;
+        if (athletics_expertise) p += prof_bonus;        // expertise doubles the bonus
+        return _mod(str) + p;
       }
 
       // Default constructor (initializes damage multiplier arrays to 1.0)
