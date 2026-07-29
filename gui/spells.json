@@ -4355,6 +4355,7 @@
         "condition_name": "Paralyzed",
         "condition_duration": 0,
         "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
         "save_dc_ability": "SaveSpellcasterMod"
       }
     ],
@@ -4383,6 +4384,7 @@
         "condition_name": "Paralyzed",
         "condition_duration": 0,
         "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
         "save_dc_ability": "SaveSpellcasterMod"
       }
     ],

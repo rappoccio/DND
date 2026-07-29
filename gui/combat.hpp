@@ -1487,6 +1487,14 @@ public:
     void applyParalyzed(BattleMap& bm, int idx) noexcept;
     void applyBlinded(BattleMap& bm, int idx) noexcept;
     void applyIncapacitated(BattleMap& bm, int idx) noexcept;
+    // Reverse applyIncapacitated's Speed→0: re-seed BOTH the Stats remaining-speed fields and the
+    // Agent's own movement budget (the one moveAgent/reachableCells read) from the base speeds, so a
+    // creature regains its Speed the instant an incapacitating condition (Paralyzed/Stunned/
+    // Incapacitated) ends — even when the end path is not the creature's own turn start (Dispel Magic,
+    // concentration drop, an ally's action, duration expiry on another creature's turn). Called from
+    // the onConditionEnded teardown. Safe against refunding a partial move: incapacitation always ends
+    // at a turn boundary, never mid-move.
+    void restoreMovementAfterIncapacitation(BattleMap& bm, int idx) noexcept;
     void applyStunned(BattleMap& bm, int idx) noexcept;
     void applyCharmed(BattleMap& bm, int idx) noexcept;
     void dropAgentWeapons(BattleMap& bm, int idx) noexcept;
@@ -1551,6 +1559,12 @@ public:
     [[nodiscard]] std::vector<int> tickAgentConditionsForCaster(BattleMap& bm, int caster_idx) noexcept;
     // Remove a condition by id. Fires onConditionEnded (caster kickback) before erasing.
     void removeAgentCondition(BattleMap& bm, int condition_id) noexcept;
+
+    // After a spell-applied condition ends (a target saved out of it), drop the caster's
+    // concentration IFF that was the last target still affected by the same spell. `ended` must
+    // already be removed from activeAgentConditions_. Shared by the start-of-turn save loop
+    // (beginTurn) and the end-of-turn save loop (endTurn / Hold Person).
+    void dropCasterConcentrationIfLastTarget(BattleMap& bm, const ActiveAgentCondition& ended) noexcept;
 
     // ── Restoration spells ────────────────────────────────────────────────
     // Remove Curse: strip every curse-tracked condition (Vistani Curse of Vulnerability/Weakness/
@@ -3199,7 +3213,7 @@ public:
     bool applyBendLuckToAttack    (BattleMap& bm, int reactor, AttackResult& r);
     bool applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackResult& r);
     bool applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r);
-    bool applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackResult& r); // Disadvantage = reroll, take lower
+    bool applyWardingFlareToAttack(BattleMap& bm, int reactor, int target, AttackResult& r); // Disadvantage = reroll, take lower; L6+ also grants target 2d6+WIS temp HP (Improved Warding Flare)
     bool applyRestoreBalanceToAttack(BattleMap& bm, int reactor, AttackResult& r); // cancel advantage: r.d20 ← r.d20_primary
 
     // Clockwork Restore Balance — the OnMiss (raising) counterpart of the OnD20Seen advantage-cancel.

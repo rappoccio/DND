@@ -31,6 +31,8 @@ test_scripts = [
     "test_poisoned.py",
     "test_petrified.py",
     "test_condition_saves.py",
+    "test_hold_person_endturn.py",
+    "test_incapacitated_movement_restore.py",
     "test_grapple.py",
     "test_death_saves.py",
     "test_heal_revives_downed.py",
@@ -160,6 +162,10 @@ test_scripts = [
 
     # Aid (SPELLS_TO_WIRE Phase 3: +5 current & max HP per target, +5/upcast level, revives downed)
     "test_aid.py",
+
+    # LIVE_PLAY_BUGFIX_PLAN Phase 4 — L42 DEX layers into AC for PCs (is_npc=False) but not NPCs
+    # (published final AC), and reaches the weapon to-hit roll; L40 spell-slot state round-trips.
+    "test_ac_dex.py",
 
     # SPELL_IMPLEMENTATION_PLAN Tier 1 — False Life, Longstrider, Expeditious Retreat, Blur,
     # Barkskin, Ray of Enfeeblement, Enlarge/Reduce, Regenerate, Divine Word, Dominate Monster,

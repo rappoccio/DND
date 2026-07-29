@@ -725,7 +725,13 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
         return blocked;
     }
 
-    int target_ac = target.getStats().base_ac;
+    // Effective AC: DEX modifier, armor, shield, and defensive feats are folded in by
+    // calculateAC (for NPCs base_ac is already the final published value; see calculateAC).
+    // The direct resolve_attack convenience binding passes no map/index — fall back to the
+    // raw base_ac there (no DEX layering available without the placed-agent context).
+    int target_ac = (bm && target_idx >= 0)
+                        ? calculateAC(*bm, target_idx)
+                        : target.getStats().base_ac;
     AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage, attacker.getConditions().exhaustion_level);
     r.hp_before = target.getStats().hp_cur;
 
@@ -1888,7 +1894,7 @@ bool CombatEngine::applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackR
     return true;
 }
 
-bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackResult& r)
+bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, int target, AttackResult& r)
 {
     const auto& agents = bm.placedAgents();
     if (reactor < 0 || reactor >= static_cast<int>(agents.size())) return false;
@@ -1911,6 +1917,18 @@ bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, AttackR
     bm.setAgentConditions(reactor, cond);
     log_("{} uses Warding Flare: Disadvantage, d20 {}/{}→{} (now {} vs AC {}) → {}", agentName(bm, reactor),
          old_d20, rr, r.d20, r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+
+    // Improved Warding Flare (Light Domain L6+): whenever you use Warding Flare, the target of the
+    // triggering attack gains 2d6 + WIS-mod temporary HP — granted regardless of the reroll's outcome.
+    if (s.classLevel(CharacterClass::Cleric) >= 6 &&
+        target >= 0 && target < static_cast<int>(agents.size())) {
+        const int thp = std::max(0, roll(6) + roll(6) + dndMod(s.wis));
+        Agent::Stats ts = bm.getAgentStats(target);
+        grantTempHp(ts, thp);                              // max() semantics: temp HP doesn't stack
+        bm.setAgentStats(target, ts);
+        log_("{} grants {} {} temporary HP (Improved Warding Flare)",
+             agentName(bm, reactor), agentName(bm, target), thp);
+    }
     return true;
 }
 
@@ -2091,7 +2109,7 @@ void CombatEngine::applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, c
     if      (opt.feature == "BendLuck")     applyBendLuckToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "CuttingWords") applyCuttingWordsToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "SilveryBarbs") applySilveryBarbsToAttack(bm, ctx.reactor_idx, r);
-    else if (opt.feature == "WardingFlare") applyWardingFlareToAttack(bm, ctx.reactor_idx, r);
+    else if (opt.feature == "WardingFlare") applyWardingFlareToAttack(bm, ctx.reactor_idx, in_flight_attack_.action.target_idx, r);
     else if (opt.feature == "RestoreBalance") applyRestoreBalanceToAttack(bm, ctx.reactor_idx, r);
 }
 
@@ -2117,7 +2135,7 @@ bool CombatEngine::maybeD20SeenInline(BattleMap& bm, const Attack& action, Attac
         if      (o.feature == "BendLuck")     changed |= applyBendLuckToAttack(bm, reactor, r);
         else if (o.feature == "CuttingWords") changed |= applyCuttingWordsToAttack(bm, reactor, r);
         else if (o.feature == "SilveryBarbs") changed |= applySilveryBarbsToAttack(bm, reactor, r);
-        else if (o.feature == "WardingFlare") changed |= applyWardingFlareToAttack(bm, reactor, r);
+        else if (o.feature == "WardingFlare") changed |= applyWardingFlareToAttack(bm, reactor, action.target_idx, r);
         else if (o.feature == "RestoreBalance") changed |= applyRestoreBalanceToAttack(bm, reactor, r);
     }
     return changed;

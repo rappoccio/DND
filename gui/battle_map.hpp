@@ -203,6 +203,8 @@ struct ActiveAgentCondition {
     SaveAbility_t save_ability    = SaveDex;  // which save to repeat
     int              save_dc              = 0;    // DC for saving throws (must be set when condition created)
     int              save_repeat_turns    = 1;    // repeat save check every N turns (1 = every turn)
+    bool             save_at_end_of_turn  = false;// periodic save fires at END of the creature's turn
+                                                  // (endTurn) rather than the start — Hold Person RAW.
     int              condition_id         = -1;   // unique ID for tracking/removal
     int              cast_level           = 0;    // slot level the spell was cast at (for Dispel Magic / Aid)
     OnDamage_t       on_damage            = OnDamage_t::None;  // End / RepeatSave on taking damage

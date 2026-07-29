@@ -983,6 +983,11 @@ def _dict_to_spell(d: dict):
             c.condition_duration = int(cond_entry.get("condition_duration", 0))
             c.push_ft = int(cond_entry.get("push_ft", 0))
             c.save_repeat_turns = int(cond_entry.get("save_repeat_turns", 1))
+            # Hold Person / Hold Monster RAW: the periodic save is rolled at the END of the
+            # affected creature's turn, not the start. Guarded with hasattr so an older
+            # compiled module still loads spells.json (falls back to start-of-turn saves).
+            if hasattr(c, "save_at_end_of_turn"):
+                c.save_at_end_of_turn = bool(cond_entry.get("save_at_end_of_turn", False))
             # Condition requires a save if it has a save_ability specified
             c.requires_save = ("save_ability" in cond_entry)
             # Parse save_ability string (target's save) - defaults to spell's save_ability

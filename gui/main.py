@@ -1884,11 +1884,21 @@ class App:
         return None
 
     def _cell_to_screen(self, col, row):
-        """Return top-left screen pixel of a grid cell."""
+        """Return top-left screen pixel of a grid cell.
+
+        An encounter can carry a token whose saved cell lies outside the grid the
+        currently-loaded map/terrain produces (e.g. an agent saved at row 16 on a
+        16-row map, or a scene authored against a differently-anchored manual grid).
+        Clamp the index into the grid-line arrays so such a stray token renders at
+        the map edge — still visible and draggable back onto the map — instead of
+        crashing the whole app on the first draw. Mirrors the clamp in
+        _cell_to_screen_f's lerp()."""
         s     = self.map_scale
         raw_v = self.bm.v_line_positions
         raw_h = self.bm.h_line_positions
-        return int(raw_v[col] * s + self.pan_x), int(raw_h[row] * s + self.pan_y)
+        c = max(0, min(int(col), len(raw_v) - 1))
+        r = max(0, min(int(row), len(raw_h) - 1))
+        return int(raw_v[c] * s + self.pan_x), int(raw_h[r] * s + self.pan_y)
 
     def _cell_to_screen_f(self, col, row):
         """_cell_to_screen for FRACTIONAL grid coordinates (NPC-turn playback: a token
@@ -3973,17 +3983,7 @@ class App:
         self.bonus_used           = False
         self.pending_attack_slot       = ""
         self.attacks_remaining         = 0
-        self.pending_cleave            = None
-        self.pending_sweep             = None
-        self.pending_rally             = None
-        self.pending_feint             = None
-        self.pending_mantle_active     = False
-        self.pending_mantle_targets    = []
-        self.pending_beguiling         = False
-        self.pending_beguiling_bard    = -1
-        self.pending_clairvoyant       = False
-        self.pending_vow_of_enmity     = False
-        self.pending_inspiring_smite   = False
+        self._clear_pending_target_picks()   # all armed target-pick flags (L36)
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -4163,17 +4163,7 @@ class App:
         self.bonus_used           = False
         self.pending_attack_slot       = ""
         self.attacks_remaining         = 0
-        self.pending_cleave            = None
-        self.pending_sweep             = None
-        self.pending_rally             = None
-        self.pending_feint             = None
-        self.pending_mantle_active     = False
-        self.pending_mantle_targets    = []
-        self.pending_beguiling         = False
-        self.pending_beguiling_bard    = -1
-        self.pending_clairvoyant       = False
-        self.pending_vow_of_enmity     = False
-        self.pending_inspiring_smite   = False
+        self._clear_pending_target_picks()   # all armed target-pick flags (L36)
         self.pending_spell_slot        = ""
         self.pending_spell_is_aoe      = False
         self.pending_spell_num_targets = 0
@@ -4381,6 +4371,61 @@ class App:
         # completes, via _proceed_to_new_turn (the queue-drain continuation).
         self._begin_legendary_phase(prev_idx)
 
+    def _clear_pending_target_picks(self):
+        """Reset EVERY 'awaiting a map click' target-pick flag to its idle value.
+
+        Each of these flags arms a one-shot handler that swallows the next map click (an ally/enemy
+        token or a destination cell). If the player opens one of these offers but never completes it
+        (no valid click, no Esc), the flag stays armed and leaks into a later turn — where it hijacks
+        the next click into the stale handler ("the offer shows up on my next action"). This is the
+        single defensive clear called at every turn boundary (turn start, combat start, combat end),
+        so no single-feature clear has to be maintained per-site (fixes L36)."""
+        # Boolean "awaiting a click" arms.
+        self.arcane_charge_pending       = False
+        self.blink_steps_pending         = False
+        self.pending_psychic_teleport    = False
+        self.pending_shadow_step         = False
+        self.pending_wild_magic_teleport = False
+        self.pending_warping_implosion   = False
+        self.pending_shadow_darkness     = False
+        self.pending_steps_of_fey        = False
+        self.pending_misty_escape        = False
+        self.pending_bewitching_misty    = False
+        self.pending_invoke_duplicity    = False
+        self.pending_move_duplicity      = False
+        self.pending_swap_duplicity      = False
+        self.pending_heal_light          = False
+        self.pending_lay_on_hands        = False
+        self.pending_bastion_of_law      = False
+        self.pending_hand_of_healing     = False
+        self.pending_escape_net          = False
+        self.pending_grant_inspiration   = False
+        self.pending_mantle_active       = False
+        self.pending_beguiling           = False
+        self.pending_clairvoyant         = False
+        self.pending_vow_of_enmity       = False
+        self.pending_inspiring_smite     = False
+        self.pending_telekinetic         = False
+        self.pending_flurry_target       = False
+        self.pending_vitality_target     = False
+        self._legendary_target_pick      = False
+        # None / -1 idle sentinels and their companion state.
+        self.pending_cleave              = None
+        self.pending_sweep               = None
+        self.pending_rally               = None
+        self.pending_feint               = None
+        self.pending_use_item            = -1
+        self.pending_elemental_burst     = -1
+        self.pending_beguiling_bard      = -1
+        self.move_duplicity_idx          = -1
+        self._vitality_option_index      = -1
+        self.pending_flurry_atk_idx      = -1
+        self.pending_flurry_rider_option = -1
+        self.pending_bastion_sp          = 0
+        self.pending_duplicity_remaining = 0
+        self._duplicity_cd_pending       = False
+        self.pending_mantle_targets      = []
+
     def _proceed_to_new_turn(self):
         """Begin the next combatant's turn. Runs after _advance_turn ends the previous turn and the
         legendary-action phase (if any) finishes draining."""
@@ -4398,37 +4443,14 @@ class App:
         self.pending_shove_type        = ""
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
-        self.arcane_charge_pending       = False
-        self.blink_steps_pending         = False
-        self.pending_psychic_teleport    = False
-        self.pending_wild_magic_teleport = False
-        self.pending_warping_implosion   = False
-        self.pending_steps_of_fey        = False
-        self.pending_misty_escape        = False
-        self.pending_bewitching_misty    = False
-        self.pending_invoke_duplicity    = False
-        self.pending_duplicity_remaining = 0
-        self._duplicity_cd_pending     = False
-        self.pending_move_duplicity    = False
-        self.move_duplicity_idx        = -1
-        self.pending_swap_duplicity    = False
         self._reaction_mover_idx       = -1
-        # World Tree Vitality of the Tree: this turn-start target-pick must not leak across turns.
-        # If the player picked the option last turn but never clicked a valid target, the flag would
-        # otherwise stay armed and swallow every later agent click into _resolve_vitality_target
-        # (re-printing "Pick a living creature within 10 ft" forever). Clear it defensively here.
+        # World Tree Vitality of the Tree: diagnostic for a stale turn-start target-pick (the actual
+        # clear now lives in _clear_pending_target_picks, called just below).
         if self.pending_vitality_target or self._vitality_option_index != -1:
             print(f"[VITALITY] turn-start clearing stale state "
                   f"(pending={self.pending_vitality_target}, opt={self._vitality_option_index})")
-        self.pending_vitality_target   = False
-        self._vitality_option_index    = -1
-        # College of Glamour Beguiling Magic: the post-cast "click a creature" offer must not leak
-        # across turns. If the bard cast a qualifying Enchantment/Illusion spell but never clicked a
-        # target (nor pressed Esc), the flag would otherwise stay armed and swallow the next creature
-        # click on a later turn into _beguiling_pick_target — the offer appearing to "show up on the
-        # next action." The window is immediate-only, so clear it defensively at every turn start.
-        self.pending_beguiling         = False
-        self.pending_beguiling_bard    = -1
+        # One defensive clear of every armed target-pick flag so none leaks into this new turn.
+        self._clear_pending_target_picks()
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++). The turn start
         # opens the OnTurnStartNearby reaction window (Branches of the Tree) via the
@@ -4784,6 +4806,28 @@ class App:
                 if 0 <= s_idx < len(self.bm.placed_agents):
                     self._combat_log_add(f"{self.bm.placed_agents[s_idx].name} vanishes.")
 
+
+    # ── Target-pick hint (L35) ──────────────────────────────────────────────
+    # ~15 target-pick flows (Flurry of Blows, Lay on Hands, Bardic Inspiration, Hand of Healing,
+    # Telekinetic Movement, …) armed a pick and set `self.hint = "click a target…"` for direction —
+    # but nothing ever rendered `hint`, so those flows left the player with no prompt at all. Rather
+    # than add a second parallel renderer, `hint` is now a write-only property that forwards to the
+    # ONE prompt mechanism the rest of the GUI already uses: the scrolling combat log. Every existing
+    # `self.hint = "…"` site therefore emits a real prompt with no per-site change. (Sites that also
+    # called `_combat_log_add` explicitly had that redundant call removed so the prompt shows once.)
+    @property
+    def hint(self) -> str:
+        return getattr(self, "_hint", "")
+
+    @hint.setter
+    def hint(self, msg: str):
+        self._hint = msg or ""
+        if not msg:
+            return
+        text = str(msg)
+        if not text.rstrip().endswith((".", "!", "?", "…", ":")):
+            text += "."
+        self._combat_log_add(text)
 
     def _combat_log_add(self, msg: str):
         self.combat_log.insert(0, msg)
@@ -8827,9 +8871,6 @@ class App:
             else:
                 where = "yourself" if it.range <= 0 else f"yourself or a creature within {it.range} ft"
                 prompt = f"Click {where} to use {it.name}"
-            # self.hint is never rendered anywhere, so the target prompt has to go to the combat
-            # log or the player is left with no direction at all after picking an item.
-            self.hint = prompt
             self._combat_log_add(prompt + ".")
 
         opts = []
@@ -9150,7 +9191,6 @@ class App:
             word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
             self._combat_log_add(
                 f"Mantle of Majesty: casting Command ({word_name}) — click a target within 60 ft.")
-            self.hint = f"Command ({word_name}): click a target within 60 ft"
             self._flush_combat_log()
 
         self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None, multi=False,
@@ -11792,7 +11832,6 @@ class App:
         """DM accepted Bewitching Magic — arm the free Misty Step destination pick (with the currently
         selected Steps of the Fey rider)."""
         self.pending_bewitching_misty = True
-        self.hint = "Bewitching Magic: click a destination cell (up to 30 ft) or yourself to decline"
         self._combat_log_add(
             "Bewitching Magic — click a destination within 30 ft (or click yourself to decline).")
         self._flush_combat_log()
@@ -12402,14 +12441,19 @@ class App:
         conditions = []
         _on_dmg_name = {rpg.OnDamage.End: "end", rpg.OnDamage.RepeatSave: "repeat_save"}
         for cond in s.conditions:
-            conditions.append({
+            cond_dict = {
                 "condition_name": cond.condition_name,
                 "condition_duration": cond.condition_duration,
                 "save_repeat_turns": cond.save_repeat_turns,
                 "save_ability": cond.save_ability.name,
                 "save_dc_ability": cond.save_dc_ability.name,
                 "on_damage": _on_dmg_name.get(cond.on_damage),
-            })
+            }
+            # Hold Person / Hold Monster: end-of-turn save timing must survive a save/reload
+            # (hasattr-guarded so an older compiled module still serializes cleanly).
+            if getattr(cond, "save_at_end_of_turn", False):
+                cond_dict["save_at_end_of_turn"] = True
+            conditions.append(cond_dict)
 
         return {
             "name":                  s.name,
@@ -20212,14 +20256,12 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_psychic_teleport = True
-                            self.hint = "Psychic Teleportation: click a destination cell"
                             self._combat_log_add(
                                 "Psychic Teleportation: click a destination (or click yourself to cancel).")
                     if self.btn_cbt_shadow_step.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_shadow_step = True
-                            self.hint = "Shadow Step: click a destination cell (up to 30 ft)"
                             self._combat_log_add(
                                 "Shadow Step: click a destination (or click yourself to cancel).")
                     if self.btn_cbt_cloak_of_shadows.clicked(event):
@@ -20236,7 +20278,6 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_shadow_darkness = True
-                            self.hint = "Shadow Arts: Darkness: click the center of the 15-ft Sphere"
                             self._combat_log_add(
                                 "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
                     if self.btn_cbt_fey_effect.clicked(event):
@@ -20251,14 +20292,12 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_steps_of_fey = True
-                            self.hint = "Steps of the Fey: click a destination cell (up to 30 ft)"
                             self._combat_log_add(
                                 "Steps of the Fey: click a destination (or click yourself to cancel).")
                     if self.btn_cbt_misty_escape.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_misty_escape = True
-                            self.hint = "Misty Escape: click a destination cell (up to 30 ft)"
                             self._combat_log_add(
                                 "Misty Escape: click a destination (or click yourself to cancel).")
                     if self.btn_cbt_elemental_attunement.clicked(event):
@@ -20288,7 +20327,6 @@ class App:
                                 self.pending_elemental_burst = element
                                 type_name = next((lbl for lbl, val in ELEMENTAL_MONK_OPTIONS
                                                   if val == element), "?")
-                                self.hint = f"Elemental Burst ({type_name}): click the center of the 20-ft Sphere"
                                 self._combat_log_add(
                                     f"Elemental Burst ({type_name}): click a center cell (or click yourself to cancel).")
                             self._element_dialog.show(_on_burst_elem, ELEMENTAL_MONK_OPTIONS,
@@ -20464,7 +20502,6 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_wild_magic_teleport = True
-                            self.hint = "Wild Magic Teleport: click a destination (up to 20 ft)"
                             self._combat_log_add("Wild Magic Teleport: click a destination cell.")
                     if self.btn_cbt_companion.clicked(event):
                         self._show_companion_menu()

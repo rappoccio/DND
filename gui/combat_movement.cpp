@@ -615,12 +615,38 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
         if (disengaging && !ra.agent->getStats().has_sentinel) continue;
 
         const int rSize = ra.agent->getSize();
-        // A reactor only threatens a cell it can both reach AND see: a wall
-        // between the reactor and the mover blocks the opportunity attack even
-        // when the two are geometrically adjacent (e.g. either side of a wall).
+        // A reactor only threatens a cell it can both reach AND has an unobstructed line of effect to:
+        // a wall between the reactor and the mover blocks the opportunity attack even when the two are
+        // geometrically adjacent (e.g. on either side of a walled-off corner).
+        //   • hasLineOfSight catches walls that fully separate larger footprints.
+        //   • meleeReachClear adds the 5-ft corner rule hasLineOfSight cannot express: two diagonally
+        //     adjacent creatures whose two shared orthogonal cells are BOTH walls (a sealed corner)
+        //     cannot reach each other, so no OA fires. (hasLineOfSight can't see this because a pure
+        //     distance-1 diagonal's corner is flanked by the two endpoint cells, which it always
+        //     excludes — making its wall test a no-op at 5-ft reach.)
+        auto isWallCell = [&](int wc, int wr) -> bool {
+            if (wc < 0 || wr < 0 || wc >= bm.gridCols() || wr >= bm.gridRows()) return true;  // off-map = solid
+            return bm.disallowedCells().contains(Cell{wc, wr}) ||
+                   bm.getTerrainType(Cell{wc, wr}) == TerrainType::Wall;
+        };
         const auto threatens = [&](Cell moverCell) {
             if (footprintDistance(ra.origin, rSize, moverCell, moverSize) > reach) return false;
-            return bm.hasLineOfSight(ra.origin, rSize, moverCell, moverSize);
+            if (!bm.hasLineOfSight(ra.origin, rSize, moverCell, moverSize)) return false;
+            // Some cell of the reactor must be adjacent to some cell of the mover by an OPEN step —
+            // orthogonal steps are always open; a diagonal step is blocked only when BOTH shared
+            // orthogonal cells are walls. A footprint cell is never a wall, so it reads as open.
+            for (int rc = ra.origin.col; rc < ra.origin.col + rSize; ++rc)
+            for (int rr = ra.origin.row; rr < ra.origin.row + rSize; ++rr)
+            for (int mc = moverCell.col; mc < moverCell.col + moverSize; ++mc)
+            for (int mr = moverCell.row; mr < moverCell.row + moverSize; ++mr) {
+                const int dc = std::abs(rc - mc), dr = std::abs(rr - mr);
+                if (dc > 1 || dr > 1) continue;             // this cell-pair isn't adjacent
+                if (dc == 0 && dr == 0) return true;        // overlapping (defensive) → reachable
+                if (dc == 0 || dr == 0) return true;        // orthogonally adjacent → always reachable
+                // Diagonal: open unless BOTH shared orthogonal cells — (rc,mr) and (mc,rr) — are walls.
+                if (!isWallCell(rc, mr) || !isWallCell(mc, rr)) return true;
+            }
+            return false;                                    // every adjacency is a sealed corner
         };
         bool wasIn = threatens(path.front());
         bool provoked = false;
@@ -744,7 +770,13 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
         in_flight_move_.mover_down = true;
         bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
     } else {
-        if (sentinel_hit) {
+        // An OA can inflict an incapacitating condition (Stunned/Paralyzed/Incapacitated — all route
+        // through applyIncapacitated) on the mover as a rider. An incapacitated creature's Speed drops
+        // to 0 and it can take no further actions this turn, so — like a Sentinel hit — the move halts
+        // at the provoke cell and advanceMove zeroes the remaining movement budget. Blocking further
+        // *actions* is handled GUI-side by the Incapacitated action-gate, which now sees the condition.
+        const bool mover_incapacitated = bm.getAgentConditions(ctx.source_idx).incapacitated;
+        if (sentinel_hit || mover_incapacitated) {
             in_flight_move_.mover_halted = true;
             in_flight_move_.halt_cell    = ctx.source_cell;   // stop where the OA triggered
         }

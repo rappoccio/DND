@@ -24,6 +24,12 @@ struct AttackCondition {
     SaveAbility_t save_ability = SaveDex;      // target's save type
     SaveAbility_t save_dc_ability = SaveWis;   // attacker's ability for DC
     bool requires_save = false;           // if false, condition applies automatically; if true, target gets a save
+    // When true, the periodic "shrug it off" save is rolled at the END of each of the
+    // affected creature's turns (CombatEngine::endTurn) instead of the start — RAW for
+    // Hold Person / Hold Monster ("At the end of each of its turns, the target repeats
+    // the save"). The creature is still barred from acting on the intervening turn; a
+    // success only frees it starting on its NEXT turn. Copied onto the tracked condition.
+    bool save_at_end_of_turn = false;
     OnDamage_t on_damage = OnDamage_t::None;   // behavior when the affected creature takes damage
 
     // ── Damage-over-time rider (Pit Fiend poison, and any future recurring DoT) ──

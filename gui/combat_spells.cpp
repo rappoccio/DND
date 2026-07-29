@@ -2039,6 +2039,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     }
                     // How often to repeat save checks
                     cond.save_repeat_turns = spell_cond.save_repeat_turns;
+                    // Hold Person / Hold Monster: roll the periodic save at the END of the target's
+                    // turn (endTurn) rather than the start — the creature can't act on the intervening
+                    // turn and only shrugs the effect off starting on its NEXT turn.
+                    cond.save_at_end_of_turn = spell_cond.save_at_end_of_turn;
                     // Target can save at the start of their next turn (next_save_turn == 0 means "save now")
                     cond.next_save_turn = 0;
 
@@ -3760,11 +3764,15 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
         bm.setAgentConditions(cond.agent_idx, ac);
         return;
     }
+    // Paralyzed/Stunned/Incapacitated route through applyIncapacitated, which sets Speed→0. When any
+    // of them ends we must give that Speed back (restoreMovementAfterIncapacitation) so the creature can
+    // move again on the same or next turn — otherwise its budget stays 0 until something else reseeds it.
     Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
-    if      (n == "Paralyzed")     { ac.paralyzed = false; ac.incapacitated = false; }
+    bool restore_movement = false;
+    if      (n == "Paralyzed")     { ac.paralyzed = false; ac.incapacitated = false; restore_movement = true; }
     else if (n == "Blinded")       { ac.blinded = false; }
-    else if (n == "Incapacitated") { ac.incapacitated = false; }
-    else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; }
+    else if (n == "Incapacitated") { ac.incapacitated = false; restore_movement = true; }
+    else if (n == "Stunned")       { ac.stunned = false; ac.incapacitated = false; restore_movement = true; }
     else if (n == "Charmed")       { ac.charmed = false; ac.charmed_by = -1; }
     else if (n == "Frightened")    { ac.frightened = false; }
     else if (n == "Restrained")    { if (!ac.netted) ac.restrained = false; }  // a Net lasts "until it escapes" — see escapeNet
@@ -3777,6 +3785,12 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Sanctuary")     { ac.sanctuary_active = false; ac.sanctuary_dc = 0; }
     else if (n == "Gaseous")       { endGaseousForm(bm, cond.agent_idx); return; }  // restores speeds/multipliers + clears the flag
     bm.setAgentConditions(cond.agent_idx, ac);
+    // Give back the Speed applyIncapacitated zeroed (Paralyzed/Stunned/Incapacitated only). Done after
+    // the conditions are written so the creature is no longer flagged incapacitated when its budget is
+    // reseeded. (Unconscious is excluded: it clears via a heal path that reseeds on the next turn, and
+    // the creature remains Prone.)
+    if (restore_movement)
+        restoreMovementAfterIncapacitation(bm, cond.agent_idx);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

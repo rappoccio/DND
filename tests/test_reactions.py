@@ -282,6 +282,74 @@ def test_sentinel_oa_hit_halts_mover_speed_zero():
     print("✅ test_sentinel_oa_hit_halts_mover_speed_zero passed")
 
 
+def test_oa_incapacitating_condition_halts_mover():
+    """L8: an OA that inflicts an incapacitating condition (Stunned) on the mover halts the move at the
+    provoke cell and zeroes its remaining movement for the turn. Speed → 0 plus the applied
+    Incapacitated condition mean the GUI's action-gate then blocks all further actions this turn."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
+    a = add_agent_to_battle(engine, bm, create_test_agent("Stunner", 4, 5))
+    # Mover survives the OA (→ halted, not down) but is reliably struck: high HP, AC 1.
+    s = engine.get_agent_stats(bm, m); s.hp_max = 50; s.hp_cur = 50; s.base_ac = 1
+    engine.set_agent_stats(bm, m, s)
+    ready_mover(engine, bm, m)
+
+    # OA weapon that auto-applies Stunned (an Incapacitated condition) on a hit — no save.
+    w = rpg.Weapon()
+    w.name = "Stun Blade"; w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5; w.range_short_feet = 5; w.range_long_feet = 5
+    pr = rpg.PhysicalDamageRoll(); pr.type = rpg.PhysicalDamage.Bludgeoning
+    pr.num_dice = 1; pr.die_size = 8; pr.bonus = 0
+    w.physical_damage_types = [pr]
+    ac = rpg.AttackCondition(); ac.condition_name = "Stunned"; ac.requires_save = False
+    w.conditions = [ac]
+    engine.set_agent_weapons(bm, a, [w, rpg.Weapon(), rpg.Weapon()])
+
+    dec = ScriptedDecider(pick_weapon); engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(8, 5), rpg.MovementType.Walk)  # tries to flee past the Stunner
+
+    assert engine.get_agent_conditions(bm, m).incapacitated, "the OA should Stun (incapacitate) the mover"
+    assert pos(bm, m) == (5, 5), \
+        f"an incapacitating OA should stop the mover at the provoke cell, got {pos(bm, m)}"
+    assert bm.placed_agents[m].walk_remaining == 0, "an incapacitated mover has no movement left this turn"
+    print("✅ test_oa_incapacitating_condition_halts_mover passed")
+
+
+def test_no_oa_through_a_walled_corner():
+    """L13: a reactor and mover diagonally adjacent but separated by a SEALED corner — walls on both
+    cells shared by the diagonal — can't reach each other, so leaving provokes no OA. (A pure 5-ft
+    diagonal's corner is flanked by the two agents' own cells, so line-of-sight alone can't express
+    this; the OA path applies the 5-ft corner rule.)"""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = add_agent_to_battle(engine, bm, create_test_agent("Threat", 3, 3))
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 4, 4))
+    ready_mover(engine, bm, m); equip_oa_weapon(engine, bm, a)
+    # The two cells shared by the (3,3)↔(4,4) diagonal are (3,4) and (4,3). Wall BOTH → sealed corner.
+    bm.set_terrain_type(rpg.Cell(3, 4), rpg.TerrainType.Wall)
+    bm.set_terrain_type(rpg.Cell(4, 3), rpg.TerrainType.Wall)
+
+    dec = ScriptedDecider(pick_weapon); engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(7, 4), rpg.MovementType.Walk)  # flee east, out of reach
+    assert dec.seen == [], f"a sealed corner between the two agents should suppress the OA, got {dec.seen}"
+    assert not reaction_used(engine, bm, a), "a wall-blocked reactor keeps its reaction"
+    print("✅ test_no_oa_through_a_walled_corner passed")
+
+
+def test_open_corner_still_provokes():
+    """Control for the sealed-corner case: with only ONE of the two shared cells walled, the diagonal
+    is still an open step and leaving the reactor's reach DOES provoke an OA."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = add_agent_to_battle(engine, bm, create_test_agent("Threat", 3, 3))
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 4, 4))
+    ready_mover(engine, bm, m); equip_oa_weapon(engine, bm, a)
+    bm.set_terrain_type(rpg.Cell(3, 4), rpg.TerrainType.Wall)   # only one flank walled → corner open
+
+    dec = ScriptedDecider(pick_weapon); engine.set_decider(dec)
+    engine.resolve_move(bm, m, rpg.Cell(7, 4), rpg.MovementType.Walk)
+    assert [s[0] for s in dec.seen] == [a], f"an open corner should still provoke, got {dec.seen}"
+    print("✅ test_open_corner_still_provokes passed")
+
+
 def test_no_decider_skips_all_reactions():
     """Auto driver with no decider installed: every reaction is skipped; move completes."""
     bm = setup_battle_map(); engine = setup_combat_engine()
@@ -627,6 +695,9 @@ def run_all():
     test_interception_requires_adjacency_to_target()
     test_interception_requires_the_feat()
     test_interception_apply_heals_target_directly()
+    test_oa_incapacitating_condition_halts_mover()
+    test_no_oa_through_a_walled_corner()
+    test_open_corner_still_provokes()
     test_no_decider_skips_all_reactions()
     test_skip_choice_completes_move_without_consuming_reaction()
     test_stop_on_down_halts_movement()

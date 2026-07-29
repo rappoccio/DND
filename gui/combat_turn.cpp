@@ -829,6 +829,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             active_cond.condition_name != "Stunned" &&
             active_cond.condition_name != "HasteLethargy") continue;  // Haste's end-of-spell lethargy skips the turn
 
+        // Hold Person / Hold Monster: the shrug-off save is rolled at the END of this turn
+        // (endTurn), not now. Don't roll it here — just leave the condition in place. The creature
+        // still can't act (the incapacitated fallback below skips the turn); a success at end of
+        // turn only frees it starting on its NEXT turn.
+        if (active_cond.save_at_end_of_turn) continue;
+
         // If save_repeat_turns == -1, skip turn without attempt
         if (active_cond.save_repeat_turns == -1) {
             result.turn_skipped = true;
@@ -873,31 +879,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             removeAgentCondition(bm, ended.condition_id);
 
             // Drop the caster's concentration ONLY if this was the last affected target from that spell
-            if (ended.caster_idx >= 0 && ended.caster_idx < static_cast<int>(agents.size())) {
-                Agent::Conditions caster_cond = bm.getAgentConditions(ended.caster_idx);
-                if (caster_cond.concentrating) {
-                    // Check if there are any remaining conditions from this spell
-                    bool spell_still_affects_targets = false;
-                    for (const auto& other_cond : activeAgentConditions_) {
-                        if (other_cond.caster_idx == ended.caster_idx &&
-                            other_cond.spell_idx == ended.spell_idx &&
-                            other_cond.condition_id != ended.condition_id) {
-                            spell_still_affects_targets = true;
-                            break;
-                        }
-                    }
-
-                    // Only drop concentration if this was the last affected target
-                    if (!spell_still_affects_targets) {
-                        caster_cond.concentrating = false;
-                        caster_cond.concentrating_on = "";
-                        bm.setAgentConditions(ended.caster_idx, caster_cond);
-                        log_("{} drops concentration on spell (no more affected targets)", agentName(bm, ended.caster_idx));
-                    } else {
-                        log_("{} maintains concentration on spell (still has other affected targets)", agentName(bm, ended.caster_idx));
-                    }
-                }
-            }
+            dropCasterConcentrationIfLastTarget(bm, ended);
 
             result.save_roll_message = ability_name(ended.save_ability) + " save vs " + ended.condition_name +
                                       " — SAVED! (" + ended.condition_name + " broken)";
@@ -950,6 +932,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             active_cond.condition_name == "HasteLethargy") continue;  // Skip incapacitating conditions
 
         if (active_cond.save_repeat_turns == -1) continue;  // Never allows saves
+        if (active_cond.save_at_end_of_turn) continue;      // save rolled in endTurn, not here
         if (active_cond.next_save_turn > 0) { --active_cond.next_save_turn; continue; }  // Count down repeat timer
 
         // Frightened: save only if no LOS to fear source
@@ -1108,6 +1091,81 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
             }
         }
     }
+
+    // ── Hold Person / Hold Monster: end-of-turn "shrug off" save ─────────────────
+    // Conditions flagged save_at_end_of_turn repeat their save at the END of the affected
+    // creature's turn (RAW), not the start — beginTurn deliberately skips them. A success ends the
+    // condition now, so the creature can act again starting on its NEXT turn. Iterate by index
+    // (removeAgentCondition mutates activeAgentConditions_) and stop after the first: a creature
+    // makes at most one such save per turn.
+    for (std::size_t i = 0; i < activeAgentConditions_.size(); ++i) {
+        ActiveAgentCondition& active_cond = activeAgentConditions_[i];
+        if (active_cond.agent_idx != agent_idx) continue;
+        if (!active_cond.save_at_end_of_turn) continue;
+        if (active_cond.save_repeat_turns == -1) continue;                            // never saves
+        if (active_cond.next_save_turn > 0) { --active_cond.next_save_turn; break; }  // not yet
+
+        // Save modifier + advantage/disadvantage, mirroring the beginTurn save loops.
+        int  save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
+        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability);
+        bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
+        int  save_d20 = (save_adv == save_dis) ? roll(20)
+                      : save_adv               ? rollAdvantage(20)
+                                               : rollDisadvantage(20);
+        int  save_total = save_d20 + save_mod;
+        save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
+        const int save_dc = active_cond.save_dc;
+
+        auto ability_name = [](SaveAbility_t ab) -> std::string {
+            switch (ab) {
+                case SaveStr: return "STR"; case SaveDex: return "DEX"; case SaveCon: return "CON";
+                case SaveInt: return "INT"; case SaveWis: return "WIS"; default: return "CHA";
+            }
+        };
+
+        if (save_total >= save_dc) {
+            // Copy first — removeAgentCondition erases the slot and its teardown may cascade.
+            ActiveAgentCondition ended = active_cond;
+            removeAgentCondition(bm, ended.condition_id);
+            dropCasterConcentrationIfLastTarget(bm, ended);
+            log_("{} save vs {} (end of turn) — rolled {} + {} = {} vs DC {} — SAVED! ({} ends)",
+                 ability_name(ended.save_ability), ended.condition_name,
+                 save_d20, save_mod, save_total, save_dc, ended.condition_name);
+        } else {
+            active_cond.next_save_turn = std::max(0, active_cond.save_repeat_turns - 1);
+            log_("{} save vs {} (end of turn) — rolled {} + {} = {} vs DC {} — FAILED",
+                 ability_name(active_cond.save_ability), active_cond.condition_name,
+                 save_d20, save_mod, save_total, save_dc);
+        }
+        break;  // one save per turn
+    }
+}
+
+// After a spell-applied condition ends (the target saved out of it), drop the caster's
+// concentration IFF this was the last remaining target still affected by that same spell.
+// `ended` must already be removed from activeAgentConditions_. Shared by beginTurn's start-of-turn
+// save loop and endTurn's end-of-turn (Hold Person) save loop.
+void CombatEngine::dropCasterConcentrationIfLastTarget(BattleMap& bm, const ActiveAgentCondition& ended) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (ended.caster_idx < 0 || ended.caster_idx >= static_cast<int>(agents.size())) return;
+    Agent::Conditions caster_cond = bm.getAgentConditions(ended.caster_idx);
+    if (!caster_cond.concentrating) return;
+
+    // Any other tracked condition from the same spell (same caster + spell) keeps concentration up.
+    for (const auto& other_cond : activeAgentConditions_) {
+        if (other_cond.caster_idx == ended.caster_idx &&
+            other_cond.spell_idx  == ended.spell_idx  &&
+            other_cond.condition_id != ended.condition_id) {
+            log_("{} maintains concentration on spell (still has other affected targets)",
+                 agentName(bm, ended.caster_idx));
+            return;
+        }
+    }
+    caster_cond.concentrating    = false;
+    caster_cond.concentrating_on = "";
+    bm.setAgentConditions(ended.caster_idx, caster_cond);
+    log_("{} drops concentration on spell (no more affected targets)", agentName(bm, ended.caster_idx));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

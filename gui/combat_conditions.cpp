@@ -135,6 +135,27 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
     log_("Agent incapacitated: cannot act, movement speed set to 0");
 }
 
+void CombatEngine::restoreMovementAfterIncapacitation(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+
+    // Reverse the Speed→0 that applyIncapacitated imposed. Restore the Stats remaining-speed fields
+    // to the (still-intact) base speeds, and re-seed the Agent's OWN budget — the value getWalkRemaining
+    // reports and moveAgent/reachableCells spend — so the creature can move again immediately, not only
+    // after its next turn start reseeds it. Exhaustion is applied on read (getWalkRemaining), so seeding
+    // the raw base here is correct.
+    Agent::Stats stats = bm.getAgentStats(idx);
+    stats.speed_walk_remaining   = stats.speed_walk;
+    stats.speed_fly_remaining    = stats.speed_fly;
+    stats.speed_swim_remaining   = stats.speed_swim;
+    stats.speed_burrow_remaining = stats.speed_burrow;
+    bm.setAgentStats(idx, stats);
+
+    agents[static_cast<std::size_t>(idx)].agent->initMovement(
+        stats.speed_walk, stats.speed_fly, stats.speed_swim, stats.speed_burrow);
+}
+
 void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
@@ -994,13 +1015,16 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 st.attackers_disadvantage = true;
                 bm.setAgentStats(cond.agent_idx, st);
             } else if (cond.condition_name == "Barkskinned") {
-                // Barkskin — the target's AC can't be lower than 17. Weapon attacks resolve against
-                // base_ac (resolveAttack), so raise base_ac to the 17 floor and store the exact delta
-                // for restore. Idempotent via barkskin_ac_bonus.
+                // Barkskin — the target's AC can't be lower than 17. Both weapon and spell attacks now
+                // resolve against calculateAC (the effective AC with DEX/armor layered in), so apply the
+                // floor to that TOTAL: bump base_ac by exactly the shortfall so calculateAC reports 17.
+                // (For an NPC calculateAC == base_ac, so this reduces to the old base-17 behavior.) The
+                // exact delta is stored in barkskin_ac_bonus for restore. Idempotent via that field.
                 Agent::Stats st = bm.getAgentStats(cond.agent_idx);
-                if (st.barkskin_ac_bonus == 0 && st.base_ac < 17) {
-                    st.barkskin_ac_bonus = 17 - st.base_ac;
-                    st.base_ac           = 17;
+                int effective_ac = calculateAC(bm, cond.agent_idx);
+                if (st.barkskin_ac_bonus == 0 && effective_ac < 17) {
+                    st.barkskin_ac_bonus = 17 - effective_ac;
+                    st.base_ac          += st.barkskin_ac_bonus;
                     bm.setAgentStats(cond.agent_idx, st);
                 }
             } else if (cond.condition_name == "Enfeebled") {

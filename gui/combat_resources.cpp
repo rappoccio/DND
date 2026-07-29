@@ -3273,6 +3273,10 @@ bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& 
   if (stats.druid_circle == CircleOfMoon) {
     stats.base_ac = std::max(stats.base_ac, 13 + (stats.wis - 10) / 2);
   }
+  // The beast/Moon AC above is a FINAL value (its DEX is already folded in). The druid stays a PC
+  // (is_npc == false), so calculateAC would otherwise layer the beast's DEX on top again — the
+  // base_ac is corrected after the beast stats + weapons are committed below (see wild_shape_desired_ac).
+  const int wild_shape_desired_ac = stats.base_ac;
 
   int temp_hp = stats.classLevel(CharacterClass::Druid) * (stats.druid_circle == CircleOfMoon ? 3 : 1);
   stats.temp_hp += temp_hp;
@@ -3286,6 +3290,18 @@ bool CombatEngine::activateWildShape(BattleMap& bm, int idx, const std::string& 
 
   // Set the beast form weapons on the agent
   bm.setAgentWeapons(idx, weapons);
+
+  // Correct base_ac so the effective AC (calculateAC, which for a PC druid layers in the beast's DEX
+  // and any equipped armor/shield) equals the intended final beast/Moon AC. Done after stats AND
+  // weapons are committed so the shield scan sees the beast's (shieldless) loadout.
+  {
+    Agent::Stats st2 = bm.getAgentStats(idx);
+    int effective = calculateAC(bm, idx);
+    if (effective != wild_shape_desired_ac) {
+      st2.base_ac -= (effective - wild_shape_desired_ac);
+      bm.setAgentStats(idx, st2);
+    }
+  }
 
   return true;
 }

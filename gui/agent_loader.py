@@ -284,7 +284,14 @@ def restore_class_resources(stats, agent_dict, rpg_module=None):
     stats.initialize_multiclass_resources()
     slots_cur = agent_dict.get("spell_slots_cur")
     if slots_cur:
+        # Persisted mid-combat state (main.py's save block always writes this): restore verbatim.
         stats.spell_slots_remaining = list(slots_cur)
+    else:
+        # No persisted current-slot state (legacy save / hand-built dict). initialize_multiclass_
+        # resources() does NOT seed spell_slots_remaining for full casters (only the AT/EK/Warlock
+        # subclass branches do), so it would otherwise load as all-zero — a caster stuck with no
+        # slots. Start full, mirroring main.py _on_stats_ok's post-config init.
+        stats.spell_slots_remaining = list(stats.spell_slots_max)
 
 
 def load_agents_from_json(json_path, bm, combat, sprites_dir="sprites"):

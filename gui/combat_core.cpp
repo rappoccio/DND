@@ -523,63 +523,73 @@ int CombatEngine::calculateAC(const BattleMap& bm, int agent_idx) const noexcept
     // Standard AC calculation (non-Barbarian/Monk or wearing armor)
     int ac = pa.agent->getStats().base_ac;
 
-    // Calculate DEX modifier and determine cap from equipped armor
-    int dex_mod = (pa.agent->getStats().dex - 10) / 2;
-    int dex_mod_cap = 30;  // Default: no cap (light armor/unarmored)
+    // base_ac carries two conventions depending on origin:
+    //   · PCs (is_npc == false): base_ac is the PRE-DEX armor base entered in the GUI
+    //     stat dialog (e.g. 11 for leather). DEX, armor-piece bonuses, shield, and the
+    //     defensive fighting styles/feats are layered on here.
+    //   · NPCs / monsters (is_npc == true): base_ac is the FINAL published AC from the
+    //     stat block, with DEX/armor/shield already folded in. Re-adding any of them
+    //     would double-count, so the whole layering block is skipped for NPCs — only
+    //     transient ac_temporary_modifications (Shield spell, acid, etc.) apply below.
+    if (!pa.agent->getStats().is_npc) {
+        // Calculate DEX modifier and determine cap from equipped armor
+        int dex_mod = (pa.agent->getStats().dex - 10) / 2;
+        int dex_mod_cap = 30;  // Default: no cap (light armor/unarmored)
 
-    // Find the most restrictive DEX modifier cap from equipped armor
-    for (const auto& piece : pa.armor) {
-        if (!piece.name.empty()) {
-            // Most restrictive cap wins (e.g., heavy armor overrides light)
-            dex_mod_cap = std::min(dex_mod_cap, piece.dex_mod_cap);
+        // Find the most restrictive DEX modifier cap from equipped armor
+        for (const auto& piece : pa.armor) {
+            if (!piece.name.empty()) {
+                // Most restrictive cap wins (e.g., heavy armor overrides light)
+                dex_mod_cap = std::min(dex_mod_cap, piece.dex_mod_cap);
+            }
         }
-    }
 
-    // Medium Armor Master (general feat) — while wearing Medium armor, the DEX bonus to AC may be
-    // as high as +3 instead of the usual +2. Medium armor is the equipped set whose most restrictive
-    // cap is 2 (heavy armor's cap is 0 and is left unchanged).
-    if (dex_mod_cap == 2 && pa.agent->getStats().hasFeat("Medium Armor Master"))
-        dex_mod_cap = 3;
+        // Medium Armor Master (general feat) — while wearing Medium armor, the DEX bonus to AC may be
+        // as high as +3 instead of the usual +2. Medium armor is the equipped set whose most restrictive
+        // cap is 2 (heavy armor's cap is 0 and is left unchanged).
+        if (dex_mod_cap == 2 && pa.agent->getStats().hasFeat("Medium Armor Master"))
+            dex_mod_cap = 3;
 
-    // Apply capped DEX modifier
-    int capped_dex_mod = std::min(dex_mod, dex_mod_cap);
-    ac += capped_dex_mod;
+        // Apply capped DEX modifier
+        int capped_dex_mod = std::min(dex_mod, dex_mod_cap);
+        ac += capped_dex_mod;
 
-    // Add armor piece bonuses
-    for (const auto& piece : pa.armor) {
-        if (!piece.name.empty()) {
-            ac += piece.ac_bonus;
+        // Add armor piece bonuses
+        for (const auto& piece : pa.armor) {
+            if (!piece.name.empty()) {
+                ac += piece.ac_bonus;
+            }
         }
-    }
 
-    // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
-    for (const Weapon& shield : pa.weapons) {
-        if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
-            ac += shield.ac_bonus;
-            break;
+        // Add shield bonus: a Shield held in ANY weapon (off-hand) slot grants its ac_bonus.
+        for (const Weapon& shield : pa.weapons) {
+            if (shield.is_shield || shield.name.find("Shield") != std::string::npos || shield.off_hand) {
+                ac += shield.ac_bonus;
+                break;
+            }
         }
-    }
 
-    // Defense fighting style: +1 AC while wearing armor (the unarmored Barbarian/Monk
-    // branches above return early, so this correctly applies only with armor on).
-    if (has_armor && pa.agent->getStats().hasFeat("Defense"))
-        ac += 1;
-
-    // Dual Wielder (general feat) — Enhanced Dual Wielding grants +1 AC while wielding a melee
-    // weapon in each hand (the main-hand and off-hand slots both hold a real, non-Shield melee
-    // weapon). The off-hand bonus attack itself is already modeled via the off_hand weapon flag.
-    if (pa.agent->getStats().hasFeat("Dual Wielder")) {
-        auto is_melee_weapon = [](const Weapon& w) {
-            return w.type == WeaponType::Melee && !w.is_shield &&
-                   w.name.find("Shield") == std::string::npos &&
-                   (!w.physicalDamageRolls.empty() || !w.magicDamageRolls.empty());
-        };
-        const auto& ws = pa.weapons;
-        if (ws.size() >= 2 && is_melee_weapon(ws[0]) && is_melee_weapon(ws[1]))
+        // Defense fighting style: +1 AC while wearing armor (the unarmored Barbarian/Monk
+        // branches above return early, so this correctly applies only with armor on).
+        if (has_armor && pa.agent->getStats().hasFeat("Defense"))
             ac += 1;
+
+        // Dual Wielder (general feat) — Enhanced Dual Wielding grants +1 AC while wielding a melee
+        // weapon in each hand (the main-hand and off-hand slots both hold a real, non-Shield melee
+        // weapon). The off-hand bonus attack itself is already modeled via the off_hand weapon flag.
+        if (pa.agent->getStats().hasFeat("Dual Wielder")) {
+            auto is_melee_weapon = [](const Weapon& w) {
+                return w.type == WeaponType::Melee && !w.is_shield &&
+                       w.name.find("Shield") == std::string::npos &&
+                       (!w.physicalDamageRolls.empty() || !w.magicDamageRolls.empty());
+            };
+            const auto& ws = pa.weapons;
+            if (ws.size() >= 2 && is_melee_weapon(ws[0]) && is_melee_weapon(ws[1]))
+                ac += 1;
+        }
     }
 
-    // Add temporary modifications
+    // Add temporary modifications (apply to PCs and NPCs alike — Shield spell, acid, etc.)
     ac += pa.agent->getStats().ac_temporary_modifications;
 
     // TODO: Apply condition modifiers (prone, etc.)

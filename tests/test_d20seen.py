@@ -97,6 +97,11 @@ def _make_light_cleric(engine, bm, idx, level=5, wis=16):
     engine.set_agent_stats(bm, idx, s)
 
 
+def _make_light_cleric_l6(engine, bm, idx, wis=16):
+    """Light Domain Cleric at L6 — Improved Warding Flare unlocked (2d6+WIS temp HP to the target)."""
+    _make_light_cleric(engine, bm, idx, level=6, wis=wis)
+
+
 def _setup(engine, bm, make_reactor, *, tgt_ac=13, give_shield=False):
     """Attacker (STR 18, +7 to hit) at (5,5); defender at (6,5); reactor at (5,7) (≈10 ft, clear LoS).
     add_agent_to_battle's apply_agent_configs wipes earlier stats, so configure all AFTER every add."""
@@ -243,6 +248,48 @@ def test_warding_flare_disadvantage_can_miss():
             print("✅ test_warding_flare_disadvantage_can_miss passed")
             return
     assert False, "did not observe both a window and a flipped-to-miss case in 400 attacks"
+
+
+def test_improved_warding_flare_grants_temp_hp():
+    """Improved Warding Flare (Light Domain L6+): using Warding Flare grants the target 2d6+WIS temp HP.
+    Checked on flare-fired-and-missed attacks (no damage), where the full grant survives. WIS 16 (+3) →
+    temp HP in [2+3, 12+3] = [5, 15]."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, tgt, rea = _setup(engine, bm, _make_light_cleric_l6)
+    dec = D20Decider("WardingFlare"); engine.set_decider(dec)
+    saw = False
+    for _ in range(400):
+        _reset(engine, bm, tgt, rea, _make_light_cleric_l6)
+        t = engine.get_agent_stats(bm, tgt); t.temp_hp = 0     # start clean (grantTempHp uses max())
+        engine.set_agent_stats(bm, tgt, t)
+        before = dec.d20_offers
+        r = _atk(engine, bm, atk, tgt)
+        if dec.d20_offers > before and not r.hit:              # flare fired AND flipped to a miss → no damage
+            saw = True
+            thp = engine.get_agent_stats(bm, tgt).temp_hp
+            assert 5 <= thp <= 15, f"Improved Warding Flare grants 2d6+WIS(3) temp HP, got {thp}"
+    assert saw, "did not observe a flare-fired-and-missed case in 400 attacks"
+    print("✅ test_improved_warding_flare_grants_temp_hp passed")
+
+
+def test_warding_flare_no_temp_hp_below_l6():
+    """Base Warding Flare (Light Domain L3–5) grants NO temp HP — the 2d6+WIS grant is the L6 Improved
+    feature. The default reactor here is a level-5 Light cleric."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, tgt, rea = _setup(engine, bm, _make_light_cleric)     # default level=5
+    dec = D20Decider("WardingFlare"); engine.set_decider(dec)
+    saw = False
+    for _ in range(400):
+        _reset(engine, bm, tgt, rea, _make_light_cleric)
+        t = engine.get_agent_stats(bm, tgt); t.temp_hp = 0
+        engine.set_agent_stats(bm, tgt, t)
+        before = dec.d20_offers
+        _atk(engine, bm, atk, tgt)
+        if dec.d20_offers > before:                            # flare fired
+            saw = True
+            assert engine.get_agent_stats(bm, tgt).temp_hp == 0, "L5 Warding Flare grants no temp HP"
+    assert saw, "did not observe a Warding Flare window in 400 attacks"
+    print("✅ test_warding_flare_no_temp_hp_below_l6 passed")
 
 
 def test_warding_flare_gate():
@@ -457,6 +504,8 @@ def run_all():
     test_bend_luck_spends_sp_and_can_miss()
     test_silvery_barbs_reroll_can_miss()
     test_warding_flare_disadvantage_can_miss()
+    test_improved_warding_flare_grants_temp_hp()
+    test_warding_flare_no_temp_hp_below_l6()
     test_warding_flare_gate()
     test_warding_flare_team_gate()
     test_lowering_to_miss_suppresses_shield()

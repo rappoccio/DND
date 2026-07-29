@@ -967,6 +967,10 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("condition_duration", &AttackCondition::condition_duration)
         .def_readwrite("push_ft",            &AttackCondition::push_ft)
         .def_readwrite("save_repeat_turns",  &AttackCondition::save_repeat_turns)
+        .def_readwrite("save_at_end_of_turn", &AttackCondition::save_at_end_of_turn,
+             "If true, the periodic save is rolled at the END of the affected creature's turn\n"
+             "(endTurn) rather than the start — Hold Person / Hold Monster RAW. The creature is\n"
+             "still barred from acting on the intervening turn; a success frees it next turn.")
         .def_readwrite("contested",          &AttackCondition::contested,
              "Grappled rider: true = contested Athletics check; false = grapple lands automatically on hit.")
         .def_readwrite("escape_dc",          &AttackCondition::escape_dc,
@@ -2147,6 +2151,7 @@ PYBIND11_MODULE(rpg_battle_map, m)
         .def_readwrite("save_ability",    &ActiveAgentCondition::save_ability)
         .def_readwrite("save_dc",         &ActiveAgentCondition::save_dc)
         .def_readwrite("save_repeat_turns", &ActiveAgentCondition::save_repeat_turns)
+        .def_readwrite("save_at_end_of_turn", &ActiveAgentCondition::save_at_end_of_turn)
         .def_readwrite("condition_id",    &ActiveAgentCondition::condition_id)
         .def_readwrite("cast_level",      &ActiveAgentCondition::cast_level)
         .def_readwrite("on_damage",       &ActiveAgentCondition::on_damage)
@@ -3582,9 +3587,11 @@ PYBIND11_MODULE(rpg_battle_map, m)
              "Spend the lowest L1+ slot + reaction; reroll the d20 and re-evaluate (attacker uses the\n"
              "new roll). Mutates `result`. Returns True if applied.")
         .def("apply_warding_flare_to_attack", &CombatEngine::applyWardingFlareToAttack,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("target_idx"), py::arg("result"),
              "Spend 1 Warding Flare use + reaction; impose Disadvantage (reroll the d20, take the lower)\n"
-             "and re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
+             "and re-evaluate hit/crit. If the reactor is a Light Domain Cleric of level 6+ (Improved\n"
+             "Warding Flare), the target also gains 2d6+WIS temporary HP (max() semantics), regardless of\n"
+             "the reroll's outcome. Mutates `result`. Returns True if applied.")
         // ── OnSaveFail window eligibility gates. The window itself reuses
         //    begin_cast/resolve_cast/pending_decision/submit_decision/last_cast_result; these gates are for
         //    tests + GUI menu labels. ──
