@@ -82,10 +82,10 @@ PACT_CHAIN_FAMILIARS = ["Imp", "Pseudodragon", "Quasit", "Sprite", "Skeleton", "
 
 
 def _load_summon_spirits():
-    """Load summon_spirits.json → {spell_name: {form_name: block}}. Each 2024 'Summon X' spell
-    maps to its forms; the chosen form's block is scaled at cast time by compute_summon_loadout.
-    README/comment records (spell starting with '_') are skipped."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "summon_spirits.json")
+    """Load summons.json → {spell_name: {form_name: block}}. Each 'Summon X' / 'Conjure X'
+    spell maps to its forms; the chosen form's block is scaled at cast time by
+    compute_summon_loadout. README/comment records (spell starting with '_') are skipped."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "summons.json")
     try:
         with open(path) as f:
             records = json.load(f)
@@ -715,7 +715,7 @@ class App:
         self.pending_summon_idx        = 0     # spell index of the summon spell being cast
         self.pending_summon_slot_level = 0     # chosen slot level
         self.pending_summon_monster    = ""    # monster-JSON key to spawn
-        self.pending_summon_spirit     = None  # scaling spirit block (summon_spirits.json) or None
+        self.pending_summon_spirit     = None  # scaling spirit block (summons.json) or None
         self.pending_summon_free_cast  = False # Wish-duplicated summon: charge no slot of its own
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         # Wish: spells duplicated by Wish are injected into the caster's own spell list (the engine
@@ -9821,7 +9821,7 @@ class App:
         # Summon spells: pick an empty cell within range to manifest the creature, rather than
         # targeting a creature or placing an AoE. Routed here BEFORE the
         # geometry branches because Summon Dragon is Single geometry ("click a target").
-        # Scaling spirits (summon_spirits.json) take precedence and first prompt for a FORM.
+        # Scaling spirits (summons.json) take precedence and first prompt for a FORM.
         spirit_forms = SUMMON_SPELL_TO_SPIRIT.get(sp_.name)
         monster      = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
         if spirit_forms:
@@ -10790,7 +10790,7 @@ class App:
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells[spell_idx] if 0 <= spell_idx < len(spells) else None
         if spirit is not None:
-            # Scaling spirit (summon_spirits.json): no bestiary record; size comes from the block.
+            # Scaling spirit (summons.json): no bestiary record; size comes from the block.
             mob_stats = None
             size = self._size_category_to_grid_size(spirit.get("size", "Medium"))
         else:

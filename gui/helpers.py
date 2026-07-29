@@ -124,7 +124,7 @@ def compute_companion_loadout(block: dict, pb: int, level: int, wis_mod: int):
 
 def compute_summon_loadout(block: dict, slot_level: int, pb: int, spell_ability_mod: int):
     """Build a (stats_dict, weapon_dict) for a 2024 "Summon X" spirit from its base `block`
-    (one entry of summon_spirits.json), scaled to the slot level the spell was cast with and
+    (one entry of summons.json), scaled to the slot level the spell was cast with and
     the caster's Proficiency Bonus + spellcasting-ability modifier. Pure (no pygame / no engine
     state), so it is unit-tested directly. Mirrors compute_companion_loadout.
 

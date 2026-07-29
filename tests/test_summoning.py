@@ -22,7 +22,7 @@ import rpg_battle_map as rpg
 from test_helpers import setup_battle_map, setup_combat_engine, create_test_agent, add_agent_to_battle
 from helpers import can_place_agent, summon_cell_placeable, compute_summon_loadout
 
-# A synthetic spirit block so the scaling tests don't couple to summon_spirits.json's numbers.
+# A synthetic spirit block so the scaling tests don't couple to summons.json's numbers.
 _TEST_SPIRIT = {
     "form": "Test", "name": "Test Spirit", "size": "Medium",
     "str": 18, "dex": 12, "con": 14, "intel": 4, "wis": 10, "cha": 6,
@@ -311,7 +311,7 @@ def test_summon_loadout_half_level_multiattack():
 def test_verified_draconic_spirit_matches_card():
     """The real Draconic Spirit block reproduces the PHB card exactly at a L5 cast:
     AC 19, HP 50, 2 Rend attacks, Rend = 1d6 + 4 + 5 Piercing, to-hit = caster's spell-atk mod."""
-    path = os.path.join(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui"), "summon_spirits.json")
+    path = os.path.join(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui"), "summons.json")
     drac = next(r for r in json.load(open(path)) if r.get("name") == "Draconic Spirit")
     pb, spell_mod = 4, 5
     stats, weapon = compute_summon_loadout(drac, slot_level=5, pb=pb, spell_ability_mod=spell_mod)
@@ -327,10 +327,11 @@ def test_verified_draconic_spirit_matches_card():
     print("✅ test_verified_draconic_spirit_matches_card passed")
 
 
-def test_summon_spirits_data_well_formed():
-    """summon_spirits.json: every form record has the fields compute_summon_loadout reads,
-    and all ten 2024 Summon spells are represented."""
-    path = os.path.join(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui"), "summon_spirits.json")
+def test_summons_data_well_formed():
+    """summons.json: every form record has the fields compute_summon_loadout reads,
+    and all Tier-3 summon-framework spells (the ten 'Summon X' plus the conjure/named
+    summons) are represented."""
+    path = os.path.join(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui"), "summons.json")
     with open(path) as f:
         records = json.load(f)
     spells = {}
@@ -341,15 +342,39 @@ def test_summon_spirits_data_well_formed():
         spells.setdefault(spell, []).append(rec)
         for key in ("form", "name", "size", "ac_base", "hp_base", "hp_per_level", "attack"):
             assert key in rec, f"{spell}/{rec.get('form')} missing '{key}'"
-        # Scaling must produce a sane, growing creature.
-        s3, _ = compute_summon_loadout(rec, 3, 2, 3)
-        s9, _ = compute_summon_loadout(rec, 9, 4, 5)
-        assert s9["hp_max"] > s3["hp_max"] > 0
+        # Scaling must produce a sane creature at its own base level, and grow when cast with a
+        # higher slot. A base-9 spell (e.g. Gate) can never be upcast, so its HP legitimately can't
+        # grow — only assert growth when there is a higher slot to grow into.
+        base_level = rec.get("base_level", 0)
+        base, _ = compute_summon_loadout(rec, base_level, 4, 4)
+        assert base["hp_max"] > 0, f"{spell}/{rec.get('form')} has non-positive HP"
+        if base_level < 9:
+            hi, _ = compute_summon_loadout(rec, 9, 4, 5)
+            assert hi["hp_max"] > base["hp_max"], f"{spell}/{rec.get('form')} does not scale with slot"
     expected = {"Summon Beast", "Summon Fey", "Summon Undead", "Summon Aberration",
                 "Summon Construct", "Summon Elemental", "Summon Celestial",
-                "Summon Shadowspawn", "Summon Fiend", "Summon Dragon"}
+                "Summon Shadowspawn", "Summon Fiend", "Summon Dragon",
+                # Conjure / named summons wired onto the same scaling-spirit framework (data-only).
+                "Conjure Elemental", "Conjure Celestial", "Giant Insect",
+                "Arcane Hand", "Create Undead", "Planar Ally", "Gate"}
     assert expected <= set(spells), expected - set(spells)
-    print(f"✅ test_summon_spirits_data_well_formed passed ({len(spells)} spells)")
+    print(f"✅ test_summons_data_well_formed passed ({len(spells)} spells)")
+
+
+def test_conjure_summons_castable_and_named_in_spells_json():
+    """Every conjure/named summon in summons.json must (a) exist in spells.json so it is a
+    real, castable spell, and (b) key by the spell's EXACT name — the GUI auto-wires it via
+    SUMMON_SPELL_TO_SPIRIT.get(sp.name), so a name mismatch would silently no-op the summon."""
+    gui = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui")
+    summon_names = {r["spell"] for r in json.load(open(os.path.join(gui, "summons.json")))
+                    if not r.get("spell", "_").startswith("_")}
+    spell_names = {s["name"] for s in json.load(open(os.path.join(gui, "spells.json")))}
+    missing = summon_names - spell_names
+    assert not missing, f"summons.json references spells absent from spells.json: {missing}"
+    for name in ("Conjure Elemental", "Conjure Celestial", "Giant Insect",
+                 "Arcane Hand", "Create Undead", "Planar Ally", "Gate"):
+        assert name in summon_names, f"{name} not wired in summons.json"
+    print(f"✅ test_conjure_summons_castable_and_named_in_spells_json passed ({len(summon_names)} summons)")
 
 
 if __name__ == "__main__":
@@ -372,5 +397,6 @@ if __name__ == "__main__":
     test_summon_loadout_hp_above_base_level()
     test_summon_loadout_half_level_multiattack()
     test_verified_draconic_spirit_matches_card()
-    test_summon_spirits_data_well_formed()
+    test_summons_data_well_formed()
+    test_conjure_summons_castable_and_named_in_spells_json()
     print("\nAll summoning tests passed!")
