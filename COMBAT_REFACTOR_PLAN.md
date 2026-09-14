@@ -211,7 +211,7 @@ code):
   is what made the "no-op" measurement meaningless before the fix (48s instead of 0.19s).
   Fixed with `FETCHCONTENT_UPDATES_DISCONNECTED ON`.
 
-### R1 — Split the bindings
+### R1 — Split the bindings — **DONE** (2026-09-14)
 
 `rpg_bindings.cpp` is the second god file: 4,850 lines, touched in 150 of the last 200
 commits, and almost certainly the slowest TU in the build (pybind11 template
@@ -223,10 +223,53 @@ instantiation). Split into `bind_types.cpp`, `bind_combat_attack.cpp`,
 No C++ API changes, no Python API changes. The binding name→method mapping is mechanical
 and the test suite covers it densely.
 
-While here: the **43 bound-but-never-referenced** methods (`activate_starry_form`,
-`apply_shield`, `can_bend_luck`, `get_battle_observation`, `resolve_attack`, `reseed`, …)
-are worth triaging — some are dead, some are RL-facing and deliberate, some are reaction
-internals that leaked into the API. Delete or document; do not silently keep.
+**How the split was done**: the ~1,900-line, 324-method `py::class_<CombatEngine>` chain
+had no internal domain grouping to lean on, so each `.def(...)` statement was categorized
+programmatically — parsed into individual top-level statements (tracking paren depth and
+string literals), matched against a `CombatEngine::MethodName → implementation file`
+table built by grepping every `combat_*.cpp` TU, and bucketed: `combat_attack.cpp` →
+`bind_combat_attack.cpp`, `combat_spells.cpp` → `bind_combat_spells.cpp`,
+`combat_resources.cpp` → `bind_combat_resources.cpp`, and everything else
+(`combat_turn.cpp`, `combat_movement.cpp`, `combat_conditions.cpp`, `combat_riders.cpp`,
+`combat_core.cpp`, `combat_state.cpp`, `combat_visibility.cpp`, plus a couple dozen
+methods/lambdas inlined directly in `combat.hpp` with no TU of their own — cross-cutting
+state like `pending_decision_`, `logger_`, `last_*_result_`) → `bind_combat_turn.cpp` as
+the catch-all, matching `combat_turn.cpp`'s role as the top-level driver in the call-graph
+table above. No two `.def()` calls in the original chain bound the same Python name, so
+statement order across the split carries no behavioral meaning. `bind_types.cpp` and
+`bind_battle_map.cpp` were then split off as contiguous blocks (no categorization
+needed — clean top-level boundaries). Verified via a full rebuild + `test_determinism.py`
+(byte-identical golden) + `tests/run_all_tests.py` (143/144, same pre-existing
+`test_monk.py` failure as the R0 baseline) after each step.
+
+**Result**: `rpg_bindings.cpp` 4,850 → 58 lines (just the module entry point + wiring
+order). New files: `bind_types.cpp` 2,459 · `bind_combat_turn.cpp` 922 ·
+`bind_combat_resources.cpp` 517 · `bind_battle_map.cpp` 511 · `bind_combat_spells.cpp`
+268 · `bind_combat_attack.cpp` 243 · `bindings_internal.hpp` 36.
+
+**Build-time finding**: clean-build wall time did *not* improve (1m03s → 1m22s — more
+total CPU work, since pybind11 template instantiation overhead is now paid per-TU across
+7 files instead of once). That's expected and isn't what R1 promised. What R1 actually
+delivers — confirmed — is that a change to *one* binding file now only recompiles that
+file: touching `bind_combat_attack.cpp` alone rebuilds just that TU, not the other 5
+binding files or any `combat_*.cpp` engine TU (before, ANY binding change meant
+recompiling the entire 4,850-line file). However, this TU-isolation win is currently
+**masked by `-flto`**: `pybind11_add_module` enables link-time optimization by default
+for Release builds, and that LTO relink (71 LTRANS units) costs ~40-50s on *every* build
+regardless of what changed, dwarfing the actual compile time of a single small TU. Both
+the single-binding-file touch (49s) and the whole-old-file-equivalent touch (58s) are
+dominated by this relink, not by compilation. **Not fixed here** — changing the shipped
+`.so`'s LTO/strip characteristics is outside R1's "mechanical split, no other changes"
+scope — but worth a deliberate decision later: e.g. a non-LTO profile for local dev
+iteration (`pybind11_add_module(... NO_EXTRAS)` or a `Debug`/`RelWithDebInfo` config),
+keeping LTO for release packaging.
+
+**Deferred, not done here**: the **43 bound-but-never-referenced** methods
+(`activate_starry_form`, `apply_shield`, `can_bend_luck`, `get_battle_observation`,
+`resolve_attack`, `reseed`, …) are still worth triaging — some are dead, some are
+RL-facing and deliberate, some are reaction internals that leaked into the API. Deleting
+or documenting them is a behavior/API-surface decision, not a mechanical move, so it's
+out of scope for R1's "no behavior changes" rule — left for a dedicated pass.
 
 ### R2 — `combat_types.hpp`
 

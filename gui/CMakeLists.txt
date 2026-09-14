@@ -34,6 +34,12 @@ FetchContent_MakeAvailable(pybind11 nlohmann_json)
 # ── Python extension module ───────────────────────────────────────────────────
 pybind11_add_module(rpg_battle_map
     rpg_bindings.cpp
+    bind_types.cpp
+    bind_combat_attack.cpp
+    bind_combat_spells.cpp
+    bind_combat_resources.cpp
+    bind_combat_turn.cpp
+    bind_battle_map.cpp
     battle_map.cpp
     class_resources.cpp
     combat_visibility.cpp
