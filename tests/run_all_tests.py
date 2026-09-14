@@ -9,6 +9,10 @@ import sys
 import os
 
 test_scripts = [
+    # Combat refactor oracle (COMBAT_REFACTOR_PLAN.md R0) — keep first so a
+    # determinism regression fails fast, before the rest of the suite runs.
+    "test_determinism.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

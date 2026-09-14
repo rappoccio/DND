@@ -931,7 +931,7 @@ namespace rpg {
 
       // Apply ONE class's resources without clearing the resource map first. This is
       // the multiclass-safe body: it accumulates into whatever is already present.
-      // (Implemented in combat.cpp.) Single-class callers use initializeClassResources.
+      // (Implemented in class_resources.cpp.) Single-class callers use initializeClassResources.
       void applyClassResources(CharacterClass cls, int level);
 
       // Initialize class resources for a SINGLE class: clears the map, then applies

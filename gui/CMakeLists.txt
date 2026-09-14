@@ -11,6 +11,12 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 
 # pybind11 – fetched automatically so no manual install is needed
 include(FetchContent)
+# Once populated, skip re-checking these deps for updates on every reconfigure. Without
+# this, `cmake -S ...` re-fetches/re-checks-out pybind11 + nlohmann_json on EVERY run
+# (even to the same pinned tag), and a fresh git checkout rewrites file mtimes even when
+# content is unchanged — which makes the build think every header changed and forces a
+# full rebuild every time, regardless of what actually changed in the project.
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 FetchContent_Declare(
     pybind11
     GIT_REPOSITORY https://github.com/pybind/pybind11.git
@@ -29,7 +35,7 @@ FetchContent_MakeAvailable(pybind11 nlohmann_json)
 pybind11_add_module(rpg_battle_map
     rpg_bindings.cpp
     battle_map.cpp
-    combat.cpp
+    class_resources.cpp
     combat_visibility.cpp
     combat_movement.cpp
     combat_state.cpp

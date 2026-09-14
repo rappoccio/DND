@@ -1,0 +1,104 @@
+--- state: initial ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=44/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(8,3) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(9,6) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=40/40 AC=13> <Conditions> resources=[]
+===== ROUND 1 =====
+Aria attacks Skarn: <AttackResult invalid>
+--- state: round 1 after Aria ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=44/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(8,3) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(9,6) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=40/40 AC=13> <Conditions> resources=[]
+Wren casts Fire Bolt at Vex: <SpellResult 'Fire Bolt' 1 target(s)> targets=[<SpellTargetResult tgt=3 HIT dmg=3 heal=0>]
+--- state: round 1 after Wren ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=44/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(8,3) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(9,6) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=37/40 AC=13> <Conditions> resources=[]
+Skarn npc turn: status=FlowStatus.Completed
+  log: Disadvantage: threatened (enemy within 10 ft)
+  log: [DAMAGE] Spell attack: type=2 base=3 mult=1 result=3
+  log: Analysis: Skarn → Aria with Greataxe: 35% to hit; if it hits, 0% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=44
+  log: To-hit: d20 20 +4(hit) = 24 vs AC 20 → CRITICAL HIT
+  log: Damage: 2d12 [10+11]=21 Slashing +4(dmg) = 25 (CRIT)
+  log: Analysis: Skarn → Aria with Greataxe: 35% to hit; if it hits, 5% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=19
+  log: To-hit: d20 17 +4(hit) = 21 vs AC 20 → HIT
+  log: Damage: 1d12 [2]=2 Slashing +4(dmg) = 6
+Vex npc turn: status=FlowStatus.Completed
+  log: Analysis: Vex → Aria with Shortbow: 30% to hit; if it hits, 3% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 14 +3(hit) = 17 vs AC 20 → MISS
+--- state: round 1 after NPC turns ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=37/40 AC=13> <Conditions> resources=[]
+===== ROUND 2 =====
+Aria attacks Skarn: <AttackResult d20=4 mod=3 vs AC=15 MISS>
+--- state: round 2 after Aria ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=37/40 AC=13> <Conditions> resources=[]
+Wren casts Fire Bolt at Vex: <SpellResult 'Fire Bolt' 1 target(s)> targets=[<SpellTargetResult tgt=3 MISS dmg=0 heal=0>]
+--- state: round 2 after Wren ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=37/40 AC=13> <Conditions> resources=[]
+Skarn npc turn: status=FlowStatus.Completed
+  log: [ATTACK START] Skarn - unconscious=false, hp=60
+  log: To-hit: d20 4 +3(hit) = 7 vs AC 15 → MISS
+  log: Disadvantage: threatened (enemy within 10 ft)
+  log: Analysis: Skarn → Aria with Greataxe: 35% to hit; if it hits, 40% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 10 +4(hit) = 14 vs AC 20 → MISS
+  log: Analysis: Skarn → Aria with Greataxe: 35% to hit; if it hits, 40% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 13 +4(hit) = 17 vs AC 20 → MISS
+Vex npc turn: status=FlowStatus.Completed
+  log: Analysis: Vex → Aria with Shortbow: 30% to hit; if it hits, 3% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 9 +3(hit) = 12 vs AC 20 → MISS
+--- state: round 2 after NPC turns ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=60/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=37/40 AC=13> <Conditions> resources=[]
+===== ROUND 3 =====
+Aria attacks Skarn: <AttackResult d20=16 mod=3 vs AC=15 HIT dmg=7>
+--- state: round 3 after Aria ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=53/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=37/40 AC=13> <Conditions> resources=[]
+Wren casts Fire Bolt at Vex: <SpellResult 'Fire Bolt' 1 target(s)> targets=[<SpellTargetResult tgt=3 HIT dmg=7 heal=0>]
+--- state: round 3 after Wren ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=53/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=30/40 AC=13> <Conditions> resources=[]
+Skarn npc turn: status=FlowStatus.Completed
+  log: [ATTACK START] Skarn - unconscious=false, hp=60
+  log: To-hit: d20 16 +3(hit) = 19 vs AC 15 → HIT
+  log: Damage: 1d8 [4]=4 Slashing +3(dmg) = 7
+  log: Disadvantage: threatened (enemy within 10 ft)
+  log: [DAMAGE] Spell attack: type=2 base=7 mult=1 result=7
+  log: Analysis: Skarn → Aria with Greataxe: 35% to hit; if it hits, 40% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 7 +4(hit) = 11 vs AC 20 → MISS
+  log: Analysis: Skarn → Aria with Greataxe: 35% to hit; if it hits, 40% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 15 +4(hit) = 19 vs AC 20 → MISS
+Vex npc turn: status=FlowStatus.Completed
+  log: Analysis: Vex → Aria with Shortbow: 30% to hit; if it hits, 3% to drop the target
+  log: [ATTACK START] Aria - unconscious=false, hp=13
+  log: To-hit: d20 4 +3(hit) = 7 vs AC 20 → MISS
+--- state: round 3 after NPC turns ---
+  Aria: pos=(3,3) <Stats STR=16 DEX=14 CON=14 INT=10 WIS=10 CHA=10 HP=13/44 AC=18> <Conditions> resources=[Action Surge=<Resource 'Action Surge' 1/1>, Second Wind=<Resource 'Second Wind' 1/1>]
+  Wren: pos=(2,3) <Stats STR=8 DEX=14 CON=12 INT=16 WIS=12 CHA=10 HP=27/27 AC=12> <Conditions> resources=[Arcane Recovery=<Resource 'Arcane Recovery' 1/1>, Memorize Spell=<Resource 'Memorize Spell' 1/1>, Portent Dice=<Resource 'Portent Dice' 2/2>]
+  Skarn: pos=(4,2) <Stats STR=18 DEX=12 CON=16 INT=8 WIS=10 CHA=8 HP=53/60 AC=15> <Conditions> resources=[]
+  Vex: pos=(10,7) <Stats STR=10 DEX=16 CON=12 INT=8 WIS=12 CHA=8 HP=30/40 AC=13> <Conditions> resources=[]

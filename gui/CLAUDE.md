@@ -32,7 +32,7 @@ This rule survives context compaction because it's in CLAUDE.md.
 
 This is a D&D 5e battle map viewer with a **two-layer architecture**:
 
-1. **C++ core** (`battle_map.cpp/hpp`, `combat.cpp/hpp`, `agent.hpp`, `weapon.hpp`) — compiled as a pybind11 Python extension module (`rpg_battle_map.so`). Handles map image analysis, grid/wall detection, agent placement, movement, line-of-sight, and the full D&D 5e combat engine. No rendering dependencies; safe for headless RL training.
+1. **C++ core** (`battle_map.cpp/hpp`, `combat.hpp` + the `combat_*.cpp` translation units, `class_resources.cpp`, `agent.hpp`, `weapon.hpp`) — compiled as a pybind11 Python extension module (`rpg_battle_map.so`). Handles map image analysis, grid/wall detection, agent placement, movement, line-of-sight, and the full D&D 5e combat engine. No rendering dependencies; safe for headless RL training.
 
 2. **Python GUI** (`main.py`) — pygame-based renderer that imports the C++ extension as `import rpg_battle_map as rpg`. Draws the map, grid overlay, agents, and the right-side configuration panel. All user interaction (placing agents, configuring stats/weapons, running combat) lives here.
 

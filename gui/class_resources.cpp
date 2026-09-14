@@ -1,12 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  combat.cpp  –  residual non-CombatEngine definitions
+//  class_resources.cpp  –  Agent::Stats class/subclass resource initialization
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //  The CombatEngine implementation has been split into focused translation units
 //  (see combat_internal.hpp for the shared helpers and the combat_*.cpp files for
-//  each subsystem). What remains here is Agent::Stats::initializeClassResources,
-//  which is a member of Agent::Stats — not CombatEngine — and so did not belong in
-//  any of the engine buckets.
+//  each subsystem). This file holds Agent::Stats::applyClassResources /
+//  initializeClassResources / initializeMulticlassResources, which are members of
+//  Agent::Stats — not CombatEngine — and so did not belong in any of the engine
+//  buckets. (Formerly combat.cpp; renamed in COMBAT_REFACTOR_PLAN.md R0 — it never
+//  held any CombatEngine code.)
 //
 #include "combat.hpp"
 #include "battle_map.hpp"
@@ -184,7 +186,7 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
       }
 
       // Unarmored Defense (L1+): AC = 10 + DEX + WIS is applied in the AC calculation
-      // (see the Monk branch in computeAC ~combat.cpp:313), so nothing to grant here.
+      // (see the Monk branch in computeAC), so nothing to grant here.
       break;
     }
 
