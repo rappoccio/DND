@@ -1,7 +1,8 @@
 # Combat Engine Refactor — Implementation Plan
 
-Status: **IN PROGRESS** — R0 and R1 done (2026-09-14). R2 (`combat_types.hpp` extraction)
-not started. See **Handoff (2026-09-14)** below before picking this up in a new session.
+Status: **IN PROGRESS** — R0, R1, R2 done and verified (2026-09-14). R3 (`CombatContext` +
+`rules.hpp`) not started. See **Handoff (2026-09-14)** below before picking this up in a
+new session.
 
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
 triggering a full rebuild of every combat TU, (b) the rules layer becomes testable without
@@ -18,14 +19,20 @@ No behavior changes, no new features, no bug fixes bundled in. Every phase must 
 
 Read this first if you're picking this up in a fresh session with no prior context.
 
-**Done**: R0 (`2e9fdd9`) and R1 (`c1b4c0d`), both committed to `main`, neither pushed to
-the remote (only push if the user explicitly asks). Working tree was clean as of this
-handoff. Full details of what each phase did are in the R0/R1 sections below — read those,
-not just this summary, before touching either phase's files again.
+**Done**: R0 (`2e9fdd9`), R1 (`c1b4c0d`), and R2, all committed to `main`, none pushed to
+the remote (only push if the user explicitly asks). Full details of what each phase did are
+in the R0/R1/R2 sections below — read those, not just this summary, before touching any of
+these phases' files again.
 
-**Not done**: R2 onward. R2 (`combat_types.hpp` extraction) is next per the phase table
-below and is low-risk/mechanical like R0-R1. Do not start R3+ without the R0 determinism
-harness passing at every step — it's the oracle this whole plan depends on.
+**R2 build/test verification** (2026-09-14, in the `angry_goodall` container): clean build
+succeeded (same LTO-relink profile as R1, no new warnings), `tests/test_determinism.py`
+matched the golden byte-for-byte, and `tests/run_all_tests.py` was 143/144 — the one
+failure is `test_monk.py::test_deflect_attacks_reduces_physical`, confirmed to be the exact
+same pre-existing AC-helper bug documented below (same assertion, same line), not a
+regression from R2.
+
+**Not done**: R3 onward. Do not start R3 without the R0 determinism harness passing at
+every step on top of R2's change — it's the oracle this whole plan depends on.
 
 **Build environment — read this before running anything.** This repo's real build/run
 environment is a Docker container, not the host machine directly:
@@ -320,16 +327,51 @@ RL-facing and deliberate, some are reaction internals that leaked into the API. 
 or documenting them is a behavior/API-surface decision, not a mechanical move, so it's
 out of scope for R1's "no behavior changes" rule — left for a dedicated pass.
 
-### R2 — `combat_types.hpp`
+### R2 — `combat_types.hpp` — **DONE** (2026-09-14)
 
-Move the ~900 lines of result/action structs (`combat.hpp` lines 63–967: `HideResult`,
+Moved the struct/free-function region (`combat.hpp` original lines 63–964: `HideResult`,
 `AttackResult`, `Attack`, `SpellAction`, `SpellResult`, `ReactionCtx`, `InFlight*`,
-`NpcTurnState`, …) into `combat_types.hpp`.
+`NpcTurnState`, …, plus the trailing `canTakeReaction()` free function — the whole block
+immediately before the `CombatEngine` class banner) verbatim into new `gui/combat_types.hpp`.
+`combat.hpp` gained one `#include "combat_types.hpp"` (alongside its other top-of-file
+includes, before `namespace rpg {` opens — the same pattern `weapon.hpp`/`spell.hpp` already
+use, so the struct definitions land in `rpg::`, not a nested `rpg::rpg::`) and a 3-line
+pointer comment where the block used to live. No struct content, comments, or formatting
+were altered — verified with a line-range diff against the pre-edit file.
 
-Alone this is cosmetic — all 10 combat TUs still need the class. **Its value is entirely in
-combination with R1**: the binding TUs that only bind structs then depend on
-`combat_types.hpp` and not `combat.hpp`, so the 40% of header churn landing in the struct
-region stops rebuilding them.
+**Includes for `combat_types.hpp`** were derived by checking, for every forward-declared
+type available in `combat.hpp` (`BattleMap`, `Cell`, `AgentConfig`, `ActiveSpellEffect`,
+`ActiveAgentCondition`, `MovementType`, `VisibilityLevel`, `NpcAutomationStrategy`), whether
+the moved structs use it as a real field/parameter type or only mention it in a comment.
+Only `Cell` (by value, many structs), `Weapon` (`InFlightAttack::w`), `Spell`
+(`ActiveEffect::spell`), `Agent::Conditions` (`canTakeReaction`'s parameter), and
+`MovementType` (`InFlightMove::type` — kept as a forward declaration exactly as before,
+since a forward-declared scoped enum's fixed `int` underlying type makes it usable as a
+member without the full definition) are real usages. `BattleMap`, `AgentConfig`,
+`ActiveSpellEffect`, `ActiveAgentCondition`, `VisibilityLevel`, `NpcAutomationStrategy` are
+comment-only in this region and stay forward-declared in `combat.hpp` for the `CombatEngine`
+class body that still follows. Two types are used only *transitively* through others:
+`SaveAbility_t`/`SaveStr` (via `weapon.hpp` → `condition.hpp`) and `MetamagicOption` (via
+`agent.hpp` → `character_class.hpp`) — confirmed rather than assumed, so
+`combat_types.hpp`'s explicit include list is `weapon.hpp`, `spell.hpp`, `agent.hpp`,
+`cell.hpp` (no `armor.hpp`/`item.hpp`/`message_logger.hpp` — grepped for real, non-comment
+`Armor`/`Item`/`MessageLogger` usage in the moved region and found none).
+
+**Result**: `combat.hpp` 3,416 → 2,517 lines; new `combat_types.hpp` is 931 lines (19 lines
+of header/include preamble + the 902-line moved block + closing brace). No other file
+needed changes — every `.cpp` TU already reaches these types by including `combat.hpp`,
+which now pulls in `combat_types.hpp` transitively, and `CMakeLists.txt` doesn't enumerate
+headers.
+
+Alone this is cosmetic — all 10 combat TUs still include `combat.hpp` and so still pull in
+`combat_types.hpp` too. **Its value is entirely in combination with R1**: a future binding
+TU that only needs these structs (not the full `CombatEngine` declaration) can include
+`combat_types.hpp` directly, and the 40% of header churn that the baseline measurement
+found landing in the struct region stops rebuilding it.
+
+**Verification**: checked by line-range diff against the pre-edit file (byte-identical
+struct body, byte-identical surrounding `combat.hpp` content), then build/test-verified in
+the container — see the Handoff section above for the results.
 
 ### R3 — `CombatContext` + `rules.hpp` ⭐
 
