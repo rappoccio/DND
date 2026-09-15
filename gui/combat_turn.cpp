@@ -178,7 +178,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         return result;
 
     // New turn: advance the counter used for persistent-zone "once per turn" dedup.
-    ++turnCounter_;
+    ++ctx_.turnCounter_;
 
     // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
     // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
@@ -1504,7 +1504,7 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
             bm.getAgentStats(agent_idx).hp_cur <= 0 || cond.dead || cond.unconscious) {
             if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
                 npc_turn_ = NpcTurnState{};
-            npc_recording_ = false;   // a parked turn's actor died mid-park — stop the event stream too
+            ctx_.npc_recording_ = false;   // a parked turn's actor died mid-park — stop the event stream too
             return FlowStatus::Completed;
         }
     }
@@ -1515,8 +1515,8 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // resolves inside submitDecision and must record its outcome — and is cleared on every Completed
     // return below. The GUI drains via take_npc_visual_events() after every run_npc_turn return.
     if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx))
-        npc_visual_events_.clear();
-    npc_recording_ = true;
+        ctx_.npc_visual_events_.clear();
+    ctx_.npc_recording_ = true;
 
     // Command (Flee) overrides all strategy: the creature spends its whole turn running away from the fear
     // source and takes no action (Command RAW). Intercept BEFORE the strategy dispatch so it applies to any
@@ -1525,7 +1525,7 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     const int fearIdx = npcCommandFleeSource(agent_idx);
     if (fearIdx >= 0) {
         const FlowStatus fs = runFleeTurn(bm, agent_idx, fearIdx);
-        if (fs == FlowStatus::Completed) npc_recording_ = false;
+        if (fs == FlowStatus::Completed) ctx_.npc_recording_ = false;
         return fs;
     }
 
@@ -1538,7 +1538,7 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx)) {
         const auto cond = bm.getAgentConditions(agent_idx);
         if ((cond.forcecaged || cond.forcecage_sealed) && npcTeleportEscape(bm, agent_idx)) {
-            npc_recording_ = false;
+            ctx_.npc_recording_ = false;
             return FlowStatus::Completed;
         }
     }
@@ -1560,7 +1560,7 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // npc_turn_, so nothing is stamped and the next turn re-resolves.
     if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
         npc_turn_.resolved_strategy = static_cast<int>(strategy);
-    if (fs == FlowStatus::Completed) npc_recording_ = false;   // turn over → stop the visual event stream
+    if (fs == FlowStatus::Completed) ctx_.npc_recording_ = false;   // turn over → stop the visual event stream
     return fs;
 }
 

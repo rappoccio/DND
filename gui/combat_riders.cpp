@@ -1509,9 +1509,9 @@ AttackResult CombatEngine::applySentinelGuard(BattleMap& bm, int sentinel_idx,
 
     // The guard counter-attack: a fresh melee attack at the attacker. resolving_sentinel_guard_ keeps
     // this strike from re-opening the OnAllyAttacked window (a guard does not provoke its own guard).
-    resolving_sentinel_guard_ = true;
+    ctx_.resolving_sentinel_guard_ = true;
     AttackResult r = executeAction(bm, Attack{sentinel_idx, attacker_idx, weapon_idx});
-    resolving_sentinel_guard_ = false;
+    ctx_.resolving_sentinel_guard_ = false;
 
     // Spend the reaction (re-fetch: executeAction may have mutated the Sentinel's conditions).
     sc = bm.getAgentConditions(sentinel_idx);
@@ -1535,9 +1535,9 @@ AttackResult CombatEngine::applySoulOfVengeance(BattleMap& bm, int paladin_idx,
 
     // A fresh melee attack at the sworn foe. resolving_sentinel_guard_ (shared reaction-nesting guard)
     // keeps this counter-strike from re-opening the reaction window (no counter-of-a-counter).
-    resolving_sentinel_guard_ = true;
+    ctx_.resolving_sentinel_guard_ = true;
     AttackResult r = executeAction(bm, Attack{paladin_idx, attacker_idx, weapon_idx});
-    resolving_sentinel_guard_ = false;
+    ctx_.resolving_sentinel_guard_ = false;
 
     // Spend the reaction (re-fetch: executeAction may have mutated the paladin's conditions).
     pc = bm.getAgentConditions(paladin_idx);

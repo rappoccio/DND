@@ -2803,8 +2803,8 @@ bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, in
     }
 
     // Check if this agent already used a portent this round
-    auto it = agent_portent_round_used_.find(agent_idx);
-    if (it != agent_portent_round_used_.end() && it->second == current_round) {
+    auto it = ctx_.agent_portent_round_used_.find(agent_idx);
+    if (it != ctx_.agent_portent_round_used_.end() && it->second == current_round) {
         log_("{} already used Portent Dice in round {}", agentName(bm, agent_idx), current_round);
         return false;
     }
@@ -2826,10 +2826,10 @@ bool CombatEngine::usePortentDie(BattleMap& bm, int agent_idx, int die_index, in
     }
 
     // Set pending portent for next roll
-    pending_portent_die_ = die_value;
+    ctx_.pending_portent_die_ = die_value;
 
     // Track that this agent used a portent in this round
-    agent_portent_round_used_[agent_idx] = current_round;
+    ctx_.agent_portent_round_used_[agent_idx] = current_round;
 
     // Save stats back
     bm.setAgentStats(agent_idx, stats);
@@ -2868,7 +2868,7 @@ int CombatEngine::useBardicDie(BattleMap& bm, int agent_idx) noexcept
     }
 
     int value = roll(d);            // roll the held die (1..d)
-    pending_roll_bonus_ = value;    // fold into the agent's NEXT d20 Test
+    ctx_.pending_roll_bonus_ = value;    // fold into the agent's NEXT d20 Test
     stats.bardic_inspiration_die = 0;  // consumed
     bm.setAgentStats(agent_idx, stats);
 
@@ -2890,7 +2890,7 @@ int CombatEngine::useBardicDieForDamage(BattleMap& bm, int agent_idx) noexcept
     }
 
     int value = roll(d);                   // roll the held die (1..d)
-    pending_damage_bonus_ = value;         // fold into the attacker's NEXT weapon damage roll
+    ctx_.pending_damage_bonus_ = value;         // fold into the attacker's NEXT weapon damage roll
     stats.bardic_inspiration_die = 0;     // consumed
     bm.setAgentStats(agent_idx, stats);
 
@@ -3168,7 +3168,7 @@ int CombatEngine::bardCuttingWords(BattleMap& bm, int bard_idx) noexcept
 
     bi->current -= 1;
     int value = roll(stats.bardic_inspiration_die_size);
-    pending_roll_bonus_ = -value;   // SUBTRACT from the next D20 Test (the target's roll)
+    ctx_.pending_roll_bonus_ = -value;   // SUBTRACT from the next D20 Test (the target's roll)
     bm.setAgentStats(bard_idx, stats);
 
     log_("{} uses Cutting Words: -{} to the next D20 Test ({} Bardic Inspiration left)",

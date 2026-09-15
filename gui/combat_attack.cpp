@@ -234,9 +234,9 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     r.target_ac    = target_ac;
 
     // Check if portent die is pending (need to apply after advantage/disadvantage logic)
-    int pending_portent = pending_portent_die_;
+    int pending_portent = ctx_.pending_portent_die_;
     if (pending_portent >= 0) {
-        pending_portent_die_ = -1;  // Consume it now
+        ctx_.pending_portent_die_ = -1;  // Consume it now
     }
     // Bardic Inspiration adds to the d20 Test total (not the natural die, so it never
     // creates/removes a crit). Capture it before the inner rolls so they don't consume it.
@@ -1007,14 +1007,14 @@ bool CombatEngine::applyGloriousDefense(BattleMap& bm, int pal_idx, const Attack
 
     // On the resulting miss, the paladin may make one weapon attack against the attacker if in range.
     const int widx = riposteWeaponIdx(bm, pal_idx);
-    if (widx >= 0 && !resolving_sentinel_guard_) {
+    if (widx >= 0 && !ctx_.resolving_sentinel_guard_) {
         const auto threats = threateningAgents(bm, pal_idx, 1);
         if (std::find(threats.begin(), threats.end(), action.attacker_idx) != threats.end()) {
             log_("Glorious Defense: {} counter-attacks {}",
                  agentName(bm, pal_idx), agentName(bm, action.attacker_idx));
-            resolving_sentinel_guard_ = true;
+            ctx_.resolving_sentinel_guard_ = true;
             AttackResult cr = executeAction(bm, Attack{pal_idx, action.attacker_idx, widx});
-            resolving_sentinel_guard_ = false;
+            ctx_.resolving_sentinel_guard_ = false;
             (void)cr;
         }
     }
@@ -1027,7 +1027,7 @@ bool CombatEngine::maybeGloriousDefenseInline(BattleMap& bm, const Attack& actio
 {
     if (!decider_) return false;
     if (!r.hit || r.critical) return false;
-    if (resolving_sentinel_guard_) return false;
+    if (ctx_.resolving_sentinel_guard_) return false;
     const int n = static_cast<int>(bm.placedAgents().size());
     for (int pal = 0; pal < n; ++pal) {
         if (pal == action.target_idx) continue;           // self case handled via the defender window
@@ -1423,7 +1423,7 @@ bool CombatEngine::maybeSentinelGuardInline(BattleMap& bm, const Attack& action,
 {
     // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via sentinel_guard_available.
     if (!decider_) return false;
-    if (resolving_sentinel_guard_) return false;          // a guard counter-attack doesn't provoke its own guard
+    if (ctx_.resolving_sentinel_guard_) return false;          // a guard counter-attack doesn't provoke its own guard
     const int n = static_cast<int>(bm.placedAgents().size());
     for (int sentinel = 0; sentinel < n; ++sentinel) {
         if (!canSentinelGuard(bm, action, sentinel)) continue;
@@ -1475,7 +1475,7 @@ bool CombatEngine::maybeSoulOfVengeanceInline(BattleMap& bm, const Attack& actio
 {
     // Auto/RL only: the GUI (no decider) gets the deferred-flag prompt via soul_of_vengeance_available.
     if (!decider_) return false;
-    if (resolving_sentinel_guard_) return false;          // a reaction counter-strike doesn't provoke another
+    if (ctx_.resolving_sentinel_guard_) return false;          // a reaction counter-strike doesn't provoke another
     const int n = static_cast<int>(bm.placedAgents().size());
     for (int pal = 0; pal < n; ++pal) {
         if (!canSoulOfVengeance(bm, action, pal)) continue;
@@ -3416,7 +3416,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // GUI (which scans for the eligible Sentinel and calls applySentinelGuard); the auto/RL path uses
     // the OnAllyAttacked window (maybeSentinelGuardInline) with the same canSentinelGuard gate. Skipped
     // while a guard counter-attack is itself resolving (a guard does not provoke its own guard).
-    if (!resolving_sentinel_guard_) {
+    if (!ctx_.resolving_sentinel_guard_) {
         for (int g = 0; g < static_cast<int>(agents.size()); ++g) {
             if (canSentinelGuard(bm, action, g)) {
                 updated_atk_cond.sentinel_guard_available = true;
@@ -3431,7 +3431,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // Vengeance paladin may spend its reaction for a melee counter-strike. Flagged on the ATTACKER
     // for the GUI (which scans via canSoulOfVengeance + applySoulOfVengeance); the auto/RL path uses
     // maybeSoulOfVengeanceInline. Skipped while a reaction counter-strike is itself resolving.
-    if (!resolving_sentinel_guard_) {
+    if (!ctx_.resolving_sentinel_guard_) {
         for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
             if (canSoulOfVengeance(bm, action, p)) {
                 updated_atk_cond.soul_of_vengeance_available = true;

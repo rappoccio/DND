@@ -33,6 +33,7 @@
 #include "cell.hpp"            // Cell — stored by value in the reaction-system structs below
 #include "message_logger.hpp"
 #include "combat_types.hpp"   // result/action/state structs (HideResult, AttackResult, InFlight*, …)
+#include "combat_context.hpp" // CombatContext — cross-cutting scratch state (RNG, logger, pending rolls)
 
 #include <cstdint>
 #include <format>
@@ -551,14 +552,14 @@ public:
     // action resolves so the GUI can later animate it (highlight attacker + target, ranged arrow, AoE
     // blink-then-resolve). SEAM ONLY — no animation now; headless leaves the hook unset (a no-op). The
     // GUI installs a Python callable via set_render_attack_hook.
-    void setRenderAttackHook(std::function<void(int, int)> hook) noexcept { render_attack_hook_ = std::move(hook); }
+    void setRenderAttackHook(std::function<void(int, int)> hook) noexcept { ctx_.render_attack_hook_ = std::move(hook); }
 
     // NPC turn playback: drain the visual event stream (move-out-and-clear). The GUI calls this after
     // EVERY run_npc_turn return (Completed or parked) and animates the events before advancing the
     // turn / opening the parked reaction menu. Draining twice yields an empty vector.
     [[nodiscard]] std::vector<NpcVisualEvent> takeNpcVisualEvents() noexcept {
-        std::vector<NpcVisualEvent> out = std::move(npc_visual_events_);
-        npc_visual_events_.clear();
+        std::vector<NpcVisualEvent> out = std::move(ctx_.npc_visual_events_);
+        ctx_.npc_visual_events_.clear();
         return out;
     }
 
@@ -840,7 +841,7 @@ public:
     // ── Message logging ────────────────────────────────────────────────────
     // Attach a MessageLogger to receive internal narrative messages (dice rolls,
     // reasons for conditions, etc.). Optional; null = silent.
-    void setLogger(MessageLogger* logger) noexcept { logger_ = logger; }
+    void setLogger(MessageLogger* logger) noexcept { ctx_.logger_ = logger; }
 
     // Set the CombatDecider for decision points (GUI=Python subclass, RL/headless=nullptr).
     void setDecider(CombatDecider* d) noexcept { decider_ = d; }
@@ -864,7 +865,7 @@ public:
     // Grant one-shot advantage (adv=true) or disadvantage (adv=false) on the NEXT D20 Test,
     // via pending_advantage_. General "advantage on your next roll" hook (Tides of Chaos, etc.);
     // it reaches attacks, saves, and checks because they all bottom out in roll(20)/rollToHit.
-    void grantPendingAdvantage(bool adv = true) noexcept { pending_advantage_ = adv ? 1 : -1; }
+    void grantPendingAdvantage(bool adv = true) noexcept { ctx_.pending_advantage_ = adv ? 1 : -1; }
 
     // ── Core attack mechanics ─────────────────────────────────────────────
 
@@ -1953,7 +1954,9 @@ public:
     int  applyDragonMinRoll(BattleMap& bm, int idx, int d20_roll) noexcept;
 
 private:
-    std::mt19937 rng_;
+    // Cross-cutting scratch state (RNG, logger, GUI hooks, one-shot pending-roll modifiers,
+    // NPC-turn visual event stream) — see combat_context.hpp (COMBAT_REFACTOR_PLAN.md R3).
+    CombatContext ctx_;
 
     // Per-agent turn overrides.  Empty = everyone gets exactly 1 turn/round.
     // Only agents with turns != 1 are stored here (optimises the common case).
@@ -2002,59 +2005,31 @@ private:
     // Computed at turn start and cached until next turn
     std::unordered_map<int64_t, VisibilityLevel> visibilityMap_;
 
-    // Overchannel (Evoker Wizard L14): while true, rollDamageDice returns each die at its maximum
-    // face instead of rolling. Scoped tightly inside executeSpell (set before the damage rolls,
-    // cleared right after) so no unrelated roll is ever maximized.
-    bool force_max_damage_{false};
+    // Overchannel, Portent Dice, Sentinel-guard re-entrancy, Bardic Inspiration's pending roll/damage
+    // bonus, pending one-shot advantage, the logger, the NPC-turn render hook, and the NPC visual
+    // event stream all moved to ctx_ (CombatContext, combat_context.hpp) in R3. These forwarders
+    // keep every existing call site (`consumePendingRollBonus()`, `logger_`-via-`log_`, …) unchanged.
+    int consumePendingRollBonus() noexcept { return ctx_.consumePendingRollBonus(); }
+    int consumePendingDamageBonus() noexcept { return ctx_.consumePendingDamageBonus(); }
+    int consumePendingAdvantage() noexcept { return ctx_.consumePendingAdvantage(); }
 
-    // Portent Dice system (Diviner Wizard L3+)
-    int pending_portent_die_{-1};    // d20 value to use on next roll (-1 = none pending)
-    bool resolving_sentinel_guard_{false};  // true while a Sentinel Guardian counter-attack is resolving (suppresses guard-of-a-guard)
-    std::unordered_map<int, int> agent_portent_round_used_;  // track which round each agent last used portent
-
-    // Bardic Inspiration: a flat bonus folded into the NEXT d20 Test (0 = none).
-    // Unlike Portent (which replaces the d20), this is additive. Set by useBardicDie.
-    int pending_roll_bonus_{0};
-    int consumePendingRollBonus() noexcept { int b = pending_roll_bonus_; pending_roll_bonus_ = 0; return b; }
-
-    // Combat Inspiration damage bonus: a flat bonus folded into the NEXT weapon damage roll.
-    // Set by useBardicDieForDamage, mirroring pending_roll_bonus_ for the damage roll.
-    int pending_damage_bonus_{0};
-    int consumePendingDamageBonus() noexcept { int b = pending_damage_bonus_; pending_damage_bonus_ = 0; return b; }
-
-    // One-shot advantage/disadvantage on the NEXT D20 Test (+1 = advantage, -1 = disadvantage,
-    // 0 = none). General mechanism for "advantage on your next roll" (Tides of Chaos, etc.);
-    // consumed by roll(20)/rollAdvantage/rollDisadvantage/rollToHit. If the roll already has the
-    // opposite, the two cancel (5e rule). Only d20 Tests consume it (damage dice ignore it).
-    int pending_advantage_{0};
-    int consumePendingAdvantage() noexcept { int a = pending_advantage_; pending_advantage_ = 0; return a; }
-
-    MessageLogger* logger_{nullptr};
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
 
-    // NPC-automation visualization hook (Step 2e seam). Unset in headless mode → renderAttack is a no-op.
-    std::function<void(int, int)> render_attack_hook_;
     // Notify the GUI (if a hook is installed) that an automated NPC's action from attacker→target
     // resolved, so it can animate. No-op when no hook is installed (headless / tests).
     // ── NPC visual event stream (NPC turn playback) ──────────────────────────
-    // Recording is ON only while an automated NPC turn is in flight — set in runNpcTurn, kept on
-    // across a park (the parked action resolves inside submitDecision and must record too), and
-    // cleared when the turn completes. Every recorder is a no-op otherwise, so player-driven flows
-    // and headless RL/tests never accumulate events beyond one turn (fresh turns clear the buffer).
-    bool npc_recording_{false};
-    std::vector<NpcVisualEvent> npc_visual_events_;
     void recordNpcMove(int agent_idx, const std::vector<Cell>& path) {
-        if (!npc_recording_ || path.size() < 2) return;
+        if (!ctx_.npc_recording_ || path.size() < 2) return;
         NpcVisualEvent e;
         e.kind = NpcVisualEvent::Move; e.agent_idx = agent_idx; e.path = path;
-        npc_visual_events_.push_back(std::move(e));
+        ctx_.npc_visual_events_.push_back(std::move(e));
     }
     void recordNpcAnnounce(int agent_idx, int target_idx, std::string text) {
-        if (!npc_recording_) return;
+        if (!ctx_.npc_recording_) return;
         NpcVisualEvent e;
         e.kind = NpcVisualEvent::Announce; e.agent_idx = agent_idx;
         e.target_idx = target_idx; e.text = std::move(text);
-        npc_visual_events_.push_back(std::move(e));
+        ctx_.npc_visual_events_.push_back(std::move(e));
     }
     // sync_hp=false records a flash-only outcome (hp_after stays -1): used where the roll is known
     // but its damage applies later in the pipeline (spell saves / spell attack rolls) — the GUI's
@@ -2064,7 +2039,7 @@ private:
                           bool sync_hp = true);
 
     void renderAttack(int attacker_idx, int target_idx) const {
-        if (render_attack_hook_) render_attack_hook_(attacker_idx, target_idx);
+        if (ctx_.render_attack_hook_) ctx_.render_attack_hook_(attacker_idx, target_idx);
     }
 
     // ── Reaction system internals (combat_movement.cpp) ──────────────────────
@@ -2434,9 +2409,9 @@ private:
 
     std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
 
-    // Persistent-zone "once per turn" tracking. turnCounter_ increments on each beginTurn;
-    // zoneAppliedTurn_ maps (effect_id, agent_idx) -> the turnCounter_ value when last applied.
-    int turnCounter_{0};
+    // Persistent-zone "once per turn" tracking. ctx_.turnCounter_ (combat_context.hpp) increments on
+    // each beginTurn; zoneAppliedTurn_ maps (effect_id, agent_idx) -> the turnCounter_ value when
+    // last applied.
     std::unordered_map<int64_t, int> zoneAppliedTurn_;
 
     // Death Burst re-entrancy guard: agent indices whose death burst has already detonated. Ensures a
@@ -2447,7 +2422,7 @@ private:
     // Emit a message to the logger (if attached).
     template<typename... Args>
     void log_(std::format_string<Args...> fmt, Args&&... args) const {
-        if (logger_) logger_->log(std::format(fmt, std::forward<Args>(args)...));
+        if (ctx_.logger_) ctx_.logger_->log(std::format(fmt, std::forward<Args>(args)...));
     }
 
     // ── Spell helpers ─────────────────────────────────────────────────────

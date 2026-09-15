@@ -1,8 +1,9 @@
 # Combat Engine Refactor — Implementation Plan
 
-Status: **IN PROGRESS** — R0, R1, R2 done and verified (2026-09-14). R3 (`CombatContext` +
-`rules.hpp`) not started. See **Handoff (2026-09-14)** below before picking this up in a
-new session.
+Status: **IN PROGRESS** — R0, R1, R2, and R3's additive landing (`CombatContext` +
+`rules.hpp`, forwarders wired in) all done and verified (2026-09-14). R3's remaining
+step — migrating the ~950 call sites to `rules::` TU-by-TU and deleting the forwarders —
+is not started. See **Handoff (2026-09-14)** below before picking this up in a new session.
 
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
 triggering a full rebuild of every combat TU, (b) the rules layer becomes testable without
@@ -31,8 +32,25 @@ failure is `test_monk.py::test_deflect_attacks_reduces_physical`, confirmed to b
 same pre-existing AC-helper bug documented below (same assertion, same line), not a
 regression from R2.
 
-**Not done**: R3 onward. Do not start R3 without the R0 determinism harness passing at
-every step on top of R2's change — it's the oracle this whole plan depends on.
+**R3 additive landing (2026-09-14, done and verified)**: `combat_context.hpp` (new) and
+`rules.hpp` (new) are in place, and `combat.hpp`/`combat_core.cpp`/`combat_attack.cpp`/
+`combat_spells.cpp`/`combat_resources.cpp`/`combat_riders.cpp`/`combat_turn.cpp` use them —
+see the R3 section below for the full writeup. Not yet committed at time of writing.
+
+**R3 build/test verification** (2026-09-14, in the `angry_goodall` container): the build
+succeeded on the first attempt with **no compile errors and no new warnings** (only the
+pre-existing pybind11 CMake deprecation notice and the known `-flto` serial-LTRANS note);
+`tests/test_determinism.py` matched the golden byte-for-byte; and `tests/run_all_tests.py`
+was 143/144, the one failure being `test_monk.py::test_deflect_attacks_reduces_physical` —
+verified to be the identical pre-existing bug documented below (same test, same line 505,
+same `"the Slashing hit should land for damage"` assertion), not a regression. Worth noting
+as extra signal: that failing test is itself an exercise of `calculateAC`, one of the exact
+functions R3 moved into `rules.hpp`, so its failing in precisely the same way is direct
+evidence the moved AC logic behaves identically.
+
+**Not done**: everything from "migrate call sites TU-by-TU" onward in R3, and all of R4/R5.
+Do not start further work on R3 without the R0 determinism harness passing at every step —
+it's the oracle this whole plan depends on.
 
 **Build environment — read this before running anything.** This repo's real build/run
 environment is a Docker container, not the host machine directly:
@@ -227,7 +245,7 @@ therefore buys essentially nothing — the churn is method *additions* in the pu
 | **R0** | Rename `combat.cpp`; build determinism harness | none | ~1 day | the oracle everything else relies on |
 | **R1** | Split `rpg_bindings.cpp` by domain | very low | 2–3 days | biggest single build-time win |
 | **R2** | Extract `combat_types.hpp` | low | 1–2 days | 40% of header churn stops rebuilding binding TUs |
-| **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules |
+| **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules — *additive landing done; call-site migration open* |
 | **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity |
 | **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save |
 
@@ -373,9 +391,11 @@ found landing in the struct region stops rebuilding it.
 struct body, byte-identical surrounding `combat.hpp` content), then build/test-verified in
 the container — see the Handoff section above for the results.
 
-### R3 — `CombatContext` + `rules.hpp` ⭐
+### R3 — `CombatContext` + `rules.hpp` ⭐ — **ADDITIVE LANDING DONE** (2026-09-14)
 
-The highest-leverage step.
+The highest-leverage step. The additive half — `CombatContext` extracted, `rules.hpp`
+landed, `CombatEngine` forwarding to both — is done and verified; the call-site migration
+that follows it is deliberately still open (see the landing writeup below).
 
 **`CombatContext`** (new `combat_context.hpp`) absorbs the genuinely cross-cutting scratch
 state: `rng_`, `logger_`, `pending_roll_bonus_`, `pending_damage_bonus_`,
@@ -397,6 +417,81 @@ Payoff:
 Sequencing note: land `rules.hpp` **first** as a pure additive header with `CombatEngine`
 methods forwarding to it, then migrate call sites TU-by-TU, then delete the forwarders.
 Never a single 950-site sweep.
+
+**Additive landing — DONE (2026-09-14).** The first step above (land `rules.hpp` +
+`CombatContext` additively, forwarders only, zero call-site migration) is complete and
+build/test-verified — see the Handoff section above for the verification results.
+
+**`combat_context.hpp`** (new) holds exactly the member list this section originally
+specified: `rng_`, `logger_`, `render_attack_hook_`, `pending_roll_bonus_`,
+`pending_damage_bonus_`, `pending_advantage_`, `force_max_damage_`, `pending_portent_die_`,
+`agent_portent_round_used_`, `resolving_sentinel_guard_`, `turnCounter_`, `npc_recording_`,
+`npc_visual_events_`, plus the three `consumePending*` helpers. `CombatEngine` gained one
+member, `CombatContext ctx_;`, replacing all of the above as individual fields.
+`zoneAppliedTurn_` (the map keyed off `turnCounter_`, not the counter itself) stays on
+`CombatEngine` — it's spell-effect bookkeeping, not scratch state, and wasn't in this
+section's original member list.
+
+Serialization was written now, not deferred to R5, per decision #4: `to_json()`/`from_json()`
+round-trip `rng_` (via `operator<<`/`>>` on the live `mt19937` — the actual generator state,
+not the original seed, so a resumed engine can't diverge from rerolling), the pending-roll/
+portent/sentinel-guard/turn-counter scratch ints, and `agent_portent_round_used_` (as a JSON
+array of `{agent, round}` objects — nlohmann's native map support wasn't trusted for a
+non-string key without a precedent elsewhere in the codebase). `logger_`,
+`render_attack_hook_`, `npc_recording_`, and `npc_visual_events_` are deliberately NOT
+serialized: the first two are host callbacks rebound after any restore, and the NPC ones are
+transient GUI-animation plumbing drained every turn, not gameplay state.
+
+**Every existing call site was preserved without touching non-context code.** Rather than
+rewriting the ~15 sites that called `consumePendingRollBonus()`/`consumePendingDamageBonus()`/
+`consumePendingAdvantage()`, `CombatEngine` keeps those three method names as one-line
+forwarders to `ctx_`'s versions — the plan's "no big sweep" principle applied one level
+lower than the rules-layer call sites it was written about. The ~80 remaining direct field
+touches (`rng_`, `pending_portent_die_`, `resolving_sentinel_guard_`, `turnCounter_`,
+`npc_recording_`, `npc_visual_events_`, direct `pending_roll_bonus_`/`pending_damage_bonus_`
+assignments in the bardic/portent/sentinel-guard feature code) across `combat_core.cpp`,
+`combat_attack.cpp`, `combat_spells.cpp`, `combat_resources.cpp`, `combat_riders.cpp`, and
+`combat_turn.cpp` were mechanically renamed to `ctx_.<field>` — verified by grepping for
+every bare field name afterward and confirming only comments remained.
+
+**`rules.hpp`** (new) is header-only `inline` free functions in `namespace rpg::rules`,
+matching `combat_internal.hpp`'s existing convention for helpers shared across the
+`combat_*.cpp` TUs — no new `.cpp`, no `CMakeLists.txt` change. Covers exactly this section's
+list: `roll`/`rollAdvantage`/`rollDisadvantage` (take `CombatContext&`), `attackModifier`,
+`damageAbilityMod`, `spellAttackMod`, `spellSaveDc`, `spellSaveDcFromAbility`, `calculateAC`,
+`isHoldingShield`, `canEquipArmor`, the five Paladin/advantage aura queries
+(`bestPaladinAura`, `auraSaveBonus`, `hasAuraOfCourage`, `hasAuraOfWarding`,
+`hasAuraOfAlacrity`, `hasAdvantageAura`), `saveModFor` (takes `CombatContext&` — rolls
+Bless's 1d4), and `saveAdvantageFor`. `curseSaveDisadvantage` and `applyIndomitableMight`
+were deliberately left on `CombatEngine`: the former reads `activeAgentConditions_`, which
+isn't in `CombatContext` (it's real per-encounter game state slated for R4's
+`ConditionTracker`, not scratch), so it can't become a pure `rules::` function without
+dragging that member along too.
+
+One dependency wrinkle, resolved by small duplication rather than a cross-module call: the
+aura queries need a same-team-or-self check, which already exists as
+`CombatEngine::areAllies` (`combat_visibility.cpp`) — but that's a non-static member with no
+state dependency of its own (it only reads `bm.getAgentFaction`), so calling it from a free
+function would mean threading an engine instance through for no real reason. `rules.hpp`
+instead defines its own two-line `alliedFactions()` with a comment pointing at
+`CombatEngine::areAllies` as the canonical version, to be deduped when R4 extracts
+`VisibilityService`.
+
+`CombatEngine`'s methods in `combat_core.cpp` for every function above are now one-line
+`return rules::foo(...)` forwarders — the pybind11 bindings, `main.py`'s 620 call sites, and
+every test call these exactly as before with zero signature changes.
+
+**Not done, by design (per the sequencing note)**: none of the ~950 internal call sites that
+currently call the `CombatEngine` methods (e.g. `attackModifier(...)` from inside
+`combat_attack.cpp`) were rewritten to call `rules::attackModifier(...)` directly, and none
+of the forwarders were deleted. That migration is separate, incremental, TU-by-TU work for a
+later session — doing it in the same pass as landing `rules.hpp` is exactly the "single
+950-site sweep" this section says never to do.
+
+**Verification**: grep-verified field-rename completeness first (every bare moved-field name
+gone from code, comments only remaining), then built clean and test-verified in the
+container — no compile errors, no new warnings, determinism golden byte-identical, suite at
+the same 143/144. See the Handoff section above for the full results.
 
 ### R4 — Sub-engines behind a facade
 

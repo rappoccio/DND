@@ -100,7 +100,7 @@ int CombatEngine::rollDamageDice(int num_dice, int die_size, std::vector<int>& o
     rolled.reserve(static_cast<std::size_t>(num_dice));
     for (int i = 0; i < num_dice; ++i) {
         // Overchannel (Evoker L14): every die lands on its maximum face.
-        int d = force_max_damage_ ? die_size : roll(die_size);
+        int d = ctx_.force_max_damage_ ? die_size : roll(die_size);
         if (boost1to2 && d == 1) d = 2;
         rolled.push_back(d);
     }
@@ -1017,7 +1017,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     const bool overchannel_active = action.overchannel && is_evoker &&
                                     caster_stats.classLevel(CharacterClass::Wizard) >= 14 && sp.type == Spell::Harm &&
                                     overchannel_level >= 1 && overchannel_level <= 5;
-    force_max_damage_ = overchannel_active;
+    ctx_.force_max_damage_ = overchannel_active;
 
     // Draconic Elemental Affinity (L6): +CHA mod to first damage roll of matching type this turn.
     // Local flag prevents double-application across multiple targets of the same AoE.
@@ -2242,7 +2242,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // Necrotic self-damage. The first use since a Long Rest is free; the 2nd costs 2d12 Necrotic per
     // spell level, and each further use before a rest adds +1d12 per level. This damage ignores
     // Resistance and Immunity, so it is applied straight to the caster.
-    force_max_damage_ = false;
+    ctx_.force_max_damage_ = false;
     if (overchannel_active) {
         const int prior = bm.getAgentStats(action.caster_idx).overchannel_uses;
         if (prior == 0) {
@@ -3013,10 +3013,10 @@ bool CombatEngine::applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect
     const int64_t key = (static_cast<int64_t>(effect.effect_id) << 32)
                       ^ static_cast<int64_t>(static_cast<uint32_t>(target_idx));
     auto it = zoneAppliedTurn_.find(key);
-    if (it != zoneAppliedTurn_.end() && it->second == turnCounter_)
+    if (it != zoneAppliedTurn_.end() && it->second == ctx_.turnCounter_)
         return false;  // already applied to this target by this effect this turn
     applySpellEffect(bm, effect, target_idx);
-    zoneAppliedTurn_[key] = turnCounter_;
+    zoneAppliedTurn_[key] = ctx_.turnCounter_;
     return true;
 }
 
@@ -3139,7 +3139,7 @@ void CombatEngine::clearEffects() noexcept
 {
     activeEffects_.clear();
     zoneAppliedTurn_.clear();
-    turnCounter_ = 0;
+    ctx_.turnCounter_ = 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4045,7 +4045,7 @@ int CombatEngine::sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept
 
     sp->current -= 1;
     int value = roll(4);                                 // 1d4
-    pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
+    ctx_.pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
     bm.setAgentStats(idx, stats);
 
     log_("{} uses Bend Luck: {}{} to the next D20 Test ({} Sorcery Points left)",
@@ -4072,7 +4072,7 @@ int CombatEngine::applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept
     }
 
     int value = roll(4) + roll(4);                       // 2d4
-    pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
+    ctx_.pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
     stats.boon_of_fate_used = true;
     bm.setAgentStats(idx, stats);
 
