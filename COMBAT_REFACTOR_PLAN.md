@@ -1,7 +1,7 @@
 # Combat Engine Refactor — Implementation Plan
 
-Status: **PLANNING** (assessment done 2026-08-11 — discuss and lock the cross-cutting
-decisions before any code moves). No implementation started.
+Status: **IN PROGRESS** — R0 and R1 done (2026-09-14). R2 (`combat_types.hpp` extraction)
+not started. See **Handoff (2026-09-14)** below before picking this up in a new session.
 
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
 triggering a full rebuild of every combat TU, (b) the rules layer becomes testable without
@@ -11,6 +11,55 @@ instantiating an engine, and (c) combat state becomes serializable — which is 
 Scope rule (per `memory/feedback_scope_combat_sim.md`): this is a **structural** refactor.
 No behavior changes, no new features, no bug fixes bundled in. Every phase must leave
 `tests/run_all_tests.py` green with byte-identical results for a fixed seed.
+
+---
+
+## Handoff (2026-09-14)
+
+Read this first if you're picking this up in a fresh session with no prior context.
+
+**Done**: R0 (`2e9fdd9`) and R1 (`c1b4c0d`), both committed to `main`, neither pushed to
+the remote (only push if the user explicitly asks). Working tree was clean as of this
+handoff. Full details of what each phase did are in the R0/R1 sections below — read those,
+not just this summary, before touching either phase's files again.
+
+**Not done**: R2 onward. R2 (`combat_types.hpp` extraction) is next per the phase table
+below and is low-risk/mechanical like R0-R1. Do not start R3+ without the R0 determinism
+harness passing at every step — it's the oracle this whole plan depends on.
+
+**Build environment — read this before running anything.** This repo's real build/run
+environment is a Docker container, not the host machine directly:
+- Container: name `angry_goodall`, id `62aa12a89476` (check `docker ps` — the name/id may
+  change if the container was recreated; look for image `rpg_map`).
+- `/Users/rappoccio` on the host is bind-mounted to `/home/user` in the container, so
+  editing files via normal tools on the host is immediately visible inside the container —
+  no syncing needed. Repo root inside the container: `/home/user/Claude/DND`.
+- Build via `docker exec <container> bash -lc 'cd /home/user/Claude/DND && ./compile.sh'`.
+  `compile.sh` auto-detects Ninja (available in the container) vs `make` (host-only
+  fallback) — don't hard-code a generator again, that was a real bug fixed in R0.
+  `FETCHCONTENT_UPDATES_DISCONNECTED` is also load-bearing (R0) — without it, every
+  configure forces a full rebuild; don't remove it.
+- Run tests the same way: `docker exec <container> bash -lc 'cd /home/user/Claude/DND &&
+  python3 tests/run_all_tests.py'`. `gui/CLAUDE.md` says never run build/test commands
+  without the user's explicit go-ahead by default — this session had standing permission
+  ("do everything except push to git"); check current permission before assuming that
+  still holds in a new session.
+
+**Known pre-existing failure, not caused by this refactor**: `tests/run_all_tests.py`
+is 143/144 green. The one failure, `test_monk.py::test_deflect_attacks_reduces_physical`,
+is a latent test bug unrelated to R0/R1 (confirmed deterministic and reproducible on
+build state before either phase touched anything): its `_hittable_monk_defender` helper
+force-sets `base_ac=1`, but Monk Unarmored Defense recomputes AC as `10+DEX+WIS`
+unconditionally, so the target's real AC is 15, not 1. Not fixed here per the plan's
+no-bug-fixes-bundled-in scope rule — don't be alarmed by it, and don't silently start
+"fixing" it as part of a later refactor phase without calling it out as a separate change.
+
+**Open follow-up, not part of any phase**: `pybind11_add_module` enables `-flto` by
+default for Release builds, which relinks all ~71 LTRANS units on every single build
+(~40-50s) regardless of what changed — this significantly dampens R1's per-TU incremental
+build win. Not addressed (changes the shipped `.so`'s characteristics, a real tradeoff the
+user should decide on, not something to change unilaterally mid-refactor). See R1's
+write-up below for the measured numbers.
 
 ---
 
