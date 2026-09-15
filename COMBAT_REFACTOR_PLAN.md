@@ -1,11 +1,12 @@
 # Combat Engine Refactor — Implementation Plan
 
 Status: **IN PROGRESS** — R0, R1, R2, R3's additive landing (`CombatContext` + `rules.hpp`,
-forwarders wired in) plus its `rules.hpp` unit tests, and R4's first three sub-engine cuts
-(`VisibilityService`, `MovementController`, `ConditionTracker`) are done and verified. R3's
-call-site migration is open but is now expected to fall out of R4 rather than be swept; R4 has
-4 of its 7 sub-engines left, `SpellResolver`/`AttackResolver` next. See
-**Handoff (2026-09-14)** below before picking this up in a new session.
+forwarders wired in) plus its `rules.hpp` unit tests, R4's first three sub-engine cuts
+(`VisibilityService`, `MovementController`, `ConditionTracker`), and **R5**
+(`snapshot()`/`restore()`) are done and verified. R3's call-site migration is open but is now
+expected to fall out of R4 rather than be swept; **R4 is the only phase with work left** — 4 of
+its 7 sub-engines, `SpellResolver`/`AttackResolver` next. See **Handoff (2026-09-14)** and
+**R5** below before picking this up in a new session.
 
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
 triggering a full rebuild of every combat TU, (b) the rules layer becomes testable without
@@ -86,10 +87,27 @@ logic that drives it did not. Same verification: clean build, golden byte-identi
 Read the **R4c** subsection first — especially why `nextId()`/`append()` stayed two calls and
 what `mutableAll()` is for.
 
+**R5 landing (2026-09-15, done and verified)**: `combat_serialization.cpp` (new, the only new
+file) gives `CombatEngine` `snapshot()` / `restore()` plus their `snapshotJson()` /
+`restoreJson()` string forms, bound to Python as `snapshot_json()` / `restore_json()`. Taken out
+of order — R4 still has four sub-engines left — and that turned out not to matter: see the **R5**
+section for why, and for the one thing each future R4 cut now has to remember. `main.py` gained a
+`<base>_combat.json` sidecar and `tests/test_snapshot.py` is the third refactor guard alongside
+`test_determinism.py` and `test_rules.py`.
+
+**R5 build/test verification** (2026-09-15, in the `angry_goodall` container): build succeeded
+**on the first attempt with no compile errors and no new warnings** (only the pre-existing
+pybind11 CMake deprecation notice and the known `-flto` serial-LTRANS note);
+`tests/test_determinism.py` matched the golden byte-for-byte; `tests/test_snapshot.py` was 6/6 on
+its first run; and `tests/run_all_tests.py` was **145/146** — the count rose by one because
+`test_snapshot.py` was added, and the single failure is the same pre-existing
+`test_monk.py::test_deflect_attacks_reduces_physical` (verified: same test, same line 505, same
+`"the Slashing hit should land for damage"` assertion), not a regression.
+
 **Not done**: everything from "migrate call sites TU-by-TU" onward in R3 (though see "R3 — what
 'done' actually means": it is 298 sites, not 950, most forwarders must stay, and the migration
-now falls out of R4 for free), R4's remaining four sub-engines plus the movement flow deferred
-from R4b and `ConditionTracker::mutableAll()`'s removal deferred from R4c, and all of R5.
+now falls out of R4 for free), and R4's remaining four sub-engines plus the movement flow deferred
+from R4b and `ConditionTracker::mutableAll()`'s removal deferred from R4c.
 **`SpellResolver`/`AttackResolver` are next and are NOT yet measured** — scope them the way R4b
 and R4c were scoped before starting. Do not start further work on R3 or R4 without the R0 determinism harness
 passing at every step — it's the oracle this whole plan depends on.
@@ -289,7 +307,7 @@ therefore buys essentially nothing — the churn is method *additions* in the pu
 | **R2** | Extract `combat_types.hpp` | low | 1–2 days | 40% of header churn stops rebuilding binding TUs |
 | **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules — *additive landing done; call-site migration open* |
 | **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity — *`VisibilityService` cut; 6 sub-engines left* |
-| **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save |
+| **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save — **DONE** |
 
 R0–R2 are mechanical and near-risk-free — do them regardless of whether R4 ever happens.
 R3 is the highest-leverage single step. **R4 should not start until R3 has settled.**
@@ -824,7 +842,7 @@ were scoped, rather than guessing from the file sizes. Note that `ReactionArbite
 and that it now carries three deferred items with it: `in_flight_move_` plus the movement flow
 (R4b), and `ConditionTracker::mutableAll()`'s removal once the tick drivers move.
 
-### R5 — Serialization
+### R5 — Serialization — **DONE** (2026-09-15)
 
 With R3+R4 done, each state struct gets `to_json`/`from_json`, and `CombatEngine` gets
 `snapshot()` / `restore()`. `rng_` must serialize the **mt19937 state**, not the seed.
@@ -835,6 +853,111 @@ This closes the `MULTIPLAYER_PLAN.md` blocker and independently delivers mid-com
 save/resume, crash recovery, and fully reproducible bug reports from live play. See that
 plan's TODO for the full member list — it matches the R4 table above almost exactly, which
 is the strongest evidence the two efforts are the same work.
+
+#### Why it landed with R4 only 3/7 done
+
+The "with R3+R4 done" opener turned out to be a convenience, not a prerequisite. R5 needs a
+`to_json`/`from_json` for every engine member; where that lives is the only thing R4 changes.
+Four members already had one (plan decision #4 made each sub-engine serializable in the commit
+that created it), so `snapshot()` just calls them; the rest serialize from `CombatEngine`
+directly. When `SpellResolver` / `AttackResolver` / `ReactionArbiter` / `NpcDriver` land, each
+should take its own `to_json`/`from_json` and `snapshot()` should delegate to it — **that is a
+move, not new work, and `tests/test_snapshot.py` is the check that the move preserved the
+payload.** Note the one obligation this puts on every remaining R4 cut: a member that moves into
+a sub-engine must keep the same JSON key, or an existing save silently stops restoring it.
+
+#### `combat_serialization.cpp` — one new TU, no new header
+
+Everything is in a single new TU. The JSON mapping for the ~25 data types the engine holds by
+value lives there and nowhere else, because nothing outside it calls them — a header would hand
+every combat TU an nlohmann dependency and a few thousand lines of template instantiation for no
+caller. The only thing the rest of the tree sees is the four methods declared on `CombatEngine`.
+
+The mappings use **`NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT`** rather than hand-written
+field lists. It generates ADL `to_json`/`from_json` for a type it need not be a member of, and
+fills any field a payload OMITS from a default-constructed instance — which is exactly the
+forward-compatible contract R4c hand-wrote for `ActiveAgentCondition` (`j.value(key, default)`,
+field by field), minus ~1,500 lines of it. Enums round-trip through their underlying integer,
+matching R4c's explicit `static_cast<int>`. Declaration order is leaf-first, since a struct's
+mapping must precede any struct that embeds it.
+
+**`Weapon` and `Spell` round-trip in full**, which is the one place this got expensive and is
+worth knowing before anyone tries to slim a save file. `InFlightAttack::w` is the *resolved*
+weapon mid-attack and `ActiveEffect::spell` is the cast-time copy a persistent effect ticks from
+— possibly already rewritten by upcasting, Transmuted metamagic or a `damage_type_override`.
+Neither can be recovered by name from `weapons.json` / `spells.json` after the fact, so storing a
+name would quietly corrupt a resumed Wall of Fire. `Spell` is 56 fields; the macro chain tops out
+at 63, so there is headroom but not a lot.
+
+#### What a snapshot deliberately does NOT contain
+
+- **Host callbacks** — `ctx_.logger_`, `ctx_.render_attack_hook_`, `decider_`. `restore()`
+  **preserves the live ones** rather than nulling them: `CombatContext::from_json` builds a fresh
+  context with both pointers empty, so restoring naively would silently mute the combat log and
+  the NPC animation hook. This is the subtlest line in the phase.
+- **NPC visual-event plumbing** — `ctx_.npc_recording_` / `npc_visual_events_`, already excluded
+  by R3 as transient GUI animation state drained every turn.
+- **The `npc_automation_config.json` cache** (`npc_config_loaded_` and friends) and
+  `npc_nn_level_warned_` — a lazy file cache and a one-shot log guard. Both re-derive on demand.
+- **Everything in `BattleMap`** — agent HP, positions, condition flags, terrain, lighting. Those
+  have their own save (`_save_agents` / `_save_terrain` / `_save_lighting`). A snapshot is
+  ENGINE state only, and the two halves must be rewound together.
+
+`restore()` returns false and changes nothing for a non-object or a payload from a newer engine
+(`kSnapshotVersion`); `restoreJson()` additionally absorbs a parse failure and catches the
+`json::exception` a well-formed-but-wrong-shaped document throws out of `get<T>()`. A save file is
+untrusted input — hand-edited, truncated by a crash, written by a different build — and an
+exception crossing the pybind11 boundary would surface as an unhandled Python error mid-load.
+
+#### Raw indices — why the encounter file could not just absorb this
+
+`snapshot()` is keyed by **raw** `BattleMap` agent index. The existing encounter save is not: it
+skips summoned and removed-from-play agents and renumbers what is left (which is why it already
+remaps `active_conditions` by hand in `_save_agents`). Writing the engine snapshot into that file
+would apply every stored index to the wrong creature the moment a summon was on the map.
+
+So `main.py` gets its **own sidecar**, `<base>_combat.json`, alongside `_terrain`/`_lighting`/
+`_effects`: the engine snapshot plus the Python turn loop (`initiative_order`, `turn_idx`,
+`round_num`, `combat_active`/`combat_paused`) that `MULTIPLAYER_PLAN.md` calls out. It carries an
+`agent_basis` — the ordered live agent names at snapshot time — and `_load_combat_state` **refuses
+the resume** (flashing why, keeping the loaded scene) when that no longer matches. Refusing beats
+restoring conditions onto the wrong creatures. `_save_combat_state` is a no-op out of combat and
+*deletes* a stale sidecar, so a finished fight can't resurrect itself over the next load.
+
+The write hangs off the **tail of `_save_agents`**, not off the explicit Save button: the app
+autosaves the encounter from a dozen places, and a sidecar written only on the Save path would
+pair fresh agent HP with a stale snapshot on the next load. It is skipped for the two callers that
+aren't writing the active encounter — the temp-file party-carry export (`_read_agent_records`) and
+the page-switch save that omits the agents being carried away — which is exactly the
+`path == self._save_path and not exclude_indices` guard. Load side is one call at the end of
+`_on_load_path_chosen`, after `_load_agents` has rebuilt the list the basis check compares
+against. No new GUI, per the phase's no-new-features scope rule.
+
+#### `tests/test_snapshot.py` — the third refactor guard
+
+Registered next to `test_determinism.py` and `test_rules.py`. The tests are **behavioral wherever
+they can be**, because the interesting property is not "the JSON has the right keys" but "a
+restored engine is indistinguishable from the one the snapshot came from":
+
+- `test_rng_state_continues` — roll, snapshot, record 40 rolls, restore, roll 40 again: they must
+  match, **and** a freshly seeded engine must NOT match. The second half is the point: without it
+  the test would pass even if `to_json` stored the seed.
+- `test_replay_after_restore` — snapshot mid-fight, play 4 scripted rounds, restore (rewinding the
+  BattleMap HP by hand, since that half isn't ours), replay: identical transcripts.
+- `test_round_trip_is_stable` — snapshot → restore → snapshot is idempotent, which is how a field
+  that serializes but never deserializes (a typo'd key, a member missed in `restore()`) shows up.
+  Compared order-insensitively: the int-keyed state lives in `unordered_map`s whose array order is
+  an implementation detail. The ordering that *does* matter is covered by the replay tests.
+- `test_conditions_round_trip` — conditions come back, post-snapshot removals are undone, and
+  `nextConditionId_` is restored (else the next condition reuses a live id and a later
+  `remove_agent_condition` ends the wrong one).
+- `test_parked_reaction_round_trips` — `begin_move` parks on an OA window; snapshot; resolve it
+  fully; restore; the same window is parked again with the same engine-vetted option list, and
+  `submit_decision` still drives it to `Completed`. This is the `MULTIPLAYER_PLAN.md` TODO's
+  "resume a suspended reaction window" clause, tested end to end.
+- `test_bad_payloads_refused` — malformed, wrong-typed and future-version payloads return False;
+  `{"version": 1}` returns True, since every member is optional and an empty object means
+  "change nothing".
 
 ---
 
@@ -874,4 +997,8 @@ is the strongest evidence the two efforts are the same work.
   only non-Python suite. Only partly achievable as written; see "R3 — what 'done' actually
   means" for which functions are structurally out of reach, and `memory/known_limitations.md`
   for why `rules::` is deliberately left unbound.
-- Every module's state round-trips through `snapshot()`/`restore()`.
+- ~~Every module's state round-trips through `snapshot()`/`restore()`.~~ **Met 2026-09-15** —
+  `combat_serialization.cpp`, guarded by `tests/test_snapshot.py` (6 tests). See R5 for the three
+  deliberate exclusions (host callbacks, NPC animation plumbing, the NPC-config file cache) and
+  for the obligation this places on R4's four remaining cuts: a member that moves into a new
+  sub-engine must keep its JSON key, or existing saves silently stop restoring it.

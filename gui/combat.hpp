@@ -1944,6 +1944,31 @@ public:
     // ── RNG control ───────────────────────────────────────────────────────
     void reseed(uint32_t seed);
 
+    // ── Snapshot / restore (COMBAT_REFACTOR_PLAN.md R5) ───────────────────
+    // Round-trip the engine's whole combat state: the RNG's mt19937 STATE (not its
+    // seed — a reseed diverges the moment any roll happened before the snapshot),
+    // the sub-engines (CombatContext / MovementController / ConditionTracker /
+    // VisibilityService), active spell effects, the per-agent bookkeeping maps, and
+    // the park/resume state of every in-flight flow so a suspended reaction window
+    // survives the trip. Implemented in combat_serialization.cpp, which documents
+    // what is deliberately excluded (host callbacks, NPC animation plumbing, the
+    // npc_automation_config.json cache) and why.
+    //
+    // ENGINE state only — agents, terrain and lighting live in BattleMap and save
+    // separately. Indices are raw BattleMap agent indices, so a snapshot restores
+    // only against the agent list it was taken from.
+    //
+    // restore() returns false and changes nothing if the payload is not an object or
+    // was written by a newer engine; restoreJson() additionally absorbs malformed
+    // input. Members the payload omits keep their current value, so an older save
+    // loads into a newer engine with the missing pieces left at their defaults.
+    static constexpr int kSnapshotVersion = 1;
+    [[nodiscard]] nlohmann::json snapshot() const;
+    bool restore(const nlohmann::json& j);
+    // String forms — what the Python layer and any on-disk save go through.
+    [[nodiscard]] std::string snapshotJson() const;
+    bool restoreJson(const std::string& text);
+
     // ── Druid Wild Shape & Starry Form ────────────────────────────────────────
     bool activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::vector<Weapon> weapons, const std::string& beast_forms_path = "") noexcept;
     bool deactivateWildShape(BattleMap& bm, int idx) noexcept;

@@ -1971,6 +1971,9 @@ class App:
         self._terrain_path  = os.path.join(d, base + "_terrain.json")
         self._effects_path  = os.path.join(d, base + "_effects.json")
         self._lighting_path = os.path.join(d, base + "_lighting.json")
+        # Mid-combat resume sidecar (COMBAT_REFACTOR_PLAN.md R5): the C++ engine's
+        # snapshot plus the Python turn loop. Written only while a fight is running.
+        self._combat_path   = os.path.join(d, base + "_combat.json")
 
     def _on_save_path_chosen(self, path: str):
         # Capture the previous sidecar locations so lighting/effects (which have no GUI
@@ -1978,7 +1981,7 @@ class App:
         old_lighting = self._lighting_path
         old_effects  = self._effects_path
         self._set_encounter_base(path)
-        self._save_agents(path)
+        self._save_agents(path)     # also writes the combat sidecar at the new base
         self._save_terrain()        # writes self._terrain_path (now at the new base)
         # Lighting & effects travel with the encounter: copy the previous files to the
         # new base if they exist and we aren't overwriting an existing encounter's scene.
@@ -2009,6 +2012,8 @@ class App:
         self._load_terrain()
         self._load_lighting()
         self._load_spell_effects()
+        # Last: the resume check compares against the agent list _load_agents just built.
+        self._load_combat_state()
 
     # ─────────────────────────────────────────────────────────────────────
     #  Multi-map dungeons — active-map switching & paging (Phase 3)
@@ -12838,6 +12843,117 @@ class App:
         with open(path, "w") as f:
             json.dump({"agents": data, "map_items": items_data,
                        "active_conditions": conditions_data}, f, indent=2)
+
+        # Keep the engine's resume sidecar in step with the file just written — every
+        # path that persists the active encounter has to persist the matching combat
+        # state, or a reload pairs fresh agent HP with a stale snapshot. Skipped for
+        # the two callers that are NOT writing the active encounter: a party-carry
+        # export to a temp file (_read_agent_records) and the page-switch save that
+        # deliberately omits the agents being carried away.
+        if path == self._save_path and not exclude_indices:
+            self._save_combat_state()
+
+    # ── Mid-combat resume (COMBAT_REFACTOR_PLAN.md R5) ────────────────────────
+    #  The encounter save above stores the SCENE — agents, items, and the handful of
+    #  conditions it can remap onto its compacted agent list. It deliberately drops
+    #  summons and removed agents and renumbers what is left, so it cannot carry the
+    #  engine's own state: pending reaction windows, in-flight casts, per-turn movement
+    #  budgets and the RNG stream are all keyed by RAW agent index.
+    #
+    #  These two write that state to its own sidecar instead, together with the Python
+    #  turn loop (initiative_order / turn_idx / round_num) that MULTIPLAYER_PLAN.md
+    #  calls out — without it a restored engine comes back with no turn loop at all.
+    #  `agent_basis` records the index basis the snapshot was taken against so a load
+    #  REFUSES rather than silently restoring conditions onto the wrong creatures.
+
+    def _save_combat_state(self, path: str | None = None):
+        """Write the engine snapshot + turn loop to ``<base>_combat.json``."""
+        path = path or self._combat_path
+        if not self.combat_active and not self.initiative_order:
+            # Nothing to resume. Remove any stale sidecar rather than leave one behind
+            # that would restore a finished fight over the next load of this encounter.
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                print(f"Warning: could not clear {os.path.basename(path)}: {e}")
+            return
+        doc = {
+            "version":      1,
+            "agent_basis":  [pt.name for pt in self.bm.placed_agents],
+            "engine":       json.loads(self.combat.snapshot_json()),
+            "combat_active": bool(self.combat_active),
+            "combat_paused": bool(self.combat_paused),
+            "turn_idx":      int(self.turn_idx),
+            "round_num":     int(self.round_num),
+            "initiative_order": [
+                {"agent_idx": e.agent_idx, "d20": e.d20,
+                 "modifier": e.modifier, "total": e.total}
+                for e in self.initiative_order
+            ],
+        }
+        try:
+            with open(path, "w") as f:
+                json.dump(doc, f, indent=2)
+        except OSError as e:
+            print(f"Warning: could not save combat state: {e}")
+
+    def _load_combat_state(self, path: str | None = None) -> bool:
+        """Restore a ``_combat.json`` sidecar. Returns True if combat was resumed.
+
+        Call AFTER the agents are loaded — the basis check compares against the live
+        placed-agent list. A missing file is the normal case (no fight was running)
+        and is not an error."""
+        path = path or self._combat_path
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path) as f:
+                doc = json.load(f)
+        except (OSError, ValueError) as e:
+            self._flash_status(f"Could not read combat state: {e}")
+            return False
+
+        current = [pt.name for pt in self.bm.placed_agents]
+        if doc.get("agent_basis") != current:
+            # The usual cause: the encounter save compacted indices because a summon or
+            # a removed agent was on the map. Restoring anyway would apply every stored
+            # index to the wrong creature, so skip the resume and keep the loaded scene.
+            self._flash_status("Combat state skipped — agent list changed since save")
+            return False
+
+        if not self.combat.restore_json(json.dumps(doc.get("engine", {}))):
+            self._flash_status("Combat state skipped — snapshot unreadable")
+            return False
+
+        order = []
+        for e in doc.get("initiative_order", []):
+            entry = rpg.InitiativeEntry()
+            entry.agent_idx = int(e.get("agent_idx", -1))
+            entry.d20       = int(e.get("d20", 0))
+            entry.modifier  = int(e.get("modifier", 0))
+            entry.total     = int(e.get("total", 0))
+            order.append(entry)
+        self.initiative_order = order
+        self.combat_active    = bool(doc.get("combat_active", False)) and bool(order)
+        self.combat_paused    = bool(doc.get("combat_paused", False))
+        self.turn_idx  = min(max(0, int(doc.get("turn_idx", 0))), max(0, len(order) - 1))
+        self.round_num = int(doc.get("round_num", 0))
+        self._initiative_autopaged_turn = -1   # re-arm auto-paging for the resumed turn
+        if self.combat_active:
+            self.show_terrain = True           # matches how combat start leaves it
+            # Re-mirror the current actor's movement budgets, the same way every other
+            # post-move path in this file does (the budgets themselves live in the engine
+            # and on the placed agent; these fields are only the panel's copy).
+            cur = self.initiative_order[self.turn_idx].agent_idx
+            if 0 <= cur < len(self.bm.placed_agents):
+                ag = self.bm.placed_agents[cur]
+                self.move_remaining_walk   = ag.walk_remaining
+                self.move_remaining_fly    = ag.fly_remaining
+                self.move_remaining_swim   = ag.swim_remaining
+                self.move_remaining_burrow = ag.burrow_remaining
+        return True
 
     # FLAG: Move to C++
     # ── D&D Beyond import ─────────────────────────────────────────────────────

@@ -18,6 +18,11 @@ test_scripts = [
     # Kept next to the determinism oracle: both guard the refactor itself.
     "test_rules.py",
 
+    # Engine snapshot/restore round-trip (COMBAT_REFACTOR_PLAN.md R5) — the third
+    # refactor guard: proves a restored engine is indistinguishable from the one the
+    # snapshot came from (RNG stream, conditions, and parked reaction windows).
+    "test_snapshot.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

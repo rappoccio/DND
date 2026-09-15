@@ -918,5 +918,21 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "True unless the target has the Invisible condition and the viewer lacks\n"
              "Truesight/Blindsight in range. Geometric line-of-sight is separate.")
         .def("reseed", &CombatEngine::reseed, py::arg("seed"))
+        // ── Snapshot / restore (COMBAT_REFACTOR_PLAN.md R5) ──────────────────
+        // Strings, not dicts: the payload is written straight to a save file and read
+        // straight back, so converting it through Python objects on the way would only
+        // add a lossy hop (large int keys, float round-tripping) for no caller.
+        .def("snapshot_json", &CombatEngine::snapshotJson,
+             "Serialize the engine's full combat state (RNG state, conditions, active\n"
+             "effects, movement budgets, visibility cache, and every in-flight flow's\n"
+             "park/resume state) to a JSON string. ENGINE state only — agents, terrain\n"
+             "and lighting are saved separately, and indices are raw BattleMap agent\n"
+             "indices, so a snapshot restores only against the agent list it came from.")
+        .def("restore_json", &CombatEngine::restoreJson, py::arg("text"),
+             "Load a snapshot_json() payload. Returns False (having changed nothing, or\n"
+             "left the engine partially restored on a malformed document) if the text is\n"
+             "not parseable, is not an object, or was written by a newer engine — treat\n"
+             "False as 'reload the encounter from scratch'. The live logger, NPC render\n"
+             "hook and decider are preserved across the call.")
         ;
 }
