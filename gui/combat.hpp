@@ -538,7 +538,7 @@ public:
     // Paralyzed/Stunned/Unconscious STR/DEX auto-fail. Mirrors rollSpellSave's core.
     [[nodiscard]] double npcSaveChance(const BattleMap& bm, int caster_idx, int target_idx,
                                        const Spell& sp) const noexcept;
-    // P(hit) for an attack-roll spell — mirrors rollSpellAttack's core (spellAttackMod + Bless,
+    // P(hit) for an attack-roll spell — mirrors rollSpellAttack's core (rules::spellAttackMod + Bless,
     // calculateAC, Innate Sorcery / blinded / threatened / target blinded+stunned adv-dis).
     [[nodiscard]] double npcSpellHitChance(const BattleMap& bm, int caster_idx, int target_idx,
                                            const Spell& sp) const noexcept;
@@ -799,11 +799,10 @@ public:
     // ── Paladin auras (team-scoped emanations) ─────────────────────────────
     // A Paladin's aura reaches itself and same-team allies within 10 ft (30 ft
     // at L18). The aura is suppressed while the Paladin is unconscious/incapacitated.
-    // bestPaladinAura returns the strongest CHA-mod (min 1) bonus from any qualifying
-    // Paladin of level >= min_level reaching agent_idx, or 0 if none. When require_oath is not
-    // PaladinOathNone, only Paladins who have taken that oath emanate (oath-specific auras).
-    [[nodiscard]] int bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level,
-                                      PaladinOath require_oath = PaladinOathNone) const noexcept;
+    // The shared primitive is rules::bestPaladinAura (rules.hpp) — the strongest CHA-mod
+    // (min 1) bonus from any qualifying Paladin of level >= min_level reaching agent_idx, or 0
+    // if none, optionally oath-scoped. It has no engine forwarder: it is unbound to Python and
+    // every caller is inside rules.hpp itself (R3's forwarder cleanup).
     // Aura of Protection (L6+): the bonus that agent_idx adds to every saving throw.
     [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
     // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
@@ -1807,6 +1806,14 @@ public:
     // re-evaluates blinding for all agents if any expire.
     void tickLightEffectsForTurn(BattleMap& bm, int agent_idx) noexcept;
 
+    // ── Contested physical actions (combat_contested.cpp) ──────────────────
+    // Shove / Grapple / Grapple Escape / Pick Lock / Break Door: one creature's check
+    // against another creature's check or a fixed object DC. Split out of
+    // combat_riders.cpp per COMBAT_REFACTOR_PLAN.md R4 — they are neither on-hit riders
+    // nor reactions. Stateless, hence a TU and not a sub-engine class; see that file's
+    // header. applyTelekineticShove below is deliberately NOT one of these (save, not
+    // contested check) and stays in combat_riders.cpp.
+
     // Execute a shove attempt (bonus action, contested Athletics check).
     // Attacker vs target Athletics/Acrobatics (target chooses higher).
     // On success: either push 5ft or knock prone based on knock_prone flag.
@@ -1854,8 +1861,13 @@ public:
     [[nodiscard]] GrappleEscapeResult executeGrappleEscape(BattleMap& bm,
                                                            int agent_idx);
 
+    // ── End of the combat_contested.cpp group ─────────────────────────────
+
     // Drop all grapples initiated by an agent (free action — voluntarily end grapples).
     // Iterates through all agents and clears grappled/grappler_idx for those held by agent_idx.
+    // Grapple-shaped but it is condition teardown, so it lives in combat_conditions.cpp
+    // (with applyGrappled and the rest of the condition flag handling), not with the
+    // contested checks above.
     void dropGrapplesBy(BattleMap& bm, int agent_idx) noexcept;
 
     // Single "this creature stops influencing the battlefield" sweep, invoked from the down/death
@@ -2436,9 +2448,11 @@ private:
     }
 
     // ── Spell helpers ─────────────────────────────────────────────────────
-    [[nodiscard]] static int spellAttackMod(const Agent::Stats& s) noexcept;
-    [[nodiscard]] static int spellSaveDc(const Agent::Stats& s) noexcept;
-    [[nodiscard]] static int spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept;
+    // spellAttackMod / spellSaveDc / spellSaveDcFromAbility used to be declared here as
+    // forwarders to rules.hpp. They were unbound to Python, so R3's "delete the forwarders"
+    // step could actually delete them — call rules::spellAttackMod(...) etc. directly.
+    // (The other 15 rules:: functions keep their forwarders permanently: they ARE the Python
+    // API, per cross-cutting decision #1.)
 
     // ── Item helpers ──────────────────────────────────────────────────────
     // The save-and-effect half of a Thrown item (useItem has already validated the throw and is

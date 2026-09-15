@@ -21,6 +21,7 @@
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -243,7 +244,7 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
     } else {
         d20_val = roll(20);
     }
-    int mod     = spellAttackMod(caster_stats);
+    int mod     = rules::spellAttackMod(caster_stats);
     // Bless — a blessed caster adds 1d4 to spell attack rolls (folded into the mod so the
     // Seeking-reroll total below carries it too).
     if (caster_stats.blessed) {
@@ -308,7 +309,7 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
 
     ss.target_idx = tgt_idx;
     ss.ability    = sp.save_ability;
-    ss.dc         = spellSaveDc(caster_stats);
+    ss.dc         = rules::spellSaveDc(caster_stats);
 
     bool target_adv = target_pa.agent->hasAdvantage();
     bool target_dis = target_pa.agent->hasDisadvantage();
@@ -1527,7 +1528,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Roll attack using spellcasting ability mod, not normal attack bonus
                 int d20_val = roll(20);
-                int mod = spellAttackMod(caster_stats);
+                int mod = rules::spellAttackMod(caster_stats);
                 int total_roll = d20_val + mod;
                 int target_ac = calculateAC(bm, tgt_idx);
                 bool is_critical = (d20_val >= caster_stats.crit_threshold);
@@ -1953,7 +1954,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                              spell_cond.condition_name, agentName(bm, tgt_idx), tr.saved, target_failed_save, condition_applies);
                     } else {
                         // For other spell types, roll a new save for this condition
-                        int save_dc = spellSaveDc(caster_stats);
+                        int save_dc = rules::spellSaveDc(caster_stats);
 
                         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs Charmed/Frightened.
                         const bool fey_twist =
@@ -2033,9 +2034,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
                     // Save DC: use caster's spellcasting ability if SaveSpellcasterMod, else use specified ability
                     if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
-                        cond.save_dc = spellSaveDc(caster_stats);
+                        cond.save_dc = rules::spellSaveDc(caster_stats);
                     } else {
-                        cond.save_dc = spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
+                        cond.save_dc = rules::spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
                     }
                     // How often to repeat save checks
                     cond.save_repeat_turns = spell_cond.save_repeat_turns;
@@ -2909,7 +2910,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
 
         int dc = 0;
         if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
-            dc = spellSaveDcFromAbility(bm.getAgentStats(effect.caster_idx), sp.save_ability);
+            dc = rules::spellSaveDcFromAbility(bm.getAgentStats(effect.caster_idx), sp.save_ability);
         saved = !auto_fail && (save_d20 + saveModFor(bm, target_idx, sp.save_ability) >= dc);
     }
 
@@ -4838,7 +4839,7 @@ bool CombatEngine::applyCounterspell(BattleMap& bm, int reactor_idx, int caster_
     spendCounterspellCost(bm, reactor_idx);
     // 2024 Counterspell: the original caster makes a CON save vs the counterspeller's spell save DC.
     const Agent::Stats rs = bm.getAgentStats(reactor_idx);
-    const int dc = spellSaveDc(rs);
+    const int dc = rules::spellSaveDc(rs);
     const Agent::Stats cs = bm.getAgentStats(caster_idx);
     const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
     const int d20      = roll(20);
@@ -4871,7 +4872,7 @@ void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, cons
         bm.setAgentConditions(ctx.reactor_idx, rc);
 
         const Agent::Stats at_stats = bm.getAgentStats(ctx.reactor_idx);
-        const int dc    = spellSaveDc(at_stats);
+        const int dc    = rules::spellSaveDc(at_stats);
         const int total = roll(20) + saveModFor(bm, ctx.source_idx, SaveInt);
         // Resolve the spell name from the in-flight cast (ctx.spell_idx on the caster's list).
         std::string castName;
@@ -4980,7 +4981,7 @@ void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
     const int reactor = c.action.caster_idx;             // the counterspeller
     const int target  = c.counter_target_caster;         // the caster being countered
     const Agent::Stats rs = bm.getAgentStats(reactor);
-    const int dc = spellSaveDc(rs);
+    const int dc = rules::spellSaveDc(rs);
     const Agent::Stats cs = bm.getAgentStats(target);
     const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
     const int d20 = roll(20), total = d20 + save_mod;

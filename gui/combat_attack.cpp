@@ -15,6 +15,7 @@
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -867,7 +868,7 @@ bool CombatEngine::applyBeguilingDefenses(BattleMap& bm, int reactor_idx, const 
     Agent::Stats atk = bm.getAgentStats(attacker);
     if (atk.hp_cur <= 0) return true;
 
-    const int save_dc  = spellSaveDcFromAbility(s, SaveCha);
+    const int save_dc  = rules::spellSaveDcFromAbility(s, SaveCha);
     const int save_mod = saveModFor(bm, attacker, SaveWis);
     const int save_d20 = roll(20);
     const int save_total = save_d20 + save_mod;
@@ -1719,7 +1720,7 @@ void CombatEngine::forceAutoHit(BattleMap& bm, InFlightAttack& s)
                           case SaveInt: return "INT"; case SaveWis: return "WIS"; default: return "CHA"; }
         };
         Agent::Stats atk_stats = bm.getAgentStats(s.action.attacker_idx);
-        const int  dc    = spellSaveDcFromAbility(atk_stats, w.save_for_damage_ability);
+        const int  dc    = rules::spellSaveDcFromAbility(atk_stats, w.save_for_damage_ability);
         int        total = roll(20) + saveModFor(bm, s.action.target_idx, w.save_for_damage_ability);
         total = applyIndomitableMight(bm, s.action.target_idx, w.save_for_damage_ability, total);
         if (total >= dc) {                   // saved → the bite has no effect
@@ -3051,7 +3052,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         bm.setAgentStats(action.target_idx, tgt_stats);
 
         // Save vs bard's spell save DC (CHA, to override the rider)
-        const int dc = spellSaveDcFromAbility(tgt_stats, SaveCha);
+        const int dc = rules::spellSaveDcFromAbility(tgt_stats, SaveCha);
         const int atk_save_mod = saveModFor(bm, action.attacker_idx, SaveCha);
         const int atk_save_d20 = roll(20);
         const int atk_save_total = atk_save_d20 + atk_save_mod;
@@ -4311,7 +4312,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 condition_applies = true;
             } else {
                 // Target makes a save to resist the condition
-                int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
+                int save_dc = rules::spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
 
                 // Check for auto-fail conditions (paralyzed, stunned auto-fail STR/DEX)
                 bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
@@ -4336,7 +4337,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
 
             if (condition_applies) {
                 // Apply condition
-                int save_dc = spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
+                int save_dc = rules::spellSaveDcFromAbility(atk_stats, weapon_cond.save_dc_ability);
                 ActiveAgentCondition cond;
                 cond.agent_idx = action.target_idx;
                 cond.caster_idx = action.attacker_idx;

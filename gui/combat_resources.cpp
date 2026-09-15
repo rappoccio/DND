@@ -17,6 +17,7 @@
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -202,7 +203,7 @@ void CombatEngine::resolveThrownItem(BattleMap& bm, int user_idx, int target_idx
     }
 
     // DC 8 + the THROWER's ability modifier + Proficiency Bonus. Computed here rather than through
-    // spellSaveDcFromAbility, which folds in caster-only buffs (Innate Sorcery) that have no
+    // rules::spellSaveDcFromAbility, which folds in caster-only buffs (Innate Sorcery) that have no
     // business raising the DC of a hurled flask.
     const int score = (item.save_ability == SaveStr) ? user_stats.str
                     : (item.save_ability == SaveCon) ? user_stats.con
@@ -497,7 +498,7 @@ void CombatEngine::applyStepsOfFeyRider(BattleMap& bm, int idx, const Cell& from
 {
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
-    const int save_dc = spellSaveDcFromAbility(bm.getAgentStats(idx), SaveCha);
+    const int save_dc = rules::spellSaveDcFromAbility(bm.getAgentStats(idx), SaveCha);
 
     if (effect == 1) {
         // Refreshing Step: 1d10 Temporary HP to the warlock.
@@ -756,7 +757,7 @@ bool CombatEngine::elementalBurst(BattleMap& bm, int idx, int target_col, int ta
     }
 
     const auto mt  = static_cast<MagicDamage_t>(element);
-    const int  dc  = spellSaveDcFromAbility(cs, SaveWis);   // Monk Ki DC = 8 + PB + WIS
+    const int  dc  = rules::spellSaveDcFromAbility(cs, SaveWis);   // Monk Ki DC = 8 + PB + WIS
     const int  num = martialArtsDieCount(cs.classLevel(CharacterClass::Monk));
 
     spendResource(bm, idx, "Focus Points", 2);
@@ -858,7 +859,7 @@ bool CombatEngine::plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_id
     cond.delay_damage_type   = MagicDamage_t::Force;
     cond.delay_requires_save = true;
     cond.save_ability        = SaveCon;
-    cond.save_dc             = spellSaveDcFromAbility(ms, SaveWis);  // Monk Ki DC = 8 + PB + WIS
+    cond.save_dc             = rules::spellSaveDcFromAbility(ms, SaveWis);  // Monk Ki DC = 8 + PB + WIS
     cond.delay_half_on_save  = true;
     cond.delay_auto_on_expire = false;       // monk chooses when to detonate; never auto-fires
     cond.delay_label         = "Quivering Palm";
@@ -1584,7 +1585,7 @@ bool CombatEngine::activateClairvoyantCombatant(BattleMap& bm, int warlock_idx, 
     spendBonusAction(bm, warlock_idx);
 
     // Force a WIS save vs the warlock's CHA spell save DC.
-    const int save_dc  = spellSaveDcFromAbility(stats, SaveCha);
+    const int save_dc  = rules::spellSaveDcFromAbility(stats, SaveCha);
     const int save_mod = saveModFor(bm, target_idx, SaveWis);
     const int save_d20 = roll(20);
     const int save_total = save_d20 + save_mod;
@@ -2515,7 +2516,7 @@ int CombatEngine::warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, 
 
     // Implosion centered on the space the caster LEFT: every OTHER creature within 30 ft makes a
     // Dexterity save vs the caster's spell DC, taking 3d10 Force (half on a success).
-    const int dc = spellSaveDcFromAbility(caster, SaveDex);
+    const int dc = rules::spellSaveDcFromAbility(caster, SaveDex);
     int affected = 0;
     for (std::size_t i = 0; i < agents.size(); ++i) {
         const int tgt_idx = static_cast<int>(i);
@@ -2635,7 +2636,7 @@ TurnUndeadResult CombatEngine::useTurnUndead(BattleMap& bm, int caster_idx)
     if (!cd || cd->current <= 0) return result;
 
     result.valid   = true;
-    result.save_dc = spellSaveDcFromAbility(caster, SaveWis);
+    result.save_dc = rules::spellSaveDcFromAbility(caster, SaveWis);
 
     int wisMod = (caster.wis - 10) / 2;
     if (caster.wis < 10 && (caster.wis - 10) % 2 != 0) --wisMod;
@@ -3073,7 +3074,7 @@ bool CombatEngine::bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_id
     spendResource(bm, bard_idx, "Beguiling Magic", 1);
 
     const char* cond_name = use_frightened ? "Frightened" : "Charmed";
-    const int   dc        = spellSaveDc(bs);
+    const int   dc        = rules::spellSaveDc(bs);
     const int   save_mod  = saveModFor(bm, target_idx, SaveWis);
     const int   save_roll = roll(20, save_mod);
 

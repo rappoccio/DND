@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  combat_riders.cpp  –  CombatEngine on-hit riders, maneuvers, shoves/grapples
+//  combat_riders.cpp  –  CombatEngine on-hit riders, maneuvers, reactions
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
@@ -9,12 +9,24 @@
 //    · Maneuvers & save riders— Maneuver, Precision Attack, Guided Strike, Topple,
 //                               Stunning Strike, Open Hand
 //    · Reaction/utility riders— Protective Field, Telekinetic Movement
-//    · Bonus attacks & grapple— Flurry of Blows, consumeBonusAttack, Shove,
-//                               Grapple, Grapple Escape
+//    · Bonus attacks          — Flurry of Blows, consumeBonusAttack,
+//                               Telekinetic Shove
+//    · OnTurnStartNearby      — the turn-start reaction window (Branches of the Tree)
+//
+//  Shove / Grapple / Grapple Escape / Pick Lock / Break Door moved OUT of this file
+//  to combat_contested.cpp (COMBAT_REFACTOR_PLAN.md R4's first mis-grouping fix) —
+//  they are contested checks, not riders. applyTelekineticShove stayed: it is a feat
+//  activation resolved by a saving throw, not a contested check.
+//
+//  The turn-start reaction flow (beginTurnFlow / turnStartOptions / turnStartReactors /
+//  applyTurnStartReaction / advanceTurnStart) is R4's SECOND mis-grouping and is still
+//  here on purpose: it belongs to ReactionArbiter, which the plan schedules last because
+//  pending_decision_ + the in_flight_* members are the only genuinely entangled state.
 //
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -699,7 +711,7 @@ void CombatEngine::applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int
     // Constitution save (DC 8 + DEX + PB). On a failure, the entire attack's damage is doubled. Run
     // last so it doubles base + Sneak + Assassinate + Envenom damage together.
     if (is_assassin && atk_stats.classLevel(CharacterClass::Rogue) >= 17 && round_num == 0 && result.total_damage > 0) {
-        const int dc = spellSaveDcFromAbility(atk_stats, SaveDex);   // 8 + PB + DEX mod
+        const int dc = rules::spellSaveDcFromAbility(atk_stats, SaveDex);   // 8 + PB + DEX mod
         int total = roll(20) + saveModFor(bm, target_idx, SaveCon);
         total = applyIndomitableMight(bm, target_idx, SaveCon, total);
         if (total >= dc) {
@@ -734,7 +746,7 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
     if (target_idx  < 0 || target_idx  >= static_cast<int>(agents.size())) return;
 
     const Agent::Stats atk = bm.getAgentStats(attacker_idx);
-    const int dc = spellSaveDcFromAbility(atk, SaveDex);  // 8 + prof + DEX mod
+    const int dc = rules::spellSaveDcFromAbility(atk, SaveDex);  // 8 + prof + DEX mod
     const bool envenom = (atk.hasClass(CharacterClass::Rogue) &&
                           atk.rogue_subclass == AssassinPath && atk.classLevel(CharacterClass::Rogue) >= 13);
 
@@ -925,7 +937,7 @@ bool CombatEngine::applyRendMind(BattleMap& bm, int attacker_idx, int target_idx
     else                                   return false;
     bm.setAgentStats(attacker_idx, atk);
 
-    const int dc = spellSaveDcFromAbility(atk, SaveDex);           // 8 + PB + DEX mod
+    const int dc = rules::spellSaveDcFromAbility(atk, SaveDex);           // 8 + PB + DEX mod
     const Agent::Conditions tc0 = bm.getAgentConditions(target_idx);
     const bool auto_fail = tc0.paralyzed || tc0.stunned;
     const int d20   = auto_fail ? 1 : roll(20);
@@ -1803,7 +1815,7 @@ int CombatEngine::applyTelekineticMovement(BattleMap& bm, int idx, int target_id
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Bonus attacks & grapple
+//  Bonus attacks
 // ─────────────────────────────────────────────────────────────────────────────
 
 FlurryResult CombatEngine::executeFlurryOfBlows(BattleMap& bm, int attacker_idx, int target_idx, int rider_option) noexcept
@@ -1880,79 +1892,6 @@ bool CombatEngine::consumeBonusAttack(BattleMap& bm, int agent_idx) noexcept
     return false;
 }
 
-ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
-{
-    ShoveResult result;
-    auto agents = bm.placedAgents();
-
-    // Validate indices
-    if (action.attacker_idx < 0 || action.attacker_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid attacker index.";
-        return result;
-    }
-    if (action.target_idx < 0 || action.target_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid target index.";
-        return result;
-    }
-    if (action.attacker_idx == action.target_idx) {
-        result.log_message = "Cannot shove yourself.";
-        return result;
-    }
-
-    auto& attacker = agents[action.attacker_idx];
-    auto& target = agents[action.target_idx];
-
-    // Check adjacency (within 5ft = 1 cell in any direction)
-    int dx = std::abs(target.origin.col - attacker.origin.col);
-    int dy = std::abs(target.origin.row - attacker.origin.row);
-    int distance_cells = std::max(dx, dy);  // Chebyshev distance
-    if (distance_cells > 1) {
-        result.log_message = "Target is not adjacent (within 5 feet).";
-        return result;
-    }
-
-    // Roll attacker Athletics: d20 + STR mod + proficiency (assume all shoves are proficient)
-    int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
-    auto attacker_stats = getAgentStats(bm, action.attacker_idx);
-    int attacker_prof = attacker_stats.prof_bonus;
-    int attacker_d20 = roll(20);
-    int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
-
-    // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
-    int target_str_mod = (target.agent->getStats().str - 10) / 2;
-    int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-    int target_d20 = roll(20);
-    int target_athletic = target_d20 + target_str_mod;
-    int target_acrobatic = target_d20 + target_dex_mod;
-    int defender_total = std::max(target_athletic, target_acrobatic);
-
-    result.valid = true;
-    result.attacker_roll = attacker_total;
-    result.defender_roll = defender_total;
-    result.success = (attacker_total > defender_total);  // ties go to defender
-
-    if (result.success) {
-        if (action.knock_prone) {
-            applyProne(bm, action.target_idx);
-            result.knocked_prone = true;
-            result.log_message = "\"" + std::string(attacker.agent->name()) + "\" knocked \"" + std::string(target.agent->name()) + "\" prone.";
-        } else {
-            // Push 5ft away
-            int cells_moved = bm.forceMoveAgent(action.target_idx, attacker.origin, 5);
-            result.push_ft_applied = cells_moved * 5;
-            if (result.push_ft_applied > 0) {
-                result.log_message = "\"" + std::string(attacker.agent->name()) + "\" pushed \"" + std::string(target.agent->name()) + "\" " + std::to_string(result.push_ft_applied) + " feet.";
-            } else {
-                result.log_message = "\"" + std::string(attacker.agent->name()) + "\" tried to push \"" + std::string(target.agent->name()) + "\" but they didn't move.";
-            }
-        }
-    } else {
-        result.log_message = "\"" + std::string(target.agent->name()) + "\" resisted the shove from \"" + std::string(attacker.agent->name()) + "\".";
-    }
-
-    return result;
-}
-
 ShoveResult CombatEngine::applyTelekineticShove(BattleMap& bm, int caster_idx, int target_idx) noexcept
 {
     ShoveResult result;
@@ -2012,267 +1951,6 @@ ShoveResult CombatEngine::applyTelekineticShove(BattleMap& bm, int caster_idx, i
                          std::to_string(result.push_ft_applied) + " feet (save " +
                          std::to_string(save_total) + " vs DC " + std::to_string(dc) + ").";
     log_("{}", result.log_message);
-    return result;
-}
-
-PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int door_id)
-{
-    PickLockResult result;
-    auto agents = bm.placedAgents();
-
-    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid agent index.";
-        return result;
-    }
-
-    // Locate the door by id.
-    const Door* door = nullptr;
-    for (const Door& d : bm.doors()) {
-        if (d.id == door_id) { door = &d; break; }
-    }
-    if (door == nullptr) {
-        result.log_message = "No such door.";
-        return result;
-    }
-
-    const auto& picker = agents[agent_idx];
-    const std::string name = std::string(picker.agent->name());
-
-    if (!door->locked) {
-        result.valid = true;
-        result.dc = door->lock_dc;
-        result.log_message = "\"" + name + "\" — that door isn't locked.";
-        return result;
-    }
-    if (door->arcane_lock && door->arcane_suppressed_turns <= 0) {
-        result.valid = true;
-        result.dc = door->lock_dc;
-        result.log_message = "\"" + name + "\" cannot pick an Arcane Lock.";
-        return result;
-    }
-
-    const Agent::Stats st = getAgentStats(bm, agent_idx);
-    int bonus = st.sleightOfHand();
-    int d20 = roll(20);
-
-    result.valid   = true;
-    result.roll    = d20;
-    result.total   = d20 + bonus;
-    result.dc      = door->lock_dc;
-    result.success = result.total >= result.dc;
-
-    if (result.success) {
-        bm.unlockDoor(door_id);
-        result.log_message = "\"" + name + "\" picks the lock (Sleight of Hand " +
-                             std::to_string(result.total) + " vs DC " +
-                             std::to_string(result.dc) + ").";
-    } else {
-        result.log_message = "\"" + name + "\" fails to pick the lock (Sleight of Hand " +
-                             std::to_string(result.total) + " vs DC " +
-                             std::to_string(result.dc) + ").";
-    }
-    log_("{}", result.log_message);
-    return result;
-}
-
-BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int door_id)
-{
-    BreakDoorResult result;
-    auto agents = bm.placedAgents();
-
-    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid agent index.";
-        return result;
-    }
-
-    // Locate the door by id.
-    const Door* door = nullptr;
-    for (const Door& d : bm.doors()) {
-        if (d.id == door_id) { door = &d; break; }
-    }
-    if (door == nullptr) {
-        result.log_message = "No such door.";
-        return result;
-    }
-
-    const auto& breaker = agents[agent_idx];
-    const std::string name = std::string(breaker.agent->name());
-
-    if (door->broken) {
-        result.valid = true;
-        result.log_message = "\"" + name + "\" — that door is already smashed off its frame.";
-        return result;
-    }
-    if (door->open) {
-        result.valid = true;
-        result.log_message = "\"" + name + "\" — that door is already open.";
-        return result;
-    }
-
-    // Effective DC: an active Arcane Lock stiffens the door by +10 (RAW). A suppressed
-    // Arcane Lock (Knock) imposes no penalty.
-    int dc = door->break_dc;
-    if (door->arcane_lock && door->arcane_suppressed_turns <= 0) dc += 10;
-
-    const Agent::Stats st = getAgentStats(bm, agent_idx);
-    int bonus = st.athletics();
-    int d20 = roll(20);
-
-    result.valid   = true;
-    result.roll    = d20;
-    result.total   = d20 + bonus;
-    result.dc      = dc;
-    result.success = result.total >= result.dc;
-
-    if (result.success) {
-        bm.breakDoor(door_id);
-        result.log_message = "\"" + name + "\" breaks the door down (Athletics " +
-                             std::to_string(result.total) + " vs DC " +
-                             std::to_string(result.dc) + ").";
-    } else {
-        result.log_message = "\"" + name + "\" fails to force the door (Athletics " +
-                             std::to_string(result.total) + " vs DC " +
-                             std::to_string(result.dc) + ").";
-    }
-    log_("{}", result.log_message);
-    return result;
-}
-
-GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int target_idx,
-                                           bool contested, int escape_dc_override) noexcept
-{
-    GrappleResult result;
-    auto agents = bm.placedAgents();
-    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) ||
-        target_idx   < 0 || target_idx   >= static_cast<int>(agents.size()) ||
-        attacker_idx == target_idx) {
-        return result;
-    }
-
-    auto& attacker = agents[attacker_idx];
-    auto& target   = agents[target_idx];
-
-    // Attacker Athletics: d20 + STR mod + proficiency (grapple assumed proficient).
-    int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
-    auto attacker_stats = getAgentStats(bm, attacker_idx);
-    int attacker_prof = attacker_stats.prof_bonus;
-
-    result.valid = true;
-    if (contested) {
-        int attacker_d20 = roll(20);
-        int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
-        // Defender: max(Athletics, Acrobatics) = max(STR, DEX) + the same d20.
-        int target_str_mod = (target.agent->getStats().str - 10) / 2;
-        int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-        int target_d20 = roll(20);
-        int defender_total = std::max(target_d20 + target_str_mod, target_d20 + target_dex_mod);
-        result.attacker_roll = attacker_total;
-        result.defender_roll = defender_total;
-        result.success = (attacker_total > defender_total);  // ties go to defender
-    } else {
-        // Automatic on a qualifying hit (the attack already landed).
-        result.success = true;
-    }
-
-    if (result.success) {
-        // Fixed escape DC override, else the standard 10 + STR mod + proficiency.
-        result.escape_dc = (escape_dc_override > 0) ? escape_dc_override
-                                                    : (10 + attacker_str_mod + attacker_prof);
-        applyGrappled(bm, target_idx, attacker_idx, result.escape_dc);
-        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" grapples \"" +
-                             std::string(target.agent->name()) + "\" (escape DC " +
-                             std::to_string(result.escape_dc) + ")";
-    } else {
-        result.log_message = std::string("\"") + std::string(attacker.agent->name()) + "\" fails to grapple \"" +
-                             std::string(target.agent->name()) + "\" (attacker " + std::to_string(result.attacker_roll) +
-                             " vs defender " + std::to_string(result.defender_roll) + ")";
-    }
-    return result;
-}
-
-GrappleResult CombatEngine::executeGrapple(BattleMap& bm, const GrappleAction& action)
-{
-    GrappleResult result;
-    auto agents = bm.placedAgents();
-
-    // Validate indices
-    if (action.attacker_idx < 0 || action.attacker_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid attacker index.";
-        return result;
-    }
-    if (action.target_idx < 0 || action.target_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid target index.";
-        return result;
-    }
-    if (action.attacker_idx == action.target_idx) {
-        result.log_message = "Cannot grapple yourself.";
-        return result;
-    }
-
-    auto& attacker = agents[action.attacker_idx];
-    auto& target = agents[action.target_idx];
-
-    // Check adjacency (within 5ft = 1 cell in any direction)
-    int dx = std::abs(target.origin.col - attacker.origin.col);
-    int dy = std::abs(target.origin.row - attacker.origin.row);
-    int distance_cells = std::max(dx, dy);  // Chebyshev distance
-    if (distance_cells > 1) {
-        result.log_message = "Target is not adjacent (within 5 feet).";
-        return result;
-    }
-
-    // Standalone Grapple action: contested check, computed escape DC.
-    return resolveGrapple(bm, action.attacker_idx, action.target_idx,
-                          /*contested=*/true, /*escape_dc_override=*/0);
-}
-
-GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_idx)
-{
-    GrappleEscapeResult result;
-    auto agents = bm.placedAgents();
-
-    // Validate index
-    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) {
-        result.log_message = "Invalid agent index.";
-        return result;
-    }
-
-    Agent::Conditions cond = getAgentConditions(bm, agent_idx);
-
-    // Check if actually grappled
-    if (!cond.grappled) {
-        result.log_message = "Not grappled.";
-        return result;
-    }
-
-    result.valid = true;
-    result.escape_dc = cond.grapple_escape_dc;
-
-    // Get agent stats
-    auto stats = getAgentStats(bm, agent_idx);
-    int str_mod = (stats.str - 10) / 2;
-    int dex_mod = (stats.dex - 10) / 2;
-
-    // Roll best of STR (Athletics) or DEX (Acrobatics)
-    int str_d20 = roll(20);
-    int dex_d20 = roll(20);
-    int str_roll = str_d20 + str_mod;
-    int dex_roll = dex_d20 + dex_mod;
-    result.escape_roll = std::max(str_roll, dex_roll);
-
-    // Check success
-    if (result.escape_roll >= result.escape_dc) {
-        result.success = true;
-        cond.grappled = false;
-        cond.grappler_idx = -1;
-        setAgentConditions(bm, agent_idx, cond);
-        result.log_message = std::string("\"") + std::string(agents[agent_idx].agent->name()) + "\" escapes grapple! (rolled " +
-                            std::to_string(result.escape_roll) + " vs DC " + std::to_string(result.escape_dc) + ")";
-    } else {
-        result.log_message = std::string("\"") + std::string(agents[agent_idx].agent->name()) + "\" fails to escape grapple (rolled " +
-                            std::to_string(result.escape_roll) + " vs DC " + std::to_string(result.escape_dc) + ")";
-    }
-
     return result;
 }
 
@@ -2347,7 +2025,7 @@ bool CombatEngine::applyBranchesOfTree(BattleMap& bm, int reactor, int source)
     const bool ally = areAllies(bm, reactor, source);
     if (!ally) {
         const Agent::Stats rs = bm.getAgentStats(reactor);
-        const int dc       = spellSaveDcFromAbility(rs, SaveStr);   // 8 + PB + STR mod (2024 PHB)
+        const int dc       = rules::spellSaveDcFromAbility(rs, SaveStr);   // 8 + PB + STR mod (2024 PHB)
         const int save_mod = saveModFor(bm, source, SaveStr);      // incl. Aura of Protection
         const int d20      = roll(20);
         const int total    = d20 + save_mod;

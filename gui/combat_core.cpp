@@ -5,8 +5,7 @@
 //  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
 //  Sections:
 //    · Dice & RNG    — construction, reseed, roll, rollAdvantage, rollDisadvantage
-//    · Modifiers     — attackModifier, damageAbilityMod, spellAttackMod,
-//                      spellSaveDc, spellSaveDcFromAbility
+//    · Modifiers     — attackModifier, damageAbilityMod
 //    · Armor Class   — calculateAC, applyArmorMultipliers, canEquipArmor
 //    · RL interface  — getBattleObservation, availableAttacks
 //    · Misc          — agentName
@@ -28,11 +27,16 @@ namespace rpg {
 // ─────────────────────────────────────────────────────────────────────────────
 //  Dice & RNG
 //
-//  roll/rollAdvantage/rollDisadvantage/attackModifier/damageAbilityMod/spellAttackMod/
-//  spellSaveDc(FromAbility)/calculateAC/isHoldingShield/canEquipArmor/the Paladin+advantage
-//  aura queries/saveModFor/saveAdvantageFor now live in rules.hpp as free functions
-//  (COMBAT_REFACTOR_PLAN.md R3) — these are one-line forwarders so every existing call
-//  site (both C++ and the pybind11 bindings) keeps working unchanged.
+//  roll/rollAdvantage/rollDisadvantage/attackModifier/damageAbilityMod/calculateAC/
+//  isHoldingShield/canEquipArmor/the Paladin+advantage aura queries/saveModFor/
+//  saveAdvantageFor now live in rules.hpp as free functions (COMBAT_REFACTOR_PLAN.md R3) —
+//  these are one-line forwarders so every existing call site (both C++ and the pybind11
+//  bindings) keeps working unchanged. They are bound to Python, so per cross-cutting
+//  decision #1 they stay permanently: they are the public API, not scaffolding.
+//
+//  The four UNBOUND rules:: functions — spellAttackMod, spellSaveDc, spellSaveDcFromAbility
+//  and bestPaladinAura — had their forwarders deleted (R3's "delete the forwarders" step,
+//  which is only reachable for those four). Call rules::foo(...) directly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 CombatEngine::CombatEngine(uint32_t seed)
@@ -76,33 +80,12 @@ int CombatEngine::damageAbilityMod(const Weapon& w,
     return rules::damageAbilityMod(w, s);
 }
 
-int CombatEngine::spellAttackMod(const Agent::Stats& s) noexcept
-{
-    return rules::spellAttackMod(s);
-}
-
-int CombatEngine::spellSaveDc(const Agent::Stats& s) noexcept
-{
-    return rules::spellSaveDc(s);
-}
-
-int CombatEngine::spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept
-{
-    return rules::spellSaveDcFromAbility(s, ability);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  Paladin auras (team-scoped emanations)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // dndMod (floor-rounding ability modifier) now lives in combat_internal.hpp so every
 // translation unit shares one correct implementation. See note there.
-
-int CombatEngine::bestPaladinAura(const BattleMap& bm, int agent_idx, int min_level,
-                                  PaladinOath require_oath) const noexcept
-{
-    return rules::bestPaladinAura(bm, agent_idx, min_level, require_oath);
-}
 
 int CombatEngine::auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept
 {

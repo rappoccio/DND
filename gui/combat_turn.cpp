@@ -15,6 +15,7 @@
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -252,11 +253,11 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             const int d = footprintDistance(pal_pa.origin, pal_pa.agent->getSize(),
                                             vic_pa.origin, vic_pa.agent->getSize());
             if (d * 5 > radius_ft) continue;
-            // The aura is an Emanation — blocked by Total Cover (matches bestPaladinAura).
+            // The aura is an Emanation — blocked by Total Cover (matches rules::bestPaladinAura).
             if (!bm.hasLineOfSight(pal_pa.origin, pal_pa.agent->getSize(),
                                    vic_pa.origin, vic_pa.agent->getSize()))
                 continue;
-            const int save_dc  = spellSaveDcFromAbility(ps, SaveCha);
+            const int save_dc  = rules::spellSaveDcFromAbility(ps, SaveCha);
             const int save_mod = saveModFor(bm, agent_idx, SaveWis);
             const int save_d20 = roll(20);
             const int save_total = save_d20 + save_mod;
@@ -3519,7 +3520,7 @@ double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int targ
         (sp.save_ability == SaveStr || sp.save_ability == SaveDex))
         return 0.0;
 
-    const int dc = spellSaveDc(cs);
+    const int dc = rules::spellSaveDc(cs);
     // Deterministic pieces of saveModFor (its Bless d4 is folded in by convolution below).
     int score = 0; bool prof = false;
     switch (sp.save_ability) {
@@ -3571,7 +3572,7 @@ double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int 
     if (cc.grappled && cc.grappler_idx != target_idx) dis = true;
     if (sp.range > 0 && isThreatened(bm, caster_idx) && !cs.hasFeat("Spell Sniper")) dis = true;
 
-    const int mod       = spellAttackMod(cs);
+    const int mod       = rules::spellAttackMod(cs);
     const int target_ac = calculateAC(bm, target_idx);   // rollSpellAttack rolls against calculateAC
 
     auto singleDieHit = [&](int bless) -> double {
@@ -3627,7 +3628,7 @@ void CombatEngine::npcLogCastAnalysis(const BattleMap& bm, int caster_idx, int s
                 default:      return "CHA";
             }
         };
-        const int dc = spellSaveDc(bm.getAgentStats(caster_idx));
+        const int dc = rules::spellSaveDc(bm.getAgentStats(caster_idx));
         for (int t : target_indices) {
             if (t < 0 || t >= n || t == caster_idx) continue;
             log_("Analysis: {} vs {} — {:.0f}% to save ({} save, DC {})",
