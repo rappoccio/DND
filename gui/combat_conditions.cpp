@@ -4,6 +4,8 @@
 //
 //  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
 //  Sections:
+//    · ConditionTracker      — the container itself (condition_tracker.hpp, R4c)
+//                              plus ActiveAgentCondition's JSON mapping
 //    · Condition application — apply* status setters (Paralyzed, Blinded, …),
 //                              updateDarknessBlinding, dropAgentWeapons
 //    · Condition lifecycle   — addAgentCondition, removeAgentCondition,
@@ -13,12 +15,213 @@
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "condition_tracker.hpp"
 
 #include <algorithm>
 #include <string>
 #include <vector>
 
 namespace rpg {
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ConditionTracker  (COMBAT_REFACTOR_PLAN.md R4c)
+//
+//  The container half of what used to be CombatEngine's conditions_.all() /
+//  nextConditionId_ / petrifySnapshots_ / gaseousSnapshots_. The effect logic that
+//  drives it stays below, on CombatEngine — see condition_tracker.hpp for where the
+//  line is drawn and why.
+// ─────────────────────────────────────────────────────────────────────────────
+
+void ConditionTracker::append(const ActiveAgentCondition& cond)
+{
+    active_.push_back(cond);
+}
+
+bool ConditionTracker::take(int condition_id, ActiveAgentCondition& out)
+{
+    auto it = std::find_if(active_.begin(), active_.end(),
+                           [condition_id](const ActiveAgentCondition& c) { return c.condition_id == condition_id; });
+    if (it == active_.end())
+        return false;
+    out = *it;
+    active_.erase(it);
+    return true;
+}
+
+void ConditionTracker::dropByIds(const std::vector<int>& ids)
+{
+    std::vector<ActiveAgentCondition> remaining;
+    for (const auto& cond : active_) {
+        if (std::find(ids.begin(), ids.end(), cond.condition_id) == ids.end())
+            remaining.push_back(cond);
+    }
+    active_ = remaining;
+}
+
+// ── ActiveAgentCondition ↔ JSON ──────────────────────────────────────────────
+// Free functions rather than members so battle_map.hpp (included by nearly every TU)
+// gains no nlohmann dependency. Enums round-trip through their underlying int.
+namespace {
+
+nlohmann::json conditionToJson(const ActiveAgentCondition& c)
+{
+    return nlohmann::json{
+        {"agent_idx", c.agent_idx},
+        {"caster_idx", c.caster_idx},
+        {"spell_idx", c.spell_idx},
+        {"condition_name", c.condition_name},
+        {"turns_remaining", c.turns_remaining},
+        {"next_save_turn", c.next_save_turn},
+        {"save_ability", static_cast<int>(c.save_ability)},
+        {"save_dc", c.save_dc},
+        {"save_repeat_turns", c.save_repeat_turns},
+        {"save_at_end_of_turn", c.save_at_end_of_turn},
+        {"condition_id", c.condition_id},
+        {"cast_level", c.cast_level},
+        {"on_damage", static_cast<int>(c.on_damage)},
+        {"dot_dice", c.dot_dice},
+        {"dot_die_size", c.dot_die_size},
+        {"dot_flat_bonus", c.dot_flat_bonus},
+        {"dot_damage_type", static_cast<int>(c.dot_damage_type)},
+        {"prevents_healing", c.prevents_healing},
+        {"delayed_trigger", c.delayed_trigger},
+        {"delay_dice", c.delay_dice},
+        {"delay_die_size", c.delay_die_size},
+        {"delay_flat_bonus", c.delay_flat_bonus},
+        {"delay_damage_type", static_cast<int>(c.delay_damage_type)},
+        {"delay_requires_save", c.delay_requires_save},
+        {"delay_half_on_save", c.delay_half_on_save},
+        {"delay_drop_to_zero", c.delay_drop_to_zero},
+        {"delay_auto_on_expire", c.delay_auto_on_expire},
+        {"delay_label", c.delay_label},
+        {"kickback_dice", c.kickback_dice},
+        {"kickback_die_size", c.kickback_die_size},
+        {"kickback_damage_type", static_cast<int>(c.kickback_damage_type)},
+        {"curse_disadv_ability", c.curse_disadv_ability},
+        {"curse_vuln_type_code", c.curse_vuln_type_code},
+        {"curse_vuln_prev_mult", c.curse_vuln_prev_mult},
+    };
+}
+
+ActiveAgentCondition conditionFromJson(const nlohmann::json& j)
+{
+    ActiveAgentCondition c;   // defaults carry any field a forward-compatible payload omits
+    c.agent_idx            = j.value("agent_idx", c.agent_idx);
+    c.caster_idx           = j.value("caster_idx", c.caster_idx);
+    c.spell_idx            = j.value("spell_idx", c.spell_idx);
+    c.condition_name       = j.value("condition_name", c.condition_name);
+    c.turns_remaining      = j.value("turns_remaining", c.turns_remaining);
+    c.next_save_turn       = j.value("next_save_turn", c.next_save_turn);
+    c.save_ability         = static_cast<SaveAbility_t>(j.value("save_ability", static_cast<int>(c.save_ability)));
+    c.save_dc              = j.value("save_dc", c.save_dc);
+    c.save_repeat_turns    = j.value("save_repeat_turns", c.save_repeat_turns);
+    c.save_at_end_of_turn  = j.value("save_at_end_of_turn", c.save_at_end_of_turn);
+    c.condition_id         = j.value("condition_id", c.condition_id);
+    c.cast_level           = j.value("cast_level", c.cast_level);
+    c.on_damage            = static_cast<OnDamage_t>(j.value("on_damage", static_cast<int>(c.on_damage)));
+    c.dot_dice             = j.value("dot_dice", c.dot_dice);
+    c.dot_die_size         = j.value("dot_die_size", c.dot_die_size);
+    c.dot_flat_bonus       = j.value("dot_flat_bonus", c.dot_flat_bonus);
+    c.dot_damage_type      = static_cast<MagicDamage_t>(j.value("dot_damage_type", static_cast<int>(c.dot_damage_type)));
+    c.prevents_healing     = j.value("prevents_healing", c.prevents_healing);
+    c.delayed_trigger      = j.value("delayed_trigger", c.delayed_trigger);
+    c.delay_dice           = j.value("delay_dice", c.delay_dice);
+    c.delay_die_size       = j.value("delay_die_size", c.delay_die_size);
+    c.delay_flat_bonus     = j.value("delay_flat_bonus", c.delay_flat_bonus);
+    c.delay_damage_type    = static_cast<MagicDamage_t>(j.value("delay_damage_type", static_cast<int>(c.delay_damage_type)));
+    c.delay_requires_save  = j.value("delay_requires_save", c.delay_requires_save);
+    c.delay_half_on_save   = j.value("delay_half_on_save", c.delay_half_on_save);
+    c.delay_drop_to_zero   = j.value("delay_drop_to_zero", c.delay_drop_to_zero);
+    c.delay_auto_on_expire = j.value("delay_auto_on_expire", c.delay_auto_on_expire);
+    c.delay_label          = j.value("delay_label", c.delay_label);
+    c.kickback_dice        = j.value("kickback_dice", c.kickback_dice);
+    c.kickback_die_size    = j.value("kickback_die_size", c.kickback_die_size);
+    c.kickback_damage_type = static_cast<MagicDamage_t>(j.value("kickback_damage_type", static_cast<int>(c.kickback_damage_type)));
+    c.curse_disadv_ability = j.value("curse_disadv_ability", c.curse_disadv_ability);
+    c.curse_vuln_type_code = j.value("curse_vuln_type_code", c.curse_vuln_type_code);
+    c.curse_vuln_prev_mult = j.value("curse_vuln_prev_mult", c.curse_vuln_prev_mult);
+    return c;
+}
+
+template <typename Snapshot, typename Emit>
+nlohmann::json snapshotsToJson(const std::unordered_map<int, Snapshot>& m, Emit emit)
+{
+    nlohmann::json out = nlohmann::json::array();
+    for (const auto& [agent_idx, snap] : m) {
+        nlohmann::json entry = emit(snap);
+        entry["agent"] = agent_idx;
+        out.push_back(entry);
+    }
+    return out;
+}
+
+nlohmann::json speedsToJson(int walk, int fly, int swim, int burrow)
+{
+    return nlohmann::json{{"speed_walk", walk}, {"speed_fly", fly},
+                          {"speed_swim", swim}, {"speed_burrow", burrow}};
+}
+
+} // namespace
+
+nlohmann::json ConditionTracker::to_json() const
+{
+    nlohmann::json conditions = nlohmann::json::array();
+    for (const auto& c : active_)
+        conditions.push_back(conditionToJson(c));
+
+    return nlohmann::json{
+        {"active_conditions", conditions},
+        {"next_condition_id", nextConditionId_},
+        {"petrify_snapshots", snapshotsToJson(petrify_, [](const PetrifySnapshot& s) {
+            nlohmann::json e = speedsToJson(s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+            e["magic_mult"] = s.magic_mult;
+            e["phys_mult"]  = s.phys_mult;
+            return e;
+        })},
+        {"gaseous_snapshots", snapshotsToJson(gaseous_, [](const GaseousSnapshot& s) {
+            nlohmann::json e = speedsToJson(s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+            e["phys_mult"] = s.phys_mult;
+            return e;
+        })},
+    };
+}
+
+void ConditionTracker::from_json(const nlohmann::json& j)
+{
+    active_.clear();
+    if (auto it = j.find("active_conditions"); it != j.end())
+        for (const auto& entry : *it)
+            active_.push_back(conditionFromJson(entry));
+
+    nextConditionId_ = j.value("next_condition_id", 0);
+
+    petrify_.clear();
+    if (auto it = j.find("petrify_snapshots"); it != j.end()) {
+        for (const auto& entry : *it) {
+            PetrifySnapshot s;
+            s.speed_walk   = entry.value("speed_walk", 0);
+            s.speed_fly    = entry.value("speed_fly", 0);
+            s.speed_swim   = entry.value("speed_swim", 0);
+            s.speed_burrow = entry.value("speed_burrow", 0);
+            s.magic_mult   = entry.value("magic_mult", s.magic_mult);
+            s.phys_mult    = entry.value("phys_mult", s.phys_mult);
+            petrify_[entry.value("agent", 0)] = s;
+        }
+    }
+
+    gaseous_.clear();
+    if (auto it = j.find("gaseous_snapshots"); it != j.end()) {
+        for (const auto& entry : *it) {
+            GaseousSnapshot s;
+            s.speed_walk   = entry.value("speed_walk", 0);
+            s.speed_fly    = entry.value("speed_fly", 0);
+            s.speed_swim   = entry.value("speed_swim", 0);
+            s.speed_burrow = entry.value("speed_burrow", 0);
+            s.phys_mult    = entry.value("phys_mult", s.phys_mult);
+            gaseous_[entry.value("agent", 0)] = s;
+        }
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Condition application
@@ -419,7 +622,7 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     if (bm.getAgentConditions(idx).gaseous_form) {
         endGaseousForm(bm, idx);
         std::vector<int> gaseous_ids;
-        for (const auto& ac : activeAgentConditions_)
+        for (const auto& ac : conditions_.all())
             if (ac.agent_idx == idx && ac.condition_name == "Gaseous")
                 gaseous_ids.push_back(ac.condition_id);
         for (int gid : gaseous_ids) removeAgentCondition(bm, gid);
@@ -568,7 +771,7 @@ void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
     // (Greater Restoration) can restore them. Guard against a double-apply clobbering a good snapshot
     // with the already-petrified 0-speed / 0.5× values.
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (petrifySnapshots_.find(idx) == petrifySnapshots_.end()) {
+    if (!conditions_.hasPetrifySnapshot(idx)) {
         PetrifySnapshot snap;
         snap.speed_walk   = stats.speed_walk;
         snap.speed_fly    = stats.speed_fly;
@@ -576,7 +779,7 @@ void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
         snap.speed_burrow = stats.speed_burrow;
         snap.magic_mult   = stats.magic_damage_multipliers;
         snap.phys_mult    = stats.physical_damage_multipliers;
-        petrifySnapshots_[idx] = snap;
+        conditions_.storePetrifySnapshot(idx, snap);
     }
 
     // Set all movement speeds to 0
@@ -614,14 +817,14 @@ void CombatEngine::applyGaseousForm(BattleMap& bm, int idx, bool physical_immune
     // Snapshot the real speeds and physical multipliers BEFORE overwriting them so endGaseousForm
     // can restore them. Guard against a double-apply clobbering a good snapshot.
     Agent::Stats stats = bm.getAgentStats(idx);
-    if (gaseousSnapshots_.find(idx) == gaseousSnapshots_.end()) {
+    if (!conditions_.hasGaseousSnapshot(idx)) {
         GaseousSnapshot snap;
         snap.speed_walk   = stats.speed_walk;
         snap.speed_fly    = stats.speed_fly;
         snap.speed_swim   = stats.speed_swim;
         snap.speed_burrow = stats.speed_burrow;
         snap.phys_mult    = stats.physical_damage_multipliers;
-        gaseousSnapshots_[idx] = snap;
+        conditions_.storeGaseousSnapshot(idx, snap);
     }
 
     // Fly-only movement: Fly Speed 20 ft, all other speeds 0. Also zero this turn's remaining walk
@@ -658,14 +861,13 @@ void CombatEngine::endGaseousForm(BattleMap& bm, int idx) noexcept
     // Restore the pre-form speeds + physical multipliers from the snapshot (fall back to a plain
     // reset if the snapshot was lost to a save taken mid-form).
     Agent::Stats stats = bm.getAgentStats(idx);
-    auto it = gaseousSnapshots_.find(idx);
-    if (it != gaseousSnapshots_.end()) {
-        stats.speed_walk   = it->second.speed_walk;
-        stats.speed_fly    = it->second.speed_fly;
-        stats.speed_swim   = it->second.speed_swim;
-        stats.speed_burrow = it->second.speed_burrow;
-        stats.physical_damage_multipliers = it->second.phys_mult;
-        gaseousSnapshots_.erase(it);
+    if (const GaseousSnapshot* snap = conditions_.findGaseousSnapshot(idx)) {
+        stats.speed_walk   = snap->speed_walk;
+        stats.speed_fly    = snap->speed_fly;
+        stats.speed_swim   = snap->speed_swim;
+        stats.speed_burrow = snap->speed_burrow;
+        stats.physical_damage_multipliers = snap->phys_mult;
+        conditions_.eraseGaseousSnapshot(idx);
     } else {
         stats.speed_walk = std::max(stats.speed_walk, 0);
         for (auto t : {PhysicalDamage_t::Bludgeoning, PhysicalDamage_t::Piercing, PhysicalDamage_t::Slashing})
@@ -709,10 +911,10 @@ void CombatEngine::releaseAgentInfluence(BattleMap& bm, int agent_idx) noexcept
     // 1. End every ActiveAgentCondition this agent imposed on others. Concentration-sustained ones
     //    were already cleared by dropConcentration (called first in applyUnconscious); this catches
     //    the rest (innate/monster-ability conditions, non-concentration spell riders). Collect the ids
-    //    first — removeAgentCondition mutates activeAgentConditions_ (and its onConditionEnded kickback
+    //    first — removeAgentCondition mutates conditions_.all() (and its onConditionEnded kickback
     //    can cascade into dropConcentration), so we must not iterate-and-erase in place.
     std::vector<int> imposed_ids;
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.caster_idx != agent_idx) continue;
         if (ac.agent_idx == agent_idx) continue;   // a self-condition is not "influence over others"
         imposed_ids.push_back(ac.condition_id);
@@ -860,7 +1062,7 @@ void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_id
 
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
 {
-    cond.condition_id = nextConditionId_++;
+    cond.condition_id = conditions_.nextId();
 
     // Apply the condition to the agent
     if (cond.agent_idx >= 0) {
@@ -1087,27 +1289,24 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
         }
     }
 
-    activeAgentConditions_.push_back(cond);
+    conditions_.append(cond);
     return cond.condition_id;
 }
 
 void CombatEngine::removeAgentCondition(BattleMap& bm, int condition_id) noexcept
 {
-    auto it = std::find_if(activeAgentConditions_.begin(), activeAgentConditions_.end(),
-                          [condition_id](const ActiveAgentCondition& c) { return c.condition_id == condition_id; });
-    if (it != activeAgentConditions_.end()) {
-        // Fire the caster "kickback" (Vistani Curse) on a copy BEFORE erasing — onConditionEnded
-        // may apply damage that drops the caster and cascades into dropConcentration →
-        // removeAgentCondition, mutating this container. No-op unless kickback_dice > 0.
-        ActiveAgentCondition ended = *it;
-        activeAgentConditions_.erase(it);
+    // ConditionTracker::take copies the entry out and erases it before returning — the
+    // caster "kickback" (Vistani Curse) must fire on that copy with the container already
+    // stable, because onConditionEnded may apply damage that drops the caster and cascades
+    // into dropConcentration → removeAgentCondition. No-op unless kickback_dice > 0.
+    ActiveAgentCondition ended;
+    if (conditions_.take(condition_id, ended))
         onConditionEnded(bm, ended);
-    }
 }
 
 const std::vector<ActiveAgentCondition>& CombatEngine::activeAgentConditions() const noexcept
 {
-    return activeAgentConditions_;
+    return conditions_.all();
 }
 
 std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
@@ -1115,7 +1314,7 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
     std::vector<int> removed_ids;
     // Delayed effects that auto-detonate on expiry (Delayed Blast Fireball) are resolved AFTER the
     // loop: resolveDelayedEffect can drop a creature unconscious → dropConcentration, which mutates
-    // activeAgentConditions_ and would invalidate the iterators below. Copy them out and fire later.
+    // conditions_.all() and would invalidate the iterators below. Copy them out and fire later.
     std::vector<ActiveAgentCondition> auto_detonate;
     // Every ended condition is torn down AFTER the list is rebuilt, through the onConditionEnded
     // chokepoint (flags + curse teardown + kickback). Deferred because that teardown may ADD a new
@@ -1123,7 +1322,7 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
     // invalidate the iterators below if fired mid-loop.
     std::vector<ActiveAgentCondition> ended;
 
-    for (auto& cond : activeAgentConditions_) {
+    for (auto& cond : conditions_.mutableAll()) {
         --cond.turns_remaining;
         if (cond.turns_remaining <= 0) {
             removed_ids.push_back(cond.condition_id);
@@ -1138,14 +1337,8 @@ std::vector<int> CombatEngine::tickAgentConditions(BattleMap& bm) noexcept
         }
     }
 
-    // Remove expired conditions
-    std::vector<ActiveAgentCondition> remaining;
-    for (const auto& cond : activeAgentConditions_) {
-        if (std::find(removed_ids.begin(), removed_ids.end(), cond.condition_id) == removed_ids.end()) {
-            remaining.push_back(cond);
-        }
-    }
-    activeAgentConditions_ = remaining;
+    // Remove expired conditions (survivors keep their relative order)
+    conditions_.dropByIds(removed_ids);
 
     // List is stable again — fire auto-detonations first (Delayed Blast Fireball), then run the
     // single-chokepoint teardown for every ended condition.
@@ -1165,7 +1358,7 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
     // cascade into dropConcentration).
     std::vector<ActiveAgentCondition> ended;
 
-    for (auto& cond : activeAgentConditions_) {
+    for (auto& cond : conditions_.mutableAll()) {
         // Only tick conditions cast by this caster
         if (cond.caster_idx != caster_idx) continue;
 
@@ -1179,14 +1372,8 @@ std::vector<int> CombatEngine::tickAgentConditionsForCaster(BattleMap& bm, int c
         }
     }
 
-    // Remove expired conditions
-    std::vector<ActiveAgentCondition> remaining;
-    for (const auto& cond : activeAgentConditions_) {
-        if (std::find(removed_ids.begin(), removed_ids.end(), cond.condition_id) == removed_ids.end()) {
-            remaining.push_back(cond);
-        }
-    }
-    activeAgentConditions_ = remaining;
+    // Remove expired conditions (survivors keep their relative order)
+    conditions_.dropByIds(removed_ids);
 
     // Container is stable again — run the single-chokepoint teardown for every ended condition.
     for (const auto& cond : ended)
@@ -1287,11 +1474,11 @@ void CombatEngine::onConditionEnded(BattleMap& bm, const ActiveAgentCondition& c
     // If the ended condition prevented healing, recompute the derived cant_heal flag from the
     // agent's REMAINING active conditions — another prevents_healing condition may still be in
     // force. Exclude this condition's id: some end paths call onConditionEnded on a copy before
-    // the entry is erased from activeAgentConditions_ (removeAgentCondition-by-id).
+    // the entry is erased from conditions_.all() (removeAgentCondition-by-id).
     if (cond.prevents_healing && cond.agent_idx >= 0 &&
         cond.agent_idx < static_cast<int>(agents.size())) {
         bool still = false;
-        for (const auto& ac : activeAgentConditions_)
+        for (const auto& ac : conditions_.all())
             if (ac.agent_idx == cond.agent_idx && ac.condition_id != cond.condition_id &&
                 ac.prevents_healing) { still = true; break; }
         Agent::Stats st = bm.getAgentStats(cond.agent_idx);
@@ -1368,10 +1555,11 @@ void CombatEngine::onConditionEnded(BattleMap& bm, const ActiveAgentCondition& c
 
 int CombatEngine::triggerDelayedEffect(BattleMap& bm, int condition_id) noexcept
 {
-    auto it = std::find_if(activeAgentConditions_.begin(), activeAgentConditions_.end(),
+    const auto& active = conditions_.all();
+    auto it = std::find_if(active.begin(), active.end(),
                            [condition_id](const ActiveAgentCondition& c) {
                                return c.condition_id == condition_id && c.delayed_trigger; });
-    if (it == activeAgentConditions_.end()) {
+    if (it == active.end()) {
         log_("triggerDelayedEffect: no delayed effect with id {}", condition_id);
         return -1;
     }

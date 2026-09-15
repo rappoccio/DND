@@ -34,6 +34,9 @@
 #include "message_logger.hpp"
 #include "combat_types.hpp"   // result/action/state structs (HideResult, AttackResult, InFlight*, …)
 #include "combat_context.hpp" // CombatContext — cross-cutting scratch state (RNG, logger, pending rolls)
+#include "visibility_service.hpp"  // VisibilityService — vision/perception/hiding sub-engine (R4a)
+#include "movement_controller.hpp" // MovementController — per-turn movement budgets (R4b)
+#include "condition_tracker.hpp"   // ConditionTracker — active-condition store + stat snapshots (R4c)
 
 #include <cstdint>
 #include <format>
@@ -363,10 +366,7 @@ public:
     // beginTurn normally seeds these; a legendary action grants movement outside the creature's
     // own turn, so the GUI seeds the budgets directly (feet, clamped to >= 0) before the move.
     void seedMoveBudgets(int agent_idx, int walk, int fly, int swim, int burrow) noexcept {
-        walkRemaining_  [agent_idx] = std::max(0, walk);
-        flyRemaining_   [agent_idx] = std::max(0, fly);
-        swimRemaining_  [agent_idx] = std::max(0, swim);
-        burrowRemaining_[agent_idx] = std::max(0, burrow);
+        mv_.seedMoveBudgets(agent_idx, walk, fly, swim, burrow);
     }
 
     // Clear all movement budgets (call at end of combat or start of new round).
@@ -676,7 +676,7 @@ public:
 
     // After a spell-applied condition ends (a target saved out of it), drop the caster's
     // concentration IFF that was the last target still affected by the same spell. `ended` must
-    // already be removed from activeAgentConditions_. Shared by the start-of-turn save loop
+    // already be removed from the ConditionTracker. Shared by the start-of-turn save loop
     // (beginTurn) and the end-of-turn save loop (endTurn / Hold Person).
     void dropCasterConcentrationIfLastTarget(BattleMap& bm, const ActiveAgentCondition& ended) noexcept;
 
@@ -1962,48 +1962,32 @@ private:
     // Only agents with turns != 1 are stored here (optimises the common case).
     std::unordered_map<int, int> agentTurns_;
 
-    // Movement budgets for the current turn.
-    // Key = agent_idx; value = remaining feet.
-    // Absent entry ≡ 0 remaining (agent hasn't started their turn yet).
-    std::unordered_map<int, int> walkRemaining_;
-    std::unordered_map<int, int> flyRemaining_;
-    std::unordered_map<int, int> swimRemaining_;
-    std::unordered_map<int, int> burrowRemaining_;
+    // Per-turn walk/fly/swim/burrow budgets and the slipping-terrain counter — the maps that
+    // used to be walkRemaining_/flyRemaining_/swimRemaining_/burrowRemaining_/slipDistanceMoved_
+    // here. See movement_controller.hpp (COMBAT_REFACTOR_PLAN.md R4b), including why the movement
+    // FLOW (moveAgent/jumpAgent/teleportAgent/checkSlippingTerrain/standup and in_flight_move_)
+    // stayed on the engine: it is entangled with pending_decision_ and so travels with
+    // ReactionArbiter, which the plan deliberately schedules last.
+    MovementController mv_;
 
-    // Distance moved on slipping terrain (ice/grease) since last save check.
-    // Key = agent_idx; value = feet moved on slipping terrain.
-    // Reset to 0 after a successful or failed save.
-    std::unordered_map<int, int> slipDistanceMoved_;
-
-    // Active spell-applied conditions (Hold Person, Stun, etc.)
-    std::vector<ActiveAgentCondition> activeAgentConditions_;
-    int nextConditionId_{0};
-
-    // Pre-Petrified snapshot so curePetrified (Greater Restoration) can restore a creature's real
-    // speeds and damage multipliers — applyPetrified overwrites them (speed 0, all 0.5×) and discards
-    // the originals. Keyed by agent index. Session-only: a save taken mid-Petrify loses this, so
-    // curePetrified falls back to normalising the 0.5× multipliers (speeds unrecoverable).
-    struct PetrifySnapshot {
-        int speed_walk = 0, speed_fly = 0, speed_swim = 0, speed_burrow = 0;
-        std::array<float, NumMagicDamage_t>    magic_mult{};
-        std::array<float, NumPhysicalDamage_t> phys_mult{};
-    };
-    std::unordered_map<int, PetrifySnapshot> petrifySnapshots_;
-
-    // Pre-Gaseous-Form snapshot so endGaseousForm can restore a creature's real speeds and physical
-    // damage multipliers — applyGaseousForm overwrites them (fly-only Speed 20, B/P/S set to 0.5×/0×).
-    // Keyed by agent index. Session-only, mirroring petrifySnapshots_ (a mid-form save loses it).
-    struct GaseousSnapshot {
-        int speed_walk = 0, speed_fly = 0, speed_swim = 0, speed_burrow = 0;
-        std::array<float, NumPhysicalDamage_t> phys_mult{};
-    };
-    std::unordered_map<int, GaseousSnapshot> gaseousSnapshots_;
+    // The active spell-applied conditions (Hold Person, Stun, …), the id counter, and the
+    // pre-Petrified / pre-Gaseous-Form stat snapshots — what used to be
+    // activeAgentConditions_/nextConditionId_/petrifySnapshots_/gaseousSnapshots_ here, along with
+    // the two snapshot structs. See condition_tracker.hpp (COMBAT_REFACTOR_PLAN.md R4c), which
+    // also explains the split: the container lives there, the effect logic that drives it
+    // (addAgentCondition's per-condition application, onConditionEnded, the tick drivers) stays
+    // on the engine in combat_conditions.cpp.
+    ConditionTracker conditions_;
 
     std::vector<ActiveEffect> activeEffects_;
 
-    // Visibility map: (source_idx, target_idx) -> VisibilityLevel
-    // Computed at turn start and cached until next turn
-    std::unordered_map<int64_t, VisibilityLevel> visibilityMap_;
+    // Vision, perception and hiding, plus the (source_idx, target_idx) -> VisibilityLevel cache
+    // that used to be visibilityMap_ here — see visibility_service.hpp (COMBAT_REFACTOR_PLAN.md
+    // R4, first sub-engine cut). The public computeVisibility/getVisibility/canPerceiveTarget/
+    // forcecageSeparates/areAllies/checkHide/checkHiddenAgentDetection methods above are now
+    // one-line forwarders to this, defined in combat_visibility.cpp.
+    // Declared after ctx_ so the CombatContext& it binds is already initialized.
+    VisibilityService vis_{ctx_};
 
     // Overchannel, Portent Dice, Sentinel-guard re-entrancy, Bardic Inspiration's pending roll/damage
     // bonus, pending one-shot advantage, the logger, the NPC-turn render hook, and the NPC visual
@@ -2419,10 +2403,11 @@ private:
     // chain terminate. Session-only (per-encounter agent indices).
     std::unordered_set<int> deathBurstFired_;
 
-    // Emit a message to the logger (if attached).
+    // Emit a message to the logger (if attached). Forwards to CombatContext::log, which is the
+    // single implementation — R4's sub-engines log through ctx_ without an engine to hand.
     template<typename... Args>
     void log_(std::format_string<Args...> fmt, Args&&... args) const {
-        if (ctx_.logger_) ctx_.logger_->log(std::format(fmt, std::forward<Args>(args)...));
+        ctx_.log(fmt, std::forward<Args>(args)...);
     }
 
     // ── Spell helpers ─────────────────────────────────────────────────────

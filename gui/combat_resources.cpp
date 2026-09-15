@@ -840,7 +840,7 @@ bool CombatEngine::plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_id
 
     // Only one creature may carry this monk's vibrations at a time — end any prior ones harmlessly.
     std::vector<int> stale;
-    for (const auto& c : activeAgentConditions_)
+    for (const auto& c : conditions_.all())
         if (c.delayed_trigger && c.caster_idx == monk_idx && c.condition_name == "QuiveringPalm")
             stale.push_back(c.condition_id);
     for (int id : stale) removeAgentCondition(bm, id);
@@ -1314,7 +1314,7 @@ void CombatEngine::activateRage(BattleMap& bm, int idx)
 
     // Instinctive Pounce (L7): grant up to half speed of extra movement THIS turn
     if (stats.classLevel(CharacterClass::Barbarian) >= 7) {
-        walkRemaining_[idx] += stats.speed_walk / 2;
+        mv_.grantWalk(idx, stats.speed_walk / 2);
         log_("{} Instinctive Pounce: +{} ft movement", agentName(bm, idx), stats.speed_walk / 2);
     }
 
@@ -2406,7 +2406,7 @@ int CombatEngine::clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept
         // End active spell-applied conditions on the creature (Tasha's: "any spell of level 6 or
         // lower ends" — modeled here as clearing this creature's tracked spell conditions).
         std::vector<int> to_remove;
-        for (const auto& cond : activeAgentConditions_) {
+        for (const auto& cond : conditions_.all()) {
             if (cond.agent_idx != tgt_idx) continue;
             to_remove.push_back(cond.condition_id);
         }

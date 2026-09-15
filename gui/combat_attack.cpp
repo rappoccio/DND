@@ -677,7 +677,7 @@ void CombatEngine::processDamageTaken(BattleMap& bm, int idx, int amount, unsign
     }
 
     std::vector<int> to_remove;
-    for (const auto& cond : activeAgentConditions_) {
+    for (const auto& cond : conditions_.all()) {
         if (cond.agent_idx != idx) continue;
 
         if (cond.on_damage == OnDamage_t::End) {
@@ -2274,7 +2274,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
     // Check if attacker is charmed and target is the charmer
     if (atk_pt.agent->getConditions().charmed) {
-        for (const auto& cond : activeAgentConditions_) {
+        for (const auto& cond : conditions_.all()) {
             if (cond.agent_idx == action.attacker_idx &&
                 cond.condition_name == "Charmed" &&
                 cond.caster_idx == action.target_idx) {
@@ -2497,7 +2497,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // telepathic strike. While it persists (until the start of the warlock's next turn): the warlock
     // (caster_idx) has Advantage attacking the marked creature (agent_idx); the marked creature has
     // Disadvantage attacking the warlock.
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.condition_name != "ClairvoyantCombatant") continue;
         if (ac.caster_idx == action.attacker_idx && ac.agent_idx == action.target_idx) {
             adv = true;
@@ -2511,7 +2511,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // Taunting Step (Archfey Warlock L3, Steps of the Fey): a directed "FeyTaunt" mark on a creature
     // caught near the warlock's departure square. Until it expires (start of the warlock's next turn),
     // that creature attacks anyone OTHER than the warlock (caster_idx) with Disadvantage.
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.condition_name != "FeyTaunt") continue;
         if (ac.agent_idx == action.attacker_idx && ac.caster_idx != action.target_idx) {
             dis = true;
@@ -2621,7 +2621,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
     // Attacker frightened: disadvantage on attacks when fear source is in LOS
     if (atk_cond.frightened) {
-        for (const auto& ac : activeAgentConditions_) {
+        for (const auto& ac : conditions_.all()) {
             if (ac.agent_idx == action.attacker_idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
                 if (bm.hasLineOfSight(atk_pt.origin, atk_sz, bm.placedAgents()[ac.caster_idx].origin, 1)) {
                     dis = true;

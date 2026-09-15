@@ -1023,7 +1023,7 @@ namespace rpg {
       bool burning{false};        // Burning [Hazard] (Alchemist's Fire): 1d4 Fire at the start of each of its turns until extinguished (CombatEngine::extinguishBurning — an action: drop Prone and roll on the ground)
       bool poisoned{false};      // disadvantage on attack rolls and ability checks
       bool petrified{false};     // incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, advantage on attacks
-      bool gaseous_form{false};  // Gaseous Form / vampire Misty Escape: fly-only (Speed 20), can't attack or cast, Resistance to Bludgeoning/Piercing/Slashing (Immunity if is_vampire), immune to Prone. Session-only transient; endGaseousForm restores the pre-cast speeds + physical multipliers snapshotted in gaseousSnapshots_.
+      bool gaseous_form{false};  // Gaseous Form / vampire Misty Escape: fly-only (Speed 20), can't attack or cast, Resistance to Bludgeoning/Piercing/Slashing (Immunity if is_vampire), immune to Prone. Session-only transient; endGaseousForm restores the pre-cast speeds + physical multipliers snapshotted by ConditionTracker (condition_tracker.hpp).
       bool unconscious{false};   // incapacitated, prone, speed 0, attacks have advantage, auto-fail STR/DEX saves, auto-crit within 5ft
       bool dead{false};          // character is dead (permanent until revived by magic)
       int death_save_successes{0}; // successful death saves (0-3); at 3, character stabilizes

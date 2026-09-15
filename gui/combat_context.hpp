@@ -28,11 +28,13 @@
 #include "message_logger.hpp"
 
 #include <cstdint>
+#include <format>
 #include <functional>
 #include <random>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -49,6 +51,14 @@ struct CombatContext {
     // is a no-op. Notifies the GUI (if installed) that an automated NPC's attacker→target action
     // resolved, so it can animate.
     std::function<void(int, int)> render_attack_hook_;
+
+    // Emit a message to the logger (if attached). The single implementation of what used to be
+    // CombatEngine::log_ — that method is now a one-line forwarder to this, so the sub-engines
+    // extracted in R4 can log without either duplicating the helper or needing an engine.
+    template<typename... Args>
+    void log(std::format_string<Args...> fmt, Args&&... args) const {
+        if (logger_) logger_->log(std::format(fmt, std::forward<Args>(args)...));
+    }
 
     // ── One-shot pending-roll modifiers ─────────────────────────────────────
     // Bardic Inspiration: a flat bonus folded into the NEXT d20 Test (0 = none). Unlike Portent

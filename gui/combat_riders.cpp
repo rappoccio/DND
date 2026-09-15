@@ -2421,10 +2421,7 @@ bool CombatEngine::applyBranchesOfTree(BattleMap& bm, int reactor, int source)
         Agent::Conditions sc = bm.getAgentConditions(source);
         sc.branches_speed_zeroed = true;
         bm.setAgentConditions(source, sc);
-        walkRemaining_[source]   = 0;
-        flyRemaining_[source]    = 0;
-        swimRemaining_[source]   = 0;
-        burrowRemaining_[source] = 0;
+        mv_.seedMoveBudgets(source, 0, 0, 0, 0);
         agents[static_cast<std::size_t>(source)].agent->initMovement(0, 0, 0, 0);
         log_("{}'s Speed is reduced to 0 until the end of its turn", agentName(bm, source));
     }

@@ -27,68 +27,53 @@ namespace rpg {
 //  Move budgets
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The budget bookkeeping itself moved to MovementController (movement_controller.hpp,
+// COMBAT_REFACTOR_PLAN.md R4b); these are forwarders so the pybind11 bindings, main.py
+// and every internal call site stay exactly as they were.
+
 int CombatEngine::getWalkRemaining(int agent_idx) const noexcept
 {
-    auto it = walkRemaining_.find(agent_idx);
-    return (it != walkRemaining_.end()) ? it->second : 0;
+    return mv_.getWalkRemaining(agent_idx);
 }
 
 int CombatEngine::getFlyRemaining(int agent_idx) const noexcept
 {
-    auto it = flyRemaining_.find(agent_idx);
-    return (it != flyRemaining_.end()) ? it->second : 0;
+    return mv_.getFlyRemaining(agent_idx);
 }
 
 int CombatEngine::getSwimRemaining(int agent_idx) const noexcept
 {
-    auto it = swimRemaining_.find(agent_idx);
-    return (it != swimRemaining_.end()) ? it->second : 0;
+    return mv_.getSwimRemaining(agent_idx);
 }
 
 int CombatEngine::getBurrowRemaining(int agent_idx) const noexcept
 {
-    auto it = burrowRemaining_.find(agent_idx);
-    return (it != burrowRemaining_.end()) ? it->second : 0;
+    return mv_.getBurrowRemaining(agent_idx);
 }
 
 int CombatEngine::spendWalk(int agent_idx, int feet) noexcept
 {
-    auto& rem  = walkRemaining_[agent_idx];  // inserts 0 if absent
-    int   spent = std::min(feet, rem);
-    rem -= spent;
-    return spent;
+    return mv_.spendWalk(agent_idx, feet);
 }
 
 int CombatEngine::spendFly(int agent_idx, int feet) noexcept
 {
-    auto& rem  = flyRemaining_[agent_idx];
-    int   spent = std::min(feet, rem);
-    rem -= spent;
-    return spent;
+    return mv_.spendFly(agent_idx, feet);
 }
 
 int CombatEngine::spendSwim(int agent_idx, int feet) noexcept
 {
-    auto& rem  = swimRemaining_[agent_idx];
-    int   spent = std::min(feet, rem);
-    rem -= spent;
-    return spent;
+    return mv_.spendSwim(agent_idx, feet);
 }
 
 int CombatEngine::spendBurrow(int agent_idx, int feet) noexcept
 {
-    auto& rem  = burrowRemaining_[agent_idx];
-    int   spent = std::min(feet, rem);
-    rem -= spent;
-    return spent;
+    return mv_.spendBurrow(agent_idx, feet);
 }
 
 void CombatEngine::clearMovement() noexcept
 {
-    walkRemaining_.clear();
-    flyRemaining_.clear();
-    swimRemaining_.clear();
-    burrowRemaining_.clear();
+    mv_.clearMovement();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,11 +146,12 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     // Grappling a creature doubles the cost of every foot of movement (you drag it along). That
     // surcharge is charged inside BattleMap::moveAgent against the agent's own movement budget — the
     // same one a Dash, exhaustion, and every speed modifier flow through — so it scales with them.
-    // (It used to be charged here against the CombatEngine's separate per-turn walkRemaining_ map,
-    // which never received a Dash bonus and so capped a grappler at base speed even after Dashing.)
+    // (It used to be charged here against the engine's separate per-turn walk budget — now
+    // MovementController's — which never received a Dash bonus and so capped a grappler at base
+    // speed even after Dashing.)
 
     // Check if agent is Frightened and would move toward fear source
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.agent_idx == idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
             Cell src  = bm.placedAgents()[ac.caster_idx].origin;
             int cur_d = std::max(std::abs(oldOrigin.col - src.col), std::abs(oldOrigin.row - src.row));
@@ -182,7 +168,7 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     // the bard. Flee = the target must move away (cannot decrease the distance); Approach = the
     // target must move toward (cannot increase the distance). Both expire as the bard's next turn
     // begins (1-turn duration keyed to the bard).
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.agent_idx != idx || ac.caster_idx < 0) continue;
         const bool flee     = (ac.condition_name == "CommandFlee");
         const bool approach = (ac.condition_name == "CommandApproach");
@@ -375,7 +361,7 @@ bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int tar
             // Escaped: end the underlying Forcecaged condition (which clears the flag via
             // clearSpellConditionEffect) so it no longer traps the creature at its new location.
             int cage_id = -1;
-            for (const auto& c : activeAgentConditions_)
+            for (const auto& c : conditions_.all())
                 if (c.agent_idx == idx && c.condition_name == "Forcecaged") { cage_id = c.condition_id; break; }
             if (cage_id >= 0) removeAgentCondition(bm, cage_id);
         }
@@ -505,8 +491,7 @@ void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOr
             std::abs(newOrigin.row - oldOrigin.row)
         }) * 5;  // Each cell is 5 feet
 
-        int& slip_counter = slipDistanceMoved_[agent_idx];
-        slip_counter += distance_moved;
+        const int slip_counter = mv_.addSlipDistance(agent_idx, distance_moved);
 
         // Check if they've moved enough feet to trigger a save
         if (slip_counter >= terrain.slip_distance_feet) {
@@ -535,7 +520,7 @@ void CombatEngine::checkSlippingTerrain(BattleMap& bm, int agent_idx, Cell oldOr
             }
 
             // Reset slip counter after save check
-            slip_counter = 0;
+            mv_.resetSlipDistance(agent_idx);
         }
     }
 }
@@ -563,8 +548,7 @@ void CombatEngine::standup(BattleMap& bm, int idx) noexcept
     int standup_cost = agents[idx].agent->getStats().hasFeat("Athlete") ? 5 : walk_speed / 2;
 
     // Check if agent has enough movement
-    auto it = walkRemaining_.find(idx);
-    int remaining = (it != walkRemaining_.end()) ? it->second : 0;
+    int remaining = mv_.getWalkRemaining(idx);
     if (remaining < standup_cost) {
         log_("Agent lacks sufficient movement to stand up (needs {}, has {})", standup_cost, remaining);
         return;
@@ -818,10 +802,7 @@ CombatEngine::advanceMove(BattleMap& bm)
             // Sentinel / Relentless Avenger: speed becomes 0 for the rest of the turn. Zero BOTH the engine budgets and
             // the Agent's own remaining (BattleMap::moveAgent reads the latter) so no further movement —
             // including a fresh begin_move — is possible this turn.
-            walkRemaining_[m.mover_idx]   = 0;
-            flyRemaining_[m.mover_idx]    = 0;
-            swimRemaining_[m.mover_idx]   = 0;
-            burrowRemaining_[m.mover_idx] = 0;
+            mv_.seedMoveBudgets(m.mover_idx, 0, 0, 0, 0);
             const auto& agents = bm.placedAgents();
             if (m.mover_idx >= 0 && m.mover_idx < static_cast<int>(agents.size()))
                 agents[static_cast<std::size_t>(m.mover_idx)].agent->initMovement(0, 0, 0, 0);

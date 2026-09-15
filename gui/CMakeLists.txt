@@ -66,14 +66,30 @@ target_link_libraries(rpg_battle_map PRIVATE
     ${OpenCV_LIBS}
 )
 
-# ── Unit tests (Python) ──────────────────────────────────────────────────────
-# Tests are written in Python; see test_*.py scripts
+# ── Unit tests ───────────────────────────────────────────────────────────────
+# Almost every suite is Python (tests/test_*.py) driving the compiled module.
+#
+# test_rules is the exception, and has to be: rules.hpp's free functions are not
+# exposed to pybind11, so a Python test can only reach them through a CombatEngine
+# — which is exactly what COMBAT_REFACTOR_PLAN.md's success criterion ("rules.hpp
+# has direct unit tests that construct no CombatEngine and no BattleMap") rules
+# out. It is a plain executable with no pybind11/OpenCV dependency; tests/test_rules.py
+# runs it from build/ so it reports through tests/run_all_tests.py like the rest.
+add_executable(test_rules test_rules.cpp)
+
+target_include_directories(test_rules PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${nlohmann_json_SOURCE_DIR}/include
+)
 
 # ── Compiler warnings ─────────────────────────────────────────────────────────
 if(MSVC)
     target_compile_options(rpg_battle_map PRIVATE /W4)
+    target_compile_options(test_rules PRIVATE /W4)
 else()
     target_compile_options(rpg_battle_map PRIVATE
+        -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
+    target_compile_options(test_rules PRIVATE
         -Wall -Wextra -Wpedantic -Wshadow -Wconversion)
 endif()
 

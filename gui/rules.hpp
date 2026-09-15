@@ -22,10 +22,11 @@
 //  directly, and deleting the forwarders, is later, incremental, TU-by-TU
 //  work — never a single sweep.
 //
-//  areAllies' team-check is duplicated here (2 lines) rather than depending on
-//  CombatEngine::areAllies (combat_visibility.cpp), which needs a live engine
-//  instance for no real reason (it only reads bm.getAgentFaction). Dedupe when
-//  R4 extracts VisibilityService.
+//  alliedFactions below is the single definition of the same-team-or-self test.
+//  R3 landed it here as a 2-line duplicate of CombatEngine::areAllies (which
+//  needed a live engine instance for no real reason — it only reads
+//  bm.getAgentFaction); R4's VisibilityService::areAllies now forwards to it,
+//  so there is one implementation again.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "battle_map.hpp"
@@ -412,8 +413,8 @@ inline bool canEquipArmor(const BattleMap& bm, int agent_idx, const Armor& armor
 //  Paladin / advantage auras (team-scoped emanations)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Same-team-or-self check, duplicated from CombatEngine::areAllies (combat_visibility.cpp) —
-// see the file header note on why this isn't a shared call.
+// Same-team-or-self check. Canonical definition: VisibilityService::areAllies (and hence
+// CombatEngine::areAllies) forwards here — see the file header note.
 inline bool alliedFactions(const BattleMap& bm, int a_idx, int b_idx) noexcept
 {
     if (a_idx == b_idx) return true;
@@ -560,7 +561,7 @@ inline int saveModFor(const BattleMap& bm, CombatContext& ctx, int agent_idx, Sa
 
 // Ability-scoped save Advantage (Phase 0.3) — the symmetric counterpart to
 // CombatEngine::curseSaveDisadvantage (which stays on the engine: it reads
-// activeAgentConditions_, not just the BattleMap). Data-driven off
+// the ConditionTracker, not just the BattleMap). Data-driven off
 // Stats::save_advantage_mask so any "Advantage on X saves" buff (Haste's DEX
 // save, future effects) is honored at every save site without a per-feature branch.
 inline bool saveAdvantageFor(const BattleMap& bm, int agent_idx, SaveAbility_t ab) noexcept

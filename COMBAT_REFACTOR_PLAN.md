@@ -1,9 +1,11 @@
 # Combat Engine Refactor — Implementation Plan
 
-Status: **IN PROGRESS** — R0, R1, R2, and R3's additive landing (`CombatContext` +
-`rules.hpp`, forwarders wired in) all done and verified (2026-09-14). R3's remaining
-step — migrating the ~950 call sites to `rules::` TU-by-TU and deleting the forwarders —
-is not started. See **Handoff (2026-09-14)** below before picking this up in a new session.
+Status: **IN PROGRESS** — R0, R1, R2, R3's additive landing (`CombatContext` + `rules.hpp`,
+forwarders wired in) plus its `rules.hpp` unit tests, and R4's first three sub-engine cuts
+(`VisibilityService`, `MovementController`, `ConditionTracker`) are done and verified. R3's
+call-site migration is open but is now expected to fall out of R4 rather than be swept; R4 has
+4 of its 7 sub-engines left, `SpellResolver`/`AttackResolver` next. See
+**Handoff (2026-09-14)** below before picking this up in a new session.
 
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
 triggering a full rebuild of every combat TU, (b) the rules layer becomes testable without
@@ -48,9 +50,49 @@ as extra signal: that failing test is itself an exercise of `calculateAC`, one o
 functions R3 moved into `rules.hpp`, so its failing in precisely the same way is direct
 evidence the moved AC logic behaves identically.
 
-**Not done**: everything from "migrate call sites TU-by-TU" onward in R3, and all of R4/R5.
-Do not start further work on R3 without the R0 determinism harness passing at every step —
-it's the oracle this whole plan depends on.
+**R4a landing (2026-09-14)**: `visibility_service.hpp` (new) extracts `VisibilityService` —
+the first of R4's seven sub-engines and the cleanest cut in the table. `CombatEngine` keeps
+all seven visibility/hide methods as forwarders, so nothing outside `combat.hpp`,
+`combat_visibility.cpp`, `combat_context.hpp` and `rules.hpp`'s comments changed. Read the
+**R4a** subsection below before touching any of it — especially seam 3 (`checkHide` no longer
+calls `applyHidden` itself), the one place the move is not purely mechanical.
+
+**R4a build/test verification** (2026-09-14, in the `angry_goodall` container): build succeeded
+**on the first attempt with no compile errors and no new warnings** (only the pre-existing
+pybind11 CMake deprecation notice and the known `-flto` serial-LTRANS note);
+`tests/test_determinism.py` matched the golden byte-for-byte; and `tests/run_all_tests.py` was
+**144/145** — the suite count went up by one because `test_rules.py` was added, and the single
+failure is the same pre-existing `test_monk.py::test_deflect_attacks_reduces_physical`
+(verified: same test, same line 505, same `"the Slashing hit should land for damage"`
+assertion), not a regression.
+
+**`rules.hpp` unit tests — DONE (2026-09-14)**, closing the success criterion at the bottom of
+this file. New `gui/test_rules.cpp` (its own `add_executable` target, no pybind11/OpenCV
+dependency — it links against nothing but headers) with `tests/test_rules.py` driving it from
+`build/` so it reports through `run_all_tests.py` like every other suite. 62 checks, all
+passing. See the **R3 — what "done" actually means** subsection for what it covers and the two
+plan corrections that writing it turned up.
+
+**R4b landing (2026-09-14)**: `movement_controller.hpp` (new) takes the per-turn walk/fly/swim/
+burrow budgets and the slipping-terrain counter. The movement *flow* and `in_flight_move_`
+stayed on `CombatEngine` on purpose — they are entangled with `pending_decision_` and travel
+with `ReactionArbiter`. Same verification as R4a: clean build, golden byte-identical, 144/145.
+Read the **R4b** subsection before touching it.
+
+**R4c landing (2026-09-14)**: `condition_tracker.hpp` (new) takes the active-condition store,
+the id counter and both stat-snapshot maps, with `ActiveAgentCondition` gaining a 33-field JSON
+mapping (as free functions, so `battle_map.hpp` is untouched). The container moved; the effect
+logic that drives it did not. Same verification: clean build, golden byte-identical, 144/145.
+Read the **R4c** subsection first — especially why `nextId()`/`append()` stayed two calls and
+what `mutableAll()` is for.
+
+**Not done**: everything from "migrate call sites TU-by-TU" onward in R3 (though see "R3 — what
+'done' actually means": it is 298 sites, not 950, most forwarders must stay, and the migration
+now falls out of R4 for free), R4's remaining four sub-engines plus the movement flow deferred
+from R4b and `ConditionTracker::mutableAll()`'s removal deferred from R4c, and all of R5.
+**`SpellResolver`/`AttackResolver` are next and are NOT yet measured** — scope them the way R4b
+and R4c were scoped before starting. Do not start further work on R3 or R4 without the R0 determinism harness
+passing at every step — it's the oracle this whole plan depends on.
 
 **Build environment — read this before running anything.** This repo's real build/run
 environment is a Docker container, not the host machine directly:
@@ -246,11 +288,18 @@ therefore buys essentially nothing — the churn is method *additions* in the pu
 | **R1** | Split `rpg_bindings.cpp` by domain | very low | 2–3 days | biggest single build-time win |
 | **R2** | Extract `combat_types.hpp` | low | 1–2 days | 40% of header churn stops rebuilding binding TUs |
 | **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules — *additive landing done; call-site migration open* |
-| **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity |
+| **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity — *`VisibilityService` cut; 6 sub-engines left* |
 | **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save |
 
 R0–R2 are mechanical and near-risk-free — do them regardless of whether R4 ever happens.
 R3 is the highest-leverage single step. **R4 should not start until R3 has settled.**
+
+> Deviation, recorded 2026-09-14: R4a (`VisibilityService`) was started while R3's call-site
+> migration is still open, at the user's direction. The two turn out not to conflict — R3's
+> open half is rewriting `foo(...)` to `rules::foo(...)` inside the combat TUs, while R4a only
+> moved *declarations* and left every call site alone — but the rule above still stands for the
+> later, more entangled sub-engines. In particular, do not take `ReactionArbiter` (the
+> `pending_decision_` / `in_flight_*` cut) with R3 half-migrated.
 
 ---
 
@@ -493,15 +542,83 @@ gone from code, comments only remaining), then built clean and test-verified in 
 container — no compile errors, no new warnings, determinism golden byte-identical, suite at
 the same 143/144. See the Handoff section above for the full results.
 
-### R4 — Sub-engines behind a facade
+#### R3 — what "done" actually means (measured 2026-09-14)
 
-Only after R3 settles. Each sub-engine owns its state struct and holds `CombatContext&`:
+Two corrections to this phase's remaining scope, both from counting rather than estimating.
+
+**1. The call-site migration is 298 sites, not ~950.** The 950 figure was the whole `→core`
+edge, and `agentName(bm, idx)` alone accounts for **607** of it — a core primitive R3 never
+moved into `rules.hpp`. Actual unqualified calls to the 19 `rules::` functions still routing
+through `CombatEngine`:
+
+| TU | sites | | function | sites |
+| --- | ---: | --- | --- | ---: |
+| `combat_spells.cpp` | 79 | | `roll` | 182 |
+| `combat_attack.cpp` | 63 | | `saveModFor` | 33 |
+| `combat_riders.cpp` | 57 | | `spellSaveDcFromAbility` | 18 |
+| `combat_resources.cpp` | 48 | | `rollAdvantage`/`rollDisadvantage` | 23 |
+| `combat_turn.cpp` | 42 | | `spellSaveDc`/`calculateAC` | 18 |
+| `combat_conditions.cpp` | 7 | | the other 13 functions | 24 |
+| `combat_movement.cpp`/`_state.cpp` | 4 | | | |
+
+`combat_core.cpp` and `combat_visibility.cpp` are already fully migrated.
+
+**2. "Delete the forwarders" is mostly impossible, and that's correct.** **15 of the 19** are
+bound to Python (`bind_combat_turn.cpp`, plus `roll` in `bind_combat_resources.cpp`), and
+cross-cutting decision #1 says the Python API does not change — so `roll`, `calculateAC`,
+`saveModFor`, the five aura queries and the rest keep their forwarders *permanently*. They are
+the public API now, not scaffolding. Only `spellAttackMod`, `spellSaveDc`,
+`spellSaveDcFromAbility` and `bestPaladinAura` are unbound and genuinely deletable.
+
+**Recommendation: don't do the migration as a standalone sweep — it falls out of R4 for free.**
+A sub-engine has no `CombatEngine this`, so anything moved into one *must* call `rules::`
+directly. That is exactly what happened in R4a: `VisibilityService`'s `roll(20)` became
+`rules::roll(ctx_, 20)`, which is why `combat_visibility.cpp` now shows zero unqualified calls.
+Each R4 cut migrates its own TU as a byproduct, verified by the same build.
+
+**The unit-test criterion is met, but it was only ever half-achievable as written.**
+`gui/test_rules.cpp` covers what genuinely needs neither an engine nor a map: the dice layer
+(`roll`/`rollAdvantage`/`rollDisadvantage` — bounds, seeded determinism, the flat modifier, the
+Bardic pending bonus added exactly once even under advantage, Portent replacing the die and
+stacking with modifier+bonus, one-shot advantage being d20-only, the 5e cancellation rule in
+both directions, and the adv/straight/dis distributions), the weapon modifiers
+(`attackModifier`/`damageAbilityMod` — STR/DEX/finesse selection, proficiency, Archery applying
+to Ranged but *not* to a thrown melee weapon, Pact of the Blade's never-worse CHA option), the
+spell DCs (`spellAttackMod`/`spellSaveDc`/`spellSaveDcFromAbility`, including Innate Sorcery and
+the sub-10 odd-score rounding correction that C++ truncation would otherwise get wrong), and
+`CombatContext`'s JSON round-trip — including a check that a restored context *continues* the
+mt19937 stream while a seed-restored one diverges, which is the whole reason `to_json` stores
+state rather than the seed.
+
+`calculateAC`, `isHoldingShield`, `canEquipArmor`, `saveModFor`, `saveAdvantageFor` and the five
+aura queries all take `const BattleMap&` by design, so "no BattleMap" is unreachable for them.
+They stay covered by the Python suites that build a real map (`test_ac_dex.py`,
+`test_paladin_auras.py`, `test_advantage_aura.py`, `test_bless.py`, …).
+
+**Why the test is C++ and not Python — asked and decided 2026-09-14.** Binding `rules::` to
+pybind11 is entirely possible (15 of the 19 need no new class bindings at all — `Agent::Stats`,
+`Weapon` and `BattleMap` are already bound), so "it had to be C++" would be wrong. It was
+declined deliberately: the C++ binary links against headers alone and so *cannot* construct an
+engine or a map, which proves the criterion structurally rather than by convention; binding the
+four dice functions would mean exposing `CombatContext`'s scratch state to Python as a writable
+object; and 15 of the 19 are already bound on `CombatEngine`, so a `rules` submodule would give
+Python two routes to the same logic. The full write-up, including what the cheap version would
+look like if a Python-side *caller* ever wants it, is in `memory/known_limitations.md` →
+*Architecture / Infrastructure* → "`rules::` has no Python binding". `README.md`'s Test section
+summarises it for anyone running the suite.
+
+### R4 — Sub-engines behind a facade — **IN PROGRESS** (3 of 7 cut, 2026-09-14)
+
+Legend in the table below: ✅ fully cut · ◐ partially cut (see its subsection for what stayed
+behind and why).
+
+Each sub-engine owns its state struct and holds `CombatContext&`:
 
 | Sub-engine | Owns | From |
 | ---------- | ---- | ---- |
-| `VisibilityService` | `visibilityMap_` | `combat_visibility.cpp` (49 in / 4 out — cleanest cut) |
-| `MovementController` | `in_flight_move_`, walk/fly/swim/burrow budgets, `slipDistanceMoved_` | `combat_movement.cpp` |
-| `ConditionTracker` | `activeAgentConditions_`, `nextConditionId_`, petrify/gaseous snapshots | `combat_conditions.cpp` |
+| `VisibilityService` ✅ | `visibilityMap_` | `combat_visibility.cpp` (49 in / 4 out — cleanest cut) |
+| `MovementController` ◐ | `in_flight_move_`, walk/fly/swim/burrow budgets, `slipDistanceMoved_` | `combat_movement.cpp` |
+| `ConditionTracker` ◐ | `activeAgentConditions_`, `nextConditionId_`, petrify/gaseous snapshots | `combat_conditions.cpp` |
 | `SpellResolver` | `cast_stack_`, `activeEffects_`, `safeTargets_`, `zoneAppliedTurn_` | `combat_spells.cpp` |
 | `AttackResolver` | `in_flight_attack_` | `combat_attack.cpp` |
 | `ReactionArbiter` | `pending_decision_`, `in_flight_turn_` | reaction paths in `combat_riders.cpp` |
@@ -526,6 +643,186 @@ Also flag: `combat_resources.cpp` (84 methods of class/subclass activations) is 
 guaranteed to grow forever as classes are added. It should eventually split by class
 family (`resources_martial.cpp`, `resources_caster.cpp`, …), but that is a follow-on to
 R4, not part of it.
+
+#### R4a — `VisibilityService` — **DONE** (2026-09-14)
+
+The first and cleanest cut, taken per the order above. `combat_visibility.cpp` was the only
+module whose state member (`visibilityMap_`) is touched by *no* other TU — grep-confirmed
+before starting — so this cut moves an owner without disturbing a single external call site.
+
+**New `gui/visibility_service.hpp`** declares `class VisibilityService`: constructed with a
+`CombatContext&`, owning `visibilityMap_`, exposing the seven methods that used to be
+`CombatEngine::computeVisibility` / `getVisibility` / `canPerceiveTarget` /
+`forcecageSeparates` / `areAllies` / `checkHide` / `checkHiddenAgentDetection`. Bodies stay in
+`combat_visibility.cpp` (same TU, same `CMakeLists.txt` entry — no build-file change) and are
+verbatim apart from the three seams below. `CombatEngine` drops `visibilityMap_`, gains
+`VisibilityService vis_{ctx_};` (declared after `ctx_` so the reference it binds is already
+initialized), and keeps all seven methods as one-line forwarders — so the ~60 internal call
+sites across `combat_core/_attack/_spells/_turn/_riders/_movement/_conditions.cpp`, the five
+pybind11 `.def`s in `bind_combat_turn.cpp`, and `main.py` are **completely untouched**. Same
+"land additively, migrate call sites later, TU-by-TU" rule R3 followed for `rules.hpp`.
+
+**Three deliberate non-rename seams**, each recorded in `visibility_service.hpp`'s header:
+
+1. **`areAllies` deduped.** R3 copied the two-line faction test into `rules.hpp` as
+   `alliedFactions` with a comment reading "dedupe when R4 extracts `VisibilityService`".
+   That dedupe happened here: `rules.hpp` is now the single definition and
+   `VisibilityService::areAllies` (and therefore `CombatEngine::areAllies`) forwards to it.
+   Both `rules.hpp` comments saying otherwise were updated.
+2. **`log_` deduped upward instead of copied sideways.** The service needs to log, and copying
+   `CombatEngine::log_` into it would have created a second implementation. Instead
+   `CombatContext` gained a `log(...)` member template — the single definition — and
+   `CombatEngine::log_` became a one-line forwarder to it. Every one of the engine's existing
+   `log_(...)` call sites is unchanged; sub-engines from here on log via `ctx_.log(...)` with
+   no engine in hand. `roll(20)` inside the service is likewise now `rules::roll(ctx_, 20)`,
+   which is exactly what `CombatEngine::roll` already forwards to after R3.
+3. **`checkHide` no longer applies the Hidden condition itself.** It used to call
+   `applyHidden`, which lives in `combat_conditions.cpp` — the future `ConditionTracker`, not
+   this module. Rather than duplicate that helper or drag a cross-module dependency into the
+   first cut, `VisibilityService::checkHide` sets `result.hidden` and
+   `CombatEngine::checkHide` calls `applyHidden` when it sees that flag. **Observably
+   identical**: in the original, nothing was logged after the `applyHidden` call and nothing
+   between it and the `return` read the hidden flag back, so both the logger sequence and the
+   `BattleMap` state at return are unchanged. This is the one place the move is not purely
+   mechanical, and it is the seam to re-check first if the determinism golden ever drifts.
+
+**Serialization** written now, per decision #4: `VisibilityService::to_json`/`from_json`
+round-trip `visibilityMap_` as an array of `{key, level}` objects. The packed
+`(source << 32 | target)` key is stored **raw** rather than unpacked into two fields, so no
+index can be reinterpreted on the way back. It is a cache, but a restored engine that skipped
+it would answer `Blocked` for every pair until the next `computeVisibility`, so it round-trips
+rather than being treated as transient the way R3 treated the NPC-animation plumbing.
+
+**Consequence worth knowing**: the `CombatContext&` member makes `CombatEngine` no longer
+copy-*assignable* (copy construction still compiles but would alias the source's context).
+Nothing copies a `CombatEngine` today — `py::class_<CombatEngine>` only registers
+`py::init<uint32_t>` — but if that ever changes the engine needs explicit copy semantics that
+rebind `vis_` to its own `ctx_`.
+
+#### R4b — `MovementController` (partial: budgets, not the flow) — **DONE** (2026-09-14)
+
+**New `gui/movement_controller.hpp`** — header-only `inline` like `combat_context.hpp`, since
+every method is a one-liner over five `unordered_map<int,int>`s. Owns **five of the six** members
+the table above assigns it: `walkRemaining_`, `flyRemaining_`, `swimRemaining_`,
+`burrowRemaining_`, `slipDistanceMoved_`. `CombatEngine` keeps `getWalkRemaining`/…/`spendBurrow`/
+`clearMovement`/`seedMoveBudgets` as forwarders, so the pybind11 surface and `main.py` are
+untouched.
+
+**`in_flight_move_` and the movement FLOW deliberately did not come along**, and this is the
+first place R4's ordering rule actually bites. Measured before deciding: `moveAgent`, `jumpAgent`,
+`teleportAgent`, `canAgentMove`, `placeTeleportedAgents`, `checkSlippingTerrain`, `standup` and
+the `beginMove`/`advanceMove` park-resume pair touch `pending_decision_` (5×),
+`activeAgentConditions_` (3×), `in_flight_turn_` (2×), `in_flight_attack_` (2×), `cast_stack_`
+and `decider_` — state owned by `ReactionArbiter`, `ConditionTracker` and `SpellResolver`, none of
+which exist yet, and `ReactionArbiter` is scheduled LAST on purpose. Moving the flow now would
+mean threading four unextracted members into the controller. **The flow travels with
+`ReactionArbiter`; `in_flight_move_` stays on `CombatEngine` until then.** What landed is the
+half with no cross-module coupling whatsoever.
+
+**No `CombatContext&` member**, unlike `VisibilityService` — nothing in the budget layer rolls a
+die or logs, so the reference would be dead weight and would delete `CombatEngine`'s
+copy-assignment for no reason. (The flow functions that *do* roll and log are exactly the ones
+staying on the engine.) A sub-engine takes `CombatContext&` when it needs one, not on principle.
+
+**Ten direct field pokes from outside the module were routed through the controller**, each
+checked to be behaviour-identical rather than assumed:
+- `combat_turn.cpp` beginTurn's four `std::max(0, …)` budget seeds → one `seedMoveBudgets` call
+  (which applies the same clamp), and its `slipDistanceMoved_[idx] = 0` → `resetSlipDistance`.
+- `combat_riders.cpp`'s Speed-0 rider and `combat_movement.cpp`'s Sentinel-halt commit, both
+  zeroing all four budgets → `seedMoveBudgets(idx, 0,0,0,0)` (`max(0,0) == 0`).
+- `combat_resources.cpp`'s Instinctive Pounce `walkRemaining_[idx] += speed/2` → `grantWalk`,
+  which is additive and un-clamped on the high side exactly as the raw `+=` was.
+- `standup`'s hand-rolled `walkRemaining_.find` → `getWalkRemaining`.
+- `checkSlippingTerrain`'s `int& slip_counter` reference → `addSlipDistance` (accumulate and
+  return the new total) + `resetSlipDistance`. Same per-iteration re-read semantics.
+
+`grantWalk`/`resetSlipDistance`/`addSlipDistance` have no engine-level equivalent and are not
+exposed to Python — they exist solely to give those pokes a typed route. Note `clearMovement`
+still does **not** clear the slip counter, matching the original exactly.
+
+**Serialization** per decision #4, and it matters more here than for the visibility cache: a
+mid-combat restore with empty budgets would let a creature that had already moved move again.
+Int-keyed maps serialize as arrays of `{agent, feet}`, the same choice R3 made for
+`agent_portent_round_used_`.
+
+**Verification** (2026-09-14, `angry_goodall`): clean build, no errors, no new warnings;
+`test_determinism.py` byte-identical to the golden; `test_rules` 62/62;
+`tests/run_all_tests.py` **144/145** with only the pre-existing `test_monk.py` failure. The
+movement paths are densely covered — `test_movement.py`, `test_forced_movement_oa.py`,
+`test_grapple.py`, `test_teleportation.py`, `test_reactions.py` all pass, which exercises the
+budget seeds, the Sentinel halt, and the slip counter.
+
+#### R4c — `ConditionTracker` (the container, not the effect logic) — **DONE** (2026-09-14)
+
+The first cut where the member is genuinely **shared** — the plan's opening analysis named
+`activeAgentConditions_` and `pending_decision_` as the only two — so the boundary is drawn
+differently from R4a/R4b, and that is the main thing to understand here.
+
+**New `gui/condition_tracker.hpp`** owns all four members the table assigns it:
+`activeAgentConditions_`, `nextConditionId_`, `petrifySnapshots_`, `gaseousSnapshots_` — and the
+`PetrifySnapshot`/`GaseousSnapshot` structs, which moved out of `CombatEngine`'s private section.
+`CombatEngine` is down to one member, `ConditionTracker conditions_;`.
+
+**Where the line is drawn**: the **container** and its bookkeeping moved (stamp an id, append,
+look up by id, erase by id, drop a batch of ids, hand out the list, store/find/erase a snapshot).
+The **effect logic** stayed on `CombatEngine` — `addAgentCondition`'s ~230 lines of per-condition
+application, `onConditionEnded`'s teardown chokepoint, `resolveDelayedEffect`, and the two tick
+drivers. Those call into damage, spells, concentration and every `applyXxx`; they are engine
+orchestration that happens to write to this container, not container logic. Unlike R4a/R4b,
+where the whole file had one obvious owner, `combat_conditions.cpp`'s 37 methods do not — and
+~830 of its lines (the `applyParalyzed`/`applyBlinded`/… flag setters) never touch the container
+at all.
+
+**The 53 call sites**: almost all were read-only range-fors and became `conditions_.all()`.
+Exactly three mutate in place — `combat_turn.cpp:825`, `:927` and `:1103` (the last deliberately
+index-based, because `removeAgentCondition` mutates the vector mid-iteration) — and those go
+through `mutableAll()`. That accessor is a **deliberate, documented transitional seam**, not an
+oversight: it is the honest statement that the tick logic still lives outside the tracker, and it
+should disappear when that logic moves. Everything else is a typed route.
+
+Three subtleties preserved rather than tidied:
+- `nextId()` and `append()` are two calls, not one `add()`. `addAgentCondition` stamps the id
+  **first**, runs its long apply logic — which can itself add conditions — and appends **last**.
+  Merging them would reorder the container relative to the ids, which is observable.
+- `take(id, out)` copies the entry out **after** erasing it, because `removeAgentCondition`'s
+  caller fires the Vistani-curse kickback on that copy and the teardown can cascade back into
+  this container via `dropConcentration`.
+- `dropByIds` reproduces the old "rebuild a `remaining` vector in order" exactly, deduped from
+  the two tick drivers that each had their own copy of it.
+
+**Both snapshot maps came along, including the leak.** `petrifySnapshots_` had 3 touches in
+`combat_spells.cpp` (`curePetrified`, i.e. Flesh to Stone's reversal); those now go through
+`conditions_.findPetrifySnapshot()` / `erasePetrifySnapshot()`. Keeping the pair together beat
+splitting them — they are the same kind of thing (pre-transformation stat snapshots) and the
+alternative was leaving one on the engine for no reason but call-site count.
+
+**Serialization** per decision #4, and this is the one that matters: active conditions are the
+biggest chunk of real per-encounter state `MULTIPLAYER_PLAN.md` needs. `ActiveAgentCondition`'s
+33 fields get their JSON mapping as **free functions in `combat_conditions.cpp`**, not as members
+on the struct — deliberately, so `battle_map.hpp` (included by nearly every TU) gains neither a
+diff nor an nlohmann dependency. Enums round-trip through their underlying int; `from_json`
+starts from a default-constructed condition so a payload missing a field inherits the default
+rather than a zero.
+
+**One include-graph decision worth keeping**: the tracker's method bodies live in
+`combat_conditions.cpp`, not inline in the header, so `condition_tracker.hpp` needs only a
+forward declaration of `ActiveAgentCondition`. A header-only tracker would have forced
+`battle_map.hpp` (59 KB) into `combat.hpp`, which today only forward-declares it.
+
+**Verification** (2026-09-14, `angry_goodall`): clean build, no errors, no new warnings;
+`test_determinism.py` byte-identical to the golden; `test_rules` 62/62;
+`tests/run_all_tests.py` **144/145** with only the pre-existing `test_monk.py` failure. Dense
+coverage on exactly these paths — `test_conditions.py`, `test_condition_saves.py`,
+`test_hold_person_endturn.py`, `test_petrified.py`, `test_misty_escape.py` (gaseous snapshots),
+`test_spells_tier2.py` (Flesh to Stone → `curePetrified`), `test_vistani.py` (the kickback
+cascade), `test_haste.py` (lethargy added during teardown) all pass.
+
+#### Next cut: `SpellResolver` / `AttackResolver`
+
+Per the order at the top of this section. Not yet measured — do that first, the way R4b and R4c
+were scoped, rather than guessing from the file sizes. Note that `ReactionArbiter` stays last,
+and that it now carries three deferred items with it: `in_flight_move_` plus the movement flow
+(R4b), and `ConditionTracker::mutableAll()`'s removal once the tick drivers move.
 
 ### R5 — Serialization
 
@@ -572,5 +869,9 @@ is the strongest evidence the two efforts are the same work.
 - Adding a new spell or subclass feature no longer requires editing `combat.hpp`.
 - Incremental build after a one-line rules change drops from "all 11 TUs + bindings" to a
   single TU (measure against the R0 baseline).
-- `rules.hpp` has direct unit tests that construct no `CombatEngine` and no `BattleMap`.
+- ~~`rules.hpp` has direct unit tests that construct no `CombatEngine` and no `BattleMap`.~~
+  **Met 2026-09-14** — `gui/test_rules.cpp` (62 checks) via `tests/test_rules.py`, the tree's
+  only non-Python suite. Only partly achievable as written; see "R3 — what 'done' actually
+  means" for which functions are structurally out of reach, and `memory/known_limitations.md`
+  for why `rules::` is deliberately left unbound.
 - Every module's state round-trips through `snapshot()`/`restore()`.

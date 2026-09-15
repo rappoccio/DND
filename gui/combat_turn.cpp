@@ -188,7 +188,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     auto agent_name = agentName(bm, agent_idx);
     // Reset slip distance counter and slipped flag for the new turn
-    slipDistanceMoved_[agent_idx] = 0;
+    mv_.resetSlipDistance(agent_idx);
     agents[static_cast<std::size_t>(agent_idx)].agent->setSlippedThisTurn(false);
 
     // General feats — expire enhanced-crit marks that this agent set on a victim "until the start
@@ -563,11 +563,11 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // of the creature's turn, resistances applying. Runs BEFORE Regeneration (like Burning)
     // so a DoT that interrupts a regenerator is accounted for this same turn. Snapshot the
     // specs first — processDamageTaken can end conditions (on_damage), which would invalidate
-    // a live iterator over activeAgentConditions_.
+    // a live iterator over conditions_.all().
     if (stats.hp_cur > 0) {
         struct DotTick { int dice; int die; int flat; MagicDamage_t type; std::string name; };
         std::vector<DotTick> ticks;
-        for (const auto& ac : activeAgentConditions_)
+        for (const auto& ac : conditions_.all())
             if (ac.agent_idx == agent_idx && ac.dot_dice > 0)
                 ticks.push_back({ac.dot_dice, ac.dot_die_size, ac.dot_flat_bonus,
                                  ac.dot_damage_type, ac.condition_name});
@@ -780,7 +780,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Check if concentration spell has any living targets left
     if (cond.concentrating && !cond.concentrating_on.empty()) {
         bool has_living_targets = false;
-        for (const auto& active_cond : activeAgentConditions_) {
+        for (const auto& active_cond : conditions_.all()) {
             // Check if any agents have conditions applied by this caster's spells
             if (active_cond.caster_idx == agent_idx &&
                 active_cond.agent_idx >= 0 &&
@@ -822,7 +822,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // Check for incapacitating conditions first (Paralyzed, Incapacitated, Stunned)
     // These always cause a turn skip unless the agent succeeds on a save
-    for (auto& active_cond : activeAgentConditions_) {
+    for (auto& active_cond : conditions_.mutableAll()) {
         if (active_cond.agent_idx != agent_idx) continue;
         if (active_cond.condition_name != "Paralyzed" &&
             active_cond.condition_name != "Incapacitated" &&
@@ -924,7 +924,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     }
 
     // Check for non-incapacitating conditions that allow save repeats
-    for (auto& active_cond : activeAgentConditions_) {
+    for (auto& active_cond : conditions_.mutableAll()) {
         if (active_cond.agent_idx != agent_idx) continue;
         if (active_cond.condition_name == "Paralyzed" ||
             active_cond.condition_name == "Incapacitated" ||
@@ -1013,10 +1013,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Aura of Alacrity (Paladin Oath of Glory L7): +10 ft Speed while in a Glory paladin's aura (the
     // paladin itself always qualifies). A budget bonus for this turn — no stat mutation.
     if (hasAuraOfAlacrity(bm, agent_idx)) speed_bonus += 10;
-    walkRemaining_[agent_idx] = std::max(0, stats.speed_walk + speed_bonus - move_penalty);
-    flyRemaining_ [agent_idx] = std::max(0, stats.speed_fly - move_penalty);
-    swimRemaining_[agent_idx] = std::max(0, stats.speed_swim - move_penalty);
-    burrowRemaining_[agent_idx] = std::max(0, stats.speed_burrow - move_penalty);
+    // seedMoveBudgets clamps each to >= 0, exactly as the four std::max calls here did.
+    mv_.seedMoveBudgets(agent_idx,
+                        stats.speed_walk + speed_bonus - move_penalty,
+                        stats.speed_fly    - move_penalty,
+                        stats.speed_swim   - move_penalty,
+                        stats.speed_burrow - move_penalty);
 
     // Warrior of Shadow L17 Cloak of Shadows: Invisibility expires if agent moves to bright light
     if (cond.cloak_of_shadows_active) {
@@ -1096,10 +1098,10 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
     // Conditions flagged save_at_end_of_turn repeat their save at the END of the affected
     // creature's turn (RAW), not the start — beginTurn deliberately skips them. A success ends the
     // condition now, so the creature can act again starting on its NEXT turn. Iterate by index
-    // (removeAgentCondition mutates activeAgentConditions_) and stop after the first: a creature
+    // (removeAgentCondition mutates conditions_.all()) and stop after the first: a creature
     // makes at most one such save per turn.
-    for (std::size_t i = 0; i < activeAgentConditions_.size(); ++i) {
-        ActiveAgentCondition& active_cond = activeAgentConditions_[i];
+    for (std::size_t i = 0; i < conditions_.mutableAll().size(); ++i) {
+        ActiveAgentCondition& active_cond = conditions_.mutableAll()[i];
         if (active_cond.agent_idx != agent_idx) continue;
         if (!active_cond.save_at_end_of_turn) continue;
         if (active_cond.save_repeat_turns == -1) continue;                            // never saves
@@ -1143,7 +1145,7 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
 
 // After a spell-applied condition ends (the target saved out of it), drop the caster's
 // concentration IFF this was the last remaining target still affected by that same spell.
-// `ended` must already be removed from activeAgentConditions_. Shared by beginTurn's start-of-turn
+// `ended` must already be removed from conditions_.all(). Shared by beginTurn's start-of-turn
 // save loop and endTurn's end-of-turn (Hold Person) save loop.
 void CombatEngine::dropCasterConcentrationIfLastTarget(BattleMap& bm, const ActiveAgentCondition& ended) noexcept
 {
@@ -1153,7 +1155,7 @@ void CombatEngine::dropCasterConcentrationIfLastTarget(BattleMap& bm, const Acti
     if (!caster_cond.concentrating) return;
 
     // Any other tracked condition from the same spell (same caster + spell) keeps concentration up.
-    for (const auto& other_cond : activeAgentConditions_) {
+    for (const auto& other_cond : conditions_.all()) {
         if (other_cond.caster_idx == ended.caster_idx &&
             other_cond.spell_idx  == ended.spell_idx  &&
             other_cond.condition_id != ended.condition_id) {
@@ -1417,7 +1419,7 @@ NpcAutomationStrategy CombatEngine::resolveStrategy(const BattleMap& bm, int age
 
 int CombatEngine::npcCommandFleeSource(int agent_idx) const noexcept
 {
-    for (const auto& ac : activeAgentConditions_)
+    for (const auto& ac : conditions_.all())
         if (ac.agent_idx == agent_idx && ac.condition_name == "CommandFlee" && ac.caster_idx >= 0)
             return ac.caster_idx;
     return -1;

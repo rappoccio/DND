@@ -172,7 +172,7 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
 
     // Frightened: caster has disadvantage when fear source is in LOS
     if (caster_pa.agent->getConditions().frightened) {
-        for (const auto& ac : activeAgentConditions_) {
+        for (const auto& ac : conditions_.all()) {
             if (ac.agent_idx == action.caster_idx && ac.condition_name == "Frightened" && ac.caster_idx >= 0) {
                 if (bm.hasLineOfSight(caster_pa.origin, caster_pa.agent->getSize(),
                                       bm.placedAgents()[ac.caster_idx].origin, 1)) {
@@ -940,7 +940,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // Check if caster is charmed and any target is the charmer
     if (caster_pa.agent->getConditions().charmed) {
         int charmer_idx = -1;
-        for (const auto& cond : activeAgentConditions_) {
+        for (const auto& cond : conditions_.all()) {
             if (cond.agent_idx == action.caster_idx &&
                 cond.condition_name == "Charmed") {
                 charmer_idx = cond.caster_idx;
@@ -2223,7 +2223,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         // runs (clears the live flag + any curse/kickback bookkeeping).
         if (!sp.ends_conditions.empty() && tgt_idx >= 0 && tgt_idx < static_cast<int>(agents.size())) {
             std::vector<int> to_end;
-            for (const auto& ac : activeAgentConditions_) {
+            for (const auto& ac : conditions_.all()) {
                 if (ac.agent_idx != tgt_idx) continue;
                 if (std::find(sp.ends_conditions.begin(), sp.ends_conditions.end(),
                               ac.condition_name) != sp.ends_conditions.end())
@@ -3292,7 +3292,7 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     //    it, e.g. Hypnotic Pattern targets would stay Incapacitated with speed 0 after concentration
     //    drops. Collect first, then remove, so the list isn't mutated mid-iteration.
     const auto& spells = bm.getAgentSpells(agent_idx);
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.caster_idx == agent_idx &&
             ac.spell_idx >= 0 && ac.spell_idx < static_cast<int>(spells.size()) &&
             spells[static_cast<std::size_t>(ac.spell_idx)].requires_concentration) {
@@ -3434,7 +3434,7 @@ CombatEngine::dispelCandidatesOnAgent(BattleMap& bm, int caster_idx, int target_
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return {};
 
     // Spell-applied conditions on the target (caster_idx>=0 → spell-applied, not innate).
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.agent_idx != target_idx || ac.caster_idx < 0) continue;
         refs.push_back({DispelRef::Condition, ac.condition_id, ac.caster_idx, ac.spell_idx,
                         dispelEffectLevel(bm, ac.caster_idx, ac.spell_idx, ac.cast_level),
@@ -3511,7 +3511,7 @@ bool CombatEngine::applyDispelCandidate(BattleMap& bm, int caster_idx,
     }
     if (!ok) return false;
 
-    // Snapshot-then-remove: removeAgentCondition mutates activeAgentConditions_ (a Haste teardown
+    // Snapshot-then-remove: removeAgentCondition mutates conditions_.all() (a Haste teardown
     // even ADDS the lethargy condition), so the id list must be captured before we start erasing.
     for (int id : c.condition_ids)    removeAgentCondition(bm, id);   // routes onConditionEnded teardown
     for (int id : c.spell_effect_ids) bm.removeSpellEffect(id);
@@ -3530,7 +3530,7 @@ void CombatEngine::dispelSelected(BattleMap& bm, int caster_idx,
     // Resolve the chosen ids back to refs (dropping any that no longer exist), group by spell, roll.
     std::vector<DispelRef> refs;
     for (int id : condition_ids)
-        for (const auto& ac : activeAgentConditions_)
+        for (const auto& ac : conditions_.all())
             if (ac.condition_id == id && ac.caster_idx >= 0) {
                 refs.push_back({DispelRef::Condition, ac.condition_id, ac.caster_idx, ac.spell_idx,
                                 dispelEffectLevel(bm, ac.caster_idx, ac.spell_idx, ac.cast_level),
@@ -3595,7 +3595,7 @@ void CombatEngine::endDispelledConcentration(
         if (!oc.concentrating) continue;
 
         bool remains = false;
-        for (const auto& ac : activeAgentConditions_)
+        for (const auto& ac : conditions_.all())
             if (ac.caster_idx == owner && ac.spell_idx == spell_idx) { remains = true; break; }
         if (!remains)
             for (const auto& eff : bm.activeSpellEffects())
@@ -3671,7 +3671,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     // Haste (Phase 2) teardown — reverse every buff exactly, then inflict the end-of-spell lethargy
     // on EVERY end path (concentration drop, duration expiry, Dispel Magic, death). Adding a
     // condition here is safe: onConditionEnded (this method's only caller) always runs deferred,
-    // after activeAgentConditions_ has been rebuilt. Suppress the lethargy when the target is
+    // after conditions_.all() has been rebuilt. Suppress the lethargy when the target is
     // already dead — the Vistani-kickback gate is the precedent.
     if (n == "Hasted") {
         Agent::Stats st = bm.getAgentStats(cond.agent_idx);
@@ -3830,10 +3830,10 @@ int CombatEngine::cureCurses(BattleMap& bm, int target_idx) noexcept
     const auto& agents = bm.placedAgents();
     if (target_idx < 0 || target_idx >= static_cast<int>(agents.size())) return 0;
 
-    // Collect first: removeAgentCondition mutates activeAgentConditions_ (and its onConditionEnded
+    // Collect first: removeAgentCondition mutates conditions_.all() (and its onConditionEnded
     // kickback can cascade into dropConcentration), so we must not iterate-and-erase in place.
     std::vector<int> curse_ids;
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.agent_idx != target_idx) continue;
         // A curse-tracked condition is one named "Cursed" (Vistani Curse of Vulnerability/Weakness),
         // one that carries a curse effect marker, or any condition bearing a Vistani kickback (Curse
@@ -3870,15 +3870,14 @@ void CombatEngine::curePetrified(BattleMap& bm, int idx) noexcept
     // applyPetrified overwrites the creature's speeds (→0) and every damage multiplier (→0.5×),
     // discarding the originals, so restore from the snapshot taken at petrify time.
     Agent::Stats st = bm.getAgentStats(idx);
-    auto it = petrifySnapshots_.find(idx);
-    if (it != petrifySnapshots_.end()) {
-        st.speed_walk   = it->second.speed_walk;
-        st.speed_fly    = it->second.speed_fly;
-        st.speed_swim   = it->second.speed_swim;
-        st.speed_burrow = it->second.speed_burrow;
-        st.magic_damage_multipliers    = it->second.magic_mult;
-        st.physical_damage_multipliers = it->second.phys_mult;
-        petrifySnapshots_.erase(it);
+    if (const PetrifySnapshot* snap = conditions_.findPetrifySnapshot(idx)) {
+        st.speed_walk   = snap->speed_walk;
+        st.speed_fly    = snap->speed_fly;
+        st.speed_swim   = snap->speed_swim;
+        st.speed_burrow = snap->speed_burrow;
+        st.magic_damage_multipliers    = snap->magic_mult;
+        st.physical_damage_multipliers = snap->phys_mult;
+        conditions_.erasePetrifySnapshot(idx);
     } else {
         // No snapshot (e.g. a save taken mid-Petrify, then reloaded): the originals are unrecoverable.
         // Restore the flat 0.5× resistances back to normal; speeds stay as-is (known limitation).
@@ -3904,7 +3903,7 @@ bool CombatEngine::greaterRestoration(BattleMap& bm, int target_idx) noexcept
     // tracker, so a later tick doesn't re-clear a stale entry). Petrified needs curePetrified below
     // to restore speeds/multipliers, which the generic teardown does not do.
     std::vector<int> end_ids;
-    for (const auto& ac : activeAgentConditions_) {
+    for (const auto& ac : conditions_.all()) {
         if (ac.agent_idx != target_idx) continue;
         if (ac.condition_name == "Charmed" || ac.condition_name == "Petrified") {
             // removeAgentCondition → onConditionEnded clears the Charmed flag; Petrified needs

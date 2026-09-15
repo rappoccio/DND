@@ -13,6 +13,11 @@ test_scripts = [
     # determinism regression fails fast, before the rest of the suite runs.
     "test_determinism.py",
 
+    # Direct unit tests for rules.hpp's free functions (COMBAT_REFACTOR_PLAN.md R3
+    # success criterion) — a C++ binary, since rules:: has no pybind11 surface.
+    # Kept next to the determinism oracle: both guard the refactor itself.
+    "test_rules.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

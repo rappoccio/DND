@@ -59,6 +59,34 @@ directly, do the same:
 cd gui && python3 ../tests/test_monk.py
 ```
 
+### The one C++ suite: `test_rules`
+
+Almost every suite is Python driving the compiled module. The exception is
+`tests/test_rules.py`, which is a thin wrapper that runs a **C++ binary**
+(`build/test_rules`, built from `gui/test_rules.cpp` by the normal build) and
+reports through the same runner. `./test.sh` therefore covers it automatically;
+to run it on its own:
+
+```bash
+./build/test_rules
+```
+
+It unit-tests `gui/rules.hpp`'s free functions — dice, weapon attack/damage
+modifiers, spell save DCs, and `CombatContext`'s JSON round-trip — **directly,
+constructing no `CombatEngine` and no `BattleMap`**.
+
+It is C++ rather than Python on purpose. `rules::` has **no pybind11 surface**, so
+every Python route to those functions goes through a `CombatEngine` — which is
+exactly what this suite is meant to avoid. The binary links `test_rules.cpp` and
+nothing else (no `battle_map.cpp`, no OpenCV, no pybind11), so "no engine, no map"
+is enforced by the linker rather than by the test author's restraint. That
+trade-off, and what binding `rules::` would cost if it is ever wanted, is written
+up in [memory/known_limitations.md](memory/known_limitations.md) under
+*Architecture / Infrastructure*.
+
+Unlike the Python suites it needs no `gui/` working directory — it reads no data
+files.
+
 ## Features
 
 - Full 2024 class/subclass features across every class, plus feats, weapon

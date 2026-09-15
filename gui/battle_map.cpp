@@ -540,9 +540,9 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
 
     // Grappling a creature doubles the cost of every foot of movement (you drag it along). Charge
     // the double cost against this same (agent) movement budget — the one Dash, exhaustion, and every
-    // other speed modifier already flow through — so the surcharge scales with them. (The CombatEngine's
-    // separate per-turn walkRemaining_ map is NOT used for this; charging it instead left the surcharge
-    // blind to a Dash, which capped a grappler at base speed even after Dashing.)
+    // other speed modifier already flow through — so the surcharge scales with them. (The engine's
+    // separate per-turn walk budget — MovementController's — is NOT used for this; charging it instead
+    // left the surcharge blind to a Dash, which capped a grappler at base speed even after Dashing.)
     bool dragging_grappled = false;
     for (std::size_t i = 0; i < placedAgents_.size(); ++i) {
         if (static_cast<int>(i) == idx) continue;

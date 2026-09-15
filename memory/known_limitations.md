@@ -266,6 +266,57 @@ proper post-rider chaining step, and fold Riposte into the `has_rider` gate as p
 
 ---
 
+### `rules::` has no Python binding — its unit tests are a C++ binary [DEFER]
+**Status:** Deliberate, decided 2026-09-14 (see `COMBAT_REFACTOR_PLAN.md` R3/R4). Not a bug and not
+a gap to close on principle — revisit only if a Python-side caller actually needs it.
+
+**What:** `gui/rules.hpp`'s 19 free functions (dice, weapon attack/damage modifiers, AC, spell save
+DCs, the Paladin/advantage aura queries, save modifiers) have **no pybind11 surface**. Python reaches
+that logic only through the `CombatEngine` forwarders that already existed — `engine.roll(...)`,
+`engine.calculate_ac(...)`, `engine.save_mod_for(...)`, and so on.
+
+**Consequence:** the refactor plan's success criterion — *"`rules.hpp` has direct unit tests that
+construct no `CombatEngine` and no `BattleMap`"* — **cannot** be satisfied from the Python suite,
+because every Python route to these functions goes through an engine. It is satisfied instead by
+`gui/test_rules.cpp`, a standalone C++ executable (62 checks), run by `tests/test_rules.py` so it
+still reports through `tests/run_all_tests.py` like every other suite. This is the only non-Python
+suite in the tree.
+
+**Why it is not bound (considered and declined, 2026-09-14):**
+- **The C++ test proves the criterion structurally.** `test_rules` links `test_rules.cpp` and nothing
+  else — no `battle_map.cpp`, no OpenCV, no pybind11 — so it *physically cannot* construct a
+  `BattleMap` or a `CombatEngine`; attempting it would be a link error. A Python test would import
+  the whole engine `.so` and satisfy the criterion only by the author's restraint.
+- **The dice functions would force `CombatContext` open.** `roll` / `rollAdvantage` /
+  `rollDisadvantage` / `saveModFor` take `CombatContext&`, which is unbound. Binding them means
+  exposing the engine's scratch state (`rng_`, `pending_portent_die_`, `pending_advantage_`,
+  `pending_roll_bonus_`) to Python as a *writable* object — precisely the state R3 just finished
+  encapsulating. That is also where most of the test's value sits: Portent replacing the die and
+  stacking with modifier + bonus, the Bardic bonus being added once rather than per inner roll, and
+  the 5e advantage/disadvantage cancellation rule in both directions.
+- **It would create two Python routes to the same logic.** 15 of the 19 are already bound as
+  `CombatEngine` methods, so a `rules` submodule invites drift between `rules.calculate_ac` and
+  `engine.calculate_ac`. R1 already flagged **43 bound-but-never-referenced** methods as a surface
+  needing triage; this would add 19 more in the same breath.
+- **Build cost.** R1 measured pybind11 template instantiation as the slowest part of the build.
+  `test_rules.cpp` compiles and links off the critical path.
+
+**If it is ever wanted,** the driver should be *use*, not tests: letting `main.py`, RL code, or
+analysis tooling compute an AC / attack modifier / save DC with no engine instance. The cheap version
+is the **15 context-free functions only** — `Agent::Stats`, `Weapon` and `BattleMap` are already bound
+in `bind_types.cpp`, so they need no new class bindings (roughly 20 lines in a new `bind_rules.cpp`) —
+leaving `CombatContext` unexposed and the dice layer covered by the C++ test as now. Note this is an
+**API-surface change**, so it sits outside the refactor's no-behaviour-change scope rule and wants its
+own deliberate commit, ideally paired with the 43-method triage.
+
+**Related caveat on the criterion itself:** it is only half-achievable as written. `calculateAC`,
+`isHoldingShield`, `canEquipArmor`, `saveModFor`, `saveAdvantageFor` and the five aura queries all
+take `const BattleMap&` by design, so "no `BattleMap`" is unreachable for them regardless of language;
+they stay covered by the Python suites that build a real map (`test_ac_dex.py`,
+`test_paladin_auras.py`, `test_advantage_aura.py`, `test_bless.py`, …).
+
+---
+
 # Known Limitations
 
 ## Battle Master Fighter

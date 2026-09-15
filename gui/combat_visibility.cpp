@@ -1,15 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  combat_visibility.cpp  –  CombatEngine vision & hiding
+//  combat_visibility.cpp  –  VisibilityService: vision & hiding
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
+//  R4 of COMBAT_REFACTOR_PLAN.md moved the engine methods that lived here onto
+//  VisibilityService (visibility_service.hpp), which owns visibilityMap_; the
+//  CombatEngine methods at the bottom of this file are now one-line forwarders
+//  so every existing call site is unchanged. See visibility_service.hpp for the
+//  three places where this was more than a rename.
+//
 //  Sections:
-//    · Visibility  — computeVisibility, getVisibility
-//    · Hiding      — checkHide, checkHiddenAgentDetection
+//    · Visibility     — computeVisibility, getVisibility, canPerceiveTarget, …
+//    · Hiding         — checkHide, checkHiddenAgentDetection
+//    · Serialization  — to_json / from_json
+//    · CombatEngine   — forwarders preserving the public API
 //
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
+#include "visibility_service.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,7 +49,7 @@ static int chebyshevFeet(const PlacedAgent& a, const PlacedAgent& b) noexcept {
 //  Visibility
 // ─────────────────────────────────────────────────────────────────────────────
 
-bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept
+bool VisibilityService::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept
 {
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
@@ -54,7 +64,7 @@ bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int ta
     return piercesInvisibility(viewer.agent->getStats(), chebyshevFeet(viewer, target));
 }
 
-bool CombatEngine::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+bool VisibilityService::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
 {
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
@@ -64,15 +74,13 @@ bool CombatEngine::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx)
     return a_sealed != b_sealed;   // exactly one is inside a solid box → opposite sides of the wall
 }
 
-bool CombatEngine::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+bool VisibilityService::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept
 {
-    if (a_idx == b_idx) return true;            // self is always "friendly"
-    int fa = bm.getAgentFaction(a_idx);
-    int fb = bm.getAgentFaction(b_idx);
-    return fa != 0 && fa == fb;                 // same non-zero team; neutral allies no one
+    // Single definition lives in rules.hpp (R3 duplicated it there pending this cut).
+    return rules::alliedFactions(bm, a_idx, b_idx);
 }
 
-void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
+void VisibilityService::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 {
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
@@ -150,7 +158,7 @@ void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
     }
 }
 
-VisibilityLevel CombatEngine::getVisibility(int source_idx, int target_idx) const noexcept
+VisibilityLevel VisibilityService::getVisibility(int source_idx, int target_idx) const noexcept
 {
     int64_t key = (static_cast<int64_t>(source_idx) << 32) | static_cast<uint32_t>(target_idx);
     auto it = visibilityMap_.find(key);
@@ -165,7 +173,7 @@ VisibilityLevel CombatEngine::getVisibility(int source_idx, int target_idx) cons
 //  Hiding
 // ─────────────────────────────────────────────────────────────────────────────
 
-HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept
+HideResult VisibilityService::checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept
 {
     HideResult result;
     auto agents = bm.placedAgents();
@@ -205,12 +213,12 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
     result.valid = true;
 
     // Roll Stealth check
-    result.stealth_d20 = roll(20);
+    result.stealth_d20 = rules::roll(ctx_, 20);
     int stealth_mod = hider_stats.stealthBonus();
     result.stealth_total = result.stealth_d20 + stealth_mod;
 
-    log_("{} attempts to hide (Stealth check): d20={} + {} = {}",
-         hider_pa.agent->name(), result.stealth_d20, stealth_mod, result.stealth_total);
+    ctx_.log("{} attempts to hide (Stealth check): d20={} + {} = {}",
+             hider_pa.agent->name(), result.stealth_d20, stealth_mod, result.stealth_total);
 
     // Contest against enemies with LOS to the hider (allies are skipped — see above).
     bool spotted = false;
@@ -236,7 +244,7 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
 
         if (in_combat) {
             // Active Perception roll
-            int perc_d20 = roll(20);
+            int perc_d20 = rules::roll(ctx_, 20);
             int perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
             observer_perception = perc_d20 + perc_mod;
             contest_log += std::format(
@@ -263,7 +271,9 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
             hider_pa.agent->name(), result.stealth_total, contest_log
         );
     } else {
-        applyHidden(bm, agent_idx);
+        // The Hidden condition itself is applied by the caller (CombatEngine::checkHide →
+        // applyHidden, which lives in combat_conditions.cpp). Nothing below reads it back and
+        // nothing is logged after this point, so the observable order is unchanged.
         result.hidden = true;
         result.log_message = std::format(
             "{} successfully hidden (Stealth {}){}",
@@ -274,7 +284,7 @@ HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat)
     return result;
 }
 
-std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx, bool in_combat) noexcept
+std::string VisibilityService::checkHiddenAgentDetection(BattleMap& bm, int agent_idx, bool in_combat) noexcept
 {
     auto agents = bm.placedAgents();
 
@@ -321,7 +331,7 @@ std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx
 
         if (in_combat) {
             // Active Perception roll
-            perc_d20 = roll(20);
+            perc_d20 = rules::roll(ctx_, 20);
             perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
             observer_perception = perc_d20 + perc_mod;
         } else {
@@ -373,6 +383,76 @@ std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx
     }
 
     return "";  // Still hidden
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Serialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+nlohmann::json VisibilityService::to_json() const
+{
+    nlohmann::json entries = nlohmann::json::array();
+    for (const auto& [key, level] : visibilityMap_)
+        entries.push_back({{"key", key}, {"level", static_cast<int>(level)}});
+    return nlohmann::json{{"visibility_map", entries}};
+}
+
+void VisibilityService::from_json(const nlohmann::json& j)
+{
+    visibilityMap_.clear();
+    if (auto it = j.find("visibility_map"); it != j.end()) {
+        for (const auto& entry : *it)
+            visibilityMap_[entry.value("key", static_cast<int64_t>(0))] =
+                static_cast<VisibilityLevel>(entry.value("level", 0));
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CombatEngine forwarders
+//
+//  The Python API and the ~60 internal call sites across the combat_*.cpp TUs stay
+//  exactly as they were (COMBAT_REFACTOR_PLAN.md: land the sub-engine additively,
+//  migrate call sites to vis_ later, TU by TU).
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::computeVisibility(BattleMap& bm, int agent_idx) noexcept
+{
+    vis_.computeVisibility(bm, agent_idx);
+}
+
+VisibilityLevel CombatEngine::getVisibility(int source_idx, int target_idx) const noexcept
+{
+    return vis_.getVisibility(source_idx, target_idx);
+}
+
+bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept
+{
+    return vis_.canPerceiveTarget(bm, viewer_idx, target_idx);
+}
+
+bool CombatEngine::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+{
+    return vis_.forcecageSeparates(bm, a_idx, b_idx);
+}
+
+bool CombatEngine::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+{
+    return vis_.areAllies(bm, a_idx, b_idx);
+}
+
+HideResult CombatEngine::checkHide(BattleMap& bm, int agent_idx, bool in_combat) noexcept
+{
+    HideResult result = vis_.checkHide(bm, agent_idx, in_combat);
+    // applyHidden belongs to the condition layer (combat_conditions.cpp → the future
+    // ConditionTracker), so the write stays on the engine rather than being duplicated into
+    // VisibilityService. See visibility_service.hpp, seam 3, for why the order is unchanged.
+    if (result.hidden) applyHidden(bm, agent_idx);
+    return result;
+}
+
+std::string CombatEngine::checkHiddenAgentDetection(BattleMap& bm, int agent_idx, bool in_combat) noexcept
+{
+    return vis_.checkHiddenAgentDetection(bm, agent_idx, in_combat);
 }
 
 } // namespace rpg
