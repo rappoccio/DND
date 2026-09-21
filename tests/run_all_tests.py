@@ -23,6 +23,14 @@ test_scripts = [
     # snapshot came from (RNG stream, conditions, and parked reaction windows).
     "test_snapshot.py",
 
+    # GUI regression oracle for the combat panel (MULTIPLAYER_PLAN.md Step 0.6) — the
+    # fourth guard, and the only suite that covers main.py's rendering at all. Stands
+    # App up headlessly and compares a structural capture (section / widget / label /
+    # rect / drawn?) of _draw_combat_panel against a golden, so the M2 panel extraction
+    # can be proven structurally identical. Kept with the other oracles for the same
+    # reason: a layout regression should fail before the rules suites run.
+    "test_combat_panel.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

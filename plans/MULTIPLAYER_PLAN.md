@@ -29,7 +29,7 @@ riskiest phase (M2) edits a 1,896-line method with no automated coverage at all.
 | 0.3 | **Inventory the action surface.** *(Done 2026-09-21 — see [Step 0.3 — the action-surface inventory](#step-03--the-action-surface-inventory-done-2026-09-21).)* Group the `btn_cbt_*` buttons by panel section; mark turn-action vs DM-tool; note which have availability logic that is *not* expressible without a frame of layout context. | A table in this file; the M2 work order falls out of it | ☑ |
 | 0.4 | **Write the identity schema on paper.** *(Done 2026-09-21 — see [Step 0.4 — the identity schema](#step-04--the-identity-schema-frozen-2026-09-21).)* The principal record, the session-file shape, and the exact `authorize(principal, action, target)` signature — including the fields that only a future real-auth phase will populate. | A schema block in the Identity section below | ☑ |
 | 0.5 | **Write the wire-format spec.** *(Done 2026-09-21 — see [Step 0.5 — the wire-format spec](#step-05--the-wire-format-spec-done-2026-09-21).)* `GameView`, the event envelope, the prompt envelope and the auth envelope, each with a `protocol_version`. No client code before this exists. | A schema block in this file | ☑ |
-| 0.6 | **Build the GUI regression oracle.** The M2-analog of R0's determinism harness: a scripted scenario plus a captured baseline of the combat panel, so panel extraction can be proven **structurally identical**. *(Amended 2026-09-21, user-agreed: was "pixel-identical". `SysFont("sans", …)` (`main.py:468`) resolves through the platform font stack and the Dockerfile installs no font packages, so a pixel golden is valid in exactly one environment. Panel rects come from fixed `W`/`HW`/`TW3`/`TW5` arithmetic, never text metrics, so geometry IS cross-machine deterministic — see [Step 0.6 — the oracle's shape](#step-06--the-oracles-shape-decided-2026-09-21).)* `tests/run_all_tests.py` (149 suites) does not cover the GUI today — this is the gap that makes M2 dangerous. | A new registered suite, green | ☐ |
+| 0.6 | **Build the GUI regression oracle.** The M2-analog of R0's determinism harness: a scripted scenario plus a captured baseline of the combat panel, so panel extraction can be proven **structurally identical**. *(Amended 2026-09-21, user-agreed: was "pixel-identical". `SysFont("sans", …)` (`main.py:468`) resolves through the platform font stack and the Dockerfile installs no font packages, so a pixel golden is valid in exactly one environment. Panel rects come from fixed `W`/`HW`/`TW3`/`TW5` arithmetic, never text metrics, so geometry IS cross-machine deterministic — see [Step 0.6 — the oracle's shape](#step-06--the-oracles-shape-decided-2026-09-21).)* *(Built 2026-09-21 — see [Step 0.6 — what was built](#step-06--what-was-built-done-2026-09-21).)* `tests/run_all_tests.py` did not cover the GUI at all before this — that was the gap that made M2 dangerous. | A new registered suite, green | ☑ |
 | 0.7 | **Timeboxed throwaway spike.** *(Confirmed 2026-09-21: goes ahead. Step 0.2 already documented the callback shape and the six blocking modals, but the net-thread → frame-tick handoff under a real socket is the assumption every phase from M4 on rests on, and paper cannot answer it.)* On a scratch branch: wire *one* prompt (the reaction window) to a static page end to end, to validate the threading model and the blocking-modal fix. **Deleted, never merged** — its only output is findings. | Findings recorded here; branch deleted | ☐ |
 | 0.8 | **Decide deployment and dependencies.** *(Done 2026-09-21 — see [Step 0.8 — deployment and dependencies](#step-08--deployment-and-dependencies-decided-2026-09-21).)* Stdlib vs `aiohttp`; which port; LAN binding; how the future public path terminates TLS. User signs off. | A decision block in this file | ☑ |
 | 0.9 | **Review this whole document with the user.** Only then does M0 begin. | User's go-ahead, dated | ☐ |
@@ -731,6 +731,93 @@ size derived from the map image. Standing that up headlessly is the real work in
 is also exactly what makes every *later* GUI test cheap — which is the side benefit that
 justifies the phase independently of multiplayer
 (`memory/feedback_gui_not_tested.md`).
+
+---
+
+## Step 0.6 — what was built (done 2026-09-21)
+
+`tests/test_combat_panel.py` + `tests/test_combat_panel.golden.txt`, registered in
+`tests/run_all_tests.py` immediately after `test_snapshot.py` — the four refactor guards
+sit together so a layout regression fails before the rules suites run. Suite result after
+the change: **146 passed, 1 failed**, the one failure being the pre-existing
+`test_monk.py` (untouched, and failing identically before this work).
+
+### What it does
+
+Stands `App` up headlessly (`SDL_VIDEODRIVER=dummy`, the `test_feats.py:321-325`
+precedent) on `maps/TestGrid12x12.png` with `App(map_path, seed=20260921)`, scripts one
+encounter, and dumps a structural capture of `_draw_combat_panel` at **14 checkpoints**:
+
+```
+text | <section> | <string>                        every string the panel renders
+btn  | <section> | <name> | <label> | x,y,w,h | yes  every widget actually drawn
+btn  | -         | <name> | -       | -       | no   every btn_cbt_* NOT drawn
+meta | bottom=<y> max_scroll=<n>                   the layout's one-line summary
+```
+
+The undrawn roster is the half that catches a button *vanishing*; `bottom=` is the
+one-line "the panel got taller" signal a reviewer reads before scanning any rect.
+
+### The three mechanics that made it possible without touching `main.py`
+
+Step 0.6 was scoped as "adds tests only", and it held — **no source file changed**.
+
+1. **`Button.draw` is hooked**, not inferred, exactly as this section required.
+   `widgets.Button` is a plain Python class, so the test swaps its `draw` for the
+   duration of one panel draw and restores it. `btn_cbt_metamagic`'s 9 dict entries are
+   indexed as `btn_cbt_metamagic[<int>]` and are captured like any other widget — the F4
+   guard-escape is therefore *recorded*, not baked in.
+2. **`txt()` is captured through the fonts.** `txt` is a closure inside
+   `_draw_combat_panel` and cannot be reached from outside. `pygame.font.Font` is an
+   immutable extension type, so `render` cannot be patched on the class either — instead
+   the App's `font_sm`/`font_md`/`font_lg` are wrapped in a transparent proxy for the
+   duration of the draw. A re-entrancy flag set inside the `Button.draw` hook keeps a
+   button's own label from being recorded twice.
+3. **Sections are derived from the headings the panel already draws** (`"Initiative
+   Order"`, `"Action ✓"`, `"Bonus Action"`, `"Movement"`, `"Combat Log:"`), so the
+   capture needs no hand-maintained name→section map that M2 would immediately
+   invalidate. Caveat, recorded honestly: Step 0.3's sections **8 (Movement toggles) and
+   9 (Visibility + drops)** share the label `Movement`, because the panel draws no
+   heading between them.
+
+### Coverage against this section's requirement
+
+| Requirement | Checkpoint(s) |
+| ----------- | ------------- |
+| Action branch — normal | 01 |
+| Action branch — `action_used` | 02 |
+| Action branch — incapacitated | 04 |
+| Action branch — frightened | 05 |
+| Action branch — prone | 06 |
+| **7a** flat class/resource guard (Second Wind, Action Surge) | 01, 02 |
+| **7b** economy-band headers, label from `attacks_remaining` | 08 (`⚔ Attack (2)`), 08b (`⚔ Bonus (1)`) |
+| **7c** spatial predicate (`_has_adjacent`) | 01 (adjacent → three-up row), 07 (+ grappled → Escape), 09/10 (not adjacent → the `else` arm) |
+| **7d** drawn outside the bonus band | 11 (metamagic survives `bonus_used`; Quickened alone drops), 12 (`haste_action`) |
+| **7e** multi-button cluster | 09 (Channel Divinity: Turn Undead + Radiance of the Dawn) |
+
+Checkpoint 13 is a combatant with no class features at all — the floor of the panel,
+so an M2 step that accidentally *adds* a widget to the base case shows up.
+
+### Two deliberate design choices, for whoever maintains this
+
+- **The checkpoints set panel state directly; they never step a turn.** The panel is a
+  pure function of state, so `_goto()` sets `turn_idx` / `action_used` / `bonus_used` and
+  calls `_reset_movement`. An oracle that re-ran the turn pipeline would churn every time
+  the dice changed — that is `test_determinism.py`'s job, and duplicating it here would
+  make the GUI golden untrustworthy exactly when the engine is being worked on. The one
+  place RNG does enter is `_start_combat`'s `roll_initiative`, which is why `_goto` looks
+  its actor up **by name**: new dice reorder the initiative list without invalidating a
+  single checkpoint.
+- **The two cwd log files are preserved.** `_start_combat` truncates `replay_log.txt` and
+  `combat_log.txt` in the cwd (`gui/`, per the runner). Those are the live session's logs,
+  not test artifacts, so the suite saves and restores them.
+
+### What this bought beyond multiplayer
+
+The `App`-headless harness is the reusable part, and it turned out to cost far less than
+this section feared: the constructor needed **no** changes, and the whole suite runs in
+well under a second. Any future GUI test now starts from `App(map, seed=…)` and a
+`PanelCapture`.
 
 ---
 
