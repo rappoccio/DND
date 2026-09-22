@@ -66,6 +66,9 @@ from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
+# M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
+# it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
+from prompts import PromptBus, Option, ContextMenuRenderer, options_from_pairs
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
@@ -564,6 +567,12 @@ class App:
         # can re-point it — that call then loads this encounter's session file.
         self.roster = SessionRoster()
         self._set_encounter_base(default_agents)
+        # The prompt bus (M1). Built after the roster so it can install prompt_lookup;
+        # the screen does not exist yet, so the renderer resolves its size lazily.
+        self.prompts = PromptBus(
+            roster=self.roster,
+            renderer=ContextMenuRenderer(self.context_menu,
+                                         lambda: self.screen.get_size()))
 
         # ── Multi-map dungeon state (FLOORS_IMPLEMENTATION_PLAN.md, Phase 3) ─
         # self.dungeon is None outside "dungeon mode"; when set, the app is paging
@@ -2009,6 +2018,9 @@ class App:
         # the roster loads, and its ownership cache fills on the first _load_agents.
         if getattr(self, "roster", None) is not None:
             self.roster = SessionRoster.load(self._session_path)
+            # A new roster means a new prompt_lookup hook to fill (M1).
+            if getattr(self, "prompts", None) is not None:
+                self.prompts.bind_roster(self.roster)
             if getattr(self, "bm", None) is not None:
                 self._sync_roster_tokens()
 
@@ -10539,9 +10551,13 @@ class App:
             return
         ctx = pd.ctx
         agents = self.bm.placed_agents
+        # The window's own sentence is both the combat-log line and the prompt's title
+        # (Step 0.5's `title` field) — one string, composed once, so a remote renderer
+        # says exactly what the DM's log says.
+        title = "Reaction"
         if 0 <= ctx.reactor_idx < len(agents) and 0 <= ctx.source_idx < len(agents):
             if ctx.window == rpg.ReactionWindow.OnDeclareCast:
-                self._combat_log_add(
+                title = (
                     f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name}'s spell!")
             elif ctx.window == rpg.ReactionWindow.OnHit:
                 kind = "spell attack" if ctx.spell_idx >= 0 else "attack"
@@ -10554,7 +10570,7 @@ class App:
                          "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry",
                          "GloriousDefense": "Glorious Defense"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
-                self._combat_log_add(
+                title = (
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
                     f"{agents[ctx.source_idx].name}'s {kind}!")
             elif ctx.window == rpg.ReactionWindow.OnD20Seen:
@@ -10564,7 +10580,7 @@ class App:
                          "SilveryBarbs": "Silvery Barbs", "WardingFlare": "Warding Flare",
                          "RestoreBalance": "Restore Balance"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "react"
-                self._combat_log_add(
+                title = (
                     f"{agents[ctx.reactor_idx].name} may alter {agents[ctx.source_idx].name}'s "
                     f"attack roll ({ctx.d20_value}) — {choices}!")
             elif ctx.window == rpg.ReactionWindow.OnSaveFail:
@@ -10578,17 +10594,17 @@ class App:
                 feats = [o.feature for o in ctx.options
                          if o.kind == rpg.ReactionOptionKind.Feature]
                 choices = " / ".join(names.get(f, f) for f in feats) or "react"
-                self._combat_log_add(
+                title = (
                     f"{agents[ctx.reactor_idx].name} may aid {who} failed save "
                     f"({ctx.d20_value}) — {choices}!")
             elif ctx.window == rpg.ReactionWindow.OnTurnStartNearby:
                 if ctx.reactor_idx == ctx.source_idx:
                     # Self-option: the World Tree Barbarian may grant temp HP at its own turn start.
-                    self._combat_log_add(
+                    title = (
                         f"{agents[ctx.source_idx].name} may grant a creature within 10 ft "
                         f"temp HP — Vitality of the Tree!")
                 else:
-                    self._combat_log_add(
+                    title = (
                         f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name} "
                         f"starting its turn nearby — Branches of the Tree!")
             else:
@@ -10599,20 +10615,32 @@ class App:
                 except Exception:
                     has_sentinel = False
                 if has_sentinel:
-                    self._combat_log_add(
+                    title = (
                         f"{agents[ctx.reactor_idx].name} gets a Sentinel opportunity attack vs "
                         f"{agents[ctx.source_idx].name} (a hit stops it — speed → 0)!")
                 else:
-                    self._combat_log_add(
+                    title = (
                         f"{agents[ctx.reactor_idx].name} gets an opportunity attack vs {agents[ctx.source_idx].name}!")
+            self._combat_log_add(title)
         def _make_cb(i, feature):
             # Vitality of the Tree needs a target pick before submitting; everything else submits at once.
             if feature == "VitalityOfTheTree":
                 return lambda i=i: self._begin_vitality_target_pick(i)
             return lambda i=i: self._submit_reaction(i)
-        options = [(opt.label, _make_cb(i, opt.feature)) for i, opt in enumerate(ctx.options)]
-        px, py = self._agent_screen_pos(ctx.reactor_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        # The first prompt on the bus (M1 Step 2). The owner is the REACTOR's controller,
+        # not the actor's: an opportunity attack belongs to the creature taking it, which
+        # is why `owner` is load-bearing from the very first conversion (Step 0.2).
+        self.prompts.ask(
+            actor_idx=ctx.reactor_idx,
+            owner=self.roster.controller_of(ctx.reactor_idx),
+            kind="reaction",
+            title=title,
+            options=options_from_pairs(
+                (opt.label, _make_cb(i, opt.feature)) for i, opt in enumerate(ctx.options)),
+            anchor=self._agent_screen_pos(ctx.reactor_idx),
+            # Dismissing the popup must still resolve the parked window, or a queued
+            # following reactor never gets its own (Branches after Vitality of the Tree).
+            on_cancel=self._submit_reaction_skip)
 
     def _submit_reaction(self, option_index: int):
         """Resume the parked move with the chosen reaction option, then chain to the next
@@ -19056,15 +19084,15 @@ class App:
             # Context menu sits above normal map events but below modals.
             if self.context_menu.visible:
                 if self.context_menu.handle(event):
-                    # A reaction popup dismissed by clicking away / right-click (no option chosen)
-                    # must still resolve its parked window — otherwise a *following* reactor never
-                    # gets its popup (e.g. Branches of the Tree queued after Vitality of the Tree),
-                    # freezing the turn. Picking "Vitality" arms a target-pick instead of submitting,
-                    # so leave that case alone (pending_vitality_target guards it).
-                    if (not self.context_menu.visible
-                            and not self.pending_vitality_target
-                            and self.combat.pending_decision().active):
-                        self._submit_reaction_skip()
+                    # A popup dismissed by clicking away / right-click (no option chosen)
+                    # is a cancellation, and the bus runs whatever that prompt's cancel
+                    # path is — for a reaction window, submitting its Skip so a queued
+                    # following reactor still gets its popup (Branches of the Tree after
+                    # Vitality of the Tree) instead of the turn freezing. Choosing an
+                    # option already resolved the prompt, so nothing fires here —
+                    # including "Vitality of the Tree", which answers the prompt and then
+                    # arms a target-pick, and which the old flag guard existed to spare.
+                    self.prompts.renderer_dismissed()
                     continue
 
             # ── Keyboard shortcuts ────────────────────────────────────────

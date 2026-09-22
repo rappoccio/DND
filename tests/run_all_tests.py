@@ -37,6 +37,12 @@ test_scripts = [
     # PERSISTED file format: a regression here silently mis-assigns creatures.
     "test_session_roster.py",
 
+    # The prompt bus (MULTIPLAYER_PLAN.md M1) — the first suite that drives a GUI flow
+    # with no pygame events: it parks the engine on a real opportunity attack through a
+    # real App and answers the window through the bus. Kept with the oracles because it
+    # is now the only coverage of main.py's reaction path.
+    "test_prompts.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

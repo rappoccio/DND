@@ -1433,7 +1433,7 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 | Phase | Scope | Risk | Est. | Ships what |
 | ----- | ----- | ---- | ---- | ---------- |
 | **M0** ☑ | Token ownership model | very low | 1–2 days | who controls what |
-| **M1** | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
+| **M1** ◐ | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
 | **M2** | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
 | **M3** | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
 | **M4** | Transport + spectator web client | medium | 1–2 weeks | **players watch on their own screens** |
@@ -1610,10 +1610,10 @@ click of it is the thing to watch.
 
 The pivotal phase. Everything else is plumbing around it.
 
-**Step 1 — build the bus** (`gui/prompts.py`, new). `Prompt` / `Option` / `PromptBus` as
+**Step 1 ☑ — build the bus** (`gui/prompts.py`, new). `Prompt` / `Option` / `PromptBus` as
 above. Local renderer: `ContextMenu`, unchanged in appearance.
 
-**Step 2 — reroute the reaction window first.** `_show_pending_reaction_menu`
+**Step 2 ☑ — reroute the reaction window first.** `_show_pending_reaction_menu`
 (`main.py:10493`) is the ideal first customer: the engine already hands it a vetted,
 labeled option list; there is exactly **one** call site; and the flow is already
 snapshot-safe. Converting it changes no behavior and proves the bus end to end.
@@ -1644,6 +1644,119 @@ seen from the two ends (`memory/architecture_decider_flow_state.md`).
 prompt whose callback fires in a different frame than it used to and reads a `pending_*`
 flag that has since been cleared. Mitigation: convert in batches, keep the local renderer
 synchronous (same frame) throughout M1, and defer *any* deferred/async answering to M5.
+
+---
+
+### M1 Steps 1–2 — what was built (done 2026-09-21)
+
+The bus exists and the reaction window runs on it. Step 3 (the remaining 86 prompt
+sites) has not started. No behavior changed on the DM console, and the frozen blocks
+were not amended.
+
+#### Where the code went
+
+| File | What |
+| ---- | ---- |
+| `gui/prompts.py` (new, 464 lines) | `Option` / `Response` / `Prompt` / `PromptState` / `SubmitResult` / `PromptBus`, the `ContextMenuRenderer`, and `options_from_pairs`. Imports no pygame — the renderer is duck-typed on `show` / `dismiss` / `visible`. |
+| `gui/main.py` (+28 net) | Call-site wiring only (NN3): the import, `self.prompts`, the re-bind in `_set_encounter_base`, the converted `_show_pending_reaction_menu`, and `self.prompts.renderer_dismissed()` in place of the reaction-skip guard in `_handle_events`. |
+| `tests/test_prompts.py` (new), `tests/run_all_tests.py` | 12 tests, registered next to the other oracles. |
+
+#### Six decisions worth recording
+
+**D-M1-1 — the callback rides on the `Option`, not only on the `Prompt`.** All 87 sites
+are already `(label, callback)` pairs, so `options_from_pairs` converts one mechanically
+and the callback the remote answer fires in M5 is *the same object* the local click
+fires today (F4's point). `Prompt.on_answer` remains for the responses that are not a
+choice at all — `expects` `"cell"` / `"agent"`, which is where the target-pick sites
+land later in Step 3. Exactly one of the two runs: the option's, if it has one.
+
+**D-M1-2 — `parent` is explicit, never inferred.** The tempting rule — "a prompt opened
+during another prompt's callback is its child" — is wrong here: a reaction chain opens
+the *next* reactor's window from inside the previous window's callback, and those are
+siblings. Only a call site that means "this is a submenu of that" passes `parent=`.
+
+**D-M1-3 — locally, answering or cancelling a stack resolves the whole stack.** Step 0.5
+has a cancelled child re-send its parent, and records that as the protocol's single
+deliberate divergence from the DM console. It stays a divergence: implementing it in the
+local renderer would change DM behavior inside the one phase whose acceptance criterion
+is that nothing changes. `parent_id` is carried and tested; M5's renderer is where it
+starts to *do* something. Ancestors resolved this way are marked `superseded`, never
+`cancelled` — nobody declined them, and firing their `on_cancel` would submit a Skip
+nobody asked for.
+
+**D-M1-4 — a prompt is marked answered before its callback runs.** NN4's "first valid
+submission wins" is decided by liveness and by nothing else, and the callback is exactly
+where a second submission gets its chance to interleave (in M5 from the network; today
+from a chained prompt). `test_first_submission_wins` submits again *from inside* the
+first submission's callback and asserts `not_live`.
+
+**D-M1-5 — the reaction window's combat-log sentence is now also the prompt's title.**
+It was already composed per window (`"Threat gets an opportunity attack vs Mover!"`);
+it is composed once into `title`, logged, and sent. A remote player reads exactly what
+the DM's log says, and no second wording can drift from the first.
+
+**D-M1-6 — dismissal is reported by the event loop, not detected by the bus.**
+`_handle_events` calls `renderer_dismissed()` after `ContextMenu.handle`; the bus
+cancels only if a prompt is still live *and* the widget is no longer showing. That
+subsumes the two flag guards the old code needed (`pending_vitality_target`,
+`pending_decision().active`): picking "Vitality of the Tree" *answers* the prompt before
+it arms its target-pick, so there is nothing live left to cancel.
+
+#### What the DM sees
+
+Nothing new. The popup is the same widget at the same anchor with the same rows in the
+same order; `ContextMenu` was not modified. The one internal difference is that the
+row's callback now goes `click → bus.choose(option_id) → validate → the same callback`
+instead of `click → the callback`.
+
+#### Test results
+
+`tests/run_all_tests.py`: **148 suites passed, 1 failed** — the pre-existing
+`test_monk.py::test_deflect_attacks_reduces_physical` that has been the baseline since
+`COMBAT_REFACTOR_PLAN.md` R0. The count is 147 + this suite. `test_determinism.py` is
+byte-identical and `test_combat_panel.py`'s golden is unchanged. `test_prompts.py` is
+**12/12**:
+
+| Test | Proves |
+| ---- | ------ |
+| `test_wire_projection` | every Step 0.5 `prompt` field is present, and no callable and no local render hint reaches the projection (F4) |
+| `test_submit_errors` | `protocol` / `bad_option` / `not_live`, a disabled option refused, a refused submit leaving the prompt live, and `expects: "cell"` rejecting an option id |
+| `test_first_submission_wins` | NN4, from inside the winning submission's own callback |
+| `test_authorization` | a non-owning player and an unseated principal are denied and never reach the callback; the DM is allowed anyway |
+| `test_prompt_lookup_hook` | the bus fills M0's `prompt_lookup` (D-M0-3), reports liveness, and re-fills it when a load swaps the roster |
+| `test_supersede_runs_no_callback` | a re-ask destroys the live prompt without resolving it — Step 0.2's single-`ContextMenu` reality, and no phantom Skip |
+| `test_cancel_and_dismissal` | dismissal runs `on_cancel`; a click that chose an option does not |
+| `test_prompt_stack` | `parent_id` on the wire, the parent live while its submenu is up, and D-M1-3's local resolution |
+| `test_oa_opens_reaction_prompt` | a real parked `LeftReach` window becomes a prompt owned by the **reactor**, with the engine's own options in the engine's order — and the DM's popup genuinely on screen |
+| `test_answer_resumes_the_move` | **the M1 acceptance criterion**: the OA is taken, the reaction is spent and the move completes, with no pygame event anywhere in the call stack |
+| `test_player_answers_own_reaction` | a seated player answers their own creature's window; another player gets `denied` and the engine is untouched |
+| `test_dismissal_skips_the_window` | clicking away submits the Skip, the reaction is not spent, and the move still completes |
+
+#### Not covered by a test
+
+- **A real display.** Everything here is headless (`SDL_VIDEODRIVER=dummy`). The popup's
+  pixels are unchanged because `ContextMenu` is unchanged, but the first live click on
+  the converted reaction window is still worth watching — as is M0's **Controller ▸**
+  submenu, which remains unexercised.
+- **`deadline`.** The field exists and reaches the wire; nothing sets it and nothing
+  expires. Expiry is M5's, per the plan.
+- **The other 86 sites.** They still call their widget directly, which is exactly why
+  `renderer_dismissed()` is a no-op when the bus holds nothing live.
+
+#### What Step 3 inherits
+
+- `options_from_pairs(...)` is the whole mechanical conversion for a
+  `(label, callback)` site; the judgement per site is only `owner`, `kind` and whether
+  it is a submenu (`parent=`).
+- **`owner` is the one field that needs thought at every site.** G3's five defender
+  reactions and G1 have a non-actor owner; everything in G2/G4/G5/G6 is the actor's own
+  controller; G9/G10 are DM-authoring and take `owner=DM_PRINCIPAL_ID`, since Step 0.2
+  marks them never-remoted.
+- Batch order is Step 0.2's `M1 order` column, unchanged: G2 → G3 → G4 → G6 → G7 → G8 →
+  **G5 last**.
+- `main.py` grew by 28 lines here, against NN3's "trend down". That was the price of the
+  seam; the reversal is Step 3, where 86 option lists move out of `main.py` and the
+  `pending_*` flag closures go with them.
 
 ---
 
