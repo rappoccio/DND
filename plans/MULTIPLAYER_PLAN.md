@@ -359,6 +359,27 @@ owner** (G3's five, plus G1 whenever the reactor is not the current actor) — i
 Pure reading; no source file was changed. All line numbers are `gui/main.py`.
 `_draw_combat_panel` spans **16541–18436** (1,896 lines, as recorded).
 
+> ### Re-derived against `395e020`, 2026-09-21 — the count did NOT move
+>
+> M1 Step 3 closed by warning that this inventory is a snapshot and M2 should re-derive it
+> rather than trust it, because Step 0.2's prompt count had gone stale exactly that way
+> (G9 7→8, others 18→19, both from M0). **It was re-derived, and every figure below still
+> holds**: 114 grep hits, **113** real names, **110** appearing inside the draw pass, the
+> **same three** dead ones (`pass_action`, `pass_bonus`, `reckless`), `METAMAGIC_OPTIONS`
+> still 9, so **118** clickable widgets. `_draw_combat_panel` is still **1,896 lines**.
+>
+> **Why this one held and 0.2's did not**: M0 and M1 added *prompts* — a Controller ▸
+> submenu, a seat-a-player dialog — and touched no panel button. The prompt surface and
+> the action surface turn out to be independent under change, which is a small piece of
+> evidence for the seam split S2/S3 rather than a coincidence worth relying on. **Re-derive
+> again after M2a** — that one deletes buttons.
+>
+> **The line numbers below are all off by a uniform +142** (the method head moved
+> `16541 → 16683`, the tail `18436 → 18578`; spot-checked at fifteen cited lines, every one
+> landing on what this section says is there). They are *not* rewritten here, because M2a's
+> first act invalidates them again. Navigate by name:
+> `grep -n 'btn_cbt_<name>' gui/main.py`.
+
 ### Correcting the count
 
 `grep -o 'btn_cbt_[A-Za-z0-9_]*' | sort -u` returns **114**, but one of those is the literal
@@ -686,6 +707,13 @@ Written down so M7/M8 have a list rather than an argument:
 - **No server→client push of another viewer's prompt.** A player never learns that another
   player is being asked something; the DM learns it from the DM console, not from this
   protocol.
+
+> **Upheld 2026-09-21 (D-M1-12).** M1 Step 3 left nine sites on their widgets and asked
+> whether `expects` should grow `"text"` and `"number"` for them. It does not: the
+> no-free-text clause above is the answer, and every site that wanted text or a number
+> turned out to be DM authoring. `expects` remains the frozen four — `choice` / `cell` /
+> `agent` / `none` — through M2, M3 and M4. A closed multi-select (`"choices"`, a list of
+> option *ids*, no client-authored strings) has exactly one caller and is M5's call.
 
 ---
 
@@ -1833,17 +1861,59 @@ something Step 0.5's **frozen** `expects` vocabulary (`choice` / `cell` / `agent
 | Renderer | Sites | What it actually asks for |
 | -------- | ----: | ------------------------- |
 | `ElementPickerDialog`, `multi=True` | 1 — Magic Circle / Hallow warded types | a **set** of values. There is no multi-select response shape. |
-| `SpellSelectionDialog` | 3 | a search over all 405 spells with per-level tabs — a browser, not an option list. Two of the three are DM authoring. |
+| `SpellSelectionDialog` | 3 | a search over all 405 spells with per-level tabs — a browser, not an option list. **One** of the three is DM authoring. |
 | `NamePromptDialog` | 2 | **free text**. There is no `expects: "text"`. |
 | `GridSpanDialog` | 1 | two numbers. Same gap. |
 | `TeamPickerDialog` | 1 | a per-creature team grid — DM authoring, and an editor rather than a choice. |
 | `MobSelectionDialog` | 1 | the monster catalogue — a browser. |
 
-**The decision this hands back**: whether Step 0.5 grows `expects: "text"`, `"number"`
-and a multi-select response, or whether these six renderers are declared DM-console-only
-forever and M3's `GameView` simply never shows them. Five of the nine are DM authoring
-either way, so the live question is really only the three combat-reachable ones (the
-multi-select ward, and `SpellSelectionDialog` at `9779`/`10035`). Not decided here.
+**D-M1-12 — `expects` stays frozen at four; six renderers become DM-console-only, and
+the browsers were never a wire problem.** *(Decided 2026-09-21, user-agreed.)*
+
+Step 3 handed back "grow `expects`, or declare these DM-only". The answer is neither, in
+three parts, and two of the three cost nothing:
+
+**a. `expects: "text"` and `"number"` are refused — the question was already answered.**
+Step 0.5's *"What is deliberately not in v1"* reads: *"No client→server chat or free text.
+Nothing on the wire carries a string a client wrote. That removes an entire injection and
+moderation surface from v1."* Adding `"text"` is not an amendment to that clause, it is a
+reversal of it. Nothing is given up by honoring it, because **every** site that wants text
+or a number is DM authoring: both `NamePromptDialog`s (rename at `19404`, seat-a-player at
+`19548`), `GridSpanDialog` (`14866`, map setup) and `TeamPickerDialog` (`5370`).
+
+**b. Six of the nine are DM-console-only, not five.** Step 3's own count was off by one in
+the same sentence that named the exception: `SpellSelectionDialog` at `19363` is the *add
+a spell* button inside the DM's creature-sheet editor, not a combat path. The DM-only set
+is therefore those six — 2 `NamePromptDialog`, `GridSpanDialog`, `TeamPickerDialog`,
+`MobSelectionDialog` (`2261`, "Create Mob…") and `SpellSelectionDialog` (`19363`). **M3's
+`GameView` never shows them**, which is the only obligation this creates, and it is a
+filtering rule of exactly the kind M3 is already written around.
+
+**c. The two player-facing browsers need no wire change at all — they need M5's renderer.**
+Wish (`9789`, ≤ 8th level → **389** of the 405 spells) and Divine Intervention (`10049`,
+`CLERIC_DI_SPELL_NAMES` → **80**, all present in `spells.json` at level ≤ 5) are *closed,
+finite option lists*. "Browser" is a property of the widget, not of the question, and
+D-M1-10 already put that behind `Prompt.render` — a local hint that never reaches the wire.
+On the wire they are `expects: "choice"` with a long `options` array and a render hint a
+remote client answers with a search box; the cost is ~23 KB on one prompt, once.
+
+They are **not converted now**, deliberately. `prompts.py`'s own module docstring already
+schedules this ("a second renderer — a browser, in M5"), and converting today would build
+389 `Option` objects per Wish cast for a consumer that does not exist until M5. The
+classification is what M2–M4 needed; the code is M5's, and it is now a fourth renderer
+rather than an open question.
+
+**What is genuinely deferred: exactly one site.** The Magic Circle / Hallow ward picker
+(`9935`, `multi=True`, six rows) is the only site in the game that asks for a **set**, and
+it is player-reachable. Growing the wire for it is small and does not touch the no-strings
+clause — one `expects` member (`"choices"`) and one `submit` field carrying a list of
+option *ids*. **Not done now**: a one-member vocabulary change with one caller is decided
+better in M5, when intent submission is the thing that needs it, than in an amendment
+written three phases ahead of its only consumer.
+
+**Net effect on the phases that follow**: Step 0.5 stays frozen, unamended, through M2,
+M3 and M4. M3 owes one filtering rule (the six renderers). M5 owes a browser renderer and
+a one-member `expects` decision. M2 is unblocked and is not touched by any of this.
 
 #### Where the code went
 
@@ -2040,6 +2110,7 @@ client can never see something the DM's own render hides:
 | Enemy tokens | **only if** `not _fog_active()` or the cell is explored and visible — the exact gate at `_draw_agents` / `_draw_agent_hover_name`. HP as a **band** ("Bloodied"), never a number. No stat block. |
 | Unexplored cells | omitted entirely — not sent-and-hidden. A client that cheats by reading its own network traffic must learn nothing. |
 | DM viewer | everything, unfiltered |
+| DM-authoring prompts | **never shown**, whoever the viewer is. Per D-M1-12 six renderers are DM-console-only — 2 `NamePromptDialog`, `GridSpanDialog`, `TeamPickerDialog`, `MobSelectionDialog`, and `SpellSelectionDialog` at `19363`. They ask for free text, numbers or a catalogue edit, none of which crosses the wire in v1. |
 
 **Test**: `tests/test_gameview.py` — assert a player view of a scenario with an unexplored
 enemy contains no reference to that agent anywhere in the serialized bytes. That is the
