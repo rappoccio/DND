@@ -465,7 +465,9 @@ plus a green determinism run):
   were covered, but neither guard M2b actually moves — Nick's and Portent's — was ever
   satisfied by the scene, so both buttons read `no` in all 17 blocks. Checkpoints 17/18
   were added first, against the old fused code.)*
-- **M2c** — bucket 7a (~60). Long but mechanical; batch ~10 at a time by class.
+- **M2c** — bucket 7a, **57 buttons**, settled by the boundary below. Long but
+  mechanical; batched by class, because one creature shows a whole class's band at once.
+  See [M2c — the oracle first](#m2c--the-oracle-first-done-2026-09-22).
 - **M2d** — buckets 7e, then 7c. Clusters and the spatial predicates.
 - **M2e** — buckets 7b and 7d. Last, because they are the two that force the `ActionMenu`
   schema to carry action-economy as data rather than as a flag.
@@ -532,6 +534,26 @@ Each becomes its own item. None of them blocks Step 0.
   breaking the fix again fails it with the original `NameError`. This is a behaviour
   change (a raise became a button) and, like F7, is recorded as one. It is the only
   unqualified *bug* the M2 sweep has turned up so far; F2/F3/F4 were all latent.
+
+- **F9 — Intimidating Presence is gated at two different levels.** The panel offers
+  `btn_cbt_intimidating_presence` at `barbarian_subclass == Berserker and char_level >=
+  10`, but `class_resources.cpp:74` only grants the "Intimidating Presence" resource at
+  **14** (which is right for the 2024 PHB; L10 Berserker is Retaliation). The resource
+  test that follows therefore dominates, and levels 10–13 are a branch that can never
+  reach the draw. No behaviour change — the button is correctly hidden — but the panel
+  states a rule it does not implement, and checkpoint 25 has to use a level-14 Berserker
+  to see the button at all. Fix the panel's `10` to `14` as its own item.
+- **F10 — one widget, two draw sites.** `btn_cbt_telekinetic` is positioned and drawn
+  twice in the same pass under two unrelated guards: the **Telekinetic feat** (30 ft
+  shove, `17211`) and **Psi Warrior**'s Telekinetic Movement (`18077`). A Psi Warrior who
+  has taken the feat satisfies both, so the widget is painted at the upper position and
+  then moved and painted again at the lower one — the upper is a ghost with no rect
+  behind it, and the single click handler cannot tell which of the two the player meant.
+  This is F3's shape with the halves swapped (drawn but not clickable, rather than
+  clickable but not drawn). **It is why `telekinetic` is not in M2c's scope**: an
+  `Action` id is a dispatch key and there is one widget for two options, so splitting it
+  needs a decision the phase should not make in passing. Checkpoints 38 and 47 cover the
+  two sites separately; M2d takes it.
 
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
@@ -2329,6 +2351,75 @@ remaining **92**, and a converted button is navigated by its action id in
 - **Manual VNC smoke pass still owed**, for M2a's eight and M2b's eleven.
 
 ---
+
+### M2c — the oracle first (done 2026-09-22)
+
+M2c's first commit converts nothing. **78 of the 110 named buttons were drawn by no
+checkpoint at all**, and a golden that reads `no` for a button in all 20 blocks cannot
+tell whether an extraction preserved its rule or deleted it. So the checkpoints came
+first, against the still-fused code — the same order 14–18 took for M2a and M2b, and
+the one place M2c would have been most tempted to skip it.
+
+`tests/test_combat_panel.py` **21 → 50 checkpoints** (20 before F8's commit added one);
+the golden **2,910 → 6,987 lines**, with **zero deleted lines** — every existing block
+came through byte-identical, which is the only reason the extraction that follows can
+claim anything. F8's commit had already renumbered the F7 block `19 → 99`, so a new
+checkpoint is now always an insertion before it rather than an append after it.
+**All 57 of M2c's buttons now read `yes` somewhere.** 22 of the 110 are still dark:
+they are exactly the clusters and spatial predicates M2d and M2e own.
+
+#### The bucket boundary, settled
+
+Step 0.3 sized 7a at "~60" without drawing the line. M2c draws it: **7a is a guard that
+is flat and independent** — one `if` over (index in range, the action/bonus band, and a
+class / subclass / level / resource / feat / condition test), reached by nothing else and
+reaching nothing else. 91 names in §7, **57 in, 34 out**:
+
+| Out | Count | Why, and who takes it |
+| --- | ----: | --------------------- |
+| 7b | 2 | `atk_bonus`, `spell_bonus` — layout *and* label depend on `attacks_remaining`. **M2e** |
+| 7c | 7 | `long_jump`, `shove_push`, `shove_prone`, `grapple_esc`, `grapple_drop`, `bite_grappled`, `escape_net` — an O(n) scan the panel runs every frame. **M2d** |
+| 7d | 2 | `haste_action`, the `metamagic` dict — drawn outside the band on purpose. **M2e** |
+| 7e | 22 | six named clusters (duplicity 3, soulknife 2, shadow monk 3, archfey 3, elemental monk 2, Channel Divinity 3), plus the Cunning Action three-up row and the four Glamour Bard buttons nested inside `grant_inspiration`'s own resource test. **M2d** |
+| — | 1 | `telekinetic` — one widget, two draw sites. See **F10**. **M2d** |
+
+#### What the coverage work turned up
+
+Three findings, all from states no checkpoint had ever driven the panel into:
+
+- **F8** — a bare `bonus_used` crashed the whole panel for any Draconic Sorcerer L6+
+  with an affinity element. Fixed as its own commit, ahead of this one.
+- **F9** — Intimidating Presence: the panel says level 10, the engine grants the
+  resource at 14.
+- **F10** — `btn_cbt_telekinetic` is drawn twice in one pass from two unrelated guards.
+
+#### The trap the checkpoints themselves walked into
+
+The first draft of `_reclass` mutated a combatant's stats in place, and checkpoint 48
+(Monk 17) came out with a Cunning Action row that checkpoint 23 (Monk 17, identical in
+every other way) did not have. The cause: `initialize_class_resources` only ever *sets*
+the sticky feature fields on `Stats` — `has_cunning_action`, `weapon_mastery`,
+`can_cast_spell`, `num_attacks`, `feats`, the save proficiencies — and never clears the
+previous class's, so checkpoint 36's Rogue was still paying out twelve blocks later.
+`can_cast_spell` is the one that really bites: it decides the Bonus Action band's two-up
+layout, so a block's **geometry** would have depended on which class the block before it
+happened to use.
+
+`_reclass` now restores a field-dict baseline snapshotted right after `_start_combat`
+(`Stats` is neither deep-copyable nor copy-constructible, which is why it is a dict and
+not an object), and each block is independent of the ones before it. **23 and 48 now
+differ only in what 48 exists to show** — `quivering_palm`, the Focus the planting spent,
+and the one row of vertical shift that follows. That equality is the check; it was
+failing before the fix.
+
+An oracle whose blocks depend on their own order is worth no more than one written after
+the extraction. M2d and M2e will both add checkpoints, and both inherit this.
+
+#### Owed before the extraction lands
+
+Nothing — the 57 are covered and green. What is **not** owed to this commit but is still
+open: the MANUAL VNC smoke pass, now for M2a's 8, M2b's 11 and M2c's 57.
+
 
 ### M3 — `GameView`
 

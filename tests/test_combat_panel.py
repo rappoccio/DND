@@ -50,10 +50,12 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "gui"))
 
 import difflib
+import json
+
 import pygame
 
 import rpg_battle_map as rpg
-from helpers import _dict_to_spell, _dict_to_weapon
+from helpers import _dict_to_item, _dict_to_spell, _dict_to_weapon
 from widgets import Button
 from main import App
 
@@ -217,6 +219,16 @@ def _spell(app, name):
     return _dict_to_spell(app.all_spells[app.spell_name_to_idx[name]])
 
 
+
+def _item(name):
+    """An `rpg.Item` straight from the GUI's items.json, as `test_items.py` builds one."""
+    with open(os.path.join(_ROOT, "gui", "items.json")) as f:
+        for rec in json.load(f):
+            if rec["name"] == name:
+                return _dict_to_item(rec)
+    raise KeyError(name)
+
+
 def _place(app, name, col, row):
     cfg = rpg.AgentConfig()
     cfg.name = name
@@ -349,23 +361,77 @@ def _set_conditions(app, idx, **flags):
     app.combat.set_agent_conditions(app.bm, idx, cond)
 
 
+_BASELINE_STATS = {}     # name -> {attr: value} as `_build_scene` left that combatant
+
+
+def _stats_fields(s):
+    """Every plain (non-callable) attribute of a `Stats`, as a dict.
+
+    Used for both halves of the baseline. Sequences are copied into lists because the
+    pybind bindings hand back views, not snapshots.
+    """
+    out = {}
+    for n in dir(s):
+        if n.startswith("_"):
+            continue
+        try:
+            v = getattr(s, n)
+        except Exception:
+            continue
+        if callable(v):
+            continue
+        try:
+            out[n] = list(v) if hasattr(v, "__len__") and not isinstance(v, str) else v
+        except Exception:
+            pass
+    return out
+
+
+def _snapshot_baseline(app):
+    """Remember every combatant's stats as `_build_scene` left them.
+
+    `_reclass` restores this before applying a new class, because a good many class
+    features are recorded as *sticky fields* on `Stats` rather than derived from the
+    class, and `initialize_class_resources` only ever sets them — it never clears the
+    previous class's. `has_cunning_action` (Rogue), `weapon_mastery` (Fighter, Druid),
+    `can_cast_spell`, `num_attacks`, `feats` and the save-proficiency flags all behave
+    this way. `can_cast_spell` in particular decides the Bonus Action band's two-up
+    layout, so without the restore a block's GEOMETRY would depend on which class the
+    checkpoint before it happened to use, and the golden would be recording the order
+    of the checkpoints rather than the panel's rules.
+
+    There is no copy on the binding (`Stats` is neither deep-copyable nor
+    copy-constructible), which is why the baseline is a field dict and not an object.
+    """
+    for name in ("Aria", "Skarn", "Brannor", "Cyra"):
+        _BASELINE_STATS[name] = _stats_fields(
+            app.combat.get_agent_stats(app.bm, _idx(app, name)))
+
+
 def _reclass(app, name, cls, level, **fields):
-    """Put `name` on turn re-classed in place, and hand back its index.
+    """Put `name` on turn re-classed from its baseline, and hand back its index.
 
     Checkpoints 19+ all work this way. Placing a fifth combatant would reorder
     initiative and churn every block above it, so the cheap path — the one 17 and 18
-    already take — is to re-class one of the four that are already there. `fields` are
-    set BEFORE `initialize_class_resources` so a subclass reaches the resource table
-    that depends on it (War Priest, Zealous Presence, …); a resource's *current* value
-    is set by the caller afterwards, because initialization would overwrite it.
+    already take — is to re-class one of the four that are already there. Restoring the
+    baseline first (see `_snapshot_baseline`) is what makes each block independent of
+    the ones before it.
 
-    Re-classing leaves the previous class's fields behind — `set_class_level` replaces
-    `character_class` but not, say, `sorcerer_subclass`. Nearly every §7 guard is
-    class-gated so the stale field is unreachable, but a checkpoint that relies on a
-    feat, a condition or a bare flag must clear it again itself.
+    `fields` are set BEFORE `initialize_class_resources`, so a subclass reaches the
+    resource table that depends on it (War Priest, Zealous Presence, …); a resource's
+    *current* value is set by the caller afterwards, because initialization would
+    overwrite it.
+
+    The baseline does NOT cover conditions, weapons or inventory — a checkpoint that
+    arms one of those clears it again itself.
     """
     idx = _goto(app, name)
     s = app.combat.get_agent_stats(app.bm, idx)
+    for k, v in _BASELINE_STATS[name].items():
+        try:
+            setattr(s, k, v)        # derived/read-only fields simply refuse; that is
+        except Exception:           # fine, set_class_level rebuilds them below
+            pass
     s.set_class_level(cls, level)
     for k, v in fields.items():
         setattr(s, k, v)
@@ -373,12 +439,12 @@ def _reclass(app, name, cls, level, **fields):
     app.combat.set_agent_stats(app.bm, idx, s)
     return idx
 
-
 def build_output():
     app = App(MAP_PATH, seed=SEED)
     _build_scene(app)
     app._start_combat()
     app.combat.stop_recording()     # nothing below should reach the replay log
+    _snapshot_baseline(app)
 
     cap = PanelCapture(app)
     out = [
@@ -547,6 +613,202 @@ def build_output():
                      sorcerer_subclass=rpg.SorcererSubclass.Draconic,
                      draconic_affinity_type=0)
     out += cap.capture("19 draconic sorcerer with an affinity — Cyra (F8)")
+
+    # ── 20-48: bucket 7a's coverage (M2c) ───────────────────────────────────
+    # 78 of the panel's 110 named buttons were drawn by no checkpoint at all, and ~52
+    # of those are bucket 7a — the flat class/subclass/level/resource guards M2c
+    # converts. A golden that reads "no" for a button in every block cannot tell
+    # whether an extraction preserved its rule or deleted it, so these are added FIRST,
+    # against the still-fused code, exactly as 14-18 were for M2a and M2b. Batched by
+    # class, because one creature shows a whole class's band at once.
+    #
+    # Every block re-classes a combatant rather than placing a fifth (see `_reclass`),
+    # and every block sets its subclass explicitly — including to NONE — because
+    # `set_class_level` replaces the class and leaves the old subclass field behind.
+
+    # 20 — Abjurer with an active ward (temp HP is the ward's pool).
+    cyra_w = _reclass(app, "Cyra", rpg.CharacterClass.Wizard, 3,
+                      wizard_subclass=rpg.WizardSubclass.Abjurer)
+    _s = app.combat.get_agent_stats(app.bm, cyra_w)
+    _s.temp_hp = 5
+    app.combat.set_agent_stats(app.bm, cyra_w, _s)
+    out += cap.capture("20 abjurer, ward charged — Cyra (charge_arcane_ward)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_w)
+    _s.temp_hp = 0                      # temp HP is in the HP readout, not class-gated
+    app.combat.set_agent_stats(app.bm, cyra_w, _s)
+
+    # 21/22 — Wild Shape is one button with two labels, and the active form also prints
+    # a line of text above it. Both arms, because the label is the state.
+    cyra_d = _reclass(app, "Cyra", rpg.CharacterClass.Druid, 2)
+    out += cap.capture("21 druid, unshifted — Cyra (wild_shape)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_d)
+    _s.wild_shape_active = True
+    _s.wild_shape_form_name = "Wolf"
+    app.combat.set_agent_stats(app.bm, cyra_d, _s)
+    out += cap.capture("22 druid, shifted — Cyra (wild_shape: the Exit arm)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_d)
+    _s.wild_shape_active = False
+    app.combat.set_agent_stats(app.bm, cyra_d, _s)
+
+    # 23 — the Monk band: five buttons under one class, all Focus-gated.
+    _reclass(app, "Cyra", rpg.CharacterClass.Monk, 17,
+             monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
+    out += cap.capture("23 monk, open hand 17 — Cyra (patient_defense, step_of_wind, "
+                       "wholeness_of_body, martial_arts, flurry_of_blows)")
+
+    # 24 — the other Monk subclass that adds a bonus-action button.
+    _reclass(app, "Cyra", rpg.CharacterClass.Monk, 3,
+             monk_subclass=rpg.MonkSubclass.WarriorOfMercy)
+    out += cap.capture("24 monk, mercy 3 — Cyra (hand_of_healing)")
+
+    # 25/26 — Rage is shared; each Path adds its own L10+ presence. Berserker needs 14,
+    # not the 10 the panel's guard tests: `class_resources.cpp:74` only grants the
+    # Intimidating Presence resource at 14, so 10-13 is a level test the resource test
+    # already dominates. Recorded as F9; the panel is left exactly as it is.
+    _reclass(app, "Cyra", rpg.CharacterClass.Barbarian, 14,
+             barbarian_subclass=rpg.BarbianSubclass.Berserker)
+    out += cap.capture("25 barbarian, berserker 14 — Cyra (rage, intimidating_presence)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Barbarian, 10,
+             barbarian_subclass=rpg.BarbianSubclass.Zealot)
+    out += cap.capture("26 barbarian, zealot 10 — Cyra (rage, zealous_presence)")
+
+    # 27-29 — the Warlock band. 29 carries NO subclass, so it is also the check that
+    # re-classing clears the previous block's subclass-gated buttons.
+    _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 6,
+             warlock_subclass=rpg.WarlockSubclass.GreatOldOne)
+    out += cap.capture("27 warlock, great old one 6 — Cyra "
+                       "(clairvoyant_combatant, magical_cunning)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 3,
+             warlock_subclass=rpg.WarlockSubclass.Celestial)
+    out += cap.capture("28 warlock, celestial 3 — Cyra (healing_light)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 5,
+             warlock_subclass=rpg.WarlockSubclass.NONE,
+             eldritch_invocations=[8, 18])
+    out += cap.capture("29 warlock, invocations 8+18 — Cyra "
+                       "(one_with_shadows, familiar)")
+
+    # 30/31 — the Cleric band beyond the Channel Divinity cluster 09 already covers.
+    _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 10,
+             cleric_subclass=rpg.ClericSubclass.WarDomain)
+    out += cap.capture("30 cleric, war 10 — Cyra (war_priest, divine_intervention)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 17,
+             cleric_subclass=rpg.ClericSubclass.LightDomain)
+    out += cap.capture("31 cleric, light 17 — Cyra (corona)")
+
+    # 32-35 — the Sorcerer subclasses. Draconic is checkpoint 19 (F8).
+    _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 6,
+             sorcerer_subclass=rpg.SorcererSubclass.WildMagic)
+    out += cap.capture("32 sorcerer, wild magic 6 — Cyra (bend_luck, tides_of_chaos)")
+
+    # 33 — the three Wild Magic surge affordances are bare stats flags with no class
+    # guard at all, so they must be cleared again afterwards or they leak downward.
+    cyra_wm = _idx(app, "Cyra")
+    _s = app.combat.get_agent_stats(app.bm, cyra_wm)
+    _s.wild_magic_extra_action = True
+    _s.wild_magic_bonus_cast_turns = 2
+    _s.wild_magic_teleport_bonus_turns = 2
+    app.combat.set_agent_stats(app.bm, cyra_wm, _s)
+    out += cap.capture("33 sorcerer, surge window open — Cyra (the 3 wild_magic_*)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_wm)
+    _s.wild_magic_extra_action = False
+    _s.wild_magic_bonus_cast_turns = 0
+    _s.wild_magic_teleport_bonus_turns = 0
+    app.combat.set_agent_stats(app.bm, cyra_wm, _s)
+
+    _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 18,
+             sorcerer_subclass=rpg.SorcererSubclass.Clockwork)
+    out += cap.capture("34 sorcerer, clockwork 18 — Cyra "
+                       "(trance_of_order, bastion_of_law, clockwork_cavalcade)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 18,
+             sorcerer_subclass=rpg.SorcererSubclass.Aberrant)
+    out += cap.capture("35 sorcerer, aberrant 18 — Cyra "
+                       "(revelation_in_flesh, warping_implosion)")
+
+    # 36-38 — Rogue, and the two Fighter subclass buttons Aria never shows.
+    _reclass(app, "Cyra", rpg.CharacterClass.Rogue, 3,
+             rogue_subclass=rpg.RogueSubclass.NONE)
+    out += cap.capture("36 rogue 3 — Cyra (steady_aim)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
+             fighter_subclass=rpg.FighterSubclass.BattleMaster)
+    out += cap.capture("37 fighter, battle master 3 — Cyra (bm_maneuver)")
+    # `btn_cbt_telekinetic` has TWO draw sites — the Telekinetic feat (17211) and Psi
+    # Warrior's Telekinetic Movement (18077) — sharing one widget. This is the second;
+    # 46 is the first. See F10: it is why the button is NOT in M2c's scope.
+    _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
+             fighter_subclass=rpg.FighterSubclass.PsiWarrior)
+    out += cap.capture("38 fighter, psi warrior 3 — Cyra (telekinetic, Psi site)")
+
+    # 39-42 — the Paladin band: one oath per block, and all three L20 capstones.
+    _reclass(app, "Cyra", rpg.CharacterClass.Paladin, 3,
+             paladin_oath=rpg.PaladinOath.OathOfDevotion)
+    out += cap.capture("39 paladin, devotion 3 — Cyra (lay_on_hands, sacred_weapon)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Paladin, 20,
+             paladin_oath=rpg.PaladinOath.OathOfVengeance)
+    out += cap.capture("40 paladin, vengeance 20 — Cyra "
+                       "(vow_of_enmity, avenging_angel)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Paladin, 20,
+             paladin_oath=rpg.PaladinOath.OathOfAncients)
+    out += cap.capture("41 paladin, ancients 20 — Cyra (elder_champion)")
+    # Inspiring Smite only appears once a Divine Smite has landed this turn.
+    cyra_g = _reclass(app, "Cyra", rpg.CharacterClass.Paladin, 20,
+                      paladin_oath=rpg.PaladinOath.OathOfGlory)
+    _set_conditions(app, cyra_g, divine_smite_used=True)
+    out += cap.capture("42 paladin, glory 20 after a smite — Cyra "
+                       "(inspiring_smite, living_legend)")
+    _set_conditions(app, cyra_g, divine_smite_used=False)
+
+    # 43/44 — Bard. The die a Bard hands out is held by the RECIPIENT, so
+    # `use_inspiration` has no class guard of its own; it must be cleared again.
+    cyra_b = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 3,
+                      bard_subclass=rpg.BardCollege.Lore)
+    out += cap.capture("43 bard, lore 3 — Cyra (grant_inspiration)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_b)
+    _s.bardic_inspiration_die = 6
+    app.combat.set_agent_stats(app.bm, cyra_b, _s)
+    out += cap.capture("44 bard holding a die — Cyra (use_inspiration)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_b)
+    _s.bardic_inspiration_die = 0
+    app.combat.set_agent_stats(app.bm, cyra_b, _s)
+
+    # 45/46 — Ranger.
+    _reclass(app, "Cyra", rpg.CharacterClass.Ranger, 3,
+             ranger_subclass=rpg.RangerSubclass.GloomStalker)
+    out += cap.capture("45 ranger, gloom stalker 3 — Cyra (dread_ambusher)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Ranger, 14,
+             ranger_subclass=rpg.RangerSubclass.BeastMaster)
+    out += cap.capture("46 ranger, beast master 14 — Cyra "
+                       "(tireless, natures_veil, companion)")
+
+    # 47 — the guards that are not class-gated at all: four feats, two conditions and an
+    # inventory. Skarn carries them because he is the one combatant with no class, so
+    # nothing else in the block competes for the band. All of it is cleared again —
+    # none of these guards would be stopped by a later re-class.
+    skarn3 = _goto(app, "Skarn")
+    _s = app.combat.get_agent_stats(app.bm, skarn3)
+    for _f in ("Boon of Fate", "Boon of the Night Spirit",
+               "Boon of Dimensional Travel", "Telekinetic"):
+        _s.add_feat(_f)
+    app.combat.set_agent_stats(app.bm, skarn3, _s)
+    _set_conditions(app, skarn3, gwm_hew_available=True, blink_steps_available=True,
+                    burning=True)
+    app.combat.add_item_to_agent(app.bm, skarn3, _item("Potion of Healing"))
+    out += cap.capture("47 feats, conditions and an item — Skarn (boon_of_fate, "
+                       "merge_shadows, blink_steps, gwm_hew, telekinetic feat site, "
+                       "use_item, extinguish)")
+    _s = app.combat.get_agent_stats(app.bm, skarn3)
+    _s.feats = []
+    app.combat.set_agent_stats(app.bm, skarn3, _s)
+    _set_conditions(app, skarn3, gwm_hew_available=False, blink_steps_available=False,
+                    burning=False)
+    app.combat.set_agent_items(app.bm, skarn3, [])
+
+    # 48 — Quivering Palm, last of the batch because planting it leaves a delayed-trigger
+    # condition on Skarn that nothing removes, and 47 is the only later block that looks
+    # at him.
+    cyra_q = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 17,
+                      monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
+    app.combat.plant_quivering_palm(app.bm, cyra_q, _idx(app, "Skarn"))
+    out += cap.capture("48 monk with vibrations planted — Cyra (quivering_palm)")
 
     # 99 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
     # combat started with no combatants, or the acting token was removed). This is the
