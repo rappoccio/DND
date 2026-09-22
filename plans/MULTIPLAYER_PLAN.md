@@ -25,7 +25,7 @@ riskiest phase (M2) edits a 1,896-line method with no automated coverage at all.
 | # | Step | Output | Done |
 | --- | ---- | ------ | :--: |
 | 0.1 | **Agree the constraint set.** Walk the Non-negotiables and the Identity/auth constraints below with the user, line by line. Amend on disagreement, then freeze. | A dated "Frozen constraints" block appended to this section | ☑ |
-| 0.2 | **Inventory the prompt sites.** *(Done 2026-09-21 — see [Step 0.2 — the prompt-site inventory](#step-02--the-prompt-site-inventory-done-2026-09-21).)* Classify all 69 `ContextMenu.show` call sites: combat-turn vs DM-authoring, which close over `pending_*` state, which are reachable mid-reaction. | A table in this file, one row per site group | ☑ |
+| 0.2 | **Inventory the prompt sites.** *(Done 2026-09-21 — see [Step 0.2 — the prompt-site inventory](#step-02--the-prompt-site-inventory-done-2026-09-21).)* Classify all **87** prompt sites — the 69 `ContextMenu.show` calls plus 18 on seven other dialog classes — as combat-turn vs DM-authoring, which close over `pending_*` state, which are reachable mid-reaction. | A table in this file, one row per site group | ☑ |
 | 0.3 | **Inventory the action surface.** *(Done 2026-09-21 — see [Step 0.3 — the action-surface inventory](#step-03--the-action-surface-inventory-done-2026-09-21).)* Group the `btn_cbt_*` buttons by panel section; mark turn-action vs DM-tool; note which have availability logic that is *not* expressible without a frame of layout context. | A table in this file; the M2 work order falls out of it | ☑ |
 | 0.4 | **Write the identity schema on paper.** *(Done 2026-09-21 — see [Step 0.4 — the identity schema](#step-04--the-identity-schema-frozen-2026-09-21).)* The principal record, the session-file shape, and the exact `authorize(principal, action, target)` signature — including the fields that only a future real-auth phase will populate. | A schema block in the Identity section below | ☑ |
 | 0.5 | **Write the wire-format spec.** *(Done 2026-09-21 — see [Step 0.5 — the wire-format spec](#step-05--the-wire-format-spec-done-2026-09-21).)* `GameView`, the event envelope, the prompt envelope and the auth envelope, each with a `protocol_version`. No client code before this exists. | A schema block in this file | ☑ |
@@ -85,7 +85,9 @@ overlays (reachable cells, AoE footprints, legal target sets) shipped inside `Ga
 **NN3 — No new subsystem lives in `main.py`.** New code goes in new modules (`gui/net/`,
 `gui/prompts.py`). Changes to `main.py` are limited to call-site rewiring and deletions; its
 net line count should trend down, never up. *(Reworded — the original "new code goes in new
-modules" literally forbade M1's 69 call-site rewrites and M2's panel work.)*
+modules" literally forbade M1's 87 call-site rewrites and M2's panel work.)* *(Count
+corrected 2026-09-21 from 69 to 87 — editorial only, no change to the constraint: 69 was
+the `ContextMenu` sub-count, and Step 0.2's own finding puts the prompt surface at 87.)*
 
 **NN4 — The DM can always act for any token.** Connections drop; this is the normal path
 with an extra button, not a fallback. Concurrent submissions (a player clicking as the DM
@@ -1024,7 +1026,7 @@ Concretely, from `gui/main.py` (20,951 lines, one `App` class, 627 methods):
 | ------- | ---: | ----------- |
 | `_draw_combat_panel` | 1,896 lines | immediate-mode; "is this action legal now" is fused with "where does the button get drawn" |
 | `_handle_events` | 2,162 lines | one `if btn.clicked(event)` chain; **113** distinct `btn_cbt_*` buttons — 110 drawn, 3 dead, one of them a 9-entry dict (Step 0.3, F1/F2) |
-| `ContextMenu.show(pos, [(label, callback)])` | 69 sites | **already** a label+callback model — the one remotable seam that exists. Step 0.2 found **18 more** prompt sites on six other dialog widgets (**87 total**), including the in-combat spell list. |
+| `ContextMenu.show(pos, [(label, callback)])` | 69 sites | **already** a label+callback model — the one remotable seam that exists. Step 0.2 found **18 more** prompt sites on seven other dialog classes (**87 total**), including the in-combat spell list. |
 | `self.pending_*` interaction flags | 72 distinct | mid-turn "awaiting a map click" state, all Python, cleared at turn boundaries by `_clear_pending_target_picks` |
 
 And the authority for a turn is **split three ways**:
@@ -1426,7 +1428,7 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 | Phase | Scope | Risk | Est. | Ships what |
 | ----- | ----- | ---- | ---- | ---------- |
 | **M0** | Token ownership model | very low | 1–2 days | who controls what |
-| **M1** | `PromptBus`; reroute reactions + the 69 `ContextMenu` sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
+| **M1** | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
 | **M2** | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
 | **M3** | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
 | **M4** | Transport + spectator web client | medium | 1–2 weeks | **players watch on their own screens** |
@@ -1507,7 +1509,7 @@ above. Local renderer: `ContextMenu`, unchanged in appearance.
 labeled option list; there is exactly **one** call site; and the flow is already
 snapshot-safe. Converting it changes no behavior and proves the bus end to end.
 
-**Step 3 — reroute the 69 `ContextMenu.show` sites.** These are already
+**Step 3 — reroute the 69 `ContextMenu.show` sites, then the 18 on the other seven renderers (87 total).** These are already
 `(label, callback)` pairs — the conversion is close to mechanical:
 
 ```python
