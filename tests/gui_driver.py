@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(
 import pygame
 
 from constants import COL_BG
-from dialogs import ContextMenu
+from dialogs import ContextMenu, ElementPickerDialog, SpellGridMenu
 import main  # noqa: F401 — imports pygame and builds the App class under the dummy driver
 
 
@@ -85,6 +85,78 @@ def click_away(app) -> None:
     x = menu.rect.right + 40 if menu.rect.right + 40 < w else max(0, menu.rect.left - 40)
     y = menu.rect.bottom + 40 if menu.rect.bottom + 40 < h else max(0, menu.rect.top - 40)
     post_click(app, (x, y))
+
+
+# ── The other two prompt renderers (M1 Step 3) ───────────────────────────────
+#
+# Step 0.2 found the DM console prompting through several widgets, so the bus draws a
+# `Prompt` with one of three renderers. Each needs its own click helper, keyed off the
+# widget's own geometry constants for the same reason `menu_row_pos` is: a change to the
+# widget then moves the click with it instead of silently missing.
+
+
+def picker_labels(app) -> list[str]:
+    return [label for label, _ in app._element_dialog._options]
+
+
+def picker_row_pos(app, label: str) -> tuple[int, int]:
+    """The centre of the `ElementPickerDialog` row carrying `label`."""
+    dlg = app._element_dialog
+    assert dlg.visible and dlg.rect is not None, "no picker is open"
+    labels = picker_labels(app)
+    assert label in labels, f"no row {label!r} in {labels}"
+    i = labels.index(label)
+    list_y = dlg.rect.y + ElementPickerDialog.HDR_H + ElementPickerDialog.PAD
+    return (dlg.rect.x + dlg.rect.w // 2,
+            list_y + i * ElementPickerDialog.ITEM_H + ElementPickerDialog.ITEM_H // 2)
+
+
+def click_picker(app, label: str) -> None:
+    """Pick a value in the modal picker.
+
+    `ElementPickerDialog.handle` swallows one MOUSEBUTTONDOWN after `show` — the click
+    that opened it — and `draw` is what normally retires that frame. A headless check
+    draws no frame between opening and picking, so the counter is advanced here rather
+    than by posting a throwaway click that a reader would have to explain.
+    """
+    app._element_dialog._frames_since_show = max(1, app._element_dialog._frames_since_show)
+    post_click(app, picker_row_pos(app, label))
+
+
+def dismiss_picker(app) -> None:
+    """Close the picker with nothing chosen — Esc, which `handle` commits as an empty
+    selection. That empty commit is the path the bus has to read as a cancel."""
+    app._element_dialog._frames_since_show = max(1, app._element_dialog._frames_since_show)
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE,
+                                         mod=0, unicode="", scancode=41))
+    assert app._handle_events() is not False
+
+
+def grid_labels(app) -> list[str]:
+    return [label for label, _ in app.spell_grid_menu.items]
+
+
+def grid_btn_pos(app, label: str) -> tuple[int, int]:
+    """The centre of the `SpellGridMenu` button carrying `label`. The widget precomputes
+    a rect per button in `show`, so this reads the layout rather than recomputing it."""
+    menu = app.spell_grid_menu
+    assert menu.visible and menu.rect is not None, "no spell grid is open"
+    labels = grid_labels(app)
+    assert label in labels, f"no button {label!r} in {labels}"
+    i = labels.index(label)
+    rect = next(r for r, j in menu._btn_rects if j == i)
+    return rect.center
+
+
+def click_grid(app, label: str) -> None:
+    post_click(app, grid_btn_pos(app, label))
+
+
+def click_grid_away(app) -> None:
+    """Click inside the grid frame but on no button — `SpellGridMenu.handle`'s dismiss."""
+    menu = app.spell_grid_menu
+    assert menu.visible and menu.rect is not None, "no spell grid is open"
+    post_click(app, (menu.rect.x + 2, menu.rect.y + SpellGridMenu.TITLE_H // 2))
 
 
 def screenshot(app, path: str) -> str:

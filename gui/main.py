@@ -68,7 +68,8 @@ from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
-from prompts import PromptBus, Option, ContextMenuRenderer, options_from_pairs
+from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
+                     ElementPickerRenderer, options_from_pairs)
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
@@ -569,10 +570,18 @@ class App:
         self._set_encounter_base(default_agents)
         # The prompt bus (M1). Built after the roster so it can install prompt_lookup;
         # the screen does not exist yet, so the renderer resolves its size lazily.
+        # Three renderers, because Step 0.2 found three widgets already drawing prompts:
+        # the popup for a short list (the default), the grid for the spell list, and the
+        # centred modal for a value picker. A prompt names one with `render=`.
         self.prompts = PromptBus(
             roster=self.roster,
             renderer=ContextMenuRenderer(self.context_menu,
-                                         lambda: self.screen.get_size()))
+                                         lambda: self.screen.get_size()),
+            renderers={
+                "grid":   SpellGridRenderer(self.spell_grid_menu,
+                                            lambda: self.screen.get_size()),
+                "picker": ElementPickerRenderer(self._element_dialog),
+            })
 
         # ── Multi-map dungeon state (FLOORS_IMPLEMENTATION_PLAN.md, Phase 3) ─
         # self.dungeon is None outside "dungeon mode"; when set, the app is paging
@@ -2254,8 +2263,8 @@ class App:
             ("Create PC…",  self._show_pc_class_menu),
             ("Clear",       self._clear_agents),
         ]
-        self.context_menu.show((self.btn_agents.rect.x, self.btn_agents.rect.y),
-                               items, self.screen.get_size())
+        self._ask_dm("action", "Agents", items,
+                     anchor=(self.btn_agents.rect.x, self.btn_agents.rect.y))
 
     def _clear_agents(self):
         """Remove every placed agent (plus their spell terrain effects and any
@@ -2331,8 +2340,8 @@ class App:
         pc_classes = ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk",
                       "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
         options = [(cls, lambda c=cls: self._on_pc_class_selected(c)) for cls in pc_classes]
-        px_popup = self._panel_x() + self._PANEL_PAD
-        self.context_menu.show((px_popup, 100), options, self.screen.get_size())
+        self._ask_dm("action", "Create PC — class", options,
+                     anchor=(self._panel_x() + self._PANEL_PAD, 100))
 
     def _show_terrain_menu(self):
         """Popup for the "Terrain…" panel button."""
@@ -2344,8 +2353,8 @@ class App:
             ("Hide" if self.show_terrain else "Show", self._toggle_show_terrain),
             ("Clear",     self._clear_terrain),
         ]
-        self.context_menu.show((self.btn_terrain.rect.x, self.btn_terrain.rect.y),
-                               items, self.screen.get_size())
+        self._ask_dm("action", "Terrain", items,
+                     anchor=(self.btn_terrain.rect.x, self.btn_terrain.rect.y))
 
     def _open_terrain_editor(self):
         # These full-map editors blit map_surf at (0,0) and map clicks via native
@@ -2411,8 +2420,8 @@ class App:
             ("Hide" if self.show_lighting_overlay else "Show",
              self._toggle_lighting_overlay),
         ]
-        self.context_menu.show((self.btn_lighting.rect.x, self.btn_lighting.rect.y),
-                               items, self.screen.get_size())
+        self._ask_dm("action", "Lighting", items,
+                     anchor=(self.btn_lighting.rect.x, self.btn_lighting.rect.y))
 
     def _open_lighting_editor(self):
         """Open the lighting editor primed with the encounter's saved lighting."""
@@ -2491,8 +2500,8 @@ class App:
                 ("Open Dungeon…",     self._dungeon_open_browser),
                 ("Close Dungeon",     self._dungeon_close),
             ]
-        self.context_menu.show((self.btn_dungeon.rect.x, self.btn_dungeon.rect.y),
-                               items, self.screen.get_size())
+        self._ask_dm("action", "Dungeon configuration", items,
+                     anchor=(self.btn_dungeon.rect.x, self.btn_dungeon.rect.y))
 
     def _dungeon_dir(self) -> str:
         """The folder a page's relative ``png`` / ``encounter_base`` resolves against: the
@@ -4613,8 +4622,7 @@ class App:
         options = [(a, (lambda a=a: self._choose_legendary_action(a)))
                    for a in self._legendary_action_names_for(idx, st)]
         options.append((f"Pass ({remaining} left)", self._pass_legendary))
-        px, py = self._agent_screen_pos(idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{name}: legendary action ({remaining} left)", options)
 
     def _pass_legendary(self):
         """The current legendary creature declines further actions; move to the next in the queue."""
@@ -4946,7 +4954,9 @@ class App:
                 self._pickup_item(i, a)
             menu_items.append((f"Pick up {item.weapon.name}", _pickup))
         if menu_items:
-            self.context_menu.show(pos, menu_items, self.screen.get_size())
+            self._ask_actor(agent_idx, "action",
+                            f"{self._agent_name(agent_idx)}: pick up an item", menu_items,
+                            anchor=pos)
 
     def _pickup_item(self, item, agent_idx: int):
         """Take a weapon off the ground: pick the slot here, let the engine do the assignment.
@@ -4980,7 +4990,7 @@ class App:
             nm = item.weapon.name or "item"
             menu_items.append((f"Delete {nm}", lambda i=item: self._delete_item(i)))
         if menu_items:
-            self.context_menu.show(pos, menu_items, self.screen.get_size())
+            self._ask_dm("action", "Dropped items on this cell", menu_items, anchor=pos)
 
     def _delete_item(self, item):
         """Remove a dropped weapon from the map entirely."""
@@ -5054,7 +5064,9 @@ class App:
                             lambda a=actor, d=door_id: self._use_door_link(d, a)))
 
         if options:
-            self.context_menu.show(pos, options, self.screen.get_size())
+            # Out of combat `actor` is the selected token (or -1), and controller_of folds
+            # an unknown index to the DM — which is the right owner for DM-side authoring.
+            self._ask_actor(actor, "action", "Door", options, anchor=pos)
 
     def _show_ladder_menu(self, cell, pos):
         """Context menu for a ladder cell: a "Use Ladder" action that carries the acting
@@ -5078,7 +5090,7 @@ class App:
 
         label = f"Use Ladder (to floor {Z})"
         options = [(label, lambda a=actor, l=li: self._use_ladder(l, a))]
-        self.context_menu.show(pos, options, self.screen.get_size())
+        self._ask_actor(actor, "action", f"Ladder to floor {Z}", options, anchor=pos)
 
     def _use_ladder(self, ladder_idx: int, actor_idx: int):
         """Resolve a ladder's global target to a page + local cell and switch to it,
@@ -5269,7 +5281,9 @@ class App:
             side  = "ally" if c.owner_is_ally else "enemy"
             label = f"{c.label} — L{c.level}, {owner} ({side})"
             options.append((label, lambda cc=c, h=hit, cl=cell: self._cast_dispel_selection(cc, h, cl)))
-        self.context_menu.show(pos, options, self.screen.get_size())
+        self._ask_actor(caster, "target",
+                        f"{self._agent_name(caster)}: what should Dispel Magic end?",
+                        options, anchor=pos)
 
     def _cast_dispel_selection(self, candidate, hit, cell):
         """Commit the picked Dispel Magic target: stash its structure ids and route through the
@@ -5506,8 +5520,8 @@ class App:
                 ("Use Reckless Attack", lambda: self._activate_reckless_and_attack(idx, slot)),
                 ("Normal Attack", _proceed_normal)
             ]
-            px_popup = self._panel_x() + self._PANEL_PAD
-            self.context_menu.show((px_popup, 290), options, self.screen.get_size())
+            self._ask_actor(idx, "action", f"{self._agent_name(idx)}: Reckless Attack?",
+                            options, anchor=(self._panel_x() + self._PANEL_PAD, 290))
             return
 
         # Only seed attacks_remaining when starting a fresh sequence (== 0).
@@ -5582,12 +5596,9 @@ class App:
                 options.append((self._weapon_menu_label(w), _pick))
             if war_magic_option is not None:
                 options.append(war_magic_option)
-            px_popup = self._panel_x() + self._PANEL_PAD
-            self.context_menu.show(
-                (px_popup, 290),
-                options,
-                self.screen.get_size()
-            )
+            self._ask_actor(idx, "action",
+                            f"{self._agent_name(idx)}: pick a weapon for the {slot} attack",
+                            options, anchor=(self._panel_x() + self._PANEL_PAD, 290))
 
     def _damage_breakdown_str(self, result) -> str:
         """Return ' [4 (weapon) + 3 (rage)]' when a hit has multiple damage sources, else ''."""
@@ -5729,8 +5740,9 @@ class App:
             (f"Harm ally {tgt_name}!", on_confirm),
             ("Cancel", lambda: None),
         ]
-        px, py = self._agent_screen_pos(target_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(actor, "confirm",
+                        f"{self._agent_name(actor)} is about to harm an ally — {tgt_name}",
+                        options, anchor=self._agent_screen_pos(target_idx))
 
     def _attack_is_a_throw(self, atk_idx: int, target_idx: int, weapon_idx: int) -> bool:
         """Is this attack a THROW — i.e. does the weapon leave the attacker's hand?
@@ -6240,8 +6252,7 @@ class App:
             ]
         options.append(("Skip Brutal Strike", lambda: _apply([])))
 
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Brutal Strike", options)
 
     def _offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, chained=False):
         """Push weapon mastery: optionally shove the target 10 ft straight away (Large or smaller).
@@ -6270,8 +6281,7 @@ class App:
             ("Push 10 ft (away)", lambda: _apply(True)),
             ("Skip Push", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Push (Mastery)", options)
 
     def _offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx, chained=False):
         """Topple weapon mastery: optionally force a CON save or knock the target Prone.
@@ -6303,8 +6313,7 @@ class App:
             ("Topple (CON save or Prone)", lambda: _apply(True)),
             ("Skip Topple", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Topple (Mastery)", options)
 
     def _cleave_valid_targets(self, atk: int, first: int, weapon_idx: int) -> list:
         """Foes a Cleave second attack may legally strike: a different, living, non-ally creature
@@ -6364,8 +6373,7 @@ class App:
             ("Cleave: extra attack (no ability mod)", lambda: _apply(True)),
             ("Skip Cleave", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Cleave (Mastery)", options)
 
     def _cancel_cleave(self):
         """Esc out of a pending Cleave second-target pick. Refunds the once-per-turn use so the
@@ -6499,8 +6507,7 @@ class App:
             ("Sudden Strike: free extra attack", lambda: _apply(True)),
             ("Skip Sudden Strike", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Sudden Strike", options)
 
     def _offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a qualifying weapon hit, offer Cleric Divine Strike (Radiant or Necrotic).
@@ -6527,8 +6534,7 @@ class App:
             ("Divine Strike: Necrotic", lambda: _apply(False)),
             ("Skip Divine Strike", lambda: _apply(None)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Divine Strike", options)
 
     def _offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a qualifying hit, offer Psi Warrior Psionic Strike (spend 1 Psionic Energy die → Force).
@@ -6554,8 +6560,7 @@ class App:
             ("Psionic Strike (1 die → Force)", lambda: _apply(True)),
             ("Skip Psionic Strike", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Psionic Strike", options)
 
     def _offer_hand_of_harm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After a qualifying unarmed hit, offer Monk Warrior of Mercy Hand of Harm (extra Necrotic,
@@ -6594,8 +6599,7 @@ class App:
             (label, lambda: _apply(True)),
             ("Skip Hand of Harm", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Hand of Harm", options)
 
     def _offer_punch_and_grab(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After an Unarmed-Strike hit in the Attack action, offer the Grappler feat's Punch-and-Grab:
@@ -6619,8 +6623,7 @@ class App:
             ("Punch-and-Grab (also attempt a Grapple)", lambda: _apply(True)),
             ("Skip Grapple", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Punch-and-Grab", options)
 
     def _offer_elemental_move(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After an unarmed hit while Elemental Attunement is active (Warrior of the Elements L3), offer
@@ -6643,8 +6646,7 @@ class App:
             ("Pull 10 ft (toward)", lambda: _apply(True)),
             ("Skip", lambda: _apply(None)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Elemental Attunement", options)
 
     def _offer_divine_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a melee/unarmed hit, offer Paladin Divine Smite with one entry per available
@@ -6681,8 +6683,7 @@ class App:
                 options.append((f"Divine Smite ({_ordinal(lvl)} slot → {dice}d8 Radiant)",
                                 lambda l=lvl: _apply(l)))
         options.append(("Skip Divine Smite", lambda: _apply(None)))
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Divine Smite", options)
 
     def _offer_eldritch_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
         """After a pact-weapon hit, offer Warlock Eldritch Smite. Pact Magic slots are all one level
@@ -6715,8 +6716,7 @@ class App:
             options.append((f"Eldritch Smite (pact slot L{psl} → {dice}d8 Force + Prone)",
                             lambda l=psl: _apply(l)))
         options.append(("Skip Eldritch Smite", lambda: _apply(None)))
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Eldritch Smite", options)
 
     def _eligible_guided_clerics(self, atk_idx):
         """War Clerics (L3+, Channel Divinity left) who can Guide a missed attack: the attacker, or an
@@ -6774,8 +6774,7 @@ class App:
             label = "Guided Strike (+10)" if ci == atk_idx else f"Guided Strike: {agents[ci].name} reacts (+10)"
             options.append((label, (lambda c=ci: _apply(c))))
         options.append(("Skip Guided Strike", lambda: _apply(None)))
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Guided Strike", options)
 
     def _offer_peerless_aim(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """After a miss, offer Boon of Combat Prowess — Peerless Aim (turn the miss into a hit, once per
@@ -6802,8 +6801,7 @@ class App:
             ("Peerless Aim (turn miss into a hit)", lambda: _apply(True)),
             ("Skip Peerless Aim", lambda: _apply(False)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Peerless Aim", options)
 
     def _eligible_restore_balance_clockworks(self, atk_idx, result):
         """Clockwork Soul Sorcerers (L3+, >=1 Restore Balance use, reaction free, within 60 ft + LoS,
@@ -6846,8 +6844,7 @@ class App:
             options.append((f"Restore Balance: {agents[ri].name} reacts (cancel Disadvantage)",
                             (lambda r=ri: _apply(r))))
         options.append(("Skip Restore Balance", lambda: _apply(None)))
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Restore Balance", options)
 
     def _offer_cunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Show the Sneak Attack / Cunning Strike menu after a qualifying hit.
@@ -6903,8 +6900,7 @@ class App:
             options.append(("Stealth Attack (1 die) — stay hidden", lambda: _apply([6])))
         options.append(("Sneak Attack only", lambda: _apply([])))
 
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Cunning Strike", options)
 
     def _show_flurry_rider_menu(self, atk_idx):
         """Show Open Hand rider menu when Flurry of Blows is activated (Way of the Open Hand only)."""
@@ -6914,8 +6910,8 @@ class App:
             ("Deny Reaction", lambda: self._execute_flurry(atk_idx, 2)),
             ("No Rider", lambda: self._execute_flurry(atk_idx, -1)),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action",
+                        f"{self._agent_name(atk_idx)}: Flurry of Blows rider", options)
 
     def _execute_flurry(self, atk_idx, rider_option):
         """Execute Flurry of Blows with the chosen rider option."""
@@ -7046,8 +7042,7 @@ class App:
             self._continue_attack_sequence_after_rider(atk_idx)
 
         options = [opt, ("Don't use", _skip)]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Quivering Palm", options)
 
     def _offer_stunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Show Stunning Strike menu after a qualifying unarmed hit.
@@ -7097,8 +7092,7 @@ class App:
         if qp:
             options.append(qp)
         options.append(("Don't use", _skip_stunning_strike))
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Stunning Strike", options)
 
     def _offer_open_hand_rider(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Show Open Hand rider menu after a qualifying Flurry hit.
@@ -7166,8 +7160,7 @@ class App:
         if qp:
             options.append(qp)
         options.append(("Don't use", _skip_open_hand))
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Open Hand Technique", options)
 
     def _offer_maneuver(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Show Battle Master Maneuver menu after a qualifying hit. Spend 1 Superiority Die for
@@ -7241,8 +7234,7 @@ class App:
             ("Sweeping (1 die, splash a 2nd creature)", _apply_sweeping),
             ("Skip", _skip_maneuver),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: maneuver", options)
 
     def _resolve_sweep(self, second_target: int):
         """Resolve a pending Sweeping Attack against the clicked 2nd creature (within 5 ft of the
@@ -7314,8 +7306,7 @@ class App:
             ("Precision Attack (spend 1 Superiority Die)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Precision Attack", options)
 
     def _offer_reckless_reroll(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Offer a Barbarian a post-hoc Reckless Attack after a miss: reroll the SAME attack with
@@ -7350,8 +7341,7 @@ class App:
             ("Reckless Attack — reroll w/ advantage (enemies gain advantage vs you)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Reckless Attack", options)
 
     def _can_homing_strike(self, atk_idx, action):
         """Soulknife L9+ holding a Psionic Energy Die, whose missed attack used a Psychic Blade."""
@@ -7406,8 +7396,7 @@ class App:
             ("Homing Strikes — spend a Psionic Energy Die to add to the roll", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Homing Strikes", options)
 
     def _offer_rend_mind(self, atk_idx, target_idx, tgt_name):
         """Soulknife L17 Rend Mind: after a Psychic-Blade Sneak Attack, optionally force a WIS save or
@@ -7422,8 +7411,7 @@ class App:
             ("Rend Mind — force a WIS save or Stun the target", _apply),
             ("Skip", lambda: None),
         ]
-        px, py = self._agent_screen_pos(atk_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(atk_idx, "action", f"Rend Mind vs {tgt_name}", options)
 
     def _offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Offer a Battle Master DEFENDER a Riposte after a melee attack misses them: spend the
@@ -7463,8 +7451,9 @@ class App:
             ("Riposte — melee attack back (reaction + 1 Superiority Die)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(target_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        # The reactor is the DEFENDER, so `owner` follows target_idx and not the actor —
+        # _ask_actor derives it from whoever is anchored (Step 0.2's G3).
+        self._ask_actor(target_idx, "reaction", f"{tgt_name} may Riposte {atk_name}", options)
 
     def _offer_sentinel_guard(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Offer a Sentinel BYSTANDER a Guardian reaction after an adjacent enemy attacks an ally: spend
@@ -7518,8 +7507,9 @@ class App:
             (f"Sentinel Guardian — {sent_name} melee attacks the attacker (reaction)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(sentinel_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(sentinel_idx, "reaction",
+                        f"{sent_name} may guard {tgt_name} — Sentinel reaction vs {atk_name}",
+                        options)
 
     def _offer_soul_of_vengeance(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
         """Offer a Vengeance paladin (L15+) a Soul of Vengeance reaction after its sworn foe (under the
@@ -7572,8 +7562,9 @@ class App:
             (f"Soul of Vengeance — {pal_name} melee attacks its sworn foe (reaction)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(pal_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(pal_idx, "reaction",
+                        f"{pal_name} may strike back at {atk_name} — Soul of Vengeance",
+                        options)
 
     def _can_protective_field(self, target_idx, result):
         """Eligibility gate for the Psi Warrior Protective Field reaction (mirrors the checks in
@@ -7627,8 +7618,9 @@ class App:
             ("Protective Field — reduce damage (reaction + 1 Psionic die)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(target_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(target_idx, "reaction",
+                        f"{tgt_name} may blunt {atk_name}'s hit — Protective Field",
+                        options)
 
     def _find_interceptor(self, action, target_idx, result):
         """Return the first agent eligible to use the Interception fighting style against this hit, or
@@ -7676,8 +7668,9 @@ class App:
             (f"Interception — {itc_name} reduces damage (reaction + 1d10 + PB)", _apply),
             ("Skip", _skip),
         ]
-        px, py = self._agent_screen_pos(interceptor_idx if interceptor_idx >= 0 else target_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(interceptor_idx if interceptor_idx >= 0 else target_idx, "reaction",
+                        f"{itc_name} may intercept {atk_name}'s hit on {tgt_name}",
+                        options)
 
     def _create_unarmed_punch_weapon(self):
         """Create a synthetic unarmed punch weapon (1 + STR bludgeoning)."""
@@ -7821,8 +7814,8 @@ class App:
             label = f"⚔️  Portent d20 → {die_value}"
             items.append((label, lambda idx=die_idx: self._use_portent_die_at_index(idx)))
 
-        mouse_pos = pygame.mouse.get_pos()
-        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: spend a Portent die", items,
+                        anchor=pygame.mouse.get_pos())
 
     # FLAG: Move to C++
     def _use_portent_die_at_index(self, die_index: int):
@@ -7866,8 +7859,8 @@ class App:
             self._combat_log_add("No spell slots available!")
             return
 
-        mouse_pos = pygame.mouse.get_pos()
-        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: charge the Arcane Ward", items,
+                        anchor=pygame.mouse.get_pos())
 
     # FLAG: Move to C++
     def _expend_arcane_ward_slot(self, slot_level: int):
@@ -7948,8 +7941,8 @@ class App:
             label = f"🐺 {beast['name']} (CR {beast['cr']})"
             items.append((label, lambda b=beast['name']: self._activate_wild_shape(idx, b)))
 
-        mouse_pos = pygame.mouse.get_pos()
-        self.context_menu.show(mouse_pos, items, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: choose a Wild Shape form", items,
+                        anchor=pygame.mouse.get_pos())
 
     def _activate_wild_shape(self, idx: int, beast_name: str):
         """Activate Wild Shape with the given beast form."""
@@ -8027,7 +8020,9 @@ class App:
         panel_left = self._panel_x()
         if px >= panel_left:
             px = max(8, panel_left - self.context_menu.MIN_W - 8)
-        self.context_menu.show((px, py), items, self.screen.get_size())
+        idx = self._current_agent_idx()
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: Unarmed Strike", items,
+                        anchor=(px, py))
 
     def _start_unarmed_punch(self):
         """Damage option of an Unarmed Strike (1 + STR Bludgeoning). Resolved as a normal attack
@@ -8216,8 +8211,8 @@ class App:
             ("Feinting Attack (creature within 5 ft)", _feint),
             ("Quick Toss (thrown attack + die)", _quick_toss),
         ]
-        px, py = self._agent_screen_pos(idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(idx, "action",
+                        f"{self._agent_name(idx)}: Bonus-Action maneuver", options)
 
     def _resolve_rally(self, target_idx: int):
         """Resolve a pending Rally against the clicked creature (within 30 ft)."""
@@ -8973,7 +8968,8 @@ class App:
             self._combat_log_add(
                 f"{self.bm.placed_agents[idx].name} has nothing left to spend on an item this turn.")
             return
-        self.context_menu.show(pos, opts, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: use a carried item", opts,
+                        anchor=pos)
 
     def _resolve_use_item(self, target_idx: int):
         """Use the armed inventory slot on the clicked target (which may be the user itself).
@@ -9282,8 +9278,9 @@ class App:
                 f"Mantle of Majesty: casting Command ({word_name}) — click a target within 60 ft.")
             self._flush_combat_log()
 
-        self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None, multi=False,
-                                  title="Command: choose a word")
+        self._ask_actor(bard_idx, "action", "Command: choose a word",
+                        [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in COMMAND_WORD_OPTIONS],
+                        render="picker", on_cancel=lambda: _on_word([]))
 
     def _start_unbreakable_majesty(self, bard_idx: int):
         """College of Glamour Unbreakable Majesty (bonus action, L14+). Spend the once/long-rest resource
@@ -9812,8 +9809,9 @@ class App:
                 type_name = next((lbl for lbl, val in elem_opts
                                   if val == self.pending_spell_damage_type), "?")
                 self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
-            self._element_dialog.show(_on_elem, elem_opts, current_values=None, multi=False,
-                                      title=f"{sp_.name}: damage type")
+            self._ask_actor(idx, "action", f"{sp_.name}: damage type",
+                            [(lbl, (lambda v=val: _on_elem([v]))) for lbl, val in elem_opts],
+                            render="picker", on_cancel=lambda: _on_elem([]))
             return
 
         # Vistani Curse sub-choice (Curse of Vulnerability / Weakness / Affliction): pick the
@@ -9832,8 +9830,9 @@ class App:
                 choice_name = next((lbl for lbl, val in curse_opts
                                     if val == self.pending_spell_curse_choice), "?")
                 self._combat_log_add(f"Casting {sp_.name} ({choice_name}) — click a target.")
-            self._element_dialog.show(_on_curse, curse_opts, current_values=None, multi=False,
-                                      title=f"{sp_.name}: choose")
+            self._ask_actor(idx, "action", f"{sp_.name}: choose",
+                            [(lbl, (lambda v=val: _on_curse([v]))) for lbl, val in curse_opts],
+                            render="picker", on_cancel=lambda: _on_curse([]))
             return
 
         # Cast-time word choice (Command): pick the command word via the ElementPickerDialog
@@ -9848,8 +9847,9 @@ class App:
                 word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
                 self._combat_log_add(f"Command word: {word_name}.")
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
-            self._element_dialog.show(_on_word, COMMAND_WORD_OPTIONS, current_values=None,
-                                      multi=False, title="Command: choose a word")
+            self._ask_actor(idx, "action", "Command: choose a word",
+                            [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in COMMAND_WORD_OPTIONS],
+                            render="picker", on_cancel=lambda: _on_word([]))
             return
 
         # Cast-time form choice (Forcecage): Cage (20-ft barred cube — the occupant is trapped but
@@ -9868,8 +9868,9 @@ class App:
                     f"Forcecage form: {'Box (10 ft, sealed)' if self.pending_forcecage_sealed else 'Cage (20 ft)'}"
                     " — click a target.")
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
-            self._element_dialog.show(_on_forcecage, forcecage_opts, current_values=None,
-                                      multi=False, title="Forcecage: choose a form")
+            self._ask_actor(idx, "action", "Forcecage: choose a form",
+                            [(lbl, (lambda v=val: _on_forcecage([v]))) for lbl, val in forcecage_opts],
+                            render="picker", on_cancel=lambda: _on_forcecage([]))
             return
 
         # Summon spells: pick an empty cell within range to manifest the creature, rather than
@@ -9888,7 +9889,9 @@ class App:
             items = [(f"✨ {form}",
                       lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
                      for form, block in spirit_forms.items()]
-            self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+            self._ask_actor(idx, "action",
+                            f"{self._agent_name(idx)}: casting {sp_.name} — choose a form",
+                            items, anchor=pygame.mouse.get_pos())
             self._combat_log_add(f"Casting {sp_.name} — choose a form.")
             return
         if monster:
@@ -10115,10 +10118,10 @@ class App:
         def _show_level_menu(name, subs):
             # Second popup: pick the slot level for one already-chosen spell. Shown at the
             # mouse so it appears next to the click that selected the spell.
-            self.context_menu.show(
-                pygame.mouse.get_pos(),
-                [(f"{name} {lbl}", cb) for lbl, cb in subs],
-                self.screen.get_size())
+            self._ask_actor(idx, "action",
+                            f"{self._agent_name(idx)}: {name} — at which slot level?",
+                            [(f"{name} {lbl}", cb) for lbl, cb in subs],
+                            anchor=pygame.mouse.get_pos())
 
         # Quickened Spell (Sorcerer Metamagic) lets an Action-cast spell be cast as a Bonus
         # Action. When it is armed, the bonus menu also offers Action-cast spells — the engine
@@ -10214,7 +10217,10 @@ class App:
             # of entries, far more than a single vertical column can show on-screen.
             slot_label = {"action": "Cast a spell", "bonus": "Bonus-action spell",
                           "war_magic": "War Magic spell"}.get(slot, "Cast a spell")
-            self.spell_grid_menu.show(options, self.screen.get_size(), title=slot_label)
+            # `slot_label` is the widget's own title strip, so it is the prompt title too:
+            # a fuller sentence here would change what the DM sees. The wire's `actor`
+            # field is what names the caster for a remote renderer.
+            self._ask_actor(idx, "action", slot_label, options, render="grid")
 
     def _get_damage_type_names(self, magic_damage_types, physical_damage_types):
         """Convert damage type enums to their string names."""
@@ -10738,6 +10744,56 @@ class App:
         for eid in to_remove:
             del self._effect_meta[eid]
 
+    def _ask_actor(self, actor_idx, kind, title, pairs, *, owner=None, render=None,
+                   parent=None, anchor=None, on_cancel=None):
+        """Open a prompt on the bus, anchored at a token and owned by its controller.
+
+        This is M1 Step 3's mechanical replacement for the two lines every call site
+        used to end with: an ``_agent_screen_pos`` anchor, then a direct ``show`` on the
+        shared ``ContextMenu`` widget with the options list and the screen size.
+
+        The popup is the same widget at the same anchor with the same rows in the same
+        order — ``ContextMenuRenderer`` rebuilds exactly that items list. What changes is
+        that the choice now has an id, an owner and a wire projection, and the click goes
+        ``ContextMenu.handle -> bus.choose -> authorize -> the same callback``.
+
+        ``owner`` is the one field that needs thought per site (Step 0.2): it defaults to
+        the actor's controller, which is right for every prompt the acting creature
+        answers itself, and is passed explicitly where it is not — the defender
+        reactions of G3, and the DM-authoring menus, which take ``DM_PRINCIPAL_ID``.
+        """
+        return self.prompts.ask(
+            actor_idx=actor_idx,
+            owner=self.roster.controller_of(actor_idx) if owner is None else owner,
+            kind=kind,
+            title=title,
+            options=options_from_pairs(pairs),
+            parent=parent,
+            render=render,
+            anchor=self._agent_screen_pos(actor_idx) if anchor is None else anchor,
+            on_cancel=on_cancel)
+
+    def _ask_dm(self, kind, title, pairs, *, anchor=None, actor_idx=-1,
+                parent=None, on_cancel=None):
+        """``_ask_actor`` for a menu only the DM may ever answer.
+
+        Step 0.2 marks the map right-click and top-bar menus DM-authoring and never
+        remoted; they go on the bus anyway, because the bus — not the widget — is what
+        ``authorize()`` reads, and because a scripted test drives them the same way it
+        drives a combat prompt. ``owner`` is pinned to ``DM_PRINCIPAL_ID`` rather than
+        derived, so seating a player on a token can never hand them the authoring tools.
+        """
+        return self._ask_actor(actor_idx, kind, title, pairs, owner=DM_PRINCIPAL_ID,
+                               parent=parent, anchor=anchor or (100, 100),
+                               on_cancel=on_cancel)
+
+    def _agent_name(self, agent_idx: int) -> str:
+        """Display name for a token index, used by prompt titles. A remote player sees only
+        the title, so every prompt names its creature; out of range folds to "?" rather than
+        raising, because composing a title must never be what breaks a turn."""
+        agents = self.bm.placed_agents
+        return agents[agent_idx].name if 0 <= agent_idx < len(agents) else "?"
+
     def _agent_screen_pos(self, agent_idx: int) -> tuple:
         """Get screen position of agent for context menu anchor."""
         agents = self.bm.placed_agents
@@ -11143,7 +11199,8 @@ class App:
         items = [(f"🐾 Beast of the {form}",
                   lambda f=form: self._summon_companion(idx, f))
                  for form in ("Land", "Sea", "Sky")]
-        self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: summon a Primal Companion",
+                        items, anchor=pygame.mouse.get_pos())
 
     def _dismiss_companion(self, ranger_idx: int, companion_idx: int):
         """Tombstone the companion (removed_from_play) like a dismissed summon: it
@@ -11271,7 +11328,8 @@ class App:
             return
         items = [(f"😈 {form}", lambda f=form: self._summon_familiar(idx, f))
                  for form in PACT_CHAIN_FAMILIARS]
-        self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: summon a Pact familiar",
+                        items, anchor=pygame.mouse.get_pos())
 
     def _dismiss_familiar(self, warlock_idx: int, familiar_idx: int):
         """Tombstone the familiar (removed_from_play) like a dismissed summon: it stays in
@@ -11564,7 +11622,9 @@ class App:
             ("🧟 Zombie", lambda: self._finish_animate_dead(
                 caster_idx, corpse_idx, cell, "Zombie", slot, slot_level, free_cast)),
         ]
-        self.context_menu.show(pygame.mouse.get_pos(), items, self.screen.get_size())
+        self._ask_actor(caster_idx, "action",
+                        f"{self._agent_name(caster_idx)}: Animate Dead — raise which undead?",
+                        items, anchor=pygame.mouse.get_pos())
         self._combat_log_add("Animate Dead — choose the undead to raise from the corpse.")
 
     def _finish_animate_dead(self, caster_idx, corpse_idx, cell, undead,
@@ -11858,8 +11918,7 @@ class App:
             options.append((f"{b}: {desc[:46]}",
                             lambda bb=b, te=offer.tides_expended:
                                 self._resolve_wild_magic_surge(caster_idx, bb, te)))
-        px, py = self._agent_screen_pos(caster_idx)
-        self.context_menu.show((px, py), options, self.screen.get_size())
+        self._ask_actor(caster_idx, "action", f"{name}: {kind} — choose a surge", options)
 
     def _resolve_wild_magic_surge(self, caster_idx: int, effect: int, tides_expended: bool):
         """Apply a chosen Wild Magic Surge band (from offer_wild_magic_surge) and relay the log."""
@@ -11899,13 +11958,12 @@ class App:
         # lands right after any OnDeclareCast reaction popup (e.g. Counterspell); a quiet log message
         # there is easy to miss and the DM ends up pressing End Turn, silently wasting the once/rest
         # use. The popup consumes clicks (blocking End Turn) until the DM picks Use or Decline.
-        px, py = self._agent_screen_pos(caster_idx)
-        self.context_menu.show(
-            (px, py),
+        self._ask_actor(
+            caster_idx, "confirm",
+            f"{self._agent_name(caster_idx)}: Beguiling Magic after {sp.name}?",
             [(f"Use Beguiling Magic ({sp.name})",
               lambda i=caster_idx: self._arm_beguiling_target_pick(i)),
-             ("Decline Beguiling Magic", self._decline_beguiling_offer)],
-            self.screen.get_size())
+             ("Decline Beguiling Magic", self._decline_beguiling_offer)])
 
     def _maybe_offer_bewitching_magic(self, caster_idx: int, spell_idx: int):
         """Archfey Bewitching Magic (L14): if the caster is an Archfey L14+ warlock that just cast an
@@ -11925,13 +11983,12 @@ class App:
             return
         if sp.level < 1:   # cantrips don't use a slot
             return
-        px, py = self._agent_screen_pos(caster_idx)
-        self.context_menu.show(
-            (px, py),
+        self._ask_actor(
+            caster_idx, "confirm",
+            f"{self._agent_name(caster_idx)}: Bewitching Magic after {sp.name}?",
             [(f"Bewitching Magic: free Misty Step ({sp.name})",
               lambda i=caster_idx: self._arm_bewitching_misty(i)),
-             ("Decline Bewitching Magic", self._decline_bewitching_offer)],
-            self.screen.get_size())
+             ("Decline Bewitching Magic", self._decline_bewitching_offer)])
 
     def _arm_bewitching_misty(self, caster_idx: int):
         """DM accepted Bewitching Magic — arm the free Misty Step destination pick (with the currently
@@ -11992,8 +12049,10 @@ class App:
             self._flush_combat_log()
             self._update_attack_overlay()
 
-        self._element_dialog.show(_on_choice, [("Charmed", 0), ("Frightened", 1)],
-                                  current_values=None, multi=False, title="Beguiling Magic")
+        self._ask_actor(bard_idx, "action", "Beguiling Magic",
+                        [("Charmed", lambda: _on_choice([0])),
+                         ("Frightened", lambda: _on_choice([1]))],
+                        render="picker", on_cancel=lambda: _on_choice([]))
 
     def _cancel_beguiling(self):
         """Esc out of Beguiling Magic without using it (the spell was already cast normally)."""
@@ -18916,6 +18975,10 @@ class App:
             # ── Cast-time element picker is a top modal: consume events while open ──
             if self._element_dialog.visible:
                 self._element_dialog.handle(event)
+                # Same report the popup makes below: the picker commits on dismiss with
+                # nothing selected, the renderer drops that empty commit, and the bus
+                # turns it into the cancel it actually was.
+                self.prompts.renderer_dismissed()
                 continue
 
             # ── Grid-span picker is a top modal: consume events while open ─────────
@@ -19079,6 +19142,7 @@ class App:
             # Spell grid popup sits above normal map events but below modals.
             if self.spell_grid_menu.visible:
                 if self.spell_grid_menu.handle(event):
+                    self.prompts.renderer_dismissed()
                     continue
 
             # Context menu sits above normal map events but below modals.
@@ -19392,7 +19456,12 @@ class App:
                                           ("Radiant", 8), ("Thunder", 9)]
                                 _opts = [(nm, (lambda hh=h, ii=ix: self._set_fiendish_resilience(hh, ii)))
                                          for nm, ix in _types]
-                                self.context_menu.show(pos, _opts, self.screen.get_size())
+                                # A genuine submenu: `answering` is the agent menu whose row
+                                # was just clicked, which is the parent D-M1-2 wants named.
+                                self._ask_dm("action",
+                                             f"{self._agent_name(h)}: Fiendish Resilience",
+                                             _opts, anchor=pos, actor_idx=h,
+                                             parent=self.prompts.answering)
                             _menu_opts.append(("Fiendish Resilience", _choose_fiendish_resilience))
                         # NPC automation: hand this agent's turn to the engine (NPC_AUTOMATION_PLAN Step 2).
                         # Nested submenu, mirroring the Fiendish Resilience pattern above.
@@ -19416,7 +19485,10 @@ class App:
                                      ("0 (manual)" if i == 0 else f"Level {i}"),
                                      (lambda lv=i: _set_diff(lv)))
                                     for i in range(7)]
-                                self.context_menu.show(p, _diff_opts, self.screen.get_size())
+                                self._ask_dm("action",
+                                             f"{self._agent_name(hh)}: automation difficulty",
+                                             _diff_opts, anchor=p, actor_idx=hh,
+                                             parent=self.prompts.answering)
                             def _strategy_menu(hh=h, p=pos):
                                 _strats = [
                                     ("Simple",              rpg.NpcAutomationStrategy.Simple),
@@ -19437,13 +19509,18 @@ class App:
                                     (("✓ " if s == _cur_s else "") + label,
                                      (lambda st=s: _set_strat(st)))
                                     for label, s in _strats]
-                                self.context_menu.show(p, _strat_opts, self.screen.get_size())
+                                self._ask_dm("action",
+                                             f"{self._agent_name(hh)}: automation strategy",
+                                             _strat_opts, anchor=p, actor_idx=hh,
+                                             parent=self.prompts.answering)
                             _auto_label = ("Automated: ON" if self.bm.is_agent_npc_automated(h)
                                            else "Automated: off")
                             _sub_opts = [(_auto_label, _toggle_automated),
                                          ("Difficulty ▸", _difficulty_menu),
                                          ("Strategy ▸",   _strategy_menu)]
-                            self.context_menu.show(pos, _sub_opts, self.screen.get_size())
+                            self._ask_dm("action", f"{nm}: NPC automation", _sub_opts,
+                                         anchor=pos, actor_idx=h,
+                                         parent=self.prompts.answering)
                         _menu_opts.append(("NPC Automation ▸", _npc_automation_menu))
                         # Ownership (MULTIPLAYER_PLAN.md M0): hand this token to a player.
                         # One submenu on the existing agent menu, never a new dialog — the
@@ -19476,9 +19553,13 @@ class App:
                                 _opts.append((("✓ " if _cur == _p.id else "") + _p.display_name,
                                               (lambda pid=_p.id: _assign(pid))))
                             _opts.append(("Seat a new player…", _seat_new))
-                            self.context_menu.show(pos, _opts, self.screen.get_size())
+                            self._ask_dm("action",
+                                         f"{self._agent_name(h)}: who controls this token?",
+                                         _opts, anchor=pos, actor_idx=h,
+                                         parent=self.prompts.answering)
                         _menu_opts.append(("Controller ▸", _controller_menu))
-                        self.context_menu.show(event.pos, _menu_opts, self.screen.get_size())
+                        self._ask_dm("action", f"{self._agent_name(hit)} — DM menu",
+                                     _menu_opts, anchor=event.pos, actor_idx=hit)
 
             # During combat, right-click an On Deck reserve to recall (deploy) just that one
             # mob — the per-mob counterpart to the On Deck section's group Deploy rows. The
@@ -19494,10 +19575,9 @@ class App:
                         nm = self.bm.placed_agents[hit].name
                         def _recall_one(h=hit, label=nm):
                             self._deploy_on_deck_idxs([h], label)
-                        self.context_menu.show(
-                            event.pos,
-                            [(f"Recall '{nm}' from On Deck", _recall_one)],
-                            self.screen.get_size())
+                        self._ask_dm("action", f"{nm}: On Deck reserve",
+                                     [(f"Recall '{nm}' from On Deck", _recall_one)],
+                                     anchor=event.pos, actor_idx=hit)
 
             # Right-click a dropped weapon (no agent on the cell) → DM delete menu.
             # Works during combat too, so the DM can clean up the battlefield.
@@ -19522,11 +19602,10 @@ class App:
                     def _reset_fog():
                         self.bm.clear_fog()
                         self._mark_fog_dirty()   # re-reveal whatever the party can currently see
-                    self.context_menu.show(
-                        event.pos,
-                        [("Reveal all fog", _reveal_all_fog),
-                         ("Reset fog", _reset_fog)],
-                        self.screen.get_size())
+                    self._ask_dm("action", "Fog of war",
+                                 [("Reveal all fog", _reveal_all_fog),
+                                  ("Reset fog", _reset_fog)],
+                                 anchor=event.pos)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map:
                 cell = self._screen_to_cell(*event.pos)
@@ -20591,9 +20670,11 @@ class App:
                                 else:
                                     self._combat_log_add(
                                         "Elemental Attunement: requires the Elements subclass (L3) and 1 Focus Point.")
-                            self._element_dialog.show(_on_attune_elem, ELEMENTAL_MONK_OPTIONS,
-                                                      current_values=None, multi=False,
-                                                      title="Elemental Attunement: element")
+                            self._ask_actor(
+                                idx, "action", "Elemental Attunement: element",
+                                [(lbl, (lambda v=val: _on_attune_elem([v])))
+                                 for lbl, val in ELEMENTAL_MONK_OPTIONS],
+                                render="picker", on_cancel=lambda: _on_attune_elem([]))
                     if self.btn_cbt_elemental_burst.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20606,9 +20687,11 @@ class App:
                                                   if val == element), "?")
                                 self._combat_log_add(
                                     f"Elemental Burst ({type_name}): click a center cell (or click yourself to cancel).")
-                            self._element_dialog.show(_on_burst_elem, ELEMENTAL_MONK_OPTIONS,
-                                                      current_values=None, multi=False,
-                                                      title="Elemental Burst: element")
+                            self._ask_actor(
+                                idx, "action", "Elemental Burst: element",
+                                [(lbl, (lambda v=val: _on_burst_elem([v])))
+                                 for lbl, val in ELEMENTAL_MONK_OPTIONS],
+                                render="picker", on_cancel=lambda: _on_burst_elem([]))
                     if self.btn_cbt_quivering_palm.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20650,12 +20733,11 @@ class App:
                                     self._flush_combat_log()
                                 else:
                                     self._combat_log_add("Bend Luck: not eligible (wrong subclass/level/SP)")
-                            px, py = event.pos
-                            self.context_menu.show(
-                                (px, py),
+                            self._ask_actor(
+                                idx, "action", f"{self._agent_name(idx)}: Bend Luck",
                                 [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
                                  ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
-                                self.screen.get_size())
+                                anchor=event.pos)
                     if self.btn_cbt_boon_of_fate.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20670,12 +20752,11 @@ class App:
                                 else:
                                     self._combat_log_add("Boon of Fate: not available (no feat / already used this rest)")
                                     self._flush_combat_log()
-                            px, py = event.pos
-                            self.context_menu.show(
-                                (px, py),
+                            self._ask_actor(
+                                idx, "action", f"{self._agent_name(idx)}: Boon of Fate",
                                 [("Boost (+2d4)", lambda: _apply_boon_of_fate(True)),
                                  ("Penalty (-2d4)", lambda: _apply_boon_of_fate(False))],
-                                self.screen.get_size())
+                                anchor=event.pos)
                     if self.btn_cbt_tides_of_chaos.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20725,12 +20806,12 @@ class App:
                                     self._combat_log_add(
                                         f"Bastion of Law: click the creature to ward ({n} SP, {n}d8) — self or within 30 ft")
                                     self._flush_combat_log()
-                                px, py = event.pos
-                                self.context_menu.show(
-                                    (px, py),
+                                self._ask_actor(
+                                    idx, "action",
+                                    f"{self._agent_name(idx)}: Bastion of Law — how many SP?",
                                     [(f"{n} SP ({n}d8)", (lambda n=n: _arm_bastion(n)))
                                      for n in range(1, avail + 1)],
-                                    self.screen.get_size())
+                                    anchor=event.pos)
                     if self.btn_cbt_clockwork_cavalcade.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20838,10 +20919,12 @@ class App:
                                 tname = _DAMAGE_TYPE_NAMES.get(self.pending_metamagic_transmute_type, "?")
                                 self._combat_log_add(f"Transmuted Spell → {tname} damage.")
                                 self._flush_combat_log()
-                            self._element_dialog.show(
-                                _on_mm_transmute, METAMAGIC_TRANSMUTE_OPTIONS,
-                                current_values=None, multi=False,
-                                title="Transmuted Spell — new damage type")
+                            self._ask_actor(
+                                self._current_agent_idx(), "action",
+                                "Transmuted Spell — new damage type",
+                                [(lbl, (lambda v=val: _on_mm_transmute([v])))
+                                 for lbl, val in METAMAGIC_TRANSMUTE_OPTIONS],
+                                render="picker", on_cancel=lambda: _on_mm_transmute([]))
                     self._flush_combat_log()
                     break
                 # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the

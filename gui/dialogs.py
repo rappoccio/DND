@@ -1205,6 +1205,14 @@ class ElementPickerDialog:
             self._callback(sorted(self._selected))
         self.visible = False
 
+    def dismiss(self):
+        """Close WITHOUT committing. `_commit_and_dismiss` is the user-facing close (a
+        pick, Done, Esc or a click outside all commit what is selected); this one exists
+        for the prompt bus, which closes a prompt a later prompt superseded and must not
+        fire a callback nobody asked for (MULTIPLAYER_PLAN.md, PromptState.SUPERSEDED)."""
+        self._callback = None
+        self.visible = False
+
     def _list_y(self):
         return self.rect.y + self.HDR_H + self.PAD
 

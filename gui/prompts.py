@@ -122,6 +122,7 @@ class Prompt:
     deadline:  float | None = None      # monotonic deadline; unused until M5's expiry
     parent_id: str | None = None        # the stack, per Step 0.5
     anchor:    tuple[int, int] | None = None   # local render hint; not on the wire
+    render:    str | None = None        # which local renderer draws it; not on the wire
     on_answer: Callable[[Response], None] | None = None
     on_cancel: Callable[[], None] | None = None
     state:     PromptState = PromptState.LIVE
@@ -165,6 +166,21 @@ class SubmitResult:
         return d
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Renderers. Step 0.2 found the DM console prompts through several widgets, not
+#  one — a popup for a short list, a grid for the spell list, a modal for a value
+#  picker — and called the one-to-many `Prompt` → renderer mapping a day-one cost
+#  rather than a discovery at site 40. These are that mapping. Each is duck-typed
+#  on its widget and implements the same three methods the bus calls:
+#  ``show(prompt, submit)`` / ``dismiss()`` / ``is_showing()``.
+#
+#  None of them decides anything. A renderer draws the options it is handed and
+#  calls ``submit(option_id)``; validation, authorization and the callback all stay
+#  in the bus, which is what makes a browser in M5 a fourth entry in this list
+#  rather than a parallel implementation of the rules.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class ContextMenuRenderer:
     """Draws a ``Prompt`` as the popup the DM already knows.
 
@@ -201,6 +217,85 @@ class ContextMenuRenderer:
             return (9999, 9999)
 
 
+class SpellGridRenderer:
+    """Draws a ``Prompt`` as the multi-column ``SpellGridMenu``.
+
+    The in-combat spell list is the single most-used prompt in the game and it is far
+    too long for the single-column popup, which is why it has its own widget. The items
+    list is the same ``(label, callback)`` shape, so this is ``ContextMenuRenderer`` with
+    a different widget and a title strip instead of an anchor: the grid centres itself.
+
+    ``prompt.title`` is what the strip shows, so a call site converting a grid passes the
+    exact string the widget used to get and lets the wire's ``actor`` field name the
+    caster — a longer, friendlier title here would be a visible change to the console
+    inside the one phase whose acceptance criterion is that nothing changes.
+    """
+
+    def __init__(self, menu, screen_size: Callable[[], tuple[int, int]] | None = None):
+        self._menu = menu
+        self._screen_size = screen_size
+
+    def show(self, prompt: Prompt, submit: Callable[[str], None]) -> None:
+        items = [(o.label, (lambda oid=o.id: submit(oid))) for o in prompt.options]
+        if not items:                     # SpellGridMenu.show takes max() over the labels
+            return
+        self._menu.show(items, self._size(), title=prompt.title)
+
+    def dismiss(self) -> None:
+        self._menu.dismiss()
+
+    def is_showing(self) -> bool:
+        return bool(getattr(self._menu, "visible", False))
+
+    def _size(self) -> tuple[int, int]:
+        if self._screen_size is None:
+            return (9999, 9999)
+        try:
+            return self._screen_size()
+        except Exception:
+            return (9999, 9999)
+
+
+class ElementPickerRenderer:
+    """Draws a single-select ``Prompt`` as the centred modal value picker.
+
+    ``ElementPickerDialog`` differs from the other two in three ways, all handled here:
+
+      · it takes ``(label, value)`` pairs and one dialog-level callback rather than a
+        callback per row, so the option **id** is what it commits — ids are positional
+        (``opt_0``, ``opt_1``, …) and the row's own ``on_choose`` still does the work;
+      · it commits on dismiss, with an empty selection. An empty commit is not an
+        answer, so it is dropped here and the event loop's ``renderer_dismissed()``
+        turns it into the cancel it actually is — the same path the popup uses;
+      · it is **multi-select capable**, and this renderer only ever asks for
+        ``multi=False``. A multi-select answer has no shape in Step 0.5's frozen
+        ``expects`` vocabulary (``choice`` / ``cell`` / ``agent`` / ``none``), so the one
+        multi-select call site in the game stays off the bus until that is unfrozen.
+    """
+
+    def __init__(self, dialog):
+        self._dlg = dialog
+
+    def show(self, prompt: Prompt, submit: Callable[[str], None]) -> None:
+        options = [(o.label, o.id) for o in prompt.options]
+        if not options:
+            return
+
+        def _commit(chosen):
+            # Single-select: a click gives exactly one value; a dismiss gives none.
+            if chosen:
+                submit(chosen[0])
+
+        self._dlg.show(_commit, options, current_values=None, multi=False,
+                       title=prompt.title)
+
+    def dismiss(self) -> None:
+        self._dlg.dismiss()
+
+    def is_showing(self) -> bool:
+        return bool(getattr(self._dlg, "visible", False))
+
+
 class PromptBus:
     """Holds the live prompt (and its ancestors), validates every answer, and owns the
     single resumption point each call site used to own itself.
@@ -211,12 +306,18 @@ class PromptBus:
     see ``not_live``, not race the first one into the engine.
     """
 
-    def __init__(self, roster=None, renderer=None):
+    def __init__(self, roster=None, renderer=None, renderers=None):
         self._roster = None
-        self._renderer = renderer
+        # name -> renderer. "default" draws every prompt that does not name one, which
+        # keeps the 69 popup conversions free of a render argument they do not need.
+        self._renderers: dict[str, object] = dict(renderers or {})
+        if renderer is not None:
+            self._renderers["default"] = renderer
+        self._showing = None                 # the renderer drawing the live prompt
         self._prompts: dict[str, Prompt] = {}
         self._order: list[str] = []          # insertion order, for the history trim
         self._stack: list[Prompt] = []       # ancestors first, the displayed leaf last
+        self._answering: Prompt | None = None  # whose callback is running right now
         self._counter = 0
         self._observers: list[Callable[[str, Prompt], None]] = []
         if roster is not None:
@@ -232,8 +333,8 @@ class PromptBus:
         if roster is not None:
             roster.prompt_lookup = self.lookup
 
-    def set_renderer(self, renderer) -> None:
-        self._renderer = renderer
+    def set_renderer(self, renderer, name: str = "default") -> None:
+        self._renderers[name] = renderer
 
     def add_observer(self, fn: Callable[[str, Prompt], None]) -> None:
         """Called with ("asked" | "answered" | "cancelled" | "superseded", prompt) on the
@@ -250,6 +351,19 @@ class PromptBus:
     def get(self, prompt_id: str) -> Prompt | None:
         return self._prompts.get(prompt_id)
 
+    @property
+    def answering(self) -> Prompt | None:
+        """The prompt whose callback is on the stack right now, or None.
+
+        This is how a *submenu* names its parent (D-M1-2) without threading the parent
+        object through the closure that opens it: a row that reads "Difficulty \u25b8" opens
+        its child from inside its own ``on_choose``, so the prompt being answered *is*
+        the parent. Only submit dispatch sets this — a prompt opened from an
+        ``on_cancel`` is a sibling (a declined reaction chaining to the next reactor),
+        which is exactly the case D-M1-2 refuses to infer a parent for.
+        """
+        return self._answering
+
     def lookup(self, prompt_id: str) -> tuple[str | None, bool]:
         """``SessionRoster.prompt_lookup``: (owner principal id, is_live). The roster
         must not reach into this module's state, so it asks through this hook and keeps
@@ -264,6 +378,7 @@ class PromptBus:
             expects: str = "choice", deadline: float | None = None,
             parent: Prompt | None = None,
             anchor: tuple[int, int] | None = None,
+            render: str | None = None,
             on_answer: Callable[[Response], None] | None = None,
             on_cancel: Callable[[], None] | None = None) -> Prompt:
         """Open a prompt and render it. Returns the ``Prompt`` so a caller that opens a
@@ -279,7 +394,8 @@ class PromptBus:
                         actor_idx=actor_idx, owner=owner, kind=kind, title=title,
                         options=tuple(options), expects=expects, deadline=deadline,
                         parent_id=parent.id if parent is not None else None,
-                        anchor=anchor, on_answer=on_answer, on_cancel=on_cancel)
+                        anchor=anchor, render=render,
+                        on_answer=on_answer, on_cancel=on_cancel)
 
         if parent is None:
             # No parent means this prompt replaces whatever was on screen. That is what
@@ -294,8 +410,13 @@ class PromptBus:
             self._stack = []
         else:
             # Walk back to the parent: re-asking from an ancestor drops the branch below
-            # it. The parent stays LIVE — Step 0.5 has cancelling a child re-send its
-            # parent, and a dead parent could not be re-sent.
+            # it. Nothing here resolves the parent, and Step 0.5 wants it intact so that
+            # cancelling a child can re-send it. Note what the DM console does to that in
+            # practice: a submenu is opened by CLICKING a row of its parent, and the click
+            # answered the parent before the callback ran (D-M1-4). So locally the parent
+            # is usually already ANSWERED by the time it lands back on the stack here —
+            # harmless (an answered ancestor is skipped by every resolution path below),
+            # but it means M5's back path has to re-ASK the parent, not re-send it.
             while self._stack and self._stack[-1] is not parent:
                 self._stack.pop()
             if not self._stack:
@@ -350,10 +471,16 @@ class PromptBus:
 
         # The option's own callback is what the 87 mechanical conversions carry; the
         # prompt-level on_answer is for the responses that are not a choice at all.
-        if option is not None and option.on_choose is not None:
-            option.on_choose()
-        elif prompt.on_answer is not None:
-            prompt.on_answer(response)
+        # `_answering` is saved and restored rather than cleared: a callback that answers
+        # a second prompt (a chained rider) nests, and the outer frame must come back.
+        outer, self._answering = self._answering, prompt
+        try:
+            if option is not None and option.on_choose is not None:
+                option.on_choose()
+            elif prompt.on_answer is not None:
+                prompt.on_answer(response)
+        finally:
+            self._answering = outer
         return SubmitResult(True, prompt_id)
 
     def choose(self, option_id: str, principal_id: str = DM_PRINCIPAL_ID) -> SubmitResult:
@@ -409,7 +536,7 @@ class PromptBus:
         prompt = self.live
         if prompt is None or not prompt.is_live:
             return False
-        if self._renderer is not None and self._renderer.is_showing():
+        if self._showing is not None and self._showing.is_showing():
             return False
         return self.cancel(prompt.id)
 
@@ -426,9 +553,16 @@ class PromptBus:
                                       PromptTarget(prompt.id))
 
     def _render(self, prompt: Prompt) -> None:
-        if self._renderer is None:
+        """Pick the renderer the prompt asked for and hand it the options.
+
+        The choice is remembered in ``_showing`` because the bus has to ask *the widget
+        that is actually up* whether it is still up — dismissal is reported by the event
+        loop (D-M1-6) and there are now three widgets that can report it."""
+        renderer = self._renderers.get(prompt.render or "default")
+        self._showing = renderer
+        if renderer is None:
             return
-        self._renderer.show(prompt, lambda oid: self.choose(oid))
+        renderer.show(prompt, lambda oid: self.choose(oid))
 
     def _clear_stack(self) -> list[Prompt]:
         """Empty the stack and clear the widget. Returns what was on it, so the caller
@@ -437,8 +571,9 @@ class PromptBus:
         The widget has usually dismissed itself already (``ContextMenu.handle`` dismisses
         before it calls back), so this is idempotent by necessity, not by accident."""
         was, self._stack = self._stack, []
-        if self._renderer is not None and self._renderer.is_showing():
-            self._renderer.dismiss()
+        renderer, self._showing = self._showing, None
+        if renderer is not None and renderer.is_showing():
+            renderer.dismiss()
         return was
 
     def _remember(self, prompt: Prompt) -> None:

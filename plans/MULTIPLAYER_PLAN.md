@@ -1785,6 +1785,197 @@ Unarmed`, `Skip`), unchanged in appearance.
 
 ---
 
+### M1 Step 3 — what was built (done 2026-09-21)
+
+Every `ContextMenu.show` site in the game is on the bus, plus the spell grid and the
+single-select value pickers. 79 sites this step, 80 with Step 2's reaction window. No
+behavior changed on the DM console, no frozen block was amended, and the nine sites that
+are **not** converted are listed below with the reason, because each of them needs Step
+0.5 unfrozen rather than more work.
+
+#### The inventory moved twice, and both extras came from M0
+
+Step 0.2 counted **69 `ContextMenu` sites and 18 on seven other renderers = 87**. The
+live counts are **70 and 19 = 89**, and the diff is not a miscount:
+
+| Delta | Where | Why Step 0.2 missed it |
+| ----- | ----- | ---------------------- |
+| G9: 7 → 8 | the **Controller ▸** submenu on the map right-click menu | M0 (`0a8ca7a`) added it *after* Step 0.2 was written |
+| others: 18 → 19 | a second `NamePromptDialog` — "Seat a new player…" | same commit, same reason |
+
+So the phase that inventoried the prompt surface was itself overtaken by the phase that
+followed it. Worth remembering for M2's action inventory (Step 0.3, 87 actions): that
+count is a snapshot too, and M2 should re-derive it rather than trust it.
+
+#### What went on the bus
+
+| Group | Sites | `owner` | Note |
+| ----- | ----: | ------- | ---- |
+| G2 post-hit riders | 24 | attacker's controller | one identical two-line tail at all 24; converted by script |
+| G3 defender reactions | 5 | **the reactor's** controller | the per-site judgement Step 0.2 warned about — see D-M1-8 |
+| G4 attack setup | 2 | actor's | anchored on the panel, not on a token |
+| G6 panel sub-menus | 13 | actor's | includes the three built inline in `_handle_events` |
+| G7 map objects | 4 | actor's, folding to DM out of combat | item-context is DM-only and says so |
+| G8 target-pick confirmations | 2 | actor's | `kind` is `target` / `confirm` here, not `action` |
+| G5 spellcasting | 6 | caster's | converted last, as planned; the 21 `pending_*` flags were never touched |
+| G9 map right-click DM menus | 8 | **pinned** to `DM_PRINCIPAL_ID` | five of the eight are submenus — see D-M1-9 |
+| G10 top-bar authoring | 5 | **pinned** to `DM_PRINCIPAL_ID` | |
+| `SpellGridMenu` | 1 | caster's | the in-combat spell list, Step 0.2's "single most-used combat prompt" |
+| `ElementPickerDialog` (single-select) | 9 | actor's | the new `ElementPickerRenderer` |
+| **Total** | **79** | | |
+
+#### What did NOT go on the bus, and why
+
+Nine sites remain on their widgets. They are not leftovers — every one of them asks for
+something Step 0.5's **frozen** `expects` vocabulary (`choice` / `cell` / `agent` /
+`none`) cannot express, so converting them means unfreezing the wire format first.
+
+| Renderer | Sites | What it actually asks for |
+| -------- | ----: | ------------------------- |
+| `ElementPickerDialog`, `multi=True` | 1 — Magic Circle / Hallow warded types | a **set** of values. There is no multi-select response shape. |
+| `SpellSelectionDialog` | 3 | a search over all 405 spells with per-level tabs — a browser, not an option list. Two of the three are DM authoring. |
+| `NamePromptDialog` | 2 | **free text**. There is no `expects: "text"`. |
+| `GridSpanDialog` | 1 | two numbers. Same gap. |
+| `TeamPickerDialog` | 1 | a per-creature team grid — DM authoring, and an editor rather than a choice. |
+| `MobSelectionDialog` | 1 | the monster catalogue — a browser. |
+
+**The decision this hands back**: whether Step 0.5 grows `expects: "text"`, `"number"`
+and a multi-select response, or whether these six renderers are declared DM-console-only
+forever and M3's `GameView` simply never shows them. Five of the nine are DM authoring
+either way, so the live question is really only the three combat-reachable ones (the
+multi-select ward, and `SpellSelectionDialog` at `9779`/`10035`). Not decided here.
+
+#### Where the code went
+
+| File | What |
+| ---- | ---- |
+| `gui/main.py` (+83 net) | three helpers — `_ask_actor`, `_ask_dm`, `_agent_name` — the three-renderer registration, and 79 converted call sites. |
+| `gui/prompts.py` (+152) | `SpellGridRenderer`, `ElementPickerRenderer`, a renderer *registry* on the bus (`render=` names one), and `PromptBus.answering`. |
+| `gui/dialogs.py` (+8) | `ElementPickerDialog.dismiss()` — close without committing, for the supersede path. |
+| `tests/gui_driver.py` (+69) | click helpers for the two new widgets, keyed off their own geometry constants. |
+| `tests/test_prompts.py` (+188) | five checks, one per judgement Step 3 makes. |
+
+#### Five decisions worth recording
+
+**D-M1-7 — two helpers, not 79 inline `prompts.ask` calls.** `_ask_actor(actor_idx,
+kind, title, pairs, …)` is the whole conversion of a site: it derives the owner, anchors
+at the token and runs `options_from_pairs`. `_ask_dm(...)` is the same with `owner`
+**pinned** to `DM_PRINCIPAL_ID` rather than derived, which is what keeps seating a player
+on a token from handing them the authoring menus. The pin is asserted, not assumed
+(`test_dm_menu_submenu_chain_carries_parent` seats a player on the very token whose DM
+menu it then opens).
+
+**D-M1-8 — `owner` follows the ANCHOR, and that is why G3 was free.** Every prompt is
+anchored at the creature it belongs to, and G3's five defender reactions were *already*
+anchored at the reactor (`_agent_screen_pos(target_idx)`, `(sentinel_idx)`, `(pal_idx)`,
+`(interceptor_idx …)`) because that is where the DM needs to see the popup. Deriving the
+owner from the anchored index therefore gets all five right by construction instead of by
+five separate judgements. Step 0.2 called `owner` "the one field that needs thought at
+every site"; in the event the thought had already been done, by whoever decided where the
+popup should appear.
+
+**D-M1-9 — `PromptBus.answering` names a submenu's parent, and exposes a hole in
+Step 0.5's back path.** A row reading "Difficulty ▸" opens its child from inside its own
+`on_choose`, so the parent is simply *the prompt being answered*; the bus now tracks that
+(saved and restored, so a chained rider nests correctly) and a submenu passes
+`parent=self.prompts.answering` instead of threading the parent object through three
+closures. Set only during `submit` dispatch, never during `on_cancel` — a declined
+reaction chaining to the next reactor is a sibling, which is exactly what D-M1-2 refuses
+to infer a parent for.
+
+The consequence is the part to remember: **on the DM console the parent is already
+ANSWERED by the time its submenu opens**, because clicking the row is what answered it
+(D-M1-4). Step 0.5's "cancelling a child re-sends its parent" therefore cannot re-*send*
+that prompt in M5 — it has to re-**ask** it, producing a new id. Harmless today (an
+answered ancestor is skipped by every resolution path in the bus) and tested, but M5 must
+not be written against the assumption that the parent is still live.
+
+**D-M1-10 — three renderers, chosen by a local hint that never reaches the wire.**
+`Prompt.render` sits beside `anchor` as a render hint, and the bus holds a name →
+renderer registry (`"default"` the popup, `"grid"`, `"picker"`). The renderer that drew
+the live prompt is remembered, because dismissal is *reported* by the event loop
+(D-M1-6) and there are now three widgets that can report it. `_handle_events` calls
+`renderer_dismissed()` after the picker's and the grid's `handle` exactly as it already
+did after the popup's.
+
+Each converted site passes the widget's **existing** title string through as
+`Prompt.title`, so the DM sees no new text — a friendlier sentence there would have been
+a visible change inside the one phase whose acceptance criterion is that nothing changes.
+A remote renderer names the creature from the wire's `actor` field instead.
+
+**D-M1-11 — the picker's empty commit is a cancel, routed the same way every other
+dismissal is.** `ElementPickerDialog` commits on dismiss, calling its callback with an
+empty list; nine call sites are written against that. `ElementPickerRenderer` **drops**
+the empty commit (it is not an answer) and the event loop's `renderer_dismissed()` turns
+it into `on_cancel`, which each site sets to the handler it always called. That needed a
+public `ElementPickerDialog.dismiss()` — close *without* committing — because the
+supersede path must not fire a callback nobody asked for.
+
+#### What the DM sees
+
+Nothing new. Same widgets, same anchors, same rows in the same order, same titles on the
+two widgets that have one. What changed is under each click:
+`widget.handle → bus.choose → authorize → the same callback`.
+
+#### Test results
+
+`tests/run_all_tests.py`: **148 suites passed, 1 failed** — the pre-existing
+`test_monk.py::test_deflect_attacks_reduces_physical`, unchanged since `COMBAT_REFACTOR_PLAN.md`
+R0. `test_determinism.py` byte-identical; `test_combat_panel.py`'s golden unchanged. The
+suite was run after each batch (G2+G3, G4+G6, G7–G10, G5, the other renderers) and was
+green at every one. `test_prompts.py` is **19/19**.
+
+| Test | Proves |
+| ---- | ------ |
+| `test_rider_prompt_owned_by_the_attacker` | G2: the rider is the attacker's, another player is `denied`, and the denial leaves it live; then the real mouse resolves it |
+| `test_defender_reaction_is_owned_by_the_defender` | G3: the prompt belongs to the defender and the **attacker's** player is refused — the one judgement that is not the actor's |
+| `test_dm_menu_submenu_chain_carries_parent` | G9, by mouse: right-click ▸ *NPC Automation* ▸ *Difficulty* ▸ *Level 3* really sets the difficulty; `parent_id` chains and reaches the wire; owner stays the DM although a player holds the token |
+| `test_picker_renderer_answers_and_cancels` | the picker answers through the real widget, keeps its exact title, and its empty commit arrives as `on_cancel` with the prompt `CANCELLED` |
+| `test_spell_grid_renderer_answers_and_dismisses` | the grid answers, and dismissing it runs no callback |
+
+#### Two things this step owes, and one it did not fix
+
+- **`main.py` went UP by 83 lines, not down.** Step 3 was written expecting the reversal
+  of M1's +28 — "86 option lists move out of `main.py` and the `pending_*` flag closures
+  go with them". They did not move: the conversion replaced a *two-line* tail per site
+  with a one-to-three-line call, and the three shared helpers cost more than the 79 tails
+  saved. Actually relocating the option builders is a genuine refactor of 79 feature
+  methods, not the "close to mechanical" conversion Step 3 describes, and doing it under
+  the "nothing changes" acceptance criterion would have been reckless. **It is still
+  owed** — the natural home is a `gui/menus/` module per feature area, and the natural
+  time is after M2, when `ActionMenu` has already pulled the panel's legality out.
+- **The nine unconverted sites** need the Step 0.5 decision above before anything can
+  move.
+- **`_agent_screen_pos` (`main.py:10741`) still ignores pan and zoom**, so on a panned or
+  zoomed map every one of these popups opens away from its token. Recorded in M1 Steps
+  1–2, untouched here, and now 79 sites wide rather than one — it belongs at the top of
+  the cleanup list.
+
+#### Not covered by a test
+
+- **A real display.** Still headless, still synthesized clicks; the noVNC → x11vnc →
+  Xvfb → pygame path remains unexercised. One manual pass at
+  `http://localhost:6080/vnc.html` after `run.sh` is still owed, and is now worth more
+  than it was: 79 popups changed hands.
+- **75 of the 79 sites individually.** The checks cover one site per *judgement*, not per
+  site. The mechanical half is identical at all 79 (the same `options_from_pairs` call),
+  so a per-site test would re-prove the same thing 79 times; what is genuinely untested
+  is a mis-typed `owner` or `kind` at an individual site.
+- **`deadline`.** Still unset, still M5's.
+
+#### What M2 inherits
+
+- Every choice in the game that has a fixed option list is a `Prompt` with an id, an
+  owner and a wire projection. M2's `ActionMenu` is the *other* half — the panel buttons
+  — and it now has a worked example of the same shape to follow.
+- `Action.disabled_reason` (M2) and `Option.disabled_reason` (here) are deliberately the
+  same idea: a **rules** string, never an authorization one. No converted site sets it
+  yet; the 79 sites all build lists that already omit what is illegal.
+- Step 0.3's 87-action inventory is a snapshot from before M0 and M1, exactly as Step
+  0.2's 87-prompt inventory turned out to be. Re-derive it.
+
+---
+
 ### M2 — The legal-action model
 
 The expensive phase, and the only one with real regression risk.

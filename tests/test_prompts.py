@@ -37,6 +37,16 @@ And the click path itself — a real `MOUSEBUTTONDOWN` through `App._handle_even
 `ContextMenu.handle`, which is the one thing neither M0 nor M1 Step 2 could check:
   · clicking the popup row takes the opportunity attack               (test_click_takes_the_opportunity_attack)
   · clicking away from it submits the Skip                            (test_click_away_skips_the_window)
+
+Step 3 then moved the remaining 79 sites onto the bus. Its three per-site judgements —
+`owner`, `parent`, and which of the three widgets draws the prompt — get one check each:
+  · a post-hit rider is owned by the ATTACKER's controller (G2)      (test_rider_prompt_owned_by_the_attacker)
+  · a defender reaction is owned by the DEFENDER's, and the
+    attacker's player is refused (G3)                                (test_defender_reaction_is_owned_by_the_defender)
+  · the nested DM menus chain parent_id and stay DM-owned even when
+    a player holds the token (G9)                                    (test_dm_menu_submenu_chain_carries_parent)
+  · the value picker answers, and its empty commit is a cancel       (test_picker_renderer_answers_and_cancels)
+  · the spell grid answers, and dismissing it chooses nothing        (test_spell_grid_renderer_answers_and_dismisses)
 """
 
 import os
@@ -57,7 +67,10 @@ from prompts import (PromptBus, Prompt, Option, Response, PromptState,
                      ERR_PROTOCOL)
 from net.roster import SessionRoster, Role, DM_PRINCIPAL_ID
 from main import App
-from gui_driver import click_menu, click_away, menu_labels, screenshot
+from gui_driver import (click_menu, click_away, menu_labels, screenshot,
+                        cell_center, post_click,
+                        picker_labels, click_picker, dismiss_picker,
+                        grid_labels, click_grid, click_grid_away)
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
 SEED = 20260921
@@ -489,6 +502,182 @@ def test_click_away_skips_the_window():
     print("✅ test_click_away_skips_the_window passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  M1 Step 3 — the converted call sites
+#
+#  Step 3 moved 79 option lists onto the bus. The mechanical half (`options_from_pairs`)
+#  is already covered above; what is NOT mechanical is the three judgements each site
+#  makes, so there is one check per judgement rather than one per site:
+#
+#    · `owner` — the actor's controller almost everywhere (G2), the DEFENDER's at G3's
+#      five reactions, and pinned to the DM at the authoring menus whatever the token
+#      says (G9/G10);
+#    · `parent` — named explicitly, and only by a row that really opens a submenu;
+#    · the renderer — three widgets now draw prompts, and each has to answer and to
+#      report its own dismissal.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _two_agents():
+    """A striker and its victim, adjacent, on opposite sides. Enough for any rider."""
+    app = App(MAP_PATH, seed=SEED)
+    _place(app, "Striker", 5, 5)
+    _place(app, "Victim", 6, 5)
+    app.combat.apply_agent_configs(app.bm)
+    atk, tgt = _idx(app, "Striker"), _idx(app, "Victim")
+    app.bm.set_agent_faction(atk, PC_TEAM)
+    app.bm.set_agent_faction(tgt, FOE_TEAM)
+    app._sync_roster_tokens()
+    return app, atk, tgt
+
+
+def test_rider_prompt_owned_by_the_attacker():
+    """G2 — the 24 post-hit riders. The rider is the attacker's own choice, so the owner
+    follows the attacker's controller and nobody else may answer it."""
+    app, atk, tgt = _two_agents()
+    kira = app.roster.add_principal("Kira", role=Role.PLAYER)
+    theo = app.roster.add_principal("Theo", role=Role.PLAYER)
+    app.bm.set_agent_controller(atk, kira.id)
+    app._sync_roster_tokens()
+
+    app._offer_rend_mind(atk, tgt, "Victim")
+    p = app.prompts.live
+    assert p is not None and p.kind == "action"
+    assert p.actor_idx == atk and p.owner == kira.id
+    assert "Rend Mind" in p.title and "Victim" in p.title
+    assert app.context_menu.visible, "the DM's popup is the same widget it always was"
+    assert menu_labels(app) == [o.label for o in p.options]
+
+    assert app.prompts.submit(p.id, Response(option="opt_0"), theo.id).error == ERR_DENIED
+    assert p.is_live, "a denied submission leaves the rider open"
+
+    click_menu(app, "Skip")
+    assert p.state is PromptState.ANSWERED
+    assert app.prompts.live is None and not app.context_menu.visible
+    print("✅ test_rider_prompt_owned_by_the_attacker passed")
+
+
+def test_defender_reaction_is_owned_by_the_defender():
+    """G3 — the five defender/third-party reactions, and the reason `owner` is a
+    judgement at every site rather than a formula: here the creature that answers is
+    not the creature acting, and the attacker's player must be refused."""
+    app, atk, tgt = _two_agents()
+    kira = app.roster.add_principal("Kira", role=Role.PLAYER)   # the attacker's
+    theo = app.roster.add_principal("Theo", role=Role.PLAYER)   # the defender's
+    app.bm.set_agent_controller(atk, kira.id)
+    app.bm.set_agent_controller(tgt, theo.id)
+    app._sync_roster_tokens()
+
+    app._offer_protective_field(atk, tgt, "Striker", "Victim",
+                                rpg.AttackResult(), "Striker→Victim: HIT 7")
+    p = app.prompts.live
+    assert p is not None and p.kind == "reaction"
+    assert p.actor_idx == tgt, "the reactor is the DEFENDER"
+    assert p.owner == theo.id, "the defender's player answers it, not the attacker's"
+    assert app.prompts.submit(p.id, Response(option="opt_0"), kira.id).error == ERR_DENIED
+
+    click_menu(app, "Skip")
+    assert p.state is PromptState.ANSWERED and app.prompts.live is None
+    print("✅ test_defender_reaction_is_owned_by_the_defender passed")
+
+
+def test_dm_menu_submenu_chain_carries_parent():
+    """G9 — the nested authoring menus, through the real mouse.
+
+    Two things at once: each submenu names the prompt whose row opened it (which is what
+    `PromptBus.answering` exists for), and the owner stays the DM even though a player
+    holds this token — `_ask_dm` pins it rather than deriving it, so seating a player can
+    never hand them the authoring tools.
+    """
+    app, atk, tgt = _two_agents()
+    kira = app.roster.add_principal("Kira", role=Role.PLAYER)
+    app.bm.set_agent_controller(atk, kira.id)
+    app._sync_roster_tokens()
+    o = app.bm.placed_agents[atk].origin
+
+    assert not app.combat_active, "the agent menu is an out-of-combat right-click"
+    post_click(app, cell_center(app, o.col, o.row), button=3)
+    root = app.prompts.live
+    assert root is not None and root.parent_id is None
+    assert root.owner == DM_PRINCIPAL_ID, "an authoring menu never follows the token"
+    assert "NPC Automation ▸" in menu_labels(app)
+
+    click_menu(app, "NPC Automation ▸")
+    auto = app.prompts.live
+    assert auto is not None and auto.parent_id == root.id
+    assert auto.to_wire()["parent_id"] == root.id
+
+    click_menu(app, "Difficulty ▸")
+    diff = app.prompts.live
+    assert diff is not None and diff.parent_id == auto.id
+
+    click_menu(app, "Level 3")
+    assert app.bm.get_agent_npc_automation_difficulty(atk) == 3
+    assert diff.state is PromptState.ANSWERED
+    assert app.prompts.live is None and not app.context_menu.visible
+    print("✅ test_dm_menu_submenu_chain_carries_parent passed")
+
+
+def test_picker_renderer_answers_and_cancels():
+    """The modal value picker, the bus's second renderer (10 sites, 9 of them single
+    select). It commits on dismiss with an empty selection, which is not an answer — the
+    renderer drops it and the event loop's `renderer_dismissed()` turns it into the
+    cancel the call sites were already written against."""
+    app, atk, _ = _two_agents()
+    seen = []
+    app._ask_actor(atk, "action", "Chromatic Orb: damage type",
+                   [("Acid", lambda: seen.append("Acid")),
+                    ("Fire", lambda: seen.append("Fire"))],
+                   render="picker", on_cancel=lambda: seen.append("cancel"))
+    p = app.prompts.live
+    assert app._element_dialog.visible and not app.context_menu.visible
+    assert picker_labels(app) == ["Acid", "Fire"]
+    assert app._element_dialog._title == "Chromatic Orb: damage type", \
+        "the widget keeps the exact title it had before the conversion"
+
+    click_picker(app, "Fire")
+    assert seen == ["Fire"] and p.state is PromptState.ANSWERED
+    assert not app._element_dialog.visible and app.prompts.live is None
+
+    seen.clear()
+    app._ask_actor(atk, "action", "Chromatic Orb: damage type",
+                   [("Acid", lambda: seen.append("Acid"))],
+                   render="picker", on_cancel=lambda: seen.append("cancel"))
+    q = app.prompts.live
+    dismiss_picker(app)
+    assert seen == ["cancel"], f"an empty commit must reach on_cancel, got {seen}"
+    assert q.state is PromptState.CANCELLED and app.prompts.live is None
+    print("✅ test_picker_renderer_answers_and_cancels passed")
+
+
+def test_spell_grid_renderer_answers_and_dismisses():
+    """The multi-column grid — Step 0.2 called the in-combat spell list the single
+    most-used prompt in the game, and it is the reason the renderer mapping is
+    one-to-many. Dismissing it runs no callback, exactly as before."""
+    app, atk, _ = _two_agents()
+    picked = []
+    def _ask():
+        app._ask_actor(atk, "action", "Cast a spell",
+                       [("Magic Missile", lambda: picked.append("mm")),
+                        ("Shield", lambda: picked.append("shield"))],
+                       render="grid")
+        return app.prompts.live
+
+    p = _ask()
+    assert app.spell_grid_menu.visible and not app.context_menu.visible
+    assert app.spell_grid_menu.title == "Cast a spell"
+    assert grid_labels(app) == ["Magic Missile", "Shield"]
+
+    click_grid(app, "Shield")
+    assert picked == ["shield"] and p.state is PromptState.ANSWERED
+    assert not app.spell_grid_menu.visible and app.prompts.live is None
+
+    q = _ask()
+    click_grid_away(app)
+    assert picked == ["shield"], "dismissing the grid chooses nothing"
+    assert q.state is PromptState.CANCELLED and not app.spell_grid_menu.visible
+    print("✅ test_spell_grid_renderer_answers_and_dismisses passed")
+
+
 def main():
     tests = [
         test_wire_projection,
@@ -505,6 +694,12 @@ def main():
         test_dismissal_skips_the_window,
         test_click_takes_the_opportunity_attack,
         test_click_away_skips_the_window,
+        # M1 Step 3 — the converted call sites
+        test_rider_prompt_owned_by_the_attacker,
+        test_defender_reaction_is_owned_by_the_defender,
+        test_dm_menu_submenu_chain_carries_parent,
+        test_picker_renderer_answers_and_cancels,
+        test_spell_grid_renderer_answers_and_dismisses,
     ]
     failed = 0
     for t in tests:
