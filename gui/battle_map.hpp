@@ -312,6 +312,14 @@ struct PlacedAgent {
     // (its own faction, hostile to everyone). 1+ = red/blue/... Used for hide vs only
     // enemies, sparing allies from selective AoEs, and restricting heals to allies.
     int         faction           = 0;
+    // ── Ownership (MULTIPLAYER_PLAN.md M0, constraint A1) ─────────────────
+    // Opaque, stable PRINCIPAL ID of whoever controls this token; "dm" = the DM
+    // console. NEVER a display name — display names are a roster lookup, never a
+    // key. This field is the SOLE persisted source of truth for ownership (it
+    // round-trips through <base>_agents.json); the session roster stores no seat
+    // list, because agent indices are basis-dependent across a save that compacts
+    // them. A controller naming an unknown principal loads as DM-controlled.
+    std::string controller        = "dm";
     // ── On Deck / reinforcements (phased battles) ──────────────────────────
     // true = a reserve combatant: placed on the map and still rendered, but
     // EXCLUDED from initiative (rollInitiative skips it) until the DM deploys
@@ -497,6 +505,11 @@ public:
     // Faction / team accessors (0 = neutral). See PlacedAgent::faction.
     [[nodiscard]] int  getAgentFaction(int idx) const noexcept;
     void setAgentFaction(int idx, int faction) noexcept;
+
+    // Ownership accessors (principal id; "dm" = DM-controlled). See PlacedAgent::controller.
+    // Setting an empty string resets the token to "dm" rather than leaving it unowned.
+    [[nodiscard]] std::string getAgentController(int idx) const noexcept;
+    void setAgentController(int idx, std::string controller) noexcept;
 
     // Rename / re-sprite a placed agent in-flight (GUI right-click editors).
     // Also patches the matching AgentConfig when one exists (idx < agentConfigs_),

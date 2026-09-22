@@ -991,6 +991,14 @@ void BattleMap::setAgentSummonerIdx(int idx, int summoner_idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].summoner_idx = summoner_idx;
+    // A summon inherits its summoner's controller at creation (MULTIPLAYER_PLAN.md A1):
+    // the player who conjured it drives it. Tagging the summon is the ONE funnel every
+    // summon path goes through, so the inheritance cannot be forgotten at a call site.
+    // Summons are never persisted, so this ownership lives only for the fight.
+    if (summoner_idx >= 0 && summoner_idx < static_cast<int>(placedAgents_.size())) {
+        placedAgents_[static_cast<std::size_t>(idx)].controller =
+            placedAgents_[static_cast<std::size_t>(summoner_idx)].controller;
+    }
 }
 
 int BattleMap::getAgentFaction(int idx) const noexcept
@@ -1003,6 +1011,20 @@ void BattleMap::setAgentFaction(int idx, int faction) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].faction = faction;
+}
+
+std::string BattleMap::getAgentController(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return "dm";
+    return placedAgents_[static_cast<std::size_t>(idx)].controller;
+}
+
+void BattleMap::setAgentController(int idx, std::string controller) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    // Empty means "nobody named" — that is the DM, never an unowned token.
+    placedAgents_[static_cast<std::size_t>(idx)].controller =
+        controller.empty() ? std::string("dm") : std::move(controller);
 }
 
 bool BattleMap::isAgentOnDeck(int idx) const noexcept

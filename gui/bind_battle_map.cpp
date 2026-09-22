@@ -165,6 +165,15 @@ void bindBattleMap(py::module_& m) {
         .def("set_agent_faction", &BattleMap::setAgentFaction,
              py::arg("idx"), py::arg("faction"),
              "Assign agent[idx] to a team/faction (0 = neutral; 1+ = red/blue/...).")
+        .def("get_agent_controller", &BattleMap::getAgentController,
+             py::arg("idx"),
+             "Principal id controlling agent[idx] ('dm' = DM-controlled). Opaque id, "
+             "never a display name (MULTIPLAYER_PLAN.md A1).")
+        .def("set_agent_controller", &BattleMap::setAgentController,
+             py::arg("idx"), py::arg("controller"),
+             "Assign agent[idx] to a principal by id ('dm' or '' = DM-controlled). The "
+             "id is persisted in <base>_agents.json and is the sole source of truth for "
+             "ownership; a summon inherits its summoner's controller automatically.")
         .def("set_agent_name", &BattleMap::setAgentName,
              py::arg("idx"), py::arg("name"),
              "Rename placed agent[idx] (also patches its AgentConfig so it survives "

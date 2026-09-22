@@ -135,6 +135,8 @@ void bindTypes(py::module_& m) {
         .def_property_readonly("summon_spell",      [](const PlacedAgent& p){ return p.summon_spell; })
         .def_property_readonly("removed_from_play", [](const PlacedAgent& p){ return p.removed_from_play; })
         .def_property_readonly("faction",           [](const PlacedAgent& p){ return p.faction; })
+        // Ownership (read-only view; mutate via BattleMap.set_agent_controller)
+        .def_property_readonly("controller",        [](const PlacedAgent& p){ return p.controller; })
         // Delegate actions back to C++
         .def("turn",       [](PlacedAgent& p){ p.agent->turn(); })
         .def("action",     [](PlacedAgent& p){ p.agent->action(); })

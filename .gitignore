@@ -1,4 +1,5 @@
 gui/__pycache__
+gui/net/__pycache__
 tests/__pycache__
 build
 build/*
@@ -6,3 +7,7 @@ combat_log.txt
 *~
 *.so
 *.actual
+
+# Multiplayer session rosters (MULTIPLAYER_PLAN.md M0): table metadata — who is seated
+# and the join code — not scene data, and never shared with an encounter.
+*_session.json

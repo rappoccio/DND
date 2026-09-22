@@ -63,6 +63,9 @@ from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
+# Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
+# authorization chokepoint; main.py only wires it to the save path and the DM's menu.
+from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
@@ -556,6 +559,10 @@ class App:
             self._map_dir,
             os.path.splitext(os.path.basename(map_path))[0] + "_agents.json"
         )
+        # Multiplayer session roster (MULTIPLAYER_PLAN.md M0): principals, the join code
+        # and the one authorize() chokepoint. Built empty first so _set_encounter_base
+        # can re-point it — that call then loads this encounter's session file.
+        self.roster = SessionRoster()
         self._set_encounter_base(default_agents)
 
         # ── Multi-map dungeon state (FLOORS_IMPLEMENTATION_PLAN.md, Phase 3) ─
@@ -1952,6 +1959,25 @@ class App:
     # ─────────────────────────────────────────────────────────────────────
     #  Save / Load
     # ─────────────────────────────────────────────────────────────────────
+    # ── Multiplayer session roster (MULTIPLAYER_PLAN.md M0) ─────────────────
+    def _sync_roster_tokens(self):
+        """Refresh the roster's ownership cache from the live agent records.
+
+        Ownership is derived, never stored twice (A1): the agent record's `controller`
+        is the only persisted truth, and the roster caches the reverse mapping. Runs on
+        the pygame thread only (NN1) — it reads pybind11 accessors, which are C++ calls.
+        Call after anything that changes the agent list or a controller assignment."""
+        self.roster.sync_tokens(tokens_from_battle_map(self.bm))
+
+    def _save_session(self):
+        """Persist the session roster beside the encounter. Principals must survive a
+        restart or every saved `controller` would load orphaned; credentials must not,
+        and are never written (A3/A5)."""
+        try:
+            self.roster.save(self._session_path)
+        except OSError as e:
+            print(f"Warning: could not write {os.path.basename(self._session_path)}: {e}")
+
     # ── Save / load callbacks called by the file browser ─────────────────────
     def _set_encounter_base(self, agents_path: str):
         """Point all per-encounter sidecar files at the same base name as the chosen
@@ -1974,6 +2000,17 @@ class App:
         # Mid-combat resume sidecar (COMBAT_REFACTOR_PLAN.md R5): the C++ engine's
         # snapshot plus the Python turn loop. Written only while a fight is running.
         self._combat_path   = os.path.join(d, base + "_combat.json")
+        # Table metadata, NOT scene data (MULTIPLAYER_PLAN.md M0): who is seated at this
+        # table and the join code. Gitignored, and never part of the encounter proper —
+        # the encounter records only each token's controller id.
+        self._session_path  = os.path.join(d, base + "_session.json")
+        # Re-point the roster at the new base. Guarded on both attributes because the
+        # first call happens during __init__, where the BattleMap does not exist yet:
+        # the roster loads, and its ownership cache fills on the first _load_agents.
+        if getattr(self, "roster", None) is not None:
+            self.roster = SessionRoster.load(self._session_path)
+            if getattr(self, "bm", None) is not None:
+                self._sync_roster_tokens()
 
     def _on_save_path_chosen(self, path: str):
         # Capture the previous sidecar locations so lighting/effects (which have no GUI
@@ -12572,6 +12609,11 @@ class App:
                 "col":         pt.origin.col,
                 "row":         pt.origin.row,
                 "faction":     pt.faction,
+                # Ownership (MULTIPLAYER_PLAN.md A1): an opaque principal id, "dm" for
+                # DM-controlled. The sole persisted source of truth for who drives this
+                # token — the session roster stores no seat list, because agent indices
+                # are renumbered by this very loop and would not survive it.
+                "controller":  pt.controller,
                 "on_deck":     self.bm.is_agent_on_deck(i),
                 "is_npc_automated":               self.bm.is_agent_npc_automated(i),
                 "npc_automation_difficulty_level": self.bm.get_agent_npc_automation_difficulty(i),
@@ -12852,6 +12894,9 @@ class App:
         # deliberately omits the agents being carried away.
         if path == self._save_path and not exclude_indices:
             self._save_combat_state()
+            # The roster travels with the encounter: the `controller` ids just written
+            # are meaningless without the principals they name (M0 / A1).
+            self._save_session()
 
     # ── Mid-combat resume (COMBAT_REFACTOR_PLAN.md R5) ────────────────────────
     #  The encounter save above stores the SCENE — agents, items, and the handful of
@@ -14224,6 +14269,13 @@ class App:
             # Restore on-deck reserve flag (older saves default to False = in the fight).
             self.bm.set_agent_on_deck(i, bool(t.get("on_deck", False)))
 
+            # Restore the controlling principal (saves predating multiplayer default to
+            # the DM). A controller naming a principal with no seat in this session's
+            # roster loads as DM-controlled (A1) rather than handing a real person the
+            # wrong creature — the fold happens in the roster's ownership cache, while
+            # the id itself is kept so re-seating that principal restores the link.
+            self.bm.set_agent_controller(i, str(t.get("controller", DM_PRINCIPAL_ID)))
+
             # Restore NPC automation settings (older saves default to manual control).
             self.bm.set_agent_npc_automated(i, bool(t.get("is_npc_automated", False)))
             self.bm.set_agent_npc_automation_difficulty(i, int(t.get("npc_automation_difficulty_level", 0)))
@@ -14491,6 +14543,9 @@ class App:
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
+
+        # The agent list was just rebuilt, so every cached ownership index is stale.
+        self._sync_roster_tokens()
 
     def _load_terrain(self, path: str | None = None, blank: bool = False):
         """Load terrain data from JSON file if it exists.
@@ -19362,6 +19417,39 @@ class App:
                                          ("Strategy ▸",   _strategy_menu)]
                             self.context_menu.show(pos, _sub_opts, self.screen.get_size())
                         _menu_opts.append(("NPC Automation ▸", _npc_automation_menu))
+                        # Ownership (MULTIPLAYER_PLAN.md M0): hand this token to a player.
+                        # One submenu on the existing agent menu, never a new dialog — the
+                        # target user procedure pins that down. Reuses the name prompt for
+                        # seating someone new, exactly as Edit Name… does.
+                        def _controller_menu(h=hit, pos=event.pos):
+                            self._sync_roster_tokens()   # ✓ marks must reflect the live records
+                            _cur = self.roster.controller_of(h)
+
+                            def _assign(pid, hh=h):
+                                self.bm.set_agent_controller(hh, pid)
+                                self._sync_roster_tokens()
+                                self._save_session()
+                                self._combat_log_add(
+                                    f"{self.bm.placed_agents[hh].name}: controlled by "
+                                    f"{self.roster.display_name(pid)}.")
+
+                            def _seat_new(hh=h):
+                                def _commit(name, h2=hh):
+                                    name = (name or "").strip()
+                                    if not name:
+                                        return
+                                    p = self.roster.add_principal(name, role=Role.PLAYER)
+                                    _assign(p.id, h2)
+                                self.name_prompt.show("", _commit, title="Seat a new player")
+
+                            _opts = [(("✓ " if _cur == DM_PRINCIPAL_ID else "") + "DM",
+                                      (lambda: _assign(DM_PRINCIPAL_ID)))]
+                            for _p in self.roster.players():
+                                _opts.append((("✓ " if _cur == _p.id else "") + _p.display_name,
+                                              (lambda pid=_p.id: _assign(pid))))
+                            _opts.append(("Seat a new player…", _seat_new))
+                            self.context_menu.show(pos, _opts, self.screen.get_size())
+                        _menu_opts.append(("Controller ▸", _controller_menu))
                         self.context_menu.show(event.pos, _menu_opts, self.screen.get_size())
 
             # During combat, right-click an On Deck reserve to recall (deploy) just that one

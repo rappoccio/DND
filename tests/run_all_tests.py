@@ -31,6 +31,12 @@ test_scripts = [
     # reason: a layout regression should fail before the rules suites run.
     "test_combat_panel.py",
 
+    # Session roster + token ownership (MULTIPLAYER_PLAN.md M0) — principals, the
+    # single authorize() chokepoint, and the `controller` round-trip through a save
+    # that renumbers the agent list. Kept with the oracles because it guards a
+    # PERSISTED file format: a regression here silently mis-assigns creatures.
+    "test_session_roster.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

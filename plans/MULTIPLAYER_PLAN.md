@@ -32,11 +32,16 @@ riskiest phase (M2) edits a 1,896-line method with no automated coverage at all.
 | 0.6 | **Build the GUI regression oracle.** The M2-analog of R0's determinism harness: a scripted scenario plus a captured baseline of the combat panel, so panel extraction can be proven **structurally identical**. *(Amended 2026-09-21, user-agreed: was "pixel-identical". `SysFont("sans", …)` (`main.py:468`) resolves through the platform font stack and the Dockerfile installs no font packages, so a pixel golden is valid in exactly one environment. Panel rects come from fixed `W`/`HW`/`TW3`/`TW5` arithmetic, never text metrics, so geometry IS cross-machine deterministic — see [Step 0.6 — the oracle's shape](#step-06--the-oracles-shape-decided-2026-09-21).)* *(Built 2026-09-21 — see [Step 0.6 — what was built](#step-06--what-was-built-done-2026-09-21).)* `tests/run_all_tests.py` did not cover the GUI at all before this — that was the gap that made M2 dangerous. | A new registered suite, green | ☑ |
 | 0.7 | **Timeboxed throwaway spike.** *(Confirmed 2026-09-21: goes ahead. Step 0.2 already documented the callback shape and the six blocking modals, but the net-thread → frame-tick handoff under a real socket is the assumption every phase from M4 on rests on, and paper cannot answer it.)* On a scratch branch: wire *one* prompt (the reaction window) to a static page end to end, to validate the threading model and the blocking-modal fix. **Deleted, never merged** — its only output is findings. *(Done 2026-09-21 — see [Step 0.7 — the spike's findings](#step-07--the-spikes-findings-done-2026-09-21). 22 checks green; branch deleted. F1's one ask — a `"timeout"` member for the `submit` error set — was agreed and amended into Step 0.5 the same day.)* | Findings recorded here; branch deleted | ☑ |
 | 0.8 | **Decide deployment and dependencies.** *(Done 2026-09-21 — see [Step 0.8 — deployment and dependencies](#step-08--deployment-and-dependencies-decided-2026-09-21).)* Stdlib vs `aiohttp`; which port; LAN binding; how the future public path terminates TLS. User signs off. | A decision block in this file | ☑ |
-| 0.9 | **Review this whole document with the user.** Only then does M0 begin. *(Step 0.7's F1 is already settled — `"timeout"` was added to Step 0.5 by agreement on 2026-09-21.)* | User's go-ahead, dated | ☐ |
+| 0.9 | **Review this whole document with the user.** Only then does M0 begin. *(Step 0.7's F1 is already settled — `"timeout"` was added to Step 0.5 by agreement on 2026-09-21.)* | User's go-ahead, dated | ☑ |
 
 Steps 0.2–0.5 are pure reading and writing — no source file changes. 0.6 adds tests only.
 0.7 was the only one that wrote code, and that code was thrown away (branch deleted 2026-09-21).
-**Only 0.9 remains.**
+**Step 0 is closed.**
+
+**0.9 — the go-ahead, 2026-09-21.** The user reviewed the status against the git history
+(0.6's oracle in `899a4db`, 0.7's findings in `5c37e8e`, the count correction in `9fa1b84`,
+the spike branch confirmed gone) and said go for M0. The frozen blocks above are unchanged
+by this review — no amendment was needed. Implementation of M0 began the same day.
 
 **Standing rules once Step 0 is agreed** (these also do not change without agreement):
 
@@ -1427,7 +1432,7 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 
 | Phase | Scope | Risk | Est. | Ships what |
 | ----- | ----- | ---- | ---- | ---------- |
-| **M0** | Token ownership model | very low | 1–2 days | who controls what |
+| **M0** ☑ | Token ownership model | very low | 1–2 days | who controls what |
 | **M1** | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
 | **M2** | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
 | **M3** | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
@@ -1494,6 +1499,110 @@ denies a principal that owns no seat; a revoked credential is refused.
 **Why first**: every later phase's authorization check reads this, and it is the one piece
 that cannot be retrofitted cheaply — it lands in a persisted file format, which is exactly
 where constraint A4 says the future auth method must already have a slot.
+
+---
+
+### M0 — what was built (done 2026-09-21)
+
+Implemented straight from Step 0.4's frozen schema, on the go-ahead recorded in Step 0.9.
+No behavior outside ownership changed, nothing was bundled in, and the frozen blocks were
+not amended.
+
+#### Where the code went
+
+| File | What |
+| ---- | ---- |
+| `gui/net/__init__.py` (new) | The multiplayer package. Import-safe without pygame and without the C++ extension, which is what lets the M0 tests run headless. |
+| `gui/net/roster.py` (new) | `Role` / `AuthBlock` / `Principal` / `Credential` / `Action` / `TokenTarget` / `PromptTarget`, and `SessionRoster` with `authorize()`, `controlled_by()`, credential mint/verify/revoke, and the atomic session-file read/write. |
+| `gui/battle_map.hpp`, `battle_map.cpp` | `PlacedAgent::controller` (`std::string`, defaults to `"dm"`) plus `getAgentController` / `setAgentController`. |
+| `gui/bind_battle_map.cpp`, `bind_types.cpp` | `set_agent_controller` / `get_agent_controller`, and `placed_agents[i].controller` as a read-only property. |
+| `gui/main.py` | Call-site wiring only (NN3): the import, `self.roster`, `self._session_path`, `_sync_roster_tokens()`, `_save_session()`, `controller` in the agents save/load, and the **Controller ▸** submenu. |
+| `tests/test_session_roster.py` (new), `tests/run_all_tests.py` | 11 tests, registered next to the other oracles. |
+| `.gitignore` | `*_session.json` — table metadata, never scene data. |
+
+#### Three decisions worth recording
+
+**D-M0-1 — `controller` lives on the C++ `PlacedAgent`, not in a Python side table.**
+A1 says the agent record is the sole persisted truth, and a Python `dict` keyed by agent
+index would reintroduce exactly the basis-dependence A1 was amended to kill: every agent
+deletion would shift its keys. On the struct it rides through `_save_agents`'s compaction
+for free, next to `faction` and `on_deck`, which are the same kind of encounter-side
+metadata.
+
+**D-M0-2 — summon inheritance is implemented in `setAgentSummonerIdx`, not at the call
+sites.** Tagging the summon is the one funnel every summon path already goes through
+(five Python sites today, and any future C++ one), so the inheritance cannot be forgotten
+by a new caller. It inherits *at creation*, which is A1's wording: re-assigning the
+summoner later does not chase down its existing summons.
+
+**D-M0-3 — `authorize()` keeps Step 0.4's exact signature; prompt liveness arrives through
+a hook.** The `ANSWER_PROMPT` row needs the prompt's owner and whether it is still live,
+and the prompt bus that owns that state does not exist until M1. Rather than widen the
+frozen signature, the roster carries `prompt_lookup: (prompt_id) -> (owner, is_live)`,
+which M1 installs. **With no bus installed a player is denied** — the safe direction — and
+the DM is still allowed by NN4.
+
+#### What the DM sees
+
+Right-click an agent → **Controller ▸** → `✓ DM`, one row per seated player, and
+`Seat a new player…` (which reuses the existing name prompt, as `Edit Name…` does). One
+submenu on the existing menu, no new dialog — what the frozen target user procedure pins
+down. Assigning writes the agent's `controller` and saves `<base>_session.json`.
+
+#### Deviations from the M0 text, and why
+
+1. **`Seat a new player…` was not in the M0 bullet list.** Without it the submenu would
+   list only the DM until M4's join route exists, and the phase would be unverifiable by
+   hand. It mints a principal exactly as a join will.
+2. **The session file is written atomically from day one** (temp file + `os.replace`),
+   which is S1's fix applied to *new* code rather than bundled into it. S1 itself —
+   `_save_agents` / `_save_combat_state` — is untouched and still owed.
+3. **`main.py` grew by 88 lines, against NN3's "should trend down".** All of it is
+   wiring the constraint permits (an import, four short methods, two save/load lines),
+   but ~40 of those lines are the Controller submenu, which M0 itself asks to put on the
+   existing agent menu. Recorded rather than argued away: the trend NN3 cares about starts
+   at M1, where 87 prompt sites move *out*.
+
+#### Test results
+
+`tests/run_all_tests.py`: **147 suites passed, 1 failed**. The single failure is the
+pre-existing `test_monk.py::test_deflect_attacks_reduces_physical` (same test, same
+line 505) that has been the baseline since `COMBAT_REFACTOR_PLAN.md` R0. `test_determinism.py`
+is byte-identical and `test_combat_panel.py`'s golden is unchanged — M0 touched no rules
+and no panel geometry. `test_session_roster.py` is **11/11**:
+
+| Test | Proves |
+| ---- | ------ |
+| `test_session_file_round_trip` | the file round-trips; no seat list (A1), no credential and no signing key on disk (A3/A5); a credential from a previous process does not verify |
+| `test_autosave_slots_clamped` | NN7's 1–5 ring depth, default 3 |
+| `test_credential_lifecycle` | signature, expiry, tamper-rejection, and `revoke_all()` as A5's panic button |
+| `test_revoked_credential_refused` | revocation is per-`kid`; unseating refuses every credential the seat held |
+| `test_authorize_policy_table` | every row of Step 0.4's table, including both NN4 *always* rows and the prompt-liveness refusal |
+| `test_unseated_principal_denied` | a principal off the roster is denied all seven actions, and a caller-supplied record claiming `role: dm` is not a DM (A8) |
+| `test_ownership_is_derived` | `controlled_by` is a cache over `controller`; a player owning zero tokens is a spectator, not an error |
+| `test_unknown_controller_loads_as_dm` | A1's fold-to-DM, *and* that the id is kept so re-seating restores the link |
+| `test_controller_round_trip` | `controller` present and absent (a pre-multiplayer save) through a real `App` save/load |
+| `test_ownership_survives_compaction` | a tombstoned agent renumbers the list and ownership still lands on the same creatures |
+| `test_summon_inherits_controller` | inheritance through `set_agent_summoner_idx`, and that summons stay unpersisted |
+
+#### Not covered by a test
+
+The **Controller ▸** submenu itself. This codebase cannot drive a pygame menu from a test
+until M1's bus exists — that is the gap M1's acceptance criterion closes. Everything the
+submenu *calls* (`set_agent_controller`, `_sync_roster_tokens`, `add_principal`,
+`_save_session`) is covered by `test_session_roster.py`; the wiring between the click and
+those calls is **unexercised** — not by a test, and not yet by a run of the app. First
+click of it is the thing to watch.
+
+#### What M1 inherits
+
+- `SessionRoster.prompt_lookup` is the seam the `PromptBus` fills (D-M0-3).
+- `_sync_roster_tokens()` is the only way the ownership cache moves. It is called on load,
+  on a controller assignment, and when the Controller submenu opens. **M3 must call it
+  when it builds each `GameView`** — it is cheap, and the alternative is a stale index.
+- The standalone items are still owed and unchanged: **S1** (atomic `_save_agents` /
+  `_save_combat_state`, blocks NN7/M6) and **S2** (`run.sh` binds 6080 to loopback,
+  blocks M4).
 
 ---
 
