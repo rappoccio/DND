@@ -2142,7 +2142,8 @@ green at every one. `test_prompts.py` is **19/19**.
 
 - **A real display.** Still headless, still synthesized clicks; the noVNC → x11vnc →
   Xvfb → pygame path remains unexercised. One manual pass at
-  `http://localhost:6080/vnc.html` after `run.sh` is still owed, and is now worth more
+  `http://localhost:6080/vnc.html` after `run.sh` — **done 2026-09-22**, see
+  [the manual smoke pass](#the-manual-smoke-pass--done-2026-09-22); it was worth more
   than it was: 79 popups changed hands.
 - **75 of the 79 sites individually.** The checks cover one site per *judgement*, not per
   site. The mechanical half is identical at all 79 (the same `options_from_pairs` call),
@@ -2188,7 +2189,9 @@ drawn panel is **structurally identical** on a fixed scenario (Step 0.6's captur
 pixel hash — amended 2026-09-21), and run the determinism harness.
 This is the same incremental-with-an-oracle discipline `COMBAT_REFACTOR_PLAN.md` used —
 and it needs the same honesty: `tests/run_all_tests.py` (149 suites) does **not** cover
-the GUI, so each group needs a manual smoke pass too.
+the GUI, so each group needs a manual smoke pass too. *(Done for M2a-M2c on
+2026-09-22, and the repeatable half of it is now `tests/test_gui_headless_smoke.py`.
+M2d and M2e still owe theirs.)*
 
 **Explicitly out of scope here**: migrating `action_used` / `bonus_used` /
 `attacks_remaining` into C++ (the open `memory/TODO.md` epic *"Turn-economy state → C++"*).
@@ -2262,9 +2265,11 @@ negative test fails when you break the thing it guards.*
 
 #### Still manual
 
-None of the above looks at the panel. A **manual VNC smoke pass** (`./run.sh <map>`,
-then `localhost:6080/vnc.html`) is still owed for these eight buttons, and for every
-later M2 group — the suite can prove the rects and the dispatch, not the appearance.
+None of the above looks at the panel. A **manual VNC smoke pass** was owed for these
+eight buttons and for every later M2 group — the suite could prove the rects and the
+dispatch, not the appearance. **Closed 2026-09-22** for M2a, M2b and M2c together, and
+the assertions it yielded are now `tests/test_gui_headless_smoke.py`. The premise was
+half wrong: the obstacle was never headlessness, it was that nothing was *looking*.
 
 ---
 
@@ -2371,7 +2376,9 @@ remaining **92**, and a converted button is navigated by its action id in
   and `end_combat`) on window resize. Harmless — the draw pass sets x/y/w every frame —
   but they are now dead weight for 8 of the 18 converted names. Sweep them when the
   guard goes in M2e, not before; they are a resize path nothing in the suite exercises.
-- **Manual VNC smoke pass still owed**, for M2a's eight and M2b's eleven.
+- **Manual VNC smoke pass** — owed here for M2a's eight and M2b's eleven; **done
+  2026-09-22**, with M2c's 56, and partly automated as
+  `tests/test_gui_headless_smoke.py`.
 
 ---
 
@@ -2497,6 +2504,10 @@ that the feature works.
   several are nested *inside* another button's resource test (the four Glamour Bard
   buttons live inside `grant_inspiration`'s `bi`), so a cluster is not a run and cannot
   be converted one button at a time.
+- **`tests/test_gui_headless_smoke.py` is a gate now, not a courtesy.** It is cheap, it
+  needs no display, and it is the only thing in the suite that would have caught M2c's
+  five-up. Run it on every batch. A cluster converted to the wrong shape is exactly the
+  failure it is built for, and M2d converts nothing but clusters.
 
 #### Re-derived after M2c
 
