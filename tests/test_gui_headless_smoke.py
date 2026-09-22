@@ -109,12 +109,8 @@ def _frame(app):
     for attr, val in vars(app).items():
         if not attr.startswith("btn_cbt_"):
             continue
-        if isinstance(val, Button):
+        if isinstance(val, Button):      # every one of them is an attribute since M2e
             names[id(val)] = attr
-        elif isinstance(val, dict):          # btn_cbt_metamagic is 9 buttons
-            for k, b in val.items():
-                if isinstance(b, Button):
-                    names[id(b)] = f"{attr}[{int(k)}]"
 
     out = []
     real_draw = Button.draw

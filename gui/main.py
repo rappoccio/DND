@@ -54,7 +54,7 @@ from helpers import (
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, METAMAGIC_OPTIONS, metamagic_offered
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
@@ -69,7 +69,8 @@ from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
 # ActionMenu is imported here and neither `Action` is in this module's namespace.
-from actions import ActionMenu, fey_rider_index
+from actions import (ActionMenu, fey_rider_index, METAMAGIC_OPTIONS,
+                     METAMAGIC_ID_BY_VALUE, METAMAGIC_VALUE_BY_ID)
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
@@ -117,6 +118,10 @@ _BON_RUN_SHADOW    = ("shadow_step", "cloak_of_shadows", "shadow_arts_darkness")
 _BON_RUN_ARCHFEY   = ("fey_effect", "steps_of_fey", "misty_escape")
 _BON_RUN_ELEMENTS  = ("elemental_attunement", "elemental_burst")
 _BON_RUN_TAIL      = ("quivering_palm", "companion", "familiar")
+# §7's last run, drawn after everything else and outside the band: the nine Metamagic
+# toggles, in `METAMAGIC_OPTIONS` order. Built from the table so the two cannot drift.
+_BON_RUN_METAMAGIC = tuple(METAMAGIC_ID_BY_VALUE[int(_v)]
+                           for _v, _n, _sp, _note in METAMAGIC_OPTIONS)
 
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
@@ -1618,13 +1623,15 @@ class App:
         self.btn_cbt_innate_sorcery = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Innate Sorcery",
                                           (150, 60, 150), (185, 95, 185), self.font_md)
-        # Sorcerer Metamagic arm-toggles (Phases 2–3): one button per working option, including
-        # Twinned (Phase 3). Keyed by int(MetamagicOption); positioned/gated each draw.
-        self.btn_cbt_metamagic = {}
+        # Sorcerer Metamagic arm-toggles (Phases 2–3): one button per working option,
+        # including Twinned (Phase 3). Named by action id (`btn_cbt_metamagic_careful`,
+        # …) rather than held in a dict keyed by int(MetamagicOption): Step 0.3's F4 was
+        # that the dict slipped past the stale-rect guard below, and a dict cannot be
+        # dispatched by id. Positioned and gated by the ActionMenu each draw.
         for _mm_val, _mm_name, _mm_sp, _mm_note in METAMAGIC_OPTIONS:
-            self.btn_cbt_metamagic[int(_mm_val)] = Button(
-                pygame.Rect(px, dummy_y, W, B), _mm_name,
-                (80, 62, 135), (120, 100, 185), self.font_md)
+            setattr(self, "btn_cbt_" + METAMAGIC_ID_BY_VALUE[int(_mm_val)],
+                    Button(pygame.Rect(px, dummy_y, W, B), _mm_name,
+                           (80, 62, 135), (120, 100, 185), self.font_md))
         self.btn_cbt_bend_luck = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Bend Luck (1 SP)",
                                           (100, 60, 180), (130, 90, 210), self.font_md)
@@ -17227,17 +17234,13 @@ class App:
                                     lx, y, W, gap)
 
 
-        # Haste (Phase 2): the extra limited action, refilled each of the hasted creature's turns.
-        # Drawn OUTSIDE the `not self.bonus_used` band below — Haste's extra action is an Action, not
-        # a bonus action, so spending a bonus action first must not hide (dead-key) this button.
-        if not _is_incapacitated and 0 <= cur_idx < len(agents):
-            _hstats = self.combat.get_agent_stats(self.bm, cur_idx)
-            if _hstats.haste_action_available:
-                self.btn_cbt_haste_action.rect.x = lx
-                self.btn_cbt_haste_action.rect.y = y
-                self.btn_cbt_haste_action.rect.w = W
-                self.btn_cbt_haste_action.draw(self.screen)
-                y += B + gap
+        # Haste (Phase 2): the extra limited action, refilled each of the hasted
+        # creature's turns. Drawn OUTSIDE the `not self.bonus_used` band below — it is an
+        # Action, not a bonus action, so spending a bonus action first must not dead-key
+        # it. Which is now something the menu says (`economy="action"`) rather than
+        # something this method's placement implies.
+        y = self._draw_action_stack(self._menu_group("bonus", only=("haste_action",)),
+                                    lx, y, W, gap)
 
         if not _is_incapacitated and not self.bonus_used:
             # The band's flat class guards — Monk, Barbarian, Warlock — are the
@@ -17323,52 +17326,33 @@ class App:
                                         lx, y, W, gap)
 
 
-        # Sorcerer Metamagic arm-toggles (Phase 2): one button per LEARNED + AFFORDABLE option
-        # (any subclass, L2+). The armed option is highlighted; arming modifies the next player
-        # cast (_apply_armed_metamagic). Seeking is an independent stacking toggle. Sorcery
-        # Incarnate (L7, Phase 4): while Innate Sorcery runs, a SECOND option can be armed.
-        # Drawn OUTSIDE the `not self.bonus_used` guard above — these are spell qualifiers, not
-        # Bonus Actions, so spending the Bonus Action must NOT hide them. Quickened is the lone
-        # exception (it casts the spell AS a Bonus Action) and is skipped once that is spent.
+        # Sorcerer Metamagic arm-toggles (Phase 2). WHICH options are offered — learned,
+        # affordable, and Quickened only while the Bonus Action is unspent — and the tick
+        # that marks the armed ones are `ActionMenu._metamagic`'s.
+        #
+        # Two things stay here. The CAPTION is the section's and not the buttons':
+        # Sorcery Incarnate is a property of the creature and affordability a property of
+        # each option, so an empty purse leaves the heading standing over nothing
+        # (checkpoint 69). And the armed HIGHLIGHT is styling, which `Action` carries no
+        # field for — it follows the tick in the label, so there is still one rule for
+        # what "armed" means and it is the menu's.
         if not _is_incapacitated and 0 <= cur_idx < len(agents):
-            stats = self.combat.get_agent_stats(self.bm, cur_idx)
-            if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                    stats.char_level >= 2 and len(stats.metamagic_options) > 0):
-                sp_res = stats.get_resource("Sorcery Points")
-                sp_have = sp_res.current if sp_res else 0
-                learned = list(stats.metamagic_options)
-                incarnate = rpg.CombatEngine.sorcery_incarnate_active(stats)
-                if incarnate:
+            _mm_stats = self.combat.get_agent_stats(self.bm, cur_idx)
+            if (_mm_stats.character_class == rpg.CharacterClass.Sorcerer and
+                    _mm_stats.char_level >= 2 and len(_mm_stats.metamagic_options) > 0):
+                if rpg.CombatEngine.sorcery_incarnate_active(_mm_stats):
                     cap = self.font_sm.render(
                         "Sorcery Incarnate: 2 options per spell", True, (210, 190, 255))
                     self.screen.blit(cap, (lx, y))
                     y += cap.get_height() + 2
-                for mm_val, mm_name, mm_sp, mm_note in METAMAGIC_OPTIONS:
-                    key = int(mm_val)
-                    btn = self.btn_cbt_metamagic.get(key)
-                    if btn is None:  # defensive: every option now has a button
-                        continue
-                    # Quickened casts a spell AS a Bonus Action, so it is unusable once the Bonus
-                    # Action is spent — hide only that option (the other qualifiers stay available).
-                    if mm_val == rpg.MetamagicOption.Quickened and self.bonus_used:
-                        continue
-                    cost = rpg.CombatEngine.metamagic_sp_cost(mm_val)
-                    if not metamagic_offered(mm_val, learned, sp_have, cost):
-                        continue
-                    if mm_val == rpg.MetamagicOption.Seeking:
-                        armed = self.armed_seeking
-                    else:
-                        armed = (self.armed_metamagic == mm_val or
-                                 (incarnate and self.armed_metamagic2 == mm_val))
-                    btn.text = f"{'✓ ' if armed else ''}✨ {mm_name} ({cost} SP)"
-                    btn.color = (120, 95, 190) if armed else (80, 62, 135)
-                    btn.rect.x = lx
-                    btn.rect.y = y
-                    btn.rect.w = W
-                    btn.draw(self.screen)
-                    if armed:
-                        pygame.draw.rect(self.screen, (210, 190, 255), btn.rect, 2, border_radius=4)
-                    y += B + gap
+                for _mm_act in self._menu_group("bonus", only=_BON_RUN_METAMAGIC):
+                    _mm_btn = self._cbt_btn(_mm_act.id)
+                    _mm_armed = _mm_act.label.startswith("✓")
+                    _mm_btn.color = (120, 95, 190) if _mm_armed else (80, 62, 135)
+                    y = self._draw_action_row([_mm_act], lx, y, W, gap)
+                    if _mm_armed:
+                        pygame.draw.rect(self.screen, (210, 190, 255), _mm_btn.rect, 2,
+                                         border_radius=4)
 
         y += section_gap
 
@@ -19835,13 +19819,14 @@ class App:
                 # armed one disarms). Seeking toggles independently (it stacks). Under Sorcery
                 # Incarnate (L7 + Innate Sorcery active) a second option fills slot 2. Quickened is
                 # skipped once the Bonus Action is spent — it casts the spell AS a Bonus Action.
-                for _mm_key, _mm_btn in self.btn_cbt_metamagic.items():
-                    if not _mm_btn.clicked(event):
+                for _mm_id, opt in METAMAGIC_VALUE_BY_ID.items():
+                    if not self._action_clicked(_mm_id, event):
                         continue
-                    opt = rpg.MetamagicOption(_mm_key)
-                    if opt == rpg.MetamagicOption.Quickened and self.bonus_used:
-                        continue  # can't cast as a Bonus Action once it's spent
-                    name = METAMAGIC_NAME_BY_VALUE.get(_mm_key, "Metamagic")
+                    # The Quickened/`bonus_used` re-check that used to stand here is
+                    # gone with the rest of Step 0.3's F4: dispatch is by id against the
+                    # offer the panel drew, so an option whose Sorcery Points have since
+                    # been spent below its cost is no longer clickable either.
+                    name = METAMAGIC_NAME_BY_VALUE.get(int(opt), "Metamagic")
                     cost = rpg.CombatEngine.metamagic_sp_cost(opt)
                     incarnate = self._sorcery_incarnate_active(self._current_agent_idx())
                     if not incarnate:
@@ -19887,7 +19872,7 @@ class App:
                     break
                 # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the
                 # `not self.bonus_used` block above so spending a bonus action first doesn't dead-key it.
-                if self.btn_cbt_haste_action.clicked(event):
+                if self._action_clicked("haste_action", event):
                     idx = self._current_agent_idx()
                     if 0 <= idx < len(self.bm.placed_agents):
                         stats = self.combat.get_agent_stats(self.bm, idx)

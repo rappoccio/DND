@@ -637,32 +637,11 @@ class InvocationDialog:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Sorcerer Metamagic (SRD_CC_v5.2 p.65-66). A Sorcerer learns a limited number of
-#  options and applies one to a spell at cast time (see METAMAGIC_IMPLEMENTATION_PLAN.md).
-#  Subtle Spell is intentionally omitted — it is a deliberate no-op in this combat sim
-#  (V/S/M components aren't simulated), so offering it would be a dead pick.
-#  Rows: (MetamagicOption value, display name, SP cost, note).
+#  Sorcerer Metamagic — the table and its availability gate now live in `actions.py`
+#  (M2e): §7 needs both, and that module may not import pygame. Re-exported here so
+#  the dialog below, and `test_sorcerer.py`, are unchanged.
 # ─────────────────────────────────────────────────────────────────────────────
-METAMAGIC_OPTIONS = [
-    (rpg.MetamagicOption.Careful,    "Careful Spell",    1, "Allies auto-excluded from your AoE saves"),
-    (rpg.MetamagicOption.Distant,    "Distant Spell",    1, "Double the spell's range (touch → 30 ft)"),
-    (rpg.MetamagicOption.Empowered,  "Empowered Spell",  1, "Reroll up to CHA-mod low damage dice"),
-    (rpg.MetamagicOption.Extended,   "Extended Spell",   1, "Double the duration (needs ≥ 2 rounds)"),
-    (rpg.MetamagicOption.Heightened, "Heightened Spell", 2, "One target has Disadvantage on its save"),
-    (rpg.MetamagicOption.Quickened,  "Quickened Spell",  2, "Cast a 1-action spell as a Bonus Action"),
-    (rpg.MetamagicOption.Seeking,    "Seeking Spell",    1, "Reroll a missed spell attack (stacks)"),
-    (rpg.MetamagicOption.Transmuted, "Transmuted Spell", 1, "Change the spell's damage type"),
-    (rpg.MetamagicOption.Twinned,    "Twinned Spell",    1, "Target one additional creature"),
-]
-
-
-def metamagic_offered(option, learned_values, sp_available: int, sp_cost: int) -> bool:
-    """Combat-sidebar gate for a Metamagic arm-toggle: offer it only when the option
-    is LEARNED (in the caster's metamagic_options) and the caster can currently AFFORD
-    its Sorcery-Point cost. Factored out as a pure predicate so it can be tested and
-    reused by the sidebar draw pass (Phase 2)."""
-    learned = {int(v) for v in (learned_values or [])}
-    return int(option) in learned and sp_available >= sp_cost
+from actions import METAMAGIC_OPTIONS, metamagic_offered      # noqa: F401  (re-export)
 
 
 def metamagic_known_count(level: int) -> int:

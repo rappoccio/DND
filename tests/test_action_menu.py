@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from actions import (ActionMenu, Action, BUILT_GROUPS, GROUP_SESSION, GROUP_TURN,
                      GROUP_ACTION, GROUP_BONUS, GROUP_PORTENT, GROUP_UTILITY,
-                     ECONOMY)
+                     ECONOMY, METAMAGIC_OPTIONS, METAMAGIC_ID_BY_VALUE)
 import pygame
 import rpg_battle_map as rpg
 
@@ -702,6 +702,102 @@ def test_the_bonus_band_stays_open_for_a_bonus_slot_sequence():
     print("✅ test_the_bonus_band_stays_open_for_a_bonus_slot_sequence passed")
 
 
+def test_the_metamagic_toggles_answer_to_the_purse_and_not_the_band():
+    """Bucket 7d's dict, and the reason `economy` exists.
+
+    Arming a qualifier costs nothing — the Sorcery Points go with the CAST that carries
+    it — so spending the Bonus Action must leave all nine standing. Quickened is the
+    one exception, because it casts the spell AS a Bonus Action. What does take them
+    away is the purse: an option whose cost is now more than the points in hand.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 7)
+    s_ = app.combat.get_agent_stats(app.bm, cyra)
+    s_.metamagic_options = [v for v, _n, _sp, _note in METAMAGIC_OPTIONS]
+    app.combat.set_agent_stats(app.bm, cyra, s_)
+
+    all_nine = [METAMAGIC_ID_BY_VALUE[int(v)] for v, _n, _sp, _note in METAMAGIC_OPTIONS]
+    got = _bonus(app, cyra)
+    assert [i for i in got if i.startswith("metamagic_")] == all_nine, got
+    assert all(_by_id(app, cyra)[i].economy == "free" for i in all_nine)
+
+    app.bonus_used = True
+    got = [i for i in _bonus(app, cyra) if i.startswith("metamagic_")]
+    assert got == [i for i in all_nine if i != "metamagic_quickened"], got
+    assert "second_wind" not in _bonus(app, cyra), "the band did close"
+
+    # One Sorcery Point buys the 1 SP options and nothing else.
+    app.bonus_used = False
+    _set_res(app, cyra, "Sorcery Points", 1)
+    got = [i for i in _bonus(app, cyra) if i.startswith("metamagic_")]
+    assert "metamagic_heightened" not in got and "metamagic_quickened" not in got, got
+    assert "metamagic_careful" in got, got
+
+    _set_res(app, cyra, "Sorcery Points", 0)
+    assert not [i for i in _bonus(app, cyra) if i.startswith("metamagic_")]
+    print("✅ test_the_metamagic_toggles_answer_to_the_purse_and_not_the_band passed")
+
+
+def test_the_metamagic_tick_is_the_armed_state():
+    """The tick in the label is the ONE statement of what is armed — the panel's
+    highlight follows it — so the three arming flags have to reach it.
+
+    `armed_metamagic` is radio-selected, `armed_seeking` stacks beside it, and
+    `armed_metamagic2` is read only while Sorcery Incarnate is running.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 7)
+    s_ = app.combat.get_agent_stats(app.bm, cyra)
+    s_.metamagic_options = [v for v, _n, _sp, _note in METAMAGIC_OPTIONS]
+    app.combat.set_agent_stats(app.bm, cyra, s_)
+
+    def _ticked():
+        return sorted(a.id for a in ActionMenu.build(app, cyra)
+                      if a.id.startswith("metamagic_") and a.label.startswith("✓"))
+
+    assert _ticked() == []
+    app.armed_metamagic = rpg.MetamagicOption.Heightened
+    app.armed_seeking = True
+    assert _ticked() == ["metamagic_heightened", "metamagic_seeking"], _ticked()
+
+    # Slot 2 is invisible until Sorcery Incarnate is actually running.
+    app.armed_metamagic2 = rpg.MetamagicOption.Twinned
+    assert "metamagic_twinned" not in _ticked(), _ticked()
+    s_ = app.combat.get_agent_stats(app.bm, cyra)
+    s_.innate_sorcery_turns = 10
+    app.combat.set_agent_stats(app.bm, cyra, s_)
+    assert "metamagic_twinned" in _ticked(), _ticked()
+
+    app.armed_metamagic = rpg.MetamagicOption.NONE
+    app.armed_metamagic2 = rpg.MetamagicOption.NONE
+    app.armed_seeking = False
+    print("✅ test_the_metamagic_tick_is_the_armed_state passed")
+
+
+def test_haste_grants_an_action_the_bonus_action_cannot_take():
+    """7d's other member: the flag is the whole guard, and the band is not in it."""
+    app = _app()
+    aria = _goto(app, "Aria")
+    assert "haste_action" not in _bonus(app, aria)
+
+    s_ = app.combat.get_agent_stats(app.bm, aria)
+    s_.haste_action_available = True
+    app.combat.set_agent_stats(app.bm, aria, s_)
+    assert "haste_action" in _bonus(app, aria)
+    assert _by_id(app, aria)["haste_action"].economy == "action"
+
+    app.bonus_used = True
+    assert "haste_action" in _bonus(app, aria), "an Action is not a Bonus Action"
+    app.action_used = True
+    assert "haste_action" in _bonus(app, aria), \
+        "and it is the extra one, so a spent Action does not take it either"
+
+    s_ = app.combat.get_agent_stats(app.bm, aria)
+    s_.haste_action_available = False
+    app.combat.set_agent_stats(app.bm, aria, s_)
+    print("✅ test_haste_grants_an_action_the_bonus_action_cannot_take passed")
+
+
 def test_the_bonus_runs_are_built_in_draw_order():
     """§7's analog of `test_the_open_band_is_built_in_column_order`.
 
@@ -713,10 +809,11 @@ def test_the_bonus_runs_are_built_in_draw_order():
     """
     import main
     runs = [v for k, v in vars(main).items() if k.startswith("_BON_RUN_")]
-    # Six after M2c, thirteen after M2d: a run is a maximal stretch with no still-fused
-    # button between its members, so converting the clusters that CUT the column adds
-    # runs rather than merging them. They can be merged once 7b and 7d leave in M2e.
-    assert len(runs) == 13, runs
+    # Six after M2c, thirteen after M2d, fourteen with M2e's Metamagic tail: a run is a
+    # maximal stretch with no still-fused button between its members, so converting the
+    # clusters that CUT the column added runs rather than merging them. They merge once
+    # nothing fused separates them.
+    assert len(runs) == 14, runs
 
     app = _app()
     seen = 0
@@ -1284,6 +1381,9 @@ if __name__ == "__main__":
         test_use_item_and_extinguish_are_outside_the_band()
         test_the_economy_band_headers_are_the_bands_own_two_buttons()
         test_the_bonus_band_stays_open_for_a_bonus_slot_sequence()
+        test_the_metamagic_toggles_answer_to_the_purse_and_not_the_band()
+        test_the_metamagic_tick_is_the_armed_state()
+        test_haste_grants_an_action_the_bonus_action_cannot_take()
         test_the_bonus_runs_are_built_in_draw_order()
         test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable()
         test_a_click_on_an_unoffered_bonus_action_does_nothing()

@@ -20,9 +20,10 @@ What is captured, per checkpoint, in draw order:
     btn  | -         | <name> | -       | -      | no   every widget NOT drawn
 
 `Button.draw` is HOOKED — "drawn?" is never inferred from the rect. The stale-rect
-guard parks undrawn buttons at x = -10000, but Step 0.3's F4 found the
-`btn_cbt_metamagic` dict escapes that guard entirely, so inferring would bake the bug
-into the baseline.
+guard parked undrawn buttons at x = -10000, and Step 0.3's F4 found the
+`btn_cbt_metamagic` dict escaped it entirely, so inferring would have baked the bug
+into the baseline. M2e retired both the dict and the guard; the hook stays, because
+"has a rect" and "was drawn" are still different questions.
 
 The panel's text is captured too, because the section labels ("Action ✓",
 "[Bonus used]", "Frightened — must Dash") are how a reader tells WHICH BRANCH of the
@@ -133,17 +134,14 @@ class PanelCapture:
         for attr, val in vars(app).items():
             if not attr.startswith("btn_"):
                 continue
-            named = []
-            if isinstance(val, Button):
-                named.append((attr, val))
-            elif isinstance(val, dict):
-                # btn_cbt_metamagic is a dict of 9 buttons, not a button — Step 0.3 F1.
-                named += [(f"{attr}[{int(k)}]", b) for k, b in val.items()
-                          if isinstance(b, Button)]
-            for name, btn in named:
-                self._names[id(btn)] = name
-                if attr.startswith("btn_cbt_"):
-                    self._roster.add(name)
+            # Every combat-panel widget is now one attribute. Until M2e the nine
+            # Metamagic toggles were a DICT (Step 0.3's F1 and F4), and this loop had
+            # to unpack it; they are ordinary `btn_cbt_metamagic_*` attributes now.
+            if not isinstance(val, Button):
+                continue
+            self._names[id(val)] = attr
+            if attr.startswith("btn_cbt_"):
+                self._roster.add(attr)
 
     # — sinks —
     def _on_text(self, s):

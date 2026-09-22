@@ -129,6 +129,60 @@ _BONUS_ECONOMY = {
 _FEY_EFFECT_NAMES = ["None", "Refreshing", "Taunting", "Disappearing", "Dreadful"]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Sorcerer Metamagic (SRD_CC_v5.2 p.65-66). A Sorcerer learns a limited number of
+#  options and applies one to a spell at cast time (see METAMAGIC_IMPLEMENTATION_PLAN.md).
+#  Subtle Spell is intentionally omitted — it is a deliberate no-op in this combat sim
+#  (V/S/M components aren't simulated), so offering it would be a dead pick.
+#  Rows: (MetamagicOption value, display name, SP cost, note).
+#
+#  Moved here from `dialogs.py` by M2e: the table is data and the gate below is a pure
+#  predicate, and §7 needs both while this module may not import pygame. `dialogs.py`
+#  re-exports them, so the dialog and `test_sorcerer.py` are unchanged.
+# ─────────────────────────────────────────────────────────────────────────────
+METAMAGIC_OPTIONS = [
+    (rpg.MetamagicOption.Careful,    "Careful Spell",    1, "Allies auto-excluded from your AoE saves"),
+    (rpg.MetamagicOption.Distant,    "Distant Spell",    1, "Double the spell's range (touch → 30 ft)"),
+    (rpg.MetamagicOption.Empowered,  "Empowered Spell",  1, "Reroll up to CHA-mod low damage dice"),
+    (rpg.MetamagicOption.Extended,   "Extended Spell",   1, "Double the duration (needs ≥ 2 rounds)"),
+    (rpg.MetamagicOption.Heightened, "Heightened Spell", 2, "One target has Disadvantage on its save"),
+    (rpg.MetamagicOption.Quickened,  "Quickened Spell",  2, "Cast a 1-action spell as a Bonus Action"),
+    (rpg.MetamagicOption.Seeking,    "Seeking Spell",    1, "Reroll a missed spell attack (stacks)"),
+    (rpg.MetamagicOption.Transmuted, "Transmuted Spell", 1, "Change the spell's damage type"),
+    (rpg.MetamagicOption.Twinned,    "Twinned Spell",    1, "Target one additional creature"),
+]
+
+# One action id per option — `metamagic_careful`, `metamagic_distant`, … Every name in
+# the table is "<Word> Spell", so the id is that word, lowercased. Nine ids means nine
+# ordinary widgets, which is what retires the `btn_cbt_metamagic` DICT: Step 0.3's F4
+# was that the dict slipped past the panel's stale-rect guard, and a dict cannot be
+# dispatched by id.
+METAMAGIC_ID_BY_VALUE = {int(v): "metamagic_" + n.split()[0].lower()
+                         for v, n, sp, note in METAMAGIC_OPTIONS}
+METAMAGIC_VALUE_BY_ID = {i: rpg.MetamagicOption(v)
+                         for v, i in METAMAGIC_ID_BY_VALUE.items()}
+
+# Arming a Metamagic option is not an action of any kind: the Sorcery Points are spent
+# by the CAST that carries it. That is why the panel draws all nine outside the band —
+# and why Quickened, which casts the spell AS a Bonus Action, is the one the band can
+# still take.
+_BONUS_ECONOMY.update({i: ECONOMY_FREE for i in METAMAGIC_ID_BY_VALUE.values()})
+
+
+def metamagic_offered(option, learned_values, sp_available: int, sp_cost: int) -> bool:
+    """Combat-sidebar gate for a Metamagic arm-toggle: offer it only when the option
+    is LEARNED (in the caster's metamagic_options) and the caster can currently AFFORD
+    its Sorcery-Point cost. Factored out as a pure predicate so it can be tested and
+    reused by the sidebar draw pass (Phase 2).
+
+    Step 0.3's **F5** named this as the shape `ActionMenu.build` generalizes — the one
+    pure availability predicate the panel already had. M2e is where it stops being a
+    precedent and becomes an ordinary member of this module.
+    """
+    learned = {int(v) for v in (learned_values or [])}
+    return int(option) in learned and sp_available >= sp_cost
+
+
 def _res(stats, name: str) -> int:
     """`stats`'s remaining uses of a named resource, or 0 when it has none at all.
 
@@ -378,6 +432,43 @@ class ActionMenu:
                 for a in out]
 
     @staticmethod
+    def _metamagic(app, stats) -> list[Action]:
+        """§7's tail: the Sorcerer's arm-toggles, drawn after everything else.
+
+        Not a Bonus Action, not an Action, not gated on the band — arming a qualifier
+        costs nothing, and the Sorcery Points go with the cast that carries it. That is
+        bucket 7d's whole argument, and it is why this is built at BOTH of `_bonus`'s
+        exits: the band closing must not take it.
+
+        Quickened is the one exception, because it casts the spell AS a Bonus Action,
+        and it is the only option the spent band removes.
+
+        Sorcery Incarnate (Sorcerer 7, while Innate Sorcery runs) lets a SECOND option
+        be armed alongside the first; `armed_metamagic2` is only read while it does.
+        Seeking is not radio-selected at all — it stacks — so it has its own flag.
+        """
+        if (stats.character_class != rpg.CharacterClass.Sorcerer
+                or stats.char_level < 2 or len(stats.metamagic_options) == 0):
+            return []
+        sp_have = _res(stats, "Sorcery Points")
+        learned = list(stats.metamagic_options)
+        incarnate = rpg.CombatEngine.sorcery_incarnate_active(stats)
+        out: list[Action] = []
+        for mm_val, mm_name, _mm_sp, _mm_note in METAMAGIC_OPTIONS:
+            if mm_val == rpg.MetamagicOption.Quickened and app.bonus_used:
+                continue
+            cost = rpg.CombatEngine.metamagic_sp_cost(mm_val)
+            if not metamagic_offered(mm_val, learned, sp_have, cost):
+                continue
+            armed = (app.armed_seeking if mm_val == rpg.MetamagicOption.Seeking
+                     else (app.armed_metamagic == mm_val
+                           or (incarnate and app.armed_metamagic2 == mm_val)))
+            out.append(Action(METAMAGIC_ID_BY_VALUE[int(mm_val)],
+                              f"{'✓ ' if armed else ''}✨ {mm_name} ({cost} SP)",
+                              GROUP_BONUS))
+        return out
+
+    @staticmethod
     def _bonus(app, agent_idx: int) -> list[Action]:
         """Bucket 7a: §7's flat, independent guards (M2c).
 
@@ -478,12 +569,20 @@ class ActionMenu:
         if not app.action_used and app._netted_within_reach(agent_idx):
             out.append(Action("escape_net", "🕸 Free from Net", GROUP_BONUS))
 
+        # Haste's extra limited action, refilled at the top of each of the hasted
+        # creature's turns. Outside the band because it IS an Action: spending the Bonus
+        # Action first must not dead-key it. The flag is the whole guard — the engine
+        # sets and clears it — which is what keeps it out of the trap its own comment
+        # in the panel warns about.
+        if stats.haste_action_available:
+            out.append(Action("haste_action", "⚡ Haste Action", GROUP_BONUS))
+
         # ── the band block ──
         # Everything past this point is inside the panel's one big
         # `if not _is_incapacitated and not self.bonus_used:`, whatever an individual
         # feature's action cost actually is. Checkpoint 03 is the record of that.
         if app.bonus_used:
-            return ActionMenu._priced(out)
+            return ActionMenu._priced(out + ActionMenu._metamagic(app, stats))
 
         cls = stats.character_class
         lvl = stats.char_level
@@ -943,7 +1042,7 @@ class ActionMenu:
                               if app._find_familiar_idx(agent_idx) >= 0
                               else "😈 Pact Familiar", GROUP_BONUS))
 
-        return ActionMenu._priced(out)
+        return ActionMenu._priced(out + ActionMenu._metamagic(app, stats))
 
     # ── §9 — visibility + drops ────────────────────────────────────────────────
     @staticmethod

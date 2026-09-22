@@ -88,15 +88,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -224,15 +224,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -361,15 +361,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -497,15 +497,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -638,15 +638,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -777,15 +777,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -914,15 +914,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1051,15 +1051,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1185,15 +1185,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1329,15 +1329,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1408,8 +1408,8 @@ text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,410,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,444,316,30 | yes
 btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,478,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,512,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,546,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,512,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,546,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,646,156,30 | yes
@@ -1469,13 +1469,13 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1546,7 +1546,7 @@ text | Action      | Spells: 1:○○○○  2:○○
 text | Action      | Spells: 1:○○○○  2:○○
 text | BonusAction | Bonus Action ✓
 text | BonusAction | [Bonus used]
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,440,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,440,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,540,156,30 | yes
@@ -1608,14 +1608,14 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1688,7 +1688,7 @@ text | Action      | Spells: 1:○○○○  2:○○
 text | BonusAction | Bonus Action ✓
 text | BonusAction | [Bonus used]
 btn  | BonusAction | btn_cbt_haste_action | ⚡ Haste Action | 1052,440,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,474,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,474,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,574,156,30 | yes
@@ -1749,14 +1749,14 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -1886,15 +1886,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2024,15 +2024,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2165,15 +2165,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2300,15 +2300,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2438,15 +2438,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2581,15 +2581,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2669,8 +2669,8 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,458,316,30 | yes
 btn  | BonusAction | btn_cbt_dragon_wings | Dragon Wings (extend) | 1052,492,316,30 | yes
 btn  | BonusAction | btn_cbt_draconic_resistance | Draconic Resistance (1 SP) | 1052,526,316,30 | yes
 btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,560,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,594,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,628,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,594,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,628,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,728,156,30 | yes
@@ -2728,13 +2728,13 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -2866,15 +2866,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3006,15 +3006,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3146,15 +3146,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3286,15 +3286,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3423,15 +3423,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3559,15 +3559,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3697,15 +3697,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3834,15 +3834,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -3973,15 +3973,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4113,15 +4113,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4258,15 +4258,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4406,15 +4406,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4488,8 +4488,8 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,444,316,30 | yes
 btn  | BonusAction | btn_cbt_bend_luck | Bend Luck (1 SP) | 1052,478,316,30 | yes
 btn  | BonusAction | btn_cbt_tides_of_chaos | Tides of Chaos | 1052,512,316,30 | yes
 btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,546,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,580,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,614,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,580,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,614,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,714,156,30 | yes
@@ -4548,13 +4548,13 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4632,8 +4632,8 @@ btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,546,316,30 |
 btn  | BonusAction | btn_cbt_wild_magic_extra_action | Wild Magic: Extra Action | 1052,580,316,30 | yes
 btn  | BonusAction | btn_cbt_wild_magic_bonus_cast | Wild Magic: Cast as Bonus | 1052,614,316,30 | yes
 btn  | BonusAction | btn_cbt_wild_magic_teleport | Wild Magic: Teleport 20ft | 1052,648,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,682,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,716,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,682,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,716,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,816,156,30 | yes
@@ -4692,13 +4692,13 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4778,8 +4778,8 @@ btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,492,316,30 |
 btn  | BonusAction | btn_cbt_trance_of_order | Trance of Order | 1052,526,316,30 | yes
 btn  | BonusAction | btn_cbt_bastion_of_law | Bastion of Law | 1052,560,316,30 | yes
 btn  | BonusAction | btn_cbt_clockwork_cavalcade | Clockwork Cavalcade | 1052,594,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,628,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,662,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,628,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,662,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,762,156,30 | yes
@@ -4837,13 +4837,13 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -4925,8 +4925,8 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,458,316,30 | yes
 btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,492,316,30 | yes
 btn  | BonusAction | btn_cbt_revelation_in_flesh | Revelation in Flesh (1 SP) | 1052,526,316,30 | yes
 btn  | BonusAction | btn_cbt_warping_implosion | Warping Implosion | 1052,560,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,594,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,628,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,594,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,628,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,728,156,30 | yes
@@ -4986,13 +4986,13 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5120,15 +5120,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5257,15 +5257,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5395,15 +5395,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5533,15 +5533,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5678,15 +5678,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5822,15 +5822,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -5967,15 +5967,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -6107,15 +6107,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -6248,15 +6248,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -6386,15 +6386,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -6530,15 +6530,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
@@ -6667,15 +6667,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -6807,15 +6807,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -6945,15 +6945,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -7088,15 +7088,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
@@ -7227,15 +7227,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -7372,15 +7372,15 @@ btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -7518,15 +7518,15 @@ btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -7657,15 +7657,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -7796,15 +7796,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -7932,15 +7932,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -8070,15 +8070,15 @@ btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -8209,15 +8209,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
@@ -8347,15 +8347,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -8484,15 +8484,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -8621,15 +8621,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -8758,15 +8758,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -8897,15 +8897,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -9035,15 +9035,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -9169,15 +9169,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -9252,15 +9252,15 @@ text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,410,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,444,316,30 | yes
 btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,478,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[1] | ✨ Careful Spell (1 SP) | 1052,512,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[2] | ✨ Distant Spell (1 SP) | 1052,546,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[3] | ✨ Empowered Spell (1 SP) | 1052,580,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[4] | ✨ Extended Spell (1 SP) | 1052,614,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[5] | ✨ Heightened Spell (2 SP) | 1052,648,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,682,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,716,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[9] | ✨ Transmuted Spell (1 SP) | 1052,750,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[10] | ✨ Twinned Spell (1 SP) | 1052,784,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_careful | ✨ Careful Spell (1 SP) | 1052,512,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_distant | ✨ Distant Spell (1 SP) | 1052,546,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_empowered | ✨ Empowered Spell (1 SP) | 1052,580,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_extended | ✨ Extended Spell (1 SP) | 1052,614,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_heightened | ✨ Heightened Spell (2 SP) | 1052,648,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,682,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✨ Seeking Spell (1 SP) | 1052,716,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_transmuted | ✨ Transmuted Spell (1 SP) | 1052,750,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_twinned | ✨ Twinned Spell (1 SP) | 1052,784,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,884,156,30 | yes
@@ -9394,15 +9394,15 @@ text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,410,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,444,316,30 | yes
 btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,478,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[1] | ✨ Careful Spell (1 SP) | 1052,512,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[2] | ✨ Distant Spell (1 SP) | 1052,546,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[3] | ✨ Empowered Spell (1 SP) | 1052,580,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[4] | ✨ Extended Spell (1 SP) | 1052,614,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[5] | ✓ ✨ Heightened Spell (2 SP) | 1052,648,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,682,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✓ ✨ Seeking Spell (1 SP) | 1052,716,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[9] | ✨ Transmuted Spell (1 SP) | 1052,750,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[10] | ✨ Twinned Spell (1 SP) | 1052,784,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_careful | ✨ Careful Spell (1 SP) | 1052,512,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_distant | ✨ Distant Spell (1 SP) | 1052,546,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_empowered | ✨ Empowered Spell (1 SP) | 1052,580,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_extended | ✨ Extended Spell (1 SP) | 1052,614,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_heightened | ✓ ✨ Heightened Spell (2 SP) | 1052,648,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,682,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✓ ✨ Seeking Spell (1 SP) | 1052,716,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_transmuted | ✨ Transmuted Spell (1 SP) | 1052,750,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_twinned | ✨ Twinned Spell (1 SP) | 1052,784,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,884,156,30 | yes
@@ -9536,15 +9536,15 @@ text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,410,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,444,316,30 | yes
 text | BonusAction | Sorcery Incarnate: 2 options per spell
-btn  | BonusAction | btn_cbt_metamagic[1] | ✨ Careful Spell (1 SP) | 1052,497,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[2] | ✨ Distant Spell (1 SP) | 1052,531,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[3] | ✨ Empowered Spell (1 SP) | 1052,565,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[4] | ✨ Extended Spell (1 SP) | 1052,599,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[5] | ✓ ✨ Heightened Spell (2 SP) | 1052,633,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,667,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[7] | ✓ ✨ Seeking Spell (1 SP) | 1052,701,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[9] | ✨ Transmuted Spell (1 SP) | 1052,735,316,30 | yes
-btn  | BonusAction | btn_cbt_metamagic[10] | ✓ ✨ Twinned Spell (1 SP) | 1052,769,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_careful | ✨ Careful Spell (1 SP) | 1052,497,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_distant | ✨ Distant Spell (1 SP) | 1052,531,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_empowered | ✨ Empowered Spell (1 SP) | 1052,565,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_extended | ✨ Extended Spell (1 SP) | 1052,599,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_heightened | ✓ ✨ Heightened Spell (2 SP) | 1052,633,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_quickened | ✨ Quickened Spell (2 SP) | 1052,667,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_seeking | ✓ ✨ Seeking Spell (1 SP) | 1052,701,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_transmuted | ✨ Transmuted Spell (1 SP) | 1052,735,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic_twinned | ✓ ✨ Twinned Spell (1 SP) | 1052,769,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,869,156,30 | yes
@@ -9739,15 +9739,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
@@ -9865,15 +9865,15 @@ btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
 btn  | -           | btn_cbt_merge_shadows | - | - | no
-btn  | -           | btn_cbt_metamagic[10] | - | - | no
-btn  | -           | btn_cbt_metamagic[1] | - | - | no
-btn  | -           | btn_cbt_metamagic[2] | - | - | no
-btn  | -           | btn_cbt_metamagic[3] | - | - | no
-btn  | -           | btn_cbt_metamagic[4] | - | - | no
-btn  | -           | btn_cbt_metamagic[5] | - | - | no
-btn  | -           | btn_cbt_metamagic[6] | - | - | no
-btn  | -           | btn_cbt_metamagic[7] | - | - | no
-btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_metamagic_careful | - | - | no
+btn  | -           | btn_cbt_metamagic_distant | - | - | no
+btn  | -           | btn_cbt_metamagic_empowered | - | - | no
+btn  | -           | btn_cbt_metamagic_extended | - | - | no
+btn  | -           | btn_cbt_metamagic_heightened | - | - | no
+btn  | -           | btn_cbt_metamagic_quickened | - | - | no
+btn  | -           | btn_cbt_metamagic_seeking | - | - | no
+btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
+btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
