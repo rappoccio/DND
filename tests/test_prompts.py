@@ -32,6 +32,11 @@ Covered here:
   · a seated player may answer their own creature's window, and
     another player may not                                          (test_player_answers_own_reaction)
   · dismissing the window submits its Skip, so the flow advances    (test_dismissal_skips_the_window)
+
+And the click path itself — a real `MOUSEBUTTONDOWN` through `App._handle_events` and
+`ContextMenu.handle`, which is the one thing neither M0 nor M1 Step 2 could check:
+  · clicking the popup row takes the opportunity attack               (test_click_takes_the_opportunity_attack)
+  · clicking away from it submits the Skip                            (test_click_away_skips_the_window)
 """
 
 import os
@@ -52,6 +57,7 @@ from prompts import (PromptBus, Prompt, Option, Response, PromptState,
                      ERR_PROTOCOL)
 from net.roster import SessionRoster, Role, DM_PRINCIPAL_ID
 from main import App
+from gui_driver import click_menu, click_away, menu_labels, screenshot
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
 SEED = 20260921
@@ -444,6 +450,45 @@ def test_dismissal_skips_the_window():
     print("✅ test_dismissal_skips_the_window passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  The click path: a real pygame event, through the real event loop
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_click_takes_the_opportunity_attack():
+    """The DM's actual mouse. Everything above enters through `bus.submit`; this enters
+    through `pygame.event.post` and arrives at the same place — `_handle_events` →
+    `ContextMenu.handle` → the bus's submit closure → the engine."""
+    app, mover, threat = _parked_app()
+    weapon_label = next(o.label for o in app.combat.pending_decision().ctx.options
+                        if o.kind == rpg.ReactionOptionKind.Weapon)
+    assert weapon_label in menu_labels(app), "the popup rows are the engine's options"
+
+    click_menu(app, weapon_label)
+
+    assert not app.combat.pending_decision().active
+    assert app.combat.get_agent_conditions(app.bm, threat).reaction_used
+    assert _pos(app, mover) == (6, 6)
+    assert app.prompts.live is None and not app.context_menu.visible
+    p = app.prompts.get("pr_00001")
+    assert p.state is PromptState.ANSWERED and p.response.option == "opt_0"
+    print("✅ test_click_takes_the_opportunity_attack passed")
+
+
+def test_click_away_skips_the_window():
+    """Dismissal, by clicking off the popup rather than by calling the bus. This is the
+    path that used to depend on two flags read at the call site, and the one that freezes
+    a turn if it regresses."""
+    app, mover, threat = _parked_app()
+    click_away(app)
+
+    assert not app.context_menu.visible
+    assert not app.combat.pending_decision().active, "the Skip option was submitted"
+    assert not app.combat.get_agent_conditions(app.bm, threat).reaction_used
+    assert _pos(app, mover) == (6, 6)
+    assert app.prompts.get("pr_00001").state is PromptState.CANCELLED
+    print("✅ test_click_away_skips_the_window passed")
+
+
 def main():
     tests = [
         test_wire_projection,
@@ -458,6 +503,8 @@ def main():
         test_answer_resumes_the_move,
         test_player_answers_own_reaction,
         test_dismissal_skips_the_window,
+        test_click_takes_the_opportunity_attack,
+        test_click_away_skips_the_window,
     ]
     failed = 0
     for t in tests:
@@ -474,4 +521,13 @@ def main():
 
 
 if __name__ == "__main__":
+    # `--shot <path>` renders the parked reaction popup to a PNG instead of running the
+    # suite. Not an assertion — a way to LOOK at the widget, since the headless driver
+    # draws to a real surface. The popup's appearance is otherwise unverifiable without
+    # a display, and M1 changed what feeds it.
+    if "--shot" in sys.argv:
+        out = sys.argv[sys.argv.index("--shot") + 1]
+        _app, _m, _t = _parked_app()
+        print(screenshot(_app, out))
+        sys.exit(0)
     sys.exit(main())

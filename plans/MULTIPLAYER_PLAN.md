@@ -1715,7 +1715,7 @@ instead of `click → the callback`.
 `test_monk.py::test_deflect_attacks_reduces_physical` that has been the baseline since
 `COMBAT_REFACTOR_PLAN.md` R0. The count is 147 + this suite. `test_determinism.py` is
 byte-identical and `test_combat_panel.py`'s golden is unchanged. `test_prompts.py` is
-**12/12**:
+12/12 here, and 14/14 once the click-path pair below is added:
 
 | Test | Proves |
 | ---- | ------ |
@@ -1732,12 +1732,37 @@ byte-identical and `test_combat_panel.py`'s golden is unchanged. `test_prompts.p
 | `test_player_answers_own_reaction` | a seated player answers their own creature's window; another player gets `denied` and the engine is untouched |
 | `test_dismissal_skips_the_window` | clicking away submits the Skip, the reaction is not spent, and the move still completes |
 
+#### The click path, and M0's gap (added 2026-09-21)
+
+M0 and M1 Step 2 both had to record the same hole: everything between the *mouse* and
+the callback was unexercised. It is now covered, by posting real `MOUSEBUTTONDOWN`
+events onto pygame's queue — `_handle_events` reads `pygame.event.get()`, so a posted
+event is indistinguishable from one SDL put there, and under the dummy video driver the
+display surface draws and saves like any other.
+
+| File | What |
+| ---- | ---- |
+| `tests/gui_driver.py` (new) | The shared harness: `cell_center` (the inverse of `_screen_to_cell`, pan and scale included), `post_click`, `menu_row_pos` / `click_menu` / `click_away` keyed off `ContextMenu`'s own geometry constants, and `screenshot`. Each Step 3 batch gets its click check for free. |
+| `tests/test_prompts.py` | `test_click_takes_the_opportunity_attack` — the DM's actual mouse, through `ContextMenu.handle` into the bus and the engine; `test_click_away_skips_the_window` — dismissal, the path that freezes a turn if it regresses. **14/14.** |
+| `tests/test_session_roster.py` | `test_controller_submenu_click_path` — right-click the token → **Controller ▸** → the player's row, then the four things the callback owes: the agent record, the ownership cache, `<base>_session.json`, and the log line. It also asserts the ✓ moves on re-open. **12/12.** M0's "first click of it is the thing to watch" is answered: it works. |
+
+`python3 tests/test_prompts.py --shot <path>` renders the parked reaction popup to a PNG
+— not an assertion, a way to look at the widget, which is otherwise unverifiable without
+a display. Inspected 2026-09-21: four rows (`[Weapon] Test Blade`, two `[Weapon]
+Unarmed`, `Skip`), unchanged in appearance.
+
+> **Observed while looking, and not fixed here:** `_agent_screen_pos` (`main.py:10713`)
+> anchors the popup with `cell_pixel_size` arithmetic and consults neither `map_scale`
+> nor `pan_x/pan_y`, so on a panned or zoomed map the popup opens away from its token.
+> Pre-existing and untouched by M1 — the bus passes that function's output through
+> unchanged — but it is a real bug and belongs on the cleanup list, not in this phase.
+
 #### Not covered by a test
 
-- **A real display.** Everything here is headless (`SDL_VIDEODRIVER=dummy`). The popup's
-  pixels are unchanged because `ContextMenu` is unchanged, but the first live click on
-  the converted reaction window is still worth watching — as is M0's **Controller ▸**
-  submenu, which remains unexercised.
+- **A real display.** Everything here is headless (`SDL_VIDEODRIVER=dummy`) and every
+  click is synthesized. The VNC path itself — noVNC → x11vnc → Xvfb → pygame — is the
+  one link no test exercises; the cheap check is one manual pass through
+  `http://localhost:6080/vnc.html` after `run.sh`.
 - **`deadline`.** The field exists and reaches the wire; nothing sets it and nothing
   expires. Expiry is M5's, per the plan.
 - **The other 86 sites.** They still call their widget directly, which is exactly why

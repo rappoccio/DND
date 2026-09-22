@@ -30,6 +30,8 @@ Covered here:
   · ownership survives a save that compacts indices
                                                   (test_ownership_survives_compaction)
   · a summon inherits its summoner's controller   (test_summon_inherits_controller)
+  · the DM's actual right-click → Controller ▸ → a player assigns the token
+                                                  (test_controller_submenu_click_path)
 """
 
 import os
@@ -53,6 +55,7 @@ from net.roster import (SessionRoster, Principal, Role, AuthBlock, Action,
                         TokenTarget, PromptTarget, TokenInfo,
                         DM_PRINCIPAL_ID, PC_FACTION, DEFAULT_AUTOSAVE_SLOTS)
 from main import App
+from gui_driver import cell_center, post_click, click_menu, menu_labels
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
 SEED = 20260921
@@ -438,6 +441,52 @@ def test_summon_inherits_controller():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_controller_submenu_click_path():
+    """The **Controller ▸** submenu, driven by real mouse events.
+
+    M0 shipped this submenu with everything it calls under test and the wiring between
+    the click and those calls covered by nothing — "first click of it is the thing to
+    watch". This is that click: right-click the token, pick the submenu, pick the
+    player, and check the four things the callback is supposed to do (write the
+    agent record, refresh the ownership cache, persist the session, log it).
+    """
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _app_in(tmp, names=("Aria",))
+        kira = _seat(app.roster, "Kira")
+        aria = _idx(app, "Aria")
+        col, row = (app.bm.placed_agents[aria].origin.col,
+                    app.bm.placed_agents[aria].origin.row)
+
+        # The agent menu is a right-click on the token, and only out of combat.
+        assert not app.combat_active
+        post_click(app, cell_center(app, col, row), button=3)
+        assert app.context_menu.visible, "right-clicking a token opens the agent menu"
+        assert "Controller ▸" in menu_labels(app)
+
+        click_menu(app, "Controller ▸")
+        # The submenu replaces the parent in the one shared widget (Step 0.2's fact 2).
+        assert menu_labels(app) == ["✓ DM", "Kira", "Seat a new player…"], \
+            f"unexpected submenu: {menu_labels(app)}"
+
+        click_menu(app, "Kira")
+        assert not app.context_menu.visible
+        assert app.bm.placed_agents[aria].controller == kira.id
+        assert app.roster.controlled_by(kira.id) == [aria]
+        with open(os.path.join(tmp, "roster_test_session.json")) as f:
+            doc = json.load(f)
+        assert kira.id in [p["id"] for p in doc["principals"]]
+        assert "principals" in doc and all("controller" not in p for p in doc["principals"])
+
+        # Re-opening the submenu moves the ✓ — the DM can see who holds the token.
+        post_click(app, cell_center(app, col, row), button=3)
+        click_menu(app, "Controller ▸")
+        assert menu_labels(app) == ["DM", "✓ Kira", "Seat a new player…"]
+        print("✅ test_controller_submenu_click_path passed")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     tests = [
         test_session_file_round_trip,
@@ -451,6 +500,7 @@ def main():
         test_controller_round_trip,
         test_ownership_survives_compaction,
         test_summon_inherits_controller,
+        test_controller_submenu_click_path,
     ]
     failed = 0
     for t in tests:
