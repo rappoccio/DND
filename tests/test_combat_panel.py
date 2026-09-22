@@ -439,6 +439,23 @@ def _reclass(app, name, cls, level, **fields):
     app.combat.set_agent_stats(app.bm, idx, s)
     return idx
 
+def _set_res(app, idx, name, current):
+    """Set a named resource's remaining uses on `idx`, in place.
+
+    `_reclass` runs `initialize_class_resources`, which fills every resource to its
+    maximum — so a checkpoint that needs a PARTLY SPENT one (Restore Beguiling Magic
+    asks for a resource that is not full; the Glamour windows are the arm you reach
+    once the use is gone) sets it afterwards, the way the panel's own handlers do.
+    """
+    s = app.combat.get_agent_stats(app.bm, idx)
+    r = s.get_resource(name)
+    if r is None:
+        raise KeyError(f"{name} — not a resource this creature has")
+    r.current = current
+    s.resources[name] = r
+    app.combat.set_agent_stats(app.bm, idx, s)
+
+
 def build_output():
     app = App(MAP_PATH, seed=SEED)
     _build_scene(app)
@@ -809,6 +826,159 @@ def build_output():
                       monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
     app.combat.plant_quivering_palm(app.bm, cyra_q, _idx(app, "Skarn"))
     out += cap.capture("48 monk with vibrations planted — Cyra (quivering_palm)")
+
+    # ── 49-63: the clusters and the spatial predicates (M2d) ────────────────
+    # 21 of the panel's buttons are still DARK — they read "no" in all 50 blocks above,
+    # so a golden could not tell an extraction that preserved their rule from one that
+    # deleted it. They are exactly M2d's: bucket 7e's clusters (several of them nested
+    # inside another button's resource test) and bucket 7c's spatial predicates. Same
+    # order 14-18 and 20-48 took: coverage FIRST, against the still-fused code.
+    #
+    # Batched by cluster rather than by class, because a cluster shares one guard and
+    # one arming flag — which is also why M2d cannot convert them one button at a time.
+
+    # 49/50 — Invoke Duplicity. The trio hangs off `_my_duplicates(cur_idx)`, a scan of
+    # every placed agent, so 49 is the no-duplicate arm (only the activation shows) and
+    # 50 the arm where one exists. L6 so Trickster's Transposition is reached too; the
+    # duplicate is spawned exactly as `_resolve_invoke_duplicity` spawns one, far from
+    # everybody so it cannot perturb the adjacency scan, and tombstoned again after.
+    cyra_t = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 6,
+                      cleric_subclass=rpg.ClericSubclass.TrickeryDomain)
+    out += cap.capture("49 cleric, trickery 6 — Cyra (turn_undead, invoke_duplicity)")
+
+    _dup_cfg = rpg.AgentConfig()
+    _dup_cfg.name      = "Cyra (Duplicate)"
+    _dup_cfg.size      = 1
+    _dup_cfg.start_col = 1
+    _dup_cfg.start_row = 1
+    _dup = app.bm.spawn_agent(_dup_cfg)
+    app.bm.set_agent_summoner_idx(_dup, cyra_t)
+    app.bm.set_agent_summon_spell(_dup, "Invoke Duplicity")
+    out += cap.capture("50 cleric, trickery 6 with a duplicate — Cyra "
+                       "(move_duplicity, swap_duplicity)")
+    app.bm.set_agent_removed_from_play(_dup, True)
+
+    # 51 — the third arm of the Channel Divinity cluster. 09 covers Turn Undead +
+    # Radiance of the Dawn (Light); Preserve Life is Life Domain and nothing else
+    # reaches it.
+    _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 3,
+             cleric_subclass=rpg.ClericSubclass.LifeDomain)
+    out += cap.capture("51 cleric, life 3 — Cyra (preserve_life)")
+
+    # 52/53 — the College of Glamour four, which live INSIDE `grant_inspiration`'s own
+    # Bardic Inspiration test — the nesting that makes them a cluster and not a run.
+    # Two of them are `resource OR window-already-open`, so both arms are needed: 52
+    # has the uses and no window, 53 has the windows and no uses. Beguiling Magic is
+    # spent in 52 because Restore Beguiling Magic asks for a resource that is NOT full.
+    cyra_gl = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 14,
+                       bard_subclass=rpg.BardCollege.Glamour)
+    _set_res(app, cyra_gl, "Beguiling Magic", 0)
+    out += cap.capture("52 bard, glamour 14 — Cyra (mantle, mantle_majesty, "
+                       "unbreakable_majesty, beguiling_restore)")
+
+    cyra_gl = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 14,
+                       bard_subclass=rpg.BardCollege.Glamour)
+    _set_res(app, cyra_gl, "Mantle of Majesty", 0)
+    _set_res(app, cyra_gl, "Unbreakable Majesty", 0)
+    _s = app.combat.get_agent_stats(app.bm, cyra_gl)
+    _s.mantle_majesty_turns  = 2
+    _s.majestic_presence_turns = 2
+    app.combat.set_agent_stats(app.bm, cyra_gl, _s)
+    out += cap.capture("53 bard, glamour 14, uses spent but windows open — Cyra "
+                       "(the OR arm of mantle_majesty and unbreakable_majesty)")
+
+    # 54 — the Soulknife pair. Both labels carry the Psionic Energy count, so the label
+    # is state here in the way Wild Shape's is; L13 reaches both.
+    _reclass(app, "Cyra", rpg.CharacterClass.Rogue, 13,
+             rogue_subclass=rpg.RogueSubclass.Soulknife)
+    out += cap.capture("54 rogue, soulknife 13 — Cyra (psychic_teleport, psychic_veil)")
+
+    # 55 — the Shadow Monk trio. Two are Bonus Actions and the third is a Magic action
+    # gated on Focus, which is why spending the bonus action does not take all three.
+    _reclass(app, "Cyra", rpg.CharacterClass.Monk, 17,
+             monk_subclass=rpg.MonkSubclass.WarriorOfShadow)
+    out += cap.capture("55 monk, shadow 17 — Cyra (shadow_step, cloak_of_shadows, "
+                       "shadow_arts_darkness)")
+
+    # 56/57 — the Elemental Monk pair. Attunement's label flips to a tick once the
+    # effect is running, and that flag lives on the CONDITIONS, not the stats, so 57
+    # sets and clears it rather than re-classing.
+    cyra_el = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 6,
+                       monk_subclass=rpg.MonkSubclass.WarriorOfFourElements)
+    out += cap.capture("56 monk, elements 6 — Cyra (elemental_attunement, "
+                       "elemental_burst)")
+    _set_conditions(app, cyra_el, elemental_attunement_active=True)
+    out += cap.capture("57 monk, elements 6, attunement running — Cyra (the ✓ label)")
+    _set_conditions(app, cyra_el, elemental_attunement_active=False)
+
+    # 58/59 — the Archfey trio, and the one piece of §7 that WRITES to the app during
+    # the draw pass: the rider cycle is capped at 3 effects below L6 and 5 from L6, and
+    # the panel clamps a stale selection back to 0 on the spot. 58 is L6 with a rider
+    # chosen (the label is the selection); 59 is L3 with the selection left at 4, which
+    # only the clamp makes drawable — and it is also the arm where Misty Escape, an L6
+    # Reaction, is absent.
+    _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 6,
+             warlock_subclass=rpg.WarlockSubclass.Archfey)
+    app.steps_of_fey_effect = 2
+    out += cap.capture("58 warlock, archfey 6, rider selected — Cyra (fey_effect, "
+                       "steps_of_fey, misty_escape)")
+    _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 3,
+             warlock_subclass=rpg.WarlockSubclass.Archfey)
+    app.steps_of_fey_effect = 4
+    out += cap.capture("59 warlock, archfey 3, stale rider — Cyra (the L3 cap clamps "
+                       "the selection back to None)")
+    app.steps_of_fey_effect = 0
+
+    # 60-62 — bucket 7c, the three predicates that are neither class nor resource but a
+    # scan of the other agents. Aria drives them because Skarn is the only combatant
+    # standing next to anybody.
+
+    # 60 — Drop Grapple scans every OTHER agent for one this creature is holding, and
+    # is drawn OUTSIDE the bonus-action band (it is a free action).
+    aria_g = _goto(app, "Aria")
+    skarn_g = _idx(app, "Skarn")
+    _set_conditions(app, skarn_g, grappled=True, grappler_idx=aria_g)
+    out += cap.capture("60 grappling a neighbour — Aria (bucket 7c: grapple_drop)")
+
+    # 61 — the same hold, plus a weapon flagged `auto_use_when_grappling`: the engine's
+    # `pending_auto_grapple_strike` then points at it and the one-click Bite appears.
+    # No monster in this scene carries such a weapon, so Aria's Longsword is flagged
+    # for the block and her original pair restored after it.
+    _bite = _weapon(app, "Longsword")
+    _bite.auto_use_when_grappling = True
+    app.combat.set_agent_weapons(app.bm, aria_g,
+                                 [_bite, _weapon(app, "Shortsword", off_hand=True)])
+    out += cap.capture("61 grappling with an auto-bite weapon — Aria "
+                       "(bucket 7c: bite_grappled)")
+    app.combat.set_agent_weapons(app.bm, aria_g,
+                                 [_weapon(app, "Longsword"),
+                                  _weapon(app, "Shortsword", off_hand=True)])
+    _set_conditions(app, skarn_g, grappled=False, grappler_idx=-1)
+
+    # 62 — Free from Net: netted yourself, or standing within 5 ft of someone who is.
+    # An Action, so it is outside the bonus band too.
+    _goto(app, "Aria")
+    _set_conditions(app, aria_g, netted=True)
+    out += cap.capture("62 netted — Aria (bucket 7c: escape_net)")
+    _set_conditions(app, aria_g, netted=False)
+
+    # 63 — F10, pinned. `btn_cbt_telekinetic` is ONE widget with TWO draw sites: the
+    # Telekinetic feat (47) and Psi Warrior's Telekinetic Movement (38). A Psi Warrior
+    # who has taken the feat satisfies both, so the widget is positioned and painted at
+    # the upper site and then moved and painted again at the lower one — the upper is a
+    # ghost with no rect behind it. No checkpoint had ever driven that state, which is
+    # why the golden recorded the two sites as if they were alternatives. It records
+    # the double draw now, so the F10 fix has a before to be a change from.
+    cyra_f10 = _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
+                        fighter_subclass=rpg.FighterSubclass.PsiWarrior)
+    _s = app.combat.get_agent_stats(app.bm, cyra_f10)
+    _s.add_feat("Telekinetic")
+    app.combat.set_agent_stats(app.bm, cyra_f10, _s)
+    out += cap.capture("63 psi warrior 3 WITH the Telekinetic feat — Cyra "
+                       "(F10: one widget, both draw sites in one pass)")
+    _s = app.combat.get_agent_stats(app.bm, cyra_f10)
+    _s.feats = []
+    app.combat.set_agent_stats(app.bm, cyra_f10, _s)
 
     # 99 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
     # combat started with no combatants, or the acting token was removed). This is the
