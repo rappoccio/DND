@@ -31,8 +31,9 @@ import rpg_battle_map as rpg
 
 from gui_driver import post_click
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _idx, _goto,
-                               _item, _reclass, _set_conditions, _snapshot_baseline,
-                               _weapon, _preserve_cwd_logs, _restore_cwd_logs)
+                               _item, _reclass, _set_conditions, _set_res,
+                               _snapshot_baseline, _weapon, _preserve_cwd_logs,
+                               _restore_cwd_logs)
 
 
 def _app():
@@ -156,11 +157,23 @@ def test_drop_weapon_offers_one_action_per_droppable_slot():
 
 def test_out_of_range_agent_yields_only_the_creature_free_groups():
     """Between turns, or with combat over, `_current_agent_idx()` is out of range. The
-    session group and Place Terrain survive; nothing that reads a creature does."""
+    session group and Place Terrain survive; nothing that reads a creature does —
+
+    except Jump, which is **F13** and is preserved, not fixed. Out of range
+    `_is_incapacitated` is False and `bonus_used` falls back to a plain flag, so the
+    band is open; the Jump/Shove row's only per-creature test is the adjacency scan,
+    which decides the row's WIDTH and not whether it exists. The panel has always
+    drawn a Jump button for a creature that is not there (checkpoint 99 records it),
+    and M2d moved that rule without changing it. F7 was the same shape in §4, and M2b
+    did change that one — deliberately, and as a recorded behaviour change."""
     app = _app()
     for idx in (-1, len(app.bm.placed_agents), 10_000):
         ids = _ids(app, idx)
-        assert ids == ["pause_resume", "end_combat", "end_turn", "place_terrain"], (idx, ids)
+        assert ids == ["pause_resume", "end_combat", "end_turn",
+                       "long_jump", "place_terrain"], (idx, ids)
+        app.bonus_used = True                 # the band is Jump's only guard here
+        assert "long_jump" not in _ids(app, idx), idx
+        app.bonus_used = False
     print("✅ test_out_of_range_agent_yields_only_the_creature_free_groups passed")
 
 
@@ -529,6 +542,32 @@ def _bonus(app, idx):
     return _group(app, idx, GROUP_BONUS)
 
 
+# Bucket 7c's row shares the band with everything else in §7 and depends on where the
+# other tokens are standing, not on the creature — so a check about SOMETHING ELSE in
+# §7 subtracts it rather than asserting it away.
+_SPATIAL = ("long_jump", "shove_push", "shove_prone", "grapple_esc")
+
+
+def _bonus_but_the_row(app, idx):
+    return [i for i in _bonus(app, idx) if i not in _SPATIAL]
+
+
+def _place_duplicate(app, caster_idx, col=1, row=1):
+    """One Invoke Duplicity illusion, spawned as `_resolve_invoke_duplicity` spawns it.
+
+    Far from everybody, so it cannot perturb the adjacency scan the row above reads.
+    """
+    cfg = rpg.AgentConfig()
+    cfg.name      = "Duplicate"
+    cfg.size      = 1
+    cfg.start_col = col
+    cfg.start_row = row
+    idx = app.bm.spawn_agent(cfg)
+    app.bm.set_agent_summoner_idx(idx, caster_idx)
+    app.bm.set_agent_summon_spell(idx, "Invoke Duplicity")
+    return idx
+
+
 def test_the_bonus_section_collapses_when_the_creature_cannot_act():
     """Same rule as §4's arm 1, and the panel prints "[Cannot act]" once for both."""
     app = _app()
@@ -576,13 +615,15 @@ def test_use_item_and_extinguish_are_outside_the_band():
         # A potion alone: Use Item is band-gated after all, for this inventory.
         app.combat.set_agent_items(app.bm, skarn, [])
         app.combat.add_item_to_agent(app.bm, skarn, _item("Potion of Healing"))
-        assert set(_bonus(app, skarn)) == {"use_item", "extinguish"}, _bonus(app, skarn)
+        assert set(_bonus_but_the_row(app, skarn)) == {"use_item", "extinguish"}, \
+            _bonus(app, skarn)
         app.bonus_used = True
-        assert _bonus(app, skarn) == ["extinguish"], _bonus(app, skarn)
+        assert _bonus_but_the_row(app, skarn) == ["extinguish"], _bonus(app, skarn)
 
         # Add a flask and it comes back, with the Bonus Action still spent.
         app.combat.add_item_to_agent(app.bm, skarn, _item("Alchemist\'s Fire"))
-        assert set(_bonus(app, skarn)) == {"use_item", "extinguish"}, _bonus(app, skarn)
+        assert set(_bonus_but_the_row(app, skarn)) == {"use_item", "extinguish"}, \
+            _bonus(app, skarn)
 
         # Extinguish is the one that answers to the Action.
         app.action_used = True
@@ -604,7 +645,10 @@ def test_the_bonus_runs_are_built_in_draw_order():
     """
     import main
     runs = [v for k, v in vars(main).items() if k.startswith("_BON_RUN_")]
-    assert len(runs) == 6, runs
+    # Six after M2c, thirteen after M2d: a run is a maximal stretch with no still-fused
+    # button between its members, so converting the clusters that CUT the column adds
+    # runs rather than merging them. They can be merged once 7b and 7d leave in M2e.
+    assert len(runs) == 13, runs
 
     app = _app()
     seen = 0
@@ -616,7 +660,20 @@ def test_the_bonus_runs_are_built_in_draw_order():
             ("Cyra", rpg.CharacterClass.Sorcerer, 18,
              dict(sorcerer_subclass=rpg.SorcererSubclass.Clockwork)),
             ("Cyra", rpg.CharacterClass.Ranger, 14,
-             dict(ranger_subclass=rpg.RangerSubclass.BeastMaster))):
+             dict(ranger_subclass=rpg.RangerSubclass.BeastMaster)),
+            # M2d's clusters, so the runs it added are ordered too
+            ("Cyra", rpg.CharacterClass.Cleric, 6,
+             dict(cleric_subclass=rpg.ClericSubclass.LightDomain)),
+            ("Cyra", rpg.CharacterClass.Bard, 14,
+             dict(bard_subclass=rpg.BardCollege.Glamour)),
+            ("Cyra", rpg.CharacterClass.Rogue, 13,
+             dict(rogue_subclass=rpg.RogueSubclass.Soulknife)),
+            ("Cyra", rpg.CharacterClass.Monk, 17,
+             dict(monk_subclass=rpg.MonkSubclass.WarriorOfShadow)),
+            ("Cyra", rpg.CharacterClass.Warlock, 6,
+             dict(warlock_subclass=rpg.WarlockSubclass.Archfey)),
+            ("Cyra", rpg.CharacterClass.Monk, 6,
+             dict(monk_subclass=rpg.MonkSubclass.WarriorOfFourElements))):
         idx = _reclass(app, who, cls, lvl, **fields)
         built = _bonus(app, idx)
         for run in runs:
@@ -699,6 +756,384 @@ def test_click_reaches_the_handler_for_the_bonus_band():
     print("✅ test_click_reaches_the_handler_for_the_bonus_band passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  §7 — the clusters and the spatial predicates (M2d)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# A cluster is not a run: several of these are nested INSIDE another button's resource
+# test, so no order of single-button extractions reaches them. That nesting is the rule
+# each check below names.
+
+
+def test_the_channel_divinity_cluster_shares_one_resource():
+    """Turn Undead is the gate; the two domain options live inside its resource test.
+
+    Spending the Channel Divinity use takes all three at once, which is what makes it
+    one cluster and not three guards that happen to sit together.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 3,
+                    cleric_subclass=rpg.ClericSubclass.LifeDomain)
+    got = _bonus(app, cyra)
+    assert "turn_undead" in got and "preserve_life" in got, got
+    assert "radiance" not in got, "Radiance is Light Domain's"
+
+    _set_res(app, cyra, "Channel Divinity", 0)
+    got = _bonus(app, cyra)
+    assert "turn_undead" not in got and "preserve_life" not in got, got
+
+    # The Action, not the Bonus Action, is what these cost.
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 3,
+                    cleric_subclass=rpg.ClericSubclass.LightDomain)
+    assert "radiance" in _bonus(app, cyra)
+    app.action_used = True
+    assert "radiance" not in _bonus(app, cyra), "Channel Divinity costs the Action"
+    print("✅ test_the_channel_divinity_cluster_shares_one_resource passed")
+
+
+def test_the_duplicity_cluster_needs_an_illusion_on_the_map():
+    """Invoke Duplicity is a resource; Move and Swap are a SCAN of the token list.
+
+    `_my_duplicates` looks for a live summon flagged "Invoke Duplicity" belonging to
+    this creature — so the two follow-ups appear only once one is standing there, and
+    disappear again when it is tombstoned.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 6,
+                    cleric_subclass=rpg.ClericSubclass.TrickeryDomain)
+    got = _bonus(app, cyra)
+    assert "invoke_duplicity" in got, got
+    assert "move_duplicity" not in got and "swap_duplicity" not in got, got
+
+    dup = _place_duplicate(app, cyra)
+    got = _bonus(app, cyra)
+    assert "move_duplicity" in got and "swap_duplicity" in got, got
+
+    app.bm.set_agent_removed_from_play(dup, True)
+    got = _bonus(app, cyra)
+    assert "move_duplicity" not in got, "a tombstoned illusion is not on the map"
+    print("✅ test_the_duplicity_cluster_needs_an_illusion_on_the_map passed")
+
+
+def test_trickster_transposition_needs_level_six():
+    """The one member of the cluster with a level of its own, nested two tests deep."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 3,
+                    cleric_subclass=rpg.ClericSubclass.TrickeryDomain)
+    _place_duplicate(app, cyra)
+    got = _bonus(app, cyra)
+    assert "move_duplicity" in got and "swap_duplicity" not in got, got
+    print("✅ test_trickster_transposition_needs_level_six passed")
+
+
+def test_the_glamour_cluster_is_nested_inside_bardic_inspiration():
+    """The nesting that made this a cluster: two of the four read `bi` themselves.
+
+    Grant Inspiration and both Mantles come from the same Bardic Inspiration pool in
+    the panel's layout, so emptying it takes three of the five with it — while Mantle
+    of Majesty, which spends its own resource, stays.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 14,
+                    bard_subclass=rpg.BardCollege.Glamour)
+    _set_res(app, cyra, "Beguiling Magic", 0)
+    got = _bonus(app, cyra)
+    for want in ("grant_inspiration", "mantle", "mantle_majesty",
+                 "unbreakable_majesty", "beguiling_restore"):
+        assert want in got, (want, got)
+
+    _set_res(app, cyra, "Bardic Inspiration", 0)
+    got = _bonus(app, cyra)
+    assert "grant_inspiration" not in got and "mantle" not in got, got
+    assert "beguiling_restore" not in got, "Restore costs an Inspiration die"
+    assert "mantle_majesty" in got, "Majesty spends its own resource, not the die"
+    print("✅ test_the_glamour_cluster_is_nested_inside_bardic_inspiration passed")
+
+
+def test_the_glamour_windows_are_the_second_arm():
+    """Majesty and Unbreakable Majesty are "a use left OR the window already running".
+
+    The second arm is how you re-cast Command for free, or keep negating melee attacks,
+    after the use is gone — dropping it would leave a Bard mid-feature with no button.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 14,
+                    bard_subclass=rpg.BardCollege.Glamour)
+    _set_res(app, cyra, "Mantle of Majesty", 0)
+    _set_res(app, cyra, "Unbreakable Majesty", 0)
+    got = _bonus(app, cyra)
+    assert "mantle_majesty" not in got and "unbreakable_majesty" not in got, got
+
+    s = app.combat.get_agent_stats(app.bm, cyra)
+    s.mantle_majesty_turns = 2
+    s.majestic_presence_turns = 2
+    app.combat.set_agent_stats(app.bm, cyra, s)
+    got = _bonus(app, cyra)
+    assert "mantle_majesty" in got and "unbreakable_majesty" in got, got
+    print("✅ test_the_glamour_windows_are_the_second_arm passed")
+
+
+def test_restore_beguiling_magic_asks_for_a_resource_that_is_not_full():
+    """The only guard in §7 that reads a resource the other way round."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 14,
+                    bard_subclass=rpg.BardCollege.Glamour)
+    assert "beguiling_restore" not in _bonus(app, cyra), "nothing to restore yet"
+    _set_res(app, cyra, "Beguiling Magic", 0)
+    assert "beguiling_restore" in _bonus(app, cyra)
+    print("✅ test_restore_beguiling_magic_asks_for_a_resource_that_is_not_full passed")
+
+
+def test_the_soulknife_pair_can_be_paid_for_with_dice():
+    """Psychic Veil is offered while its own resource is empty but dice remain, and
+    both labels carry the count — the label IS the state here."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Rogue, 13,
+                    rogue_subclass=rpg.RogueSubclass.Soulknife)
+    by_id = _by_id(app, cyra)
+    assert "dice" in by_id["psychic_teleport"].label, by_id["psychic_teleport"].label
+
+    _set_res(app, cyra, "Psychic Veil", 0)
+    got = _bonus(app, cyra)
+    assert "psychic_veil" in got, "the dice can still pay for it"
+
+    _set_res(app, cyra, "Psionic Energy", 0)
+    got = _bonus(app, cyra)
+    assert "psychic_veil" not in got and "psychic_teleport" not in got, got
+    print("✅ test_the_soulknife_pair_can_be_paid_for_with_dice passed")
+
+
+def test_the_shadow_and_elemental_monks_split_action_from_bonus():
+    """Three of these five cost the Action and two do not, inside one band.
+
+    Spending the Action leaves the two Bonus Actions standing and takes the three
+    Magic actions — which is the distinction the band gate flattens and `economy` will
+    eventually carry as data.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 17,
+                    monk_subclass=rpg.MonkSubclass.WarriorOfShadow)
+    got = _bonus(app, cyra)
+    for want in ("shadow_step", "cloak_of_shadows", "shadow_arts_darkness"):
+        assert want in got, (want, got)
+    app.action_used = True
+    got = _bonus(app, cyra)
+    assert "shadow_arts_darkness" not in got, "Shadow Arts is a Magic action"
+    assert "shadow_step" in got and "cloak_of_shadows" in got, got
+
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 6,
+                    monk_subclass=rpg.MonkSubclass.WarriorOfFourElements)
+    got = _bonus(app, cyra)
+    assert "elemental_attunement" in got and "elemental_burst" in got, got
+    app.action_used = True
+    assert _bonus(app, cyra) == [i for i in _bonus(app, cyra)
+                                 if not i.startswith("elemental_")], \
+        "both Elemental features cost the Action"
+    print("✅ test_the_shadow_and_elemental_monks_split_action_from_bonus passed")
+
+
+def test_elemental_attunement_ticks_once_it_is_running():
+    """The label flips to a tick, and that flag lives on the conditions, not the stats."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 6,
+                    monk_subclass=rpg.MonkSubclass.WarriorOfFourElements)
+    assert "Focus" in _by_id(app, cyra)["elemental_attunement"].label
+    _set_conditions(app, cyra, elemental_attunement_active=True)
+    assert _by_id(app, cyra)["elemental_attunement"].label.endswith("✓")
+    _set_conditions(app, cyra, elemental_attunement_active=False)
+    print("✅ test_elemental_attunement_ticks_once_it_is_running passed")
+
+
+def test_the_fey_rider_is_clamped_without_the_menu_writing_it_back():
+    """`build` must not mutate the app, and the rider cycle is the one place §7 did.
+
+    A selection made at L6 is out of range at L3 (three riders, not five). The menu
+    LABELS the clamped value; the panel writes the clamp through, because the click
+    handler and the engine call both read the raw field.
+    """
+    import main
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 3,
+                    warlock_subclass=rpg.WarlockSubclass.Archfey)
+    app.steps_of_fey_effect = 4
+    label = _by_id(app, cyra)["fey_effect"].label
+    assert label == "Fey Step: None", label
+    assert app.steps_of_fey_effect == 4, "the MENU must not write the clamp back"
+
+    _draw(app)
+    assert app.steps_of_fey_effect == 0, "the PANEL must write it back"
+    app.steps_of_fey_effect = 0
+    print("✅ test_the_fey_rider_is_clamped_without_the_menu_writing_it_back passed")
+
+
+def test_misty_escape_is_a_reaction_the_band_still_hides():
+    """Recorded, not fixed: a Reaction drawn inside the Bonus Action band.
+
+    Spending the bonus action hides it, exactly as the band gate hides Action Surge.
+    Its own gate is the reaction, and that one is read off the placed agent's condition
+    copy rather than through the engine — as the panel read it.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 6,
+                    warlock_subclass=rpg.WarlockSubclass.Archfey)
+    assert "misty_escape" in _bonus(app, cyra)
+    _set_conditions(app, cyra, reaction_used=True)
+    assert "misty_escape" not in _bonus(app, cyra), "the Reaction is spent"
+    _set_conditions(app, cyra, reaction_used=False)
+    app.bonus_used = True
+    assert "misty_escape" not in _bonus(app, cyra), \
+        "the band gate takes it too — that is the panel's behaviour, preserved"
+    print("✅ test_misty_escape_is_a_reaction_the_band_still_hides passed")
+
+
+def test_the_jump_row_narrows_when_something_is_adjacent():
+    """Bucket 7c's shape rule: the row is Jump alone, or Jump + Shove + Trip.
+
+    Aria has Skarn next to her; Brannor is standing on his own. Nothing else in §7
+    changes its WIDTH according to where the other tokens are.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")
+    got = _bonus(app, aria)
+    assert got[:3] == ["long_jump", "shove_push", "shove_prone"], got[:3]
+
+    brannor = _goto(app, "Brannor")
+    got = _bonus(app, brannor)
+    assert "long_jump" in got, got
+    assert "shove_push" not in got and "shove_prone" not in got, got
+    print("✅ test_the_jump_row_narrows_when_something_is_adjacent passed")
+
+
+def test_escape_needs_both_a_neighbour_and_a_grapple():
+    """Two predicates, and the panel ANDs them: being held by someone far away offers
+    nothing, because the escape is a contest with a creature you can reach."""
+    app = _app()
+    aria = _goto(app, "Aria")
+    assert "grapple_esc" not in _bonus(app, aria)
+    _set_conditions(app, aria, grappled=True)
+    assert "grapple_esc" in _bonus(app, aria)
+    _set_conditions(app, aria, grappled=False)
+
+    brannor = _goto(app, "Brannor")
+    _set_conditions(app, brannor, grappled=True)
+    assert "grapple_esc" not in _bonus(app, brannor), "nobody within reach to escape"
+    _set_conditions(app, brannor, grappled=False)
+    print("✅ test_escape_needs_both_a_neighbour_and_a_grapple passed")
+
+
+def test_drop_grapple_and_free_from_net_are_outside_the_band():
+    """Both are the point of the `economy` field: neither costs the Bonus Action.
+
+    Drop Grapple is free and Free from Net is an Action, so spending the bonus action
+    must leave both standing — the dead-key trap the Haste button's comment names.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")
+    skarn = _idx(app, "Skarn")
+    _set_conditions(app, skarn, grappled=True, grappler_idx=aria)
+    _set_conditions(app, aria, netted=True)
+
+    got = _bonus(app, aria)
+    assert "grapple_drop" in got and "escape_net" in got, got
+
+    app.bonus_used = True
+    got = _bonus(app, aria)
+    assert "grapple_drop" in got and "escape_net" in got, \
+        "neither costs the Bonus Action"
+
+    app.bonus_used = False
+    app.action_used = True
+    got = _bonus(app, aria)
+    assert "grapple_drop" in got, "Drop Grapple is free"
+    assert "escape_net" not in got, "Free from Net costs the Action"
+
+    _set_conditions(app, skarn, grappled=False, grappler_idx=-1)
+    _set_conditions(app, aria, netted=False)
+    print("✅ test_drop_grapple_and_free_from_net_are_outside_the_band passed")
+
+
+def test_bite_grappled_asks_the_engine_for_the_pairing():
+    """The offer is the engine's `pending_auto_grapple_strike`, not a guard of our own:
+    a flagged weapon, a victim this creature is holding, and the victim in reach."""
+    app = _app()
+    aria = _goto(app, "Aria")
+    skarn = _idx(app, "Skarn")
+    assert "bite_grappled" not in _bonus(app, aria), "no flagged weapon yet"
+
+    bite = _weapon(app, "Longsword")
+    bite.auto_use_when_grappling = True
+    app.combat.set_agent_weapons(app.bm, aria,
+                                 [bite, _weapon(app, "Shortsword", off_hand=True)])
+    assert "bite_grappled" not in _bonus(app, aria), "not holding anyone yet"
+
+    _set_conditions(app, skarn, grappled=True, grappler_idx=aria)
+    assert "bite_grappled" in _bonus(app, aria)
+
+    app.action_used = True
+    assert "bite_grappled" not in _bonus(app, aria), "the Attack action is spent"
+    app.attacks_remaining = 1
+    app._attack_sequence_slot = "action"
+    assert "bite_grappled" in _bonus(app, aria), "mid-multiattack is the common case"
+
+    app.attacks_remaining = 0
+    app._attack_sequence_slot = ""
+    _set_conditions(app, skarn, grappled=False, grappler_idx=-1)
+    app.combat.set_agent_weapons(app.bm, aria,
+                                 [_weapon(app, "Longsword"),
+                                  _weapon(app, "Shortsword", off_hand=True)])
+    print("✅ test_bite_grappled_asks_the_engine_for_the_pairing passed")
+
+
+def test_cunning_action_is_all_three_or_none():
+    """One flag offers the whole row; a row with two of three would be a layout bug no
+    availability test could see, which is what the smoke suite's row check is for."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Rogue, 3,
+                    rogue_subclass=rpg.RogueSubclass.NONE)
+    got = [i for i in _bonus(app, cyra) if i in ("dash_bonus", "disengage_bonus",
+                                                 "hide_bonus")]
+    assert got == ["dash_bonus", "disengage_bonus", "hide_bonus"], got
+
+    aria = _goto(app, "Aria")
+    assert not [i for i in _bonus(app, aria)
+                if i in ("dash_bonus", "disengage_bonus", "hide_bonus")]
+    print("✅ test_cunning_action_is_all_three_or_none passed")
+
+
+def test_telekinetic_is_two_ids_behind_one_widget():
+    """F10, pinned as data rather than as a rect.
+
+    One widget serves the Telekinetic feat and Psi Warrior's Telekinetic Movement, and
+    a creature can satisfy both — so the menu carries two ids (it is keyed by id) that
+    resolve to the same button. The panel then paints that button twice in one pass:
+    the upper site is a ghost. Splitting it is a behaviour change and its own item; if
+    that happens, this check is what says so.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
+                    fighter_subclass=rpg.FighterSubclass.PsiWarrior)
+    got = _bonus(app, cyra)
+    assert "telekinetic_psi" in got and "telekinetic_feat" not in got, got
+
+    s = app.combat.get_agent_stats(app.bm, cyra)
+    s.add_feat("Telekinetic")
+    app.combat.set_agent_stats(app.bm, cyra, s)
+    got = _bonus(app, cyra)
+    assert "telekinetic_feat" in got and "telekinetic_psi" in got, got
+
+    by_id = _by_id(app, cyra)
+    assert app._cbt_btn("telekinetic_feat") is app._cbt_btn("telekinetic_psi"), \
+        "the two ids no longer share a widget — F10 has been split, update this check"
+    assert (by_id["telekinetic_feat"].label == by_id["telekinetic_psi"].label
+            == "Telekinetic Movement"), \
+        "the feat's own label has never been drawn: main.py:1535 overwrites main.py:1372"
+
+    s = app.combat.get_agent_stats(app.bm, cyra)
+    s.feats = []
+    app.combat.set_agent_stats(app.bm, cyra, s)
+    print("✅ test_telekinetic_is_two_ids_behind_one_widget passed")
+
+
 def test_ids_are_unique():
     """The panel keys widgets by id and `_handle_events` dispatches on it; a duplicate
     would make one of the two unreachable in a way no golden could show."""
@@ -744,6 +1179,23 @@ if __name__ == "__main__":
         test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable()
         test_a_click_on_an_unoffered_bonus_action_does_nothing()
         test_click_reaches_the_handler_for_the_bonus_band()
+        test_the_channel_divinity_cluster_shares_one_resource()
+        test_the_duplicity_cluster_needs_an_illusion_on_the_map()
+        test_trickster_transposition_needs_level_six()
+        test_the_glamour_cluster_is_nested_inside_bardic_inspiration()
+        test_the_glamour_windows_are_the_second_arm()
+        test_restore_beguiling_magic_asks_for_a_resource_that_is_not_full()
+        test_the_soulknife_pair_can_be_paid_for_with_dice()
+        test_the_shadow_and_elemental_monks_split_action_from_bonus()
+        test_elemental_attunement_ticks_once_it_is_running()
+        test_the_fey_rider_is_clamped_without_the_menu_writing_it_back()
+        test_misty_escape_is_a_reaction_the_band_still_hides()
+        test_the_jump_row_narrows_when_something_is_adjacent()
+        test_escape_needs_both_a_neighbour_and_a_grapple()
+        test_drop_grapple_and_free_from_net_are_outside_the_band()
+        test_bite_grappled_asks_the_engine_for_the_pairing()
+        test_cunning_action_is_all_three_or_none()
+        test_telekinetic_is_two_ids_behind_one_widget()
         test_ids_are_unique()
     finally:
         _restore_cwd_logs(_saved)

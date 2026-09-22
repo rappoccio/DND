@@ -42,8 +42,30 @@ import rpg_battle_map as rpg
 from constants import COL_PANEL_BG, PANEL_W
 from widgets import Button
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _goto, _idx,
-                               _reclass, _set_conditions, _snapshot_baseline,
-                               _preserve_cwd_logs, _restore_cwd_logs)
+                               _reclass, _set_conditions, _set_res,
+                               _snapshot_baseline, _preserve_cwd_logs,
+                               _restore_cwd_logs)
+
+
+def _place_duplicate(app, caster_idx, col=1, row=1):
+    """One Invoke Duplicity illusion, so the Trickery cluster draws all three buttons.
+
+    Spawned once and reused: `_sweep` runs each state's setup afresh, and a duplicate
+    per sweep would pile tokens onto the map.
+    """
+    for i, pt in enumerate(app.bm.placed_agents):
+        if pt.summon_spell == "Invoke Duplicity" and pt.summoner_idx == caster_idx:
+            app.bm.set_agent_removed_from_play(i, False)
+            return i
+    cfg = rpg.AgentConfig()
+    cfg.name      = "Duplicate"
+    cfg.size      = 1
+    cfg.start_col = col
+    cfg.start_row = row
+    idx = app.bm.spawn_agent(cfg)
+    app.bm.set_agent_summoner_idx(idx, caster_idx)
+    app.bm.set_agent_summon_spell(idx, "Invoke Duplicity")
+    return idx
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,6 +187,39 @@ def _states(app):
     def cleric():
         _goto(app, "Brannor")
 
+    # ── M2d's clusters. Chosen for band length and label width, as above: the
+    #    Glamour Bard's four are the longest labels in §7, and the grappler is the
+    #    only state that draws bucket 7c's Drop and Bite at all.
+    def trickery_cleric():
+        idx = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 6,
+                       cleric_subclass=rpg.ClericSubclass.TrickeryDomain)
+        _place_duplicate(app, idx)
+
+    def glamour_bard():
+        idx = _reclass(app, "Cyra", rpg.CharacterClass.Bard, 14,
+                       bard_subclass=rpg.BardCollege.Glamour)
+        _set_res(app, idx, "Beguiling Magic", 0)
+
+    def soulknife():
+        _reclass(app, "Cyra", rpg.CharacterClass.Rogue, 13,
+                 rogue_subclass=rpg.RogueSubclass.Soulknife)
+
+    def shadow_monk():
+        _reclass(app, "Cyra", rpg.CharacterClass.Monk, 17,
+                 monk_subclass=rpg.MonkSubclass.WarriorOfShadow)
+
+    def archfey():
+        _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 6,
+                 warlock_subclass=rpg.WarlockSubclass.Archfey)
+
+    def elemental_monk():
+        _reclass(app, "Cyra", rpg.CharacterClass.Monk, 6,
+                 monk_subclass=rpg.MonkSubclass.WarriorOfFourElements)
+
+    def grappler():
+        aria = _goto(app, "Aria")
+        _set_conditions(app, _idx(app, "Skarn"), grappled=True, grappler_idx=aria)
+
     def featureless():
         _goto(app, "Skarn")
 
@@ -184,6 +239,13 @@ def _states(app):
         ("paladin 20", paladin),
         ("ranger 14", ranger),
         ("cleric", cleric),
+        ("trickery cleric 6", trickery_cleric),
+        ("glamour bard 14", glamour_bard),
+        ("soulknife rogue 13", soulknife),
+        ("shadow monk 17", shadow_monk),
+        ("archfey warlock 6", archfey),
+        ("elemental monk 6", elemental_monk),
+        ("grappling a neighbour", grappler),
         ("featureless", featureless),
         ("nobody on turn", nobody),
     ]
@@ -211,6 +273,9 @@ def _sweep(app):
                 idx = app._current_agent_idx()
                 if 0 <= idx < len(app.bm.placed_agents):
                     _set_conditions(app, idx, prone=False, incapacitated=False)
+                # the grappler state holds SKARN, not the creature on turn
+                _set_conditions(app, _idx(app, "Skarn"),
+                                grappled=False, grappler_idx=-1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,6 +401,48 @@ def test_a_converted_run_is_stacked_not_columnised():
           f"({checked} multi-member runs checked)")
 
 
+def test_a_converted_row_is_side_by_side_not_stacked():
+    """The mirror of the check above, and the other way to get a conversion wrong.
+
+    §7 is a column of one-button rows with two exceptions — the Jump/Shove row and
+    Cunning Action — and §4 is nothing but rows. Drawing one of those as a STACK is
+    the same class of silent error as M2c's five-up: every availability test still
+    passes, the buttons all exist, and the panel is three rows taller than it should
+    be with a column of full-width buttons where a three-up belongs. So: within one
+    `_*_ROW_*` tuple, the members drawn in a frame must share a y and a width and
+    differ in x.
+    """
+    import main
+    rows = [v for k, v in vars(main).items()
+            if k.startswith("_BON_ROW_") or k.startswith("_ACT_ROW_")]
+    assert rows, "no _*_ROW_* tuples found — has the layout been restructured?"
+
+    app = _app()
+    checked = 0
+    bad = []
+    for label, drawn in _sweep(app):
+        by_name = {d.name: d for d in drawn}
+        for row in rows:
+            members = [by_name[f"btn_cbt_{i}"] for i in row
+                       if f"btn_cbt_{i}" in by_name]
+            if len(members) < 2:
+                continue
+            checked += 1
+            ys = {m.rect.y for m in members}
+            ws = {m.rect.w for m in members}
+            xs = {m.rect.x for m in members}
+            if len(ys) != 1 or len(ws) != 1:
+                bad.append(f"[{label}] row stacked, not laid out side by side: "
+                           f"{[(m.name, tuple(m.rect)) for m in members]}")
+            elif len(xs) != len(members):
+                bad.append(f"[{label}] row shares an x (drawn on top of itself): "
+                           f"{[(m.name, tuple(m.rect)) for m in members]}")
+    assert not bad, "\n  ".join([""] + bad)
+    assert checked >= 4, f"only {checked} rows had 2+ members drawn — sweep too thin"
+    print(f"✅ test_a_converted_row_is_side_by_side_not_stacked passed "
+          f"({checked} multi-member rows checked)")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Pixels — the premise everything above rests on
 # ─────────────────────────────────────────────────────────────────────────────
@@ -388,6 +495,7 @@ if __name__ == "__main__":
         test_no_two_drawn_buttons_overlap()
         test_every_drawn_button_lands_inside_the_panel()
         test_a_converted_run_is_stacked_not_columnised()
+        test_a_converted_row_is_side_by_side_not_stacked()
         test_the_panel_paints_where_it_says_it_does()
     finally:
         _restore_cwd_logs(_saved)

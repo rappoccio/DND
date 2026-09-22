@@ -63,6 +63,10 @@ BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_ACTION, GROUP_PORTENT, GROUP_BO
 # wire and must not grow a dependency on the panel model. Keep the two in step.
 EXPECTS = ("choice", "cell", "agent", "none")
 
+# The Steps of the Fey riders, in cycle order. `main.py` holds the same list as
+# `App._FEY_EFFECT_NAMES` for the click handler's log line; this is the label's copy.
+_FEY_EFFECT_NAMES = ["None", "Refreshing", "Taunting", "Disappearing", "Dreadful"]
+
 
 def _res(stats, name: str) -> int:
     """`stats`'s remaining uses of a named resource, or 0 when it has none at all.
@@ -72,6 +76,58 @@ def _res(stats, name: str) -> int:
     """
     r = stats.get_resource(name)
     return r.current if r else 0
+
+
+def _has_adjacent(app, agent_idx: int) -> bool:
+    """True when any other token stands within one cell (5 ft) of `agent_idx`.
+
+    The panel ran this scan inline on every frame to decide whether the Jump/Shove row
+    was a three-up or Jump alone. It compares ORIGINS, not footprints, so a Large
+    creature counts as adjacent by its top-left cell only — preserved as written, not
+    corrected, and it is why the row's shape is bucket 7c rather than 7a.
+    """
+    agents = app.bm.placed_agents
+    if not (0 <= agent_idx < len(agents)):
+        return False
+    me = agents[agent_idx].origin
+    for i, other in enumerate(agents):
+        if i == agent_idx:
+            continue
+        if max(abs(other.origin.col - me.col),
+               abs(other.origin.row - me.row)) <= 1:
+            return True
+    return False
+
+
+def _grappling_anyone(app, agent_idx: int) -> bool:
+    """True when `agent_idx` is holding another creature in a Grapple.
+
+    A scan of every other token's conditions, read LIVE from the engine rather than
+    from `placed_agents[i].conditions` — the panel's comment is explicit that the
+    cached copy can be a stale pybind snapshot, and the Escape button next to it reads
+    the same way.
+    """
+    for i in range(len(app.bm.placed_agents)):
+        if i == agent_idx:
+            continue
+        c = app.combat.get_agent_conditions(app.bm, i)
+        if c.grappled and c.grappler_idx == agent_idx:
+            return True
+    return False
+
+
+def fey_rider_index(app, stats) -> int:
+    """The Steps of the Fey rider the panel will label its button with.
+
+    `app.steps_of_fey_effect` is a cycle the player advances by clicking, and the
+    cycle is shorter below Warlock 6 (three riders, not five) — so a selection made at
+    L6 and then read at L3 is out of range. The panel CLAMPS it back to 0 and writes
+    the clamp through, because the click handler and the engine call both read the raw
+    field. This module never mutates `app`, so it computes the clamped value and
+    `main.py` does the writing; both call this, so there is one rule and not two.
+    """
+    n_effects = 5 if stats.char_level >= 6 else 3
+    return 0 if app.steps_of_fey_effect >= n_effects else app.steps_of_fey_effect
 
 
 @dataclass(frozen=True)
@@ -251,7 +307,13 @@ class ActionMenu:
         """
         agents = app.bm.placed_agents
         if not (0 <= agent_idx < len(agents)):
-            return []
+            # F13 — F7's shape, one section down. With NOBODY on turn the panel still
+            # draws the Jump button: its only guard is the band, and out of range
+            # `_is_incapacitated` is False while `bonus_used` falls back to a plain
+            # flag, so the band is open for a creature that does not exist. The row it
+            # belongs to has no per-creature test at all. Preserved exactly here and
+            # RECORDED rather than fixed — checkpoint 99 pins it either way.
+            return [Action("long_jump", "Jump", GROUP_BONUS)] if not app.bonus_used else []
         cond = app.combat.get_agent_conditions(app.bm, agent_idx)
         if cond.incapacitated or cond.unconscious:
             return []               # the whole section collapses to "[Cannot act]"
@@ -290,6 +352,16 @@ class ActionMenu:
         if not app.action_used and cond.burning:
             out.append(Action("extinguish", "🔥 Extinguish (Prone)", GROUP_BONUS))
 
+        # Drop Grapple is a FREE action — the panel draws it outside the band on
+        # purpose, so spending the Bonus Action cannot strand a creature holding one.
+        if _grappling_anyone(app, agent_idx):
+            out.append(Action("grapple_drop", "🔓 Drop", GROUP_BONUS))
+
+        # Free from Net costs an Action, and is offered to a netted creature or to one
+        # standing within 5 ft of a netted neighbour (the target is then a click).
+        if not app.action_used and app._netted_within_reach(agent_idx):
+            out.append(Action("escape_net", "🕸 Free from Net", GROUP_BONUS))
+
         # ── the band block ──
         # Everything past this point is inside the panel's one big
         # `if not _is_incapacitated and not self.bonus_used:`, whatever an individual
@@ -300,6 +372,38 @@ class ActionMenu:
         cls = stats.character_class
         lvl = stats.char_level
         CC = rpg.CharacterClass
+
+        # ── the spatial predicates (bucket 7c, M2d) ──
+        # The band's first row. Jump is always offered; Shove and Trip need something
+        # to shove, and Escape needs that something to be holding you. One scan of the
+        # token list answers all three, where the panel ran it per frame per button.
+        adjacent = _has_adjacent(app, agent_idx)
+        out.append(Action("long_jump", "Jump", GROUP_BONUS))
+        if adjacent:
+            out.append(Action("shove_push", "🔨 Shove", GROUP_BONUS))
+            out.append(Action("shove_prone", "⬇ Trip", GROUP_BONUS))
+            if cond.grappled:
+                out.append(Action("grapple_esc", "💨 Escape", GROUP_BONUS))
+
+        # ── Telekinetic Shove — the FEAT's draw site (F10) ──
+        # `btn_cbt_telekinetic` is one widget with two draw sites: this one, and Psi
+        # Warrior's Telekinetic Movement further down. `_action_menu` is keyed by id,
+        # so an option cannot appear twice and the two sites need two ids — but the
+        # widget behind them is still one, through `App._CBT_BTN_ALIAS`, and so is the
+        # dispatch. Both labels read "Telekinetic Movement" because the feat's own
+        # constructor (`main.py:1372`, "🌀 Telekinetic Shove") is overwritten by the
+        # Psi Warrior one at `1535` — the feat's label has never been drawn. Splitting
+        # the widget is a behaviour change and its own item; see F10.
+        if stats.has_feat("Telekinetic"):
+            out.append(Action("telekinetic_feat", "Telekinetic Movement", GROUP_BONUS))
+
+        # ── Cunning Action (M2d) ──
+        # A three-up row in the same column order as §4's, and a cluster in the only
+        # sense that matters here: one flag offers all three or none.
+        if stats.has_cunning_action:
+            out += [Action("dash_bonus",      "Dash",      GROUP_BONUS),
+                    Action("disengage_bonus", "Disengage", GROUP_BONUS),
+                    Action("hide_bonus",      "Hide",      GROUP_BONUS)]
 
         # ── Monk ──
         if cls == CC.Monk:
@@ -356,11 +460,44 @@ class ActionMenu:
                     and _res(stats, "Healing Light") > 0):
                 out.append(Action("healing_light", "Healing Light", GROUP_BONUS))
 
+        # ── Cleric: the Channel Divinity cluster (M2d) ──
+        # One resource, three buttons. Turn Undead is every Cleric's from L2; the two
+        # domain options are nested INSIDE its resource test, which is what makes this
+        # a cluster rather than a run — there is no order of single-button extractions
+        # that reaches them. All three cost the Action (`not app.action_used`), and all
+        # three sit inside the Bonus Action band anyway; see the band-gate note above.
+        if (not app.action_used and cls == CC.Cleric and lvl >= 2
+                and _res(stats, "Channel Divinity") > 0):
+            out.append(Action("turn_undead", "Turn Undead", GROUP_BONUS))
+            sub_c = stats.cleric_subclass
+            if sub_c == rpg.ClericSubclass.LightDomain and lvl >= 3:
+                out.append(Action("radiance", "Radiance of the Dawn", GROUP_BONUS))
+            if sub_c == rpg.ClericSubclass.LifeDomain and lvl >= 3:
+                out.append(Action("preserve_life", "Preserve Life", GROUP_BONUS))
+
         # ── Cleric: Divine Intervention ──
         # Keyed on the resource rather than on class+level, which is what keeps it out
         # of the dead-key trap the Haste button's comment names.
         if not app.action_used and app.combat.can_use_divine_intervention(app.bm, agent_idx):
             out.append(Action("divine_intervention", "Divine Intervention", GROUP_BONUS))
+
+        # ── Trickery Cleric: the Invoke Duplicity cluster (M2d) ──
+        # The activation spends a Channel Divinity use; the other two exist only while
+        # an illusion is standing on the map, which is a scan of every placed agent
+        # (`_my_duplicates`) and not a resource at all. The panel repeats
+        # `not self.bonus_used` around the first two inside the band that has already
+        # required it; dropped here, as M2c dropped the same repeats.
+        if (cls == CC.Cleric
+                and stats.cleric_subclass == rpg.ClericSubclass.TrickeryDomain
+                and lvl >= 3):
+            if _res(stats, "Channel Divinity") > 0:
+                out.append(Action("invoke_duplicity", "Invoke Duplicity", GROUP_BONUS))
+            if app._my_duplicates(agent_idx):
+                out.append(Action("move_duplicity", "Move Duplicate", GROUP_BONUS))
+                # Trickster's Transposition is free and the panel still draws it inside
+                # the band, like everything else here.
+                if lvl >= 6:
+                    out.append(Action("swap_duplicity", "Swap w/ Duplicate", GROUP_BONUS))
 
         # ── the Sorcerer run, plus the two guards drawn inside it ──
         # In DRAW order, not class order: `boon_of_fate` (a feat) and `steady_aim` /
@@ -447,6 +584,19 @@ class ActionMenu:
             out.append(Action("war_priest", "War Priest (Bonus Attack)", GROUP_BONUS))
 
 
+        # ── Bite (grappled) (bucket 7c, M2d) ──
+        # A weapon flagged `auto_use_when_grappling` (a Vampire's Bite) whose wielder is
+        # currently holding a legal victim: the engine finds the pair, and the button is
+        # the one-click version of picking that weapon and that target by hand. Offered
+        # while the Attack action is unspent OR mid-multiattack, which is the common
+        # case — a claw grapples, and the trailing Bite fires.
+        mid_sequence_action = (app.attacks_remaining > 0
+                               and app._attack_sequence_slot == "action")
+        if not app.action_used or mid_sequence_action:
+            wslot, victim = app.combat.pending_auto_grapple_strike(app.bm, agent_idx)
+            if wslot >= 0 and victim >= 0:
+                out.append(Action("bite_grappled", "🧛 Bite (grappled)", GROUP_BONUS))
+
         # ── the run the panel draws after Bite (grappled) ──
         if cond.gwm_hew_available:
             out.append(Action("gwm_hew", "Hew (Bonus Attack)", GROUP_BONUS))
@@ -484,11 +634,40 @@ class ActionMenu:
         if cls == CC.Paladin and _res(stats, "Lay on Hands") > 0:
             out.append(Action("lay_on_hands", "Lay on Hands", GROUP_BONUS))
 
-        # Grant Inspiration is its own run: the four College of Glamour buttons are
-        # nested inside the same `bi` test in the panel and are M2d's.
-        if cls == CC.Bard and _res(stats, "Bardic Inspiration") > 0:
-            out.append(Action("grant_inspiration",
-                              "Grant Inspiration (Bonus Action)", GROUP_BONUS))
+        # ── Bard: Grant Inspiration, and the College of Glamour cluster (M2d) ──
+        # The four Glamour buttons are nested inside `grant_inspiration`'s own Bardic
+        # Inspiration test in the panel — two of them read `bi` themselves — which is
+        # what makes this a cluster and why M2c left the wrapper standing. Mantle of
+        # Majesty and Unbreakable Majesty are each "a use remaining OR the window is
+        # already running", the second arm being how you re-cast Command for free or
+        # keep negating melee attacks after the use is gone.
+        if cls == CC.Bard:
+            bi = _res(stats, "Bardic Inspiration")
+            glamour = stats.bard_subclass == rpg.BardCollege.Glamour
+            if bi > 0:
+                out.append(Action("grant_inspiration",
+                                  "Grant Inspiration (Bonus Action)", GROUP_BONUS))
+            if bi > 0 and lvl >= 3 and glamour:
+                out.append(Action("mantle",
+                                  "Mantle of Inspiration (Bonus Action)", GROUP_BONUS))
+            if (lvl >= 6 and glamour
+                    and (_res(stats, "Mantle of Majesty") > 0
+                         or stats.mantle_majesty_turns > 0)):
+                out.append(Action("mantle_majesty",
+                                  "Mantle of Majesty (Bonus Action)", GROUP_BONUS))
+            if (lvl >= 14 and glamour
+                    and (_res(stats, "Unbreakable Majesty") > 0
+                         or stats.majestic_presence_turns > 0)):
+                out.append(Action("unbreakable_majesty",
+                                  "Unbreakable Majesty (Bonus Action)", GROUP_BONUS))
+            if bi > 0 and lvl >= 3 and glamour:
+                # The only guard in §7 that asks whether a resource is NOT FULL: the
+                # button exists to buy the spent Beguiling Magic use back.
+                beg = stats.get_resource("Beguiling Magic")
+                if beg and beg.current < beg.max:
+                    out.append(Action("beguiling_restore",
+                                      "Restore Beguiling Magic (1 Inspiration)",
+                                      GROUP_BONUS))
 
 
         # ── Use Inspiration, then the Paladin oaths ──
@@ -534,6 +713,15 @@ class ActionMenu:
                 and lvl >= 17 and stats.corona_of_light_turns == 0):
             out.append(Action("corona", "Corona of Light (Action)", GROUP_BONUS))
 
+        # ── Telekinetic Movement — the PSI WARRIOR draw site (F10) ──
+        # The second half of the pair above. A Psi Warrior who has also taken the feat
+        # offers both, and the panel then paints the one widget twice: the upper site
+        # is a ghost with no rect behind it. Checkpoint 63 pins exactly that.
+        if (cls == CC.Fighter
+                and stats.fighter_subclass == rpg.FighterSubclass.PsiWarrior
+                and _res(stats, "Telekinetic Movement") > 0):
+            out.append(Action("telekinetic_psi", "Telekinetic Movement", GROUP_BONUS))
+
         # ── Ranger ──
         if cls == CC.Ranger:
             da = _res(stats, "Dread Ambusher")
@@ -548,6 +736,75 @@ class ActionMenu:
             nv = _res(stats, "Nature's Veil")
             if lvl >= 14 and nv > 0:
                 out.append(Action("natures_veil", f"Nature's Veil ({nv})", GROUP_BONUS))
+
+        # ── Soulknife Rogue (M2d) ──
+        # Both labels carry the Psionic Energy count, and both features can be paid for
+        # with either their own use or a die — which is why the Veil is offered while
+        # its resource is empty but dice remain.
+        if cls == CC.Rogue and stats.rogue_subclass == rpg.RogueSubclass.Soulknife:
+            ped_n = _res(stats, "Psionic Energy")
+            if lvl >= 9 and ped_n > 0:
+                out.append(Action("psychic_teleport",
+                                  f"Psychic Teleport ({ped_n} dice)", GROUP_BONUS))
+            if lvl >= 13 and not app.action_used:
+                pv = _res(stats, "Psychic Veil")
+                if pv > 0 or ped_n > 0:
+                    out.append(Action("psychic_veil",
+                                      f"Psychic Veil ({pv}+{ped_n}d)", GROUP_BONUS))
+
+        # ── Warrior of Shadow Monk (M2d) ──
+        # Two Bonus Actions with no resource of their own, and one Magic action that
+        # costs Focus — which is why spending the Bonus Action does not take all three
+        # (the band gate above does, but that is the band's doing, not the feature's).
+        if cls == CC.Monk and stats.monk_subclass == rpg.MonkSubclass.WarriorOfShadow:
+            if lvl >= 6:
+                out.append(Action("shadow_step", "Shadow Step (Bonus)", GROUP_BONUS))
+            if lvl >= 17:
+                out.append(Action("cloak_of_shadows",
+                                  "Cloak of Shadows (Bonus)", GROUP_BONUS))
+            fp_d = _res(stats, "Focus Points")
+            if lvl >= 3 and not app.action_used and fp_d > 0:
+                out.append(Action("shadow_arts_darkness",
+                                  f"Shadow Arts: Darkness ({fp_d} Focus)", GROUP_BONUS))
+
+        # ── Archfey Warlock (M2d) ──
+        # The rider selector is always offered once the subclass qualifies — it spends
+        # nothing, it only says which effect the next Step carries — and its label is
+        # the clamped selection (see `fey_rider_index`). Misty Escape is a REACTION
+        # drawn inside the Bonus Action band, so spending the bonus action hides it
+        # today; that is the band gate, recorded and preserved, not a rule of its own.
+        if (cls == CC.Warlock and stats.warlock_subclass == rpg.WarlockSubclass.Archfey
+                and lvl >= 3):
+            sof = _res(stats, "Steps of the Fey")
+            out.append(Action("fey_effect",
+                              f"Fey Step: {_FEY_EFFECT_NAMES[fey_rider_index(app, stats)]}",
+                              GROUP_BONUS))
+            if sof > 0:
+                out.append(Action("steps_of_fey",
+                                  f"Steps of the Fey ({sof}) (Bonus)", GROUP_BONUS))
+            # The panel reads `reaction_used` off the PLACED AGENT's condition copy
+            # here, not through the engine, and `_utility` reads `concentrating` the
+            # same way. Kept as written.
+            if (lvl >= 6 and sof > 0
+                    and not agents[agent_idx].conditions.reaction_used):
+                out.append(Action("misty_escape",
+                                  f"Misty Escape ({sof}) (React)", GROUP_BONUS))
+
+        # ── Warrior of the Elements Monk (M2d) ──
+        # Both are Magic actions, so both read `action_used` rather than the band, and
+        # Attunement's label is a tick once the effect is running.
+        if (cls == CC.Monk
+                and stats.monk_subclass == rpg.MonkSubclass.WarriorOfFourElements):
+            fp_n = _res(stats, "Focus Points")
+            if lvl >= 3 and not app.action_used and fp_n >= 1:
+                out.append(Action("elemental_attunement",
+                                  "Elemental Attunement ✓"
+                                  if cond.elemental_attunement_active
+                                  else f"Elemental Attunement ({fp_n} Focus)",
+                                  GROUP_BONUS))
+            if lvl >= 6 and not app.action_used and fp_n >= 2:
+                out.append(Action("elemental_burst",
+                                  f"Elemental Burst ({fp_n} Focus)", GROUP_BONUS))
 
         # ── the tail: detonate, and the two summons whose label is a toggle ──
         if (cls == CC.Monk

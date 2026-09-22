@@ -468,7 +468,10 @@ plus a green determinism run):
 - **M2c** ☑ (done 2026-09-22) — bucket 7a, **56 buttons converted**, by the boundary below. Long but
   mechanical; batched by class, because one creature shows a whole class's band at once.
   See [M2c — bucket 7a](#m2c--bucket-7a-done-2026-09-22).
-- **M2d** — buckets 7e, then 7c. Clusters and the spatial predicates.
+- **M2d** ☑ (done 2026-09-22) — buckets 7e and 7c, **31 buttons converted**: the six
+  named clusters, the Cunning Action row, the four Glamour Bard buttons nested inside
+  `grant_inspiration`'s resource test, the seven spatial predicates, and `telekinetic`
+  under two ids. See [M2d — the clusters and the spatial predicates](#m2d--the-clusters-and-the-spatial-predicates-done-2026-09-22).
 - **M2e** — buckets 7b and 7d. Last, because they are the two that force the `ActionMenu`
   schema to carry action-economy as data rather than as a flag.
 
@@ -553,7 +556,31 @@ Each becomes its own item. None of them blocks Step 0.
   clickable but not drawn). **It is why `telekinetic` is not in M2c's scope**: an
   `Action` id is a dispatch key and there is one widget for two options, so splitting it
   needs a decision the phase should not make in passing. Checkpoints 38 and 47 cover the
-  two sites separately; M2d takes it.
+  two sites separately; **checkpoint 63 (M2d) covers the state where BOTH fire**, and
+  the golden now records the widget painted twice in one pass — `1052,460` and again at
+  `1052,562`.
+
+  **M2d found two more halves of the same fault, and neither is fixed:**
+  · the feat's own constructor is **dead**. `main.py:1372` builds
+  `btn_cbt_telekinetic` as "🌀 Telekinetic Shove" and `main.py:1535` **rebinds the same
+  attribute** to "Telekinetic Movement"; the first label has therefore never been drawn
+  by anything, at either site. That is why both of M2d's ids carry the Psi Warrior's
+  label — anything else would have been a behaviour change.
+  · the two click handlers **cross-fire**. `19442` (`_start_telekinetic_shove`) and
+  `19809` (`pending_telekinetic = True`) sit in the same `if not self.bonus_used:`
+  block, one after the other, and **neither is gated on the feat or on the subclass** —
+  so one click on the one widget arms both, whoever the creature is, and the elif chain
+  at `19025` decides which of the two the next map click resolves. This is the half that
+  makes F10 a bug rather than a cosmetic ghost.
+
+  **M2d converted the DRAW only** (decision, 2026-09-22): the menu carries
+  `telekinetic_feat` and `telekinetic_psi` — `_action_menu` is keyed by id, so one
+  option cannot appear twice — and `App._CBT_BTN_ALIAS` points both at the one widget.
+  The handlers were deliberately **left on raw `.clicked()`**, because moving them to
+  `_action_clicked` would gate each on its own id and thereby *fix* the cross-firing,
+  which is a behaviour change and belongs to F10's own item, not to a conversion.
+  `test_telekinetic_is_two_ids_behind_one_widget` fails the moment the widget is split,
+  which is the reminder to come back here.
 
 - **F11 — Step of the Wind's Fleet Step arm is unreachable.** The guard at `17319`
   offers `btn_cbt_step_of_wind` when `normal_ready or fleet_step_ready`, and
@@ -577,6 +604,19 @@ Each becomes its own item. None of them blocks Step 0.
   `tests/test_gui_headless_smoke.py`'s `_KNOWN_TOO_WIDE`, which fails both if a new
   overflow appears and if one of these three is fixed without being removed from the
   set. Measured: `Disengage` needs 76px of a 60px button, `Go Prone` 65, `Stand Up` 64.
+
+- **F13 — §7 draws a Jump button for a creature that does not exist.** *(Found by
+  M2d, 2026-09-22.)* F7's shape, one section down. With `combat_active` and
+  `_current_agent_idx()` out of range, `_is_incapacitated` is `False` (there are no
+  conditions to read) and `bonus_used` falls back to `_bonus_used_fallback`, so the
+  Bonus Action band is **open** — and the Jump/Shove row's only per-creature test is the
+  adjacency scan, which decides the row's WIDTH and not whether it exists. Checkpoint 99
+  has recorded the lone full-width `Jump` at `1052,228` since it was written; nobody had
+  read it as a defect. **Preserved, not fixed**: `ActionMenu._bonus` returns exactly
+  that one action for an out-of-range index, with the finding written above it, and
+  `test_out_of_range_agent_yields_only_the_creature_free_groups` pins it. M2b *did*
+  change the same shape in §4 (F7) — deliberately, and as a recorded behaviour change;
+  doing it here would have been a second one bundled into a conversion.
 
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
@@ -2190,8 +2230,9 @@ pixel hash — amended 2026-09-21), and run the determinism harness.
 This is the same incremental-with-an-oracle discipline `COMBAT_REFACTOR_PLAN.md` used —
 and it needs the same honesty: `tests/run_all_tests.py` (149 suites) does **not** cover
 the GUI, so each group needs a manual smoke pass too. *(Done for M2a-M2c on
-2026-09-22, and the repeatable half of it is now `tests/test_gui_headless_smoke.py`.
-M2d and M2e still owe theirs.)*
+2026-09-22, and the repeatable half of it is now `tests/test_gui_headless_smoke.py`,
+which M2d extended to 20 creature states and six invariants. M2d's **looking** half —
+the part no assertion covers — and M2e's are still owed.)*
 
 **Explicitly out of scope here**: migrating `action_used` / `bonus_used` /
 `attacks_remaining` into C++ (the open `memory/TODO.md` epic *"Turn-economy state → C++"*).
@@ -2240,7 +2281,7 @@ of a positioning branch). `_handle_events` dispatches the eight through
   buttons. For the converted eight it is now redundant, and `_action_clicked` is what
   actually holds; the guard can only be deleted in M2e, when the last button leaves.
   Step 0.3's **F4** (the `btn_cbt_metamagic` dict escapes the guard entirely) is
-  therefore still open and is M2e's to close. *(After M2b it protects 92, not 103.)*
+  therefore still open and is M2e's to close. *(After M2b it protected 92, not 103; after M2d, **5**.)*
 
 #### How "structurally identical" was actually proven
 
@@ -2489,7 +2530,7 @@ dropped rather than carried as an always-true expression. `F11`'s dead arm is th
 exception: it is kept in its original shape, because deleting it would read as agreement
 that the feature works.
 
-#### Carried into M2d
+#### Carried into M2d (all discharged)
 
 - **D-M2-1/2/3/4 all still stand.** `enabled` is still never false. The stale-rect guard
   now protects **36**, not 92 — and F4 (the `btn_cbt_metamagic` dict escaping it) is
@@ -2564,6 +2605,116 @@ This is the third leg of M2's stool, and the division of labour is worth stating
 golden proves the structure did not **change**, `test_action_menu.py` proves the
 **rules**, and this proves the result is **usable**. A rect that has been wrong since
 before M2a is, to a golden, simply the truth.
+
+
+### M2d — the clusters and the spatial predicates (done 2026-09-22)
+
+**31 buttons converted**, in six batches, each proving byte-identity before the next
+started. `_draw_combat_panel` **1,050 → 768 lines**; `gui/actions.py` **597 → 854**;
+`gui/main.py` net **−260**. After it, **105 of the 110 named buttons have left the draw
+pass**. The five that have not are exactly M2e's: `atk_bonus` and `spell_bonus` (7b),
+`haste_action` and the `btn_cbt_metamagic` dict (7d) — plus `place_terrain`, which the
+menu has owned since M2a but whose rect is still placed by hand because it shares a row
+with two non-`btn_cbt_*` toggles.
+
+#### The coverage commit, again first
+
+M2d's first commit converts nothing. **21 of M2d's buttons read `no` in all 50
+checkpoints** — the clusters are, almost by definition, the states an oracle written
+from the outside never drives the panel into. `tests/test_combat_panel.py` **50 → 65
+checkpoints**, the golden **6,987 → 9,079 lines, zero deleted**: every block M2a-M2c
+wrote came through byte-identical, which is the only thing that lets the extraction
+below claim anything.
+
+The fifteen new blocks, and what only they reach:
+
+| | |
+| --- | --- |
+| 49/50 | Trickery Cleric 6, without and with an illusion on the map — `_my_duplicates` is a SCAN, so the cluster's other two buttons exist only in the second |
+| 51 | Life Domain 3 — Preserve Life, the third arm of Channel Divinity |
+| 52/53 | Glamour Bard 14, uses in hand then windows open: Mantle of Majesty and Unbreakable Majesty are each `a use left OR already running`, and only 53 reaches the second arm |
+| 54 | Soulknife 13 — both labels carry the Psionic Energy count |
+| 55 | Shadow Monk 17 — two Bonus Actions and a Magic action in one cluster |
+| 56/57 | Elemental Monk 6, and the same creature with Attunement running: the label flips to a tick, and that flag is on the CONDITIONS |
+| 58/59 | Archfey 6 with a rider chosen, then Archfey 3 with a **stale** rider — 59 is the only block that exercises the clamp |
+| 60/61 | Aria holding Skarn: Drop Grapple, then the same hold with a weapon flagged `auto_use_when_grappling` so the Bite appears |
+| 62 | Aria netted — Free from Net |
+| 63 | **F10 in full**: a Psi Warrior who has also taken the Telekinetic feat, so the one widget is painted at both sites in one pass |
+
+**Only the seven `btn_cbt_metamagic[…]` entries are still dark**, and they are M2e's:
+the scene's Sorcerer has learned two of the nine options.
+
+#### What the extraction moved
+
+Six batches: the two Cleric clusters; the Glamour four (which dissolved the Bard
+wrapper `bi` and all); the four tail clusters (Soulknife, Shadow, Archfey, Elements);
+bucket 7c; the Cunning Action row with the Telekinetic feat site; and, folded into that
+last one, the Psi Warrior site.
+
+Three things in `actions.py` are new in kind rather than in volume:
+
+- **`_has_adjacent` and `_grappling_anyone`** — the O(n) scans the panel ran *per
+  frame, per button*, now named predicates run once. `_has_adjacent` compares ORIGINS,
+  not footprints, so a Large creature is adjacent by its top-left cell; preserved as
+  written and noted, because correcting it is a rules change.
+- **`fey_rider_index(app, stats)`** — §7's one WRITE during the draw pass. The Steps of
+  the Fey rider cycle is five options at L6 and three below it, and the panel clamped a
+  stale selection back to 0 on the spot. `actions.py` must not mutate `app`, so the
+  clamp is a pure function used for the label, and `main.py` writes it through next to
+  the run — the click handler and the engine call both read the raw field.
+  `test_the_fey_rider_is_clamped_without_the_menu_writing_it_back` asserts both halves.
+- **two ids for one widget** — `telekinetic_feat` / `telekinetic_psi`, resolved by
+  `App._CBT_BTN_ALIAS`. See F10 for why the handlers were left alone.
+
+**A cluster is not a run, and the layout tuples say so.** Six `_BON_RUN_*` became
+**thirteen**, plus the first two `_BON_ROW_*`: a run is still "a maximal stretch with no
+still-fused button between its members", and converting the clusters that CUT the column
+adds runs rather than merging them. **They can be merged once 7b and 7d leave** — M2e's
+tidy-up, worth one line in its diff and nothing in its risk.
+
+#### The two rows
+
+§7 has exactly two n-up rows and M2d converted both: Jump/Shove/Trip, whose shape is
+the adjacency scan (a three-up when something is standing next to you, `Jump` alone at
+full width when nothing is — and the narrow arm draws in `font_sm`, as §4's five-up
+does), and Cunning Action. That made the *mirror* of M2c's mistake reachable for the
+first time, so `tests/test_gui_headless_smoke.py` grew its sixth invariant:
+**`test_a_converted_row_is_side_by_side_not_stacked`** — within one `_*_ROW_*` tuple the
+drawn members must share a y and a width and differ in x. It was broken on purpose and
+failed correctly. The sweep is **13 → 20 creature states**; the new seven are M2d's
+clusters plus a grappler, chosen for label width (the Glamour Bard's four are the
+longest strings in §7) and because nothing else draws bucket 7c's Drop and Bite at all.
+No new F12 overflow appeared: at full width, all of them fit.
+
+`tests/test_action_menu.py` **29 → 46 checks**, one per cluster rule plus the two
+findings.
+
+#### Findings
+
+- **F13** — the panel draws a Jump button with nobody on turn. Preserved and recorded;
+  see the findings list.
+- **F10, twice as bad as recorded** — the feat's constructor is dead code, and the two
+  click handlers cross-fire. Also recorded rather than fixed, and the reason M2d
+  converted only the draw.
+
+#### Carried into M2e
+
+- **The five buttons still in the draw pass are 7b + 7d + `place_terrain`**, and 7b/7d
+  are the two that force `economy` to be data rather than a flag. M2d added three more
+  witnesses for that: Drop Grapple (free), Free from Net (an Action) and Bite (grappled)
+  (the Attack action, or mid-multiattack) all sit in §7 and none of them answers to the
+  Bonus Action.
+- **F4 + the stale-rect guard + `_reposition_panel:1239-1250` are still M2e's,
+  together.** The guard now protects **5**, not 36.
+- **The seven dark metamagic entries** are the last of the "add the checkpoint first"
+  debt. The scene's Cyra has learned Quickened and Seeking; M2e needs the other seven
+  learned and affordable before it touches `18193-18240`.
+- **The thirteen `_BON_RUN_*` tuples can be merged** once nothing fused separates them.
+- **F9, F10, F11, F12, F13 are all open**, and all five are behaviour questions rather
+  than conversions.
+- **The manual smoke pass — the LOOKING half — is owed for M2d.** The suite covers what
+  can be asserted; what it cannot do is see. The rig from M2c still works
+  (`PIL.ImageGrab.grab(xdisplay=":99")` + XTEST through the container's Xvfb).
 
 
 ### M3 — `GameView`
