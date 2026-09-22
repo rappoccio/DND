@@ -37,6 +37,14 @@ test_scripts = [
     # because the pair is only meaningful together.
     "test_action_menu.py",
 
+    # Rendered-geometry invariants for the same panel (MULTIPLAYER_PLAN.md M2) — the
+    # third leg. The golden proves the structure did not CHANGE and the action menu
+    # proves the rules; this one asks what only pixels can answer: does the label fit
+    # the button, do two widgets overlap, is a run stacked or laid out side by side,
+    # did the panel actually paint. It found F12, which had been wrong since before
+    # M2a and which a structural golden can never see.
+    "test_gui_headless_smoke.py",
+
     # Session roster + token ownership (MULTIPLAYER_PLAN.md M0) — principals, the
     # single authorize() chokepoint, and the `controller` round-trip through a save
     # that renumbers the agent list. Kept with the oracles because it guards a

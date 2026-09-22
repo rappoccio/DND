@@ -573,7 +573,10 @@ Each becomes its own item. None of them blocks Step 0.
   never moved; M2b only changed who computes it. It is a straightforward cosmetic bug
   (shorten the labels, or let the row size itself to its widest), and it is exactly the
   class of thing a structural golden cannot see: every checkpoint agrees the rect is
-  right, because the rect *is* right. Its own item.
+  right, because the rect *is* right. Its own item. **Now pinned by name** in
+  `tests/test_gui_headless_smoke.py`'s `_KNOWN_TOO_WIDE`, which fails both if a new
+  overflow appears and if one of these three is fixed without being removed from the
+  set. Measured: `Disengage` needs 76px of a 60px button, `Go Prone` 65, `Stand Up` 64.
 
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
@@ -2526,6 +2529,30 @@ Sorcerer 14 with a Fire ancestry. What it confirmed, in the app rather than in a
 | the baseline fix | a clean Monk 17 shows **no** Cunning Action row — the leak that bit the oracle does not exist in the real app either |
 
 And it found **F12**, a cosmetic defect no structural golden could ever see.
+
+#### It is now a suite, not a ritual — `tests/test_gui_headless_smoke.py`
+
+The pass is only worth what it can be repeated for, so the parts of it that are
+*assertions* rather than *looking* were written down. `SDL_VIDEODRIVER=dummy` renders
+into a real `Surface`, so no display server is involved at all — the Xvfb/XTEST rig was
+needed to watch, never to check. Five invariants, swept over thirteen creature states
+(chosen for band length and label width, not rules coverage — that is the golden's job):
+
+| Check | What only it can see |
+| ----- | -------------------- |
+| `test_every_drawn_label_fits_its_button` | **F12.** `Button.draw` centres the label and never clips, so a too-wide one bleeds over its neighbours while every rect stays correct |
+| `test_no_two_drawn_buttons_overlap` | the golden records each rect on its own line and is blind to the relationship between them |
+| `test_every_drawn_button_lands_inside_the_panel` | a widget drawn over the map or off-screen is unusable, and no availability test would notice |
+| `test_a_converted_run_is_stacked_not_columnised` | **the mistake M2c actually made.** Every availability test passed while a Monk's band was laid out as a five-up |
+| `test_the_panel_paints_where_it_says_it_does` | reads the framebuffer back, so the four above cannot pass on stale bookkeeping if nothing was painted |
+
+All five were broken on purpose and all five failed correctly, including the two halves
+of the F12 pin (a new overflow, and an entry that has silently started to fit).
+
+This is the third leg of M2's stool, and the division of labour is worth stating: the
+golden proves the structure did not **change**, `test_action_menu.py` proves the
+**rules**, and this proves the result is **usable**. A rect that has been wrong since
+before M2a is, to a golden, simply the truth.
 
 
 ### M3 — `GameView`
