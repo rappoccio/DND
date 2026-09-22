@@ -600,17 +600,13 @@ class ActionMenu:
             if cond.grappled:
                 out.append(Action("grapple_esc", "💨 Escape", GROUP_BONUS))
 
-        # ── Telekinetic Shove — the FEAT's draw site (F10) ──
-        # `btn_cbt_telekinetic` is one widget with two draw sites: this one, and Psi
-        # Warrior's Telekinetic Movement further down. `_action_menu` is keyed by id,
-        # so an option cannot appear twice and the two sites need two ids — but the
-        # widget behind them is still one, through `App._CBT_BTN_ALIAS`, and so is the
-        # dispatch. Both labels read "Telekinetic Movement" because the feat's own
-        # constructor (`main.py:1372`, "🌀 Telekinetic Shove") is overwritten by the
-        # Psi Warrior one at `1535` — the feat's label has never been drawn. Splitting
-        # the widget is a behaviour change and its own item; see F10.
+        # ── Telekinetic Shove — the FEAT's option (F10, fixed) ──
+        # The feat's 30 ft shove, and Psi Warrior's Telekinetic Movement further down,
+        # are two options with two widgets and two handlers. They shared one widget
+        # until M2e: a creature satisfying both had it painted twice in one pass, and
+        # the single handler armed both pending flags on one click, whoever clicked it.
         if stats.has_feat("Telekinetic"):
-            out.append(Action("telekinetic_feat", "Telekinetic Movement", GROUP_BONUS))
+            out.append(Action("telekinetic_feat", "🌀 Telekinetic Shove", GROUP_BONUS))
 
         # ── Cunning Action (M2d) ──
         # A three-up row in the same column order as §4's, and a cluster in the only
@@ -928,10 +924,9 @@ class ActionMenu:
                 and lvl >= 17 and stats.corona_of_light_turns == 0):
             out.append(Action("corona", "Corona of Light (Action)", GROUP_BONUS))
 
-        # ── Telekinetic Movement — the PSI WARRIOR draw site (F10) ──
+        # ── Telekinetic Movement — the PSI WARRIOR's option (F10, fixed) ──
         # The second half of the pair above. A Psi Warrior who has also taken the feat
-        # offers both, and the panel then paints the one widget twice: the upper site
-        # is a ghost with no rect behind it. Checkpoint 63 pins exactly that.
+        # is offered both; checkpoint 63 is the block where both are drawn.
         if (cls == CC.Fighter
                 and stats.fighter_subclass == rpg.FighterSubclass.PsiWarrior
                 and _res(stats, "Telekinetic Movement") > 0):

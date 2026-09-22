@@ -120,7 +120,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -257,7 +258,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -396,7 +398,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -533,7 +536,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -671,7 +675,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -809,7 +814,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -946,7 +952,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1083,7 +1090,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1220,7 +1228,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1361,7 +1370,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1500,7 +1510,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1641,7 +1652,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1782,7 +1794,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -1919,7 +1932,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2056,7 +2070,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2197,7 +2212,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2333,7 +2349,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2470,7 +2487,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2614,7 +2632,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2759,7 +2778,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -2899,7 +2919,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3039,7 +3060,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3179,7 +3201,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3317,7 +3340,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3454,7 +3478,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3591,7 +3616,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3729,7 +3755,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -3867,7 +3894,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -4006,7 +4034,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -4145,7 +4174,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -4291,7 +4321,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -4438,7 +4469,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -4579,7 +4611,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
 btn  | -           | btn_cbt_turn_undead | - | - | no
@@ -4723,7 +4756,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
 btn  | -           | btn_cbt_turn_undead | - | - | no
@@ -4868,7 +4902,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_turn_undead | - | - | no
@@ -5016,7 +5051,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -5152,7 +5188,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -5289,7 +5326,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -5335,7 +5373,7 @@ btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,426,316,30 | yes
 btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
 btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
-btn  | BonusAction | btn_cbt_telekinetic | Telekinetic Movement | 1052,528,316,30 | yes
+btn  | BonusAction | btn_cbt_telekinetic_psi | Telekinetic Movement | 1052,528,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,628,156,30 | yes
@@ -5427,6 +5465,7 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -5565,7 +5604,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -5711,7 +5751,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -5855,7 +5896,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6000,7 +6042,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6140,7 +6183,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6281,7 +6325,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6419,7 +6464,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6562,7 +6608,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
 btn  | -           | btn_cbt_turn_undead | - | - | no
@@ -6605,7 +6652,7 @@ text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
-btn  | BonusAction | btn_cbt_telekinetic | Telekinetic Movement | 1052,426,316,30 | yes
+btn  | BonusAction | btn_cbt_telekinetic_feat | 🌀 Telekinetic Shove | 1052,426,316,30 | yes
 btn  | BonusAction | btn_cbt_use_item | 🧪 Use Item | 1052,460,316,30 | yes
 btn  | BonusAction | btn_cbt_extinguish | 🔥 Extinguish (Prone) | 1052,494,316,30 | yes
 btn  | BonusAction | btn_cbt_boon_of_fate | Boon of Fate (2d4) | 1052,528,316,30 | yes
@@ -6700,6 +6747,7 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6837,7 +6885,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -6978,7 +7027,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7119,7 +7169,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7259,7 +7310,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7405,7 +7457,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7551,7 +7604,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7687,7 +7741,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7825,7 +7880,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -7963,7 +8019,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8101,7 +8158,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8240,7 +8298,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8379,7 +8438,8 @@ btn  | -           | btn_cbt_standup | - | - | no
 btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8516,7 +8576,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8653,7 +8714,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8790,7 +8852,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -8834,10 +8897,10 @@ btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | y
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_telekinetic | Telekinetic Movement | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_telekinetic_feat | 🌀 Telekinetic Shove | 1052,460,316,30 | yes
 btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
 btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,528,316,30 | yes
-btn  | BonusAction | btn_cbt_telekinetic | Telekinetic Movement | 1052,562,316,30 | yes
+btn  | BonusAction | btn_cbt_telekinetic_psi | Telekinetic Movement | 1052,562,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,662,156,30 | yes
@@ -9065,7 +9128,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -9202,7 +9266,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -9344,7 +9409,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -9486,7 +9552,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -9629,7 +9696,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -9772,7 +9840,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no
@@ -9901,7 +9970,8 @@ btn  | -           | btn_cbt_steady_aim | - | - | no
 btn  | -           | btn_cbt_step_of_wind | - | - | no
 btn  | -           | btn_cbt_steps_of_fey | - | - | no
 btn  | -           | btn_cbt_swap_duplicity | - | - | no
-btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_telekinetic_feat | - | - | no
+btn  | -           | btn_cbt_telekinetic_psi | - | - | no
 btn  | -           | btn_cbt_tides_of_chaos | - | - | no
 btn  | -           | btn_cbt_tireless | - | - | no
 btn  | -           | btn_cbt_trance_of_order | - | - | no

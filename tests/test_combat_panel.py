@@ -747,9 +747,9 @@ def build_output():
     _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
              fighter_subclass=rpg.FighterSubclass.BattleMaster)
     out += cap.capture("37 fighter, battle master 3 — Cyra (bm_maneuver)")
-    # `btn_cbt_telekinetic` has TWO draw sites — the Telekinetic feat (17211) and Psi
-    # Warrior's Telekinetic Movement (18077) — sharing one widget. This is the second;
-    # 46 is the first. See F10: it is why the button is NOT in M2c's scope.
+    # Telekinetic Movement, the Psi Warrior's. The Telekinetic FEAT's shove is a second
+    # option under a second widget (46 is its block, 63 is both at once); they shared
+    # one widget until F10 was fixed, which is why this block is where it is.
     _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
              fighter_subclass=rpg.FighterSubclass.PsiWarrior)
     out += cap.capture("38 fighter, psi warrior 3 — Cyra (telekinetic, Psi site)")
@@ -961,13 +961,12 @@ def build_output():
     out += cap.capture("62 netted — Aria (bucket 7c: escape_net)")
     _set_conditions(app, aria_g, netted=False)
 
-    # 63 — F10, pinned. `btn_cbt_telekinetic` is ONE widget with TWO draw sites: the
-    # Telekinetic feat (47) and Psi Warrior's Telekinetic Movement (38). A Psi Warrior
-    # who has taken the feat satisfies both, so the widget is positioned and painted at
-    # the upper site and then moved and painted again at the lower one — the upper is a
-    # ghost with no rect behind it. No checkpoint had ever driven that state, which is
-    # why the golden recorded the two sites as if they were alternatives. It records
-    # the double draw now, so the F10 fix has a before to be a change from.
+    # 63 — F10. A Psi Warrior who has taken the Telekinetic feat satisfies both offers.
+    # This block was written against the fused code, where ONE widget served both: it
+    # was positioned and painted at the upper site, then moved and painted again at the
+    # lower one, so the upper was a ghost with no rect behind it and the single handler
+    # armed both pending flags on one click. It is two widgets with two labels and two
+    # handlers now, and this block is the before-and-after of that change.
     cyra_f10 = _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
                         fighter_subclass=rpg.FighterSubclass.PsiWarrior)
     _s = app.combat.get_agent_stats(app.bm, cyra_f10)

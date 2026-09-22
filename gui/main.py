@@ -1387,7 +1387,9 @@ class App:
                                           "🔓 Drop",
                                           (150, 120, 80), (180, 150, 110), self.font_md)
         # Telekinetic feat — Telekinetic Shove (bonus action, 30 ft, STR save or pushed 5 ft).
-        self.btn_cbt_telekinetic = Button(pygame.Rect(px,       dummy_y, W, B),
+        # Until F10 was fixed this was called `btn_cbt_telekinetic` and the Psi Warrior's
+        # constructor below REBOUND the same attribute, so this label had never been drawn.
+        self.btn_cbt_telekinetic_feat = Button(pygame.Rect(px,  dummy_y, W, B),
                                           "🌀 Telekinetic Shove",
                                           (110, 90, 170), (140, 120, 200), self.font_md)
         self.btn_cbt_spell_action= Button(pygame.Rect(px, dummy_y, W, B),
@@ -1550,7 +1552,10 @@ class App:
         self.btn_cbt_living_legend = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Living Legend (Bonus Action)",
                                           (215, 160, 60), (250, 195, 95), self.font_md)
-        self.btn_cbt_telekinetic = Button(pygame.Rect(px, dummy_y, W, B),
+        # Psi Warrior — Telekinetic Movement. A separate widget from the feat's above:
+        # a Psi Warrior who has taken the feat is offered both, and one widget could
+        # only ever be painted twice and clicked once (F10).
+        self.btn_cbt_telekinetic_psi = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Telekinetic Movement",
                                           (140, 160, 210), (170, 190, 240), self.font_md)
         self.btn_cbt_dread_ambusher = Button(pygame.Rect(px, dummy_y, W, B),
@@ -16729,18 +16734,14 @@ class App:
     # turn it into pixels. Layout lives here and legality lives in `actions.py`; the
     # split is the whole point of the phase, so resist putting a rule back in here.
 
-    # F10: `telekinetic` is ONE widget with TWO draw sites — the Telekinetic feat and
-    # Psi Warrior's Telekinetic Movement — and a creature can satisfy both. The menu
-    # must carry them as two ids (`_action_menu` is keyed by id), so the two ids point
-    # at the one widget here. This is what lets the DRAW convert without deciding what
-    # an `Action` id means when one widget serves two options; that decision, and the
-    # ghost draw it would end, are F10's own item.
-    _CBT_BTN_ALIAS = {"telekinetic_feat": "telekinetic",
-                      "telekinetic_psi":  "telekinetic"}
-
     def _cbt_btn(self, action_id: str):
-        """The widget backing an action id. Ids match the `btn_cbt_` suffix by design."""
-        return getattr(self, "btn_cbt_" + self._CBT_BTN_ALIAS.get(action_id, action_id))
+        """The widget backing an action id. Ids match the `btn_cbt_` suffix by design.
+
+        One id, one widget, with no exceptions since F10 was fixed — the alias table
+        that pointed `telekinetic_feat` and `telekinetic_psi` at the same button is
+        gone, and with it the pass that painted that button twice.
+        """
+        return getattr(self, "btn_cbt_" + action_id)
 
     def _menu_group(self, group: str, only=None, skip=()):
         """This frame's actions in `group`, in build order. `only`/`skip` split one
@@ -17203,8 +17204,9 @@ class App:
         y = self._draw_action_stack(self._menu_group("bonus", only=("grapple_esc",)),
                                     lx, y, W, gap)
 
-        # The Telekinetic feat's draw site, then the Cunning Action three-up. Two
-        # ids share the one telekinetic widget; see `_CBT_BTN_ALIAS` and F10.
+        # The Telekinetic feat's shove, then the Cunning Action three-up. The Psi
+        # Warrior's Telekinetic Movement is a different option with its own widget,
+        # drawn further down; see F10.
         y = self._draw_action_stack(
             self._menu_group("bonus", only=("telekinetic_feat",)), lx, y, W, gap)
         _cunning = self._menu_group("bonus", only=_BON_ROW_CUNNING)
@@ -19150,7 +19152,7 @@ class App:
                         self._start_shove("prone")
                     if self._action_clicked("grapple_esc", event):
                         self._execute_grapple_escape()
-                    if self.btn_cbt_telekinetic.clicked(event):
+                    if self._action_clicked("telekinetic_feat", event):
                         self._start_telekinetic_shove()
                     if self._action_clicked("hide_bonus", event):
                         idx = self._current_agent_idx()
@@ -19517,7 +19519,7 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_corona_of_light(idx)
-                    if self.btn_cbt_telekinetic.clicked(event):
+                    if self._action_clicked("telekinetic_psi", event):
                         self.pending_telekinetic = True
                         self.hint = "Click a creature to move with Telekinetic Movement"
                     if self._action_clicked("dread_ambusher", event):

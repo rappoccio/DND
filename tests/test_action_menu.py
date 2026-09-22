@@ -1278,14 +1278,13 @@ def test_cunning_action_is_all_three_or_none():
     print("✅ test_cunning_action_is_all_three_or_none passed")
 
 
-def test_telekinetic_is_two_ids_behind_one_widget():
-    """F10, pinned as data rather than as a rect.
+def test_the_two_telekinetic_options_are_two_widgets(): 
+    """F10, fixed and pinned so it stays fixed.
 
-    One widget serves the Telekinetic feat and Psi Warrior's Telekinetic Movement, and
-    a creature can satisfy both — so the menu carries two ids (it is keyed by id) that
-    resolve to the same button. The panel then paints that button twice in one pass:
-    the upper site is a ghost. Splitting it is a behaviour change and its own item; if
-    that happens, this check is what says so.
+    The Telekinetic feat's 30 ft shove and Psi Warrior's Telekinetic Movement are two
+    options. A creature can have both, and until M2e they shared one widget under one
+    label, painted twice in a pass and clicked once — so the feat's own label had never
+    been drawn by anything and one click armed both pending flags for anybody.
     """
     app = _app()
     cyra = _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3,
@@ -1300,16 +1299,32 @@ def test_telekinetic_is_two_ids_behind_one_widget():
     assert "telekinetic_feat" in got and "telekinetic_psi" in got, got
 
     by_id = _by_id(app, cyra)
-    assert app._cbt_btn("telekinetic_feat") is app._cbt_btn("telekinetic_psi"), \
-        "the two ids no longer share a widget — F10 has been split, update this check"
-    assert (by_id["telekinetic_feat"].label == by_id["telekinetic_psi"].label
-            == "Telekinetic Movement"), \
-        "the feat's own label has never been drawn: main.py:1535 overwrites main.py:1372"
+    assert app._cbt_btn("telekinetic_feat") is not app._cbt_btn("telekinetic_psi"), \
+        "one widget for two options is F10; it cannot be laid out or clicked correctly"
+    assert by_id["telekinetic_feat"].label == "🌀 Telekinetic Shove", by_id
+    assert by_id["telekinetic_psi"].label == "Telekinetic Movement", by_id
+
+    # And one click arms one of them. Both handlers used to run on either click,
+    # because neither was gated on the feat or on the subclass.
+    app.pending_shove_type = ""
+    app.pending_telekinetic = False
+    app._draw_combat_panel()
+    post_click(app, app._cbt_btn("telekinetic_psi").rect.center)
+    assert app.pending_telekinetic, "the Psi Warrior's own option did not arm"
+    assert app.pending_shove_type != "telekinetic", "the feat's handler cross-fired"
+
+    app.pending_telekinetic = False
+    app._draw_combat_panel()
+    post_click(app, app._cbt_btn("telekinetic_feat").rect.center)
+    assert app.pending_shove_type == "telekinetic", "the feat's option did not arm"
+    assert not app.pending_telekinetic, "the Psi Warrior's handler cross-fired"
+    app.pending_shove_type = ""
+    app.pending_telekinetic = False
 
     s = app.combat.get_agent_stats(app.bm, cyra)
     s.feats = []
     app.combat.set_agent_stats(app.bm, cyra, s)
-    print("✅ test_telekinetic_is_two_ids_behind_one_widget passed")
+    print("✅ test_the_two_telekinetic_options_are_two_widgets passed")
 
 
 def test_every_action_carries_an_economy_from_the_vocabulary():
@@ -1404,7 +1419,7 @@ if __name__ == "__main__":
         test_drop_grapple_and_free_from_net_are_outside_the_band()
         test_bite_grappled_asks_the_engine_for_the_pairing()
         test_cunning_action_is_all_three_or_none()
-        test_telekinetic_is_two_ids_behind_one_widget()
+        test_the_two_telekinetic_options_are_two_widgets()
         test_every_action_carries_an_economy_from_the_vocabulary()
         test_ids_are_unique()
     finally:
