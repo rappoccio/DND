@@ -55,6 +55,7 @@ import json
 import pygame
 
 import rpg_battle_map as rpg
+from dialogs import METAMAGIC_OPTIONS
 from helpers import _dict_to_item, _dict_to_spell, _dict_to_weapon
 from widgets import Button
 from main import App
@@ -979,6 +980,66 @@ def build_output():
     _s = app.combat.get_agent_stats(app.bm, cyra_f10)
     _s.feats = []
     app.combat.set_agent_stats(app.bm, cyra_f10, _s)
+
+    # 64-65 — bucket 7b's dark arm. The economy-band header row is a fixed TWO-COLUMN
+    # band, and no checkpoint above has ever drawn both of its columns: Aria has an
+    # off-hand and no spells (the one-up), Cyra and Brannor have spells and no off-hand
+    # (the two-up with its left column empty). A dual-wielder who also casts fills both,
+    # and that is the arm M2e's conversion has to be proven identical on.
+    aria_sb = _goto(app, "Aria")
+    app.combat.set_agent_spells(app.bm, aria_sb, [_spell(app, "Fire Bolt")])
+    out += cap.capture("64 dual-wield caster — Aria (bucket 7b: both band headers)")
+
+    # 65 — the same two-up mid-sequence in the BONUS slot: the left column's LABEL takes
+    # the attack count, and the band stays open although `bonus_used` is set. 08b pins
+    # that pair in the one-up; this is the only block that pins it in the two-up.
+    _goto(app, "Aria")
+    app.bonus_used = True
+    app.attacks_remaining = 2
+    app._attack_sequence_slot = "bonus"
+    out += cap.capture("65 dual-wield caster mid bonus sequence — Aria (bucket 7b)")
+    app.combat.set_agent_spells(app.bm, aria_sb, [])
+
+    # 66-69 — bucket 7d's dict, the last of the "add the checkpoint first" debt.
+    # `_build_scene` teaches Cyra two of the nine options, so SEVEN of the nine toggles
+    # have read `no` in every block above — and with them every other rule of that draw
+    # site: the armed tick and its highlight, the second armed slot, and the Sorcery
+    # Incarnate caption.
+
+    # 66 — all nine learned, and a L7 Sorcerer's 7 Sorcery Points afford every one.
+    cyra_mm = _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 7)
+    _s = app.combat.get_agent_stats(app.bm, cyra_mm)
+    _s.metamagic_options = [v for v, _n, _sp, _note in METAMAGIC_OPTIONS]
+    app.combat.set_agent_stats(app.bm, cyra_mm, _s)
+    out += cap.capture("66 sorcerer 7, all nine metamagic options — Cyra "
+                       "(bucket 7d: the seven dark toggles)")
+
+    # 67 — armed. The tick is part of the LABEL and the highlight is a second rect
+    # drawn over the button, so both belong in the capture. Seeking is the independent
+    # toggle (it stacks rather than radio-selecting), so arming it alongside a
+    # radio-selected option covers both branches of the armed test in one block.
+    app.armed_metamagic = rpg.MetamagicOption.Heightened
+    app.armed_seeking = True
+    out += cap.capture("67 two metamagic options armed — Cyra (bucket 7d: the tick)")
+
+    # 68 — Sorcery Incarnate (L7 + Innate Sorcery running): the caption above the
+    # toggles, and the SECOND armed slot, which exists only while it is active.
+    _s = app.combat.get_agent_stats(app.bm, cyra_mm)
+    _s.innate_sorcery_turns = 10
+    app.combat.set_agent_stats(app.bm, cyra_mm, _s)
+    app.armed_metamagic2 = rpg.MetamagicOption.Twinned
+    out += cap.capture("68 sorcery incarnate, two options armed — Cyra (bucket 7d)")
+
+    # 69 — the same caption with NO toggles under it: Sorcery Incarnate is a property of
+    # the creature, and affordability is a property of each option, so an empty purse
+    # leaves the heading standing alone. It is the one state that proves the caption is
+    # not drawn by the buttons' own gate.
+    _set_res(app, cyra_mm, "Sorcery Points", 0)
+    out += cap.capture("69 sorcery incarnate with no Sorcery Points — Cyra "
+                       "(bucket 7d: the caption outlives its buttons)")
+    app.armed_metamagic = rpg.MetamagicOption.NONE
+    app.armed_metamagic2 = rpg.MetamagicOption.NONE
+    app.armed_seeking = False
 
     # 99 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
     # combat started with no combatants, or the acting token was removed). This is the
