@@ -444,9 +444,9 @@ and the shapes — not the class names — are what M2 should batch by:
 | Bucket | Guard shape | Count | Examples | Difficulty |
 | ------ | ----------- | ----: | -------- | ---------- |
 | **7a** | `if not _is_incapacitated and not self.bonus_used and <class/subclass/level/resource>` — one flat independent `if`, no interaction with any other button | ~60 | `rage 17272`, `second_wind 17722`, `war_priest 17648`, `steady_aim 17635`, `tireless 18010`, `natures_veil 18024`, `corona 17966`, `sacred_weapon 17865`, all 3 Paladin L20 capstones, all 4 Sorcerer Clockwork/Aberrant features | **easy** — each is already a pure predicate wearing an `if` |
-| **7b** | economy-band header buttons, whose layout *and* label depend on `attacks_remaining` / `_attack_sequence_slot` | 2 | `atk_bonus 17001`, `spell_bonus 17011` | medium — label is state, see F3 |
+| **7b** | economy-band header buttons, whose layout *and* label depend on `attacks_remaining` / `_attack_sequence_slot` | 2 | `atk_bonus 17001`, `spell_bonus 17011` | medium — label is state, see F3. **M2e ☑** |
 | **7c** | gated on a **computed spatial fact** the panel derives inline | 6 | `_has_adjacent` loop at 17058-17067 gates `long_jump`/`shove_push`/`shove_prone` (17073-17079) and `grapple_esc 17098`; `grapple_drop 17148` scans every other agent for a grapple; `bite_grappled 17662` | medium — the computation must move into `ActionMenu`, and it is an O(n) scan done **every frame** today |
-| **7d** | drawn **outside** the `bonus_used` band on purpose — availability is genuinely not a function of the bonus action | 10 | `haste_action 17196` (Haste's extra Action), the 9 `metamagic` toggles (18193-18240), `grapple_drop 17148` (free action) | medium — these are the cases that prove `ActionMenu` needs an explicit `economy` field rather than a boolean |
+| **7d** | drawn **outside** the `bonus_used` band on purpose — availability is genuinely not a function of the bonus action | 10 | `haste_action 17196` (Haste's extra Action), the 9 `metamagic` toggles (18193-18240), `grapple_drop 17148` (free action) | medium — these are the cases that prove `ActionMenu` needs an explicit `economy` field rather than a boolean. **M2e ☑ — it does** |
 | **7e** | multi-button feature clusters sharing one guard + one arming flag | ~13 | Trickery duplicity trio (17402/17408/17414), Soulknife pair (18041/18051), Shadow monk trio (18064/18071/18080), Archfey trio (18099/18106/18114), Elemental monk pair (18132/18140), Channel Divinity trio (17360/17367/17374) | medium — convert as a cluster, not button by button |
 
 **Proposed M2 order** (each step ends with a structurally identical panel on the Step 0.6 scenario
@@ -472,8 +472,12 @@ plus a green determinism run):
   named clusters, the Cunning Action row, the four Glamour Bard buttons nested inside
   `grant_inspiration`'s resource test, the seven spatial predicates, and `telekinetic`
   under two ids. See [M2d — the clusters and the spatial predicates](#m2d--the-clusters-and-the-spatial-predicates-done-2026-09-22).
-- **M2e** — buckets 7b and 7d. Last, because they are the two that force the `ActionMenu`
-  schema to carry action-economy as data rather than as a flag.
+- **M2e** ☑ (done 2026-09-22) — buckets 7b and 7d, **12 buttons converted**: the two
+  economy-band headers, Haste's extra Action, and the nine Metamagic toggles that were
+  a dict. Last, because they are the two that force the `ActionMenu` schema to carry
+  action-economy as data rather than as a flag — and it does now. **§7 is complete and
+  every one of the 110 named buttons has left the draw pass**, which is what let the
+  stale-rect guard go. See [M2e — the economy, as data](#m2e--the-economy-as-data-done-2026-09-22).
 
 ### Findings
 
@@ -496,7 +500,8 @@ Each becomes its own item. None of them blocks Step 0.
   pass — so the stale-rect guard parks them at `x = -10000` on every frame and they are
   permanently unreachable. `_reposition_panel:1211,1217` still lays two of them out, which is
   what makes this look alive. **Deleting them is the cheapest possible M2a warm-up.**
-- **F3 — two buttons are invisible but clickable. HALF CLOSED by M2b, 2026-09-22.**
+- **F3 — two buttons are invisible but clickable. CLOSED by M2e, 2026-09-22**
+  (half by M2b before it).
   `btn_cbt_atk_action` (rect at `16839`, drawn at `16846` only `if _cur_has_weapons`) is
   gone: an action the ActionMenu does not build has no rect set at all. **That half was
   also vacuous** — `_cur_has_weapons` is `len(get_agent_weapons(...)) > 0`, and
@@ -504,11 +509,22 @@ Each becomes its own item. None of them blocks Step 0.
   `setAgentWeapons` re-pads to ≥3, so no creature could ever fail it. The predicate is
   kept in `ActionMenu._action` as a statement of the rule, not as a live branch.
   **`btn_cbt_atk_bonus` (set `17008`, drawn `17015` only `if _cur_has_offhand or
-  mid_sequence_bonus`) is real and still open** — it is bucket 7b, so it is M2e's.
+  mid_sequence_bonus`) was real, and M2e closed it** the same way: the rect is set by
+  `_draw_action_row`-style layout on the frame the option is drawn, and an id the menu
+  does not build is never laid out. Its predicates — `_cur_has_offhand`, `_cur_can_spell`,
+  `_cur_has_spells` and the handler's `_has_offhand` — are deleted.
+  **M2e found the same shape a third time, and recorded it as F14.**
   Original finding: in both cases the rect is live while the button is not rendered, so a
   click in that space fires the handler on an option the panel is deliberately not
   offering. This is precisely the legality/layout fusion M2 exists to remove.
-- **F4 — the stale-rect guard has a hole.** `16547-16549` iterates `vars(self).items()` and
+- **F4 — the stale-rect guard has a hole. CLOSED by M2e, 2026-09-22**, in two
+  commits: bucket 7d replaced the dict with nine named widgets dispatched by id, and the
+  commit after it deleted the guard itself — not by fixing the hole but by removing the
+  need for the guard. Every `btn_cbt_*` is now laid out from the menu on the frame it is
+  drawn and dispatched through `_action_clicked`, which tests the click against the offer
+  the panel drew; a stale rect can exist and nothing can fire through it.
+  `_reposition_panel`'s thirteen-line combat block went with it. Original finding:
+  `16547-16549` iterates `vars(self).items()` and
   filters on `isinstance(_btn, Button)` — so the `btn_cbt_metamagic` **dict** is skipped and
   its 9 buttons keep their last drawn position when they stop being offered. The click handler
   (`20683`) re-checks only the Quickened/`bonus_used` case, not `metamagic_offered(...)`, so a
@@ -546,7 +562,15 @@ Each becomes its own item. None of them blocks Step 0.
   reach the draw. No behaviour change — the button is correctly hidden — but the panel
   states a rule it does not implement, and checkpoint 25 has to use a level-14 Berserker
   to see the button at all. Fix the panel's `10` to `14` as its own item.
-- **F10 — one widget, two draw sites.** `btn_cbt_telekinetic` is positioned and drawn
+- **F10 — one widget, two draw sites. FIXED 2026-09-22, as its own commit (M2e).**
+  `btn_cbt_telekinetic_feat` and `btn_cbt_telekinetic_psi`, two labels — the feat's
+  "🌀 Telekinetic Shove" is drawn for the first time — and two handlers dispatched by
+  `_action_clicked` on the two ids M2d put in the menu. `App._CBT_BTN_ALIAS` is deleted:
+  one id, one widget, no exceptions. `test_telekinetic_is_two_ids_behind_one_widget`
+  became `test_the_two_telekinetic_options_are_two_widgets`, which clicks each and
+  asserts the other did not arm. Checkpoint 63, written against the fused code so this
+  fix would have a before, is the record of the change. Original finding:
+  `btn_cbt_telekinetic` is positioned and drawn
   twice in the same pass under two unrelated guards: the **Telekinetic feat** (30 ft
   shove, `17211`) and **Psi Warrior**'s Telekinetic Movement (`18077`). A Psi Warrior who
   has taken the feat satisfies both, so the widget is painted at the upper position and
@@ -605,7 +629,10 @@ Each becomes its own item. None of them blocks Step 0.
   overflow appears and if one of these three is fixed without being removed from the
   set. Measured: `Disengage` needs 76px of a 60px button, `Go Prone` 65, `Stand Up` 64.
 
-- **F13 — §7 draws a Jump button for a creature that does not exist.** *(Found by
+- **F13 — §7 draws a Jump button for a creature that does not exist. FIXED
+  2026-09-22, as its own commit (M2e)** — the same answer M2b gave F7 one section up.
+  `ActionMenu._bonus` returns nothing for an index it cannot read, and checkpoint 99,
+  which had recorded the defect since it was written, records the fix. *(Found by
   M2d, 2026-09-22.)* F7's shape, one section down. With `combat_active` and
   `_current_agent_idx()` out of range, `_is_incapacitated` is `False` (there are no
   conditions to read) and `bonus_used` falls back to `_bonus_used_fallback`, so the
@@ -618,11 +645,27 @@ Each becomes its own item. None of them blocks Step 0.
   change the same shape in §4 (F7) — deliberately, and as a recorded behaviour change;
   doing it here would have been a second one bundled into a conversion.
 
+- **F14 — `⚔ Bonus (n)` is drawn and does nothing.** *(Found by M2e, 2026-09-22.)*
+  F3's shape a third time, and the last of it. The two economy-band headers are offered
+  while an Extra Attack sequence is parked in the bonus slot — `bonus_used` is already
+  True and the sequence still owes swings — but both click handlers sit inside the
+  `if not self.bonus_used:` block they have always been in, so the button that says how
+  many swings are left cannot be clicked. Checkpoints 08b and 65 draw it. **Preserved,
+  not fixed**: moving the two handlers out of that block would make a dead button live,
+  which is a behaviour change and belongs to its own item. It may well be harmless in
+  play — the swings are driven by map clicks through `pending_attack_slot`, not by
+  re-pressing the header — which is exactly the kind of thing that should be decided
+  deliberately rather than by an extraction.
+
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
   predicate that the panel calls at `18219`. It is exactly the shape `ActionMenu.build`
   generalizes, and it is the only one of its kind in the panel today. **Model M2's extraction
-  on it**, and cite it when the group-by-group work needs a target shape.
+  on it**, and cite it when the group-by-group work needs a target shape. *(M2e moved it,
+  and `METAMAGIC_OPTIONS` with it, into `actions.py` — §7 needs both and that module may
+  not import pygame. `dialogs.py` re-exports them, so the selection dialog and
+  `test_sorcerer.py` are unchanged. The precedent is now an ordinary member of the module
+  it was the precedent for.)*
 
 ---
 
@@ -2209,14 +2252,17 @@ green at every one. `test_prompts.py` is **19/19**.
 The expensive phase, and the only one with real regression risk.
 
 **Goal**: `ActionMenu.build(app, agent_idx) -> list[Action]` where
-`Action{id, label, group, enabled, disabled_reason, expects}`. The panel then *draws from*
-that list, and `_handle_events` dispatches by `action.id` instead of by button identity.
+`Action{id, label, group, enabled, disabled_reason, expects, economy}`. The panel then
+*draws from* that list, and `_handle_events` dispatches by `action.id` instead of by
+button identity. *(`economy` was added by M2e, which is the phase bucket 7d exists to
+force; see below.)*
 
 **Why it is hard**: in `_draw_combat_panel`, legality and layout are the same code — a
 button is legal exactly when the branch that positions it runs. There is also a live
 stale-rect hack at the top of the method (every `btn_cbt_*` is parked at `x = -10000`
 each frame so an undrawn button cannot capture a click), which is a direct symptom of
-this fusion and disappears once availability is data.
+this fusion and disappears once availability is data. **It did**, in M2e's last
+commit but one.
 
 **What partially exists**: `availableAttacks(bm, idx)` and `availableCastableSpells(bm, idx)`
 (`combat.hpp:1907`) already enumerate weapon/target pairs and castable spells. They cover
@@ -2231,8 +2277,9 @@ This is the same incremental-with-an-oracle discipline `COMBAT_REFACTOR_PLAN.md`
 and it needs the same honesty: `tests/run_all_tests.py` (149 suites) does **not** cover
 the GUI, so each group needs a manual smoke pass too. *(Done for M2a-M2c on
 2026-09-22, and the repeatable half of it is now `tests/test_gui_headless_smoke.py`,
-which M2d extended to 20 creature states and six invariants. M2d's **looking** half —
-the part no assertion covers — and M2e's are still owed.)*
+which M2d extended to 20 creature states and six invariants. M2d's and M2e's
+**looking** half — the part no assertion covers — are still owed; both need permission
+to launch the real GUI.)*
 
 **Explicitly out of scope here**: migrating `action_used` / `bonus_used` /
 `attacks_remaining` into C++ (the open `memory/TODO.md` epic *"Turn-economy state → C++"*).
@@ -2281,7 +2328,10 @@ of a positioning branch). `_handle_events` dispatches the eight through
   buttons. For the converted eight it is now redundant, and `_action_clicked` is what
   actually holds; the guard can only be deleted in M2e, when the last button leaves.
   Step 0.3's **F4** (the `btn_cbt_metamagic` dict escapes the guard entirely) is
-  therefore still open and is M2e's to close. *(After M2b it protected 92, not 103; after M2d, **5**.)*
+  therefore still open and is M2e's to close. *(After M2b it protected 92, not 103; after
+  M2d, **5**.)* **CLOSED by M2e, 2026-09-22 — the decision is reversed and the guard is
+  deleted.** `_action_clicked` is what holds for every button now, so the guard had
+  nothing left to protect and F4's hole nothing left to be a hole in.
 
 #### How "structurally identical" was actually proven
 
@@ -2417,6 +2467,7 @@ remaining **92**, and a converted button is navigated by its action id in
   and `end_combat`) on window resize. Harmless — the draw pass sets x/y/w every frame —
   but they are now dead weight for 8 of the 18 converted names. Sweep them when the
   guard goes in M2e, not before; they are a resize path nothing in the suite exercises.
+  **Swept 2026-09-22**, with the guard: the whole thirteen-line block is deleted.
 - **Manual VNC smoke pass** — owed here for M2a's eight and M2b's eleven; **done
   2026-09-22**, with M2c's 56, and partly automated as
   `tests/test_gui_headless_smoke.py`.
@@ -2448,9 +2499,9 @@ reaching nothing else. 91 names in §7, **56 converted, 35 out** (57 are *covere
 
 | Out | Count | Why, and who takes it |
 | --- | ----: | --------------------- |
-| 7b | 2 | `atk_bonus`, `spell_bonus` — layout *and* label depend on `attacks_remaining`. **M2e** |
+| 7b | 2 | `atk_bonus`, `spell_bonus` — layout *and* label depend on `attacks_remaining`. **M2e ☑** |
 | 7c | 7 | `long_jump`, `shove_push`, `shove_prone`, `grapple_esc`, `grapple_drop`, `bite_grappled`, `escape_net` — an O(n) scan the panel runs every frame. **M2d** |
-| 7d | 2 | `haste_action`, the `metamagic` dict — drawn outside the band on purpose. **M2e** |
+| 7d | 2 | `haste_action`, the `metamagic` dict — drawn outside the band on purpose. **M2e ☑** |
 | 7e | 23 | six named clusters (duplicity 3, soulknife 2, shadow monk 3, archfey 3, elemental monk 2, Channel Divinity 3), plus the Cunning Action three-up row and the four Glamour Bard buttons nested inside `grant_inspiration`'s own resource test. **M2d** |
 | — | 1 | `telekinetic` — one widget, two draw sites. See **F10**. **M2d** |
 
@@ -2697,25 +2748,144 @@ findings.
   click handlers cross-fire. Also recorded rather than fixed, and the reason M2d
   converted only the draw.
 
-#### Carried into M2e
+#### Carried into M2e (all discharged except the smoke pass)
 
 - **The five buttons still in the draw pass are 7b + 7d + `place_terrain`**, and 7b/7d
   are the two that force `economy` to be data rather than a flag. M2d added three more
   witnesses for that: Drop Grapple (free), Free from Net (an Action) and Bite (grappled)
   (the Attack action, or mid-multiattack) all sit in §7 and none of them answers to the
-  Bonus Action.
+  Bonus Action. ☑
 - **F4 + the stale-rect guard + `_reposition_panel:1239-1250` are still M2e's,
-  together.** The guard now protects **5**, not 36.
+  together.** The guard now protects **5**, not 36. ☑
 - **The seven dark metamagic entries** are the last of the "add the checkpoint first"
   debt. The scene's Cyra has learned Quickened and Seeking; M2e needs the other seven
-  learned and affordable before it touches `18193-18240`.
+  learned and affordable before it touches `18193-18240`. ☑
 - **The thirteen `_BON_RUN_*` tuples can be merged** once nothing fused separates them.
+  ☑ — four.
 - **F9, F10, F11, F12, F13 are all open**, and all five are behaviour questions rather
-  than conversions.
+  than conversions. **F10 and F13 fixed by M2e; F9, F11 and F12 are still open**, and
+  F14 joins them.
 - **The manual smoke pass — the LOOKING half — is owed for M2d.** The suite covers what
   can be asserted; what it cannot do is see. The rig from M2c still works
   (`PIL.ImageGrab.grab(xdisplay=":99")` + XTEST through the container's Xvfb).
+  **Still owed, for M2d and M2e both** — it needs permission to launch the GUI.
 
+
+### M2e — the economy, as data (done 2026-09-22)
+
+**12 buttons converted** — `atk_bonus`, `spell_bonus`, `haste_action` and the nine
+Metamagic toggles — plus `place_terrain`'s hand-placed rect, and after them **all 110
+named buttons have left the draw pass**. `_draw_combat_panel` **768 → 646 lines**;
+`gui/actions.py` **854 → 1,064**; `gui/main.py` net **−91**. Eight commits: one coverage
+commit, four conversions, two behaviour changes with their own commits, and a tidy-up.
+
+#### The coverage commit, again first
+
+**65 → 71 checkpoints**, the golden **9,079 → 9,923 lines, zero deleted.** The seven
+unlearned `btn_cbt_metamagic[…]` entries were the last of the "add the checkpoint first"
+debt, and four other rules of that draw site were dark with them. Bucket 7b had a dark
+arm nobody had noticed: the header row is a fixed two-column band, and in 65 blocks no
+checkpoint had ever drawn **both** of its columns — Aria has an off-hand and no spells,
+Cyra and Brannor have spells and no off-hand.
+
+| | |
+| --- | --- |
+| 64/65 | a dual-wielding caster, then the same creature mid-sequence in the BONUS slot: the two-up with both columns filled, and `⚔ Bonus (2)` in it |
+| 66 | a Sorcerer 7 with all nine options learned and 7 SP to pay for them |
+| 67 | two armed — Heightened by radio-select, and Seeking, which stacks rather than radio-selecting |
+| 68 | Sorcery Incarnate running: the caption, and the second armed slot that exists only while it is |
+| 69 | the same caption with an empty purse — the heading standing over nothing, which is the state the extraction was most likely to get wrong |
+
+#### What `economy` is, and what it is not
+
+`Action` carries `economy` from this phase: one of seven values, each with a witness
+already in the suite — `none` (a DM tool), `free` (Drop Grapple, a Portent die), `bonus`,
+`action` (Free from Net), `attack` (the Bite, and Nick — paid out of the Attack action's
+attacks rather than out of the Action a second time), `reaction` (Misty Escape), and
+`varies` (Use Item, which asks each carried item what THAT item costs: a potion is a
+Bonus Action and the flask beside it in the same pack replaces an attack).
+
+**Nothing reads it.** The panel's band gate is still the panel's, preserved exactly. It
+is here because a remote client cannot lay out an action economy it has to infer from
+which section a button arrived in, and because the band-gate note — §7 hides
+Action-costing features whenever the Bonus Action is spent — needs somewhere to be fixed
+*from*.
+
+§7 is stamped from one table (`actions._BONUS_ECONOMY`) rather than at ninety
+construction sites, because the rule is "the Bonus Action, unless this table says
+otherwise". The table has three groups: the six the panel already draws outside the band
+(bucket 7d itself); the fourteen inside it that carry their own `not action_used` guard;
+and the three that cost nothing at all and are in the band's way for no other reason.
+**It is a vocabulary, not a rules audit** — an id is absent unless the panel's own guard,
+or its own comment, already said otherwise.
+
+#### The two shapes that would not fit an existing helper
+
+- **The economy-band header row is not an n-up.** `_draw_action_row` gives its drawn
+  members equal width across the whole column; this row is two fixed columns, and when
+  only the spell half is offered the left column stays *empty* rather than the right one
+  growing. It also reserves its height when the band is open and neither button is
+  offered (checkpoint 13 is a creature with no off-hand and no spells). So it is laid out
+  by hand, and the menu answers only which of the two exist and what they read.
+- **The Metamagic caption belongs to the section, not to the buttons.** Sorcery Incarnate
+  is a property of the creature and affordability a property of each option, so an empty
+  purse leaves the heading standing over nothing. `_metamagic` could not answer it, and
+  checkpoint 69 exists to prove the split was made correctly. The armed **highlight** is
+  styling, which `Action` carries no field for; it follows the tick in the label, so
+  "armed" still has exactly one definition and it is the menu's.
+
+#### What left main.py, and what the guard's departure cost
+
+`btn_cbt_metamagic` was nine buttons in a **dict**, and F4 was that the stale-rect guard
+iterated `vars(self)` filtering on `isinstance(_btn, Button)` and skipped it entirely.
+They are nine ordinary `btn_cbt_metamagic_*` widgets now. `METAMAGIC_OPTIONS` and
+`metamagic_offered` moved from `dialogs.py` into `actions.py` to make that possible —
+§7 needs both and `actions.py` may not import pygame — with a re-export so the selection
+dialog and `test_sorcerer.py` are untouched. That is **F5** arriving at its destination.
+
+The guard itself then went, and `_reposition_panel`'s thirteen-line combat block with
+it. **What replaced it is not a better guard but the absence of the problem**: every one
+of these buttons is dispatched through `_action_clicked`, which tests the click against
+`self._action_menu` — the offer the panel last drew. A stale rect can still exist;
+nothing can fire through it. Deleting the guard therefore had a prerequisite, and it is
+why F10 had to be fixed inside this phase rather than after it: `telekinetic` was the
+last widget on a raw `.clicked()`.
+
+**Thirteen `_BON_RUN_*` tuples become four** — a run is a maximal stretch with no
+still-fused button between its members, and nothing fused is left. `_BON_RUN_BAND` is 74
+ids and one call; it was derived mechanically from the thirteen it replaces and checked
+id for id, and the feature groups survive as its comments. The Archfey rider write — §7's
+one write during a draw pass — is hoisted above the run rather than splitting it.
+
+#### Findings
+
+- **F3 and F4 closed**, by construction rather than by a guard. See the findings list.
+- **F10 and F13 fixed**, each as its own commit, each a behaviour change with a
+  checkpoint written against the old behaviour to be a change *from*.
+- **F14, new**: `⚔ Bonus (n)` is drawn and cannot be clicked. F3's shape a third time,
+  preserved rather than bundled into a conversion.
+
+#### Re-derived after M2e
+
+**110 named buttons, 110 converted.** `BUILT_GROUPS` now names every section that has a
+`btn_cbt_*` in it, so **an id `actions.py` does not build is one the panel does not
+offer** — a stronger statement than M2a-M2d could make, and the one the guard's deletion
+rests on. `tests/test_action_menu.py` **46 → 52 checks**; the suite is **150 pass / 1
+fail** (`test_monk.py`, pre-existing and unrelated), with the 71 panel checkpoints
+byte-identical across every conversion commit.
+
+#### Carried out of M2
+
+- **F9** (Intimidating Presence gated at 10, the resource granted at 14), **F11**
+  (Step of the Wind's Fleet Step arm is unreachable), **F12** (§4's five-up posture row
+  is too narrow for three of its labels, pinned in `_KNOWN_TOO_WIDE`) and **F14** are the
+  open ones. All four are behaviour questions, and each is its own item.
+- **The manual smoke pass's LOOKING half is owed for M2d and M2e both.** It needs
+  permission to launch the real GUI.
+- **`gui/menus/` relocation** — the panel's rendering helpers were to move out of
+  `main.py` after M2. Still owed.
+
+---
 
 ### M3 — `GameView`
 
