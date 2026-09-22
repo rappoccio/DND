@@ -2865,6 +2865,38 @@ one write during a draw pass — is hoisted above the run rather than splitting 
 - **F14, new**: `⚔ Bonus (n)` is drawn and cannot be clicked. F3's shape a third time,
   preserved rather than bundled into a conversion.
 
+#### The manual smoke pass — DONE 2026-09-22, for M2d and M2e together
+
+Owed since M2d and discharged here, against a live GUI on the container's Xvfb. The rig
+is no longer rebuilt each time: **`tests/manual_smoke_xvfb.py`**, deliberately *not* in
+`run_all_tests.py` — it needs a display, asserts almost nothing, and its output is a
+directory of PNGs for a human to look at. Nineteen panels, each cropped out of the root
+window, with the real X11 path underneath (`SDL_VIDEODRIVER` is explicitly *unset*; the
+one bug in building the rig was `test_combat_panel` setting it to `dummy` at import time
+and the pass silently capturing a black screen).
+
+**Clicks are posted into the app's real event loop, not synthesized with XTEST** — the
+image has no `python-xlib`, and the X input path is not what M2 changed. Stated rather
+than implied.
+
+| | |
+| --- | --- |
+| 7b, both arms | the two-up with **both** columns filled (`⚔ Bonus Atk` + `✨ Spell`), and the one-up with only the left. The fixed two-column band is visibly a band: with only the spell half offered the LEFT column stays empty rather than the right one growing |
+| 7d, the nine | all nine toggles as separate full-width rows, not an n-up |
+| 7d, armed | Heightened and Seeking armed **by real clicks** — tick, lighter fill and the pale highlight border, which follows the label rather than a second copy of the rule |
+| 7d, the caption | "Sorcery Incarnate: 2 options per spell" standing alone over nothing with an empty purse. This is the split the extraction was most likely to get wrong, and checkpoint 69's subject |
+| 7d, Haste | the extra Action still drawn with the Bonus Action spent |
+| F10 | **two** buttons, two labels, two colours, two positions — "🌀 Telekinetic Shove" above Second Wind and "Telekinetic Movement" below Action Surge. One click arms one: the log says only the one that was pressed |
+| F13 | "Bonus Action" with nothing under it, for nobody on turn |
+| F14 | confirmed in the app: `Bonus Action ✓` over `⚔ Bonus (2)` and `✨ Spell`, and clicking either does nothing (`pending_attack_slot` and `pending_spell_slot` unmoved) |
+| M2d's owed | the Glamour Bard's four — §7's longest labels, all fitting — the Shadow Monk trio, the Soulknife pair with the Cunning Action row, the Archfey rider, and Drop + Bite (grappled) over the Jump/Shove/Trip three-up |
+| the guard's absence | nothing fired from a stale rect across nineteen state changes and five real clicks |
+
+**No new defect.** F12 is plainly visible in every frame (`Disengage` bleeding across
+Dodge and Hide in §4's five-up), exactly as `_KNOWN_TOO_WIDE` pins it. Emoji render as
+boxes because the image installs no emoji font — an environment fact, and the reason the
+oracle is structural rather than pixel.
+
 #### Re-derived after M2e
 
 **110 named buttons, 110 converted.** `BUILT_GROUPS` now names every section that has a
@@ -2880,8 +2912,8 @@ byte-identical across every conversion commit.
   (Step of the Wind's Fleet Step arm is unreachable), **F12** (§4's five-up posture row
   is too narrow for three of its labels, pinned in `_KNOWN_TOO_WIDE`) and **F14** are the
   open ones. All four are behaviour questions, and each is its own item.
-- **The manual smoke pass's LOOKING half is owed for M2d and M2e both.** It needs
-  permission to launch the real GUI.
+- ~~**The manual smoke pass's LOOKING half is owed for M2d and M2e both.**~~ **Done
+  2026-09-22**, and the rig is checked in — see below.
 - **`gui/menus/` relocation** — the panel's rendering helpers were to move out of
   `main.py` after M2. Still owed.
 
