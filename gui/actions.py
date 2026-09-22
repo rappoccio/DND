@@ -33,7 +33,7 @@ both unqualified.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 # The engine, for the class/subclass enums §6 compares against. `actions.py` is allowed
 # to read the engine — it is the *panel* half of the seam that must not leak in here.
@@ -62,6 +62,67 @@ BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_ACTION, GROUP_PORTENT, GROUP_BO
 # Step 0.5's `expects` vocabulary, repeated rather than imported: `prompts.py` owns the
 # wire and must not grow a dependency on the panel model. Keep the two in step.
 EXPECTS = ("choice", "cell", "agent", "none")
+
+# What clicking an option SPENDS. Step 0.3 sized bucket 7d as "the cases that prove
+# `ActionMenu` needs an explicit `economy` field rather than a boolean", and §7 is the
+# proof: the whole section is drawn under one `if not bonus_used:` band, and a handful
+# of its members do not answer to the Bonus Action at all — a potion is a Bonus Action
+# but the flask beside it in the same pack replaces an attack, Free from Net costs the
+# Action, Drop Grapple costs nothing, and the metamagic toggles are not actions.
+#
+# This is a vocabulary, not a rules audit: an option is `bonus` unless the panel's own
+# guard, or its own comment, says otherwise. See `_BONUS_ECONOMY`.
+ECONOMY_NONE     = "none"      # not a turn action at all — a DM tool, or turn control
+ECONOMY_FREE     = "free"      # costs no part of the economy
+ECONOMY_BONUS    = "bonus"     # the Bonus Action
+ECONOMY_ACTION   = "action"    # the Action
+ECONOMY_ATTACK   = "attack"    # paid out of the Attack action's attacks, not the Action
+ECONOMY_REACTION = "reaction"  # the Reaction
+ECONOMY_VARIES   = "varies"    # depends which thing is picked — see `use_item`
+ECONOMY = (ECONOMY_NONE, ECONOMY_FREE, ECONOMY_BONUS, ECONOMY_ACTION,
+           ECONOMY_ATTACK, ECONOMY_REACTION, ECONOMY_VARIES)
+
+# §7's economy: one entry per member whose cost is NOT the Bonus Action. Every other id
+# `_bonus` builds is `bonus`, and this is the only place the exceptions are written
+# down — the way `main.py`'s `_BON_RUN_*` tuples are the only place its rows are.
+#
+# The first group is the one the PANEL already distinguishes: it draws these outside
+# the `not bonus_used` band on purpose, which is what bucket 7d is. The second group is
+# inside that band and pays the Action as well — each has its own `not action_used`
+# guard a few lines from its `Action(...)` — so the band hides an Action-cost feature
+# whenever the Bonus Action is spent. That is the band-gate note in `_bonus`, recorded
+# and preserved; `economy` is what a later item will fix it with.
+_BONUS_ECONOMY = {
+    # ── drawn outside the band (bucket 7d) ──
+    "use_item":              ECONOMY_VARIES,   # per item: potion / flask / Net
+    "extinguish":            ECONOMY_ACTION,
+    "escape_net":            ECONOMY_ACTION,
+    "grapple_drop":          ECONOMY_FREE,
+    "bite_grappled":         ECONOMY_ATTACK,   # or a mid-multiattack slot
+    "haste_action":          ECONOMY_ACTION,   # Haste's extra Action IS the option
+
+    # ── inside the band, and Action-costing with it ──
+    "turn_undead":           ECONOMY_ACTION,
+    "radiance":              ECONOMY_ACTION,
+    "preserve_life":         ECONOMY_ACTION,
+    "divine_intervention":   ECONOMY_ACTION,
+    "bastion_of_law":        ECONOMY_ACTION,
+    "clockwork_cavalcade":   ECONOMY_ACTION,
+    "warping_implosion":     ECONOMY_ACTION,
+    "tireless":              ECONOMY_ACTION,
+    "psychic_veil":          ECONOMY_ACTION,
+    "shadow_arts_darkness":  ECONOMY_ACTION,
+    "elemental_attunement":  ECONOMY_ACTION,
+    "elemental_burst":       ECONOMY_ACTION,
+    "quivering_palm":        ECONOMY_ACTION,
+    "corona":                ECONOMY_ACTION,
+
+    # ── inside the band, and costing nothing: the band is the only thing in their way ──
+    "blink_steps":           ECONOMY_FREE,     # armed by the Attack/Magic action
+    "swap_duplicity":        ECONOMY_FREE,     # Trickster's Transposition
+    "fey_effect":            ECONOMY_FREE,     # picks the rider; spends nothing
+    "misty_escape":          ECONOMY_REACTION,
+}
 
 # The Steps of the Fey riders, in cycle order. `main.py` holds the same list as
 # `App._FEY_EFFECT_NAMES` for the click handler's log line; this is the label's copy.
@@ -145,6 +206,12 @@ class Action:
     ``widgets.Button`` draws one way only — so every action built here is enabled, and
     an unavailable option is simply absent. The first renderer to grow a grey state is
     M4's client, not this panel.
+
+    ``economy`` is what clicking it spends — one of ``ECONOMY`` — and it is the field
+    bucket 7d exists to force. Nothing reads it in M2: the panel's band gate is still
+    the panel's, preserved as it is. It is here because a remote client cannot lay out
+    an action economy it has to infer from which section a button arrived in, and
+    because the band-gate finding needs somewhere to be fixed FROM.
     """
     id: str
     label: str
@@ -152,6 +219,7 @@ class Action:
     enabled: bool = True
     disabled_reason: str = ""
     expects: str = "none"
+    economy: str = ECONOMY_NONE
 
 
 class ActionMenu:
@@ -177,6 +245,7 @@ class ActionMenu:
     # ── §1 — DM tools ──────────────────────────────────────────────────────────
     @staticmethod
     def _session(app) -> list[Action]:
+        # Both are DM tools standing outside the fiction, so neither has an economy.
         return [
             Action("pause_resume",
                    "▶ Resume" if app.combat_paused else "⏸ Pause",
@@ -225,11 +294,16 @@ class ActionMenu:
             # arm 2 — spent. Exactly one thing can still be offered: Nick relocating
             # the off-hand attack into the Attack action that was just taken.
             if app._nick_offhand_idx(agent_idx) >= 0:
-                return [Action("nick", "🗡 Nick: Off-hand Atk", GROUP_ACTION)]
+                # Nick relocates the off-hand swing INTO the Attack action, which is
+                # why it survives `action_used`: it is paid for out of that action's
+                # attacks and not out of the Action again.
+                return [Action("nick", "🗡 Nick: Off-hand Atk", GROUP_ACTION,
+                               economy=ECONOMY_ATTACK)]
             return []
 
         if cond.frightened:
-            return [Action("dash", "Dash", GROUP_ACTION)]   # arm 3 — Dash or nothing
+            return [Action("dash", "Dash", GROUP_ACTION,        # arm 3 — Dash or nothing
+                           economy=ECONOMY_ACTION)]
 
         # arms 4 and 5 — the full band; `prone` chooses between the last two.
         out: list[Action] = []
@@ -242,21 +316,25 @@ class ActionMenu:
             out.append(Action("atk_action",
                               f"⚔ Attack ({app.attacks_remaining})" if mid_sequence
                               else "⚔ Attack",
-                              GROUP_ACTION))
-        out.append(Action("unarmed", "👊 Unarmed", GROUP_ACTION))
+                              GROUP_ACTION, economy=ECONOMY_ACTION))
+        out.append(Action("unarmed", "👊 Unarmed", GROUP_ACTION,
+                          economy=ECONOMY_ACTION))
 
-        out += [Action("dash",      "Dash",      GROUP_ACTION),
-                Action("dodge",     "Dodge",     GROUP_ACTION),
-                Action("disengage", "Disengage", GROUP_ACTION),
-                Action("hide",      "Hide",      GROUP_ACTION)]
+        out += [Action("dash",      "Dash",      GROUP_ACTION, economy=ECONOMY_ACTION),
+                Action("dodge",     "Dodge",     GROUP_ACTION, economy=ECONOMY_ACTION),
+                Action("disengage", "Disengage", GROUP_ACTION, economy=ECONOMY_ACTION),
+                Action("hide",      "Hide",      GROUP_ACTION, economy=ECONOMY_ACTION)]
         # Always exactly one of these two: the fifth column of that row is "change
         # your posture", and `prone` only decides which way it points. Build order is
         # what puts it in that column, so it is appended last of the five.
-        out.append(Action("standup", "Stand Up", GROUP_ACTION) if cond.prone
-                   else Action("prone", "Go Prone", GROUP_ACTION))
+        out.append(Action("standup", "Stand Up", GROUP_ACTION, economy=ECONOMY_ACTION)
+                   if cond.prone
+                   else Action("prone", "Go Prone", GROUP_ACTION,
+                               economy=ECONOMY_ACTION))
 
         if len(app.combat.get_agent_spells(app.bm, agent_idx)) > 0:
-            out.append(Action("spell_action", "✨ Cast Spell", GROUP_ACTION))
+            out.append(Action("spell_action", "✨ Cast Spell", GROUP_ACTION,
+                              economy=ECONOMY_ACTION))
         return out
 
     # ── §6 — Portent dice ──────────────────────────────────────────────────────
@@ -282,9 +360,23 @@ class ActionMenu:
             return []
         if not stats.get_resource("Portent Dice") or len(stats.portent_dice) == 0:
             return []
-        return [Action("use_portent", "Use Portent Die", GROUP_PORTENT)]
+        # A Portent die is spent on somebody else's roll; it costs no economy, which
+        # is the same reason the section survives the incapacitated gate above.
+        return [Action("use_portent", "Use Portent Die", GROUP_PORTENT,
+                       economy=ECONOMY_FREE)]
 
     # ── §7 — the Bonus Action mega-section ─────────────────────────────────────
+    @staticmethod
+    def _priced(out: list[Action]) -> list[Action]:
+        """§7's actions with `economy` filled in from `_BONUS_ECONOMY`.
+
+        Stamped on the way out rather than passed at each of the ninety-odd
+        construction sites, because the rule is "the Bonus Action, unless this table
+        says otherwise" and a rule reads better in one place than in ninety.
+        """
+        return [replace(a, economy=_BONUS_ECONOMY.get(a.id, ECONOMY_BONUS))
+                for a in out]
+
     @staticmethod
     def _bonus(app, agent_idx: int) -> list[Action]:
         """Bucket 7a: §7's flat, independent guards (M2c).
@@ -313,7 +405,8 @@ class ActionMenu:
             # flag, so the band is open for a creature that does not exist. The row it
             # belongs to has no per-creature test at all. Preserved exactly here and
             # RECORDED rather than fixed — checkpoint 99 pins it either way.
-            return [Action("long_jump", "Jump", GROUP_BONUS)] if not app.bonus_used else []
+            return (ActionMenu._priced([Action("long_jump", "Jump", GROUP_BONUS)])
+                    if not app.bonus_used else [])
         cond = app.combat.get_agent_conditions(app.bm, agent_idx)
         if cond.incapacitated or cond.unconscious:
             return []               # the whole section collapses to "[Cannot act]"
@@ -367,7 +460,7 @@ class ActionMenu:
         # `if not _is_incapacitated and not self.bonus_used:`, whatever an individual
         # feature's action cost actually is. Checkpoint 03 is the record of that.
         if app.bonus_used:
-            return out
+            return ActionMenu._priced(out)
 
         cls = stats.character_class
         lvl = stats.char_level
@@ -827,7 +920,7 @@ class ActionMenu:
                               if app._find_familiar_idx(agent_idx) >= 0
                               else "😈 Pact Familiar", GROUP_BONUS))
 
-        return out
+        return ActionMenu._priced(out)
 
     # ── §9 — visibility + drops ────────────────────────────────────────────────
     @staticmethod
@@ -839,7 +932,8 @@ class ActionMenu:
             return out
 
         if agents[agent_idx].conditions.concentrating:
-            out.append(Action("drop_concentration", "Drop Concentration", GROUP_UTILITY))
+            out.append(Action("drop_concentration", "Drop Concentration", GROUP_UTILITY,
+                              economy=ECONOMY_FREE))
 
         # One drop per weapon slot that actually holds a droppable weapon. The engine
         # returns all three slots always, so "empty" is a name test, and a permanently
@@ -850,5 +944,5 @@ class ActionMenu:
                                              ("drop_weapon_rng",  "Drop Rng"))):
             wpn = weapons[slot]
             if wpn.name and wpn.name != "Unnamed" and not wpn.permanently_armed:
-                out.append(Action(aid, label, GROUP_UTILITY))
+                out.append(Action(aid, label, GROUP_UTILITY, economy=ECONOMY_FREE))
         return out

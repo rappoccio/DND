@@ -25,7 +25,8 @@ sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from actions import (ActionMenu, Action, BUILT_GROUPS, GROUP_SESSION, GROUP_TURN,
-                     GROUP_ACTION, GROUP_BONUS, GROUP_PORTENT, GROUP_UTILITY)
+                     GROUP_ACTION, GROUP_BONUS, GROUP_PORTENT, GROUP_UTILITY,
+                     ECONOMY)
 import pygame
 import rpg_battle_map as rpg
 
@@ -628,6 +629,13 @@ def test_use_item_and_extinguish_are_outside_the_band():
         # Extinguish is the one that answers to the Action.
         app.action_used = True
         assert "extinguish" not in _bonus(app, skarn), _bonus(app, skarn)
+
+        # And the same two facts, said as data rather than as three assertions about
+        # which flag hides what. This is the field the docstring above is about.
+        app.action_used = False
+        priced = _by_id(app, skarn)
+        assert priced["use_item"].economy == "varies", priced["use_item"]
+        assert priced["extinguish"].economy == "action", priced["extinguish"]
     finally:
         _set_conditions(app, skarn, burning=False)
         app.combat.set_agent_items(app.bm, skarn, [])
@@ -977,6 +985,8 @@ def test_misty_escape_is_a_reaction_the_band_still_hides():
     cyra = _reclass(app, "Cyra", rpg.CharacterClass.Warlock, 6,
                     warlock_subclass=rpg.WarlockSubclass.Archfey)
     assert "misty_escape" in _bonus(app, cyra)
+    assert _by_id(app, cyra)["misty_escape"].economy == "reaction", \
+        "the menu says what it costs even where the band does not"
     _set_conditions(app, cyra, reaction_used=True)
     assert "misty_escape" not in _bonus(app, cyra), "the Reaction is spent"
     _set_conditions(app, cyra, reaction_used=False)
@@ -1047,6 +1057,11 @@ def test_drop_grapple_and_free_from_net_are_outside_the_band():
     assert "grapple_drop" in got, "Drop Grapple is free"
     assert "escape_net" not in got, "Free from Net costs the Action"
 
+    app.action_used = False
+    priced = _by_id(app, aria)
+    assert priced["grapple_drop"].economy == "free", priced["grapple_drop"]
+    assert priced["escape_net"].economy == "action", priced["escape_net"]
+
     _set_conditions(app, skarn, grappled=False, grappler_idx=-1)
     _set_conditions(app, aria, netted=False)
     print("✅ test_drop_grapple_and_free_from_net_are_outside_the_band passed")
@@ -1074,6 +1089,9 @@ def test_bite_grappled_asks_the_engine_for_the_pairing():
     app.attacks_remaining = 1
     app._attack_sequence_slot = "action"
     assert "bite_grappled" in _bonus(app, aria), "mid-multiattack is the common case"
+
+    assert _by_id(app, aria)["bite_grappled"].economy == "attack", \
+        "the Bite is paid for out of the Attack action, which is why it survives here"
 
     app.attacks_remaining = 0
     app._attack_sequence_slot = ""
@@ -1132,6 +1150,32 @@ def test_telekinetic_is_two_ids_behind_one_widget():
     s.feats = []
     app.combat.set_agent_stats(app.bm, cyra, s)
     print("✅ test_telekinetic_is_two_ids_behind_one_widget passed")
+
+
+def test_every_action_carries_an_economy_from_the_vocabulary():
+    """`economy` is a closed set, and the two groups whose answer is uniform say it.
+
+    §1 and §3 are not turn actions at all — a DM pausing the fight spends nothing —
+    and §4 IS the Action band, where the only exception is Nick, which is paid for out
+    of the Attack action's attacks rather than out of the Action a second time.
+    """
+    app = _app()
+    for who in ("Aria", "Skarn", "Brannor", "Cyra"):
+        idx = _goto(app, who)
+        for a in ActionMenu.build(app, idx):
+            assert a.economy in ECONOMY, f"{a.id} has economy {a.economy!r}"
+            if a.group in (GROUP_SESSION, GROUP_TURN):
+                assert a.economy == "none", (a.id, a.economy)
+            if a.group == GROUP_ACTION:
+                assert a.economy == "action", (a.id, a.economy)
+
+    # The Action group's one exception, in the arm that is the only way to reach it.
+    aria = _goto(app, "Aria")
+    _give_nick_offhand(app, aria)
+    app.action_used = True
+    nick = _by_id(app, aria)["nick"]
+    assert nick.economy == "attack", nick
+    print("✅ test_every_action_carries_an_economy_from_the_vocabulary passed")
 
 
 def test_ids_are_unique():
@@ -1196,6 +1240,7 @@ if __name__ == "__main__":
         test_bite_grappled_asks_the_engine_for_the_pairing()
         test_cunning_action_is_all_three_or_none()
         test_telekinetic_is_two_ids_behind_one_widget()
+        test_every_action_carries_an_economy_from_the_vocabulary()
         test_ids_are_unique()
     finally:
         _restore_cwd_logs(_saved)
