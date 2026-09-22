@@ -447,6 +447,36 @@ def build_output():
     _goto(app, "Skarn")
     out += cap.capture("13 featureless combatant — Skarn")
 
+    # 14-16 cover the three availability branches of Step 0.3 sections 1 and 9 that
+    # checkpoints 01-13 never reach. Added at the head of M2a (before the extraction,
+    # against the old fused code) precisely so the extraction has something to be
+    # proven identical against — an oracle written afterwards proves nothing.
+
+    # 14 — §1: the Pause/Resume LABEL is state, the one piece of that row which is
+    # not a constant. Every checkpoint above captures it unpaused.
+    _goto(app, "Aria")
+    app.combat_paused = True
+    out += cap.capture("14 paused — Aria (§1: pause_resume label from state)")
+    app.combat_paused = False
+
+    # 15 — §9: Drop Concentration exists only while the creature is concentrating,
+    # and it pushes the drop-weapon row down a slot.
+    brannor2 = _goto(app, "Brannor")
+    _set_conditions(app, brannor2, concentrating=True)
+    out += cap.capture("15 concentrating — Brannor (§9: drop_concentration)")
+    _set_conditions(app, brannor2, concentrating=False)
+
+    # 16 — §9: the drop row is an n-up whose button WIDTH depends on how many slots
+    # are droppable. Everyone above has three, so nothing has ever exercised n = 1.
+    # Skarn's two Unarmed slots are made permanent (a monster's natural weapon),
+    # which is the real-world shape of a slot you cannot drop.
+    skarn2 = _goto(app, "Skarn")
+    _ws = app.combat.get_agent_weapons(app.bm, skarn2)
+    _ws[1].permanently_armed = True
+    _ws[2].permanently_armed = True
+    app.combat.set_agent_weapons(app.bm, skarn2, _ws)
+    out += cap.capture("16 one droppable weapon — Skarn (§9: n=1 drop row)")
+
     return "\n".join(out).rstrip() + "\n"
 
 

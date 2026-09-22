@@ -31,6 +31,12 @@ test_scripts = [
     # reason: a layout regression should fail before the rules suites run.
     "test_combat_panel.py",
 
+    # The legal-action model (MULTIPLAYER_PLAN.md M2, seam S3) — the other half of the
+    # panel split: test_combat_panel.py proves the pixels did not move, this proves the
+    # availability rules that produced them, with no screen involved. Kept beside it
+    # because the pair is only meaningful together.
+    "test_action_menu.py",
+
     # Session roster + token ownership (MULTIPLAYER_PLAN.md M0) — principals, the
     # single authorize() chokepoint, and the `controller` round-trip through a save
     # that renumbers the agent list. Kept with the oracles because it guards a

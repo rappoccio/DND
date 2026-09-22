@@ -66,6 +66,10 @@ from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
+# S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
+# option; `net.roster.Action` above is the authorization verb — unrelated, so only
+# ActionMenu is imported here and neither `Action` is in this module's namespace.
+from actions import ActionMenu
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
@@ -702,6 +706,7 @@ class App:
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
         self.on_deck_item_rects   = []    # list[(pygame.Rect, name)], clickable Deploy rows for On Deck groups
+        self._action_menu         = {}    # id -> actions.Action, rebuilt each combat-panel frame (S3/M2)
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
@@ -1233,13 +1238,11 @@ class App:
         TW3 = (W - 8) // 3
         self.btn_cbt_atk_action.rect.update( px,           self.btn_cbt_atk_action.rect.y,  HW2, self._BTN_H)
         self.btn_cbt_unarmed.rect.update(    px+HW2+4,     self.btn_cbt_unarmed.rect.y,     HW2, self._BTN_H)
-        self.btn_cbt_pass_action.rect.update(px,           self.btn_cbt_pass_action.rect.y, W, self._BTN_H)
         self.btn_cbt_dash.rect.update(       px,           self.btn_cbt_dash.rect.y,       TW3, self._BTN_H)
         self.btn_cbt_dodge.rect.update(      px+TW3+4,     self.btn_cbt_dodge.rect.y,      TW3, self._BTN_H)
         self.btn_cbt_disengage.rect.update(  px+2*(TW3+4), self.btn_cbt_disengage.rect.y,  TW3, self._BTN_H)
         self.btn_cbt_atk_bonus.rect.update(   px,           self.btn_cbt_atk_bonus.rect.y,   TW3, self._BTN_H)
         self.btn_cbt_spell_bonus.rect.update( px+TW3+4,    self.btn_cbt_spell_bonus.rect.y,  TW3, self._BTN_H)
-        self.btn_cbt_pass_bonus.rect.update(  px+2*(TW3+4),self.btn_cbt_pass_bonus.rect.y,   TW3, self._BTN_H)
         TW2_shove = (W - 4) // 2
         self.btn_cbt_shove_push.rect.update(  px,           self.btn_cbt_shove_push.rect.y,  TW2_shove, self._BTN_H)
         self.btn_cbt_shove_prone.rect.update( px+TW2_shove+4, self.btn_cbt_shove_prone.rect.y, TW2_shove, self._BTN_H)
@@ -1264,9 +1267,6 @@ class App:
         self.btn_cbt_unarmed     = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "👊 Unarmed",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
-        self.btn_cbt_pass_action = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
-                                          "Pass",
-                                          COL_BTN_PASS, COL_BTN_PASS_HOV, self.font_md)
         self.btn_cbt_dash        = Button(pygame.Rect(px,               dummy_y, HW, B),
                                           "Dash",
                                           COL_BTN_DASH, COL_BTN_DASH_HOV, self.font_md)
@@ -1323,9 +1323,6 @@ class App:
         self.btn_cbt_nick        = Button(pygame.Rect(px,       dummy_y, W, B),
                                           "🗡 Nick: Off-hand Atk",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
-        self.btn_cbt_pass_bonus  = Button(pygame.Rect(px+HW+4,  dummy_y, HW, B),
-                                          "Pass",
-                                          COL_BTN_PASS, COL_BTN_PASS_HOV, self.font_md)
         self.btn_cbt_shove_push  = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "🔨 Shove",
                                           (140, 100, 150), (160, 120, 170), self.font_md)
@@ -1396,9 +1393,6 @@ class App:
         self.btn_cbt_rage = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Rage (Bonus)",
                                           (180, 80, 60), (220, 110, 90), self.font_md)
-        self.btn_cbt_reckless = Button(pygame.Rect(px, dummy_y, W, B),
-                                          "Reckless Attack (Action)",
-                                          (200, 100, 80), (240, 130, 110), self.font_md)
         self.btn_cbt_magical_cunning = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Magical Cunning",
                                           (120, 80, 180), (150, 110, 210), self.font_md)
@@ -16680,6 +16674,52 @@ class App:
             y += 16
         return y
 
+    # ── S3 (M2): rendering the ActionMenu ──────────────────────────────────────
+    # `_draw_combat_panel` builds `self._action_menu` once per frame and these three
+    # turn it into pixels. Layout lives here and legality lives in `actions.py`; the
+    # split is the whole point of the phase, so resist putting a rule back in here.
+
+    def _cbt_btn(self, action_id: str):
+        """The widget backing an action id. Ids match the `btn_cbt_` suffix by design."""
+        return getattr(self, "btn_cbt_" + action_id)
+
+    def _menu_group(self, group: str, only=None, skip=()):
+        """This frame's actions in `group`, in build order. `only`/`skip` split one
+        group across several rows without teaching `actions.py` about rows."""
+        return [a for a in self._action_menu.values()
+                if a.group == group and a.id not in skip
+                and (only is None or a.id in only)]
+
+    def _action_clicked(self, action_id: str, event) -> bool:
+        """True when `event` is a click on an action the panel is actually offering.
+
+        Dispatch is by id and gated on `self._action_menu` — the offer the panel last
+        drew — so for the converted sections the stale-rect guard is no longer what
+        keeps an unoffered option from firing. It still is for every other button,
+        which is why the guard stays until M2e.
+        """
+        act = self._action_menu.get(action_id)
+        return act is not None and act.enabled and self._cbt_btn(action_id).clicked(event)
+
+    def _draw_action_row(self, actions, lx, y, w, gap, trail=None):
+        """Lay `actions` out as one equal-width row and draw them; return the new `y`.
+
+        An empty row consumes no vertical space at all — that is how "the option is
+        not on offer" reaches the layout now, in place of a positioning branch.
+        """
+        if not actions:
+            return y
+        n = len(actions)
+        tw = (w - (n - 1) * gap) // n
+        for j, act in enumerate(actions):
+            btn = self._cbt_btn(act.id)
+            btn.text = act.label
+            btn.rect.x = lx + j * (tw + gap)
+            btn.rect.y = y
+            btn.rect.w = tw
+            btn.draw(self.screen)
+        return y + self._BTN_H + (gap if trail is None else trail)
+
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active."""
         # Stale-rect guard: every combat-action button below is (re)positioned only on the
@@ -16716,6 +16756,12 @@ class App:
         # scrollbar are computed at the bottom, once `y` has flowed to the end.
         self.screen.set_clip(pygame.Rect(px, 0, PANEL_W, sh - 22))
 
+        # S3: the converted sections' offer for this frame, keyed by action id. Built
+        # once here and consumed both below (layout) and by _handle_events (dispatch),
+        # so a click is tested against exactly the offer that was drawn — the same
+        # coupling the stale-rect guard fakes for the sections M2 has not reached yet.
+        self._action_menu = {a.id: a for a in ActionMenu.build(self, self._current_agent_idx())}
+
         y = 10 - self.combat_panel_scroll
 
         # ── Title ──────────────────────────────────────────────────────────
@@ -16724,20 +16770,18 @@ class App:
 
         # ── Pause + End Combat row ─────────────────────────────────────────
         HW = W // 2 - 2
-        pause_label = "▶ Resume" if self.combat_paused else "⏸ Pause"
-        self.btn_cbt_pause_resume.text = pause_label
-        self.btn_cbt_pause_resume.rect.x = lx
-        self.btn_cbt_pause_resume.rect.y = y
-        self.btn_cbt_pause_resume.rect.w = HW
-        self.btn_cbt_pause_resume.font = self.font_sm
-        self.btn_cbt_pause_resume.draw(self.screen)
-        self.btn_cbt_pause_resume.font = self.font_md
-        self.btn_cbt_end_combat.rect.x = lx + HW + 4
-        self.btn_cbt_end_combat.rect.y = y
-        self.btn_cbt_end_combat.rect.w = HW
-        self.btn_cbt_end_combat.font = self.font_sm
-        self.btn_cbt_end_combat.draw(self.screen)
-        self.btn_cbt_end_combat.font = self.font_md
+        for _i, _aid in enumerate(("pause_resume", "end_combat")):
+            _act = self._action_menu.get(_aid)
+            if _act is None:
+                continue
+            _btn = self._cbt_btn(_aid)
+            _btn.text = _act.label
+            _btn.rect.x = lx + _i * (HW + 4)
+            _btn.rect.y = y
+            _btn.rect.w = HW
+            _btn.font = self.font_sm          # this row alone is small-font
+            _btn.draw(self.screen)
+            _btn.font = self.font_md
         y += self._BTN_H + 8
 
         # ── Initiative list ────────────────────────────────────────────────
@@ -16912,11 +16956,8 @@ class App:
         y += section_gap
 
         # ── End Turn (prominent, before action choices) ────────────────────
-        self.btn_cbt_end_turn.rect.x = lx
-        self.btn_cbt_end_turn.rect.y = y
-        self.btn_cbt_end_turn.rect.w = W
-        self.btn_cbt_end_turn.draw(self.screen)
-        y += B + section_gap
+        y = self._draw_action_row(self._menu_group("turn"), lx, y, W, gap,
+                                  trail=section_gap)
 
         # ── Action section ─────────────────────────────────────────────────
         act_lbl = "Action" + (" ✓" if self.action_used else "")
@@ -18477,44 +18518,22 @@ class App:
         self.btn_show_terrain.rect.w = HW
         self.btn_show_terrain.draw(self.screen)
 
-        self.btn_cbt_place_terrain.rect.x = lx + HW + 4
-        self.btn_cbt_place_terrain.rect.y = y
-        self.btn_cbt_place_terrain.rect.w = HW
-        self.btn_cbt_place_terrain.draw(self.screen)
+        _terrain = self._action_menu.get("place_terrain")
+        if _terrain is not None:
+            self.btn_cbt_place_terrain.text = _terrain.label
+            self.btn_cbt_place_terrain.rect.x = lx + HW + 4
+            self.btn_cbt_place_terrain.rect.y = y
+            self.btn_cbt_place_terrain.rect.w = HW
+            self.btn_cbt_place_terrain.draw(self.screen)
         y += B + gap
 
-        # Drop Concentration button (if current agent is concentrating)
-        cur_idx = self._current_agent_idx()
-        is_concentrating = (0 <= cur_idx < len(self.bm.placed_agents) and
-                           self.bm.placed_agents[cur_idx].conditions.concentrating)
-        if is_concentrating:
-            self.btn_cbt_drop_concentration.rect.x = lx
-            self.btn_cbt_drop_concentration.rect.y = y
-            self.btn_cbt_drop_concentration.rect.w = W
-            self.btn_cbt_drop_concentration.draw(self.screen)
-            y += B + gap
-
-        # Drop Weapon buttons — all visible slots on a single row
-        if 0 <= cur_idx < len(agents):
-            cur_weapons = self.combat.get_agent_weapons(self.bm, cur_idx)
-            slot_labels = [("Drop Main", cur_weapons[0], 0),
-                          ("Drop Off",  cur_weapons[1], 1),
-                          ("Drop Rng",  cur_weapons[2], 2)]
-            drop_btns = [self.btn_cbt_drop_weapon_main,
-                        self.btn_cbt_drop_weapon_off,
-                        self.btn_cbt_drop_weapon_rng]
-            visible_drops = [(btn, lbl, wpn) for btn, (lbl, wpn, _) in zip(drop_btns, slot_labels)
-                             if wpn.name and wpn.name != "Unnamed" and not wpn.permanently_armed]
-            if visible_drops:
-                n = len(visible_drops)
-                tw = (W - (n - 1) * gap) // n
-                for j, (btn, lbl, wpn) in enumerate(visible_drops):
-                    btn.text = lbl
-                    btn.rect.x = lx + j * (tw + gap)
-                    btn.rect.y = y
-                    btn.rect.w = tw
-                    btn.draw(self.screen)
-                y += B + gap
+        # Drop Concentration, then every droppable weapon slot on a single row.
+        # Which of these exist is ActionMenu's call now (§9); this only lays them out.
+        y = self._draw_action_row(self._menu_group("utility", only=("drop_concentration",)),
+                                  lx, y, W, gap)
+        y = self._draw_action_row(self._menu_group("utility", skip=("place_terrain",
+                                                                    "drop_concentration")),
+                                  lx, y, W, gap)
 
         y += section_gap
 
@@ -18583,6 +18602,7 @@ class App:
         if self.combat_active:
             self._draw_combat_panel()
             return
+        self._action_menu = {}   # no combat panel drawn ⇒ nothing is on offer
 
         # Setup panel has no Deploy rows; clear any stale combat-panel rects so they
         # can't capture clicks here. Reserves are managed pre-combat via right-click.
@@ -20109,8 +20129,6 @@ class App:
                 if (not self.action_used or _mid_seq_atk) and self.btn_cbt_unarmed.clicked(event):
                     self._show_unarmed_menu(pygame.mouse.get_pos())
                 if not self.action_used:
-                    if self.btn_cbt_pass_action.clicked(event):
-                        self.action_used = True
                     if self.btn_cbt_dash.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20337,16 +20355,6 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_living_legend(idx)
-                    if self.btn_cbt_reckless.clicked(event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            cond = self.combat.get_agent_conditions(self.bm, idx)
-                            cond.reckless_attack = True
-                            self.combat.set_agent_conditions(self.bm, idx, cond)
-                            self.combat.log_event("reckless", idx=idx)  # record for checked replay
-                            agent = self.bm.placed_agents[idx]
-                            self._combat_log_add(f"{agent.name}: Activates Reckless Attack (enemies gain advantage on attacks vs you)")
-                        self.action_used = True
                     if self.btn_cbt_magical_cunning.clicked(event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -20865,8 +20873,6 @@ class App:
                         self._show_companion_menu()
                     if self.btn_cbt_familiar.clicked(event):
                         self._show_familiar_menu()
-                    if self.btn_cbt_pass_bonus.clicked(event):
-                        self.bonus_used = True
                     if self.btn_cbt_charge_arcane_ward.clicked(event):
                         self._show_arcane_ward_menu()
                     if self.btn_cbt_wild_shape.clicked(event):
@@ -20945,7 +20951,7 @@ class App:
                             self.move_type = mv_mt
                             self._update_reach()
                             break
-                if self.btn_cbt_place_terrain.clicked(event):
+                if self._action_clicked("place_terrain", event):
                     self._reset_zoom()   # dialog blits map at (0,0); fit scale first
                     self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
                 if self.btn_show_terrain.clicked(event):
@@ -20954,9 +20960,9 @@ class App:
                     self.show_spell_effects = not self.show_spell_effects
                 if self.btn_show_visible_targets.clicked(event):
                     self._show_visible_targets_popup()
-                if self.btn_cbt_pause_resume.clicked(event):
+                if self._action_clicked("pause_resume", event):
                     self.combat_paused = not self.combat_paused
-                if self.btn_cbt_end_turn.clicked(event):
+                if self._action_clicked("end_turn", event):
                     if self.pending_beguiling:
                         # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
                         # DM resolve (click a creature) or decline (Esc) it first.
@@ -20967,15 +20973,15 @@ class App:
                     elif not self.combat_paused:
                         self._advance_turn()
                         self._flush_combat_log()
-                if self.btn_cbt_end_combat.clicked(event):
+                if self._action_clicked("end_combat", event):
                     self._end_combat()
-                if self.btn_cbt_drop_concentration.clicked(event):
+                if self._action_clicked("drop_concentration", event):
                     self._drop_concentration()
-                if self.btn_cbt_drop_weapon_main.clicked(event):
+                if self._action_clicked("drop_weapon_main", event):
                     self._drop_weapon(0)
-                if self.btn_cbt_drop_weapon_off.clicked(event):
+                if self._action_clicked("drop_weapon_off", event):
                     self._drop_weapon(1)
-                if self.btn_cbt_drop_weapon_rng.clicked(event):
+                if self._action_clicked("drop_weapon_rng", event):
                     self._drop_weapon(2)
                 # Item pickup: click a cell with items
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map \

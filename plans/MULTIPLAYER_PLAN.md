@@ -374,6 +374,21 @@ Pure reading; no source file was changed. All line numbers are `gui/main.py`.
 > evidence for the seam split S2/S3 rather than a coincidence worth relying on. **Re-derive
 > again after M2a** — that one deletes buttons.
 >
+> ### Re-derived again after M2a, 2026-09-21 — the count DID move, as predicted
+>
+> **110 named buttons** (was 113; F2's three are gone), **118 clickable widgets**
+> (unchanged — the three deleted were never drawn, so they were never in that figure),
+> `METAMAGIC_OPTIONS` still 9, `_draw_combat_panel` now **1,875 lines** (was 1,896).
+> Section 10's "never drawn" row is now empty.
+>
+> **The grep no longer finds everything.** Seven names — `pause_resume`, `end_combat`,
+> `end_turn`, `drop_concentration`, and the three `drop_weapon_*` — are positioned
+> through `_cbt_btn(action_id)`, i.e. `getattr(self, "btn_cbt_" + …)`, so
+> `grep -n 'btn_cbt_<name>'` finds their *constructor* and nothing in the draw pass.
+> That is what conversion looks like from the outside, and every later M2 step widens
+> it. **Navigate a converted button by its action id in `gui/actions.py`**; the grep
+> stays correct only for the 103 not yet converted.
+>
 > **The line numbers below are all off by a uniform +142** (the method head moved
 > `16541 → 16683`, the tail `18436 → 18578`; spot-checked at fifteen cited lines, every one
 > landing on what this section says is there). They are *not* rewritten here, because M2a's
@@ -425,8 +440,12 @@ and the shapes — not the class names — are what M2 should batch by:
 **Proposed M2 order** (each step ends with a structurally identical panel on the Step 0.6 scenario
 plus a green determinism run):
 
-- **M2a** — sections 1, 3, 9 (8 buttons, zero branches). Proves the `ActionMenu.build` →
-  panel-renders-from-data path end to end on the cheapest possible surface.
+- **M2a** ☑ (done 2026-09-21) — sections 1, 3, 9 (8 buttons). Proves the
+  `ActionMenu.build` → panel-renders-from-data path end to end on the cheapest possible
+  surface. See [M2a — what was built](#m2a--what-was-built-done-2026-09-21). *("zero
+  branches" was wrong, and usefully so: §9 has three — concentration, the droppable-slot
+  filter, and the n-up row width that follows from it. They are the reason M2a has an
+  oracle diff to talk about at all.)*
 - **M2b** — section 6 (1) + section 4 (10). First real branch structure; small enough to
   eyeball the whole diff.
 - **M2c** — bucket 7a (~60). Long but mechanical; batch ~10 at a time by class.
@@ -442,7 +461,14 @@ Each becomes its own item. None of them blocks Step 0.
 - **F1 — the count.** 114 grep hits = 113 real buttons + the `"btn_cbt_"` prefix literal.
   110 drawn, 3 dead, and one of the 110 is a 9-entry dict. Update "114" wherever this document
   says it.
-- **F2 — three dead buttons.** `btn_cbt_pass_action` (built `1242`, handled `19917`),
+- **F2 — three dead buttons. CLOSED by M2a, 2026-09-21.** All three deleted
+  (constructor, `_reposition_panel` line where present, and click handler); the panel
+  oracle's only diff was the same three names leaving the undrawn roster at all 14
+  checkpoints, which is the proof they were dead. Reckless Attack itself is untouched —
+  it is reached from the attack menu (`_activate_reckless_and_attack`) and from the
+  post-hoc `_offer_reckless_reroll`, and the deleted handler was a second, unreachable
+  emitter of the same `log_event("reckless")`. Original finding:
+  `btn_cbt_pass_action` (built `1242`, handled `19917`),
   `btn_cbt_pass_bonus` (`1301` / `20671`), `btn_cbt_reckless` (`1374` / `20145`) are
   constructed and have live `clicked()` handlers, but are never positioned during the draw
   pass — so the stale-rect guard parks them at `x = -10000` on every frame and they are
@@ -1462,7 +1488,7 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 | ----- | ----- | ---- | ---- | ---------- |
 | **M0** ☑ | Token ownership model | very low | 1–2 days | who controls what |
 | **M1** ◐ | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
-| **M2** | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
+| **M2** ◐ | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
 | **M3** | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
 | **M4** | Transport + spectator web client | medium | 1–2 weeks | **players watch on their own screens** |
 | **M5** | Intent submission | medium | 1–2 weeks | **actual multiplayer** |
@@ -2078,6 +2104,76 @@ the GUI, so each group needs a manual smoke pass too.
 `ActionMenu` can read them from Python today; moving them later changes neither the model
 nor the wire format. **Do not bundle it in** — that is exactly the mistake
 `COMBAT_REFACTOR_PLAN.md`'s scope rule exists to prevent.
+
+---
+
+### M2a — what was built (done 2026-09-21)
+
+`gui/actions.py` (new, 139 lines) + `tests/test_action_menu.py` (new, 12 checks) +
+three new checkpoints in `tests/test_combat_panel.py`. `gui/main.py` is **net −21
+lines**. Suite: **149 passed, 1 failed** — the failure is the pre-existing
+`test_monk.py`, failing identically before this work (148/1 plus the new suite).
+
+#### What moved
+
+| Step 0.3 § | Buttons | What is now data |
+| ---------- | ------- | ---------------- |
+| 1 | `pause_resume`, `end_combat` | the Pause/Resume **label** (the row's only state) |
+| 3 | `end_turn` | nothing — unconditional, and deliberately still so (below) |
+| 9 | `place_terrain`, `drop_concentration`, 3 × `drop_weapon_*` | the concentration guard, the droppable-slot filter, and therefore the n-up row's width |
+
+`ActionMenu.build(app, agent_idx) -> list[Action]` is pure, imports no pygame, and holds
+no state. The panel calls it once per frame into `self._action_menu` and three new
+helpers turn the result into pixels: `_cbt_btn` (id → widget), `_menu_group` (this
+frame's actions in a group), `_draw_action_row` (one equal-width row; an empty row
+consumes no vertical space, which is how "not on offer" now reaches the layout in place
+of a positioning branch). `_handle_events` dispatches the eight through
+`_action_clicked(id, event)`, which consults the menu the panel actually drew.
+
+#### The three decisions worth carrying into M2b
+
+- **D-M2-1 — `enabled` is built but never false.** `widgets.Button` draws exactly one
+  way; there is no grey state to render a disabled option into. So an unavailable
+  option is *absent*, and `enabled`/`disabled_reason` ride along unused until M4's
+  client — the first renderer that can show them. Setting one false today would change
+  what the panel draws, which the phase forbids.
+- **D-M2-2 — End Turn stays unconditional, including while paused.** The paused refusal
+  (and the armed-Beguiling refusal) live in the click handler. They *look* like
+  availability and are not: moving them would make the button vanish mid-combat.
+  `test_end_turn_is_offered_even_while_paused` pins this down so a later step does not
+  "tidy" it.
+- **D-M2-3 — the stale-rect guard stays.** It still protects the 103 unconverted
+  buttons. For the converted eight it is now redundant, and `_action_clicked` is what
+  actually holds; the guard can only be deleted in M2e, when the last button leaves.
+  Step 0.3's **F4** (the `btn_cbt_metamagic` dict escapes the guard entirely) is
+  therefore still open and is M2e's to close.
+
+#### How "structurally identical" was actually proven
+
+The 14 existing checkpoints never reached three of the branches M2a moved: the
+`▶ Resume` label, `drop_concentration`, and a drop row with fewer than three slots
+(every combatant in the scene has three, so the n-up width arithmetic was untested).
+An oracle written *after* an extraction proves nothing about it, so the three
+checkpoints were added **first**, the golden regenerated against the old fused code,
+and only then was the extraction restored: **17 checkpoints, byte-identical.**
+
+`tests/test_action_menu.py` is the other half — the availability rules with no screen
+in the room, which is the payoff the phase was for. Three of its checks drive real
+`MOUSEBUTTONDOWN` events through `_handle_events` (M1's `tests/gui_driver.py`), and one
+of those, `test_a_click_on_an_unoffered_action_does_nothing`, is the regression M2a
+exists to make impossible: a widget parked at a live-looking location whose action is
+not on offer must do nothing. **It was vacuous on the first attempt** — the stale rect
+was planted on top of End Turn, so the click also advanced the turn and
+`_drop_concentration` then acted on a different creature, and the check passed with the
+gate removed. It now plants the rect on a probe-verified free strip and is confirmed to
+fail against the pre-M2a call site. Worth repeating for every later step: *check that a
+negative test fails when you break the thing it guards.*
+
+#### Still manual
+
+None of the above looks at the panel. A **manual VNC smoke pass** (`./run.sh <map>`,
+then `localhost:6080/vnc.html`) is still owed for these eight buttons, and for every
+later M2 group — the suite can prove the rects and the dispatch, not the appearance.
 
 ---
 
