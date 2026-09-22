@@ -9869,12 +9869,11 @@ text | Initiative  | Initiative Order
 btn  | Initiative  | btn_cbt_end_turn | End Turn | 1052,116,316,30 | yes
 text | Action      | Action
 text | BonusAction | Bonus Action
-btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,228,316,30 | yes
 text | Movement    | Movement
-btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,328,156,30 | yes
-btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,328,156,30 | yes
-btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,362,156,30 | yes
-btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,362,156,30 | yes
+btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,290,156,30 | yes
+btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,290,156,30 | yes
+btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,324,156,30 | yes
+btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,324,156,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_action | - | - | no
@@ -9929,6 +9928,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
+btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -9990,4 +9990,4 @@ btn  | -           | btn_cbt_wild_magic_extra_action | - | - | no
 btn  | -           | btn_cbt_wild_magic_teleport | - | - | no
 btn  | -           | btn_cbt_wild_shape | - | - | no
 btn  | -           | btn_cbt_zealous_presence | - | - | no
-meta | bottom=392 max_scroll=0
+meta | bottom=354 max_scroll=0

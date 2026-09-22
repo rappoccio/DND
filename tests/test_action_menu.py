@@ -158,22 +158,21 @@ def test_drop_weapon_offers_one_action_per_droppable_slot():
 
 def test_out_of_range_agent_yields_only_the_creature_free_groups():
     """Between turns, or with combat over, `_current_agent_idx()` is out of range. The
-    session group and Place Terrain survive; nothing that reads a creature does —
+    session group and Place Terrain survive; nothing that reads a creature does.
 
-    except Jump, which is **F13** and is preserved, not fixed. Out of range
-    `_is_incapacitated` is False and `bonus_used` falls back to a plain flag, so the
-    band is open; the Jump/Shove row's only per-creature test is the adjacency scan,
-    which decides the row's WIDTH and not whether it exists. The panel has always
-    drawn a Jump button for a creature that is not there (checkpoint 99 records it),
-    and M2d moved that rule without changing it. F7 was the same shape in §4, and M2b
-    did change that one — deliberately, and as a recorded behaviour change."""
+    Jump was the exception — **F13**, fixed in M2e. The Jump/Shove row's only
+    per-creature test is the adjacency scan, which decides the row's WIDTH and not
+    whether it exists, so out of range the band stood open over a Jump button for a
+    creature that was not there. §4 had the same shape (F7) and M2b changed it; this is
+    the same answer one section down, and the band flag no longer decides anything
+    here."""
     app = _app()
     for idx in (-1, len(app.bm.placed_agents), 10_000):
-        ids = _ids(app, idx)
-        assert ids == ["pause_resume", "end_combat", "end_turn",
-                       "long_jump", "place_terrain"], (idx, ids)
-        app.bonus_used = True                 # the band is Jump's only guard here
-        assert "long_jump" not in _ids(app, idx), idx
+        for spent in (False, True):
+            app.bonus_used = spent
+            ids = _ids(app, idx)
+            assert ids == ["pause_resume", "end_combat", "end_turn",
+                           "place_terrain"], (idx, spent, ids)
         app.bonus_used = False
     print("✅ test_out_of_range_agent_yields_only_the_creature_free_groups passed")
 

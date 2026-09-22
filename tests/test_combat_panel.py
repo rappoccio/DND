@@ -1039,13 +1039,14 @@ def build_output():
     app.armed_seeking = False
 
     # 99 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
-    # combat started with no combatants, or the acting token was removed). This is the
-    # one place M2b deliberately CHANGED what the panel draws, so it is recorded here
-    # rather than only asserted about: the fused code drew Unarmed and the whole
-    # five-up posture row for a creature that does not exist — it reached them through
-    # a branch whose only per-creature guard was `_cur_has_weapons`, which is False out
-    # of range while the row itself was unguarded. `ActionMenu._action` returns nothing
-    # for an index it cannot read, so §4 is now empty here. See the plan's F7.
+    # combat started with no combatants, or the acting token was removed). Twice now
+    # this block has recorded a behaviour change rather than only asserting about one.
+    # M2b (F7): the fused code drew Unarmed and the whole five-up posture row for a
+    # creature that does not exist, through a branch whose only per-creature guard was
+    # `_cur_has_weapons` — False out of range — while the row itself was unguarded.
+    # M2e (F13): §7 did the same thing with the Jump/Shove row, whose only per-creature
+    # test is the adjacency scan and decides the row's width, not its existence. Both
+    # sections return nothing for an index they cannot read.
     # Last, because it leaves the app with no initiative order.
     _goto(app, "Aria")
     app.initiative_order = []

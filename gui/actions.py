@@ -490,14 +490,14 @@ class ActionMenu:
         """
         agents = app.bm.placed_agents
         if not (0 <= agent_idx < len(agents)):
-            # F13 — F7's shape, one section down. With NOBODY on turn the panel still
-            # draws the Jump button: its only guard is the band, and out of range
-            # `_is_incapacitated` is False while `bonus_used` falls back to a plain
-            # flag, so the band is open for a creature that does not exist. The row it
-            # belongs to has no per-creature test at all. Preserved exactly here and
-            # RECORDED rather than fixed — checkpoint 99 pins it either way.
-            return (ActionMenu._priced([Action("long_jump", "Jump", GROUP_BONUS)])
-                    if not app.bonus_used else [])
+            # F13, fixed — F7's shape, one section down, and the same answer M2b gave
+            # it. With NOBODY on turn the panel drew a Jump button for a creature that
+            # does not exist: out of range `_is_incapacitated` is False and `bonus_used`
+            # falls back to a plain flag, so the band stood open, and the Jump/Shove
+            # row's only per-creature test is the adjacency scan, which decides the
+            # row's WIDTH and not whether it exists. A section that cannot read a
+            # creature offers nothing. Checkpoint 99 is the record of both states.
+            return []
         cond = app.combat.get_agent_conditions(app.bm, agent_idx)
         if cond.incapacitated or cond.unconscious:
             return []               # the whole section collapses to "[Cannot act]"
