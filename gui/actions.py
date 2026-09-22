@@ -1,11 +1,12 @@
 """The legal-action model: what this creature may do, as data.
 
-Seam **S3** of ``plans/MULTIPLAYER_PLAN.md`` (phase M2). Today ``_draw_combat_panel``
-fuses legality and layout — a button is legal exactly when the branch that positions it
-runs — and it needs a stale-rect hack (every ``btn_cbt_*`` parked at ``x = -10000`` each
+Seam **S3** of ``plans/MULTIPLAYER_PLAN.md`` (phase M2). ``_draw_combat_panel`` used to
+fuse legality and layout — a button was legal exactly when the branch that positioned it
+ran — and it needed a stale-rect hack (every ``btn_cbt_*`` parked at ``x = -10000`` each
 frame) to stop an undrawn button from capturing a click. ``ActionMenu.build`` is the
 other half of that split: it answers *what is offered* with no pygame in the room, and
-the panel is left holding only *where it goes*.
+the panel is left holding only *where it goes*. The hack went with the last conversion
+(M2e): a click is tested against the offer, so a stale rect has nothing to fire.
 
 Two consequences, in the order they pay off:
 
@@ -14,11 +15,11 @@ Two consequences, in the order they pay off:
   · M3's ``GameView`` can put a remote player's legal options on the wire without
     re-deriving them from a widget tree, which is the whole reason this seam exists.
 
-**Scope, stated so a later phase does not have to guess.** This module is built group
-by group, following the panel's existing visual sections (the M2a–M2e work order in the
-plan). Only the groups listed in ``BUILT_GROUPS`` are here; every other ``btn_cbt_*``
-is still drawn by the old fused code and is still protected by the stale-rect guard.
-A caller must therefore treat a missing id as "not yet converted", never as "illegal".
+**Scope.** This module was built group by group, following the panel's existing visual
+sections (the M2a–M2e work order in the plan). ``BUILT_GROUPS`` names them, and since
+M2e it names every section that has a ``btn_cbt_*`` in it: an id this module does not
+build is one the panel does not offer, full stop. That is a stronger statement than
+M2a–M2d could make, and it is what let the stale-rect guard go.
 
 **What this module deliberately does not do.** It does not import pygame, it holds no
 state, and it never mutates ``app``. ``build`` is a pure read of the app + engine at the
@@ -53,11 +54,9 @@ GROUP_UTILITY = "utility"    # §9  visibility + drops
 BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_ACTION, GROUP_PORTENT, GROUP_BONUS,
                 GROUP_UTILITY)
 
-# `GROUP_BONUS` is in that tuple from M2c on, but §7 is the one group that is only
-# PARTLY converted until M2e: M2c takes bucket 7a, M2d the clusters and the spatial
-# predicates, M2e the economy-band headers and the metamagic dict. Until then the
-# rule at the top holds with extra force for this group — a missing id means "still
-# fused", never "illegal".
+# §7 took three phases to fill: M2c bucket 7a, M2d the clusters and the spatial
+# predicates, M2e the economy-band headers, Haste's action and the Metamagic toggles.
+# It is the last group to have been partly converted, and it is complete.
 
 # Step 0.5's `expects` vocabulary, repeated rather than imported: `prompts.py` owns the
 # wire and must not grow a dependency on the panel model. Keep the two in step.

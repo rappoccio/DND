@@ -1281,23 +1281,11 @@ class App:
         self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, W, B)
         self.btn_set_grid.rect.update(px, set_grid_y + off, W, B)
         self.btn_quit.rect.update(px, quit_y + off, W, B)
-        # Update combat panel button x-positions (y is fixed by _draw_combat_panel)
-        HW2 = W // 2 - 2
-        TW3 = (W - 8) // 3
-        self.btn_cbt_atk_action.rect.update( px,           self.btn_cbt_atk_action.rect.y,  HW2, self._BTN_H)
-        self.btn_cbt_unarmed.rect.update(    px+HW2+4,     self.btn_cbt_unarmed.rect.y,     HW2, self._BTN_H)
-        self.btn_cbt_dash.rect.update(       px,           self.btn_cbt_dash.rect.y,       TW3, self._BTN_H)
-        self.btn_cbt_dodge.rect.update(      px+TW3+4,     self.btn_cbt_dodge.rect.y,      TW3, self._BTN_H)
-        self.btn_cbt_disengage.rect.update(  px+2*(TW3+4), self.btn_cbt_disengage.rect.y,  TW3, self._BTN_H)
-        self.btn_cbt_atk_bonus.rect.update(   px,           self.btn_cbt_atk_bonus.rect.y,   TW3, self._BTN_H)
-        self.btn_cbt_spell_bonus.rect.update( px+TW3+4,    self.btn_cbt_spell_bonus.rect.y,  TW3, self._BTN_H)
-        TW2_shove = (W - 4) // 2
-        self.btn_cbt_shove_push.rect.update(  px,           self.btn_cbt_shove_push.rect.y,  TW2_shove, self._BTN_H)
-        self.btn_cbt_shove_prone.rect.update( px+TW2_shove+4, self.btn_cbt_shove_prone.rect.y, TW2_shove, self._BTN_H)
-        self.btn_cbt_grapple_esc.rect.update( px+TW2_shove+4, self.btn_cbt_grapple_esc.rect.y, TW2_shove, self._BTN_H)
-        self.btn_cbt_spell_action.rect.update(px,          self.btn_cbt_spell_action.rect.y,  W,  self._BTN_H)
-        self.btn_cbt_end_turn.rect.update(    px,          self.btn_cbt_end_turn.rect.y,       W,  self._BTN_H)
-        self.btn_cbt_end_combat.rect.update(  px,          self.btn_cbt_end_combat.rect.y,     W,  self._BTN_H)
+        # Thirteen combat-panel buttons used to have their x refreshed here on a resize,
+        # with a hand-copy of the three row widths `_draw_combat_panel` computes. Deleted
+        # in M2e: every one of them is laid out from the menu on the frame it is drawn,
+        # so the copy could only ever agree or be wrong, and a rect that is never read
+        # between resize and repaint does not need keeping up to date.
 
     def _init_combat_panel(self):
         """Create the buttons shown exclusively in the combat panel."""
@@ -16802,16 +16790,21 @@ class App:
         return y
 
     def _draw_combat_panel(self):
-        """Draw the right panel while combat is active."""
-        # Stale-rect guard: every combat-action button below is (re)positioned only on the
-        # frame it is actually drawn. Park them all off-screen first so a button that is NOT
-        # drawn this frame can't capture clicks at a stale location — e.g. one agent's
-        # grapple/dash button overlapping a Bard's Grant Inspiration button. (All btn_cbt_*
-        # buttons are drawn exclusively within this method, so this is safe.)
-        for _bname, _btn in vars(self).items():
-            if _bname.startswith("btn_cbt_") and isinstance(_btn, Button):
-                _btn.rect.x = -10000
+        """Draw the right panel while combat is active.
 
+        The stale-rect guard is gone (M2e). Every `btn_cbt_*` used to be parked at
+        `x = -10000` at the top of this method, because a button was legal exactly when
+        the branch that positioned it ran — so a button that stopped being offered kept
+        its last rect and would capture the click meant for whatever now sits there.
+        The guard had a hole of its own (Step 0.3's F4: it iterated `vars(self)` and
+        filtered on `isinstance(_btn, Button)`, so the nine Metamagic toggles, which
+        were a dict, escaped it entirely).
+
+        What replaces it is not a better guard but the absence of the problem: every
+        one of these buttons is dispatched by `_action_clicked`, which tests the click
+        against `self._action_menu` — the offer this method last drew. A stale rect can
+        still exist; nothing can fire through it.
+        """
         sw, sh = self.screen.get_size()
         px = self._panel_x()
         lx = px + self._PANEL_PAD
@@ -17454,13 +17447,13 @@ class App:
         self.btn_show_terrain.rect.w = HW
         self.btn_show_terrain.draw(self.screen)
 
-        _terrain = self._action_menu.get("place_terrain")
-        if _terrain is not None:
-            self.btn_cbt_place_terrain.text = _terrain.label
-            self.btn_cbt_place_terrain.rect.x = lx + HW + 4
-            self.btn_cbt_place_terrain.rect.y = y
-            self.btn_cbt_place_terrain.rect.w = HW
-            self.btn_cbt_place_terrain.draw(self.screen)
+        # Place Terrain shares this row with the Show/Hide toggle beside it, which is
+        # not a `btn_cbt_*` and is not the menu's — so the row is half laid out here and
+        # half by `_draw_action_row`, at the right column's own origin and width. Its
+        # own `y` advance is discarded: the toggle owns the row's height, and it is
+        # there whether or not Place Terrain is.
+        self._draw_action_row(self._menu_group("utility", only=("place_terrain",)),
+                              lx + HW + 4, y, HW, gap)
         y += B + gap
 
         # Drop Concentration, then every droppable weapon slot on a single row.

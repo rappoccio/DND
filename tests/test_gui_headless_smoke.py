@@ -101,9 +101,10 @@ def _frame(app):
     """Draw one combat panel and return every `btn_cbt_*` that really rendered.
 
     `Button.draw` is hooked rather than the rects being read afterwards, for the same
-    reason `test_combat_panel.py` hooks it: the stale-rect guard parks undrawn buttons
-    off-screen, so "has a rect" and "was drawn" are different questions, and F4 found a
-    hole even in the parking.
+    reason `test_combat_panel.py` hooks it: "has a rect" and "was drawn" are different
+    questions. They were different because the stale-rect guard parked undrawn buttons
+    off-screen and F4 found a hole even in the parking; since M2e retired the guard they
+    are different because an undrawn button simply keeps whatever rect it last had.
     """
     names = {}
     for attr, val in vars(app).items():
@@ -328,7 +329,7 @@ def test_no_two_drawn_buttons_overlap():
     """Two widgets sharing pixels means one is unclickable wherever they meet.
 
     The golden records each rect on its own line and so is blind to the relationship
-    between them; the stale-rect guard only parks the buttons that are NOT drawn.
+    between them; a button that was drawn holds the rect this frame gave it.
     """
     app = _app()
     bad = []
