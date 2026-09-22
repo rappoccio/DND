@@ -30,12 +30,13 @@ riskiest phase (M2) edits a 1,896-line method with no automated coverage at all.
 | 0.4 | **Write the identity schema on paper.** *(Done 2026-09-21 — see [Step 0.4 — the identity schema](#step-04--the-identity-schema-frozen-2026-09-21).)* The principal record, the session-file shape, and the exact `authorize(principal, action, target)` signature — including the fields that only a future real-auth phase will populate. | A schema block in the Identity section below | ☑ |
 | 0.5 | **Write the wire-format spec.** *(Done 2026-09-21 — see [Step 0.5 — the wire-format spec](#step-05--the-wire-format-spec-done-2026-09-21).)* `GameView`, the event envelope, the prompt envelope and the auth envelope, each with a `protocol_version`. No client code before this exists. | A schema block in this file | ☑ |
 | 0.6 | **Build the GUI regression oracle.** The M2-analog of R0's determinism harness: a scripted scenario plus a captured baseline of the combat panel, so panel extraction can be proven **structurally identical**. *(Amended 2026-09-21, user-agreed: was "pixel-identical". `SysFont("sans", …)` (`main.py:468`) resolves through the platform font stack and the Dockerfile installs no font packages, so a pixel golden is valid in exactly one environment. Panel rects come from fixed `W`/`HW`/`TW3`/`TW5` arithmetic, never text metrics, so geometry IS cross-machine deterministic — see [Step 0.6 — the oracle's shape](#step-06--the-oracles-shape-decided-2026-09-21).)* *(Built 2026-09-21 — see [Step 0.6 — what was built](#step-06--what-was-built-done-2026-09-21).)* `tests/run_all_tests.py` did not cover the GUI at all before this — that was the gap that made M2 dangerous. | A new registered suite, green | ☑ |
-| 0.7 | **Timeboxed throwaway spike.** *(Confirmed 2026-09-21: goes ahead. Step 0.2 already documented the callback shape and the six blocking modals, but the net-thread → frame-tick handoff under a real socket is the assumption every phase from M4 on rests on, and paper cannot answer it.)* On a scratch branch: wire *one* prompt (the reaction window) to a static page end to end, to validate the threading model and the blocking-modal fix. **Deleted, never merged** — its only output is findings. | Findings recorded here; branch deleted | ☐ |
+| 0.7 | **Timeboxed throwaway spike.** *(Confirmed 2026-09-21: goes ahead. Step 0.2 already documented the callback shape and the six blocking modals, but the net-thread → frame-tick handoff under a real socket is the assumption every phase from M4 on rests on, and paper cannot answer it.)* On a scratch branch: wire *one* prompt (the reaction window) to a static page end to end, to validate the threading model and the blocking-modal fix. **Deleted, never merged** — its only output is findings. *(Done 2026-09-21 — see [Step 0.7 — the spike's findings](#step-07--the-spikes-findings-done-2026-09-21). 22 checks green; branch deleted. F1's one ask — a `"timeout"` member for the `submit` error set — was agreed and amended into Step 0.5 the same day.)* | Findings recorded here; branch deleted | ☑ |
 | 0.8 | **Decide deployment and dependencies.** *(Done 2026-09-21 — see [Step 0.8 — deployment and dependencies](#step-08--deployment-and-dependencies-decided-2026-09-21).)* Stdlib vs `aiohttp`; which port; LAN binding; how the future public path terminates TLS. User signs off. | A decision block in this file | ☑ |
-| 0.9 | **Review this whole document with the user.** Only then does M0 begin. | User's go-ahead, dated | ☐ |
+| 0.9 | **Review this whole document with the user.** Only then does M0 begin. *(Step 0.7's F1 is already settled — `"timeout"` was added to Step 0.5 by agreement on 2026-09-21.)* | User's go-ahead, dated | ☐ |
 
 Steps 0.2–0.5 are pure reading and writing — no source file changes. 0.6 adds tests only.
-0.7 is the only one that writes code, and that code is thrown away.
+0.7 was the only one that wrote code, and that code was thrown away (branch deleted 2026-09-21).
+**Only 0.9 remains.**
 
 **Standing rules once Step 0 is agreed** (these also do not change without agreement):
 
@@ -632,7 +633,19 @@ The S2 `PromptBus` on the wire. One live prompt per viewer at a time.
 
 `submit` `error` is a closed set: `"not_live"` (answered already, or the DM took over — NN4's
 first-valid-submission-wins), `"denied"` (`authorize()` said no), `"bad_option"` (unknown or
-`enabled: false`), `"protocol"`.
+`enabled: false`), `"protocol"`, `"timeout"`.
+
+> **Amended 2026-09-21, user-agreed: `"timeout"` added** (the set was four members).
+> **Reason:** Step 0.7's F1 proved the ack is not decidable on the net thread — liveness is
+> game state — so the handler parks on a future the frame tick resolves, and needs a
+> server-side deadline for the case where the frame loop never comes back.
+
+`"timeout"` is the only member the **server** raises without the game thread having ruled:
+it means the submit was queued and never drained. It is therefore the one error whose
+outcome is genuinely unknown to the client — the prompt may still be live. A client that
+receives it re-reads `/state` (or waits for the next `live` frame) rather than assuming
+either result, and **never auto-resubmits**: NN4's first-valid-submission-wins makes a
+blind retry a second valid submission.
 
 **`disabled_reason` is a rules string, never an authorization one** — Step 0.4 is explicit
 that denial reasons belong to the audit log. A prompt the viewer is not entitled to answer is
@@ -818,6 +831,121 @@ The `App`-headless harness is the reusable part, and it turned out to cost far l
 this section feared: the constructor needed **no** changes, and the whole suite runs in
 well under a second. Any future GUI test now starts from `App(map, seed=…)` and a
 `PanelCapture`.
+
+---
+
+## Step 0.7 — the spike's findings (done 2026-09-21)
+
+**The branch is gone.** `spike/0.7-reaction-window` was built, run, recorded here, and
+deleted. Nothing below survives as code; the numbers are what it cost to learn.
+
+### What was actually wired
+
+`gui/net/spike.py` (an `aiohttp` `AppRunner` on its own thread, `GET /` · `GET /state` ·
+`POST /submit` · `WS /live`), a 30-line static page, and **five** touch points in
+`main.py`: a lazy import in `__init__`, `_pump_net()` at the top of `run()`'s loop, a
+publish after the one `context_menu.show` in `_show_pending_reaction_menu`, a clear at
+the top of `_submit_reaction`, and `_pump_net()` inside `_modal_message`'s `while True:`.
+
+The driver stands `App` up headlessly (Step 0.6's scaffolding, reused), parks the C++
+engine on a **real** `LeftReach` OA window via `begin_move`, and answers it from another
+thread over a **real** socket with a stdlib HTTP client — deliberately not `aiohttp`'s,
+so the exercised path is the browser's. 22 checks, all green.
+
+### F1 — the ack cannot be produced by the net thread *(the finding)*
+
+`submit_ack{ok}` is a function of **liveness**, and liveness is game state. NN1 forbids
+the HTTP handler from reading it. So the handler cannot answer its own request: it must
+park on an `asyncio.Future` that the frame tick resolves through
+`loop.call_soon_threadsafe`. Measured: with the game thread not ticking, the POST sat
+**0.76 s** in flight and returned on the first `_pump_net()`.
+
+This is not a detail of the spike — it is the shape of every `submit` in M5. Two
+consequences the plan does not currently carry:
+
+1. **The handler needs a server-side timeout.** The spike used 5 s → `{"ok": false,
+   "error": "timeout"}`. **Step 0.5 declares `submit` `error` a closed set of four**
+   (`not_live`, `denied`, `bad_option`, `protocol`) and had no member for "the game
+   thread never came back." **Resolved 2026-09-21: the user agreed a fifth member,
+   `"timeout"`**, and Step 0.5 carries the dated amendment.
+2. A wedged frame loop is now visible to clients as a hung POST rather than a silent
+   stall. That is strictly better than the alternative and worth keeping.
+
+### F2 — the frame tick is the only scheduler that matters
+
+Submit latency is exactly "time to the next `_pump_net()`" — ≤16 ms at 60 fps, and
+**unbounded whenever `run()` is not looping**. E2 confirmed the queue genuinely does not
+drain otherwise; the 0.75 s stall was the mechanism, not an artifact of the test.
+
+### F3 — the blocking-modal fix works, and it is one line — but it changes what a modal *is*
+
+A submit posted while `_modal_message` owned the event loop was drained, acked `ok`, and
+resumed the parked engine flow **from inside the modal**. The plan's named M4 task is
+confirmed and holds no surprises.
+
+What the spike also shows, and the plan does not yet say: pumping inside a modal means
+**a DM authoring modal is no longer a quiescent point**. Game state can now advance while
+*Generate Dungeon* is open. For reactions that is exactly what you want, but
+`_submit_reaction` drags `_flush_combat_log` / `_update_attack_overlay` /
+`_sync_spell_effect_cache` along with it, and those ran here only headlessly, while the
+modal owned the screen. **M4 should pump the command queue and nothing that redraws** —
+and this is worth one deliberate look on a real display before M4 calls it done.
+
+### F4 — the `Prompt` the bus holds is not the object on the wire
+
+The prompt carries Python callables — that is how `ContextMenu` works, and the spike
+reuses **the same callbacks the local click would have fired** (that is what makes the
+remote path a second renderer rather than a parallel implementation). The published dict
+therefore has to be a projection with `callbacks` stripped. One line here; a load-bearing
+distinction for S1/S2, because it means `Prompt` and its wire form are two types, not one
+object serialized.
+
+### F5 — WS push has exactly one legal direction
+
+The game thread cannot touch a `WebSocketResponse` (different loop): `publish()` may only
+*schedule* — `call_soon_threadsafe` → `ensure_future` → send on the net loop. Verified no
+broadcast ran on the game thread. **Late-joiner resync fell out for free**: the `/live`
+handler sends the current snapshot on `prepare`, so a client connecting mid-prompt gets
+the live prompt, not an empty view. M6's resync story for prompts is cheap.
+
+### F6 — `web.run_app` is not usable; `AppRunner` + `TCPSite` + `run_forever` is
+
+Tested, not assumed. `web.run_app` off the main thread dies with
+`RuntimeError: set_wakeup_fd only works in main thread of the main interpreter` — it
+installs signal handlers. M4 must use the runner form. One afternoon saved.
+
+### F7 — D1's soft dependency behaves as specified
+
+With `aiohttp` absent, `App` boots normally, logs `[net] player server unavailable: No
+module named 'aiohttp'` **once**, leaves `self._net = None`, and `_pump_net()` is a no-op.
+`python gui/main.py map.png` is untouched on a machine without the dependency.
+
+### F8 — the seam is inert against the existing suite
+
+`./test.sh` on the patched tree: **146 passed / 1 failed**, the failure being the known
+pre-existing `test_monk.py`. Identical to the baseline Step 0.6 left. The five touch
+points cost nothing.
+
+### What the spike did NOT answer
+
+Stated so M1 does not mistake this for coverage:
+
+- **`parent_id` and the prompt stack are untested.** G1 is flat — one window, one list of
+  options, no submenu. Step 0.2's fact 2 (nested menus destroy their parent) remains a
+  paper decision.
+- **No `authorize()`, no principal, no join code.** Every submit was anonymous; the spike
+  proves the *transport* of a decision, not the right to make it.
+- **One prompt, one client, one reactor.** No two-player race over the same prompt (E3
+  raced a *local* click against a remote submit, which is NN4's case but not the only one),
+  no `deadline_ms` expiry, no reconnect mid-prompt.
+- **Headless only.** Nothing was ever drawn on a real display.
+
+### Settled against Step 0.5 *(user-agreed 2026-09-21)*
+
+F1's one ask — a fifth `submit` error member — was put to the user and **agreed**:
+`"timeout"` joins the closed set, and Step 0.5 carries the dated amendment and the
+client-side rule that follows from it (re-read state, never auto-resubmit). The spike
+asked for nothing else.
 
 ---
 
