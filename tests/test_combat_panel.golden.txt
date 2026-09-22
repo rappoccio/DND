@@ -2633,7 +2633,153 @@ btn  | -           | btn_cbt_wild_shape | - | - | no
 btn  | -           | btn_cbt_zealous_presence | - | - | no
 meta | bottom=712 max_scroll=0
 
-=== 19 nobody on turn — out-of-range agent (F7) ===
+=== 19 draconic sorcerer with an affinity — Cyra (F8) ===
+text | Header      | ⚔  Combat
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,156,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1212,38,156,30 | yes
+text | Initiative  | Initiative Order
+text | Initiative  |   21  Aria
+text | Initiative  | ▶ 19  Cyra
+text | Initiative  |   16  Brannor
+text | Initiative  |   15  Skarn
+text | TurnInfo    | Turn: Cyra
+text | TurnInfo    | HP 34/34
+btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
+text | Action      | Action
+btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
+btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
+text | Action      | Spells: 1:○○○○  
+text | Action      | Spells: 1:○○○○  2:○○○  
+text | Action      | Spells: 1:○○○○  2:○○○  3:○○○  
+text | Action      | Spells: 1:○○○○  2:○○○  3:○○○  4:○○○  
+text | Action      | Spells: 1:○○○○  2:○○○  3:○○○  4:○○○  5:○○  
+text | Action      |   5:○○  6:○  
+text | Action      |   5:○○  6:○  7:○
+text | Action      | Spells: 1:○○○○  2:○○○  3:○○○  4:○○○
+text | Action      |   5:○○  6:○  7:○
+text | BonusAction | Bonus Action
+btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,424,156,30 | yes
+btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,458,316,30 | yes
+btn  | BonusAction | btn_cbt_dragon_wings | Dragon Wings (extend) | 1052,492,316,30 | yes
+btn  | BonusAction | btn_cbt_draconic_resistance | Draconic Resistance (1 SP) | 1052,526,316,30 | yes
+btn  | BonusAction | btn_cbt_innate_sorcery | Innate Sorcery | 1052,560,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic[6] | ✨ Quickened Spell (2 SP) | 1052,594,316,30 | yes
+btn  | BonusAction | btn_cbt_metamagic[7] | ✨ Seeking Spell (1 SP) | 1052,628,316,30 | yes
+text | Movement    | Movement
+text | Movement    | Walk  30ft
+btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,728,156,30 | yes
+btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,728,156,30 | yes
+btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,762,156,30 | yes
+btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,762,156,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,796,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,796,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,796,102,30 | yes
+text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_atk_bonus | - | - | no
+btn  | -           | btn_cbt_avenging_angel | - | - | no
+btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beguiling_restore | - | - | no
+btn  | -           | btn_cbt_bend_luck | - | - | no
+btn  | -           | btn_cbt_bite_grappled | - | - | no
+btn  | -           | btn_cbt_blink_steps | - | - | no
+btn  | -           | btn_cbt_bm_maneuver | - | - | no
+btn  | -           | btn_cbt_boon_of_fate | - | - | no
+btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
+btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
+btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
+btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_companion | - | - | no
+btn  | -           | btn_cbt_corona | - | - | no
+btn  | -           | btn_cbt_dash_bonus | - | - | no
+btn  | -           | btn_cbt_disengage_bonus | - | - | no
+btn  | -           | btn_cbt_divine_intervention | - | - | no
+btn  | -           | btn_cbt_dread_ambusher | - | - | no
+btn  | -           | btn_cbt_drop_concentration | - | - | no
+btn  | -           | btn_cbt_elder_champion | - | - | no
+btn  | -           | btn_cbt_elemental_attunement | - | - | no
+btn  | -           | btn_cbt_elemental_burst | - | - | no
+btn  | -           | btn_cbt_escape_net | - | - | no
+btn  | -           | btn_cbt_extinguish | - | - | no
+btn  | -           | btn_cbt_familiar | - | - | no
+btn  | -           | btn_cbt_fey_effect | - | - | no
+btn  | -           | btn_cbt_flurry_of_blows | - | - | no
+btn  | -           | btn_cbt_grant_inspiration | - | - | no
+btn  | -           | btn_cbt_grapple_drop | - | - | no
+btn  | -           | btn_cbt_grapple_esc | - | - | no
+btn  | -           | btn_cbt_gwm_hew | - | - | no
+btn  | -           | btn_cbt_hand_of_healing | - | - | no
+btn  | -           | btn_cbt_haste_action | - | - | no
+btn  | -           | btn_cbt_healing_light | - | - | no
+btn  | -           | btn_cbt_hide_bonus | - | - | no
+btn  | -           | btn_cbt_inspiring_smite | - | - | no
+btn  | -           | btn_cbt_intimidating_presence | - | - | no
+btn  | -           | btn_cbt_invoke_duplicity | - | - | no
+btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_living_legend | - | - | no
+btn  | -           | btn_cbt_magical_cunning | - | - | no
+btn  | -           | btn_cbt_mantle | - | - | no
+btn  | -           | btn_cbt_mantle_majesty | - | - | no
+btn  | -           | btn_cbt_martial_arts | - | - | no
+btn  | -           | btn_cbt_merge_shadows | - | - | no
+btn  | -           | btn_cbt_metamagic[10] | - | - | no
+btn  | -           | btn_cbt_metamagic[1] | - | - | no
+btn  | -           | btn_cbt_metamagic[2] | - | - | no
+btn  | -           | btn_cbt_metamagic[3] | - | - | no
+btn  | -           | btn_cbt_metamagic[4] | - | - | no
+btn  | -           | btn_cbt_metamagic[5] | - | - | no
+btn  | -           | btn_cbt_metamagic[9] | - | - | no
+btn  | -           | btn_cbt_misty_escape | - | - | no
+btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_natures_veil | - | - | no
+btn  | -           | btn_cbt_nick | - | - | no
+btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_patient_defense | - | - | no
+btn  | -           | btn_cbt_preserve_life | - | - | no
+btn  | -           | btn_cbt_psychic_teleport | - | - | no
+btn  | -           | btn_cbt_psychic_veil | - | - | no
+btn  | -           | btn_cbt_quivering_palm | - | - | no
+btn  | -           | btn_cbt_radiance | - | - | no
+btn  | -           | btn_cbt_rage | - | - | no
+btn  | -           | btn_cbt_revelation_in_flesh | - | - | no
+btn  | -           | btn_cbt_sacred_weapon | - | - | no
+btn  | -           | btn_cbt_second_wind | - | - | no
+btn  | -           | btn_cbt_shadow_arts_darkness | - | - | no
+btn  | -           | btn_cbt_shadow_step | - | - | no
+btn  | -           | btn_cbt_shove_prone | - | - | no
+btn  | -           | btn_cbt_shove_push | - | - | no
+btn  | -           | btn_cbt_standup | - | - | no
+btn  | -           | btn_cbt_steady_aim | - | - | no
+btn  | -           | btn_cbt_step_of_wind | - | - | no
+btn  | -           | btn_cbt_steps_of_fey | - | - | no
+btn  | -           | btn_cbt_swap_duplicity | - | - | no
+btn  | -           | btn_cbt_telekinetic | - | - | no
+btn  | -           | btn_cbt_tides_of_chaos | - | - | no
+btn  | -           | btn_cbt_tireless | - | - | no
+btn  | -           | btn_cbt_trance_of_order | - | - | no
+btn  | -           | btn_cbt_turn_undead | - | - | no
+btn  | -           | btn_cbt_unbreakable_majesty | - | - | no
+btn  | -           | btn_cbt_use_inspiration | - | - | no
+btn  | -           | btn_cbt_use_item | - | - | no
+btn  | -           | btn_cbt_use_portent | - | - | no
+btn  | -           | btn_cbt_vow_of_enmity | - | - | no
+btn  | -           | btn_cbt_war_priest | - | - | no
+btn  | -           | btn_cbt_warping_implosion | - | - | no
+btn  | -           | btn_cbt_wholeness_of_body | - | - | no
+btn  | -           | btn_cbt_wild_magic_bonus_cast | - | - | no
+btn  | -           | btn_cbt_wild_magic_extra_action | - | - | no
+btn  | -           | btn_cbt_wild_magic_teleport | - | - | no
+btn  | -           | btn_cbt_wild_shape | - | - | no
+btn  | -           | btn_cbt_zealous_presence | - | - | no
+meta | bottom=826 max_scroll=0
+
+=== 99 nobody on turn — out-of-range agent (F7) ===
 text | Header      | ⚔  Combat
 btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,156,30 | yes
 btn  | Header      | btn_cbt_end_combat | End Combat | 1212,38,156,30 | yes

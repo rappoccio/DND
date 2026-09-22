@@ -518,6 +518,21 @@ Each becomes its own item. None of them blocks Step 0.
   only per-creature guard was `_cur_has_weapons` and the five-up row had none. Checkpoint
   19 pins the corrected behaviour; the old one was captured side by side before the change
   was accepted.
+- **F8 — the panel crashed for a Draconic Sorcerer. FIXED 2026-09-22, as its own commit.**
+  `main.py:17546` read a bare `bonus_used` where every other guard in the method reads
+  `self.bonus_used`, so the Draconic L6 Elemental Affinity guard raised `NameError` out
+  of `_draw_combat_panel` — not a mis-drawn button, the whole panel down — for any
+  Draconic Sorcerer at L6+ who had chosen an affinity element (`dialogs.py:2208`, an
+  ordinary character-creation choice) and was not already resisting. Python's
+  left-to-right `and` is why it hid: `not bonus_used` is the last conjunct, so the name
+  is only looked up once the four class/level/element/duration tests have all passed.
+  `btn_cbt_draconic_resistance` had therefore never been drawn by anything, and could
+  not be checkpointed against code that raises — which is what surfaced it, and why the
+  fix is the one thing M2c did before its oracle work. **Checkpoint 19** pins the state;
+  breaking the fix again fails it with the original `NameError`. This is a behaviour
+  change (a raise became a button) and, like F7, is recorded as one. It is the only
+  unqualified *bug* the M2 sweep has turned up so far; F2/F3/F4 were all latent.
+
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
   predicate that the panel calls at `18219`. It is exactly the shape `ActionMenu.build`

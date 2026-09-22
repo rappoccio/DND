@@ -349,6 +349,31 @@ def _set_conditions(app, idx, **flags):
     app.combat.set_agent_conditions(app.bm, idx, cond)
 
 
+def _reclass(app, name, cls, level, **fields):
+    """Put `name` on turn re-classed in place, and hand back its index.
+
+    Checkpoints 19+ all work this way. Placing a fifth combatant would reorder
+    initiative and churn every block above it, so the cheap path — the one 17 and 18
+    already take — is to re-class one of the four that are already there. `fields` are
+    set BEFORE `initialize_class_resources` so a subclass reaches the resource table
+    that depends on it (War Priest, Zealous Presence, …); a resource's *current* value
+    is set by the caller afterwards, because initialization would overwrite it.
+
+    Re-classing leaves the previous class's fields behind — `set_class_level` replaces
+    `character_class` but not, say, `sorcerer_subclass`. Nearly every §7 guard is
+    class-gated so the stale field is unreachable, but a checkpoint that relies on a
+    feat, a condition or a bare flag must clear it again itself.
+    """
+    idx = _goto(app, name)
+    s = app.combat.get_agent_stats(app.bm, idx)
+    s.set_class_level(cls, level)
+    for k, v in fields.items():
+        setattr(s, k, v)
+    s.initialize_class_resources(cls, level)
+    app.combat.set_agent_stats(app.bm, idx, s)
+    return idx
+
+
 def build_output():
     app = App(MAP_PATH, seed=SEED)
     _build_scene(app)
@@ -513,7 +538,17 @@ def build_output():
     app.combat.set_agent_stats(app.bm, cyra2, s)
     out += cap.capture("18 diviner with portent — Cyra (§6: the whole section)")
 
-    # 19 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
+    # 19 — a Draconic Sorcerer with an affinity element chosen. Until F8 was fixed
+    # this state did not render a button: it raised NameError out of the draw pass
+    # (`bonus_used` for `self.bonus_used`), so the whole panel went down for any
+    # Draconic Sorcerer L6+ who had picked an element and was not already resisting.
+    # `btn_cbt_draconic_resistance` had therefore never been drawn by anything.
+    cyra3 = _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 14,
+                     sorcerer_subclass=rpg.SorcererSubclass.Draconic,
+                     draconic_affinity_type=0)
+    out += cap.capture("19 draconic sorcerer with an affinity — Cyra (F8)")
+
+    # 99 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
     # combat started with no combatants, or the acting token was removed). This is the
     # one place M2b deliberately CHANGED what the panel draws, so it is recorded here
     # rather than only asserted about: the fused code drew Unarmed and the whole
@@ -524,7 +559,7 @@ def build_output():
     # Last, because it leaves the app with no initiative order.
     _goto(app, "Aria")
     app.initiative_order = []
-    out += cap.capture("19 nobody on turn — out-of-range agent (F7)")
+    out += cap.capture("99 nobody on turn — out-of-range agent (F7)")
 
     return "\n".join(out).rstrip() + "\n"
 

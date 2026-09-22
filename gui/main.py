@@ -17543,7 +17543,7 @@ class App:
                         stats.char_level >= 6 and
                         stats.draconic_affinity_type >= 0 and
                         stats.draconic_affinity_resist_turns == 0 and
-                        not bonus_used):
+                        not self.bonus_used):
                     sp_res = stats.get_resource("Sorcery Points")
                     if sp_res and sp_res.current >= 1:
                         self.btn_cbt_draconic_resistance.rect.x = lx
