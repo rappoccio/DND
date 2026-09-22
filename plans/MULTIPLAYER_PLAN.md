@@ -564,6 +564,17 @@ Each becomes its own item. None of them blocks Step 0.
   `test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable` pins it, because making
   it live is a behaviour change and belongs to its own item, not to a conversion.
 
+- **F12 — §4's five-up posture row is too narrow for its labels.** *(Found by the
+  manual smoke pass, 2026-09-22 — the first thing it has turned up.)* The row gives each
+  button `TW5 = 60px`, and at `font_sm` "Disengage" renders wider than that: the final
+  glyph is clipped and the text bleeds across the 4px gap into Dodge and Hide. "Go Prone"
+  fills its button edge to edge with no padding. **Not an M2 regression** — the rects are
+  `1052,300,60,30` etc. in the golden both before M2a and after M2c, so the geometry has
+  never moved; M2b only changed who computes it. It is a straightforward cosmetic bug
+  (shorten the labels, or let the row size itself to its widest), and it is exactly the
+  class of thing a structural golden cannot see: every checkpoint agrees the rect is
+  right, because the rect *is* right. Its own item.
+
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
   predicate that the panel calls at `18219`. It is exactly the shape `ActionMenu.build`
@@ -2492,11 +2503,29 @@ that the feature works.
 `grep -n 'btn_cbt_<name>' gui/main.py` stays correct for the remaining **36**, and a
 converted button is navigated by its action id in `gui/actions.py`.
 
-#### Still owed
+#### The manual smoke pass — DONE 2026-09-22
 
-The **manual VNC smoke pass** — now for M2a's 8, M2b's 11 and M2c's 56. `./run.sh <map>`,
-then `localhost:6080/vnc.html`. The suite can prove the rects and the dispatch, not the
-appearance, and nothing headless will ever close this.
+Owed since M2a and discharged here, against a live GUI. It turned out not to need a
+browser at all: the container runs Xvfb, so `PIL.ImageGrab.grab(xdisplay=":99")` captures
+real frames and `python-xlib`'s XTEST sends real clicks. **"Nothing headless will ever
+close this" was wrong** — what the suite cannot do is not headless rendering, it is
+*looking*. Worth remembering for M2d and M2e, which owe the same pass.
+
+Driven: a Fighter 5 / Battle Master and a Monk 17 / Open Hand, adjacent, plus a Draconic
+Sorcerer 14 with a Fire ancestry. What it confirmed, in the app rather than in a golden:
+
+| | |
+| --- | --- |
+| §1 (M2a) | Pause ▸ the label flips to `▶ Resume` and back |
+| §4 (M2b) | the two-up, the five-up posture row, Cast Spell; Go Prone ▸ the fifth column becomes **Stand Up** in the same slot |
+| §4 arm 2 | spending the Action collapses the band to `Action ✓ / [Action used]` |
+| §7 (M2c) | **the stacking is right** — Second Wind / Maneuver / Action Surge, and the Monk's five, are separate full-width rows, not an n-up |
+| §7 band gate | spending the Bonus Action removes the whole band, Action Surge included, exactly as checkpoint 03 says |
+| §7 dispatch | Second Wind heals `3 → 8` and spends its use; the button then correctly stops being offered |
+| F8 | the Draconic Sorcerer draws **Dragon Wings (extend)** + **Draconic Resistance (1 SP)** + **Innate Sorcery**. This is the state that used to take the panel down |
+| the baseline fix | a clean Monk 17 shows **no** Cunning Action row — the leak that bit the oracle does not exist in the real app either |
+
+And it found **F12**, a cosmetic defect no structural golden could ever see.
 
 
 ### M3 — `GameView`
