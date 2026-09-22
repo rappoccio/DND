@@ -83,43 +83,74 @@ _ACT_ROW_ATTACK = ("atk_action", "unarmed")
 _ACT_ROW_MOVE   = ("dash", "dodge", "disengage", "hide", "standup", "prone")
 _ACT_ROW_SPELL  = ("spell_action",)
 
-# §7's converted runs: a maximal stretch of bucket-7a buttons with no still-fused button
-# between them. Each member is drawn as its own full-width row, in the menu's build
-# order, so these tuples say WHICH run a button belongs to and never what order it takes
-# within one. Like the _ACT_ROW_* tuples above, this is the only place it is written down.
-_BON_RUN_CLASSBAND = ("patient_defense", "step_of_wind", "hand_of_healing",
-                      "wholeness_of_body", "rage", "intimidating_presence",
-                      "zealous_presence", "clairvoyant_combatant", "magical_cunning",
-                      "healing_light")
-# §7's one converted ROW. Like `_ACT_ROW_*` it is laid out side by side, not
-# stacked: Jump alone at full width when nothing is adjacent, a three-up when
-# something is.
+# §7's runs: a maximal stretch of converted buttons with no still-fused button between
+# them. Each member is drawn as its own full-width row, in the menu's build order, so
+# these tuples say WHICH run a button belongs to and never what order it takes within
+# one. Like the _ACT_ROW_* tuples above, this is the only place it is written down.
+# §7's two ROWS. Like `_ACT_ROW_*` these are laid out side by side, not stacked: Jump
+# alone at full width when nothing is adjacent and a three-up when something is, and
+# Cunning Action's three.
 _BON_ROW_SHOVE     = ("long_jump", "shove_push", "shove_prone")
 _BON_ROW_CUNNING   = ("dash_bonus", "disengage_bonus", "hide_bonus")
-_BON_RUN_CHANNEL   = ("turn_undead", "radiance", "preserve_life")
-_BON_RUN_DUPLICITY = ("invoke_duplicity", "move_duplicity", "swap_duplicity")
-_BON_RUN_SORCERER  = ("dragon_wings", "draconic_resistance", "bend_luck",
-                      "boon_of_fate", "tides_of_chaos", "innate_sorcery",
-                      "trance_of_order", "bastion_of_law", "clockwork_cavalcade",
-                      "revelation_in_flesh", "warping_implosion",
-                      "wild_magic_extra_action", "wild_magic_bonus_cast",
-                      "wild_magic_teleport", "steady_aim", "war_priest")
-_BON_RUN_MARTIAL   = ("gwm_hew", "blink_steps", "martial_arts", "flurry_of_blows",
-                      "second_wind", "bm_maneuver", "one_with_shadows",
-                      "merge_shadows", "action_surge", "lay_on_hands")
-_BON_RUN_BARD      = ("grant_inspiration", "mantle", "mantle_majesty",
-                      "unbreakable_majesty", "beguiling_restore")
-_BON_RUN_OATHS     = ("use_inspiration", "sacred_weapon", "vow_of_enmity",
-                      "inspiring_smite", "avenging_angel", "elder_champion",
-                      "living_legend", "corona")
-_BON_RUN_RANGER    = ("dread_ambusher", "tireless", "natures_veil")
-_BON_RUN_SOULKNIFE = ("psychic_teleport", "psychic_veil")
-_BON_RUN_SHADOW    = ("shadow_step", "cloak_of_shadows", "shadow_arts_darkness")
-_BON_RUN_ARCHFEY   = ("fey_effect", "steps_of_fey", "misty_escape")
-_BON_RUN_ELEMENTS  = ("elemental_attunement", "elemental_burst")
-_BON_RUN_TAIL      = ("quivering_palm", "companion", "familiar")
-# §7's last run, drawn after everything else and outside the band: the nine Metamagic
-# toggles, in `METAMAGIC_OPTIONS` order. Built from the table so the two cannot drift.
+
+# Escape and the Telekinetic feat's shove, between the two rows.
+_BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
+
+# The five drawn OUTSIDE the band, in draw order. What they have in common is exactly
+# their `economy`: none of them costs the Bonus Action, which is why spending it must
+# not take them (`actions._BONUS_ECONOMY`).
+_BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
+                      "haste_action")
+
+# The Archfey trio, named on its own only because the rider selector's label is the one
+# thing in §7 the draw pass WRITES back to the app. See the draw site.
+_BON_FEY_TRIO = ("fey_effect", "steps_of_fey", "misty_escape")
+
+# Everything inside the band gate, in draw order — one run, because after M2e there is
+# no still-fused button left to cut the column. M2c needed six of these tuples and M2d
+# thirteen, for exactly that reason. The feature groups survive as the comments.
+_BON_RUN_BAND      = (
+    # Monk, Barbarian, Warlock — the class band
+    "patient_defense", "step_of_wind", "hand_of_healing", "wholeness_of_body",
+    "rage", "intimidating_presence", "zealous_presence",
+    "clairvoyant_combatant", "magical_cunning", "healing_light",
+    # Cleric: the Channel Divinity cluster, then Divine Intervention
+    "turn_undead", "radiance", "preserve_life", "divine_intervention",
+    # Trickery Cleric: the Invoke Duplicity cluster
+    "invoke_duplicity", "move_duplicity", "swap_duplicity",
+    # Sorcerer, with Boon of Fate, Steady Aim and War Priest inside the stretch
+    "dragon_wings", "draconic_resistance", "bend_luck", "boon_of_fate",
+    "tides_of_chaos", "innate_sorcery", "trance_of_order", "bastion_of_law",
+    "clockwork_cavalcade", "revelation_in_flesh", "warping_implosion",
+    "wild_magic_extra_action", "wild_magic_bonus_cast", "wild_magic_teleport",
+    "steady_aim", "war_priest",
+    # the Bite the engine pairs with the creature being held
+    "bite_grappled",
+    # Hew to Lay on Hands
+    "gwm_hew", "blink_steps", "martial_arts", "flurry_of_blows", "second_wind",
+    "bm_maneuver", "one_with_shadows", "merge_shadows", "action_surge",
+    "lay_on_hands",
+    # Bard: Grant Inspiration and the College of Glamour four
+    "grant_inspiration", "mantle", "mantle_majesty", "unbreakable_majesty",
+    "beguiling_restore",
+    # Use Inspiration Die, the Paladin oaths, Corona of Light
+    "use_inspiration", "sacred_weapon", "vow_of_enmity", "inspiring_smite",
+    "avenging_angel", "elder_champion", "living_legend", "corona",
+    # Psi Warrior: Telekinetic Movement (the feat's shove is in _BON_RUN_ESCAPE)
+    "telekinetic_psi",
+    # Ranger
+    "dread_ambusher", "tireless", "natures_veil",
+    # Soulknife Rogue
+    "psychic_teleport", "psychic_veil",
+    # Shadow Monk
+    "shadow_step", "cloak_of_shadows", "shadow_arts_darkness",
+    # Archfey Warlock — the rider selector is also §7's one WRITE, see `fey_rider_index`
+    "fey_effect", "steps_of_fey", "misty_escape",
+    # Elemental Monk
+    "elemental_attunement", "elemental_burst",
+    # the tail: detonate, and the two summons
+    "quivering_palm", "companion", "familiar",
+)
 _BON_RUN_METAMAGIC = tuple(METAMAGIC_ID_BY_VALUE[int(_v)]
                            for _v, _n, _sp, _note in METAMAGIC_OPTIONS)
 
@@ -17194,132 +17225,43 @@ class App:
             y += gap
             y = self._draw_action_row(_jump, lx, y, W, gap,
                                       font=self.font_sm if len(_jump) > 1 else None)
-        y = self._draw_action_stack(self._menu_group("bonus", only=("grapple_esc",)),
+        # Escape, then the Telekinetic feat's shove, then the Cunning Action three-up.
+        # The Psi Warrior's Telekinetic Movement is a different option with its own
+        # widget, drawn further down inside the band; see F10.
+        y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_ESCAPE),
                                     lx, y, W, gap)
-
-        # The Telekinetic feat's shove, then the Cunning Action three-up. The Psi
-        # Warrior's Telekinetic Movement is a different option with its own widget,
-        # drawn further down; see F10.
-        y = self._draw_action_stack(
-            self._menu_group("bonus", only=("telekinetic_feat",)), lx, y, W, gap)
         _cunning = self._menu_group("bonus", only=_BON_ROW_CUNNING)
         if _cunning:
             y = self._draw_action_row(_cunning, lx, y, W, gap)
 
 
-        # Drop Grapple: free, so it is drawn outside the band — the scan that finds
-        # the creature being held is the menu's now.
-        y = self._draw_action_stack(self._menu_group("bonus", only=("grapple_drop",)),
-                                    lx, y, W, gap)
-
-
-        # Use Item — any actor carrying something it can still pay for. A potion is a Bonus Action
-        # (drink it, or administer it to a creature within 5 ft); a thrown flask or Net replaces one
-        # attack of the Attack action. So this button is NOT gated on the bonus action alone.
-        y = self._draw_action_stack(self._menu_group("bonus", only=("use_item",)),
-                                    lx, y, W, gap)
-
-        # Extinguish (Burning) — an Action. Free from Net, its neighbour under the
-        # same gate, is bucket 7c and still fused.
-        y = self._draw_action_stack(self._menu_group("bonus", only=("extinguish",)),
-                                    lx, y, W, gap)
-
-        # Free from Net — an Action, so it too is outside the band.
-        y = self._draw_action_stack(self._menu_group("bonus", only=("escape_net",)),
-                                    lx, y, W, gap)
-
-
-        # Haste (Phase 2): the extra limited action, refilled each of the hasted
-        # creature's turns. Drawn OUTSIDE the `not self.bonus_used` band below — it is an
-        # Action, not a bonus action, so spending a bonus action first must not dead-key
-        # it. Which is now something the menu says (`economy="action"`) rather than
-        # something this method's placement implies.
-        y = self._draw_action_stack(self._menu_group("bonus", only=("haste_action",)),
+        # The five the Bonus Action does not own, in draw order — Drop Grapple (free),
+        # Use Item (per item: a potion is a Bonus Action, a thrown flask or a Net
+        # replaces one attack of the Attack action), Extinguish and Free from Net (the
+        # Action), and Haste's extra Action. They are drawn above the band gate below
+        # precisely because spending the Bonus Action must not dead-key any of them,
+        # and `actions._BONUS_ECONOMY` is where that is now said in words.
+        y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_UNBANDED),
                                     lx, y, W, gap)
 
         if not _is_incapacitated and not self.bonus_used:
-            # The band's flat class guards — Monk, Barbarian, Warlock — are the
-            # menu's now; each is drawn as its own full-width row, in build order.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_CLASSBAND),
-                                        lx, y, W, gap)
+            # One run: after M2e nothing fused is left to cut the column, so the whole
+            # band is a single stack drawn in the menu's build order. `_BON_RUN_BAND`
+            # is that order written down, feature group by feature group.
+            _band = self._menu_group("bonus", only=_BON_RUN_BAND)
 
-            # The Channel Divinity cluster — Turn Undead, and the two domain options
-            # nested inside its resource test — is the menu's now, drawn as one run.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_CHANNEL),
-                                        lx, y, W, gap)
-
-            # Divine Intervention (Cleric L10+, Magic action) — drawn after the Channel
-            # Divinity cluster above, which is still fused, so it is its own run.
-            y = self._draw_action_stack(
-                self._menu_group("bonus", only=("divine_intervention",)), lx, y, W, gap)
-
-            # The Invoke Duplicity cluster, likewise: the activation, and the two that
-            # exist only while an illusion is standing on the map.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_DUPLICITY),
-                                        lx, y, W, gap)
-
-            # The Sorcerer run — plus Boon of Fate, Steady Aim and War Priest, which
-            # the panel has always drawn inside this stretch.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_SORCERER),
-                                        lx, y, W, gap)
-
-            # Bite (grappled): the engine pairs the flagged weapon with the victim,
-            # and the menu asks it.
-            y = self._draw_action_stack(self._menu_group("bonus", only=("bite_grappled",)),
-                                        lx, y, W, gap)
-
-
-            # The run from Hew to Lay on Hands.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_MARTIAL),
-                                        lx, y, W, gap)
-
-            # Grant Inspiration and the four College of Glamour buttons that were
-            # nested inside its Bardic Inspiration test: one run, one call, no Bard
-            # wrapper left in the draw pass.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_BARD),
-                                        lx, y, W, gap)
-
-            # Use Inspiration Die, then the Paladin oaths and Corona of Light.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_OATHS),
-                                        lx, y, W, gap)
-
-            # Psi Warrior's Telekinetic Movement — the same widget as the feat site
-            # above, under the other of its two ids.
-            y = self._draw_action_stack(
-                self._menu_group("bonus", only=("telekinetic_psi",)), lx, y, W, gap)
-
-
-            # The Ranger run.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_RANGER),
-                                        lx, y, W, gap)
-
-            # The Soulknife pair, both labelled with the dice that pay for them.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_SOULKNIFE),
-                                        lx, y, W, gap)
-
-            # The Shadow Monk trio.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_SHADOW),
-                                        lx, y, W, gap)
-
-            # The Archfey trio. The rider cycle is the one piece of §7 that WRITES to
-            # the app during the draw pass: a selection made at L6 is out of range at
-            # L3, and the panel clamps it back to 0 on the spot. The menu's label reads
-            # the clamped value; the write-through stays here, because `actions.py`
-            # never mutates the app and the click handler reads the raw field.
-            _fey = self._menu_group("bonus", only=_BON_RUN_ARCHFEY)
-            if _fey:
+            # §7's one WRITE during the draw pass, hoisted above the run so the run can
+            # be one call. The Steps of the Fey rider cycle is five options at Warlock 6
+            # and three below it, so a selection made at L6 is out of range at L3 and
+            # the panel clamps it back to 0 on the spot. The menu's LABEL reads the
+            # clamped value (`fey_rider_index`, a pure function); the write-through
+            # stays here, because `actions.py` never mutates the app and both the click
+            # handler and the engine call read the raw field.
+            if any(a.id in _BON_FEY_TRIO for a in _band):
                 self.steps_of_fey_effect = fey_rider_index(
                     self, self.combat.get_agent_stats(self.bm, cur_idx))
-            y = self._draw_action_stack(_fey, lx, y, W, gap)
 
-            # The Elemental Monk pair.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_ELEMENTS),
-                                        lx, y, W, gap)
-
-            # The tail: detonate, and the two summons.
-            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_TAIL),
-                                        lx, y, W, gap)
-
+            y = self._draw_action_stack(_band, lx, y, W, gap)
 
         # Sorcerer Metamagic arm-toggles (Phase 2). WHICH options are offered — learned,
         # affordable, and Quickened only while the Bonus Action is unspent — and the tick

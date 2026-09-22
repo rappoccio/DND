@@ -808,11 +808,13 @@ def test_the_bonus_runs_are_built_in_draw_order():
     """
     import main
     runs = [v for k, v in vars(main).items() if k.startswith("_BON_RUN_")]
-    # Six after M2c, thirteen after M2d, fourteen with M2e's Metamagic tail: a run is a
-    # maximal stretch with no still-fused button between its members, so converting the
-    # clusters that CUT the column added runs rather than merging them. They merge once
-    # nothing fused separates them.
-    assert len(runs) == 14, runs
+    # Six after M2c and thirteen after M2d — a run is a maximal stretch with no
+    # still-fused button between its members, so converting the clusters that CUT the
+    # column added runs rather than merging them. M2e converted the last of them and
+    # the thirteen collapse to FOUR: Escape and the feat's shove between the two rows,
+    # the five the Bonus Action does not own, the whole band, and the Metamagic tail.
+    assert len(runs) == 4, sorted(vars(main)[k] and k for k in vars(main)
+                                  if k.startswith("_BON_RUN_"))
 
     app = _app()
     seen = 0
