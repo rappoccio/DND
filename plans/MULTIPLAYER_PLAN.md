@@ -465,9 +465,9 @@ plus a green determinism run):
   were covered, but neither guard M2b actually moves — Nick's and Portent's — was ever
   satisfied by the scene, so both buttons read `no` in all 17 blocks. Checkpoints 17/18
   were added first, against the old fused code.)*
-- **M2c** — bucket 7a, **57 buttons**, settled by the boundary below. Long but
+- **M2c** ☑ (done 2026-09-22) — bucket 7a, **56 buttons converted**, by the boundary below. Long but
   mechanical; batched by class, because one creature shows a whole class's band at once.
-  See [M2c — the oracle first](#m2c--the-oracle-first-done-2026-09-22).
+  See [M2c — bucket 7a](#m2c--bucket-7a-done-2026-09-22).
 - **M2d** — buckets 7e, then 7c. Clusters and the spatial predicates.
 - **M2e** — buckets 7b and 7d. Last, because they are the two that force the `ActionMenu`
   schema to carry action-economy as data rather than as a flag.
@@ -554,6 +554,15 @@ Each becomes its own item. None of them blocks Step 0.
   `Action` id is a dispatch key and there is one widget for two options, so splitting it
   needs a decision the phase should not make in passing. Checkpoints 38 and 47 cover the
   two sites separately; M2d takes it.
+
+- **F11 — Step of the Wind's Fleet Step arm is unreachable.** The guard at `17319`
+  offers `btn_cbt_step_of_wind` when `normal_ready or fleet_step_ready`, and
+  `fleet_step_ready` is explicitly "Open Hand L11, no Focus, **bonus action already
+  spent**". It is written inside the band block, which has already required
+  `not self.bonus_used`, so the arm can never fire: the comment above it describes a
+  feature the panel does not offer. `ActionMenu._bonus` reproduces it in that shape and
+  `test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable` pins it, because making
+  it live is a behaviour change and belongs to its own item, not to a conversion.
 
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
@@ -2352,7 +2361,7 @@ remaining **92**, and a converted button is navigated by its action id in
 
 ---
 
-### M2c — the oracle first (done 2026-09-22)
+### M2c — bucket 7a (done 2026-09-22)
 
 M2c's first commit converts nothing. **78 of the 110 named buttons were drawn by no
 checkpoint at all**, and a golden that reads `no` for a button in all 20 blocks cannot
@@ -2373,14 +2382,14 @@ they are exactly the clusters and spatial predicates M2d and M2e own.
 Step 0.3 sized 7a at "~60" without drawing the line. M2c draws it: **7a is a guard that
 is flat and independent** — one `if` over (index in range, the action/bonus band, and a
 class / subclass / level / resource / feat / condition test), reached by nothing else and
-reaching nothing else. 91 names in §7, **57 in, 34 out**:
+reaching nothing else. 91 names in §7, **56 converted, 35 out** (57 are *covered* — `telekinetic` gets its checkpoints here and its conversion in M2d):
 
 | Out | Count | Why, and who takes it |
 | --- | ----: | --------------------- |
 | 7b | 2 | `atk_bonus`, `spell_bonus` — layout *and* label depend on `attacks_remaining`. **M2e** |
 | 7c | 7 | `long_jump`, `shove_push`, `shove_prone`, `grapple_esc`, `grapple_drop`, `bite_grappled`, `escape_net` — an O(n) scan the panel runs every frame. **M2d** |
 | 7d | 2 | `haste_action`, the `metamagic` dict — drawn outside the band on purpose. **M2e** |
-| 7e | 22 | six named clusters (duplicity 3, soulknife 2, shadow monk 3, archfey 3, elemental monk 2, Channel Divinity 3), plus the Cunning Action three-up row and the four Glamour Bard buttons nested inside `grant_inspiration`'s own resource test. **M2d** |
+| 7e | 23 | six named clusters (duplicity 3, soulknife 2, shadow monk 3, archfey 3, elemental monk 2, Channel Divinity 3), plus the Cunning Action three-up row and the four Glamour Bard buttons nested inside `grant_inspiration`'s own resource test. **M2d** |
 | — | 1 | `telekinetic` — one widget, two draw sites. See **F10**. **M2d** |
 
 #### What the coverage work turned up
@@ -2415,10 +2424,79 @@ failing before the fix.
 An oracle whose blocks depend on their own order is worth no more than one written after
 the extraction. M2d and M2e will both add checkpoints, and both inherit this.
 
-#### Owed before the extraction lands
+#### What the extraction moved
 
-Nothing — the 57 are covered and green. What is **not** owed to this commit but is still
-open: the MANUAL VNC smoke pass, now for M2a's 8, M2b's 11 and M2c's 57.
+`gui/actions.py` **+289 lines** (`_bonus`, and `_res`, which answers the "does this
+creature have a use of X left" question §7 asks about forty times); `gui/main.py`
+**net −730**, `_draw_combat_panel` **1,781 → 1,050 lines**; `tests/test_action_menu.py`
+22 → **29 checks**. Suite: **149 passed, 1 failed** — the pre-existing `test_monk.py`,
+failing identically before this work. All 50 panel checkpoints **byte-identical**.
+
+Five batches, each proving byte-identity before the next started: the four guards
+outside the big band block; the Monk/Barbarian/Warlock band plus Divine Intervention;
+the Sorcerer run; Hew-to-Lay-on-Hands plus Grant Inspiration; and the Paladin oaths,
+Ranger and the two summons.
+
+**`_draw_action_stack` is the new piece**, and it exists because of a mistake worth
+recording: §7 is a *column of one-button rows*, not a grid, and reusing M2b's
+`_draw_action_row` for a run laid a Monk's whole band out as a three-up. The two shapes
+are one call apart and the error is silent — every availability test still passed. The
+golden is what caught it.
+
+Which run a converted button belongs to lives in the six `_BON_RUN_*` tuples in
+`main.py`, the only place it is written down, exactly as `_ACT_ROW_*` does for §4. A run
+is a *maximal stretch with no still-fused button between its members*, which is why
+there are six rather than one — the clusters M2d owns cut the column into pieces.
+`_BON_RUN_SORCERER` contains `boon_of_fate`, `steady_aim` and `war_priest` for that
+reason and not because they are Sorcerer features.
+
+#### The band gate, preserved rather than tidied
+
+Most of §7 sits inside one `if not _is_incapacitated and not self.bonus_used:`,
+**whatever an individual feature's real action cost is**. `action_surge`'s own comment
+says "available anytime"; `corona`, `tireless`, `bastion_of_law`, `divine_intervention`
+and the three Paladin capstones are Actions, not Bonus Actions. Spending the Bonus
+Action hides all of them today. Checkpoint 03 has always recorded it, and
+`test_spending_the_bonus_action_takes_action_surge_with_it` now names it. Whether the
+panel is *right* is a separate question and a separate item; M2c does not answer it.
+The two 7a guards genuinely outside the band — `use_item`, which asks each carried item
+what THAT item costs, and `extinguish`, which costs an Action — are the reason the
+plan's `economy` field cannot be a boolean.
+
+Where the panel repeated `not self.bonus_used` *inside* that block, the repeat is
+dropped rather than carried as an always-true expression. `F11`'s dead arm is the one
+exception: it is kept in its original shape, because deleting it would read as agreement
+that the feature works.
+
+#### Carried into M2d
+
+- **D-M2-1/2/3/4 all still stand.** `enabled` is still never false. The stale-rect guard
+  now protects **36**, not 92 — and F4 (the `btn_cbt_metamagic` dict escaping it) is
+  still M2e's.
+- **`_reposition_panel:1239-1250`** is now dead weight for more of the 74; still sweep it
+  in M2e with the guard, not before.
+- **F9, F10, F11** are open, and all three are behaviour questions rather than
+  conversions. F10 in particular blocks `telekinetic`: one widget cannot serve two
+  `Action` ids without a decision about what an id means.
+- **The 22 dark buttons are exactly M2d's and M2e's**, so the "add the checkpoint first"
+  rule now costs those phases what it cost this one. M2d's clusters are the harder case:
+  several are nested *inside* another button's resource test (the four Glamour Bard
+  buttons live inside `grant_inspiration`'s `bi`), so a cluster is not a run and cannot
+  be converted one button at a time.
+
+#### Re-derived after M2c
+
+**110 named buttons** (M2c deleted none), `METAMAGIC_OPTIONS` still 9.
+`_draw_combat_panel` is now **1,050 lines** (1,896 → 1,875 → 1,781 → 1,050).
+**74 of the 110 have left the draw pass** (M2a's 7 + M2b's 11 + M2c's 56);
+`grep -n 'btn_cbt_<name>' gui/main.py` stays correct for the remaining **36**, and a
+converted button is navigated by its action id in `gui/actions.py`.
+
+#### Still owed
+
+The **manual VNC smoke pass** — now for M2a's 8, M2b's 11 and M2c's 56. `./run.sh <map>`,
+then `localhost:6080/vnc.html`. The suite can prove the rects and the dispatch, not the
+appearance, and nothing headless will ever close this.
 
 
 ### M3 — `GameView`

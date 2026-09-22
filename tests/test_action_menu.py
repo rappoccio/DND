@@ -25,14 +25,14 @@ sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from actions import (ActionMenu, Action, BUILT_GROUPS, GROUP_SESSION, GROUP_TURN,
-                     GROUP_ACTION, GROUP_PORTENT, GROUP_UTILITY)
+                     GROUP_ACTION, GROUP_BONUS, GROUP_PORTENT, GROUP_UTILITY)
 import pygame
 import rpg_battle_map as rpg
 
 from gui_driver import post_click
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _idx, _goto,
-                               _set_conditions, _weapon, _preserve_cwd_logs,
-                               _restore_cwd_logs)
+                               _item, _reclass, _set_conditions, _snapshot_baseline,
+                               _weapon, _preserve_cwd_logs, _restore_cwd_logs)
 
 
 def _app():
@@ -40,6 +40,7 @@ def _app():
     _build_scene(app)
     app._start_combat()
     app.combat.stop_recording()
+    _snapshot_baseline(app)      # `_reclass` restores this; see test_combat_panel.py
     return app
 
 
@@ -512,6 +513,192 @@ def test_stand_up_from_a_stale_rect_does_nothing():
     print("✅ test_stand_up_from_a_stale_rect_does_nothing passed")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  §7 — the Bonus Action mega-section, bucket 7a (M2c)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 56 buttons, and what they mostly have in common is the band gate: one
+# `if not incapacitated and not bonus_used:` wrapping the great majority of the
+# section, whatever an individual feature's real action cost is. These checks are
+# about the gate and the ordering contract, not about re-asserting fifty class
+# predicates one at a time — the panel golden already pins each of those at a
+# checkpoint, which is what M2c's first commit was for.
+
+
+def _bonus(app, idx):
+    return _group(app, idx, GROUP_BONUS)
+
+
+def test_the_bonus_section_collapses_when_the_creature_cannot_act():
+    """Same rule as §4's arm 1, and the panel prints "[Cannot act]" once for both."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 17,
+                    monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
+    assert _bonus(app, cyra), "a Monk 17 should have a band to start with"
+    for flag in ("incapacitated", "unconscious"):
+        _set_conditions(app, cyra, **{flag: True})
+        assert _bonus(app, cyra) == [], flag
+        _set_conditions(app, cyra, **{flag: False})
+    print("✅ test_the_bonus_section_collapses_when_the_creature_cannot_act passed")
+
+
+def test_spending_the_bonus_action_takes_action_surge_with_it():
+    """The band gate, stated on the button that most looks like an exception.
+
+    `btn_cbt_action_surge`'s own comment says "available anytime" and Action Surge
+    costs no bonus action — but it is written inside the band block, so spending the
+    Bonus Action hides it. Checkpoint 03 is the golden's record of that. M2 preserves
+    behaviour, so this pins it rather than fixing it; whether the panel is RIGHT here
+    is a separate item.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")                      # Fighter 5
+    assert "action_surge" in _bonus(app, aria)
+    assert "second_wind" in _bonus(app, aria)
+    app.bonus_used = True
+    assert _bonus(app, aria) == [], _bonus(app, aria)
+    print("✅ test_spending_the_bonus_action_takes_action_surge_with_it passed")
+
+
+def test_use_item_and_extinguish_are_outside_the_band():
+    """The two 7a guards that are NOT band-gated — which is why the plan's `economy`
+    field cannot be a boolean.
+
+    Extinguish costs an Action, so a spent Bonus Action leaves it alone and a spent
+    Action removes it. Use Item is finer than either: it asks each carried item what
+    THAT item costs. A potion is a Bonus Action and drops out with the band; a thrown
+    flask replaces one attack of the Attack action and does not.
+    """
+    app = _app()
+    skarn = _goto(app, "Skarn")
+    _set_conditions(app, skarn, burning=True)
+    try:
+        # A potion alone: Use Item is band-gated after all, for this inventory.
+        app.combat.set_agent_items(app.bm, skarn, [])
+        app.combat.add_item_to_agent(app.bm, skarn, _item("Potion of Healing"))
+        assert set(_bonus(app, skarn)) == {"use_item", "extinguish"}, _bonus(app, skarn)
+        app.bonus_used = True
+        assert _bonus(app, skarn) == ["extinguish"], _bonus(app, skarn)
+
+        # Add a flask and it comes back, with the Bonus Action still spent.
+        app.combat.add_item_to_agent(app.bm, skarn, _item("Alchemist\'s Fire"))
+        assert set(_bonus(app, skarn)) == {"use_item", "extinguish"}, _bonus(app, skarn)
+
+        # Extinguish is the one that answers to the Action.
+        app.action_used = True
+        assert "extinguish" not in _bonus(app, skarn), _bonus(app, skarn)
+    finally:
+        _set_conditions(app, skarn, burning=False)
+        app.combat.set_agent_items(app.bm, skarn, [])
+    print("✅ test_use_item_and_extinguish_are_outside_the_band passed")
+
+
+def test_the_bonus_runs_are_built_in_draw_order():
+    """§7's analog of `test_the_open_band_is_built_in_column_order`.
+
+    `_draw_action_stack` draws a run in the order the MENU emits it, and the
+    `_BON_RUN_*` tuples in main.py are the panel's draw order written down. If the two
+    ever disagree the panel still renders — it just renders Rage above Patient Defense,
+    which no availability test would catch. So the invariant is: for every run, the
+    ids the menu emits from it appear in the tuple's order.
+    """
+    import main
+    runs = [v for k, v in vars(main).items() if k.startswith("_BON_RUN_")]
+    assert len(runs) == 6, runs
+
+    app = _app()
+    seen = 0
+    for who, cls, lvl, fields in (
+            ("Cyra", rpg.CharacterClass.Monk, 17,
+             dict(monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)),
+            ("Cyra", rpg.CharacterClass.Paladin, 20,
+             dict(paladin_oath=rpg.PaladinOath.OathOfVengeance)),
+            ("Cyra", rpg.CharacterClass.Sorcerer, 18,
+             dict(sorcerer_subclass=rpg.SorcererSubclass.Clockwork)),
+            ("Cyra", rpg.CharacterClass.Ranger, 14,
+             dict(ranger_subclass=rpg.RangerSubclass.BeastMaster))):
+        idx = _reclass(app, who, cls, lvl, **fields)
+        built = _bonus(app, idx)
+        for run in runs:
+            got = [i for i in built if i in run]
+            if len(got) < 2:
+                continue                       # nothing to be out of order
+            seen += 1
+            want = [i for i in run if i in got]
+            assert got == want, (cls, run, got, want)
+    assert seen >= 4, f"only {seen} runs were exercised with 2+ members"
+    print("✅ test_the_bonus_runs_are_built_in_draw_order passed")
+
+
+def test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable():
+    """F11, pinned so nobody "fixes" the conversion into changing behaviour.
+
+    The panel's Step of the Wind guard has a second arm — Open Hand L11 Fleet Step, a
+    free Step of the Wind explicitly "when the bonus action is already spent" — written
+    INSIDE the band block that has already required `not bonus_used`. It can therefore
+    never fire. `ActionMenu._bonus` reproduces it in that shape, so the arm stays dead
+    and the panel is unchanged. Making it live is a behaviour change and its own item.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 11,
+                    monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
+    _set_conditions(app, cyra, fleet_step_used=False)
+    assert "step_of_wind" in _bonus(app, cyra), "the normal arm should be offered"
+    app.bonus_used = True
+    assert "step_of_wind" not in _bonus(app, cyra), \
+        "the Fleet Step arm became reachable — that is a behaviour change, not a tidy-up"
+    print("✅ test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable passed")
+
+
+def test_a_click_on_an_unoffered_bonus_action_does_nothing():
+    """The M2a/M2b regression again, on §7 — where it matters most, because this is
+    the section with 56 widgets fighting over one column of pixels and the stale-rect
+    guard is the only thing that ever separated them.
+
+    Rage is the probe: its handler spends the Bonus Action unconditionally, whatever
+    `activate_rage` does with a Fighter, so `app.bonus_used` is a clean observable.
+
+    Verified the way the M2a note insists on: with `_action_clicked("rage", …)` swapped
+    back to `self.btn_cbt_rage.clicked(event)`, this fails — Aria's Bonus Action is
+    spent by a button she was never offered.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")                       # Fighter: no Rage, ever
+    _draw(app)
+    assert "rage" not in app._action_menu, "Aria must not be offered Rage"
+
+    victim = app._cbt_btn("rage")
+    victim.rect = _free_point(app)                  # a live-looking, unclaimed spot
+    turn_before = (app.turn_idx, app.round_num)
+    post_click(app, victim.rect.center)
+    assert not app.bonus_used, "an unoffered Rage spent the Bonus Action from a stale rect"
+    assert (app.turn_idx, app.round_num) == turn_before, \
+        "the probe point was not free after all — something else consumed the click"
+    print("✅ test_a_click_on_an_unoffered_bonus_action_does_nothing passed")
+
+
+def test_click_reaches_the_handler_for_the_bonus_band():
+    """Dispatch, end to end, on a converted §7 button. Second Wind is picked because
+    it lands a state change nothing else in the frame could have made: HP goes up and
+    the resource goes down."""
+    app = _app()
+    aria = _goto(app, "Aria")
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.hp_cur = 10
+    app.combat.set_agent_stats(app.bm, aria, s)
+    before = app.combat.get_agent_stats(app.bm, aria).get_resource("Second Wind").current
+
+    _draw(app)
+    assert "second_wind" in app._action_menu
+    _click_action(app, "second_wind")
+
+    after = app.combat.get_agent_stats(app.bm, aria)
+    assert after.hp_cur > 10, "Second Wind did not reach the handler"
+    assert after.get_resource("Second Wind").current == before - 1, "no use was spent"
+    assert app.bonus_used, "the Bonus Action was not spent"
+    print("✅ test_click_reaches_the_handler_for_the_bonus_band passed")
+
+
 def test_ids_are_unique():
     """The panel keys widgets by id and `_handle_events` dispatches on it; a duplicate
     would make one of the two unreachable in a way no golden could show."""
@@ -550,6 +737,13 @@ if __name__ == "__main__":
         test_click_reaches_the_handler_for_the_action_band()
         test_dash_is_drawn_mid_sequence_but_the_click_is_refused()
         test_stand_up_from_a_stale_rect_does_nothing()
+        test_the_bonus_section_collapses_when_the_creature_cannot_act()
+        test_spending_the_bonus_action_takes_action_surge_with_it()
+        test_use_item_and_extinguish_are_outside_the_band()
+        test_the_bonus_runs_are_built_in_draw_order()
+        test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable()
+        test_a_click_on_an_unoffered_bonus_action_does_nothing()
+        test_click_reaches_the_handler_for_the_bonus_band()
         test_ids_are_unique()
     finally:
         _restore_cwd_logs(_saved)

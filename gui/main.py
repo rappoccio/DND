@@ -82,6 +82,29 @@ _ACT_ROW_ATTACK = ("atk_action", "unarmed")
 _ACT_ROW_MOVE   = ("dash", "dodge", "disengage", "hide", "standup", "prone")
 _ACT_ROW_SPELL  = ("spell_action",)
 
+# §7's converted runs: a maximal stretch of bucket-7a buttons with no still-fused button
+# between them. Each member is drawn as its own full-width row, in the menu's build
+# order, so these tuples say WHICH run a button belongs to and never what order it takes
+# within one. Like the _ACT_ROW_* tuples above, this is the only place it is written down.
+_BON_RUN_CLASSBAND = ("patient_defense", "step_of_wind", "hand_of_healing",
+                      "wholeness_of_body", "rage", "intimidating_presence",
+                      "zealous_presence", "clairvoyant_combatant", "magical_cunning",
+                      "healing_light")
+_BON_RUN_SORCERER  = ("dragon_wings", "draconic_resistance", "bend_luck",
+                      "boon_of_fate", "tides_of_chaos", "innate_sorcery",
+                      "trance_of_order", "bastion_of_law", "clockwork_cavalcade",
+                      "revelation_in_flesh", "warping_implosion",
+                      "wild_magic_extra_action", "wild_magic_bonus_cast",
+                      "wild_magic_teleport", "steady_aim", "war_priest")
+_BON_RUN_MARTIAL   = ("gwm_hew", "blink_steps", "martial_arts", "flurry_of_blows",
+                      "second_wind", "bm_maneuver", "one_with_shadows",
+                      "merge_shadows", "action_surge", "lay_on_hands")
+_BON_RUN_OATHS     = ("use_inspiration", "sacred_weapon", "vow_of_enmity",
+                      "inspiring_smite", "avenging_angel", "elder_champion",
+                      "living_legend", "corona")
+_BON_RUN_RANGER    = ("dread_ambusher", "tireless", "natures_veil")
+_BON_RUN_TAIL      = ("quivering_palm", "companion", "familiar")
+
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
 # The 2024 "Summon X" line now uses the scaling SUMMON_SPELL_TO_SPIRIT path instead (which takes
@@ -16735,6 +16758,19 @@ class App:
                 btn.font = self.font_md
         return y + self._BTN_H + (gap if trail is None else trail)
 
+    def _draw_action_stack(self, actions, lx, y, w, gap):
+        """Draw each action as its own full-width row; return the new `y`.
+
+        §7 is a COLUMN of one-button rows, not a grid, so a run of converted buttons is
+        n rows — not the n-up `_draw_action_row` builds. The two shapes are one call
+        apart and the mistake is silent: it turns a Monk's whole band into a three-up
+        that still passes every availability test. An empty run consumes no space, same
+        as an empty row.
+        """
+        for act in actions:
+            y = self._draw_action_row([act], lx, y, w, gap)
+        return y
+
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active."""
         # Stale-rect guard: every combat-action button below is (re)positioned only on the
@@ -17129,33 +17165,18 @@ class App:
         # Jump + Shove row — merged below into the adjacency block
 
         # Arcane Ward charging button (Abjurer L3+ with active ward)
-        if not _is_incapacitated and not self.bonus_used and 0 <= cur_idx < len(agents):
-            cur_stats = self.bm.placed_agents[cur_idx].stats
-            if (cur_stats.character_class == rpg.CharacterClass.Wizard and
-                cur_stats.wizard_subclass == rpg.WizardSubclass.Abjurer and
-                cur_stats.char_level >= 3 and cur_stats.temp_hp > 0):
-                self.btn_cbt_charge_arcane_ward.rect.x = lx
-                self.btn_cbt_charge_arcane_ward.rect.y = y
-                self.btn_cbt_charge_arcane_ward.rect.w = W
-                self.btn_cbt_charge_arcane_ward.draw(self.screen)
-                y += B + gap
+        y = self._draw_action_stack(self._menu_group("bonus", only=("charge_arcane_ward",)),
+                                    lx, y, W, gap)
 
-        # Wild Shape button (Druid L2+)
-        if not _is_incapacitated and not self.bonus_used and 0 <= cur_idx < len(agents):
-            cur_stats = self.bm.placed_agents[cur_idx].stats
-            if (cur_stats.character_class == rpg.CharacterClass.Druid and
-                cur_stats.char_level >= 2):
-                if cur_stats.wild_shape_active:
-                    txt(f"🐺 {cur_stats.wild_shape_form_name}", lx, y, COL_LABEL)
-                    y += 12
-                    self.btn_cbt_wild_shape.text = "Exit Wild Shape"
-                else:
-                    self.btn_cbt_wild_shape.text = "🐺 Wild Shape"
-                self.btn_cbt_wild_shape.rect.x = lx
-                self.btn_cbt_wild_shape.rect.y = y
-                self.btn_cbt_wild_shape.rect.w = W
-                self.btn_cbt_wild_shape.draw(self.screen)
-                y += B + gap
+        # Wild Shape button (Druid L2+). The label is the menu's; the form NAME above
+        # it is display, so it stays here.
+        _wild = self._menu_group("bonus", only=("wild_shape",))
+        if _wild:
+            _wstats = self.bm.placed_agents[cur_idx].stats
+            if _wstats.wild_shape_active:
+                txt(f"🐺 {_wstats.wild_shape_form_name}", lx, y, COL_LABEL)
+                y += 12
+            y = self._draw_action_stack(_wild, lx, y, W, gap)
 
         # Jump / Shove / Trip row
         if not _is_incapacitated and not self.bonus_used:
@@ -17258,30 +17279,15 @@ class App:
         # Use Item — any actor carrying something it can still pay for. A potion is a Bonus Action
         # (drink it, or administer it to a creature within 5 ft); a thrown flask or Net replaces one
         # attack of the Attack action. So this button is NOT gated on the bonus action alone.
-        if not _is_incapacitated and 0 <= cur_idx < len(agents):
-            _items = self.combat.get_agent_items(self.bm, cur_idx)
-            _usable = any(
-                self._can_replace_attack(cur_idx) if it.action_type == rpg.ItemAction.AttackReplacement
-                else (not self.bonus_used) if it.action_type == rpg.ItemAction.BonusAction
-                else (not self.action_used) if it.action_type == rpg.ItemAction.Action
-                else True
-                for it in _items)
-            if _usable:
-                self.btn_cbt_use_item.rect.x = lx
-                self.btn_cbt_use_item.rect.y = y
-                self.btn_cbt_use_item.rect.w = W
-                self.btn_cbt_use_item.draw(self.screen)
-                y += B + gap
+        y = self._draw_action_stack(self._menu_group("bonus", only=("use_item",)),
+                                    lx, y, W, gap)
 
-        # Extinguish (Burning) and Free from Net — both cost an Action.
+        # Extinguish (Burning) — an Action. Free from Net, its neighbour under the
+        # same gate, is bucket 7c and still fused.
+        y = self._draw_action_stack(self._menu_group("bonus", only=("extinguish",)),
+                                    lx, y, W, gap)
+
         if not _is_incapacitated and not self.action_used and 0 <= cur_idx < len(agents):
-            if cur_cond and getattr(cur_cond, "burning", False):
-                self.btn_cbt_extinguish.rect.x = lx
-                self.btn_cbt_extinguish.rect.y = y
-                self.btn_cbt_extinguish.rect.w = W
-                self.btn_cbt_extinguish.draw(self.screen)
-                y += B + gap
-
             # Shown when this actor is netted, or is standing within 5 ft of a netted creature it
             # could cut loose (the target is then chosen with a click).
             if self._netted_within_reach(cur_idx):
@@ -17304,156 +17310,10 @@ class App:
                 y += B + gap
 
         if not _is_incapacitated and not self.bonus_used:
-            # Patient Defense (Dodge) button - Monk (L1+) with Focus Points, bonus action
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Monk:
-                    fp = stats.get_resource("Focus Points")
-                    if fp and fp.current > 0:
-                        self.btn_cbt_patient_defense.rect.x = lx
-                        self.btn_cbt_patient_defense.rect.y = y
-                        self.btn_cbt_patient_defense.rect.w = W
-                        self.btn_cbt_patient_defense.draw(self.screen)
-                        y += B + gap
-
-            # Step of the Wind button - Monk (L1+) with Focus Points, bonus action (Disengage + Dash).
-            # Warrior of the Open Hand L11 Fleet Step: a free Step of the Wind (no Focus / no Bonus
-            # Action, once per turn) — so the button also shows when the bonus action is already spent
-            # or Focus is empty, as long as the free use hasn't been taken this turn.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Monk:
-                    fp = stats.get_resource("Focus Points")
-                    conds = self.combat.get_agent_conditions(self.bm, cur_idx)
-                    fleet_step_ready = (stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
-                                        stats.char_level >= 11 and not conds.fleet_step_used and
-                                        self.bonus_used)
-                    normal_ready = (not self.bonus_used) and bool(fp and fp.current > 0)
-                    if normal_ready or fleet_step_ready:
-                        self.btn_cbt_step_of_wind.rect.x = lx
-                        self.btn_cbt_step_of_wind.rect.y = y
-                        self.btn_cbt_step_of_wind.rect.w = W
-                        self.btn_cbt_step_of_wind.draw(self.screen)
-                        y += B + gap
-
-            # Hand of Healing button — Warrior of Mercy Monk (L3+), bonus action + 1 Focus Point;
-            # heals a clicked target (Martial Arts die + WIS), and at L6 also ends a condition.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Monk and
-                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfMercy and
-                        stats.char_level >= 3):
-                    fp = stats.get_resource("Focus Points")
-                    if fp and fp.current > 0:
-                        self.btn_cbt_hand_of_healing.rect.x = lx
-                        self.btn_cbt_hand_of_healing.rect.y = y
-                        self.btn_cbt_hand_of_healing.rect.w = W
-                        self.btn_cbt_hand_of_healing.draw(self.screen)
-                        y += B + gap
-
-            # Wholeness of Body button — Warrior of the Open Hand Monk (L6+), bonus-action self-heal
-            # (Martial Arts die + WIS), PB uses per long rest.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Monk and
-                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
-                        stats.char_level >= 6):
-                    wob = stats.get_resource("Wholeness of Body")
-                    if wob and wob.current > 0:
-                        self.btn_cbt_wholeness_of_body.rect.x = lx
-                        self.btn_cbt_wholeness_of_body.rect.y = y
-                        self.btn_cbt_wholeness_of_body.rect.w = W
-                        self.btn_cbt_wholeness_of_body.draw(self.screen)
-                        y += B + gap
-
-            # Rage button - only if agent is Barbarian, not raging, and has uses
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Barbarian:
-                    conds = self.combat.get_agent_conditions(self.bm, cur_idx)
-                    rage_resource = stats.get_resource("Rage")
-                    if not conds.raging and rage_resource and rage_resource.current > 0:
-                        self.btn_cbt_rage.rect.x = lx
-                        self.btn_cbt_rage.rect.y = y
-                        self.btn_cbt_rage.rect.w = W
-                        self.btn_cbt_rage.draw(self.screen)
-                        y += B + gap
-
-            # Intimidating Presence button — Berserker Barbarian (L10+), bonus-action Frightened AoE
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Barbarian and
-                        stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and
-                        stats.char_level >= 10):
-                    ip = stats.get_resource("Intimidating Presence")
-                    if ip and ip.current > 0:
-                        self.btn_cbt_intimidating_presence.text = f"Intimidating Presence ({ip.current})"
-                        self.btn_cbt_intimidating_presence.rect.x = lx
-                        self.btn_cbt_intimidating_presence.rect.y = y
-                        self.btn_cbt_intimidating_presence.rect.w = W
-                        self.btn_cbt_intimidating_presence.draw(self.screen)
-                        y += B + gap
-
-            # Zealous Presence button — Zealot Barbarian (L10+), bonus-action Advantage buff for allies
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Barbarian and
-                        stats.barbarian_subclass == rpg.BarbianSubclass.Zealot and
-                        stats.char_level >= 10):
-                    zp = stats.get_resource("Zealous Presence")
-                    if zp and zp.current > 0:
-                        self.btn_cbt_zealous_presence.text = f"Zealous Presence ({zp.current})"
-                        self.btn_cbt_zealous_presence.rect.x = lx
-                        self.btn_cbt_zealous_presence.rect.y = y
-                        self.btn_cbt_zealous_presence.rect.w = W
-                        self.btn_cbt_zealous_presence.draw(self.screen)
-                        y += B + gap
-
-            # Clairvoyant Combatant button — Great Old One Warlock (L6+): bonus-action telepathic strike.
-            # Available with a use left, or when a Pact Magic slot can be spent instead.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Warlock and
-                        stats.warlock_subclass == rpg.WarlockSubclass.GreatOldOne and
-                        stats.char_level >= 6):
-                    cc = stats.get_resource("Clairvoyant Combatant")
-                    uses = cc.current if cc else 0
-                    psl = stats.pact_slot_level()
-                    has_pact_slot = psl >= 1 and stats.spell_slots_remaining[psl - 1] > 0
-                    if uses > 0 or has_pact_slot:
-                        label = f"Clairvoyant Combatant ({uses})" if uses > 0 else "Clairvoyant Combatant (Pact slot)"
-                        self.btn_cbt_clairvoyant_combatant.text = label
-                        self.btn_cbt_clairvoyant_combatant.rect.x = lx
-                        self.btn_cbt_clairvoyant_combatant.rect.y = y
-                        self.btn_cbt_clairvoyant_combatant.rect.w = W
-                        self.btn_cbt_clairvoyant_combatant.draw(self.screen)
-                        y += B + gap
-
-            # Magical Cunning button - Warlock (L2+) with the feature still available this long rest
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Warlock:
-                    mc = stats.get_resource("Magical Cunning")
-                    if mc and mc.current > 0:
-                        self.btn_cbt_magical_cunning.rect.x = lx
-                        self.btn_cbt_magical_cunning.rect.y = y
-                        self.btn_cbt_magical_cunning.rect.w = W
-                        self.btn_cbt_magical_cunning.draw(self.screen)
-                        y += B + gap
-
-            # Healing Light button - Celestial Warlock (L3+) with dice left in the pool
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Warlock and
-                        stats.warlock_subclass == rpg.WarlockSubclass.Celestial and
-                        stats.char_level >= 3):
-                    hl = stats.get_resource("Healing Light")
-                    if hl and hl.current > 0:
-                        self.btn_cbt_healing_light.rect.x = lx
-                        self.btn_cbt_healing_light.rect.y = y
-                        self.btn_cbt_healing_light.rect.w = W
-                        self.btn_cbt_healing_light.draw(self.screen)
-                        y += B + gap
+            # The band's flat class guards — Monk, Barbarian, Warlock — are the
+            # menu's now; each is drawn as its own full-width row, in build order.
+            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_CLASSBAND),
+                                        lx, y, W, gap)
 
             # Channel Divinity (Magic action) buttons — Cleric (L2+) with a use remaining
             if 0 <= cur_idx < len(agents) and not self.action_used:
@@ -17481,16 +17341,10 @@ class App:
                             self.btn_cbt_preserve_life.draw(self.screen)
                             y += B + gap
 
-            # Divine Intervention (Cleric L10+, Magic action) — independent of Channel Divinity uses.
-            # Shown only when a DI use is available (can_use gates class-level + resource + Greater-DI
-            # lock); keying visibility on the resource avoids the haste_button_bonus_used dead-key trap.
-            if (0 <= cur_idx < len(agents) and not self.action_used
-                    and self.combat.can_use_divine_intervention(self.bm, cur_idx)):
-                self.btn_cbt_divine_intervention.rect.x = lx
-                self.btn_cbt_divine_intervention.rect.y = y
-                self.btn_cbt_divine_intervention.rect.w = W
-                self.btn_cbt_divine_intervention.draw(self.screen)
-                y += B + gap
+            # Divine Intervention (Cleric L10+, Magic action) — drawn after the Channel
+            # Divinity cluster above, which is still fused, so it is its own run.
+            y = self._draw_action_stack(
+                self._menu_group("bonus", only=("divine_intervention",)), lx, y, W, gap)
 
             # Trickery Cleric — Invoke Duplicity (Channel Divinity + Bonus Action), plus the bonus-action
             # Move Duplicate and the free Trickster's Transposition (L6+) swap.
@@ -17521,239 +17375,10 @@ class App:
                         self.btn_cbt_swap_duplicity.draw(self.screen)
                         y += B + gap
 
-            # Draconic Sorcerer L14+ Dragon Wings toggle (no action cost; shown when eligible)
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Draconic and
-                        stats.char_level >= 14):
-                    label = "Dismiss Dragon Wings" if stats.dragon_wings_active else "Dragon Wings (extend)"
-                    self.btn_cbt_dragon_wings.text = label
-                    self.btn_cbt_dragon_wings.rect.x = lx
-                    self.btn_cbt_dragon_wings.rect.y = y
-                    self.btn_cbt_dragon_wings.rect.w = W
-                    self.btn_cbt_dragon_wings.draw(self.screen)
-                    y += B + gap
-
-            # Draconic L6 Elemental Affinity — Resistance (bonus action, 1 SP; hidden once active)
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Draconic and
-                        stats.char_level >= 6 and
-                        stats.draconic_affinity_type >= 0 and
-                        stats.draconic_affinity_resist_turns == 0 and
-                        not self.bonus_used):
-                    sp_res = stats.get_resource("Sorcery Points")
-                    if sp_res and sp_res.current >= 1:
-                        self.btn_cbt_draconic_resistance.rect.x = lx
-                        self.btn_cbt_draconic_resistance.rect.y = y
-                        self.btn_cbt_draconic_resistance.rect.w = W
-                        self.btn_cbt_draconic_resistance.draw(self.screen)
-                        y += B + gap
-
-            # Wild Magic Sorcerer L6+ Bend Luck (bonus action / reaction, spends 1 SP)
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.WildMagic and
-                        stats.char_level >= 6):
-                    sp_res = stats.get_resource("Sorcery Points")
-                    if sp_res and sp_res.current > 0:
-                        self.btn_cbt_bend_luck.rect.x = lx
-                        self.btn_cbt_bend_luck.rect.y = y
-                        self.btn_cbt_bend_luck.rect.w = W
-                        self.btn_cbt_bend_luck.draw(self.screen)
-                        y += B + gap
-
-            # Boon of Fate (epic boon — Improve Fate): prime ±2d4 on the next D20 Test (1/rest,
-            # refreshed at initiative). Shown while the current agent has the feat and an unspent use.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.has_feat("Boon of Fate") and not stats.boon_of_fate_used:
-                    self.btn_cbt_boon_of_fate.rect.x = lx
-                    self.btn_cbt_boon_of_fate.rect.y = y
-                    self.btn_cbt_boon_of_fate.rect.w = W
-                    self.btn_cbt_boon_of_fate.draw(self.screen)
-                    y += B + gap
-
-            # Wild Magic Sorcerer L3+ Tides of Chaos (no action cost): Advantage on the next D20
-            # Test. Shown only when the use is available (recharges on long rest / Wild Magic Surge).
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.WildMagic and
-                        stats.char_level >= 3):
-                    toc = stats.get_resource("Tides of Chaos")
-                    if toc and toc.current > 0:
-                        self.btn_cbt_tides_of_chaos.rect.x = lx
-                        self.btn_cbt_tides_of_chaos.rect.y = y
-                        self.btn_cbt_tides_of_chaos.rect.w = W
-                        self.btn_cbt_tides_of_chaos.draw(self.screen)
-                        y += B + gap
-
-            # Sorcerer Innate Sorcery (L1+, Bonus Action): shown while it is not already running
-            # and the caster can pay for it — a free use, or (Sorcery Incarnate, L7+) 2 SP.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.innate_sorcery_turns == 0):
-                    innate = stats.get_resource("Innate Sorcery")
-                    sp_res = stats.get_resource("Sorcery Points")
-                    free_use = bool(innate and innate.current > 0)
-                    sp_use = bool(stats.char_level >= 7 and sp_res and sp_res.current >= 2)
-                    if free_use or sp_use:
-                        self.btn_cbt_innate_sorcery.text = (
-                            "Innate Sorcery" if free_use else "Innate Sorcery (2 SP)")
-                        self.btn_cbt_innate_sorcery.rect.x = lx
-                        self.btn_cbt_innate_sorcery.rect.y = y
-                        self.btn_cbt_innate_sorcery.rect.w = W
-                        self.btn_cbt_innate_sorcery.draw(self.screen)
-                        y += B + gap
-
-            # NOTE: the Sorcerer Metamagic arm-toggles used to live here, but that put them inside
-            # the `not self.bonus_used` guard above — so spending the Bonus Action (e.g. on Innate
-            # Sorcery) hid Heightened/Careful/Empowered/etc. Metamagic options are qualifiers on a
-            # spell, not Bonus Actions, so they are now drawn OUTSIDE this guard (see below).
-
-            # Clockwork Sorcerer L14+ Trance of Order (Bonus Action): for 1 minute, attacks against
-            # you lose Advantage and you floor your own d20s to 10. Free 1/long rest or 5 SP. Shown
-            # while not already active and a use (free or 5 SP) is available, with a bonus action free.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Clockwork and
-                        stats.char_level >= 14 and stats.trance_of_order_turns == 0):
-                    trance = stats.get_resource("Trance of Order")
-                    sp_res = stats.get_resource("Sorcery Points")
-                    free_use = trance and trance.current > 0
-                    sp_use = sp_res and sp_res.current >= 5
-                    if free_use or sp_use:
-                        self.btn_cbt_trance_of_order.text = (
-                            "Trance of Order" if free_use else "Trance of Order (5 SP)")
-                        self.btn_cbt_trance_of_order.rect.x = lx
-                        self.btn_cbt_trance_of_order.rect.y = y
-                        self.btn_cbt_trance_of_order.rect.w = W
-                        self.btn_cbt_trance_of_order.draw(self.screen)
-                        y += B + gap
-
-            # Clockwork Sorcerer L6+ Bastion of Law (Magic Action): spend 1-5 SP to ward self/ally
-            # within 30 ft with a pre-rolled d8 absorption pool. Shown when an action is free and at
-            # least 1 Sorcery Point is available.
-            if 0 <= cur_idx < len(agents) and not self.action_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Clockwork and
-                        stats.char_level >= 6):
-                    sp_res = stats.get_resource("Sorcery Points")
-                    if sp_res and sp_res.current >= 1:
-                        self.btn_cbt_bastion_of_law.rect.x = lx
-                        self.btn_cbt_bastion_of_law.rect.y = y
-                        self.btn_cbt_bastion_of_law.rect.w = W
-                        self.btn_cbt_bastion_of_law.draw(self.screen)
-                        y += B + gap
-
-            # Clockwork Sorcerer L18+ Clockwork Cavalcade (Magic Action): allies within 30 ft regain
-            # 100 HP + lose spell effects. Free 1/long rest or 7 SP.
-            if 0 <= cur_idx < len(agents) and not self.action_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Clockwork and
-                        stats.char_level >= 18):
-                    cav = stats.get_resource("Clockwork Cavalcade")
-                    sp_res = stats.get_resource("Sorcery Points")
-                    free_use = cav and cav.current > 0
-                    sp_use = sp_res and sp_res.current >= 7
-                    if free_use or sp_use:
-                        self.btn_cbt_clockwork_cavalcade.text = (
-                            "Clockwork Cavalcade" if free_use else "Clockwork Cavalcade (7 SP)")
-                        self.btn_cbt_clockwork_cavalcade.rect.x = lx
-                        self.btn_cbt_clockwork_cavalcade.rect.y = y
-                        self.btn_cbt_clockwork_cavalcade.rect.w = W
-                        self.btn_cbt_clockwork_cavalcade.draw(self.screen)
-                        y += B + gap
-
-            # Aberrant Mind Sorcerer L14+ Revelation in Flesh (Bonus Action, 1 SP): fly+hover, swim,
-            # truesight 60 ft for 10 minutes. Shown while not active, a bonus action is free, and >=1 SP.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
-                        stats.char_level >= 14 and stats.revelation_in_flesh_turns == 0):
-                    sp_res = stats.get_resource("Sorcery Points")
-                    if sp_res and sp_res.current >= 1:
-                        self.btn_cbt_revelation_in_flesh.rect.x = lx
-                        self.btn_cbt_revelation_in_flesh.rect.y = y
-                        self.btn_cbt_revelation_in_flesh.rect.w = W
-                        self.btn_cbt_revelation_in_flesh.draw(self.screen)
-                        y += B + gap
-
-            # Aberrant Mind Sorcerer L18+ Warping Implosion (Magic Action): teleport 120 ft + 3d10 Force
-            # DEX-save burst on the space left. Free 1/long rest or 5 SP. Shown when an action is free.
-            if 0 <= cur_idx < len(agents) and not self.action_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Sorcerer and
-                        stats.sorcerer_subclass == rpg.SorcererSubclass.Aberrant and
-                        stats.char_level >= 18):
-                    wi = stats.get_resource("Warping Implosion")
-                    sp_res = stats.get_resource("Sorcery Points")
-                    free_use = wi and wi.current > 0
-                    sp_use = sp_res and sp_res.current >= 5
-                    if free_use or sp_use:
-                        self.btn_cbt_warping_implosion.text = (
-                            "Warping Implosion" if free_use else "Warping Implosion (5 SP)")
-                        self.btn_cbt_warping_implosion.rect.x = lx
-                        self.btn_cbt_warping_implosion.rect.y = y
-                        self.btn_cbt_warping_implosion.rect.w = W
-                        self.btn_cbt_warping_implosion.draw(self.screen)
-                        y += B + gap
-
-            # Wild Magic window-band affordances (GUI-enforced; fields set by surge application)
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.wild_magic_extra_action:
-                    self.btn_cbt_wild_magic_extra_action.rect.x = lx
-                    self.btn_cbt_wild_magic_extra_action.rect.y = y
-                    self.btn_cbt_wild_magic_extra_action.rect.w = W
-                    self.btn_cbt_wild_magic_extra_action.draw(self.screen)
-                    y += B + gap
-                if stats.wild_magic_bonus_cast_turns > 0:
-                    self.btn_cbt_wild_magic_bonus_cast.rect.x = lx
-                    self.btn_cbt_wild_magic_bonus_cast.rect.y = y
-                    self.btn_cbt_wild_magic_bonus_cast.rect.w = W
-                    self.btn_cbt_wild_magic_bonus_cast.draw(self.screen)
-                    y += B + gap
-                if stats.wild_magic_teleport_bonus_turns > 0 and not self.bonus_used:
-                    self.btn_cbt_wild_magic_teleport.rect.x = lx
-                    self.btn_cbt_wild_magic_teleport.rect.y = y
-                    self.btn_cbt_wild_magic_teleport.rect.w = W
-                    self.btn_cbt_wild_magic_teleport.draw(self.screen)
-                    y += B + gap
-
-            # Steady Aim button - Rogue (L3+): advantage on next attack, but speed drops to 0
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                conds = self.combat.get_agent_conditions(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Rogue and
-                        stats.char_level >= 3 and not conds.steady_aim):
-                    self.btn_cbt_steady_aim.rect.x = lx
-                    self.btn_cbt_steady_aim.rect.y = y
-                    self.btn_cbt_steady_aim.rect.w = W
-                    self.btn_cbt_steady_aim.draw(self.screen)
-                    y += B + gap
-
-            # War Priest button — War Cleric (L3+) with a War Priest use, bonus-action weapon attack
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Cleric and
-                        stats.cleric_subclass == rpg.ClericSubclass.WarDomain and stats.char_level >= 3):
-                    wp = stats.get_resource("War Priest")
-                    if wp and wp.current > 0:
-                        self.btn_cbt_war_priest.rect.x = lx
-                        self.btn_cbt_war_priest.rect.y = y
-                        self.btn_cbt_war_priest.rect.w = W
-                        self.btn_cbt_war_priest.draw(self.screen)
-                        y += B + gap
+            # The Sorcerer run — plus Boon of Fate, Steady Aim and War Priest, which
+            # the panel has always drawn inside this stretch.
+            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_SORCERER),
+                                        lx, y, W, gap)
 
             # Bite (grappled) button — a weapon flagged auto_use_when_grappling (Vampire Bite) whose
             # wielder is currently Grappling a creature: one-click auto-offer to fire that weapon at the
@@ -17769,136 +17394,20 @@ class App:
                     self.btn_cbt_bite_grappled.draw(self.screen)
                     y += B + gap
 
-            # Great Weapon Master — Hew button: a melee crit/kill with a Heavy weapon (flagged in C++
-            # as gwm_hew_available) arms one bonus-action attack with that weapon. Shown as a standalone
-            # bonus-action button (rather than an on-hit popup) so it never shadows weapon-mastery
-            # riders like Cleave/Topple, which resolve on the triggering hit. Bonus action must be free.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                conds = self.combat.get_agent_conditions(self.bm, cur_idx)
-                if conds.gwm_hew_available:
-                    self.btn_cbt_gwm_hew.rect.x = lx
-                    self.btn_cbt_gwm_hew.rect.y = y
-                    self.btn_cbt_gwm_hew.rect.w = W
-                    self.btn_cbt_gwm_hew.draw(self.screen)
-                    y += B + gap
+            # The run from Hew to Lay on Hands.
+            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_MARTIAL),
+                                        lx, y, W, gap)
 
-            # Blink Steps button — Boon of Dimensional Travel: armed right after the Attack/Magic action
-            # (blink_steps_available in C++). A free ≤30-ft teleport, so it is NOT gated on the action/bonus
-            # economy; clicking it enters a destination pick (_resolve_blink_steps).
-            if 0 <= cur_idx < len(agents) and self._blink_steps_ready(cur_idx):
-                self.btn_cbt_blink_steps.rect.x = lx
-                self.btn_cbt_blink_steps.rect.y = y
-                self.btn_cbt_blink_steps.rect.w = W
-                self.btn_cbt_blink_steps.draw(self.screen)
-                y += B + gap
-
-            # Martial Arts button — Monk (L1+), bonus-action unarmed strike (always available)
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Monk:
-                    self.btn_cbt_martial_arts.rect.x = lx
-                    self.btn_cbt_martial_arts.rect.y = y
-                    self.btn_cbt_martial_arts.rect.w = W
-                    self.btn_cbt_martial_arts.draw(self.screen)
-                    y += B + gap
-
-            # Flurry of Blows button — Monk (L1+) with Focus Points, two bonus-action unarmed strikes (3 at L10+)
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Monk:
-                    fp = stats.get_resource("Focus Points")
-                    if fp and fp.current > 0:
-                        # L10 Heightened Focus: Flurry grants 3 strikes instead of 2
-                        num_attacks = 3 if stats.char_level >= 10 else 2
-                        self.btn_cbt_flurry_of_blows.text = f"Flurry of Blows ({num_attacks} Attacks)"
-                        self.btn_cbt_flurry_of_blows.rect.x = lx
-                        self.btn_cbt_flurry_of_blows.rect.y = y
-                        self.btn_cbt_flurry_of_blows.rect.w = W
-                        self.btn_cbt_flurry_of_blows.draw(self.screen)
-                        y += B + gap
-
-            # Second Wind button — Fighter (L1+) with a Second Wind use, bonus-action self-heal
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Fighter:
-                    sw = stats.get_resource("Second Wind")
-                    if sw and sw.current > 0:
-                        self.btn_cbt_second_wind.rect.x = lx
-                        self.btn_cbt_second_wind.rect.y = y
-                        self.btn_cbt_second_wind.rect.w = W
-                        self.btn_cbt_second_wind.draw(self.screen)
-                        y += B + gap
-
-            # Maneuver (Bonus) button — Battle Master with a Superiority Die: Rally / Feinting / Quick Toss
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Fighter and
-                        stats.fighter_subclass == rpg.FighterSubclass.BattleMaster):
-                    sd = stats.get_resource("Superiority Dice")
-                    if sd and sd.current > 0:
-                        self.btn_cbt_bm_maneuver.rect.x = lx
-                        self.btn_cbt_bm_maneuver.rect.y = y
-                        self.btn_cbt_bm_maneuver.rect.w = W
-                        self.btn_cbt_bm_maneuver.draw(self.screen)
-                        y += B + gap
-
-            # One with Shadows button — Warlock (invocation 8). Free Invisibility while the
-            # Warlock stands in Dim Light/Darkness; the click enforces the lighting gate.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Warlock and stats.has_invocation(8):
-                    self.btn_cbt_one_with_shadows.rect.x = lx
-                    self.btn_cbt_one_with_shadows.rect.y = y
-                    self.btn_cbt_one_with_shadows.rect.w = W
-                    self.btn_cbt_one_with_shadows.draw(self.screen)
-                    y += B + gap
-
-            # Merge with Shadows button — Boon of the Night Spirit. BA Invisibility while the
-            # holder stands in Dim Light/Darkness; the click enforces the lighting gate.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.has_feat("Boon of the Night Spirit"):
-                    self.btn_cbt_merge_shadows.rect.x = lx
-                    self.btn_cbt_merge_shadows.rect.y = y
-                    self.btn_cbt_merge_shadows.rect.w = W
-                    self.btn_cbt_merge_shadows.draw(self.screen)
-                    y += B + gap
-
-            # Action Surge button — Fighter (L1+), resets action_used (available anytime)
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Fighter:
-                    as_res = stats.get_resource("Action Surge")
-                    if as_res and as_res.current > 0:
-                        self.btn_cbt_action_surge.rect.x = lx
-                        self.btn_cbt_action_surge.rect.y = y
-                        self.btn_cbt_action_surge.rect.w = W
-                        self.btn_cbt_action_surge.draw(self.screen)
-                        y += B + gap
-
-            # Lay on Hands button — Paladin (L1+), requires target selection for healing
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.character_class == rpg.CharacterClass.Paladin:
-                    loh = stats.get_resource("Lay on Hands")
-                    if loh and loh.current > 0:
-                        self.btn_cbt_lay_on_hands.rect.x = lx
-                        self.btn_cbt_lay_on_hands.rect.y = y
-                        self.btn_cbt_lay_on_hands.rect.w = W
-                        self.btn_cbt_lay_on_hands.draw(self.screen)
-                        y += B + gap
-
-            # Grant Inspiration button — Bard (bonus action), spend a Bardic Inspiration use
+            # Grant Inspiration is the menu's; the four College of Glamour buttons are
+            # nested inside the same `bi` test and are M2d's, so the Bard wrapper — and
+            # `bi` itself — stays here until they leave too.
             if 0 <= cur_idx < len(agents) and not self.bonus_used:
                 stats = self.combat.get_agent_stats(self.bm, cur_idx)
                 if stats.character_class == rpg.CharacterClass.Bard:
                     bi = stats.get_resource("Bardic Inspiration")
-                    if bi and bi.current > 0:
-                        self.btn_cbt_grant_inspiration.rect.x = lx
-                        self.btn_cbt_grant_inspiration.rect.y = y
-                        self.btn_cbt_grant_inspiration.rect.w = W
-                        self.btn_cbt_grant_inspiration.draw(self.screen)
-                        y += B + gap
+                    y = self._draw_action_stack(
+                        self._menu_group("bonus", only=("grant_inspiration",)),
+                        lx, y, W, gap)
 
                     # Mantle of Inspiration button — College of Glamour Bard L3+ (bonus action):
                     # spend a Bardic Inspiration use to grant temp HP to up-to-CHA-mod allies.
@@ -17948,130 +17457,9 @@ class App:
                             self.btn_cbt_beguiling_restore.draw(self.screen)
                             y += B + gap
 
-            # Use Inspiration Die button — any creature currently holding a granted die
-            # (free, no action). Primes a +die bonus on the holder's next d20 Test.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if stats.bardic_inspiration_die > 0:
-                    self.btn_cbt_use_inspiration.rect.x = lx
-                    self.btn_cbt_use_inspiration.rect.y = y
-                    self.btn_cbt_use_inspiration.rect.w = W
-                    self.btn_cbt_use_inspiration.draw(self.screen)
-                    y += B + gap
-
-            # Sacred Weapon button — Paladin Oath of Devotion (bonus action), spend a Channel Oath use
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Paladin and
-                        stats.paladin_oath == rpg.PaladinOath.OathOfDevotion):
-                    co = stats.get_resource("Channel Oath")
-                    if co and co.current > 0 and stats.sacred_weapon_turns == 0:
-                        self.btn_cbt_sacred_weapon.rect.x = lx
-                        self.btn_cbt_sacred_weapon.rect.y = y
-                        self.btn_cbt_sacred_weapon.rect.w = W
-                        self.btn_cbt_sacred_weapon.draw(self.screen)
-                        y += B + gap
-
-            # Vow of Enmity button — Paladin Oath of Vengeance (L3+), part of the Attack action,
-            # spend a Channel Oath use to swear enmity against an enemy within 30 ft (Advantage vs it).
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Paladin and
-                        stats.paladin_oath == rpg.PaladinOath.OathOfVengeance):
-                    co = stats.get_resource("Channel Oath")
-                    if co and co.current > 0:
-                        self.btn_cbt_vow_of_enmity.text = f"Vow of Enmity ({co.current})"
-                        self.btn_cbt_vow_of_enmity.rect.x = lx
-                        self.btn_cbt_vow_of_enmity.rect.y = y
-                        self.btn_cbt_vow_of_enmity.rect.w = W
-                        self.btn_cbt_vow_of_enmity.draw(self.screen)
-                        y += B + gap
-
-            # Inspiring Smite button — Paladin Oath of Glory (L3+): appears right after a Divine Smite
-            # this turn; spend a Channel Oath use to hand out 2d8 + level temp HP to a creature in 30 ft.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                cond = self.combat.get_agent_conditions(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Paladin and
-                        stats.paladin_oath == rpg.PaladinOath.OathOfGlory and
-                        cond.divine_smite_used and not cond.inspiring_smite_used):
-                    co = stats.get_resource("Channel Oath")
-                    if co and co.current > 0:
-                        self.btn_cbt_inspiring_smite.text = f"Inspiring Smite ({co.current})"
-                        self.btn_cbt_inspiring_smite.rect.x = lx
-                        self.btn_cbt_inspiring_smite.rect.y = y
-                        self.btn_cbt_inspiring_smite.rect.w = W
-                        self.btn_cbt_inspiring_smite.draw(self.screen)
-                        y += B + gap
-
-            # Avenging Angel button — Paladin Oath of Vengeance (L20), bonus action, 1/long rest (or a
-            # level-5 slot). Fly 60 + hover and a Frightful Aura for 10 minutes.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Paladin and
-                        stats.paladin_oath == rpg.PaladinOath.OathOfVengeance and
-                        stats.char_level >= 20 and stats.avenging_angel_turns == 0):
-                    aa = stats.get_resource("Avenging Angel")
-                    uses = aa.current if aa else 0
-                    has_l5_slot = stats.spell_slots_remaining[4] > 0
-                    if uses > 0 or has_l5_slot:
-                        self.btn_cbt_avenging_angel.text = (
-                            f"Avenging Angel ({uses})" if uses > 0 else "Avenging Angel (L5 slot)")
-                        self.btn_cbt_avenging_angel.rect.x = lx
-                        self.btn_cbt_avenging_angel.rect.y = y
-                        self.btn_cbt_avenging_angel.rect.w = W
-                        self.btn_cbt_avenging_angel.draw(self.screen)
-                        y += B + gap
-
-            # Elder Champion button — Paladin Oath of the Ancients (L20), bonus action, 1/long rest (or a
-            # level-5 slot). Regen 10/turn + enemies in aura have Disadvantage on saves vs your spells.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Paladin and
-                        stats.paladin_oath == rpg.PaladinOath.OathOfAncients and
-                        stats.char_level >= 20 and stats.elder_champion_turns == 0):
-                    ec = stats.get_resource("Elder Champion")
-                    uses = ec.current if ec else 0
-                    has_l5_slot = stats.spell_slots_remaining[4] > 0
-                    if uses > 0 or has_l5_slot:
-                        self.btn_cbt_elder_champion.text = (
-                            f"Elder Champion ({uses})" if uses > 0 else "Elder Champion (L5 slot)")
-                        self.btn_cbt_elder_champion.rect.x = lx
-                        self.btn_cbt_elder_champion.rect.y = y
-                        self.btn_cbt_elder_champion.rect.w = W
-                        self.btn_cbt_elder_champion.draw(self.screen)
-                        y += B + gap
-
-            # Living Legend button — Paladin Oath of Glory (L20), bonus action, 1/long rest (or a level-5
-            # slot). Save-reroll reaction + once/turn Unerring Strike (weapon miss→hit) for 10 minutes.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Paladin and
-                        stats.paladin_oath == rpg.PaladinOath.OathOfGlory and
-                        stats.char_level >= 20 and stats.living_legend_turns == 0):
-                    ll = stats.get_resource("Living Legend")
-                    uses = ll.current if ll else 0
-                    has_l5_slot = stats.spell_slots_remaining[4] > 0
-                    if uses > 0 or has_l5_slot:
-                        self.btn_cbt_living_legend.text = (
-                            f"Living Legend ({uses})" if uses > 0 else "Living Legend (L5 slot)")
-                        self.btn_cbt_living_legend.rect.x = lx
-                        self.btn_cbt_living_legend.rect.y = y
-                        self.btn_cbt_living_legend.rect.w = W
-                        self.btn_cbt_living_legend.draw(self.screen)
-                        y += B + gap
-
-            # Corona of Light button — Cleric Light Domain (L17+), Magic action, 1-minute aura
-            if 0 <= cur_idx < len(agents) and not self.action_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Cleric and
-                        stats.cleric_subclass == rpg.ClericSubclass.LightDomain and
-                        stats.char_level >= 17 and stats.corona_of_light_turns == 0):
-                    self.btn_cbt_corona.rect.x = lx
-                    self.btn_cbt_corona.rect.y = y
-                    self.btn_cbt_corona.rect.w = W
-                    self.btn_cbt_corona.draw(self.screen)
-                    y += B + gap
+            # Use Inspiration Die, then the Paladin oaths and Corona of Light.
+            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_OATHS),
+                                        lx, y, W, gap)
 
             # Telekinetic Movement button — Psi Warrior (L3+), once per rest, push a creature 30 ft
             if 0 <= cur_idx < len(agents):
@@ -18086,51 +17474,9 @@ class App:
                         self.btn_cbt_telekinetic.draw(self.screen)
                         y += B + gap
 
-            # Dread Ambusher button — Gloom Stalker Ranger (L3+): arm +2d6 Psychic on your next
-            # weapon hit this turn (+10 ft Speed). WIS-mod uses/long rest, once per turn. Shows uses left.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Ranger and
-                        stats.ranger_subclass == rpg.RangerSubclass.GloomStalker and
-                        stats.char_level >= 3):
-                    da = stats.get_resource("Dread Ambusher")
-                    cond = self.combat.get_agent_conditions(self.bm, cur_idx)
-                    if (da and da.current > 0 and not cond.dread_ambusher_used and
-                            not cond.dreadful_strike_armed):
-                        self.btn_cbt_dread_ambusher.text = f"Dread Ambusher ({da.current})"
-                        self.btn_cbt_dread_ambusher.rect.x = lx
-                        self.btn_cbt_dread_ambusher.rect.y = y
-                        self.btn_cbt_dread_ambusher.rect.w = W
-                        self.btn_cbt_dread_ambusher.draw(self.screen)
-                        y += B + gap
-
-            # Tireless button — Ranger (L10+): Magic action, 1d8 + WIS-mod temp HP to self.
-            if 0 <= cur_idx < len(agents) and not self.action_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Ranger and
-                        stats.char_level >= 10):
-                    tl = stats.get_resource("Tireless")
-                    if tl and tl.current > 0:
-                        self.btn_cbt_tireless.text = f"Tireless ({tl.current})"
-                        self.btn_cbt_tireless.rect.x = lx
-                        self.btn_cbt_tireless.rect.y = y
-                        self.btn_cbt_tireless.rect.w = W
-                        self.btn_cbt_tireless.draw(self.screen)
-                        y += B + gap
-
-            # Nature's Veil button — Ranger (L14+): Bonus action, turn Invisible.
-            if 0 <= cur_idx < len(agents) and not self.bonus_used:
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Ranger and
-                        stats.char_level >= 14):
-                    nv = stats.get_resource("Nature's Veil")
-                    if nv and nv.current > 0:
-                        self.btn_cbt_natures_veil.text = f"Nature's Veil ({nv.current})"
-                        self.btn_cbt_natures_veil.rect.x = lx
-                        self.btn_cbt_natures_veil.rect.y = y
-                        self.btn_cbt_natures_veil.rect.w = W
-                        self.btn_cbt_natures_veil.draw(self.screen)
-                        y += B + gap
+            # The Ranger run.
+            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_RANGER),
+                                        lx, y, W, gap)
 
             # Soulknife Rogue: Psychic Teleportation (L9+, Bonus Action) and Psychic Veil
             # (L13+, Magic Action). Both can also be fueled by Psionic Energy Dice; the engine
@@ -18248,50 +17594,9 @@ class App:
                         self.btn_cbt_elemental_burst.draw(self.screen)
                         y += B + gap
 
-            # Quivering Palm detonate button — Warrior of the Open Hand (L17): shown only when this
-            # monk has planted vibrations and still has an action. Takes an action to trigger them.
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Monk and
-                        stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
-                        stats.char_level >= 17 and not self.action_used and
-                        self._quivering_palm_id_for(cur_idx) >= 0):
-                    self.btn_cbt_quivering_palm.rect.x = lx
-                    self.btn_cbt_quivering_palm.rect.y = y
-                    self.btn_cbt_quivering_palm.rect.w = W
-                    self.btn_cbt_quivering_palm.draw(self.screen)
-                    y += B + gap
-
-            # Primal Companion button — Beast Master Ranger (L3+): summon a Beast of
-            # the Land/Sea/Sky, or dismiss the active companion (label toggles).
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Ranger and
-                        stats.ranger_subclass == rpg.RangerSubclass.BeastMaster and
-                        stats.char_level >= 3):
-                    active = self._find_companion_idx(cur_idx) >= 0
-                    self.btn_cbt_companion.text = ("🐾 Dismiss Companion" if active
-                                                   else "🐾 Primal Companion")
-                    self.btn_cbt_companion.rect.x = lx
-                    self.btn_cbt_companion.rect.y = y
-                    self.btn_cbt_companion.rect.w = W
-                    self.btn_cbt_companion.draw(self.screen)
-                    y += B + gap
-
-            # Pact Familiar button — Warlock with Pact of the Chain (inv 18): summon one of
-            # the six familiar forms, or dismiss the active one (label toggles).
-            if 0 <= cur_idx < len(agents):
-                stats = self.combat.get_agent_stats(self.bm, cur_idx)
-                if (stats.character_class == rpg.CharacterClass.Warlock and
-                        stats.has_invocation(18)):
-                    active = self._find_familiar_idx(cur_idx) >= 0
-                    self.btn_cbt_familiar.text = ("😈 Dismiss Familiar" if active
-                                                  else "😈 Pact Familiar")
-                    self.btn_cbt_familiar.rect.x = lx
-                    self.btn_cbt_familiar.rect.y = y
-                    self.btn_cbt_familiar.rect.w = W
-                    self.btn_cbt_familiar.draw(self.screen)
-                    y += B + gap
+            # The tail: detonate, and the two summons.
+            y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_TAIL),
+                                        lx, y, W, gap)
 
 
         # Sorcerer Metamagic arm-toggles (Phase 2): one button per LEARNED + AFFORDABLE option
@@ -20117,9 +19422,9 @@ class App:
                     self._execute_grapple_drop()
                 # Use Item is NOT gated on the bonus action: a potion is a Bonus Action, but a
                 # thrown flask or Net replaces one attack of the Attack action instead.
-                if self.btn_cbt_use_item.clicked(event):
+                if self._action_clicked("use_item", event):
                     self._show_use_item_menu(event.pos)
-                if not self.action_used and self.btn_cbt_extinguish.clicked(event):
+                if self._action_clicked("extinguish", event):
                     self._resolve_extinguish()
                 if not self.action_used and self.btn_cbt_escape_net.clicked(event):
                     self._begin_escape_net()
@@ -20164,7 +19469,7 @@ class App:
                             self.bm.placed_agents[idx].disengage()
                             self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging (Cunning Action)")
                         self.bonus_used = True
-                    if self.btn_cbt_patient_defense.clicked(event):
+                    if self._action_clicked("patient_defense", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
@@ -20174,7 +19479,7 @@ class App:
                                 self.bm.placed_agents[idx].dodge()
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Patient Defense (dodging)")
                             self.bonus_used = True
-                    if self.btn_cbt_step_of_wind.clicked(event):
+                    if self._action_clicked("step_of_wind", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
@@ -20212,7 +19517,7 @@ class App:
                                 self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
                                 self._update_reach()
                                 self.bonus_used = True
-                    if self.btn_cbt_wholeness_of_body.clicked(event):
+                    if self._action_clicked("wholeness_of_body", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             healed = self.combat.wholeness_of_body(self.bm, idx)
@@ -20222,17 +19527,17 @@ class App:
                                 self.bonus_used = True
                             else:
                                 self._combat_log_add(f"{agent.name}: Wholeness of Body unavailable.")
-                    if self.btn_cbt_hand_of_healing.clicked(event):
+                    if self._action_clicked("hand_of_healing", event):
                         self.pending_hand_of_healing = True
                         self.hint = "Click target for Hand of Healing"
-                    if self.btn_cbt_rage.clicked(event):
+                    if self._action_clicked("rage", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.combat.activate_rage(self.bm, idx)
                             agent = self.bm.placed_agents[idx]
                             self._combat_log_add(f"{agent.name}: Enters a rage!")
                         self.bonus_used = True
-                    if self.btn_cbt_intimidating_presence.clicked(event):
+                    if self._action_clicked("intimidating_presence", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.use_intimidating_presence(self.bm, idx):
@@ -20240,7 +19545,7 @@ class App:
                                 self.bonus_used = True
                             else:
                                 self._combat_log_add("Intimidating Presence unavailable.")
-                    if self.btn_cbt_zealous_presence.clicked(event):
+                    if self._action_clicked("zealous_presence", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.use_zealous_presence(self.bm, idx):
@@ -20248,41 +19553,41 @@ class App:
                                 self.bonus_used = True
                             else:
                                 self._combat_log_add("Zealous Presence unavailable.")
-                    if self.btn_cbt_clairvoyant_combatant.clicked(event):
+                    if self._action_clicked("clairvoyant_combatant", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_clairvoyant = True
                             self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
-                    if self.btn_cbt_vow_of_enmity.clicked(event):
+                    if self._action_clicked("vow_of_enmity", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_vow_of_enmity = True
                             self._combat_log_add("Vow of Enmity: click an enemy within 30 ft to swear enmity against it.")
-                    if self.btn_cbt_inspiring_smite.clicked(event):
+                    if self._action_clicked("inspiring_smite", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_inspiring_smite = True
                             self._combat_log_add("Inspiring Smite: click a creature within 30 ft (including yourself) to grant temp HP.")
-                    if self.btn_cbt_avenging_angel.clicked(event):
+                    if self._action_clicked("avenging_angel", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_avenging_angel(idx)
-                    if self.btn_cbt_elder_champion.clicked(event):
+                    if self._action_clicked("elder_champion", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_elder_champion(idx)
-                    if self.btn_cbt_living_legend.clicked(event):
+                    if self._action_clicked("living_legend", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_living_legend(idx)
-                    if self.btn_cbt_magical_cunning.clicked(event):
+                    if self._action_clicked("magical_cunning", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.use_magical_cunning(self.bm, idx):
                                 self._flush_combat_log()
                             else:
                                 self._combat_log_add("Magical Cunning unavailable.")
-                    if self.btn_cbt_healing_light.clicked(event):
+                    if self._action_clicked("healing_light", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_heal_light = True
@@ -20299,7 +19604,7 @@ class App:
                                 self.action_used = True
                             else:
                                 self._combat_log_add("Turn Undead unavailable.")
-                    if self.btn_cbt_divine_intervention.clicked(event):
+                    if self._action_clicked("divine_intervention", event):
                         self._start_divine_intervention()
                     if self.btn_cbt_radiance.clicked(event):
                         idx = self._current_agent_idx()
@@ -20380,7 +19685,7 @@ class App:
                             else:
                                 self.pending_swap_duplicity = True
                                 self._combat_log_add("Swap — click the duplicate to trade places with.")
-                    if self.btn_cbt_steady_aim.clicked(event):
+                    if self._action_clicked("steady_aim", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             cond = self.combat.get_agent_conditions(self.bm, idx)
@@ -20395,7 +19700,7 @@ class App:
                             self.bonus_used = True
                             self._combat_log_add(
                                 f"{self.bm.placed_agents[idx].name}: Steady Aim — advantage on next attack (Speed 0).")
-                    if self.btn_cbt_war_priest.clicked(event):
+                    if self._action_clicked("war_priest", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_extra_attack(weapon_idx=0, offhand=False,
@@ -20412,23 +19717,23 @@ class App:
                                 self._start_extra_attack(weapon_idx=wslot, offhand=False,
                                                          slot="action", label="🧛 Bite (grappled)")
                                 self._resolve_combat_attack(victim)
-                    if self.btn_cbt_gwm_hew.clicked(event):
+                    if self._action_clicked("gwm_hew", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_gwm_hew(idx)
-                    if self.btn_cbt_blink_steps.clicked(event):
+                    if self._action_clicked("blink_steps", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
                             self.blink_steps_pending = True
                             self._combat_log_add(
                                 "Blink Steps: click a destination within 30 ft you can see "
                                 "(or click yourself to skip).")
-                    if self.btn_cbt_martial_arts.clicked(event):
+                    if self._action_clicked("martial_arts", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._start_extra_attack(weapon_idx=0, offhand=False,
                                                      resource=None, label="Martial Arts")
-                    if self.btn_cbt_flurry_of_blows.clicked(event):
+                    if self._action_clicked("flurry_of_blows", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
@@ -20440,36 +19745,36 @@ class App:
                                 else:
                                     # No rider options, execute with no rider
                                     self._execute_flurry(idx, -1)
-                    if self.btn_cbt_second_wind.clicked(event):
+                    if self._action_clicked("second_wind", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_second_wind(idx)
-                    if self.btn_cbt_bm_maneuver.clicked(event):
+                    if self._action_clicked("bm_maneuver", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._offer_bonus_maneuver(idx)
-                    if self.btn_cbt_one_with_shadows.clicked(event):
+                    if self._action_clicked("one_with_shadows", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.apply_one_with_shadows(self.bm, idx):
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: One with Shadows — now invisible.")
                             else:
                                 self._combat_log_add("One with Shadows requires standing in Dim Light or Darkness.")
-                    if self.btn_cbt_merge_shadows.clicked(event):
+                    if self._action_clicked("merge_shadows", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.apply_merge_with_shadows(self.bm, idx):
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Merge with Shadows — now invisible.")
                             else:
                                 self._combat_log_add("Merge with Shadows requires standing in Dim Light or Darkness.")
-                    if self.btn_cbt_action_surge.clicked(event):
+                    if self._action_clicked("action_surge", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_action_surge(idx)
-                    if self.btn_cbt_lay_on_hands.clicked(event):
+                    if self._action_clicked("lay_on_hands", event):
                         self.pending_lay_on_hands = True
                         self.hint = "Click target for Lay on Hands healing"
-                    if self.btn_cbt_grant_inspiration.clicked(event):
+                    if self._action_clicked("grant_inspiration", event):
                         self.pending_grant_inspiration = True
                         self.hint = "Click an ally to grant a Bardic Inspiration die"
                     if self.btn_cbt_mantle.clicked(event):
@@ -20489,22 +19794,22 @@ class App:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._restore_beguiling_magic(idx)
-                    if self.btn_cbt_use_inspiration.clicked(event):
+                    if self._action_clicked("use_inspiration", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_inspiration_die(idx)
-                    if self.btn_cbt_sacred_weapon.clicked(event):
+                    if self._action_clicked("sacred_weapon", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_sacred_weapon(idx)
-                    if self.btn_cbt_corona.clicked(event):
+                    if self._action_clicked("corona", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_corona_of_light(idx)
                     if self.btn_cbt_telekinetic.clicked(event):
                         self.pending_telekinetic = True
                         self.hint = "Click a creature to move with Telekinetic Movement"
-                    if self.btn_cbt_dread_ambusher.clicked(event):
+                    if self._action_clicked("dread_ambusher", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
@@ -20524,11 +19829,11 @@ class App:
                                     self._combat_log_add(
                                         f"{self.bm.placed_agents[idx].name}: Dread Ambusher — "
                                         f"next weapon hit deals +{dn}d{dz} Psychic, +10 ft Speed.")
-                    if self.btn_cbt_tireless.clicked(event):
+                    if self._action_clicked("tireless", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_tireless(idx)
-                    if self.btn_cbt_natures_veil.clicked(event):
+                    if self._action_clicked("natures_veil", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._use_natures_veil(idx)
@@ -20620,11 +19925,11 @@ class App:
                                 [(lbl, (lambda v=val: _on_burst_elem([v])))
                                  for lbl, val in ELEMENTAL_MONK_OPTIONS],
                                 render="picker", on_cancel=lambda: _on_burst_elem([]))
-                    if self.btn_cbt_quivering_palm.clicked(event):
+                    if self._action_clicked("quivering_palm", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self._detonate_quivering_palm(idx)
-                    if self.btn_cbt_dragon_wings.clicked(event):
+                    if self._action_clicked("dragon_wings", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_dragon_wings(self.bm, idx):
@@ -20637,7 +19942,7 @@ class App:
                                     self._combat_log_add(
                                         f"{self.bm.placed_agents[idx].name}: Dragon Wings retracted")
                                     self.move_remaining_fly = 0
-                    if self.btn_cbt_draconic_resistance.clicked(event):
+                    if self._action_clicked("draconic_resistance", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_draconic_resistance(self.bm, idx):
@@ -20649,7 +19954,7 @@ class App:
                             else:
                                 self._combat_log_add("Draconic Resistance: not eligible")
                             bonus_used = True
-                    if self.btn_cbt_bend_luck.clicked(event):
+                    if self._action_clicked("bend_luck", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             def _apply_bend_luck(boost, idx=idx):
@@ -20666,7 +19971,7 @@ class App:
                                 [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
                                  ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
                                 anchor=event.pos)
-                    if self.btn_cbt_boon_of_fate.clicked(event):
+                    if self._action_clicked("boon_of_fate", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             def _apply_boon_of_fate(boost, idx=idx):
@@ -20685,7 +19990,7 @@ class App:
                                 [("Boost (+2d4)", lambda: _apply_boon_of_fate(True)),
                                  ("Penalty (-2d4)", lambda: _apply_boon_of_fate(False))],
                                 anchor=event.pos)
-                    if self.btn_cbt_tides_of_chaos.clicked(event):
+                    if self._action_clicked("tides_of_chaos", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_tides_of_chaos(self.bm, idx):
@@ -20696,7 +20001,7 @@ class App:
                             self._update_attack_overlay()
                     # Sorcerer Innate Sorcery (Bonus Action). At L7 (Sorcery Incarnate) a caster
                     # out of uses can still pay 2 SP for it — the engine picks the payment.
-                    if self.btn_cbt_innate_sorcery.clicked(event):
+                    if self._action_clicked("innate_sorcery", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_innate_sorcery(self.bm, idx):
@@ -20711,7 +20016,7 @@ class App:
                     # `not self.bonus_used` block (see below, next to the Haste handler) so the
                     # toggles stay clickable after the Bonus Action is spent — they are spell
                     # qualifiers, not Bonus Actions.
-                    if self.btn_cbt_trance_of_order.clicked(event):
+                    if self._action_clicked("trance_of_order", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_trance_of_order(self.bm, idx):
@@ -20721,7 +20026,7 @@ class App:
                                 self._combat_log_add("Trance of Order: not available (no use/5 SP, wrong subclass/level)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
-                    if self.btn_cbt_bastion_of_law.clicked(event):
+                    if self._action_clicked("bastion_of_law", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
@@ -20740,7 +20045,7 @@ class App:
                                     [(f"{n} SP ({n}d8)", (lambda n=n: _arm_bastion(n)))
                                      for n in range(1, avail + 1)],
                                     anchor=event.pos)
-                    if self.btn_cbt_clockwork_cavalcade.clicked(event):
+                    if self._action_clicked("clockwork_cavalcade", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.clockwork_cavalcade(self.bm, idx) >= 0:
@@ -20750,7 +20055,7 @@ class App:
                                 self._combat_log_add("Clockwork Cavalcade: not available (no use/7 SP, wrong subclass/level)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
-                    if self.btn_cbt_revelation_in_flesh.clicked(event):
+                    if self._action_clicked("revelation_in_flesh", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_revelation_in_flesh(self.bm, idx):
@@ -20765,7 +20070,7 @@ class App:
                                 self._combat_log_add("Revelation in Flesh: not available (no SP, already active, wrong subclass/level)")
                                 self._flush_combat_log()
                             self._update_attack_overlay()
-                    if self.btn_cbt_warping_implosion.clicked(event):
+                    if self._action_clicked("warping_implosion", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_warping_implosion = True
@@ -20773,7 +20078,7 @@ class App:
                                 "Warping Implosion: click a destination within 120 ft (each creature within "
                                 "30 ft of where you stand makes a DEX save vs 3d10 Force). Click yourself to cancel.")
                             self._flush_combat_log()
-                    if self.btn_cbt_wild_magic_extra_action.clicked(event):
+                    if self._action_clicked("wild_magic_extra_action", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             stats = self.combat.get_agent_stats(self.bm, idx)
@@ -20782,20 +20087,20 @@ class App:
                             self.action_used = False  # grant the extra action
                             self._combat_log_add(
                                 f"{self.bm.placed_agents[idx].name}: Wild Magic extra action granted!")
-                    if self.btn_cbt_wild_magic_bonus_cast.clicked(event):
+                    if self._action_clicked("wild_magic_bonus_cast", event):
                         self._start_cast_spell("bonus")  # allow action-level spell as bonus
-                    if self.btn_cbt_wild_magic_teleport.clicked(event):
+                    if self._action_clicked("wild_magic_teleport", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.pending_wild_magic_teleport = True
                             self._combat_log_add("Wild Magic Teleport: click a destination cell.")
-                    if self.btn_cbt_companion.clicked(event):
+                    if self._action_clicked("companion", event):
                         self._show_companion_menu()
-                    if self.btn_cbt_familiar.clicked(event):
+                    if self._action_clicked("familiar", event):
                         self._show_familiar_menu()
-                    if self.btn_cbt_charge_arcane_ward.clicked(event):
+                    if self._action_clicked("charge_arcane_ward", event):
                         self._show_arcane_ward_menu()
-                    if self.btn_cbt_wild_shape.clicked(event):
+                    if self._action_clicked("wild_shape", event):
                         self._show_wild_shape_menu()
                 # Sorcerer Metamagic arm-toggles — handled OUTSIDE the `not self.bonus_used` block
                 # above (they are spell qualifiers, not Bonus Actions), so spending the Bonus Action

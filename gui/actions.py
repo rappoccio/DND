@@ -50,11 +50,28 @@ GROUP_BONUS   = "bonus"      # §7  the Bonus Action mega-section    (M2c-e)
 GROUP_UTILITY = "utility"    # §9  visibility + drops
 
 # Which groups `build` actually populates today. See "Scope" above.
-BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_ACTION, GROUP_PORTENT, GROUP_UTILITY)
+BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_ACTION, GROUP_PORTENT, GROUP_BONUS,
+                GROUP_UTILITY)
+
+# `GROUP_BONUS` is in that tuple from M2c on, but §7 is the one group that is only
+# PARTLY converted until M2e: M2c takes bucket 7a, M2d the clusters and the spatial
+# predicates, M2e the economy-band headers and the metamagic dict. Until then the
+# rule at the top holds with extra force for this group — a missing id means "still
+# fused", never "illegal".
 
 # Step 0.5's `expects` vocabulary, repeated rather than imported: `prompts.py` owns the
 # wire and must not grow a dependency on the panel model. Keep the two in step.
 EXPECTS = ("choice", "cell", "agent", "none")
+
+
+def _res(stats, name: str) -> int:
+    """`stats`'s remaining uses of a named resource, or 0 when it has none at all.
+
+    §7 asks this about forty times, always in the shape `r and r.current > N`. Missing
+    and exhausted are the same answer to the panel, so they are the same answer here.
+    """
+    r = stats.get_resource(name)
+    return r.current if r else 0
 
 
 @dataclass(frozen=True)
@@ -97,6 +114,7 @@ class ActionMenu:
         out += ActionMenu._turn(app, agent_idx)
         out += ActionMenu._action(app, agent_idx)
         out += ActionMenu._portent(app, agent_idx)
+        out += ActionMenu._bonus(app, agent_idx)
         out += ActionMenu._utility(app, agent_idx)
         return out
 
@@ -209,6 +227,350 @@ class ActionMenu:
         if not stats.get_resource("Portent Dice") or len(stats.portent_dice) == 0:
             return []
         return [Action("use_portent", "Use Portent Die", GROUP_PORTENT)]
+
+    # ── §7 — the Bonus Action mega-section ─────────────────────────────────────
+    @staticmethod
+    def _bonus(app, agent_idx: int) -> list[Action]:
+        """Bucket 7a: §7's flat, independent guards (M2c).
+
+        Built in the panel's DRAW ORDER, because `main.py` lays each converted run out
+        positionally — the same contract `_action`'s column order has, and the same
+        test pins it.
+
+        Two things this method is deliberately not allowed to tidy:
+
+        · the **band gate**. Most of §7 sits inside one `if not incapacitated and not
+          bonus_used:` block, including several buttons whose own comments say they are
+          not Bonus Actions at all (`action_surge` "available anytime", `corona`, the
+          Paladin capstones). Spending the Bonus Action hides them today; checkpoint 03
+          records exactly that, and M2 preserves it. Whether it is *right* is a separate
+          item.
+        · the guards that are **outside** it — `use_item`, `extinguish` — which are
+          action-gated or per-item instead. They are not an oversight; they are why the
+          `economy` field the plan wants cannot be a boolean.
+        """
+        agents = app.bm.placed_agents
+        if not (0 <= agent_idx < len(agents)):
+            return []
+        cond = app.combat.get_agent_conditions(app.bm, agent_idx)
+        if cond.incapacitated or cond.unconscious:
+            return []               # the whole section collapses to "[Cannot act]"
+
+        stats = app.combat.get_agent_stats(app.bm, agent_idx)
+        out: list[Action] = []
+
+        # ── ahead of the Jump/Shove row (each band-gated on its own) ──
+        if not app.bonus_used:
+            if (stats.character_class == rpg.CharacterClass.Wizard and
+                    stats.wizard_subclass == rpg.WizardSubclass.Abjurer and
+                    stats.char_level >= 3 and stats.temp_hp > 0):
+                # The ward IS the temp HP pool, which is why there is no separate
+                # "ward active" flag to read.
+                out.append(Action("charge_arcane_ward", "🔮 Ward", GROUP_BONUS))
+
+            if (stats.character_class == rpg.CharacterClass.Druid and
+                    stats.char_level >= 2):
+                out.append(Action("wild_shape",
+                                  "Exit Wild Shape" if stats.wild_shape_active
+                                  else "🐺 Wild Shape",
+                                  GROUP_BONUS))
+
+        # ── outside the band ──
+        # A potion is a Bonus Action; a thrown flask or a Net replaces one attack of
+        # the Attack action. So the offer is "can any carried item still be paid for",
+        # per item, and not a single economy test.
+        if any(app._can_replace_attack(agent_idx)
+               if it.action_type == rpg.ItemAction.AttackReplacement
+               else (not app.bonus_used) if it.action_type == rpg.ItemAction.BonusAction
+               else (not app.action_used) if it.action_type == rpg.ItemAction.Action
+               else True
+               for it in app.combat.get_agent_items(app.bm, agent_idx)):
+            out.append(Action("use_item", "🧪 Use Item", GROUP_BONUS))
+
+        if not app.action_used and cond.burning:
+            out.append(Action("extinguish", "🔥 Extinguish (Prone)", GROUP_BONUS))
+
+        # ── the band block ──
+        # Everything past this point is inside the panel's one big
+        # `if not _is_incapacitated and not self.bonus_used:`, whatever an individual
+        # feature's action cost actually is. Checkpoint 03 is the record of that.
+        if app.bonus_used:
+            return out
+
+        cls = stats.character_class
+        lvl = stats.char_level
+        CC = rpg.CharacterClass
+
+        # ── Monk ──
+        if cls == CC.Monk:
+            focus = _res(stats, "Focus Points")
+            if focus > 0:
+                out.append(Action("patient_defense", "Patient Defense", GROUP_BONUS))
+            # The panel's Fleet Step arm (Open Hand L11: a free Step of the Wind with
+            # the Bonus Action already spent) is unreachable — it is written inside the
+            # band gate, which has already required `not bonus_used`. Kept in that shape
+            # so the conversion changes nothing; see F11.
+            fleet_step_ready = (stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand
+                                and lvl >= 11 and not cond.fleet_step_used
+                                and app.bonus_used)
+            if focus > 0 or fleet_step_ready:
+                out.append(Action("step_of_wind", "Step of the Wind", GROUP_BONUS))
+            if (stats.monk_subclass == rpg.MonkSubclass.WarriorOfMercy and lvl >= 3
+                    and focus > 0):
+                out.append(Action("hand_of_healing", "Hand of Healing", GROUP_BONUS))
+            if (stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and lvl >= 6
+                    and _res(stats, "Wholeness of Body") > 0):
+                out.append(Action("wholeness_of_body", "Wholeness of Body", GROUP_BONUS))
+
+        # ── Barbarian ──
+        if cls == CC.Barbarian:
+            if not cond.raging and _res(stats, "Rage") > 0:
+                out.append(Action("rage", "Rage (Bonus)", GROUP_BONUS))
+            # The panel says level 10 and the engine grants the resource at 14, so
+            # 10-13 can never reach the draw. Preserved, and recorded as F9.
+            ip = _res(stats, "Intimidating Presence")
+            if (stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and lvl >= 10
+                    and ip > 0):
+                out.append(Action("intimidating_presence",
+                                  f"Intimidating Presence ({ip})", GROUP_BONUS))
+            zp = _res(stats, "Zealous Presence")
+            if (stats.barbarian_subclass == rpg.BarbianSubclass.Zealot and lvl >= 10
+                    and zp > 0):
+                out.append(Action("zealous_presence",
+                                  f"Zealous Presence ({zp})", GROUP_BONUS))
+
+        # ── Warlock ──
+        if cls == CC.Warlock:
+            if (stats.warlock_subclass == rpg.WarlockSubclass.GreatOldOne and lvl >= 6):
+                uses = _res(stats, "Clairvoyant Combatant")
+                psl = stats.pact_slot_level()
+                has_pact_slot = psl >= 1 and stats.spell_slots_remaining[psl - 1] > 0
+                if uses > 0 or has_pact_slot:
+                    out.append(Action("clairvoyant_combatant",
+                                      f"Clairvoyant Combatant ({uses})" if uses > 0
+                                      else "Clairvoyant Combatant (Pact slot)",
+                                      GROUP_BONUS))
+            if _res(stats, "Magical Cunning") > 0:
+                out.append(Action("magical_cunning", "Magical Cunning", GROUP_BONUS))
+            if (stats.warlock_subclass == rpg.WarlockSubclass.Celestial and lvl >= 3
+                    and _res(stats, "Healing Light") > 0):
+                out.append(Action("healing_light", "Healing Light", GROUP_BONUS))
+
+        # ── Cleric: Divine Intervention ──
+        # Keyed on the resource rather than on class+level, which is what keeps it out
+        # of the dead-key trap the Haste button's comment names.
+        if not app.action_used and app.combat.can_use_divine_intervention(app.bm, agent_idx):
+            out.append(Action("divine_intervention", "Divine Intervention", GROUP_BONUS))
+
+        # ── the Sorcerer run, plus the two guards drawn inside it ──
+        # In DRAW order, not class order: `boon_of_fate` (a feat) and `steady_aim` /
+        # `war_priest` (Rogue, Cleric) sit inside this stretch, and the panel's column
+        # is what the order has to match.
+        #
+        # Several of these repeat `not self.bonus_used` inside the band that has already
+        # required it. The band gate above answers it once; the repeats are dropped here
+        # rather than carried as always-true expressions.
+        sp = _res(stats, "Sorcery Points")
+        if cls == CC.Sorcerer:
+            SS = rpg.SorcererSubclass
+            sub = stats.sorcerer_subclass
+            if sub == SS.Draconic and lvl >= 14:
+                out.append(Action("dragon_wings",
+                                  "Dismiss Dragon Wings" if stats.dragon_wings_active
+                                  else "Dragon Wings (extend)", GROUP_BONUS))
+            if (sub == SS.Draconic and lvl >= 6 and stats.draconic_affinity_type >= 0
+                    and stats.draconic_affinity_resist_turns == 0 and sp >= 1):
+                out.append(Action("draconic_resistance",
+                                  "Draconic Resistance (1 SP)", GROUP_BONUS))
+            if sub == SS.WildMagic and lvl >= 6 and sp > 0:
+                out.append(Action("bend_luck", "Bend Luck (1 SP)", GROUP_BONUS))
+
+        if stats.has_feat("Boon of Fate") and not stats.boon_of_fate_used:
+            out.append(Action("boon_of_fate", "Boon of Fate (2d4)", GROUP_BONUS))
+
+        if cls == CC.Sorcerer:
+            if (sub == SS.WildMagic and lvl >= 3
+                    and _res(stats, "Tides of Chaos") > 0):
+                out.append(Action("tides_of_chaos", "Tides of Chaos", GROUP_BONUS))
+
+            if stats.innate_sorcery_turns == 0:
+                free_use = _res(stats, "Innate Sorcery") > 0
+                if free_use or (lvl >= 7 and sp >= 2):
+                    out.append(Action("innate_sorcery",
+                                      "Innate Sorcery" if free_use
+                                      else "Innate Sorcery (2 SP)", GROUP_BONUS))
+
+            if sub == SS.Clockwork:
+                if lvl >= 14 and stats.trance_of_order_turns == 0:
+                    free_use = _res(stats, "Trance of Order") > 0
+                    if free_use or sp >= 5:
+                        out.append(Action("trance_of_order",
+                                          "Trance of Order" if free_use
+                                          else "Trance of Order (5 SP)", GROUP_BONUS))
+                if not app.action_used and lvl >= 6 and sp >= 1:
+                    out.append(Action("bastion_of_law", "Bastion of Law", GROUP_BONUS))
+                if not app.action_used and lvl >= 18:
+                    free_use = _res(stats, "Clockwork Cavalcade") > 0
+                    if free_use or sp >= 7:
+                        out.append(Action("clockwork_cavalcade",
+                                          "Clockwork Cavalcade" if free_use
+                                          else "Clockwork Cavalcade (7 SP)", GROUP_BONUS))
+
+            if sub == SS.Aberrant:
+                if (lvl >= 14 and stats.revelation_in_flesh_turns == 0 and sp >= 1):
+                    out.append(Action("revelation_in_flesh",
+                                      "Revelation in Flesh (1 SP)", GROUP_BONUS))
+                if not app.action_used and lvl >= 18:
+                    free_use = _res(stats, "Warping Implosion") > 0
+                    if free_use or sp >= 5:
+                        out.append(Action("warping_implosion",
+                                          "Warping Implosion" if free_use
+                                          else "Warping Implosion (5 SP)", GROUP_BONUS))
+
+        # The three Wild Magic surge affordances are bare flags with no class guard —
+        # a surge sets them, and they are read exactly as written.
+        if stats.wild_magic_extra_action:
+            out.append(Action("wild_magic_extra_action",
+                              "Wild Magic: Extra Action", GROUP_BONUS))
+        if stats.wild_magic_bonus_cast_turns > 0:
+            out.append(Action("wild_magic_bonus_cast",
+                              "Wild Magic: Cast as Bonus", GROUP_BONUS))
+        if stats.wild_magic_teleport_bonus_turns > 0:
+            out.append(Action("wild_magic_teleport",
+                              "Wild Magic: Teleport 20ft", GROUP_BONUS))
+
+        if cls == CC.Rogue and lvl >= 3 and not cond.steady_aim:
+            out.append(Action("steady_aim", "Steady Aim", GROUP_BONUS))
+
+        if (cls == CC.Cleric and stats.cleric_subclass == rpg.ClericSubclass.WarDomain
+                and lvl >= 3 and _res(stats, "War Priest") > 0):
+            out.append(Action("war_priest", "War Priest (Bonus Attack)", GROUP_BONUS))
+
+
+        # ── the run the panel draws after Bite (grappled) ──
+        if cond.gwm_hew_available:
+            out.append(Action("gwm_hew", "Hew (Bonus Attack)", GROUP_BONUS))
+        # Blink Steps is armed by taking the Attack/Magic action, and costs nothing —
+        # so it has no economy test of its own, only the band it happens to sit in.
+        if app._blink_steps_ready(agent_idx):
+            out.append(Action("blink_steps", "✦ Blink Steps (30 ft)", GROUP_BONUS))
+
+        if cls == CC.Monk:
+            out.append(Action("martial_arts", "Martial Arts (Bonus Attack)", GROUP_BONUS))
+            if _res(stats, "Focus Points") > 0:
+                # L10 Heightened Focus makes Flurry three strikes instead of two.
+                out.append(Action("flurry_of_blows",
+                                  f"Flurry of Blows ({3 if lvl >= 10 else 2} Attacks)",
+                                  GROUP_BONUS))
+
+        if cls == CC.Fighter and _res(stats, "Second Wind") > 0:
+            out.append(Action("second_wind", "Second Wind (Bonus Action)", GROUP_BONUS))
+        if (cls == CC.Fighter
+                and stats.fighter_subclass == rpg.FighterSubclass.BattleMaster
+                and _res(stats, "Superiority Dice") > 0):
+            out.append(Action("bm_maneuver", "Maneuver (Bonus Action)", GROUP_BONUS))
+
+        # Both of these are free Invisibility in Dim Light/Darkness; the lighting gate
+        # is enforced by the click, not by the offer, which is why neither reads it.
+        if cls == CC.Warlock and stats.has_invocation(8):
+            out.append(Action("one_with_shadows",
+                              "One with Shadows (Invisible)", GROUP_BONUS))
+        if stats.has_feat("Boon of the Night Spirit"):
+            out.append(Action("merge_shadows",
+                              "Merge with Shadows (Invisible)", GROUP_BONUS))
+
+        if cls == CC.Fighter and _res(stats, "Action Surge") > 0:
+            out.append(Action("action_surge", "Action Surge", GROUP_BONUS))
+        if cls == CC.Paladin and _res(stats, "Lay on Hands") > 0:
+            out.append(Action("lay_on_hands", "Lay on Hands", GROUP_BONUS))
+
+        # Grant Inspiration is its own run: the four College of Glamour buttons are
+        # nested inside the same `bi` test in the panel and are M2d's.
+        if cls == CC.Bard and _res(stats, "Bardic Inspiration") > 0:
+            out.append(Action("grant_inspiration",
+                              "Grant Inspiration (Bonus Action)", GROUP_BONUS))
+
+
+        # ── Use Inspiration, then the Paladin oaths ──
+        # The die a Bard hands out is held by the RECIPIENT, so this one has no class
+        # guard at all — any creature holding a die is offered it.
+        if stats.bardic_inspiration_die > 0:
+            out.append(Action("use_inspiration", "Use Inspiration Die", GROUP_BONUS))
+
+        if cls == CC.Paladin:
+            PO = rpg.PaladinOath
+            oath = stats.paladin_oath
+            co = _res(stats, "Channel Oath")
+            has_l5_slot = stats.spell_slots_remaining[4] > 0
+            if oath == PO.OathOfDevotion and co > 0 and stats.sacred_weapon_turns == 0:
+                out.append(Action("sacred_weapon",
+                                  "Sacred Weapon (Bonus Action)", GROUP_BONUS))
+            if oath == PO.OathOfVengeance and co > 0:
+                out.append(Action("vow_of_enmity", f"Vow of Enmity ({co})", GROUP_BONUS))
+            if (oath == PO.OathOfGlory and cond.divine_smite_used
+                    and not cond.inspiring_smite_used and co > 0):
+                out.append(Action("inspiring_smite",
+                                  f"Inspiring Smite ({co})", GROUP_BONUS))
+
+            # The three L20 capstones are the same rule three times: a free use, or a
+            # level-5 slot spent instead, and not already running.
+            for oath_want, turns, res_name, aid, label in (
+                    (PO.OathOfVengeance, stats.avenging_angel_turns,
+                     "Avenging Angel", "avenging_angel", "Avenging Angel"),
+                    (PO.OathOfAncients, stats.elder_champion_turns,
+                     "Elder Champion", "elder_champion", "Elder Champion"),
+                    (PO.OathOfGlory, stats.living_legend_turns,
+                     "Living Legend", "living_legend", "Living Legend")):
+                if oath != oath_want or lvl < 20 or turns != 0:
+                    continue
+                uses = _res(stats, res_name)
+                if uses > 0 or has_l5_slot:
+                    out.append(Action(aid,
+                                      f"{label} ({uses})" if uses > 0
+                                      else f"{label} (L5 slot)", GROUP_BONUS))
+
+        if (not app.action_used and cls == CC.Cleric
+                and stats.cleric_subclass == rpg.ClericSubclass.LightDomain
+                and lvl >= 17 and stats.corona_of_light_turns == 0):
+            out.append(Action("corona", "Corona of Light (Action)", GROUP_BONUS))
+
+        # ── Ranger ──
+        if cls == CC.Ranger:
+            da = _res(stats, "Dread Ambusher")
+            if (stats.ranger_subclass == rpg.RangerSubclass.GloomStalker and lvl >= 3
+                    and da > 0 and not cond.dread_ambusher_used
+                    and not cond.dreadful_strike_armed):
+                out.append(Action("dread_ambusher",
+                                  f"Dread Ambusher ({da})", GROUP_BONUS))
+            tl = _res(stats, "Tireless")
+            if not app.action_used and lvl >= 10 and tl > 0:
+                out.append(Action("tireless", f"Tireless ({tl})", GROUP_BONUS))
+            nv = _res(stats, "Nature's Veil")
+            if lvl >= 14 and nv > 0:
+                out.append(Action("natures_veil", f"Nature's Veil ({nv})", GROUP_BONUS))
+
+        # ── the tail: detonate, and the two summons whose label is a toggle ──
+        if (cls == CC.Monk
+                and stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand
+                and lvl >= 17 and not app.action_used
+                and app._quivering_palm_id_for(agent_idx) >= 0):
+            out.append(Action("quivering_palm",
+                              "💥 Detonate Quivering Palm", GROUP_BONUS))
+
+        if (cls == CC.Ranger
+                and stats.ranger_subclass == rpg.RangerSubclass.BeastMaster
+                and lvl >= 3):
+            out.append(Action("companion",
+                              "🐾 Dismiss Companion"
+                              if app._find_companion_idx(agent_idx) >= 0
+                              else "🐾 Primal Companion", GROUP_BONUS))
+        if cls == CC.Warlock and stats.has_invocation(18):
+            out.append(Action("familiar",
+                              "😈 Dismiss Familiar"
+                              if app._find_familiar_idx(agent_idx) >= 0
+                              else "😈 Pact Familiar", GROUP_BONUS))
+
+        return out
 
     # ── §9 — visibility + drops ────────────────────────────────────────────────
     @staticmethod
